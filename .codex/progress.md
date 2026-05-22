@@ -38,6 +38,7 @@
 - Added Python agent support for `AFROGATE_OUTBOUND_PROXY_URL`.
 - Added server access and outbound management strategy: temporary bootstrap credentials, agent-first monitoring, encrypted secrets, ordered outbounds, health checks, and failover rules.
 - Added ECharts-based realtime health timeline with 15m/1h/6h/24h ranges and a backend `/api/metrics/timeseries` endpoint.
+- Added PostgreSQL/Drizzle database foundation for server access profiles, encrypted credential records, outbounds, outbound health checks, and route failover events.
 
 ### Current State
 
@@ -54,7 +55,7 @@
 Continue the monitoring MVP:
 
 1. Add admin auth and role-based authorization.
-2. Add server/outbound CRUD models with encrypted secret references.
+2. Add admin-safe server/outbound read APIs and mutation APIs after roles are enforced.
 3. Add alert listing endpoints and a dashboard alerts view.
 4. Add Telegram critical alert delivery using the shared control-plane egress policy.
 5. Add RAM/network/WireGuard metrics to the Python agent.
@@ -110,4 +111,5 @@ Repository remote is ready:
 - Verified `python apps\agent\run.py --once`; local disk free was below 10%, which matches the new critical storage alert threshold when posted to the backend.
 - Verified Python agent still compiles after adding outbound proxy support.
 - Verified ECharts health timeline with dependency audit, workspace typecheck, and production build.
+- Verified server access/outbound schema foundation with dependency audit, workspace typecheck, and production build.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

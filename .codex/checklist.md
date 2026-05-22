@@ -52,6 +52,7 @@
 - [ ] Role-based authorization.
 - [ ] Audit log foundation.
 - [ ] CRUD for servers.
+- [x] Data model for server access and outbound failover.
 - [ ] Server edit screen with safe access/bootstrap tabs.
 - [ ] Encrypted server credential storage.
 - [ ] CRUD for tunnels and interfaces.
