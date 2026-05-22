@@ -48,8 +48,10 @@
 
 ## Phase 1: Monitoring MVP
 
-- [ ] Backend auth for admin.
-- [ ] Role-based authorization.
+- [x] Backend bootstrap auth guard for admin APIs.
+- [x] Role guard/decorator foundation.
+- [ ] Dashboard session login and MFA-ready admin auth.
+- [ ] Apply admin guards to sensitive server/outbound APIs.
 - [ ] Audit log foundation.
 - [ ] CRUD for servers.
 - [x] Data model for server access and outbound failover.

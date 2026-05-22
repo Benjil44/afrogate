@@ -5,12 +5,8 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-
-interface RequestWithHeaders {
-  headers: {
-    authorization?: string;
-  };
-}
+import type { RequestWithAuth } from './auth-request';
+import { readBearerToken, secureTokenEquals } from './bearer-token';
 
 @Injectable()
 export class AgentTokenGuard implements CanActivate {
@@ -21,15 +17,18 @@ export class AgentTokenGuard implements CanActivate {
       throw new ServiceUnavailableException('Agent token is not configured');
     }
 
-    const request = context.switchToHttp().getRequest<RequestWithHeaders>();
-    const authorization = request.headers.authorization;
-    const token = authorization?.startsWith('Bearer ')
-      ? authorization.slice('Bearer '.length).trim()
-      : undefined;
+    const request = context.switchToHttp().getRequest<RequestWithAuth>();
+    const token = readBearerToken(request.headers.authorization);
 
-    if (!token || token !== expectedToken) {
+    if (!secureTokenEquals(token, expectedToken)) {
       throw new UnauthorizedException('Invalid agent token');
     }
+
+    request.actor = {
+      id: process.env.AFROGATE_AGENT_ID ?? 'unknown-agent',
+      role: 'agent',
+      type: 'agent',
+    };
 
     return true;
   }

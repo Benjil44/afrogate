@@ -6,7 +6,9 @@ import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
 import { MetricsService } from './metrics/metrics.service';
 import { PostgresMetricsRepository } from './metrics/postgres-metrics.repository';
+import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
+import { RolesGuard } from './security/roles.guard';
 
 @Module({
   imports: [
@@ -18,7 +20,9 @@ import { AgentTokenGuard } from './security/agent-token.guard';
   controllers: [HealthController, MetricsController],
   providers: [
     MetricsService,
+    AdminTokenGuard,
     AgentTokenGuard,
+    RolesGuard,
     PostgresMetricsRepository,
     {
       provide: METRICS_REPOSITORY,
