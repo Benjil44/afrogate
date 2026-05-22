@@ -87,3 +87,4 @@
 - Backend persistence uses PostgreSQL with Drizzle ORM runtime queries and hand-written SQL migrations to avoid vulnerable migration dependencies.
 - Apps consume shared TypeScript contracts from built `packages/shared/dist` declarations; app prebuild/pretypecheck scripts build the shared package first.
 - The dashboard polls the backend latest-metrics endpoint every 10 seconds and keeps a local sample fallback so the UI remains useful while the database/API is offline.
+- Restricted Iran servers need a control-plane egress path for Telegram/API access; first implementation should use `AFROGATE_OUTBOUND_PROXY_URL` with a localhost HTTP proxy exposed by a local VLESS/sing-box/xray or gateway client.

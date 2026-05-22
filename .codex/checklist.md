@@ -38,6 +38,7 @@
 - [x] Add UFW baseline sample.
 - [x] Add systemd hardening sample.
 - [x] Add Nginx rate-limit/security-header sample.
+- [x] Define control-plane egress proxy strategy.
 - [x] Add agent token guard for metrics ingest.
 - [x] Run manual dependency audit with zero vulnerabilities.
 - [x] Switch dashboard to React/Vite static build for lower resource use.
@@ -62,6 +63,8 @@
 - [x] Health score calculation.
 - [ ] Alert engine.
 - [ ] Telegram alert sender.
+- [ ] Backend shared outbound HTTP client for Telegram/API calls.
+- [x] Agent outbound proxy support for restricted servers.
 - [x] Dashboard overview.
 - [ ] Server detail page.
 - [ ] Tunnel detail page.

@@ -11,9 +11,10 @@ Before changing code or architecture in this repository, read these files first:
 7. `docs/roadmap-fa.md`
 8. `docs/enhancement-approaches-fa.md`
 9. `docs/implementation-start-plan-fa.md`
-10. `docs/repository-structure.md`
-11. `docs/security-performance-policy.md`
-12. `SECURITY.md`
+10. `docs/control-plane-egress.md`
+11. `docs/repository-structure.md`
+12. `docs/security-performance-policy.md`
+13. `SECURITY.md`
 
 After each meaningful implementation session:
 

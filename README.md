@@ -11,6 +11,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Roadmap and backlog](docs/roadmap-fa.md)
 - [Enhancement approaches](docs/enhancement-approaches-fa.md)
 - [Implementation start plan](docs/implementation-start-plan-fa.md)
+- [Control-plane egress](docs/control-plane-egress.md)
 - [Repository structure](docs/repository-structure.md)
 - [Security and performance policy](docs/security-performance-policy.md)
 - [Security policy](SECURITY.md)
@@ -41,6 +42,8 @@ python apps/agent/run.py --once
 ```
 
 The backend expects `DATABASE_URL` and a real `AFROGATE_AGENT_TOKEN` before accepting agent metrics. The dashboard reads `VITE_API_BASE_URL` and falls back to local sample data when the API is unavailable.
+
+Restricted servers can route AfroGate Telegram/API calls through a local egress proxy with `AFROGATE_OUTBOUND_PROXY_URL`; see [control-plane egress](docs/control-plane-egress.md).
 
 ## MVP Direction
 

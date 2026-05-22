@@ -20,7 +20,12 @@ def main() -> None:
         payload = collect_metrics(config.agent_id)
 
         if config.api_url:
-            response = push_metrics(config.api_url, config.token, payload)
+            response = push_metrics(
+                config.api_url,
+                config.token,
+                payload,
+                proxy_url=config.outbound_proxy_url,
+            )
             print(json.dumps(response, indent=2))
         else:
             print(json.dumps(payload, indent=2))
@@ -29,4 +34,3 @@ def main() -> None:
             return
 
         time.sleep(config.interval_seconds)
-

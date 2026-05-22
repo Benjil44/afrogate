@@ -4,7 +4,12 @@ import json
 from urllib import request
 
 
-def push_metrics(api_url: str, token: str | None, payload: dict[str, object]) -> dict[str, object]:
+def push_metrics(
+    api_url: str,
+    token: str | None,
+    payload: dict[str, object],
+    proxy_url: str | None = None,
+) -> dict[str, object]:
     url = f"{api_url.rstrip('/')}/metrics"
     body = json.dumps(payload).encode("utf-8")
     headers = {
@@ -16,6 +21,19 @@ def push_metrics(api_url: str, token: str | None, payload: dict[str, object]) ->
         headers["Authorization"] = f"Bearer {token}"
 
     req = request.Request(url, data=body, headers=headers, method="POST")
-    with request.urlopen(req, timeout=10) as response:
+
+    opener = _build_opener(proxy_url)
+    with opener.open(req, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
 
+
+def _build_opener(proxy_url: str | None) -> request.OpenerDirector:
+    if not proxy_url:
+        return request.build_opener()
+
+    return request.build_opener(
+        request.ProxyHandler({
+            "http": proxy_url,
+            "https": proxy_url,
+        }),
+    )
