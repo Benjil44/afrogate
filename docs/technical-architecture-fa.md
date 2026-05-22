@@ -264,3 +264,15 @@ Alert engine باید rule های ساده داشته باشد:
 - جایگزینی تدریجی با provisioning اختصاصی AfroGate.
 - multi-server و multi-route کامل.
 
+## تصمیم اجرایی اولیه
+
+برای شروع پیاده‌سازی، مسیر local-first انتخاب شده است:
+
+- Backend: NestJS/TypeScript.
+- Frontend: React با Next.js برای dashboard.
+- Database: PostgreSQL.
+- Agent: Python برای شروع سریع.
+- Docker: اجباری نیست و نباید شروع MVP را کند کند.
+- Ubuntu deploy: systemd + Nginx + PostgreSQL native، با امکان اضافه کردن Docker Compose در آینده.
+
+این تصمیم برای شروع MVP است، نه قفل دائمی. اگر بعداً performance، enterprise contract یا تیم توسعه نیاز دیگری داشت، می‌توان سرویس‌های خاص را با .NET یا Go جدا کرد.

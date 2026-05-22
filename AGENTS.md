@@ -10,6 +10,7 @@ Before changing code or architecture in this repository, read these files first:
 6. `docs/technical-architecture-fa.md`
 7. `docs/roadmap-fa.md`
 8. `docs/enhancement-approaches-fa.md`
+9. `docs/implementation-start-plan-fa.md`
 
 After each meaningful implementation session:
 

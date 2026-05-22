@@ -28,6 +28,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 6. Integration with current Marzban/X-UI/other panel usage.
 7. Enterprise-ready Afrogate branded panel.
 8. Reliability, observability, route intelligence, privacy, and enterprise-readiness enhancements from `docs/enhancement-approaches-fa.md`.
+9. Local-first implementation using the direction in `docs/implementation-start-plan-fa.md`.
 
 ## Technical Principles
 
@@ -38,6 +39,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Use threshold-based alerts first; add predictive analysis later.
 - Treat packet loss, high jitter, storage pressure, and API/request backlog as urgent operational signals.
 - Keep enhancement work progressive: visibility first, reliability second, manual control third, automation fourth, enterprise polish last.
+- Do not make GitHub remote work a blocker; local git is enough until the user asks to push.
 
 ## UX Principles
 

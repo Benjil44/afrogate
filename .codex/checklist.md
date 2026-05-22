@@ -10,18 +10,29 @@
 - [x] Create initial local commit.
 - [x] Configure target `origin` URL for `benjil44/afrogate`.
 - [x] Add enhancement approach documentation.
-- [ ] Create remote repository named `afrogate`.
-- [ ] Push initial commit.
+- [x] Keep repository local-first for now.
+- [ ] Optional later: create remote repository named `afrogate`.
+- [ ] Optional later: push local commits.
 
 ## Phase 0: Foundation
 
-- [ ] Choose backend stack: FastAPI or NestJS.
-- [ ] Choose frontend stack: Next.js or React/Vite.
-- [ ] Choose metrics storage approach: PostgreSQL tables, TimescaleDB, or Prometheus bridge.
-- [ ] Define Docker Compose for local development.
+- [x] Choose initial backend direction: NestJS/TypeScript.
+- [x] Choose initial frontend direction: React with Next.js dashboard.
+- [x] Choose initial database direction: PostgreSQL.
+- [x] Decide Docker is optional for now, not required for local start.
+- [x] Add implementation start plan documentation.
+- [ ] Choose ORM: Prisma or Drizzle.
+- [x] Choose metrics storage approach: PostgreSQL tables first, TimescaleDB/partitioning later if needed.
+- [ ] Add Ubuntu deployment notes with systemd and Nginx.
+- [ ] Define optional Docker Compose for later reproducible deployment.
 - [ ] Add `.env.example`.
 - [ ] Define database schema migration tool.
 - [ ] Add basic CI checks.
+- [ ] Scaffold `apps/backend`.
+- [ ] Scaffold `apps/dashboard`.
+- [ ] Scaffold `apps/agent`.
+- [ ] Scaffold `packages/shared`.
+- [ ] Scaffold `infra/ubuntu`.
 
 ## Phase 1: Monitoring MVP
 

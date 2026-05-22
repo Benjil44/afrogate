@@ -10,6 +10,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Technical architecture](docs/technical-architecture-fa.md)
 - [Roadmap and backlog](docs/roadmap-fa.md)
 - [Enhancement approaches](docs/enhancement-approaches-fa.md)
+- [Implementation start plan](docs/implementation-start-plan-fa.md)
 - [Agent instructions](AGENTS.md)
 - [Codex project memory](.codex/memory.md)
 

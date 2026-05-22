@@ -21,15 +21,18 @@
 - Linked enhancement documentation from README, AGENTS, agent rules, checklist, and memory.
 - Created local documentation commit for the enhancement approach.
 - Retried push to `benjil44/afrogate`; GitHub still returned `Repository not found`.
+- User decided to keep the repository local-first for now and maybe push to remote later.
+- Added implementation start plan and initial stack direction: NestJS backend, React/Next.js dashboard, PostgreSQL, Python agent, Docker optional.
 
 ### Current State
 
 - The repository is documentation-only.
 - Local git repository exists on branch `main`.
-- Remote target is configured for `benjil44/afrogate`, but the GitHub repository still needs to be created or made accessible before push can succeed.
+- Remote target is configured for `benjil44/afrogate`, but remote push is optional later and not required for current work.
 - No backend, frontend, database, or agent app has been scaffolded yet.
 - Current highest priority remains the monitoring MVP.
 - Enhancement approach is documented, but not implemented yet.
+- Initial stack direction is documented, but implementation has not started yet.
 
 ### Next Recommended Step
 
@@ -37,11 +40,11 @@ Initialize the implementation foundation:
 
 1. Pick stack.
 2. Scaffold backend, dashboard, database, and agent folders.
-3. Add Docker Compose.
+3. Add Ubuntu local/deploy notes.
 4. Implement first metrics ingest flow.
 5. Render first dashboard overview.
 
-Repository push is pending:
+Repository push is optional later:
 
 1. Create GitHub repository `benjil44/afrogate`.
 2. Keep it empty, without README/license/gitignore, because this local repo already has files.
@@ -56,3 +59,5 @@ Repository push is pending:
 - Remote owner set to `benjil44`.
 - Enhancement documentation added and linked.
 - Latest push attempt still blocked by missing/inaccessible GitHub repository.
+- Local-first git direction recorded.
+- Implementation start plan added.

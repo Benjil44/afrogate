@@ -24,7 +24,9 @@ fatal: repository 'https://github.com/benjil44/afrogate.git/' not found
 
 This means the GitHub repository still needs to be created, or this environment does not have access to it.
 
-## Next Steps
+The user later decided to keep the repository local-first for now. Remote push is optional future work, not a blocker for implementation.
+
+## Optional Future Steps
 
 Create an empty GitHub repository:
 

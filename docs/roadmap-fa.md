@@ -6,7 +6,9 @@
 - تعریف schema اولیه دیتابیس.
 - تعریف i18n فارسی/انگلیسی.
 - تعریف secrets و env config.
-- آماده‌سازی Docker Compose برای توسعه.
+- آماده‌سازی بدون Docker برای شروع سریع local.
+- آماده‌سازی Ubuntu deploy با systemd و Nginx.
+- نگه داشتن Docker Compose به عنوان گزینه بعدی برای deploy تکرارپذیر.
 
 ## فاز 1: Monitoring MVP
 
@@ -77,20 +79,20 @@
 
 ## تصمیم‌های باز
 
-- stack نهایی frontend: Next.js یا React/Vite.
-- stack نهایی backend: Node.js/NestJS یا Python/FastAPI.
-- ذخیره metrics: TimescaleDB یا schema ساده PostgreSQL در MVP.
+- ORM نهایی: Prisma یا Drizzle.
+- روش realtime: polling اول یا WebSocket/SSE از ابتدا.
+- ذخیره metrics: schema ساده PostgreSQL در MVP، TimescaleDB/partitioning در صورت رشد.
 - میزان وابستگی اولیه به Marzban/X-UI.
 - روش دقیق محاسبه مصرف per-user از data plane.
 
 ## پیشنهاد فنی اولیه
 
-- Backend: FastAPI یا NestJS.
-- Frontend: Next.js با UI عملیاتی و کم‌حاشیه.
+- Backend: NestJS/TypeScript.
+- Frontend: React با Next.js و UI عملیاتی و کم‌حاشیه.
 - DB: PostgreSQL، قابل ارتقا به TimescaleDB.
-- Cache/Queue: Redis.
+- Cache/Queue: Redis وقتی alert/queue جدی شد؛ برای شروع optional.
 - Agent: Go یا Python.
-- Deploy: Docker Compose در MVP، بعداً Kubernetes یا Nomad برای enterprise.
+- Deploy: local-first بدون Docker؛ روی Ubuntu با systemd و Nginx؛ Docker Compose بعداً optional.
 
 ## اولویت اجرای بعدی
 
@@ -100,4 +102,3 @@
 4. ارسال metrics نمونه از agent به API.
 5. نمایش dashboard realtime.
 6. اضافه کردن Telegram alerts.
-
