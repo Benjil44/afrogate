@@ -22,7 +22,7 @@
 - Created local documentation commit for the enhancement approach.
 - Retried push before remote creation and it was still unavailable at that time.
 - User decided to keep the repository local-first for now and maybe push to remote later.
-- Added implementation start plan and initial stack direction: NestJS backend, React/Vite dashboard, PostgreSQL, Python agent, Docker optional.
+- Added implementation start plan and initial stack direction: NestJS backend, React/Vite/Tailwind dashboard, PostgreSQL, Python agent, Docker optional.
 - Replaced Next.js dashboard scaffold with React/Vite to reduce VPS resource usage and keep dependency audit clean.
 - User created GitHub repository `Benjil44/afrogate`.
 - Updated `origin` to `https://github.com/Benjil44/afrogate.git`.
@@ -30,13 +30,13 @@
 
 ### Current State
 
-- The repository is documentation-only.
+- The repository now has a scaffolded backend, dashboard, agent, shared package, and infra samples.
 - Local git repository exists on branch `main`.
 - Remote target is configured for `Benjil44/afrogate` and local `main` tracks `origin/main`.
-- No backend, frontend, database, or agent app has been scaffolded yet.
+- Backend, dashboard, agent, shared package, and infra folders are scaffolded.
 - Current highest priority remains the monitoring MVP.
 - Enhancement approach is documented, but not implemented yet.
-- Initial stack direction is documented, but implementation has not started yet.
+- Initial app structure exists; the first real data path still needs implementation.
 
 ### Next Recommended Step
 
@@ -81,3 +81,6 @@ Repository remote is ready:
 - Verified `npm audit` reports zero vulnerabilities.
 - Verified backend, dashboard, and shared TypeScript checks.
 - Verified backend and dashboard production builds.
+- Added Tailwind CSS v4 through the official Vite plugin.
+- Converted dashboard styling from custom CSS classes to Tailwind utility classes and small reusable React components.
+- Verified Tailwind dashboard build keeps static output and zero dependency vulnerabilities.

@@ -17,7 +17,7 @@
 ## Phase 0: Foundation
 
 - [x] Choose initial backend direction: NestJS/TypeScript.
-- [x] Choose initial frontend direction: React/Vite dashboard.
+- [x] Choose initial frontend direction: React/Vite/Tailwind dashboard.
 - [x] Choose initial database direction: PostgreSQL.
 - [x] Decide Docker is optional for now, not required for local start.
 - [x] Add implementation start plan documentation.
@@ -41,6 +41,8 @@
 - [x] Add agent token guard for metrics ingest.
 - [x] Run manual dependency audit with zero vulnerabilities.
 - [x] Switch dashboard to React/Vite static build for lower resource use.
+- [x] Add Tailwind CSS to dashboard.
+- [x] Convert dashboard UI to Tailwind utility classes.
 
 ## Phase 1: Monitoring MVP
 

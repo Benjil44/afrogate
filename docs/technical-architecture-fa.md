@@ -269,7 +269,7 @@ Alert engine باید rule های ساده داشته باشد:
 برای شروع پیاده‌سازی، مسیر local-first انتخاب شده است:
 
 - Backend: NestJS/TypeScript.
-- Frontend: React با Vite برای dashboard سبک و static.
+- Frontend: React با Vite و Tailwind CSS برای dashboard سبک و static.
 - Database: PostgreSQL.
 - Agent: Python برای شروع سریع.
 - Docker: اجباری نیست و نباید شروع MVP را کند کند.

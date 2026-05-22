@@ -21,7 +21,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 
 ```text
 apps/backend       NestJS API
-apps/dashboard     React/Vite dashboard
+apps/dashboard     React/Vite/Tailwind dashboard
 apps/agent         Python monitoring agent
 packages/shared    Shared TypeScript contracts
 infra/ubuntu       Native Ubuntu deployment notes
