@@ -7,6 +7,8 @@
 - [x] Add root agent instructions.
 - [x] Add repository ignore rules.
 - [x] Initialize local git repository.
+- [x] Create initial local commit.
+- [x] Configure target `origin` URL for `jellyenderson/afrogate`.
 - [ ] Create remote repository named `afrogate`.
 - [ ] Push initial commit.
 

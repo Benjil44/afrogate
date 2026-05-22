@@ -9,6 +9,6 @@ Read order:
 3. `checklist.md`
 4. `agent.md`
 5. `skills.md`
+6. `git-remote.md`
 
 Keep these files short, current, and safe to commit. Never place secrets or real user data here.
-
