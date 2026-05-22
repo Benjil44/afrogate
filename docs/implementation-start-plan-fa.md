@@ -5,9 +5,9 @@
 فعلاً پروژه باید local-first بماند.
 
 - Git local ساخته شده است.
-- Push به GitHub فعلاً لازم نیست.
-- Remote می‌تواند بعداً به `benjil44/afrogate` وصل و push شود.
-- تا قبل از آماده شدن remote، تمام commit ها محلی نگه داشته می‌شوند.
+- Push اولیه به GitHub انجام شده است.
+- Remote به `Benjil44/afrogate` وصل شده و push اولیه انجام شده است.
+- توسعه همچنان local-first است؛ بعد از commit های معنی‌دار می‌توان با `git push` remote را sync کرد.
 
 ## پیشنهاد Stack برای شروع
 
@@ -137,4 +137,3 @@ agent -> backend metrics ingest -> database -> dashboard overview
 - انتخاب UI kit سبک برای dashboard.
 - انتخاب روش realtime: polling اول، WebSocket/SSE بعداً.
 - انتخاب روش migration دیتابیس.
-

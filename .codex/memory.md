@@ -72,7 +72,8 @@
 - Keep audit logs for sensitive admin actions.
 - Encrypt secrets and backups.
 - Enhancement work should be progressive: visibility first, reliability second, manual control third, automation fourth, enterprise readiness last.
-- Current local git remote target should be `https://github.com/benjil44/afrogate.git`.
-- Repository should stay local-first for now; remote push is optional later.
+- Current GitHub remote is `https://github.com/Benjil44/afrogate.git`.
+- Repository has been pushed to GitHub and local `main` tracks `origin/main`.
+- Repository can still be developed local-first; push when useful.
 - Initial implementation direction: NestJS/TypeScript backend, React with Next.js dashboard, PostgreSQL database, Python agent.
 - Docker should not block the first local MVP. For Ubuntu, start with native services plus systemd/Nginx; Docker Compose can be added later.

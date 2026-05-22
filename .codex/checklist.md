@@ -8,11 +8,11 @@
 - [x] Add repository ignore rules.
 - [x] Initialize local git repository.
 - [x] Create initial local commit.
-- [x] Configure target `origin` URL for `benjil44/afrogate`.
+- [x] Configure target `origin` URL for `Benjil44/afrogate`.
 - [x] Add enhancement approach documentation.
 - [x] Keep repository local-first for now.
-- [ ] Optional later: create remote repository named `afrogate`.
-- [ ] Optional later: push local commits.
+- [x] Create remote repository named `afrogate`.
+- [x] Push initial commits to GitHub.
 
 ## Phase 0: Foundation
 
