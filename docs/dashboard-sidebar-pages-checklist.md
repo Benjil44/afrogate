@@ -4,7 +4,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 
 ## Page Foundation
 
-- [ ] Replace decorative anchors with real dashboard view state or routing.
+- [x] Replace decorative anchors with real dashboard view state or routing.
 - [ ] Keep the NOC/wall display as the default `Dashboard` page.
 - [ ] Preserve the second-LCD layout for passive monitoring.
 - [ ] Keep page transitions instant and static-first.
@@ -21,7 +21,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 
 ## Servers Page
 
-- [ ] Server inventory table/cards.
+- [x] Server inventory table/cards.
 - [ ] Server edit action.
 - [ ] Safe access/bootstrap tab.
 - [ ] Monitoring tab with CPU/RAM/disk/network history.
@@ -31,20 +31,20 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 
 ## Routes Page
 
-- [ ] Tunnel table with operator, ping, jitter, loss, health score.
-- [ ] Outbound priority list with move up/down controls.
-- [ ] Maintenance mode indicator.
-- [ ] Failover history.
+- [x] Tunnel table with operator, ping, jitter, loss, health score.
+- [x] Outbound priority list with move up/down controls.
+- [x] Maintenance mode indicator.
+- [x] Failover history.
 - [ ] Route lock and auto-route controls.
 - [ ] Real route/outbound API binding after admin guards are enforced.
 
 ## Alerts Page
 
-- [ ] Open alert list.
+- [x] Open alert list.
 - [ ] Alert severity filters.
 - [ ] Alert source filters.
 - [ ] Resolved alert history.
-- [ ] Telegram alert delivery status.
+- [x] Telegram alert delivery status.
 - [ ] Real alert API binding.
 
 ## Later Pages

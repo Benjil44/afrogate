@@ -6,6 +6,7 @@ import { EChart, type AfroChartOption } from './components/EChart';
 
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
+type ActiveView = 'dashboard' | 'servers' | 'routes' | 'alerts';
 
 interface MetricCardData {
   label: string;
@@ -49,7 +50,7 @@ interface AlertRowData {
 }
 
 interface NavItemData {
-  href: string;
+  id: ActiveView;
   label: string;
   icon: ComponentType<{ size?: number }>;
 }
@@ -81,16 +82,17 @@ const outbounds: OutboundRowData[] = [
 ];
 
 const navItems: NavItemData[] = [
-  { href: '#dashboard', label: 'Dashboard', icon: Activity },
-  { href: '#servers', label: 'Servers', icon: Server },
-  { href: '#routes', label: 'Routes', icon: Route },
-  { href: '#alerts', label: 'Alerts', icon: Bell },
+  { id: 'dashboard', label: 'Dashboard', icon: Activity },
+  { id: 'servers', label: 'Servers', icon: Server },
+  { id: 'routes', label: 'Routes', icon: Route },
+  { id: 'alerts', label: 'Alerts', icon: Bell },
 ];
 
 const panelClass = 'min-w-0 rounded-lg border border-afro-line bg-afro-panel p-[18px]';
 const mutedTextClass = 'text-[13px] text-afro-muted';
 
 export function DashboardApp() {
+  const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
@@ -145,16 +147,17 @@ export function DashboardApp() {
   );
   const alerts = useMemo(() => createAlertRows(serverRows), [serverRows]);
   const status = getDataStatus(dataState, lastUpdated);
+  const header = getPageHeader(activeView);
 
   return (
     <main className="grid min-h-screen grid-cols-1 bg-afro-page text-afro-ink lg:grid-cols-[248px_minmax(0,1fr)]">
-      <Sidebar />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} />
 
       <section className="min-w-0 p-[18px] md:p-7">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="mb-1.5 text-[13px] font-bold uppercase text-afro-teal">Operations</p>
-            <h1 className="text-[28px] leading-tight font-bold">Network operations display</h1>
+            <p className="mb-1.5 text-[13px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
+            <h1 className="text-[28px] leading-tight font-bold">{header.title}</h1>
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink">
@@ -168,31 +171,99 @@ export function DashboardApp() {
           </div>
         </header>
 
-        <section className="mt-6 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4" aria-label="Summary">
-          {summary.map((item) => (
-            <MetricCard item={item} key={item.label} />
-          ))}
-        </section>
-
-        <HealthChartPanel
-          range={timeRange}
-          series={chartSeries}
+        <ActivePage
+          activeView={activeView}
+          alerts={alerts}
+          chartSeries={chartSeries}
           onRangeChange={setTimeRange}
+          servers={serverRows}
+          summary={summary}
+          timeRange={timeRange}
         />
-
-        <section className="mt-[18px] grid gap-[18px] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
-          <ServerPanel servers={serverRows} />
-          <TunnelPanel />
-          <AlertsPanel alerts={alerts} />
-        </section>
-
-        <section className="mt-[18px] grid gap-[18px] xl:grid-cols-3">
-          <OutboundsPanel />
-          <CapacityPanel />
-          <ControlPlanePanel />
-        </section>
       </section>
     </main>
+  );
+}
+
+function ActivePage({
+  activeView,
+  alerts,
+  chartSeries,
+  onRangeChange,
+  servers,
+  summary,
+  timeRange,
+}: {
+  activeView: ActiveView;
+  alerts: AlertRowData[];
+  chartSeries: ServerMetricTimeseries[];
+  onRangeChange: (range: MetricsTimeRange) => void;
+  servers: ServerRowData[];
+  summary: MetricCardData[];
+  timeRange: MetricsTimeRange;
+}) {
+  switch (activeView) {
+    case 'servers':
+      return <ServersPage servers={servers} />;
+    case 'routes':
+      return <RoutesPage />;
+    case 'alerts':
+      return <AlertsPage alerts={alerts} />;
+    default:
+      return (
+        <DashboardPage
+          alerts={alerts}
+          chartSeries={chartSeries}
+          onRangeChange={onRangeChange}
+          servers={servers}
+          summary={summary}
+          timeRange={timeRange}
+        />
+      );
+  }
+}
+
+function DashboardPage({
+  alerts,
+  chartSeries,
+  onRangeChange,
+  servers,
+  summary,
+  timeRange,
+}: {
+  alerts: AlertRowData[];
+  chartSeries: ServerMetricTimeseries[];
+  onRangeChange: (range: MetricsTimeRange) => void;
+  servers: ServerRowData[];
+  summary: MetricCardData[];
+  timeRange: MetricsTimeRange;
+}) {
+  return (
+    <>
+      <section className="mt-6 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4" aria-label="Summary">
+        {summary.map((item) => (
+          <MetricCard item={item} key={item.label} />
+        ))}
+      </section>
+
+      <HealthChartPanel
+        range={timeRange}
+        series={chartSeries}
+        onRangeChange={onRangeChange}
+      />
+
+      <section className="mt-[18px] grid gap-[18px] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
+        <ServerPanel servers={servers} />
+        <TunnelPanel />
+        <AlertsPanel alerts={alerts} />
+      </section>
+
+      <section className="mt-[18px] grid gap-[18px] xl:grid-cols-3">
+        <OutboundsPanel />
+        <CapacityPanel />
+        <ControlPlanePanel />
+      </section>
+    </>
   );
 }
 
@@ -328,7 +399,202 @@ function ControlPlanePanel() {
   );
 }
 
-function Sidebar() {
+function ServersPage({ servers }: { servers: ServerRowData[] }) {
+  return (
+    <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+      <section className={panelClass}>
+        <PanelHeading title="Server Inventory" icon={Server} meta={`${servers.length} managed nodes`} />
+        <div className="mt-3 grid gap-3">
+          {servers.map((server, index) => (
+            <ServerManagementCard index={index} server={server} key={server.id} />
+          ))}
+        </div>
+      </section>
+
+      <section className={panelClass}>
+        <PanelHeading title="Access & Bootstrap" icon={ShieldCheck} meta="safe operations" />
+        <div className="mt-3 grid gap-2.5">
+          {[
+            ['Default user', 'afrogate'],
+            ['Access method', 'SSH key'],
+            ['Root password', 'bootstrap only'],
+            ['Credential view', 'hidden'],
+            ['Audit mode', 'required'],
+          ].map(([label, value]) => (
+            <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
+              <span className={mutedTextClass}>{label}</span>
+              <strong className="text-sm">{value}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function ServerManagementCard({ index, server }: { index: number; server: ServerRowData }) {
+  const interfaces = index === 0
+    ? ['ether1 / Mobinnet / wg1', 'ether2 / Irancell / wireguard2']
+    : index === 1
+      ? ['ether5 / Irancell / wireguard3']
+      : ['core uplink / Germany / gateway'];
+
+  return (
+    <article className="rounded-md border border-afro-line p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <strong className="block truncate text-lg">{server.name}</strong>
+          <span className={mutedTextClass}>{server.meta}</span>
+        </div>
+        <button
+          className="min-h-9 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue"
+          type="button"
+        >
+          Edit
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <UsageBar label="CPU" value={server.cpu} />
+        <UsageBar label="RAM" value={server.ram} />
+        <UsageBar label="Disk free" value={server.diskFree} invert />
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+        <div className="grid gap-1.5">
+          {interfaces.map((item) => (
+            <span className="rounded-md bg-[#eef3f5] px-2.5 py-1.5 text-[13px] text-afro-muted" key={item}>
+              {item}
+            </span>
+          ))}
+        </div>
+        <div className="text-left sm:text-right">
+          <span className={mutedTextClass}>Health</span>
+          <b className={`block text-[24px] ${getScoreClass(server.score)}`}>{server.score}</b>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RoutesPage() {
+  return (
+    <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <TunnelPanel />
+      <OutboundsPanel />
+      <RoutePolicyPanel />
+      <FailoverPanel />
+    </section>
+  );
+}
+
+function RoutePolicyPanel() {
+  const policies: Array<[string, string, Tone]> = [
+    ['Auto route', 'enabled', 'good'],
+    ['Route lock', 'available', 'neutral'],
+    ['Cooldown', '120s', 'neutral'],
+    ['Hysteresis', '+15 score', 'neutral'],
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title="Route Policy" icon={Route} meta="stability rules" />
+      <div className="mt-3 grid gap-2.5">
+        {policies.map(([label, value, tone]) => (
+          <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
+            <span className={mutedTextClass}>{label}</span>
+            <StatusBadge tone={tone}>{value}</StatusBadge>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FailoverPanel() {
+  const events: Array<[string, string, Tone]> = [
+    ['Germany gateway', 'primary route healthy', 'good'],
+    ['Control egress', 'standby for Telegram/API', 'neutral'],
+    ['Iran direct', 'restricted internet path', 'warning'],
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title="Failover" icon={ArrowDownUp} meta="latest decisions" />
+      <div className="mt-3 grid gap-2.5">
+        {events.map(([title, detail, tone]) => (
+          <div className="grid min-h-[58px] grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={title}>
+            <div className="min-w-0">
+              <strong className="block truncate">{title}</strong>
+              <span className={mutedTextClass}>{detail}</span>
+            </div>
+            <StatusBadge tone={tone}>{tone}</StatusBadge>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AlertsPage({ alerts }: { alerts: AlertRowData[] }) {
+  return (
+    <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+      <section className={panelClass}>
+        <PanelHeading title="Open Alerts" icon={AlertTriangle} meta={`${alerts.length} active rows`} />
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                {['Severity', 'Source', 'Alert', 'Channel'].map((heading) => (
+                  <th className="border-b border-afro-line px-2 py-[13px] text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {alerts.map((alert) => (
+                <tr key={`${alert.source}-${alert.title}`}>
+                  <TableCell>
+                    <StatusBadge tone={alert.severity}>{alert.severity}</StatusBadge>
+                  </TableCell>
+                  <TableCell>{alert.source}</TableCell>
+                  <TableCell>{alert.title}</TableCell>
+                  <TableCell>Dashboard</TableCell>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className={panelClass}>
+        <PanelHeading title="Alert Rules" icon={Bell} meta="MVP thresholds" />
+        <div className="mt-3 grid gap-2.5">
+          {([
+            ['Storage', '< 10%', 'critical'],
+            ['Health score', '< 60', 'warning'],
+            ['Ping', '> 150 ms', 'warning'],
+            ['Packet loss', '> 1%', 'critical'],
+          ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
+            <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
+              <span className={mutedTextClass}>{label}</span>
+              <StatusBadge tone={tone}>{value}</StatusBadge>
+            </div>
+          ))}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function Sidebar({
+  activeView,
+  onViewChange,
+}: {
+  activeView: ActiveView;
+  onViewChange: (view: ActiveView) => void;
+}) {
   return (
     <aside className="bg-afro-sidebar px-[18px] py-4 text-[#eef6f4] md:py-6">
       <div className="flex h-10 items-center gap-2.5 text-xl font-bold">
@@ -336,23 +602,33 @@ function Sidebar() {
         <span>AfroGate</span>
       </div>
       <nav className="mt-4 grid auto-cols-max grid-flow-col gap-1.5 overflow-x-auto lg:mt-8 lg:grid-flow-row">
-        {navItems.map((item, index) => (
-          <NavItem item={item} isActive={index === 0} key={item.href} />
+        {navItems.map((item) => (
+          <NavItem
+            item={item}
+            isActive={activeView === item.id}
+            key={item.id}
+            onClick={() => onViewChange(item.id)}
+          />
         ))}
       </nav>
     </aside>
   );
 }
 
-function NavItem({ item, isActive }: { item: NavItemData; isActive: boolean }) {
+function NavItem({ item, isActive, onClick }: { item: NavItemData; isActive: boolean; onClick: () => void }) {
   const Icon = item.icon;
   const activeClass = isActive ? 'bg-[#1f3138] text-white' : 'text-[#c8d7d5] hover:bg-[#1f3138] hover:text-white';
 
   return (
-    <a className={`flex min-h-10 items-center gap-2.5 rounded-md px-3 ${activeClass}`} href={item.href}>
+    <button
+      aria-current={isActive ? 'page' : undefined}
+      className={`flex min-h-10 items-center gap-2.5 rounded-md px-3 text-left ${activeClass}`}
+      onClick={onClick}
+      type="button"
+    >
       <Icon size={18} />
       {item.label}
-    </a>
+    </button>
   );
 }
 
@@ -719,6 +995,31 @@ function getDataStatus(dataState: DataState, lastUpdated: string | null) {
         label: 'Local sample',
         className: 'border-afro-line bg-white text-afro-muted',
         dotClassName: 'bg-afro-muted',
+      };
+  }
+}
+
+function getPageHeader(activeView: ActiveView) {
+  switch (activeView) {
+    case 'servers':
+      return {
+        eyebrow: 'Infrastructure',
+        title: 'Server management',
+      };
+    case 'routes':
+      return {
+        eyebrow: 'Routing',
+        title: 'Routes and failover',
+      };
+    case 'alerts':
+      return {
+        eyebrow: 'Incidents',
+        title: 'Alerts and delivery',
+      };
+    default:
+      return {
+        eyebrow: 'Operations',
+        title: 'Network operations display',
       };
   }
 }

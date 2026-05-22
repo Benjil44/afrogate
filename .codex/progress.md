@@ -42,6 +42,7 @@
 - Added backend bootstrap admin bearer-token guard, role decorator, role guard, and shared bearer-token parsing/constant-time comparison helper.
 - Added second-LCD NOC dashboard layout with clock, health chart, servers, tunnels, alerts, outbounds, capacity, and control-plane status in one dense display.
 - Added dashboard sidebar pages checklist so every sidebar item has a development target before implementation.
+- Replaced placeholder sidebar anchors with real in-app navigation and initial Dashboard, Servers, Routes, and Alerts pages.
 
 ### Current State
 
@@ -57,8 +58,8 @@
 
 Continue the monitoring MVP:
 
-1. Implement real sidebar navigation pages for Dashboard, Servers, Routes, and Alerts.
-2. Add admin-safe server/outbound read APIs and mutation APIs after roles are enforced.
+1. Add admin-safe server/outbound read APIs and mutation APIs after roles are enforced.
+2. Add real server edit flow with safe access/bootstrap tabs.
 3. Add alert listing endpoints and bind dashboard alerts to real alert rows.
 4. Add Telegram critical alert delivery using the shared control-plane egress policy.
 5. Add RAM/network/WireGuard metrics to the Python agent.
@@ -117,4 +118,5 @@ Repository remote is ready:
 - Verified server access/outbound schema foundation with dependency audit, workspace typecheck, and production build.
 - Verified backend bootstrap admin/role guard foundation with dependency audit, workspace typecheck, and production build.
 - Verified second-LCD NOC dashboard layout with dependency audit, workspace typecheck, and production build.
+- Verified sidebar navigation pages with dependency audit, workspace typecheck, and production build.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

@@ -79,10 +79,13 @@
 - [x] Realtime dashboard health chart with ECharts.
 - [x] Second-LCD NOC dashboard layout.
 - [x] Sidebar pages implementation checklist.
-- [ ] Sidebar navigation state.
+- [x] Sidebar navigation state.
+- [x] Initial Servers page.
+- [x] Initial Routes page.
+- [x] Initial Alerts page.
 - [ ] Server detail page.
 - [ ] Tunnel detail page.
-- [ ] Alerts page.
+- [ ] Real alert API-bound Alerts page.
 
 ## Phase 2: Users, Usage, Billing
 
