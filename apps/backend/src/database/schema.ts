@@ -47,6 +47,8 @@ export const serverMetrics = pgTable(
     cpuPercent: real('cpu_percent'),
     ramPercent: real('ram_percent'),
     diskFreePercent: real('disk_free_percent'),
+    inboundBps: real('inbound_bps'),
+    outboundBps: real('outbound_bps'),
     pingMs: real('ping_ms'),
     jitterMs: real('jitter_ms'),
     packetLossPercent: real('packet_loss_percent'),

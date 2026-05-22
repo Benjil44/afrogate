@@ -17,7 +17,7 @@ def main() -> None:
     config = load_config()
 
     while True:
-        payload = collect_metrics(config.agent_id)
+        payload = collect_metrics(config.agent_id, config.state_file)
 
         if config.api_url:
             response = push_metrics(

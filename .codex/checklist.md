@@ -66,8 +66,9 @@
 - [x] Metrics ingest endpoint.
 - [x] Protect metrics ingest with agent bearer token.
 - [ ] Server agent heartbeat.
-- [ ] CPU/RAM/disk metrics.
-- [ ] Network throughput metrics.
+- [x] CPU/RAM/disk metrics.
+- [x] Multi-storage volume metrics.
+- [x] Network throughput metrics.
 - [ ] WireGuard tunnel status metrics.
 - [ ] Ping/jitter/packet loss probes.
 - [x] Health score calculation.

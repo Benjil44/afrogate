@@ -43,6 +43,7 @@
 - Added second-LCD NOC dashboard layout with clock, health chart, servers, tunnels, alerts, outbounds, capacity, and control-plane status in one dense display.
 - Added dashboard sidebar pages checklist so every sidebar item has a development target before implementation.
 - Replaced placeholder sidebar anchors with real in-app navigation and initial Dashboard, Servers, Routes, and Alerts pages.
+- Added agent/backend metric support for local CPU, RAM, all detected storage volumes, network interface counters, and traffic rates.
 
 ### Current State
 
@@ -62,7 +63,7 @@ Continue the monitoring MVP:
 2. Add real server edit flow with safe access/bootstrap tabs.
 3. Add alert listing endpoints and bind dashboard alerts to real alert rows.
 4. Add Telegram critical alert delivery using the shared control-plane egress policy.
-5. Add RAM/network/WireGuard metrics to the Python agent.
+5. Add WireGuard tunnel metrics to the Python agent.
 
 Repository remote is ready:
 
@@ -119,4 +120,5 @@ Repository remote is ready:
 - Verified backend bootstrap admin/role guard foundation with dependency audit, workspace typecheck, and production build.
 - Verified second-LCD NOC dashboard layout with dependency audit, workspace typecheck, and production build.
 - Verified sidebar navigation pages with dependency audit, workspace typecheck, and production build.
+- Verified system resource metric collection with Python compile/run and workspace typecheck.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

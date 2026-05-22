@@ -90,6 +90,7 @@
 - Dashboard monitoring charts use Apache ECharts with direct modular imports, canvas rendering, and backend `/api/metrics/timeseries` data.
 - Dashboard should serve a second-LCD/NOC display use case: one dense screen with clock, live status, health chart, servers, tunnels, alerts, outbounds, capacity, and control-plane status.
 - Sidebar items must correspond to real pages; default page is the NOC dashboard, then Servers, Routes, and Alerts should become functional views before adding later pages.
+- Agents collect local system resources for each installed system: CPU load, RAM usage, all detected storage volumes, network interface counters, and traffic rate deltas.
 - Restricted Iran servers need a control-plane egress path for Telegram/API access; first implementation should use `AFROGATE_OUTBOUND_PROXY_URL` with a localhost HTTP proxy exposed by a local VLESS/sing-box/xray or gateway client.
 - Server management should use temporary bootstrap credentials only when needed, then agent-first monitoring plus a dedicated SSH-key-based management user; do not build normal workflows around stored reusable root passwords.
 - Outbound management should support ordered priorities, move up/down, health checks, failover thresholds, cooldowns, maintenance mode, and route locks.

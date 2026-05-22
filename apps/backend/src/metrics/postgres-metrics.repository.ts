@@ -13,10 +13,13 @@ interface LatestMetricRow {
   cpuPercent: number | null;
   ramPercent: number | null;
   diskFreePercent: number | null;
+  inboundBps: number | null;
+  outboundBps: number | null;
   pingMs: number | null;
   jitterMs: number | null;
   packetLossPercent: number | null;
   healthScore: number;
+  raw: Partial<ServerMetricSnapshot> | null;
 }
 
 interface TimeseriesMetricRow extends LatestMetricRow {}
@@ -59,6 +62,8 @@ export class PostgresMetricsRepository implements MetricsRepository {
       cpuPercent: snapshot.cpuPercent ?? null,
       ramPercent: snapshot.ramPercent ?? null,
       diskFreePercent: snapshot.diskFreePercent ?? null,
+      inboundBps: snapshot.inboundBps ?? null,
+      outboundBps: snapshot.outboundBps ?? null,
       pingMs: snapshot.pingMs ?? null,
       jitterMs: snapshot.jitterMs ?? null,
       packetLossPercent: snapshot.packetLossPercent ?? null,
@@ -82,10 +87,13 @@ export class PostgresMetricsRepository implements MetricsRepository {
           m.cpu_percent AS "cpuPercent",
           m.ram_percent AS "ramPercent",
           m.disk_free_percent AS "diskFreePercent",
+          m.inbound_bps AS "inboundBps",
+          m.outbound_bps AS "outboundBps",
           m.ping_ms AS "pingMs",
           m.jitter_ms AS "jitterMs",
           m.packet_loss_percent AS "packetLossPercent",
-          m.health_score AS "healthScore"
+          m.health_score AS "healthScore",
+          m.raw AS "raw"
         FROM servers s
         JOIN server_metrics m ON m.server_id = s.id
         ORDER BY s.external_id, m.observed_at DESC
@@ -100,6 +108,10 @@ export class PostgresMetricsRepository implements MetricsRepository {
       cpuPercent: row.cpuPercent,
       ramPercent: row.ramPercent,
       diskFreePercent: row.diskFreePercent,
+      storages: row.raw?.storages,
+      networkInterfaces: row.raw?.networkInterfaces,
+      inboundBps: row.inboundBps,
+      outboundBps: row.outboundBps,
       pingMs: row.pingMs,
       jitterMs: row.jitterMs,
       packetLossPercent: row.packetLossPercent,
@@ -118,10 +130,13 @@ export class PostgresMetricsRepository implements MetricsRepository {
           m.cpu_percent AS "cpuPercent",
           m.ram_percent AS "ramPercent",
           m.disk_free_percent AS "diskFreePercent",
+          m.inbound_bps AS "inboundBps",
+          m.outbound_bps AS "outboundBps",
           m.ping_ms AS "pingMs",
           m.jitter_ms AS "jitterMs",
           m.packet_loss_percent AS "packetLossPercent",
-          m.health_score AS "healthScore"
+          m.health_score AS "healthScore",
+          m.raw AS "raw"
         FROM servers s
         JOIN server_metrics m ON m.server_id = s.id
         WHERE m.observed_at >= now() - ($1::int * interval '1 minute')
@@ -140,6 +155,8 @@ export class PostgresMetricsRepository implements MetricsRepository {
         cpuPercent: row.cpuPercent,
         ramPercent: row.ramPercent,
         diskFreePercent: row.diskFreePercent,
+        inboundBps: row.inboundBps,
+        outboundBps: row.outboundBps,
         pingMs: row.pingMs,
         jitterMs: row.jitterMs,
         packetLossPercent: row.packetLossPercent,

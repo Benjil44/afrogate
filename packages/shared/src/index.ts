@@ -18,10 +18,32 @@ export interface ServerMetricSnapshot {
   cpuPercent?: number | null;
   ramPercent?: number | null;
   diskFreePercent?: number | null;
+  storages?: StorageVolumeMetric[];
+  networkInterfaces?: NetworkInterfaceMetric[];
+  inboundBps?: number | null;
+  outboundBps?: number | null;
   pingMs?: number | null;
   jitterMs?: number | null;
   packetLossPercent?: number | null;
   healthScore: number;
+}
+
+export interface StorageVolumeMetric {
+  path: string;
+  device?: string | null;
+  filesystem?: string | null;
+  totalBytes?: number | null;
+  freeBytes?: number | null;
+  usedPercent?: number | null;
+  freePercent?: number | null;
+}
+
+export interface NetworkInterfaceMetric {
+  name: string;
+  rxBytes?: number | null;
+  txBytes?: number | null;
+  rxBps?: number | null;
+  txBps?: number | null;
 }
 
 export interface LatestMetricsResponse {
@@ -35,6 +57,8 @@ export interface MetricTimeseriesPoint {
   cpuPercent?: number | null;
   ramPercent?: number | null;
   diskFreePercent?: number | null;
+  inboundBps?: number | null;
+  outboundBps?: number | null;
   pingMs?: number | null;
   jitterMs?: number | null;
   packetLossPercent?: number | null;

@@ -47,12 +47,12 @@ export class MetricsService {
   private calculateHealthScore(metric: MetricsIngestDto): number {
     let score = 100;
 
-    if (metric.pingMs && metric.pingMs > 50) score -= Math.min(25, (metric.pingMs - 50) / 4);
-    if (metric.jitterMs && metric.jitterMs > 10) score -= Math.min(20, (metric.jitterMs - 10) / 3);
-    if (metric.packetLossPercent) score -= Math.min(35, metric.packetLossPercent * 10);
-    if (metric.cpuPercent && metric.cpuPercent > 80) score -= Math.min(10, metric.cpuPercent - 80);
-    if (metric.ramPercent && metric.ramPercent > 85) score -= Math.min(10, metric.ramPercent - 85);
-    if (metric.diskFreePercent !== undefined && metric.diskFreePercent < 10) score -= 30;
+    if (typeof metric.pingMs === 'number' && metric.pingMs > 50) score -= Math.min(25, (metric.pingMs - 50) / 4);
+    if (typeof metric.jitterMs === 'number' && metric.jitterMs > 10) score -= Math.min(20, (metric.jitterMs - 10) / 3);
+    if (typeof metric.packetLossPercent === 'number') score -= Math.min(35, metric.packetLossPercent * 10);
+    if (typeof metric.cpuPercent === 'number' && metric.cpuPercent > 80) score -= Math.min(10, metric.cpuPercent - 80);
+    if (typeof metric.ramPercent === 'number' && metric.ramPercent > 85) score -= Math.min(10, metric.ramPercent - 85);
+    if (typeof metric.diskFreePercent === 'number' && metric.diskFreePercent < 10) score -= 30;
 
     return Math.max(0, Math.round(score));
   }
