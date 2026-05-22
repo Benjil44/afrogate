@@ -1,0 +1,22 @@
+{
+  "name": "afrogate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AfroGate operations, monitoring, routing, and billing platform.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:backend": "npm --workspace @afrogate/backend run dev",
+    "dev:dashboard": "npm --workspace @afrogate/dashboard run dev",
+    "agent:dev": "python apps/agent/run.py --once",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  }
+}
+

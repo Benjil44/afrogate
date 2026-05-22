@@ -1,0 +1,17 @@
+[Unit]
+Description=AfroGate Backend API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/afrogate/apps/backend
+EnvironmentFile=/opt/afrogate/.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=always
+RestartSec=5
+User=afrogate
+Group=afrogate
+
+[Install]
+WantedBy=multi-user.target
+

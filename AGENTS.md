@@ -11,6 +11,7 @@ Before changing code or architecture in this repository, read these files first:
 7. `docs/roadmap-fa.md`
 8. `docs/enhancement-approaches-fa.md`
 9. `docs/implementation-start-plan-fa.md`
+10. `docs/repository-structure.md`
 
 After each meaningful implementation session:
 

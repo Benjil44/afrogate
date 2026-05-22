@@ -11,8 +11,31 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Roadmap and backlog](docs/roadmap-fa.md)
 - [Enhancement approaches](docs/enhancement-approaches-fa.md)
 - [Implementation start plan](docs/implementation-start-plan-fa.md)
+- [Repository structure](docs/repository-structure.md)
 - [Agent instructions](AGENTS.md)
 - [Codex project memory](.codex/memory.md)
+
+## App Structure
+
+```text
+apps/backend       NestJS API
+apps/dashboard     Next.js React dashboard
+apps/agent         Python monitoring agent
+packages/shared    Shared TypeScript contracts
+infra/ubuntu       Native Ubuntu deployment notes
+infra/docker       Optional future Docker assets
+```
+
+## Local Development
+
+Install dependencies when you are ready to run the apps:
+
+```powershell
+npm install
+npm run dev:backend
+npm run dev:dashboard
+python apps/agent/run.py --once
+```
 
 ## MVP Direction
 

@@ -77,3 +77,4 @@
 - Repository can still be developed local-first; push when useful.
 - Initial implementation direction: NestJS/TypeScript backend, React with Next.js dashboard, PostgreSQL database, Python agent.
 - Docker should not block the first local MVP. For Ubuntu, start with native services plus systemd/Nginx; Docker Compose can be added later.
+- Current repository structure uses `apps/backend`, `apps/dashboard`, `apps/agent`, `packages/shared`, `infra/ubuntu`, and `infra/docker`.

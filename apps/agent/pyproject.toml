@@ -1,0 +1,10 @@
+[project]
+name = "afrogate-agent"
+version = "0.1.0"
+description = "Lightweight AfroGate server monitoring agent."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+

@@ -25,14 +25,15 @@
 - [x] Choose metrics storage approach: PostgreSQL tables first, TimescaleDB/partitioning later if needed.
 - [ ] Add Ubuntu deployment notes with systemd and Nginx.
 - [ ] Define optional Docker Compose for later reproducible deployment.
-- [ ] Add `.env.example`.
+- [x] Add `.env.example`.
 - [ ] Define database schema migration tool.
 - [ ] Add basic CI checks.
-- [ ] Scaffold `apps/backend`.
-- [ ] Scaffold `apps/dashboard`.
-- [ ] Scaffold `apps/agent`.
-- [ ] Scaffold `packages/shared`.
-- [ ] Scaffold `infra/ubuntu`.
+- [x] Scaffold `apps/backend`.
+- [x] Scaffold `apps/dashboard`.
+- [x] Scaffold `apps/agent`.
+- [x] Scaffold `packages/shared`.
+- [x] Scaffold `infra/ubuntu`.
+- [x] Add root workspace scripts.
 
 ## Phase 1: Monitoring MVP
 
