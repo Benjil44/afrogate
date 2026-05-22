@@ -24,6 +24,10 @@ export interface ServerMetricSnapshot {
   healthScore: number;
 }
 
+export interface LatestMetricsResponse {
+  servers: ServerMetricSnapshot[];
+}
+
 export interface ApiEnvelope<T> {
   data: T;
   timestamp: string;

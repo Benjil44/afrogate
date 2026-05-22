@@ -27,6 +27,13 @@
 - User created GitHub repository `Benjil44/afrogate`.
 - Updated `origin` to `https://github.com/Benjil44/afrogate.git`.
 - Pushed local `main` to GitHub and set it to track `origin/main`.
+- Chose Drizzle ORM for backend database access while keeping migrations as hand-written SQL.
+- Added PostgreSQL schema and idempotent migration for servers, server metrics, alerts, audit logs, and agent token records.
+- Added backend database service with a small configurable PostgreSQL pool.
+- Persisted incoming agent metrics into PostgreSQL and exposed the latest metric per server at `/api/metrics/latest`.
+- Added basic critical storage alert synchronization when free disk space drops below 10%.
+- Added shared latest-metrics TypeScript contract and configured app prebuild/pretypecheck scripts to build shared declarations first.
+- Connected the dashboard to live latest metrics with 10-second polling, stale/live status, and a local fallback sample.
 
 ### Current State
 
@@ -34,19 +41,19 @@
 - Local git repository exists on branch `main`.
 - Remote target is configured for `Benjil44/afrogate` and local `main` tracks `origin/main`.
 - Backend, dashboard, agent, shared package, and infra folders are scaffolded.
-- Current highest priority remains the monitoring MVP.
+- Current highest priority remains the monitoring MVP, now moving from overview metrics into alert delivery and admin security.
 - Enhancement approach is documented, but not implemented yet.
-- Initial app structure exists; the first real data path still needs implementation.
+- First real data path exists: agent-style metrics can be accepted by the backend, persisted to PostgreSQL, and rendered by the dashboard when the API/database are configured.
 
 ### Next Recommended Step
 
-Initialize the implementation foundation:
+Continue the monitoring MVP:
 
-1. Pick stack.
-2. Scaffold backend, dashboard, database, and agent folders.
-3. Add Ubuntu local/deploy notes.
-4. Implement first metrics ingest flow.
-5. Render first dashboard overview.
+1. Add admin auth and role-based authorization.
+2. Add alert listing endpoints and a dashboard alerts view.
+3. Add Telegram critical alert delivery.
+4. Add RAM and network throughput collection to the Python agent.
+5. Add tunnel/interface metrics for WireGuard and operator links.
 
 Repository remote is ready:
 
@@ -84,3 +91,17 @@ Repository remote is ready:
 - Added Tailwind CSS v4 through the official Vite plugin.
 - Converted dashboard styling from custom CSS classes to Tailwind utility classes and small reusable React components.
 - Verified Tailwind dashboard build keeps static output and zero dependency vulnerabilities.
+- Chose Drizzle ORM for backend database access while keeping migrations as hand-written SQL.
+- Added PostgreSQL schema and idempotent migration for servers, server metrics, alerts, audit logs, and agent token records.
+- Added backend database service with a small configurable PostgreSQL pool.
+- Persisted incoming agent metrics into PostgreSQL and exposed the latest metric per server at `/api/metrics/latest`.
+- Added basic critical storage alert synchronization when free disk space drops below 10%.
+- Added shared latest-metrics TypeScript contract and configured app prebuild/pretypecheck scripts to build shared declarations first.
+- Connected the dashboard to live latest metrics with 10-second polling, stale/live status, and a local fallback sample.
+- Verified `npm audit` reports zero vulnerabilities after adding PostgreSQL/Drizzle runtime dependencies.
+- Verified `npm run typecheck --workspaces --if-present`.
+- Verified `npm run build --workspaces --if-present`.
+- Verified `node --check apps\backend\scripts\migrate.mjs`.
+- Verified `python -m compileall apps\agent`.
+- Verified `python apps\agent\run.py --once`; local disk free was below 10%, which matches the new critical storage alert threshold when posted to the backend.
+- Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

@@ -11,9 +11,8 @@
     "baseUrl": ".",
     "paths": {
       "@afrogate/shared": [
-        "packages/shared/src"
+        "packages/shared/dist"
       ]
     }
   }
 }
-

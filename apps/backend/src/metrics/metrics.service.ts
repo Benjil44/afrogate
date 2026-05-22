@@ -1,30 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import type { ServerMetricSnapshot } from '@afrogate/shared';
 import { MetricsIngestDto } from './dto/metrics-ingest.dto';
+import { METRICS_REPOSITORY, MetricsRepository } from './metrics.repository';
 
-export interface ServerMetricSnapshot extends MetricsIngestDto {
-  observedAt: string;
-  healthScore: number;
-}
+export type { ServerMetricSnapshot };
 
 @Injectable()
 export class MetricsService {
-  private readonly latestByServer = new Map<string, ServerMetricSnapshot>();
+  constructor(
+    @Inject(METRICS_REPOSITORY)
+    private readonly metricsRepository: MetricsRepository,
+  ) {}
 
-  record(payload: MetricsIngestDto): ServerMetricSnapshot {
+  record(payload: MetricsIngestDto): Promise<ServerMetricSnapshot> {
     const snapshot: ServerMetricSnapshot = {
       ...payload,
       observedAt: new Date().toISOString(),
       healthScore: this.calculateHealthScore(payload),
     };
 
-    this.latestByServer.set(payload.serverId, snapshot);
-    return snapshot;
+    return this.metricsRepository.record(snapshot);
   }
 
-  listLatest(): ServerMetricSnapshot[] {
-    return [...this.latestByServer.values()].sort((a, b) =>
-      a.serverId.localeCompare(b.serverId),
-    );
+  listLatest(): Promise<ServerMetricSnapshot[]> {
+    return this.metricsRepository.listLatest();
   }
 
   private calculateHealthScore(metric: MetricsIngestDto): number {
@@ -40,4 +39,3 @@ export class MetricsService {
     return Math.max(0, Math.round(score));
   }
 }
-

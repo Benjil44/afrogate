@@ -1,7 +1,10 @@
-import type { ComponentType, CSSProperties, ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
+import type { ServerMetricSnapshot } from '@afrogate/shared';
 import { Activity, Bell, Gauge, Route, Server, ShieldCheck } from 'lucide-react';
+import { fetchLatestMetrics } from './api/metrics';
 
-type Tone = 'good' | 'neutral';
+type Tone = 'good' | 'neutral' | 'warning' | 'critical';
+type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 
 interface MetricCardData {
   label: string;
@@ -10,12 +13,14 @@ interface MetricCardData {
 }
 
 interface ServerRowData {
+  id: string;
   name: string;
-  country: string;
-  cpu: number;
-  ram: number;
-  disk: number;
+  meta: string;
+  cpu: number | null;
+  ram: number | null;
+  diskFree: number | null;
   score: number;
+  observedAt?: string;
 }
 
 interface TunnelRowData {
@@ -33,17 +38,12 @@ interface NavItemData {
   icon: ComponentType<{ size?: number }>;
 }
 
-const summary: MetricCardData[] = [
-  { label: 'Active users', value: '150', tone: 'neutral' },
-  { label: 'Outbound', value: '20 MB/s', tone: 'good' },
-  { label: 'Critical alerts', value: '0', tone: 'good' },
-  { label: 'Lowest storage', value: '64%', tone: 'neutral' },
-];
+const refreshIntervalMs = 10_000;
 
-const servers: ServerRowData[] = [
-  { name: 'Iran Edge 01', country: 'IR', cpu: 38, ram: 51, disk: 64, score: 94 },
-  { name: 'Iran Edge 02', country: 'IR', cpu: 44, ram: 58, disk: 71, score: 91 },
-  { name: 'Germany Core 01', country: 'DE', cpu: 29, ram: 47, disk: 82, score: 96 },
+const fallbackServers: ServerRowData[] = [
+  { id: 'iran-edge-01', name: 'Iran Edge 01', meta: 'IR', cpu: 38, ram: 51, diskFree: 64, score: 94 },
+  { id: 'iran-edge-02', name: 'Iran Edge 02', meta: 'IR', cpu: 44, ram: 58, diskFree: 71, score: 91 },
+  { id: 'germany-core-01', name: 'Germany Core 01', meta: 'DE', cpu: 29, ram: 47, diskFree: 82, score: 96 },
 ];
 
 const tunnels: TunnelRowData[] = [
@@ -63,6 +63,49 @@ const panelClass = 'min-w-0 rounded-lg border border-afro-line bg-afro-panel p-[
 const mutedTextClass = 'text-[13px] text-afro-muted';
 
 export function DashboardApp() {
+  const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
+  const [dataState, setDataState] = useState<DataState>('loading');
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    let controller: AbortController | null = null;
+
+    const loadMetrics = async () => {
+      controller?.abort();
+      controller = new AbortController();
+
+      try {
+        const response = await fetchLatestMetrics(controller.signal);
+        if (!isActive) return;
+
+        setMetrics(response.servers);
+        setDataState('live');
+        setLastUpdated(new Date().toISOString());
+      } catch (error) {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+      }
+    };
+
+    void loadMetrics();
+    const timer = window.setInterval(loadMetrics, refreshIntervalMs);
+
+    return () => {
+      isActive = false;
+      controller?.abort();
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const serverRows = useMemo(
+    () => (metrics.length > 0 ? metrics.map(mapSnapshotToServerRow) : fallbackServers),
+    [metrics],
+  );
+  const summary = useMemo(() => createSummary(serverRows), [serverRows]);
+  const status = getDataStatus(dataState, lastUpdated);
+
   return (
     <main className="grid min-h-screen grid-cols-1 bg-afro-page text-afro-ink lg:grid-cols-[248px_minmax(0,1fr)]">
       <Sidebar />
@@ -73,9 +116,9 @@ export function DashboardApp() {
             <p className="mb-1.5 text-[13px] font-bold uppercase text-afro-teal">Operations</p>
             <h1 className="text-[28px] leading-tight font-bold">Network health dashboard</h1>
           </div>
-          <div className="inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border border-[#b8e1cf] bg-[#e7f6ef] px-3 text-sm font-bold text-afro-green">
-            <span className="size-2 rounded-full bg-afro-green" />
-            Live
+          <div className={`inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border px-3 text-sm font-bold ${status.className}`}>
+            <span className={`size-2 rounded-full ${status.dotClassName}`} />
+            {status.label}
           </div>
         </header>
 
@@ -86,7 +129,7 @@ export function DashboardApp() {
         </section>
 
         <section className="mt-[18px] grid gap-[18px] xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <ServerPanel />
+          <ServerPanel servers={serverRows} />
           <TunnelPanel />
         </section>
       </section>
@@ -123,7 +166,12 @@ function NavItem({ item, isActive }: { item: NavItemData; isActive: boolean }) {
 }
 
 function MetricCard({ item }: { item: MetricCardData }) {
-  const toneClass = item.tone === 'good' ? 'border-t-afro-green' : 'border-t-afro-blue';
+  const toneClass = {
+    good: 'border-t-afro-green',
+    neutral: 'border-t-afro-blue',
+    warning: 'border-t-[#c27a1a]',
+    critical: 'border-t-[#b91c1c]',
+  }[item.tone];
 
   return (
     <div className={`grid min-h-24 gap-2 rounded-lg border border-t-4 border-afro-line bg-afro-panel p-[18px] ${toneClass}`}>
@@ -133,13 +181,13 @@ function MetricCard({ item }: { item: MetricCardData }) {
   );
 }
 
-function ServerPanel() {
+function ServerPanel({ servers }: { servers: ServerRowData[] }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title="Servers" icon={Gauge} />
+      <PanelHeading title="Servers" icon={Gauge} meta={`${servers.length} nodes`} />
       <div className="mt-3.5 grid gap-3">
         {servers.map((server) => (
-          <ServerRow server={server} key={server.name} />
+          <ServerRow server={server} key={server.id} />
         ))}
       </div>
     </section>
@@ -150,21 +198,24 @@ function ServerRow({ server }: { server: ServerRowData }) {
   return (
     <div className="grid min-h-[86px] items-center gap-3.5 rounded-md border border-afro-line p-3 sm:grid-cols-[150px_1fr_48px]">
       <div className="grid gap-1">
-        <strong>{server.name}</strong>
-        <span className={mutedTextClass}>{server.country}</span>
+        <strong className="break-words">{server.name}</strong>
+        <span className={mutedTextClass}>{server.meta}</span>
       </div>
       <div className="grid gap-[7px]">
         <UsageBar label="CPU" value={server.cpu} />
         <UsageBar label="RAM" value={server.ram} />
-        <UsageBar label="Disk free" value={server.disk} invert />
+        <UsageBar label="Disk free" value={server.diskFree} invert />
       </div>
-      <b className="text-left text-[22px] text-afro-green sm:text-right">{server.score}</b>
+      <b className={`text-left text-[22px] sm:text-right ${getScoreClass(server.score)}`}>{server.score}</b>
     </div>
   );
 }
 
-function UsageBar({ label, value, invert = false }: { label: string; value: number; invert?: boolean }) {
-  const fillValue = invert ? 100 - value : value;
+function UsageBar({ label, value, invert = false }: { label: string; value: number | null; invert?: boolean }) {
+  const hasValue = typeof value === 'number' && Number.isFinite(value);
+  const boundedValue = hasValue ? clamp(value, 0, 100) : 0;
+  const fillValue = invert ? 100 - boundedValue : boundedValue;
+  const displayValue = hasValue ? `${Math.round(value)}%` : '--';
 
   return (
     <span
@@ -173,7 +224,7 @@ function UsageBar({ label, value, invert = false }: { label: string; value: numb
         background: `linear-gradient(90deg, #a9d8d1 ${fillValue}%, #edf2f4 0)`,
       } as CSSProperties}
     >
-      {label} {value}%
+      {label} {displayValue}
     </span>
   );
 }
@@ -181,7 +232,7 @@ function UsageBar({ label, value, invert = false }: { label: string; value: numb
 function TunnelPanel() {
   return (
     <section className={panelClass}>
-      <PanelHeading title="Tunnels" icon={Route} />
+      <PanelHeading title="Tunnels" icon={Route} meta="3 links" />
       <div className="mt-3.5 overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -202,7 +253,7 @@ function TunnelPanel() {
                 <TableCell>{tunnel.jitter} ms</TableCell>
                 <TableCell>{tunnel.loss}%</TableCell>
                 <TableCell alignRight>
-                  <strong className="text-afro-ink">{tunnel.score}</strong>
+                  <strong className={getScoreClass(tunnel.score)}>{tunnel.score}</strong>
                 </TableCell>
               </tr>
             ))}
@@ -213,10 +264,21 @@ function TunnelPanel() {
   );
 }
 
-function PanelHeading({ title, icon: Icon }: { title: string; icon: ComponentType<{ size?: number }> }) {
+function PanelHeading({
+  title,
+  icon: Icon,
+  meta,
+}: {
+  title: string;
+  icon: ComponentType<{ size?: number }>;
+  meta?: string;
+}) {
   return (
-    <div className="flex items-center justify-between border-b border-afro-line pb-3.5">
-      <h2 className="text-[17px] font-bold">{title}</h2>
+    <div className="flex items-center justify-between gap-3 border-b border-afro-line pb-3.5">
+      <div className="min-w-0">
+        <h2 className="text-[17px] font-bold">{title}</h2>
+        {meta ? <span className={mutedTextClass}>{meta}</span> : null}
+      </div>
       <Icon size={18} />
     </div>
   );
@@ -230,4 +292,90 @@ function TableCell({ children, alignRight = false }: { children: ReactNode; alig
       {children}
     </td>
   );
+}
+
+function mapSnapshotToServerRow(snapshot: ServerMetricSnapshot): ServerRowData {
+  return {
+    id: snapshot.serverId,
+    name: snapshot.hostname || snapshot.serverId,
+    meta: snapshot.platform || snapshot.serverId,
+    cpu: normalizePercent(snapshot.cpuPercent),
+    ram: normalizePercent(snapshot.ramPercent),
+    diskFree: normalizePercent(snapshot.diskFreePercent),
+    score: snapshot.healthScore,
+    observedAt: snapshot.observedAt,
+  };
+}
+
+function createSummary(servers: ServerRowData[]): MetricCardData[] {
+  const storageValues = servers
+    .map((server) => server.diskFree)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const lowestStorage = storageValues.length > 0 ? Math.min(...storageValues) : null;
+  const criticalAlerts = servers.filter((server) => server.score < 50 || (server.diskFree !== null && server.diskFree < 10)).length;
+
+  return [
+    { label: 'Active users', value: '150', tone: 'neutral' },
+    { label: 'Outbound', value: '20 MB/s', tone: 'good' },
+    { label: 'Critical alerts', value: String(criticalAlerts), tone: criticalAlerts > 0 ? 'critical' : 'good' },
+    {
+      label: 'Lowest storage',
+      value: lowestStorage === null ? '--' : `${Math.round(lowestStorage)}%`,
+      tone: getStorageTone(lowestStorage),
+    },
+  ];
+}
+
+function getDataStatus(dataState: DataState, lastUpdated: string | null) {
+  const updatedAt = lastUpdated ? ` ${new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+
+  switch (dataState) {
+    case 'live':
+      return {
+        label: `Live${updatedAt}`,
+        className: 'border-[#b8e1cf] bg-[#e7f6ef] text-afro-green',
+        dotClassName: 'bg-afro-green',
+      };
+    case 'stale':
+      return {
+        label: `Stale${updatedAt}`,
+        className: 'border-[#e6cf9c] bg-[#fff7e6] text-[#9a5b00]',
+        dotClassName: 'bg-[#c27a1a]',
+      };
+    case 'loading':
+      return {
+        label: 'Connecting',
+        className: 'border-[#bfd1ea] bg-[#edf4ff] text-afro-blue',
+        dotClassName: 'bg-afro-blue',
+      };
+    default:
+      return {
+        label: 'Local sample',
+        className: 'border-afro-line bg-white text-afro-muted',
+        dotClassName: 'bg-afro-muted',
+      };
+  }
+}
+
+function getStorageTone(value: number | null): Tone {
+  if (value === null) return 'neutral';
+  if (value < 10) return 'critical';
+  if (value < 20) return 'warning';
+  return 'neutral';
+}
+
+function getScoreClass(score: number): string {
+  if (score >= 80) return 'text-afro-green';
+  if (score >= 60) return 'text-afro-blue';
+  if (score >= 40) return 'text-[#c27a1a]';
+  return 'text-[#b91c1c]';
+}
+
+function normalizePercent(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return clamp(value, 0, 100);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

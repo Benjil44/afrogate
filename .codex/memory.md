@@ -84,3 +84,6 @@
 - Stable internet is treated as a human-rights and safety goal, not a casual feature.
 - Dashboard should stay static-first where possible to reduce server runtime exposure and resource use.
 - Tailwind CSS is the dashboard styling direction for faster UI implementation and consistent operational components.
+- Backend persistence uses PostgreSQL with Drizzle ORM runtime queries and hand-written SQL migrations to avoid vulnerable migration dependencies.
+- Apps consume shared TypeScript contracts from built `packages/shared/dist` declarations; app prebuild/pretypecheck scripts build the shared package first.
+- The dashboard polls the backend latest-metrics endpoint every 10 seconds and keeps a local sample fallback so the UI remains useful while the database/API is offline.

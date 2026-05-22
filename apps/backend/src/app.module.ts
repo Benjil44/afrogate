@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
+import { METRICS_REPOSITORY } from './metrics/metrics.repository';
 import { MetricsService } from './metrics/metrics.service';
+import { PostgresMetricsRepository } from './metrics/postgres-metrics.repository';
 import { AgentTokenGuard } from './security/agent-token.guard';
 
 @Module({
@@ -10,8 +13,17 @@ import { AgentTokenGuard } from './security/agent-token.guard';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    DatabaseModule,
   ],
   controllers: [HealthController, MetricsController],
-  providers: [MetricsService, AgentTokenGuard],
+  providers: [
+    MetricsService,
+    AgentTokenGuard,
+    PostgresMetricsRepository,
+    {
+      provide: METRICS_REPOSITORY,
+      useExisting: PostgresMetricsRepository,
+    },
+  ],
 })
 export class AppModule {}

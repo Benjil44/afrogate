@@ -21,12 +21,12 @@
 - [x] Choose initial database direction: PostgreSQL.
 - [x] Decide Docker is optional for now, not required for local start.
 - [x] Add implementation start plan documentation.
-- [ ] Choose ORM: Prisma or Drizzle.
+- [x] Choose ORM: Drizzle.
 - [x] Choose metrics storage approach: PostgreSQL tables first, TimescaleDB/partitioning later if needed.
 - [ ] Add Ubuntu deployment notes with systemd and Nginx.
 - [ ] Define optional Docker Compose for later reproducible deployment.
 - [x] Add `.env.example`.
-- [ ] Define database schema migration tool.
+- [x] Define database schema migration tool.
 - [ ] Add basic CI checks.
 - [x] Scaffold `apps/backend`.
 - [x] Scaffold `apps/dashboard`.
@@ -52,17 +52,17 @@
 - [ ] CRUD for servers.
 - [ ] CRUD for tunnels and interfaces.
 - [ ] Agent registration endpoint.
-- [ ] Metrics ingest endpoint.
+- [x] Metrics ingest endpoint.
 - [x] Protect metrics ingest with agent bearer token.
 - [ ] Server agent heartbeat.
 - [ ] CPU/RAM/disk metrics.
 - [ ] Network throughput metrics.
 - [ ] WireGuard tunnel status metrics.
 - [ ] Ping/jitter/packet loss probes.
-- [ ] Health score calculation.
+- [x] Health score calculation.
 - [ ] Alert engine.
 - [ ] Telegram alert sender.
-- [ ] Dashboard overview.
+- [x] Dashboard overview.
 - [ ] Server detail page.
 - [ ] Tunnel detail page.
 - [ ] Alerts page.

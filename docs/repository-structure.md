@@ -11,6 +11,7 @@ packages/
   shared/        Shared TypeScript contracts and constants
 infra/
   ubuntu/        Native Ubuntu deployment notes and samples
+  postgres/      SQL migrations and database notes
   docker/        Optional future Docker Compose work
 docs/            Product, architecture, roadmap, and implementation docs
 .codex/          Persistent project memory, checklist, and progress
@@ -28,4 +29,10 @@ docs/            Product, architecture, roadmap, and implementation docs
 
 ```text
 agent -> backend /api/metrics -> dashboard overview
+```
+
+The first data path is backed by PostgreSQL:
+
+```text
+agent POST /api/metrics -> servers/server_metrics -> GET /api/metrics/latest -> dashboard
 ```

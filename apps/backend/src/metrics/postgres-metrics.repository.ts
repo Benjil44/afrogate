@@ -1,0 +1,137 @@
+import { Injectable } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
+import type { ServerMetricSnapshot } from '@afrogate/shared';
+import { DatabaseService } from '../database/database.service';
+import { serverMetrics, servers } from '../database/schema';
+import { MetricsRepository } from './metrics.repository';
+
+interface LatestMetricRow {
+  serverId: string;
+  hostname: string | null;
+  platform: string | null;
+  observedAt: Date;
+  cpuPercent: number | null;
+  ramPercent: number | null;
+  diskFreePercent: number | null;
+  pingMs: number | null;
+  jitterMs: number | null;
+  packetLossPercent: number | null;
+  healthScore: number;
+}
+
+@Injectable()
+export class PostgresMetricsRepository implements MetricsRepository {
+  constructor(private readonly database: DatabaseService) {}
+
+  async record(snapshot: ServerMetricSnapshot): Promise<ServerMetricSnapshot> {
+    const [server] = await this.database.db
+      .insert(servers)
+      .values({
+        externalId: snapshot.serverId,
+        hostname: snapshot.hostname ?? null,
+        platform: snapshot.platform ?? null,
+        status: 'healthy',
+      })
+      .onConflictDoUpdate({
+        target: servers.externalId,
+        set: {
+          hostname: snapshot.hostname ?? null,
+          platform: snapshot.platform ?? null,
+          lastSeenAt: sql`now()`,
+          status: 'healthy',
+          updatedAt: sql`now()`,
+        },
+      })
+      .returning({ id: servers.id });
+
+    await this.database.db.insert(serverMetrics).values({
+      serverId: server.id,
+      observedAt: new Date(snapshot.observedAt),
+      cpuPercent: snapshot.cpuPercent ?? null,
+      ramPercent: snapshot.ramPercent ?? null,
+      diskFreePercent: snapshot.diskFreePercent ?? null,
+      pingMs: snapshot.pingMs ?? null,
+      jitterMs: snapshot.jitterMs ?? null,
+      packetLossPercent: snapshot.packetLossPercent ?? null,
+      healthScore: snapshot.healthScore,
+      raw: snapshot,
+    });
+
+    await this.syncDiskAlert(snapshot);
+
+    return snapshot;
+  }
+
+  async listLatest(): Promise<ServerMetricSnapshot[]> {
+    const result = await this.database.query<LatestMetricRow>(
+      `
+        SELECT DISTINCT ON (s.external_id)
+          s.external_id AS "serverId",
+          s.hostname AS "hostname",
+          s.platform AS "platform",
+          m.observed_at AS "observedAt",
+          m.cpu_percent AS "cpuPercent",
+          m.ram_percent AS "ramPercent",
+          m.disk_free_percent AS "diskFreePercent",
+          m.ping_ms AS "pingMs",
+          m.jitter_ms AS "jitterMs",
+          m.packet_loss_percent AS "packetLossPercent",
+          m.health_score AS "healthScore"
+        FROM servers s
+        JOIN server_metrics m ON m.server_id = s.id
+        ORDER BY s.external_id, m.observed_at DESC
+      `,
+    );
+
+    return result.rows.map((row) => ({
+      serverId: row.serverId,
+      hostname: row.hostname ?? undefined,
+      platform: row.platform ?? undefined,
+      observedAt: row.observedAt.toISOString(),
+      cpuPercent: row.cpuPercent,
+      ramPercent: row.ramPercent,
+      diskFreePercent: row.diskFreePercent,
+      pingMs: row.pingMs,
+      jitterMs: row.jitterMs,
+      packetLossPercent: row.packetLossPercent,
+      healthScore: row.healthScore,
+    }));
+  }
+
+  private async syncDiskAlert(snapshot: ServerMetricSnapshot): Promise<void> {
+    const diskFreePercent = snapshot.diskFreePercent;
+
+    if (diskFreePercent !== undefined && diskFreePercent !== null && diskFreePercent < 10) {
+      await this.database.query(
+        `
+          INSERT INTO alerts (severity, status, source_type, source_id, title, message)
+          VALUES ('critical', 'open', 'server_disk', $1, 'Storage below 10%', $2)
+          ON CONFLICT (source_type, source_id, title) WHERE status = 'open'
+          DO UPDATE SET
+            severity = excluded.severity,
+            message = excluded.message,
+            last_seen_at = now()
+        `,
+        [
+          snapshot.serverId,
+          `Server ${snapshot.serverId} has ${diskFreePercent}% disk free.`,
+        ],
+      );
+      return;
+    }
+
+    await this.database.query(
+      `
+        UPDATE alerts
+        SET status = 'resolved',
+            resolved_at = now(),
+            last_seen_at = now()
+        WHERE source_type = 'server_disk'
+          AND source_id = $1
+          AND title = 'Storage below 10%'
+          AND status = 'open'
+      `,
+      [snapshot.serverId],
+    );
+  }
+}

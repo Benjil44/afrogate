@@ -34,10 +34,13 @@ Install dependencies when you are ready to run the apps:
 
 ```powershell
 npm install
+npm --workspace @afrogate/backend run db:migrate
 npm run dev:backend
 npm run dev:dashboard
 python apps/agent/run.py --once
 ```
+
+The backend expects `DATABASE_URL` and a real `AFROGATE_AGENT_TOKEN` before accepting agent metrics. The dashboard reads `VITE_API_BASE_URL` and falls back to local sample data when the API is unavailable.
 
 ## MVP Direction
 
