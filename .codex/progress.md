@@ -44,6 +44,7 @@
 - Added dashboard sidebar pages checklist so every sidebar item has a development target before implementation.
 - Replaced placeholder sidebar anchors with real in-app navigation and initial Dashboard, Servers, Routes, and Alerts pages.
 - Added agent/backend metric support for local CPU, RAM, all detected storage volumes, network interface counters, and traffic rates.
+- Added dashboard header system resource strip before the connectivity/routing monitor sections.
 
 ### Current State
 
@@ -121,4 +122,5 @@ Repository remote is ready:
 - Verified second-LCD NOC dashboard layout with dependency audit, workspace typecheck, and production build.
 - Verified sidebar navigation pages with dependency audit, workspace typecheck, and production build.
 - Verified system resource metric collection with Python compile/run and workspace typecheck.
+- Verified dashboard system resource header with dependency audit, workspace typecheck, and production build.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

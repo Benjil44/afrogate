@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
-import type { MetricsTimeRange, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrogate/shared';
-import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Gauge, Network, Route, Server, ShieldCheck } from 'lucide-react';
+import type {
+  MetricsTimeRange,
+  NetworkInterfaceMetric,
+  ServerMetricSnapshot,
+  ServerMetricTimeseries,
+  StorageVolumeMetric,
+} from '@afrogate/shared';
+import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Cpu, Gauge, HardDrive, MemoryStick, Network, Route, Server, ShieldCheck } from 'lucide-react';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
 
@@ -21,6 +27,10 @@ interface ServerRowData {
   cpu: number | null;
   ram: number | null;
   diskFree: number | null;
+  storages: StorageVolumeMetric[];
+  networkInterfaces: NetworkInterfaceMetric[];
+  inboundBps: number | null;
+  outboundBps: number | null;
   score: number;
   observedAt?: string;
 }
@@ -64,9 +74,45 @@ const timeRanges: Array<{ label: string; value: MetricsTimeRange }> = [
 ];
 
 const fallbackServers: ServerRowData[] = [
-  { id: 'iran-edge-01', name: 'Iran Edge 01', meta: 'IR', cpu: 38, ram: 51, diskFree: 64, score: 94 },
-  { id: 'iran-edge-02', name: 'Iran Edge 02', meta: 'IR', cpu: 44, ram: 58, diskFree: 71, score: 91 },
-  { id: 'germany-core-01', name: 'Germany Core 01', meta: 'DE', cpu: 29, ram: 47, diskFree: 82, score: 96 },
+  {
+    id: 'iran-edge-01',
+    name: 'Iran Edge 01',
+    meta: 'IR',
+    cpu: 38,
+    ram: 51,
+    diskFree: 64,
+    storages: [{ path: '/', freePercent: 64, usedPercent: 36 }],
+    networkInterfaces: [{ name: 'ether1', rxBps: 7_800_000, txBps: 3_200_000 }],
+    inboundBps: 7_800_000,
+    outboundBps: 3_200_000,
+    score: 94,
+  },
+  {
+    id: 'iran-edge-02',
+    name: 'Iran Edge 02',
+    meta: 'IR',
+    cpu: 44,
+    ram: 58,
+    diskFree: 71,
+    storages: [{ path: '/', freePercent: 71, usedPercent: 29 }],
+    networkInterfaces: [{ name: 'ether2', rxBps: 6_400_000, txBps: 2_700_000 }],
+    inboundBps: 6_400_000,
+    outboundBps: 2_700_000,
+    score: 91,
+  },
+  {
+    id: 'germany-core-01',
+    name: 'Germany Core 01',
+    meta: 'DE',
+    cpu: 29,
+    ram: 47,
+    diskFree: 82,
+    storages: [{ path: '/', freePercent: 82, usedPercent: 18 }],
+    networkInterfaces: [{ name: 'wg-core', rxBps: 12_500_000, txBps: 9_100_000 }],
+    inboundBps: 12_500_000,
+    outboundBps: 9_100_000,
+    score: 96,
+  },
 ];
 
 const tunnels: TunnelRowData[] = [
@@ -171,6 +217,10 @@ export function DashboardApp() {
           </div>
         </header>
 
+        <SystemResourceHeader servers={serverRows} />
+
+        <div className="mt-5 border-t border-afro-line" />
+
         <ActivePage
           activeView={activeView}
           alerts={alerts}
@@ -182,6 +232,84 @@ export function DashboardApp() {
         />
       </section>
     </main>
+  );
+}
+
+function SystemResourceHeader({ servers }: { servers: ServerRowData[] }) {
+  const cpuAverage = averagePercent(servers.map((server) => server.cpu));
+  const ramAverage = averagePercent(servers.map((server) => server.ram));
+  const storages = servers.flatMap((server) =>
+    server.storages.map((storage) => ({
+      ...storage,
+      serverName: server.name,
+    })),
+  );
+  const lowestStorage = storages.reduce<number | null>((lowest, storage) => {
+    if (typeof storage.freePercent !== 'number') return lowest;
+    return lowest === null ? storage.freePercent : Math.min(lowest, storage.freePercent);
+  }, null);
+  const inboundTotal = sumNullable(servers.map((server) => server.inboundBps));
+  const outboundTotal = sumNullable(servers.map((server) => server.outboundBps));
+
+  return (
+    <section className="mt-5" aria-label="System resources">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ResourceStat icon={Cpu} label="CPU average" tone={getUsageTone(cpuAverage)} value={formatPercent(cpuAverage)} />
+        <ResourceStat icon={MemoryStick} label="RAM average" tone={getUsageTone(ramAverage)} value={formatPercent(ramAverage)} />
+        <ResourceStat icon={HardDrive} label="Lowest storage" tone={getStorageTone(lowestStorage)} value={formatPercent(lowestStorage)} />
+        <ResourceStat
+          icon={Network}
+          label="Local traffic"
+          tone="neutral"
+          value={`${formatBytesPerSecond(inboundTotal)} / ${formatBytesPerSecond(outboundTotal)}`}
+        />
+      </div>
+
+      <div className="mt-3 overflow-x-auto rounded-lg border border-afro-line bg-afro-panel">
+        <div className="flex min-w-max gap-2 p-3">
+          {storages.map((storage) => (
+            <div className="min-w-[190px] rounded-md border border-afro-line px-3 py-2" key={`${storage.serverName}-${storage.path}`}>
+              <div className="flex items-center justify-between gap-3">
+                <strong className="max-w-[118px] truncate text-sm">{storage.serverName}</strong>
+                <StatusBadge tone={getStorageTone(storage.freePercent ?? null)}>
+                  {formatPercent(storage.freePercent ?? null)}
+                </StatusBadge>
+              </div>
+              <div className={mutedTextClass}>{storage.path}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ResourceStat({
+  icon: Icon,
+  label,
+  tone,
+  value,
+}: {
+  icon: ComponentType<{ size?: number }>;
+  label: string;
+  tone: Tone;
+  value: string;
+}) {
+  const borderClass = {
+    good: 'border-t-afro-green',
+    neutral: 'border-t-afro-blue',
+    warning: 'border-t-[#c27a1a]',
+    critical: 'border-t-[#b91c1c]',
+  }[tone];
+
+  return (
+    <div className={`grid min-h-[92px] gap-2 rounded-lg border border-t-4 border-afro-line bg-afro-panel p-4 ${borderClass}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-afro-muted">{label}</span>
+        <Icon size={18} />
+      </div>
+      <strong className="text-[24px] leading-tight">{value}</strong>
+    </div>
   );
 }
 
@@ -790,6 +918,10 @@ function mapSnapshotToServerRow(snapshot: ServerMetricSnapshot): ServerRowData {
     cpu: normalizePercent(snapshot.cpuPercent),
     ram: normalizePercent(snapshot.ramPercent),
     diskFree: normalizePercent(snapshot.diskFreePercent),
+    storages: snapshot.storages ?? createStorageFallback(snapshot.diskFreePercent),
+    networkInterfaces: snapshot.networkInterfaces ?? [],
+    inboundBps: normalizePositive(snapshot.inboundBps),
+    outboundBps: normalizePositive(snapshot.outboundBps),
     score: snapshot.healthScore,
     observedAt: snapshot.observedAt,
   };
@@ -1031,6 +1163,13 @@ function getStorageTone(value: number | null): Tone {
   return 'neutral';
 }
 
+function getUsageTone(value: number | null): Tone {
+  if (value === null) return 'neutral';
+  if (value >= 90) return 'critical';
+  if (value >= 75) return 'warning';
+  return 'good';
+}
+
 function getScoreClass(score: number): string {
   if (score >= 80) return 'text-afro-green';
   if (score >= 60) return 'text-afro-blue';
@@ -1041,6 +1180,52 @@ function getScoreClass(score: number): string {
 function normalizePercent(value: number | null | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return clamp(value, 0, 100);
+}
+
+function normalizePositive(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(0, value);
+}
+
+function createStorageFallback(diskFreePercent: number | null | undefined): StorageVolumeMetric[] {
+  const freePercent = normalizePercent(diskFreePercent);
+
+  return freePercent === null ? [] : [{ path: '/', freePercent, usedPercent: 100 - freePercent }];
+}
+
+function averagePercent(values: Array<number | null>): number | null {
+  const validValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  if (validValues.length === 0) return null;
+
+  return validValues.reduce((sum, value) => sum + value, 0) / validValues.length;
+}
+
+function sumNullable(values: Array<number | null>): number | null {
+  const validValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  if (validValues.length === 0) return null;
+
+  return validValues.reduce((sum, value) => sum + value, 0);
+}
+
+function formatPercent(value: number | null): string {
+  return value === null ? '--' : `${Math.round(value)}%`;
+}
+
+function formatBytesPerSecond(value: number | null): string {
+  if (value === null) return '--';
+
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  let currentValue = value;
+  let unitIndex = 0;
+
+  while (currentValue >= 1024 && unitIndex < units.length - 1) {
+    currentValue /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${currentValue >= 10 ? currentValue.toFixed(0) : currentValue.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function clamp(value: number, min: number, max: number): number {

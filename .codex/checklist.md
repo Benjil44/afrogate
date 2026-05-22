@@ -79,6 +79,7 @@
 - [x] Dashboard overview.
 - [x] Realtime dashboard health chart with ECharts.
 - [x] Second-LCD NOC dashboard layout.
+- [x] Header system resource strip.
 - [x] Sidebar pages implementation checklist.
 - [x] Sidebar navigation state.
 - [x] Initial Servers page.
