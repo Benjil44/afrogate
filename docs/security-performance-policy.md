@@ -119,6 +119,8 @@ Required protections:
 - Agent authentication for metrics ingest.
 - Separate tokens per agent.
 - Secret rotation plan.
+- Server root passwords must not be kept as normal long-term credentials; use temporary bootstrap credentials, then agent plus SSH keys for a dedicated management user.
+- Saved server secrets must never be displayed back to admins; support replace, test, rotate, revoke, and audit instead.
 - Database least-privilege accounts.
 - Backups encrypted and tested.
 

@@ -36,6 +36,7 @@
 - Connected the dashboard to live latest metrics with 10-second polling, stale/live status, and a local fallback sample.
 - Added control-plane egress strategy for restricted servers that need Telegram/API access through a local outbound proxy.
 - Added Python agent support for `AFROGATE_OUTBOUND_PROXY_URL`.
+- Added server access and outbound management strategy: temporary bootstrap credentials, agent-first monitoring, encrypted secrets, ordered outbounds, health checks, and failover rules.
 
 ### Current State
 
@@ -52,10 +53,10 @@
 Continue the monitoring MVP:
 
 1. Add admin auth and role-based authorization.
-2. Add alert listing endpoints and a dashboard alerts view.
-3. Add Telegram critical alert delivery using the shared control-plane egress policy.
-4. Add RAM and network throughput collection to the Python agent.
-5. Add tunnel/interface metrics for WireGuard and operator links.
+2. Add server/outbound CRUD models with encrypted secret references.
+3. Add alert listing endpoints and a dashboard alerts view.
+4. Add Telegram critical alert delivery using the shared control-plane egress policy.
+5. Add RAM/network/WireGuard metrics to the Python agent.
 
 Repository remote is ready:
 

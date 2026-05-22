@@ -15,6 +15,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Never commit secrets, tokens, server IP credentials, production config, or real user data.
 - Keep dashboard operations fast enough for remote travel management.
 - Keep control-plane egress separate from user/data traffic; use the documented outbound proxy/gateway pattern for Telegram and external APIs on restricted servers.
+- Treat server access as bootstrap-plus-agent-first: avoid storing reusable root passwords, prefer dedicated management users, SSH keys, secret rotation, and audit logs.
 - Update `.codex/progress.md` after each session.
 - Update `.codex/checklist.md` when a task changes state.
 - Update `.codex/memory.md` only for durable decisions and facts.

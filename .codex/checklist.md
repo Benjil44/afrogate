@@ -39,6 +39,7 @@
 - [x] Add systemd hardening sample.
 - [x] Add Nginx rate-limit/security-header sample.
 - [x] Define control-plane egress proxy strategy.
+- [x] Define server access and outbound management strategy.
 - [x] Add agent token guard for metrics ingest.
 - [x] Run manual dependency audit with zero vulnerabilities.
 - [x] Switch dashboard to React/Vite static build for lower resource use.
@@ -51,7 +52,13 @@
 - [ ] Role-based authorization.
 - [ ] Audit log foundation.
 - [ ] CRUD for servers.
+- [ ] Server edit screen with safe access/bootstrap tabs.
+- [ ] Encrypted server credential storage.
 - [ ] CRUD for tunnels and interfaces.
+- [ ] CRUD for outbound routes/gateways.
+- [ ] Outbound priority move up/down.
+- [ ] Outbound health check scheduler.
+- [ ] Outbound failover history.
 - [ ] Agent registration endpoint.
 - [x] Metrics ingest endpoint.
 - [x] Protect metrics ingest with agent bearer token.

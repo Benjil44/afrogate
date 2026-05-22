@@ -88,3 +88,5 @@
 - Apps consume shared TypeScript contracts from built `packages/shared/dist` declarations; app prebuild/pretypecheck scripts build the shared package first.
 - The dashboard polls the backend latest-metrics endpoint every 10 seconds and keeps a local sample fallback so the UI remains useful while the database/API is offline.
 - Restricted Iran servers need a control-plane egress path for Telegram/API access; first implementation should use `AFROGATE_OUTBOUND_PROXY_URL` with a localhost HTTP proxy exposed by a local VLESS/sing-box/xray or gateway client.
+- Server management should use temporary bootstrap credentials only when needed, then agent-first monitoring plus a dedicated SSH-key-based management user; do not build normal workflows around stored reusable root passwords.
+- Outbound management should support ordered priorities, move up/down, health checks, failover thresholds, cooldowns, maintenance mode, and route locks.

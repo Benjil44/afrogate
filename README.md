@@ -12,6 +12,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Enhancement approaches](docs/enhancement-approaches-fa.md)
 - [Implementation start plan](docs/implementation-start-plan-fa.md)
 - [Control-plane egress](docs/control-plane-egress.md)
+- [Server access and outbound management](docs/server-access-and-outbound-management.md)
 - [Repository structure](docs/repository-structure.md)
 - [Security and performance policy](docs/security-performance-policy.md)
 - [Security policy](SECURITY.md)
