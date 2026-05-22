@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
-import type { ServerMetricSnapshot } from '@afrogate/shared';
+import type { MetricsTimeRange, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrogate/shared';
 import { Activity, Bell, Gauge, Route, Server, ShieldCheck } from 'lucide-react';
-import { fetchLatestMetrics } from './api/metrics';
+import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
+import { EChart, type AfroChartOption } from './components/EChart';
 
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
@@ -39,6 +40,12 @@ interface NavItemData {
 }
 
 const refreshIntervalMs = 10_000;
+const timeRanges: Array<{ label: string; value: MetricsTimeRange }> = [
+  { label: '15m', value: '15m' },
+  { label: '1h', value: '1h' },
+  { label: '6h', value: '6h' },
+  { label: '24h', value: '24h' },
+];
 
 const fallbackServers: ServerRowData[] = [
   { id: 'iran-edge-01', name: 'Iran Edge 01', meta: 'IR', cpu: 38, ram: 51, diskFree: 64, score: 94 },
@@ -64,6 +71,8 @@ const mutedTextClass = 'text-[13px] text-afro-muted';
 
 export function DashboardApp() {
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
+  const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
+  const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
   const [dataState, setDataState] = useState<DataState>('loading');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -76,10 +85,14 @@ export function DashboardApp() {
       controller = new AbortController();
 
       try {
-        const response = await fetchLatestMetrics(controller.signal);
+        const [latestResponse, timeseriesResponse] = await Promise.all([
+          fetchLatestMetrics(controller.signal),
+          fetchMetricsTimeseries(timeRange, controller.signal),
+        ]);
         if (!isActive) return;
 
-        setMetrics(response.servers);
+        setMetrics(latestResponse.servers);
+        setTimeseries(timeseriesResponse.series);
         setDataState('live');
         setLastUpdated(new Date().toISOString());
       } catch (error) {
@@ -97,13 +110,17 @@ export function DashboardApp() {
       controller?.abort();
       window.clearInterval(timer);
     };
-  }, []);
+  }, [timeRange]);
 
   const serverRows = useMemo(
     () => (metrics.length > 0 ? metrics.map(mapSnapshotToServerRow) : fallbackServers),
     [metrics],
   );
   const summary = useMemo(() => createSummary(serverRows), [serverRows]);
+  const chartSeries = useMemo(
+    () => (timeseries.length > 0 ? timeseries : createFallbackTimeseries(serverRows, timeRange)),
+    [serverRows, timeRange, timeseries],
+  );
   const status = getDataStatus(dataState, lastUpdated);
 
   return (
@@ -128,12 +145,60 @@ export function DashboardApp() {
           ))}
         </section>
 
+        <HealthChartPanel
+          range={timeRange}
+          series={chartSeries}
+          onRangeChange={setTimeRange}
+        />
+
         <section className="mt-[18px] grid gap-[18px] xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           <ServerPanel servers={serverRows} />
           <TunnelPanel />
         </section>
       </section>
     </main>
+  );
+}
+
+function HealthChartPanel({
+  range,
+  series,
+  onRangeChange,
+}: {
+  range: MetricsTimeRange;
+  series: ServerMetricTimeseries[];
+  onRangeChange: (range: MetricsTimeRange) => void;
+}) {
+  const option = useMemo(() => createHealthChartOption(series), [series]);
+
+  return (
+    <section className={`${panelClass} mt-[18px]`}>
+      <div className="flex flex-col gap-3 border-b border-afro-line pb-3.5 sm:flex-row sm:items-center sm:justify-between">
+        <PanelHeadingContent title="Health timeline" meta={`${series.length} monitored nodes`} />
+        <div className="inline-grid w-fit grid-flow-col rounded-md border border-afro-line bg-[#eef3f5] p-1">
+          {timeRanges.map((item) => {
+            const isActive = item.value === range;
+            const activeClass = isActive ? 'bg-white text-afro-ink shadow-sm' : 'text-afro-muted hover:text-afro-ink';
+
+            return (
+              <button
+                className={`min-h-8 min-w-12 rounded px-2.5 text-sm font-bold ${activeClass}`}
+                key={item.value}
+                onClick={() => onRangeChange(item.value)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <EChart
+        ariaLabel="Server health score timeline"
+        className="mt-4 h-[306px] w-full"
+        option={option}
+      />
+    </section>
   );
 }
 
@@ -275,11 +340,17 @@ function PanelHeading({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-afro-line pb-3.5">
-      <div className="min-w-0">
-        <h2 className="text-[17px] font-bold">{title}</h2>
-        {meta ? <span className={mutedTextClass}>{meta}</span> : null}
-      </div>
+      <PanelHeadingContent title={title} meta={meta} />
       <Icon size={18} />
+    </div>
+  );
+}
+
+function PanelHeadingContent({ title, meta }: { title: string; meta?: string }) {
+  return (
+    <div className="min-w-0">
+      <h2 className="text-[17px] font-bold">{title}</h2>
+      {meta ? <span className={mutedTextClass}>{meta}</span> : null}
     </div>
   );
 }
@@ -324,6 +395,130 @@ function createSummary(servers: ServerRowData[]): MetricCardData[] {
       tone: getStorageTone(lowestStorage),
     },
   ];
+}
+
+function createHealthChartOption(series: ServerMetricTimeseries[]): AfroChartOption {
+  const chartSeries = series.map((item, index) => ({
+    name: item.hostname || item.serverId,
+    type: 'line' as const,
+    showSymbol: false,
+    smooth: true,
+    sampling: 'lttb' as const,
+    lineStyle: {
+      width: 2,
+    },
+    markLine: index === 0
+      ? {
+          silent: true,
+          symbol: 'none',
+          label: {
+            color: '#9a5b00',
+            formatter: 'watch',
+          },
+          lineStyle: {
+            color: '#c27a1a',
+            type: 'dashed' as const,
+            width: 1,
+          },
+          data: [{ yAxis: 60 }],
+        }
+      : undefined,
+    data: item.points.map((point) => [point.observedAt, point.healthScore]),
+  }));
+
+  return {
+    color: ['#238a4b', '#2764a8', '#c27a1a', '#0f8f83', '#b91c1c'],
+    tooltip: {
+      trigger: 'axis',
+      valueFormatter: (value) => `${Math.round(Number(value))}`,
+    },
+    legend: {
+      top: 0,
+      type: 'scroll',
+      icon: 'roundRect',
+      itemHeight: 8,
+      itemWidth: 18,
+      textStyle: {
+        color: '#60717a',
+      },
+    },
+    grid: {
+      bottom: 48,
+      containLabel: true,
+      left: 6,
+      right: 8,
+      top: 42,
+    },
+    xAxis: {
+      type: 'time',
+      axisLine: {
+        lineStyle: { color: '#dce4e8' },
+      },
+      axisLabel: {
+        color: '#60717a',
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      axisLabel: {
+        color: '#60717a',
+      },
+      splitLine: {
+        lineStyle: { color: '#edf2f4' },
+      },
+    },
+    dataZoom: [
+      {
+        type: 'inside',
+        throttle: 50,
+      },
+      {
+        type: 'slider',
+        bottom: 8,
+        height: 18,
+        borderColor: '#dce4e8',
+        fillerColor: 'rgba(39, 100, 168, 0.14)',
+        handleSize: 12,
+        showDetail: false,
+      },
+    ],
+    series: chartSeries,
+  };
+}
+
+function createFallbackTimeseries(
+  servers: ServerRowData[],
+  range: MetricsTimeRange,
+): ServerMetricTimeseries[] {
+  const rangeMinutes = {
+    '15m': 15,
+    '1h': 60,
+    '6h': 360,
+    '24h': 1440,
+  }[range];
+  const pointCount = Math.min(48, Math.max(8, Math.round(rangeMinutes / 5)));
+  const now = Date.now();
+  const stepMs = (rangeMinutes * 60 * 1000) / Math.max(1, pointCount - 1);
+
+  return servers.map((server, serverIndex) => ({
+    serverId: server.id,
+    hostname: server.name,
+    platform: server.meta,
+    points: Array.from({ length: pointCount }, (_, pointIndex) => {
+      const wave = Math.sin((pointIndex + serverIndex) / 2.4) * 4;
+      const drift = pointIndex % 7 === 0 ? -2 : 1;
+
+      return {
+        observedAt: new Date(now - (pointCount - pointIndex - 1) * stepMs).toISOString(),
+        cpuPercent: server.cpu,
+        ramPercent: server.ram,
+        diskFreePercent: server.diskFree,
+        healthScore: Math.round(clamp(server.score + wave + drift, 0, 100)),
+      };
+    }),
+  }));
 }
 
 function getDataStatus(dataState: DataState, lastUpdated: string | null) {

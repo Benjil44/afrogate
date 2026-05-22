@@ -37,6 +37,7 @@
 - Added control-plane egress strategy for restricted servers that need Telegram/API access through a local outbound proxy.
 - Added Python agent support for `AFROGATE_OUTBOUND_PROXY_URL`.
 - Added server access and outbound management strategy: temporary bootstrap credentials, agent-first monitoring, encrypted secrets, ordered outbounds, health checks, and failover rules.
+- Added ECharts-based realtime health timeline with 15m/1h/6h/24h ranges and a backend `/api/metrics/timeseries` endpoint.
 
 ### Current State
 
@@ -108,4 +109,5 @@ Repository remote is ready:
 - Verified `python -m compileall apps\agent`.
 - Verified `python apps\agent\run.py --once`; local disk free was below 10%, which matches the new critical storage alert threshold when posted to the backend.
 - Verified Python agent still compiles after adding outbound proxy support.
+- Verified ECharts health timeline with dependency audit, workspace typecheck, and production build.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

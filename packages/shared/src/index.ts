@@ -28,6 +28,32 @@ export interface LatestMetricsResponse {
   servers: ServerMetricSnapshot[];
 }
 
+export type MetricsTimeRange = '15m' | '1h' | '6h' | '24h';
+
+export interface MetricTimeseriesPoint {
+  observedAt: string;
+  cpuPercent?: number | null;
+  ramPercent?: number | null;
+  diskFreePercent?: number | null;
+  pingMs?: number | null;
+  jitterMs?: number | null;
+  packetLossPercent?: number | null;
+  healthScore: number;
+}
+
+export interface ServerMetricTimeseries {
+  serverId: string;
+  hostname?: string;
+  platform?: string;
+  points: MetricTimeseriesPoint[];
+}
+
+export interface MetricsTimeseriesResponse {
+  range: MetricsTimeRange;
+  bucketSeconds: number;
+  series: ServerMetricTimeseries[];
+}
+
 export interface ApiEnvelope<T> {
   data: T;
   timestamp: string;

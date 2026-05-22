@@ -73,6 +73,7 @@
 - [ ] Backend shared outbound HTTP client for Telegram/API calls.
 - [x] Agent outbound proxy support for restricted servers.
 - [x] Dashboard overview.
+- [x] Realtime dashboard health chart with ECharts.
 - [ ] Server detail page.
 - [ ] Tunnel detail page.
 - [ ] Alerts page.

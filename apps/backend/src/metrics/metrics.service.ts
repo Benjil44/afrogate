@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { ServerMetricSnapshot } from '@afrogate/shared';
+import type { MetricsTimeRange, MetricsTimeseriesResponse, ServerMetricSnapshot } from '@afrogate/shared';
 import { MetricsIngestDto } from './dto/metrics-ingest.dto';
 import { METRICS_REPOSITORY, MetricsRepository } from './metrics.repository';
 
@@ -7,6 +7,13 @@ export type { ServerMetricSnapshot };
 
 @Injectable()
 export class MetricsService {
+  private static readonly rangeMinutes: Record<MetricsTimeRange, number> = {
+    '15m': 15,
+    '1h': 60,
+    '6h': 360,
+    '24h': 1440,
+  };
+
   constructor(
     @Inject(METRICS_REPOSITORY)
     private readonly metricsRepository: MetricsRepository,
@@ -26,6 +33,17 @@ export class MetricsService {
     return this.metricsRepository.listLatest();
   }
 
+  async listTimeseries(rangeInput?: string, serverId?: string): Promise<MetricsTimeseriesResponse> {
+    const range = this.normalizeRange(rangeInput);
+    const series = await this.metricsRepository.listTimeseries({ range, serverId });
+
+    return {
+      range,
+      bucketSeconds: 10,
+      series,
+    };
+  }
+
   private calculateHealthScore(metric: MetricsIngestDto): number {
     let score = 100;
 
@@ -37,5 +55,13 @@ export class MetricsService {
     if (metric.diskFreePercent !== undefined && metric.diskFreePercent < 10) score -= 30;
 
     return Math.max(0, Math.round(score));
+  }
+
+  private normalizeRange(rangeInput?: string): MetricsTimeRange {
+    if (rangeInput && rangeInput in MetricsService.rangeMinutes) {
+      return rangeInput as MetricsTimeRange;
+    }
+
+    return '1h';
   }
 }

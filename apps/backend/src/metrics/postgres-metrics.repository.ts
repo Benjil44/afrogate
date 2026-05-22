@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import type { ServerMetricSnapshot } from '@afrogate/shared';
+import type { MetricTimeseriesPoint, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrogate/shared';
 import { DatabaseService } from '../database/database.service';
 import { serverMetrics, servers } from '../database/schema';
-import { MetricsRepository } from './metrics.repository';
+import { MetricsRepository, MetricsTimeseriesQuery } from './metrics.repository';
 
 interface LatestMetricRow {
   serverId: string;
@@ -19,8 +19,17 @@ interface LatestMetricRow {
   healthScore: number;
 }
 
+interface TimeseriesMetricRow extends LatestMetricRow {}
+
 @Injectable()
 export class PostgresMetricsRepository implements MetricsRepository {
+  private static readonly rangeMinutes = {
+    '15m': 15,
+    '1h': 60,
+    '6h': 360,
+    '24h': 1440,
+  } as const;
+
   constructor(private readonly database: DatabaseService) {}
 
   async record(snapshot: ServerMetricSnapshot): Promise<ServerMetricSnapshot> {
@@ -96,6 +105,61 @@ export class PostgresMetricsRepository implements MetricsRepository {
       packetLossPercent: row.packetLossPercent,
       healthScore: row.healthScore,
     }));
+  }
+
+  async listTimeseries(query: MetricsTimeseriesQuery): Promise<ServerMetricTimeseries[]> {
+    const result = await this.database.query<TimeseriesMetricRow>(
+      `
+        SELECT
+          s.external_id AS "serverId",
+          s.hostname AS "hostname",
+          s.platform AS "platform",
+          m.observed_at AS "observedAt",
+          m.cpu_percent AS "cpuPercent",
+          m.ram_percent AS "ramPercent",
+          m.disk_free_percent AS "diskFreePercent",
+          m.ping_ms AS "pingMs",
+          m.jitter_ms AS "jitterMs",
+          m.packet_loss_percent AS "packetLossPercent",
+          m.health_score AS "healthScore"
+        FROM servers s
+        JOIN server_metrics m ON m.server_id = s.id
+        WHERE m.observed_at >= now() - ($1::int * interval '1 minute')
+          AND ($2::text IS NULL OR s.external_id = $2)
+        ORDER BY s.external_id, m.observed_at ASC
+      `,
+      [PostgresMetricsRepository.rangeMinutes[query.range], query.serverId ?? null],
+    );
+
+    const seriesByServer = new Map<string, ServerMetricTimeseries>();
+
+    for (const row of result.rows) {
+      const existing = seriesByServer.get(row.serverId);
+      const point: MetricTimeseriesPoint = {
+        observedAt: row.observedAt.toISOString(),
+        cpuPercent: row.cpuPercent,
+        ramPercent: row.ramPercent,
+        diskFreePercent: row.diskFreePercent,
+        pingMs: row.pingMs,
+        jitterMs: row.jitterMs,
+        packetLossPercent: row.packetLossPercent,
+        healthScore: row.healthScore,
+      };
+
+      if (existing) {
+        existing.points.push(point);
+        continue;
+      }
+
+      seriesByServer.set(row.serverId, {
+        serverId: row.serverId,
+        hostname: row.hostname ?? undefined,
+        platform: row.platform ?? undefined,
+        points: [point],
+      });
+    }
+
+    return [...seriesByServer.values()];
   }
 
   private async syncDiskAlert(snapshot: ServerMetricSnapshot): Promise<void> {
