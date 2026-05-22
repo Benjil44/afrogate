@@ -27,6 +27,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 5. Auto route with optional route lock.
 6. Integration with current Marzban/X-UI/other panel usage.
 7. Enterprise-ready Afrogate branded panel.
+8. Reliability, observability, route intelligence, privacy, and enterprise-readiness enhancements from `docs/enhancement-approaches-fa.md`.
 
 ## Technical Principles
 
@@ -36,6 +37,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Prefer auditable route decisions with clear reasons.
 - Use threshold-based alerts first; add predictive analysis later.
 - Treat packet loss, high jitter, storage pressure, and API/request backlog as urgent operational signals.
+- Keep enhancement work progressive: visibility first, reliability second, manual control third, automation fourth, enterprise polish last.
 
 ## UX Principles
 
@@ -44,4 +46,3 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Avoid marketing-style UI for operations pages.
 - Use dense but readable layouts for repeated operational use.
 - Build role-based access early enough that support staff can help safely.
-

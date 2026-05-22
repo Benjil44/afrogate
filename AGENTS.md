@@ -9,6 +9,7 @@ Before changing code or architecture in this repository, read these files first:
 5. `docs/mvp-monitoring-prd-fa.md`
 6. `docs/technical-architecture-fa.md`
 7. `docs/roadmap-fa.md`
+8. `docs/enhancement-approaches-fa.md`
 
 After each meaningful implementation session:
 
@@ -18,4 +19,3 @@ After each meaningful implementation session:
 - Keep privacy, safety, and human-rights requirements visible in every design decision.
 
 Do not commit secrets, server credentials, Telegram tokens, user personal data, or production config.
-

@@ -71,4 +71,5 @@
 - Avoid storing traffic content.
 - Keep audit logs for sensitive admin actions.
 - Encrypt secrets and backups.
-
+- Enhancement work should be progressive: visibility first, reliability second, manual control third, automation fourth, enterprise readiness last.
+- Current local git remote target should be `https://github.com/benjil44/afrogate.git`.

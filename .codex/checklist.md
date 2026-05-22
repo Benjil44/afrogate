@@ -8,7 +8,8 @@
 - [x] Add repository ignore rules.
 - [x] Initialize local git repository.
 - [x] Create initial local commit.
-- [x] Configure target `origin` URL for `jellyenderson/afrogate`.
+- [x] Configure target `origin` URL for `benjil44/afrogate`.
+- [x] Add enhancement approach documentation.
 - [ ] Create remote repository named `afrogate`.
 - [ ] Push initial commit.
 
@@ -75,3 +76,14 @@
 - [ ] Reports and data analysis.
 - [ ] Tenant/brand settings.
 - [ ] Enterprise deployment guide.
+
+## Enhancement Tracks
+
+- [ ] Incident timeline.
+- [ ] Telegram critical alert flow.
+- [ ] Route health score history.
+- [ ] Charge allocation delay tracking.
+- [ ] Backup status monitoring.
+- [ ] Route canary rollout.
+- [ ] Adapter-based migration from current panels.
+- [ ] Privacy threat model.
