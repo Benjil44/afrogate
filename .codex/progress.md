@@ -40,6 +40,7 @@
 - Added ECharts-based realtime health timeline with 15m/1h/6h/24h ranges and a backend `/api/metrics/timeseries` endpoint.
 - Added PostgreSQL/Drizzle database foundation for server access profiles, encrypted credential records, outbounds, outbound health checks, and route failover events.
 - Added backend bootstrap admin bearer-token guard, role decorator, role guard, and shared bearer-token parsing/constant-time comparison helper.
+- Added second-LCD NOC dashboard layout with clock, health chart, servers, tunnels, alerts, outbounds, capacity, and control-plane status in one dense display.
 
 ### Current State
 
@@ -55,11 +56,11 @@
 
 Continue the monitoring MVP:
 
-1. Add NOC/wall-display dashboard layout for a separate LCD.
-2. Add admin-safe server/outbound read APIs and mutation APIs after roles are enforced.
-3. Add alert listing endpoints and a dashboard alerts view.
-4. Add Telegram critical alert delivery using the shared control-plane egress policy.
-5. Add RAM/network/WireGuard metrics to the Python agent.
+1. Add admin-safe server/outbound read APIs and mutation APIs after roles are enforced.
+2. Add alert listing endpoints and bind dashboard alerts to real alert rows.
+3. Add Telegram critical alert delivery using the shared control-plane egress policy.
+4. Add RAM/network/WireGuard metrics to the Python agent.
+5. Add real outbound health checks and failover event rendering.
 
 Repository remote is ready:
 
@@ -114,4 +115,5 @@ Repository remote is ready:
 - Verified ECharts health timeline with dependency audit, workspace typecheck, and production build.
 - Verified server access/outbound schema foundation with dependency audit, workspace typecheck, and production build.
 - Verified backend bootstrap admin/role guard foundation with dependency audit, workspace typecheck, and production build.
+- Verified second-LCD NOC dashboard layout with dependency audit, workspace typecheck, and production build.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

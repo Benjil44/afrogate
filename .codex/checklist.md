@@ -77,6 +77,7 @@
 - [x] Agent outbound proxy support for restricted servers.
 - [x] Dashboard overview.
 - [x] Realtime dashboard health chart with ECharts.
+- [x] Second-LCD NOC dashboard layout.
 - [ ] Server detail page.
 - [ ] Tunnel detail page.
 - [ ] Alerts page.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import type { MetricsTimeRange, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrogate/shared';
-import { Activity, Bell, Gauge, Route, Server, ShieldCheck } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Gauge, Network, Route, Server, ShieldCheck } from 'lucide-react';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
 
@@ -33,6 +33,21 @@ interface TunnelRowData {
   score: number;
 }
 
+interface OutboundRowData {
+  name: string;
+  type: string;
+  priority: number;
+  status: 'healthy' | 'standby' | 'restricted';
+  latencyMs: number | null;
+  mode: string;
+}
+
+interface AlertRowData {
+  title: string;
+  source: string;
+  severity: Tone;
+}
+
 interface NavItemData {
   href: string;
   label: string;
@@ -59,6 +74,12 @@ const tunnels: TunnelRowData[] = [
   { name: 'wireguard3', operator: 'Irancell', ping: 58, jitter: 11, loss: 0.2, score: 89 },
 ];
 
+const outbounds: OutboundRowData[] = [
+  { name: 'Germany gateway', type: 'WireGuard', priority: 1, status: 'healthy', latencyMs: 50, mode: 'primary' },
+  { name: 'Control egress', type: 'VLESS proxy', priority: 2, status: 'standby', latencyMs: 67, mode: 'telegram/api' },
+  { name: 'Iran direct', type: 'Direct', priority: 3, status: 'restricted', latencyMs: null, mode: 'last resort' },
+];
+
 const navItems: NavItemData[] = [
   { href: '#dashboard', label: 'Dashboard', icon: Activity },
   { href: '#servers', label: 'Servers', icon: Server },
@@ -75,6 +96,7 @@ export function DashboardApp() {
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
   const [dataState, setDataState] = useState<DataState>('loading');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const wallClock = useWallClock();
 
   useEffect(() => {
     let isActive = true;
@@ -121,6 +143,7 @@ export function DashboardApp() {
     () => (timeseries.length > 0 ? timeseries : createFallbackTimeseries(serverRows, timeRange)),
     [serverRows, timeRange, timeseries],
   );
+  const alerts = useMemo(() => createAlertRows(serverRows), [serverRows]);
   const status = getDataStatus(dataState, lastUpdated);
 
   return (
@@ -131,11 +154,17 @@ export function DashboardApp() {
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-1.5 text-[13px] font-bold uppercase text-afro-teal">Operations</p>
-            <h1 className="text-[28px] leading-tight font-bold">Network health dashboard</h1>
+            <h1 className="text-[28px] leading-tight font-bold">Network operations display</h1>
           </div>
-          <div className={`inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border px-3 text-sm font-bold ${status.className}`}>
-            <span className={`size-2 rounded-full ${status.dotClassName}`} />
-            {status.label}
+          <div className="flex flex-wrap gap-2">
+            <div className="inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink">
+              <Clock size={15} />
+              {wallClock}
+            </div>
+            <div className={`inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border px-3 text-sm font-bold ${status.className}`}>
+              <span className={`size-2 rounded-full ${status.dotClassName}`} />
+              {status.label}
+            </div>
           </div>
         </header>
 
@@ -151,9 +180,16 @@ export function DashboardApp() {
           onRangeChange={setTimeRange}
         />
 
-        <section className="mt-[18px] grid gap-[18px] xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <section className="mt-[18px] grid gap-[18px] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
           <ServerPanel servers={serverRows} />
           <TunnelPanel />
+          <AlertsPanel alerts={alerts} />
+        </section>
+
+        <section className="mt-[18px] grid gap-[18px] xl:grid-cols-3">
+          <OutboundsPanel />
+          <CapacityPanel />
+          <ControlPlanePanel />
         </section>
       </section>
     </main>
@@ -195,9 +231,99 @@ function HealthChartPanel({
       </div>
       <EChart
         ariaLabel="Server health score timeline"
-        className="mt-4 h-[306px] w-full"
+        className="mt-4 h-[270px] w-full"
         option={option}
       />
+    </section>
+  );
+}
+
+function OutboundsPanel() {
+  return (
+    <section className={panelClass}>
+      <PanelHeading title="Outbounds" icon={ArrowDownUp} meta="priority failover" />
+      <div className="mt-3 grid gap-2.5">
+        {outbounds.map((outbound) => (
+          <div className="grid min-h-[66px] grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={outbound.name}>
+            <span className="grid size-8 place-items-center rounded bg-[#eef3f5] text-sm font-bold text-afro-ink">{outbound.priority}</span>
+            <div className="min-w-0">
+              <strong className="block truncate">{outbound.name}</strong>
+              <span className={mutedTextClass}>{outbound.type} / {outbound.mode}</span>
+            </div>
+            <div className="text-right">
+              <StatusBadge tone={outbound.status === 'healthy' ? 'good' : outbound.status === 'standby' ? 'neutral' : 'warning'}>
+                {outbound.status}
+              </StatusBadge>
+              <div className={mutedTextClass}>{outbound.latencyMs === null ? '--' : `${outbound.latencyMs} ms`}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AlertsPanel({ alerts }: { alerts: AlertRowData[] }) {
+  return (
+    <section className={panelClass}>
+      <PanelHeading title="Alerts" icon={AlertTriangle} meta={`${alerts.length} visible`} />
+      <div className="mt-3 grid gap-2.5">
+        {alerts.map((alert) => (
+          <div className="grid min-h-[58px] grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={`${alert.source}-${alert.title}`}>
+            <div className="min-w-0">
+              <strong className="block truncate">{alert.title}</strong>
+              <span className={mutedTextClass}>{alert.source}</span>
+            </div>
+            <StatusBadge tone={alert.severity}>{alert.severity}</StatusBadge>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CapacityPanel() {
+  const items = [
+    { label: 'Users online', value: '150' },
+    { label: 'Outbound now', value: '20 MB/s' },
+    { label: 'Min target/user', value: '1 MB/s' },
+    { label: 'Route mode', value: 'Auto + lock' },
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title="Capacity" icon={Network} meta="manager view" />
+      <div className="mt-3 grid grid-cols-2 gap-2.5">
+        {items.map((item) => (
+          <div className="min-h-[70px] rounded-md border border-afro-line p-3" key={item.label}>
+            <span className={mutedTextClass}>{item.label}</span>
+            <strong className="mt-1 block text-[22px] leading-tight">{item.value}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ControlPlanePanel() {
+  const rows = [
+    { label: 'Metrics ingest', value: '10s', tone: 'good' as Tone },
+    { label: 'Telegram/API egress', value: 'Proxy ready', tone: 'neutral' as Tone },
+    { label: 'Storage alert', value: '< 10%', tone: 'warning' as Tone },
+    { label: 'Backups', value: 'Pending', tone: 'warning' as Tone },
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title="Control Plane" icon={ShieldCheck} meta="operations" />
+      <div className="mt-3 grid gap-2.5">
+        {rows.map((row) => (
+          <div className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={row.label}>
+            <span className={mutedTextClass}>{row.label}</span>
+            <StatusBadge tone={row.tone}>{row.value}</StatusBadge>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -227,6 +353,21 @@ function NavItem({ item, isActive }: { item: NavItemData; isActive: boolean }) {
       <Icon size={18} />
       {item.label}
     </a>
+  );
+}
+
+function StatusBadge({ children, tone }: { children: ReactNode; tone: Tone }) {
+  const toneClass = {
+    good: 'border-[#b8e1cf] bg-[#e7f6ef] text-afro-green',
+    neutral: 'border-[#bfd1ea] bg-[#edf4ff] text-afro-blue',
+    warning: 'border-[#e6cf9c] bg-[#fff7e6] text-[#9a5b00]',
+    critical: 'border-[#f0b7b7] bg-[#fff1f1] text-[#b91c1c]',
+  }[tone];
+
+  return (
+    <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-bold ${toneClass}`}>
+      {children}
+    </span>
   );
 }
 
@@ -394,6 +535,36 @@ function createSummary(servers: ServerRowData[]): MetricCardData[] {
       value: lowestStorage === null ? '--' : `${Math.round(lowestStorage)}%`,
       tone: getStorageTone(lowestStorage),
     },
+  ];
+}
+
+function createAlertRows(servers: ServerRowData[]): AlertRowData[] {
+  const rows: AlertRowData[] = [];
+
+  for (const server of servers) {
+    if (server.diskFree !== null && server.diskFree < 10) {
+      rows.push({
+        title: 'Storage below 10%',
+        source: server.name,
+        severity: 'critical',
+      });
+    }
+
+    if (server.score < 60) {
+      rows.push({
+        title: 'Health score degraded',
+        source: server.name,
+        severity: server.score < 40 ? 'critical' : 'warning',
+      });
+    }
+  }
+
+  if (rows.length > 0) return rows.slice(0, 4);
+
+  return [
+    { title: 'No critical server alerts', source: 'Monitoring', severity: 'good' },
+    { title: 'Outbound failover ready', source: 'Routes', severity: 'neutral' },
+    { title: 'Backup monitor pending', source: 'Control plane', severity: 'warning' },
   ];
 }
 
@@ -573,4 +744,20 @@ function normalizePercent(value: number | null | undefined): number | null {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function useWallClock(): string {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return now.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
