@@ -20,7 +20,7 @@ const tunnels = [
   { name: 'wireguard3', operator: 'Irancell', ping: 58, jitter: 11, loss: 0.2, score: 89 },
 ];
 
-export default function DashboardPage() {
+export function DashboardApp() {
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -29,10 +29,10 @@ export default function DashboardPage() {
           <span>AfroGate</span>
         </div>
         <nav className="nav">
-          <a className="active" href="#"><Activity size={18} />Dashboard</a>
-          <a href="#"><Server size={18} />Servers</a>
-          <a href="#"><Route size={18} />Routes</a>
-          <a href="#"><Bell size={18} />Alerts</a>
+          <a className="active" href="#dashboard"><Activity size={18} />Dashboard</a>
+          <a href="#servers"><Server size={18} />Servers</a>
+          <a href="#routes"><Route size={18} />Routes</a>
+          <a href="#alerts"><Bell size={18} />Alerts</a>
         </nav>
       </aside>
 
@@ -73,7 +73,9 @@ export default function DashboardPage() {
                   <div className="bars">
                     <span style={{ '--value': server.cpu } as CSSProperties}>CPU {server.cpu}%</span>
                     <span style={{ '--value': server.ram } as CSSProperties}>RAM {server.ram}%</span>
-                    <span style={{ '--value': 100 - server.disk } as CSSProperties}>Disk free {server.disk}%</span>
+                    <span style={{ '--value': 100 - server.disk } as CSSProperties}>
+                      Disk free {server.disk}%
+                    </span>
                   </div>
                   <b>{server.score}</b>
                 </div>
@@ -116,3 +118,4 @@ export default function DashboardPage() {
     </main>
   );
 }
+

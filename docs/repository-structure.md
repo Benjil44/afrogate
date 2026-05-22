@@ -5,7 +5,7 @@ AfroGate uses a small monorepo layout so product, API, dashboard, agent, and dep
 ```text
 apps/
   backend/       NestJS API, alerts, billing, metrics ingest, route decisions
-  dashboard/     Next.js React admin dashboard
+  dashboard/     React/Vite admin dashboard
   agent/         Python server monitoring agent
 packages/
   shared/        Shared TypeScript contracts and constants
@@ -29,4 +29,3 @@ docs/            Product, architecture, roadmap, and implementation docs
 ```text
 agent -> backend /api/metrics -> dashboard overview
 ```
-

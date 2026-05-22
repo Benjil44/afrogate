@@ -12,6 +12,8 @@ Before changing code or architecture in this repository, read these files first:
 8. `docs/enhancement-approaches-fa.md`
 9. `docs/implementation-start-plan-fa.md`
 10. `docs/repository-structure.md`
+11. `docs/security-performance-policy.md`
+12. `SECURITY.md`
 
 After each meaningful implementation session:
 
@@ -19,5 +21,8 @@ After each meaningful implementation session:
 - Update `.codex/memory.md` when a stable product or technical decision is made.
 - Update `.codex/checklist.md` when tasks move from pending to done.
 - Keep privacy, safety, and human-rights requirements visible in every design decision.
+- Keep code clean, typed, and deduplicated.
+- Optimize for low-resource VPS machines: low CPU, low RAM, compact metrics, no unnecessary services.
+- Treat every public port and unauthenticated endpoint as a security risk until proven otherwise.
 
 Do not commit secrets, server credentials, Telegram tokens, user personal data, or production config.

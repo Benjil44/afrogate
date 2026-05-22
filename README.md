@@ -12,6 +12,8 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Enhancement approaches](docs/enhancement-approaches-fa.md)
 - [Implementation start plan](docs/implementation-start-plan-fa.md)
 - [Repository structure](docs/repository-structure.md)
+- [Security and performance policy](docs/security-performance-policy.md)
+- [Security policy](SECURITY.md)
 - [Agent instructions](AGENTS.md)
 - [Codex project memory](.codex/memory.md)
 
@@ -19,7 +21,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 
 ```text
 apps/backend       NestJS API
-apps/dashboard     Next.js React dashboard
+apps/dashboard     React/Vite dashboard
 apps/agent         Python monitoring agent
 packages/shared    Shared TypeScript contracts
 infra/ubuntu       Native Ubuntu deployment notes

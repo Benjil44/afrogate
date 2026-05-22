@@ -75,6 +75,11 @@
 - Current GitHub remote is `https://github.com/Benjil44/afrogate.git`.
 - Repository has been pushed to GitHub and local `main` tracks `origin/main`.
 - Repository can still be developed local-first; push when useful.
-- Initial implementation direction: NestJS/TypeScript backend, React with Next.js dashboard, PostgreSQL database, Python agent.
+- Initial implementation direction: NestJS/TypeScript backend, React/Vite dashboard, PostgreSQL database, Python agent.
 - Docker should not block the first local MVP. For Ubuntu, start with native services plus systemd/Nginx; Docker Compose can be added later.
 - Current repository structure uses `apps/backend`, `apps/dashboard`, `apps/agent`, `packages/shared`, `infra/ubuntu`, and `infra/docker`.
+- Clean code, typed boundaries, and no duplicated business logic are required.
+- VPS efficiency is a core requirement because servers are expensive and low-resource.
+- Security posture is default-deny: close public holes, require roles, protect metrics ingest, and keep database/cache/backend internals private.
+- Stable internet is treated as a human-rights and safety goal, not a casual feature.
+- Dashboard should stay static-first where possible to reduce server runtime exposure and resource use.

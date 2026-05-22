@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Review before running. A wrong SSH rule can lock you out.
+# Use a trusted admin IP or CIDR, for example: 203.0.113.10/32
+ADMIN_CIDR="${ADMIN_CIDR:-CHANGE_ME_ADMIN_IP_OR_CIDR}"
+WIREGUARD_PORTS="${WIREGUARD_PORTS:-51820}"
+
+if [[ "$ADMIN_CIDR" == "CHANGE_ME_ADMIN_IP_OR_CIDR" ]]; then
+  echo "Set ADMIN_CIDR before running, for example:"
+  echo "ADMIN_CIDR=203.0.113.10/32 sudo -E bash infra/ubuntu/ufw-baseline.sh.sample"
+  exit 1
+fi
+
+sudo ufw --force reset
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+sudo ufw allow from "$ADMIN_CIDR" to any port 22 proto tcp comment "trusted SSH admin"
+sudo ufw allow 80/tcp comment "public HTTP"
+sudo ufw allow 443/tcp comment "public HTTPS"
+
+IFS=',' read -ra WG_PORTS <<< "$WIREGUARD_PORTS"
+for port in "${WG_PORTS[@]}"; do
+  sudo ufw allow "${port}/udp" comment "WireGuard"
+done
+
+# These should stay private behind Nginx or localhost bindings.
+sudo ufw deny 3000/tcp comment "dashboard dev/preview only"
+sudo ufw deny 4000/tcp comment "backend internal only"
+sudo ufw deny 5432/tcp comment "postgres internal only"
+sudo ufw deny 6379/tcp comment "redis internal only"
+
+sudo ufw logging on
+sudo ufw --force enable
+sudo ufw status verbose

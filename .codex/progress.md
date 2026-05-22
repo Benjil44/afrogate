@@ -22,7 +22,8 @@
 - Created local documentation commit for the enhancement approach.
 - Retried push before remote creation and it was still unavailable at that time.
 - User decided to keep the repository local-first for now and maybe push to remote later.
-- Added implementation start plan and initial stack direction: NestJS backend, React/Next.js dashboard, PostgreSQL, Python agent, Docker optional.
+- Added implementation start plan and initial stack direction: NestJS backend, React/Vite dashboard, PostgreSQL, Python agent, Docker optional.
+- Replaced Next.js dashboard scaffold with React/Vite to reduce VPS resource usage and keep dependency audit clean.
 - User created GitHub repository `Benjil44/afrogate`.
 - Updated `origin` to `https://github.com/Benjil44/afrogate.git`.
 - Pushed local `main` to GitHub and set it to track `origin/main`.
@@ -70,3 +71,13 @@ Repository remote is ready:
 - Added root workspace package, TypeScript base config, environment example, editor config, and repository structure documentation.
 - Verified package JSON files parse.
 - Verified Python agent compiles and runs once locally.
+- Added security and performance policy.
+- Added root security policy.
+- Added Ubuntu UFW baseline and sysctl network sample.
+- Hardened backend systemd sample and Nginx sample.
+- Protected metrics ingest with an agent bearer-token guard.
+- Switched dashboard from Next.js to React/Vite static build for lower VPS resource use and cleaner dependency audit.
+- Regenerated `package-lock.json`.
+- Verified `npm audit` reports zero vulnerabilities.
+- Verified backend, dashboard, and shared TypeScript checks.
+- Verified backend and dashboard production builds.

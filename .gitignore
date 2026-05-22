@@ -19,6 +19,7 @@ dist/
 build/
 .next/
 coverage/
+*.tsbuildinfo
 
 # Python / backend / agent
 __pycache__/
@@ -39,4 +40,3 @@ Thumbs.db
 *.sqlite
 *.db
 backups/
-

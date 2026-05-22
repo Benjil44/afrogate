@@ -6,13 +6,13 @@ This is the first deployment path for AfroGate. Docker is optional later; the fi
 
 - PostgreSQL installed on the host or a managed database.
 - Backend as a `systemd` service.
-- Dashboard as a Next.js process behind Nginx.
+- Dashboard as static React/Vite files served by Nginx.
 - Nginx as the public reverse proxy.
 
 ## Suggested Ports
 
 - Backend API: `4000`
-- Dashboard: `3000`
+- Dashboard dev/preview only: `3000`
 - PostgreSQL: `5432`
 
 ## First Setup Outline
@@ -27,5 +27,4 @@ npm --workspace @afrogate/backend run build
 npm --workspace @afrogate/dashboard run build
 ```
 
-Copy the service and Nginx samples from this folder, then adjust paths, domains, and environment values.
-
+Copy the service and Nginx samples from this folder, then adjust paths, domains, and environment values. In production, Nginx serves `apps/dashboard/dist` directly; no dashboard Node process is needed.

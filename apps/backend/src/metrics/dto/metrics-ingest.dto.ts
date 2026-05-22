@@ -9,6 +9,10 @@ export class MetricsIngestDto {
   hostname?: string;
 
   @IsOptional()
+  @IsString()
+  platform?: string;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
@@ -42,4 +46,3 @@ export class MetricsIngestDto {
   @Max(100)
   packetLossPercent?: number;
 }
-

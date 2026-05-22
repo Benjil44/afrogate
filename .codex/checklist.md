@@ -17,7 +17,7 @@
 ## Phase 0: Foundation
 
 - [x] Choose initial backend direction: NestJS/TypeScript.
-- [x] Choose initial frontend direction: React with Next.js dashboard.
+- [x] Choose initial frontend direction: React/Vite dashboard.
 - [x] Choose initial database direction: PostgreSQL.
 - [x] Decide Docker is optional for now, not required for local start.
 - [x] Add implementation start plan documentation.
@@ -34,14 +34,24 @@
 - [x] Scaffold `packages/shared`.
 - [x] Scaffold `infra/ubuntu`.
 - [x] Add root workspace scripts.
+- [x] Add security and performance policy.
+- [x] Add UFW baseline sample.
+- [x] Add systemd hardening sample.
+- [x] Add Nginx rate-limit/security-header sample.
+- [x] Add agent token guard for metrics ingest.
+- [x] Run manual dependency audit with zero vulnerabilities.
+- [x] Switch dashboard to React/Vite static build for lower resource use.
 
 ## Phase 1: Monitoring MVP
 
 - [ ] Backend auth for admin.
+- [ ] Role-based authorization.
+- [ ] Audit log foundation.
 - [ ] CRUD for servers.
 - [ ] CRUD for tunnels and interfaces.
 - [ ] Agent registration endpoint.
 - [ ] Metrics ingest endpoint.
+- [x] Protect metrics ingest with agent bearer token.
 - [ ] Server agent heartbeat.
 - [ ] CPU/RAM/disk metrics.
 - [ ] Network throughput metrics.
@@ -99,3 +109,10 @@
 - [ ] Route canary rollout.
 - [ ] Adapter-based migration from current panels.
 - [ ] Privacy threat model.
+- [ ] Security threat model.
+- [ ] Rate limiting at API layer.
+- [ ] Dependency audit in CI.
+- [ ] Secret scan in CI.
+- [ ] Per-agent token rotation.
+- [ ] Database least-privilege roles.
+- [ ] Loaded latency and bufferbloat monitoring.

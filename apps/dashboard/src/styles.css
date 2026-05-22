@@ -7,8 +7,6 @@
   --line: #dce4e8;
   --teal: #0f8f83;
   --green: #238a4b;
-  --amber: #b87a00;
-  --red: #c24141;
   --blue: #2764a8;
 }
 
@@ -84,8 +82,8 @@ a {
 .topbar {
   align-items: flex-start;
   display: flex;
-  justify-content: space-between;
   gap: 16px;
+  justify-content: space-between;
 }
 
 .eyebrow {

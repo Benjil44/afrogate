@@ -88,7 +88,7 @@
 ## پیشنهاد فنی اولیه
 
 - Backend: NestJS/TypeScript.
-- Frontend: React با Next.js و UI عملیاتی و کم‌حاشیه.
+- Frontend: React با Vite و UI عملیاتی و کم‌حاشیه.
 - DB: PostgreSQL، قابل ارتقا به TimescaleDB.
 - Cache/Queue: Redis وقتی alert/queue جدی شد؛ برای شروع optional.
 - Agent: Go یا Python.
