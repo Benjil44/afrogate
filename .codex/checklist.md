@@ -78,6 +78,8 @@
 - [x] Dashboard overview.
 - [x] Realtime dashboard health chart with ECharts.
 - [x] Second-LCD NOC dashboard layout.
+- [x] Sidebar pages implementation checklist.
+- [ ] Sidebar navigation state.
 - [ ] Server detail page.
 - [ ] Tunnel detail page.
 - [ ] Alerts page.

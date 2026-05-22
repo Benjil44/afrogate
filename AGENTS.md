@@ -13,9 +13,10 @@ Before changing code or architecture in this repository, read these files first:
 9. `docs/implementation-start-plan-fa.md`
 10. `docs/control-plane-egress.md`
 11. `docs/server-access-and-outbound-management.md`
-12. `docs/repository-structure.md`
-13. `docs/security-performance-policy.md`
-14. `SECURITY.md`
+12. `docs/dashboard-sidebar-pages-checklist.md`
+13. `docs/repository-structure.md`
+14. `docs/security-performance-policy.md`
+15. `SECURITY.md`
 
 After each meaningful implementation session:
 
