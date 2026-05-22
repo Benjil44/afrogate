@@ -1,0 +1,42 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+
+# Logs and runtime files
+*.log
+logs/
+tmp/
+temp/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+coverage/
+
+# Python / backend / agent
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local database and backups
+*.sqlite
+*.db
+backups/
+
