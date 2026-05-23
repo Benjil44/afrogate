@@ -170,7 +170,7 @@ const navItems: NavItemData[] = [
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
 ];
 
-const panelClass = 'min-w-0 rounded-md border border-afro-line bg-afro-panel p-3';
+const panelClass = 'min-w-0 rounded-md border border-afro-line bg-afro-panel p-2.5';
 const mutedTextClass = 'text-[13px] text-afro-muted';
 const appVersion = rootPackage.version;
 const sidebarStorageKey = 'afrogate.dashboard.sidebar';
@@ -537,7 +537,7 @@ function OutboundsPanel({ format, t }: { format: DashboardFormatters; t: Dashboa
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.outbounds} icon={ArrowDownUp} meta={t.panels.priorityFailover} />
-      <div className="mt-2.5 grid gap-2">
+      <div className="mt-2 grid gap-2">
         {outbounds.map((outbound) => (
           <div className="grid min-h-[46px] grid-cols-[24px_1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={outbound.name}>
             <span className="grid size-6 place-items-center rounded bg-[#eef3f5] text-[12px] font-bold text-afro-ink">{format.integer(outbound.priority)}</span>
@@ -562,7 +562,7 @@ function AlertsPanel({ alerts, format, t }: { alerts: AlertRowData[]; format: Da
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(format.integer(alerts.length))} />
-      <div className="mt-2.5 grid gap-2">
+      <div className="mt-2 grid gap-2">
         {alerts.map((alert) => (
           <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={`${alert.source}-${alert.title}`}>
             <div className="min-w-0">
@@ -589,7 +589,7 @@ function CapacityPanel({ format, t, trafficTotals }: { format: DashboardFormatte
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.capacity} icon={Network} meta={t.panels.managerView} />
-      <div className="mt-2.5 grid gap-1.5">
+      <div className="mt-2 grid gap-1.5">
         {items.map((item) => (
           <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line px-2 py-1" key={item.label}>
             <span className={`${mutedTextClass} min-w-0 truncate`}>{item.label}</span>
@@ -612,7 +612,7 @@ function ControlPlanePanel({ format, t }: { format: DashboardFormatters; t: Dash
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.controlPlane} icon={ShieldCheck} meta={t.panels.operations} />
-      <div className="mt-2.5 grid gap-2">
+      <div className="mt-2 grid gap-2">
         {rows.map((row) => (
           <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line px-2" key={row.label}>
             <span className={`${mutedTextClass} min-w-0 truncate`}>{row.label}</span>
@@ -629,7 +629,7 @@ function ServersPage({ format, servers, t }: { format: DashboardFormatters; serv
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
       <section className={panelClass}>
         <PanelHeading title={t.panels.serverInventory} icon={Server} meta={t.panels.managedNodes(format.integer(servers.length))} />
-        <div className="mt-2.5 grid gap-2.5">
+        <div className="mt-2 grid gap-2.5">
           {servers.map((server, index) => (
             <ServerManagementCard format={format} index={index} server={server} key={server.id} t={t} />
           ))}
@@ -638,7 +638,7 @@ function ServersPage({ format, servers, t }: { format: DashboardFormatters; serv
 
       <section className={panelClass}>
         <PanelHeading title={t.panels.accessBootstrap} icon={ShieldCheck} meta={t.panels.safeOperations} />
-        <div className="mt-2.5 grid gap-2">
+        <div className="mt-2 grid gap-2">
           {[
             [t.accessRows.defaultUser, 'afrogate'],
             [t.accessRows.accessMethod, t.accessRows.sshKey],
@@ -724,7 +724,7 @@ function RoutePolicyPanel({ format, t }: { format: DashboardFormatters; t: Dashb
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.routePolicy} icon={Route} meta={t.panels.stabilityRules} />
-      <div className="mt-2.5 grid gap-2">
+      <div className="mt-2 grid gap-2">
         {policies.map(([label, value, tone]) => (
           <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
             <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
@@ -746,7 +746,7 @@ function FailoverPanel({ format, t }: { format: DashboardFormatters; t: Dashboar
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.failover} icon={ArrowDownUp} meta={t.panels.latestDecisions} />
-      <div className="mt-2.5 grid gap-2">
+      <div className="mt-2 grid gap-2">
         {events.map(([title, detail, tone]) => (
           <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={title}>
             <div className="min-w-0">
@@ -766,12 +766,12 @@ function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: Das
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
       <section className={panelClass}>
         <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(format.integer(alerts.length))} />
-        <div className="mt-2.5 overflow-x-auto">
+        <div className="mt-2 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
                 {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.channel].map((heading) => (
-                  <th className="border-b border-afro-line px-2 py-2 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
                     {heading}
                   </th>
                 ))}
@@ -795,7 +795,7 @@ function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: Das
 
       <section className={panelClass}>
         <PanelHeading title={t.panels.alertRules} icon={Bell} meta={t.panels.mvpThresholds} />
-        <div className="mt-2.5 grid gap-2">
+        <div className="mt-2 grid gap-2">
           {([
             [t.alertRules.storage, format.percentThreshold('<', 10), 'critical'],
             [t.alertRules.healthScore, format.numberThreshold('<', 60), 'warning'],
@@ -1053,7 +1053,7 @@ function ServerRow({ format, server, t }: { format: DashboardFormatters; server:
         <strong className="block truncate text-[13px]">{format.label(server.name)}</strong>
         <span className="block truncate text-[12px] text-afro-muted">{format.label(server.meta)}</span>
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-afro-muted">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-afro-muted md:min-w-[170px] md:flex-nowrap">
         <UsageBar format={format} icon={Cpu} label={t.resources.cpu} value={server.cpu} />
         <UsageBar format={format} icon={MemoryStick} label={t.resources.ram} value={server.ram} />
         <UsageBar format={format} icon={HardDrive} label={t.resources.diskFree} value={server.diskFree} invert />
@@ -1119,12 +1119,12 @@ function TunnelPanel({ format, t }: { format: DashboardFormatters; t: DashboardS
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(format.integer(3))} />
-      <div className="mt-2.5 overflow-x-auto">
+      <div className="mt-2 overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
               {[t.tables.tunnel, t.tables.operator, t.tables.ping, t.tables.jitter, t.tables.loss, t.tables.score].map((heading) => (
-                <th className="border-b border-afro-line px-2 py-2 text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
+                <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
                   {heading}
                 </th>
               ))}
@@ -1160,7 +1160,7 @@ function PanelHeading({
   meta?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-afro-line pb-2">
+    <div className="flex min-h-7 items-center justify-between gap-2 border-b border-afro-line pb-1.5">
       <PanelHeadingContent title={title} meta={meta} />
       <Icon size={16} />
     </div>
@@ -1169,9 +1169,9 @@ function PanelHeading({
 
 function PanelHeadingContent({ title, meta }: { title: string; meta?: string }) {
   return (
-    <div className="min-w-0">
+    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
       <h2 className="truncate text-[14px] font-bold">{title}</h2>
-      {meta ? <span className={`${mutedTextClass} block truncate`}>{meta}</span> : null}
+      {meta ? <span className={`${mutedTextClass} min-w-0 truncate before:mx-1.5 before:text-afro-line before:content-['/']`}>{meta}</span> : null}
     </div>
   );
 }
@@ -1180,7 +1180,7 @@ function TableCell({ children, alignRight = false }: { children: ReactNode; alig
   const alignmentClass = alignRight ? 'text-right' : 'text-left';
 
   return (
-    <td className={`border-b border-afro-line px-2 py-2 text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`}>
+    <td className={`border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`}>
       {children}
     </td>
   );

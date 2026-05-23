@@ -154,4 +154,5 @@ Repository remote is ready:
 - Verified the latest UI/UX pass with dashboard typecheck and local Edge CDP across Dashboard, Servers, Routes, and Alerts in English/Persian at mobile, tablet, desktop, and second-LCD sizes; measured text overflow cases are now zero.
 - Added desktop sidebar collapse/expand support with persisted state, localized labels/tooltips, English left-side collapse, and Persian right-side collapse verification in local Edge CDP.
 - Repositioned the sidebar collapse control from an awkward internal row to an icon-only edge handle on the sidebar/content divider, mirrored for RTL.
+- Compacted dashboard panel headers and panel/table spacing so metadata counts stay inline with titles; verified English/Persian dashboard headings stay same-line with zero measured text overflow in local Edge CDP.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

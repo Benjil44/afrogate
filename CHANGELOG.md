@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.11 - 2026-05-23
+
+- Compacted shared panel headers so metadata such as `3 nodes`, `3 links`, and `3 visible` renders inline with the title.
+- Reduced panel padding, body gaps, and table row padding for denser network-operations monitoring sections.
+- Kept server-row CPU/RAM/disk indicators on one desktop line to reduce wasted row height.
+
 ## 0.3.10 - 2026-05-23
 
 - Repositioned the desktop sidebar collapse control as a professional icon-only handle on the sidebar/content divider.

@@ -116,3 +116,4 @@
 - Dense dashboard rows should use compact icon indicators with accessible labels/tooltips for repeated CPU/RAM/disk/download/upload values, especially in Persian where localized units are longer.
 - Desktop sidebar collapse state is stored in `afrogate.dashboard.sidebar`; expanded width is 248px, collapsed width is 80px, and mobile/tablet navigation should stay full-width even when the stored state is collapsed.
 - Sidebar collapse/expand should remain an icon-only edge handle on the sidebar/content divider, not a text button row inside the sidebar header.
+- Panel header metadata such as node/link/visible counts should stay inline with the panel title; avoid two-line headers for short operational metadata.
