@@ -142,7 +142,7 @@ const navItems: NavItemData[] = [
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
 ];
 
-const panelClass = 'min-w-0 rounded-lg border border-afro-line bg-afro-panel p-[18px]';
+const panelClass = 'min-w-0 rounded-md border border-afro-line bg-afro-panel p-3';
 const mutedTextClass = 'text-[13px] text-afro-muted';
 const appVersion = rootPackage.version;
 
@@ -220,18 +220,18 @@ export function DashboardApp() {
         t={t}
       />
 
-      <section className="min-w-0 max-w-full p-4 md:p-7 lg:h-screen lg:overflow-y-auto">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <section className="min-w-0 max-w-full p-3 md:p-4 lg:h-screen lg:overflow-y-auto">
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="mb-1.5 text-[13px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
-            <h1 className="text-[28px] leading-tight font-bold">{header.title}</h1>
+            <p className="mb-0.5 text-[11px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
+            <h1 className="text-[21px] leading-tight font-bold md:text-[22px]">{header.title}</h1>
           </div>
           <div className="flex flex-wrap gap-2">
-            <div className="inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink">
+            <div className="inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border border-afro-line bg-white px-2.5 text-[12px] font-bold text-afro-ink">
               <Clock size={15} />
               {wallClock}
             </div>
-            <div className={`inline-flex min-h-[34px] w-fit items-center gap-2 rounded-full border px-3 text-sm font-bold ${status.className}`}>
+            <div className={`inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-bold ${status.className}`}>
               <span className={`size-2 rounded-full ${status.dotClassName}`} />
               {status.label}
             </div>
@@ -240,7 +240,7 @@ export function DashboardApp() {
 
         <SystemResourceHeader servers={serverRows} t={t} trafficTotals={trafficTotals} />
 
-        <div className="mt-5 border-t border-afro-line" />
+        <div className="mt-2.5 border-t border-afro-line" />
 
         <ActivePage
           activeView={activeView}
@@ -281,8 +281,8 @@ function SystemResourceHeader({
   }, null);
 
   return (
-    <section className="mt-5" aria-label={t.aria.systemResources}>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <section className="mt-2.5" aria-label={t.aria.systemResources}>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={formatPercent(cpuAverage)} />
         <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={formatPercent(ramAverage)} />
         <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={formatPercent(lowestStorage)} />
@@ -290,12 +290,12 @@ function SystemResourceHeader({
         <ResourceStat icon={Upload} label={t.resources.upload} tone="neutral" value={formatBytesPerSecond(trafficTotals.uploadBps)} />
       </div>
 
-      <div className="mt-3 overflow-x-auto rounded-lg border border-afro-line bg-afro-panel">
-        <div className="grid min-w-[220px] gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-2 overflow-x-auto rounded-md border border-afro-line bg-afro-panel">
+        <div className="grid min-w-[220px] gap-1.5 p-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {storages.map((storage) => (
-            <div className="min-w-0 rounded-md border border-afro-line px-3 py-2" key={`${storage.serverName}-${storage.path}`}>
-              <div className="flex items-center justify-between gap-3">
-                <strong className="min-w-0 truncate text-sm">{storage.serverName}</strong>
+            <div className="min-w-0 rounded-md border border-afro-line px-2 py-1" key={`${storage.serverName}-${storage.path}`}>
+              <div className="flex items-center justify-between gap-2">
+                <strong className="min-w-0 truncate text-[13px]">{storage.serverName}</strong>
                 <StatusBadge tone={getStorageTone(storage.freePercent ?? null)}>
                   {formatPercent(storage.freePercent ?? null)}
                 </StatusBadge>
@@ -328,12 +328,12 @@ function ResourceStat({
   }[tone];
 
   return (
-    <div className={`grid min-h-[92px] gap-2 rounded-lg border border-t-4 border-afro-line bg-afro-panel p-4 ${borderClass}`}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-afro-muted">{label}</span>
-        <Icon size={18} />
+    <div className={`grid min-h-[58px] gap-1 rounded-md border border-t-4 border-afro-line bg-afro-panel p-2 ${borderClass}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] text-afro-muted">{label}</span>
+        <Icon size={16} />
       </div>
-      <strong className="text-[24px] leading-tight">{value}</strong>
+      <strong className="text-[17px] leading-tight">{value}</strong>
     </div>
   );
 }
@@ -403,26 +403,28 @@ function DashboardPage({
 }) {
   return (
     <>
-      <section className="mt-6 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4" aria-label={t.aria.summary}>
-        {summary.map((item) => (
-          <MetricCard item={item} key={item.label} />
-        ))}
+      <section className="mt-2.5 grid items-start gap-2.5 2xl:grid-cols-[minmax(320px,0.42fr)_minmax(0,1fr)]">
+        <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-2" aria-label={t.aria.summary}>
+          {summary.map((item) => (
+            <MetricCard item={item} key={item.label} />
+          ))}
+        </section>
+
+        <HealthChartPanel
+          range={timeRange}
+          series={chartSeries}
+          t={t}
+          onRangeChange={onRangeChange}
+        />
       </section>
 
-      <HealthChartPanel
-        range={timeRange}
-        series={chartSeries}
-        t={t}
-        onRangeChange={onRangeChange}
-      />
-
-      <section className="mt-[18px] grid gap-[18px] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
+      <section className="mt-2.5 grid items-start gap-2.5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
         <ServerPanel servers={servers} t={t} />
         <TunnelPanel t={t} />
         <AlertsPanel alerts={alerts} t={t} />
       </section>
 
-      <section className="mt-[18px] grid gap-[18px] xl:grid-cols-3">
+      <section className="mt-2.5 grid items-start gap-2.5 xl:grid-cols-3">
         <OutboundsPanel t={t} />
         <CapacityPanel t={t} trafficTotals={trafficTotals} />
         <ControlPlanePanel t={t} />
@@ -445,8 +447,8 @@ function HealthChartPanel({
   const option = useMemo(() => createHealthChartOption(series, t), [series, t]);
 
   return (
-    <section className={`${panelClass} mt-[18px]`}>
-      <div className="flex flex-col gap-3 border-b border-afro-line pb-3.5 sm:flex-row sm:items-center sm:justify-between">
+    <section className={panelClass}>
+      <div className="flex flex-col gap-2.5 border-b border-afro-line pb-2.5 sm:flex-row sm:items-center sm:justify-between">
         <PanelHeadingContent title={t.panels.healthTimeline} meta={t.panels.monitoredNodes(series.length)} />
         <div className="inline-grid w-fit grid-flow-col rounded-md border border-afro-line bg-[#eef3f5] p-1">
           {timeRanges.map((item) => {
@@ -455,7 +457,7 @@ function HealthChartPanel({
 
             return (
               <button
-                className={`min-h-8 min-w-12 rounded px-2.5 text-sm font-bold ${activeClass}`}
+                className={`min-h-7 min-w-10 rounded px-2 text-[13px] font-bold ${activeClass}`}
                 key={item.value}
                 onClick={() => onRangeChange(item.value)}
                 type="button"
@@ -468,7 +470,7 @@ function HealthChartPanel({
       </div>
       <EChart
         ariaLabel={t.aria.healthChart}
-        className="mt-4 h-[270px] w-full"
+        className="mt-2 h-[145px] w-full xl:h-[150px] 2xl:h-[135px]"
         option={option}
       />
     </section>
@@ -479,13 +481,13 @@ function OutboundsPanel({ t }: { t: DashboardStrings }) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.outbounds} icon={ArrowDownUp} meta={t.panels.priorityFailover} />
-      <div className="mt-3 grid gap-2.5">
+      <div className="mt-2.5 grid gap-2">
         {outbounds.map((outbound) => (
-          <div className="grid min-h-[66px] grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={outbound.name}>
-            <span className="grid size-8 place-items-center rounded bg-[#eef3f5] text-sm font-bold text-afro-ink">{outbound.priority}</span>
+          <div className="grid min-h-[46px] grid-cols-[24px_1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={outbound.name}>
+            <span className="grid size-6 place-items-center rounded bg-[#eef3f5] text-[12px] font-bold text-afro-ink">{outbound.priority}</span>
             <div className="min-w-0">
               <strong className="block truncate">{outbound.name}</strong>
-              <span className={mutedTextClass}>{outbound.type} / {outbound.mode}</span>
+              <span className={`${mutedTextClass} block truncate`}>{outbound.type} / {outbound.mode}</span>
             </div>
             <div className="text-right">
               <StatusBadge tone={outbound.status === 'healthy' ? 'good' : outbound.status === 'standby' ? 'neutral' : 'warning'}>
@@ -504,12 +506,12 @@ function AlertsPanel({ alerts, t }: { alerts: AlertRowData[]; t: DashboardString
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(alerts.length)} />
-      <div className="mt-3 grid gap-2.5">
+      <div className="mt-2.5 grid gap-2">
         {alerts.map((alert) => (
-          <div className="grid min-h-[58px] grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={`${alert.source}-${alert.title}`}>
+          <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={`${alert.source}-${alert.title}`}>
             <div className="min-w-0">
               <strong className="block truncate">{alert.title}</strong>
-              <span className={mutedTextClass}>{alert.source}</span>
+              <span className={`${mutedTextClass} block truncate`}>{alert.source}</span>
             </div>
             <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
           </div>
@@ -531,11 +533,11 @@ function CapacityPanel({ t, trafficTotals }: { t: DashboardStrings; trafficTotal
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.capacity} icon={Network} meta={t.panels.managerView} />
-      <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+      <div className="mt-2.5 grid gap-1.5">
         {items.map((item) => (
-          <div className="min-h-[70px] rounded-md border border-afro-line p-3" key={item.label}>
-            <span className={mutedTextClass}>{item.label}</span>
-            <strong className="mt-1 block text-[22px] leading-tight">{item.value}</strong>
+          <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line px-2 py-1" key={item.label}>
+            <span className={`${mutedTextClass} min-w-0 truncate`}>{item.label}</span>
+            <strong className="shrink-0 text-right text-[14px] leading-tight">{item.value}</strong>
           </div>
         ))}
       </div>
@@ -554,10 +556,10 @@ function ControlPlanePanel({ t }: { t: DashboardStrings }) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.controlPlane} icon={ShieldCheck} meta={t.panels.operations} />
-      <div className="mt-3 grid gap-2.5">
+      <div className="mt-2.5 grid gap-2">
         {rows.map((row) => (
-          <div className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={row.label}>
-            <span className={mutedTextClass}>{row.label}</span>
+          <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line px-2" key={row.label}>
+            <span className={`${mutedTextClass} min-w-0 truncate`}>{row.label}</span>
             <StatusBadge tone={row.tone}>{row.value}</StatusBadge>
           </div>
         ))}
@@ -568,10 +570,10 @@ function ControlPlanePanel({ t }: { t: DashboardStrings }) {
 
 function ServersPage({ servers, t }: { servers: ServerRowData[]; t: DashboardStrings }) {
   return (
-    <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+    <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
       <section className={panelClass}>
         <PanelHeading title={t.panels.serverInventory} icon={Server} meta={t.panels.managedNodes(servers.length)} />
-        <div className="mt-3 grid gap-3">
+        <div className="mt-2.5 grid gap-2.5">
           {servers.map((server, index) => (
             <ServerManagementCard index={index} server={server} key={server.id} t={t} />
           ))}
@@ -580,7 +582,7 @@ function ServersPage({ servers, t }: { servers: ServerRowData[]; t: DashboardStr
 
       <section className={panelClass}>
         <PanelHeading title={t.panels.accessBootstrap} icon={ShieldCheck} meta={t.panels.safeOperations} />
-        <div className="mt-3 grid gap-2.5">
+        <div className="mt-2.5 grid gap-2">
           {[
             [t.accessRows.defaultUser, 'afrogate'],
             [t.accessRows.accessMethod, t.accessRows.sshKey],
@@ -588,8 +590,8 @@ function ServersPage({ servers, t }: { servers: ServerRowData[]; t: DashboardStr
             [t.accessRows.credentialView, t.accessRows.hidden],
             [t.accessRows.auditMode, t.accessRows.required],
           ].map(([label, value]) => (
-            <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
-              <span className={mutedTextClass}>{label}</span>
+            <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+              <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
               <strong className="text-sm">{value}</strong>
             </div>
           ))}
@@ -607,37 +609,37 @@ function ServerManagementCard({ index, server, t }: { index: number; server: Ser
       : ['core uplink / Germany / gateway'];
 
   return (
-    <article className="rounded-md border border-afro-line p-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <article className="rounded-md border border-afro-line p-2.5">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <strong className="block truncate text-lg">{server.name}</strong>
+          <strong className="block truncate text-base">{server.name}</strong>
           <span className={mutedTextClass}>{server.meta}</span>
         </div>
         <button
-          className="min-h-9 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue"
+          className="min-h-8 rounded-md border border-afro-line bg-white px-2.5 text-[13px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue"
           type="button"
         >
           {t.actions.edit}
         </button>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
         <UsageBar label={t.resources.cpu} value={server.cpu} />
         <UsageBar label={t.resources.ram} value={server.ram} />
         <UsageBar label={t.resources.diskFree} value={server.diskFree} invert />
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+      <div className="mt-2.5 grid gap-2 sm:grid-cols-[1fr_auto]">
         <div className="grid gap-1.5">
           {interfaces.map((item) => (
-            <span className="rounded-md bg-[#eef3f5] px-2.5 py-1.5 text-[13px] text-afro-muted" key={item}>
+            <span className="rounded-md bg-[#eef3f5] px-2 py-1 text-[12px] text-afro-muted" key={item}>
               {item}
             </span>
           ))}
         </div>
         <div className="text-left sm:text-right">
           <span className={mutedTextClass}>{t.resources.health}</span>
-          <b className={`block text-[24px] ${getScoreClass(server.score)}`}>{server.score}</b>
+          <b className={`block text-[20px] ${getScoreClass(server.score)}`}>{server.score}</b>
         </div>
       </div>
     </article>
@@ -646,7 +648,7 @@ function ServerManagementCard({ index, server, t }: { index: number; server: Ser
 
 function RoutesPage({ t }: { t: DashboardStrings }) {
   return (
-    <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <TunnelPanel t={t} />
       <OutboundsPanel t={t} />
       <RoutePolicyPanel t={t} />
@@ -666,10 +668,10 @@ function RoutePolicyPanel({ t }: { t: DashboardStrings }) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.routePolicy} icon={Route} meta={t.panels.stabilityRules} />
-      <div className="mt-3 grid gap-2.5">
+      <div className="mt-2.5 grid gap-2">
         {policies.map(([label, value, tone]) => (
-          <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
-            <span className={mutedTextClass}>{label}</span>
+          <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+            <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
             <StatusBadge tone={tone}>{value}</StatusBadge>
           </div>
         ))}
@@ -688,12 +690,12 @@ function FailoverPanel({ t }: { t: DashboardStrings }) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.failover} icon={ArrowDownUp} meta={t.panels.latestDecisions} />
-      <div className="mt-3 grid gap-2.5">
+      <div className="mt-2.5 grid gap-2">
         {events.map(([title, detail, tone]) => (
-          <div className="grid min-h-[58px] grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={title}>
+          <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={title}>
             <div className="min-w-0">
               <strong className="block truncate">{title}</strong>
-              <span className={mutedTextClass}>{detail}</span>
+              <span className={`${mutedTextClass} block truncate`}>{detail}</span>
             </div>
             <StatusBadge tone={tone}>{t.status[tone]}</StatusBadge>
           </div>
@@ -705,15 +707,15 @@ function FailoverPanel({ t }: { t: DashboardStrings }) {
 
 function AlertsPage({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings }) {
   return (
-    <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+    <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
       <section className={panelClass}>
         <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(alerts.length)} />
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-2.5 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
                 {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.channel].map((heading) => (
-                  <th className="border-b border-afro-line px-2 py-[13px] text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                  <th className="border-b border-afro-line px-2 py-2 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
                     {heading}
                   </th>
                 ))}
@@ -737,15 +739,15 @@ function AlertsPage({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings
 
       <section className={panelClass}>
         <PanelHeading title={t.panels.alertRules} icon={Bell} meta={t.panels.mvpThresholds} />
-        <div className="mt-3 grid gap-2.5">
+        <div className="mt-2.5 grid gap-2">
           {([
             [t.alertRules.storage, '< 10%', 'critical'],
             [t.alertRules.healthScore, '< 60', 'warning'],
             [t.alertRules.ping, '> 150 ms', 'warning'],
             [t.alertRules.packetLoss, '> 1%', 'critical'],
           ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
-            <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
-              <span className={mutedTextClass}>{label}</span>
+            <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+              <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
               <StatusBadge tone={tone}>{value}</StatusBadge>
             </div>
           ))}
@@ -856,7 +858,7 @@ function StatusBadge({ children, tone }: { children: ReactNode; tone: Tone }) {
   }[tone];
 
   return (
-    <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-bold ${toneClass}`}>
+    <span className={`inline-flex min-h-[22px] items-center rounded-full border px-1.5 text-[11px] font-bold ${toneClass}`}>
       {children}
     </span>
   );
@@ -871,9 +873,9 @@ function MetricCard({ item }: { item: MetricCardData }) {
   }[item.tone];
 
   return (
-    <div className={`grid min-h-24 gap-2 rounded-lg border border-t-4 border-afro-line bg-afro-panel p-[18px] ${toneClass}`}>
-      <span className="text-sm text-afro-muted">{item.label}</span>
-      <strong className="text-[26px] leading-tight">{item.value}</strong>
+    <div className={`grid min-h-[62px] gap-1 rounded-md border border-t-4 border-afro-line bg-afro-panel p-2.5 ${toneClass}`}>
+      <span className="text-[12px] text-afro-muted">{item.label}</span>
+      <strong className="text-[19px] leading-tight">{item.value}</strong>
     </div>
   );
 }
@@ -882,7 +884,7 @@ function ServerPanel({ servers, t }: { servers: ServerRowData[]; t: DashboardStr
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.servers} icon={Gauge} meta={t.panels.nodes(servers.length)} />
-      <div className="mt-3.5 grid gap-3">
+      <div className="mt-2 grid gap-2">
         {servers.map((server) => (
           <ServerRow server={server} key={server.id} t={t} />
         ))}
@@ -893,21 +895,21 @@ function ServerPanel({ servers, t }: { servers: ServerRowData[]; t: DashboardStr
 
 function ServerRow({ server, t }: { server: ServerRowData; t: DashboardStrings }) {
   return (
-    <div className="grid min-h-[86px] items-center gap-3.5 rounded-md border border-afro-line p-3 sm:grid-cols-[150px_1fr_48px]">
-      <div className="grid gap-1">
-        <strong className="break-words">{server.name}</strong>
-        <span className={mutedTextClass}>{server.meta}</span>
+    <div className="grid min-h-[54px] items-center gap-2 rounded-md border border-afro-line p-2 sm:grid-cols-[116px_1fr_96px_36px]">
+      <div className="min-w-0">
+        <strong className="block truncate text-[13px]">{server.name}</strong>
+        <span className="block truncate text-[12px] text-afro-muted">{server.meta}</span>
       </div>
-      <div className="grid gap-[7px]">
+      <div className="grid gap-1 sm:grid-cols-3">
         <UsageBar label={t.resources.cpu} value={server.cpu} />
         <UsageBar label={t.resources.ram} value={server.ram} />
         <UsageBar label={t.resources.diskFree} value={server.diskFree} invert />
-        <div className="grid gap-1.5 text-[12px] text-afro-muted sm:grid-cols-2 sm:gap-2">
-          <span className="truncate">{t.resources.down} <strong className="text-afro-ink">{formatBytesPerSecond(server.inboundBps)}</strong></span>
-          <span className="truncate">{t.resources.up} <strong className="text-afro-ink">{formatBytesPerSecond(server.outboundBps)}</strong></span>
-        </div>
       </div>
-      <b className={`text-left text-[22px] sm:text-right ${getScoreClass(server.score)}`}>{server.score}</b>
+      <div className="grid gap-0.5 text-[11px] text-afro-muted">
+        <span className="truncate">{t.resources.down} <strong className="text-afro-ink">{formatBytesPerSecond(server.inboundBps)}</strong></span>
+        <span className="truncate">{t.resources.up} <strong className="text-afro-ink">{formatBytesPerSecond(server.outboundBps)}</strong></span>
+      </div>
+      <b className={`text-left text-[17px] sm:text-right ${getScoreClass(server.score)}`}>{server.score}</b>
     </div>
   );
 }
@@ -920,7 +922,7 @@ function UsageBar({ label, value, invert = false }: { label: string; value: numb
 
   return (
     <span
-      className="min-h-[22px] rounded-full px-2.5 py-1 text-[13px] text-[#243238]"
+      className="min-h-[18px] rounded-full px-1.5 py-0.5 text-[11px] leading-tight text-[#243238]"
       style={{
         background: `linear-gradient(90deg, #a9d8d1 ${fillValue}%, #edf2f4 0)`,
       } as CSSProperties}
@@ -934,12 +936,12 @@ function TunnelPanel({ t }: { t: DashboardStrings }) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(3)} />
-      <div className="mt-3.5 overflow-x-auto">
+      <div className="mt-2.5 overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
               {[t.tables.tunnel, t.tables.operator, t.tables.ping, t.tables.jitter, t.tables.loss, t.tables.score].map((heading) => (
-                <th className="border-b border-afro-line px-2 py-[13px] text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
+                <th className="border-b border-afro-line px-2 py-2 text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
                   {heading}
                 </th>
               ))}
@@ -975,9 +977,9 @@ function PanelHeading({
   meta?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-afro-line pb-3.5">
+    <div className="flex items-center justify-between gap-2 border-b border-afro-line pb-2">
       <PanelHeadingContent title={title} meta={meta} />
-      <Icon size={18} />
+      <Icon size={16} />
     </div>
   );
 }
@@ -985,8 +987,8 @@ function PanelHeading({
 function PanelHeadingContent({ title, meta }: { title: string; meta?: string }) {
   return (
     <div className="min-w-0">
-      <h2 className="text-[17px] font-bold">{title}</h2>
-      {meta ? <span className={mutedTextClass}>{meta}</span> : null}
+      <h2 className="truncate text-[14px] font-bold">{title}</h2>
+      {meta ? <span className={`${mutedTextClass} block truncate`}>{meta}</span> : null}
     </div>
   );
 }
@@ -995,7 +997,7 @@ function TableCell({ children, alignRight = false }: { children: ReactNode; alig
   const alignmentClass = alignRight ? 'text-right' : 'text-left';
 
   return (
-    <td className={`border-b border-afro-line px-2 py-[13px] text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`}>
+    <td className={`border-b border-afro-line px-2 py-2 text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`}>
       {children}
     </td>
   );

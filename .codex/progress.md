@@ -57,6 +57,8 @@
 - Tightened responsive dashboard layouts for storage chips, capacity cards, nav labels, and server row traffic details.
 - Added stable `data-view` attributes to sidebar navigation for browser-level layout verification.
 - Changed the desktop shell to `h-screen`/`overflow-hidden` and made the main content pane the only vertical scroll container.
+- Compacted the dashboard into a denser NOC layout with smaller cards, rows, charts, resource strips, and earlier multi-column dashboard sections.
+- Verified the dashboard, Servers, Routes, and Alerts pages fit without main-content overflow on a 1920x1080 second-LCD viewport.
 
 ### Current State
 
@@ -141,4 +143,5 @@ Repository remote is ready:
 - Verified Persian font asset wiring and copied font asset with version check, workspace typecheck, production build, and dependency audit.
 - Verified Dashboard, Servers, Routes, and Alerts pages in English and Persian at 375x812, 768x1024, 1440x900, and 1920x1080 using local Edge CDP against the Vite server on port 3100.
 - Verified English/LTR fixed-sidebar behavior at 1440x900 and 1920x1080: window scroll stays at 0, document height equals viewport height, sidebar stays top-left, and content scrolls independently when needed.
+- Verified compact dashboard density in local Edge CDP: 1920x1080 reports `0px` main-content overflow for Dashboard, Servers, Routes, and Alerts; 1440x900 Dashboard content was reduced from about `2581px` to `1182px`.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

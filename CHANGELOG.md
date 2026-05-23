@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4 - 2026-05-23
+
+- Compacted the dashboard information density with smaller panels, cards, rows, charts, and resource strips.
+- Reworked the dashboard grid so the second-LCD 1920x1080 monitoring view fits without main-content overflow.
+- Added truncation and fixed row sizing to reduce Persian/English label wrapping in dense operational panels.
+
 ## 0.3.3 - 2026-05-23
 
 - Changed the desktop dashboard shell so the sidebar remains fixed in place and only the main content pane scrolls.

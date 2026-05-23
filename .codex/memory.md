@@ -107,3 +107,4 @@
 - Dashboard sidebar should not use horizontal scrolling; mobile nav wraps in a compact grid and desktop sidebar stays sticky with no sidebar scroll.
 - Responsive checks should cover Dashboard, Servers, Routes, and Alerts in English and Persian at mobile, tablet, desktop, and second-LCD widths.
 - Desktop dashboard shell uses a fixed-height viewport layout: document scrolling is disabled, the sidebar stays fixed at the left in English/LTR, and `main > section` owns vertical scrolling.
+- The second-LCD dashboard target is 1920x1080 with no main-content overflow; keep NOC sections compact, use truncation for dense labels, and prefer panel-internal density over growing the page height.
