@@ -1,0 +1,12 @@
+@font-face {
+  font-family: "AfroGate YekanBakh";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src:
+    local("Yekan Bakh"),
+    local("YekanBakh"),
+    url("./YekanBakh/Yekan Bakh Variable/webfonts/YekanBakhFaNum-VF.woff2") format("woff2"),
+    url("./YekanBakh/Yekan Bakh Variable/webfonts/YekanBakhFaNum-VF.woff") format("woff"),
+    url("./YekanBakh/Yekan Bakh Variable/YekanBakhFaNum-VF.ttf") format("truetype");
+}

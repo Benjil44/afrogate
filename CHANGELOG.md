@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 - 2026-05-23
+
+- Switched Persian dashboard typography from IRANSans to the local YekanBakh FaNum variable font.
+- Updated DOM and ECharts Persian font-family wiring so canvas chart labels match the app typography.
+- Updated multilingual UI documentation and project memory to point at the local YekanBakh asset path.
+
 ## 0.4.0 - 2026-05-23
 
 - Added guarded `/api/admin` server management APIs for inventory, detail, create, update, and delete operations.

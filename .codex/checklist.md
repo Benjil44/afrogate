@@ -87,7 +87,7 @@
 - [x] Separate dashboard download and upload traffic values.
 - [x] English/Persian dashboard language toggle.
 - [x] Sidebar footer language icon.
-- [x] Local Persian font-face wiring for IRANSans assets.
+- [x] Local Persian font-face wiring for YekanBakh assets.
 - [x] Non-scrolling responsive sidebar.
 - [x] Desktop fixed sidebar with main-content-only scrolling.
 - [x] Compact second-LCD dashboard density so 1920x1080 monitoring fits without main-content overflow.

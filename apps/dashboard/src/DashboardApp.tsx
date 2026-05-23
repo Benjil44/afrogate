@@ -1503,7 +1503,7 @@ function createDashboardFormatters(language: DashboardLanguage) {
   const locale = isPersian ? 'fa-IR-u-nu-arabext' : 'en-US';
   const percentSign = isPersian ? '٪' : '%';
   const fontFamily = isPersian
-    ? '"AfroGate IRANSans", Tahoma, Arial, sans-serif'
+    ? '"AfroGate YekanBakh", Tahoma, Arial, sans-serif'
     : 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   const integerFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
   const decimalFormatter = new Intl.NumberFormat(locale, {

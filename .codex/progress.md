@@ -68,6 +68,9 @@
 - Added a backend audit service and audit events for server and outbound mutations.
 - Kept outbound route management secret-safe by rejecting secret-like config keys, redacting legacy secret-like config values in responses, and exposing only `hasSecretRef` instead of saved secret references.
 - Bumped AfroGate to `0.4.0` for the guarded admin management API capability.
+- Switched Persian dashboard typography from IRANSans to the local YekanBakh FaNum variable webfont under `apps/dashboard/public/assets/fonts/YekanBakh/`.
+- Updated dashboard DOM CSS and ECharts font-family wiring to use `AfroGate YekanBakh`.
+- Bumped AfroGate to `0.4.1` for the Persian font update.
 
 ### Current State
 
@@ -164,4 +167,8 @@ Repository remote is ready:
 - Verified guarded admin management API code with workspace typecheck and production build.
 - Verified `npm run version:check` after the `0.4.0` bump.
 - Verified `npm audit` still reports zero vulnerabilities.
+- Verified the running Vite server returns HTTP 200 for `yekanbakh.css` and the `YekanBakhFaNum-VF.woff2` font file.
+- Verified the YekanBakh switch with workspace typecheck and production build.
+- Verified `npm run version:check` after the `0.4.1` bump.
+- Verified `npm audit` still reports zero vulnerabilities after the YekanBakh switch.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.
