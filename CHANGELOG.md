@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 - 2026-05-23
+
+- Fixed the dashboard sidebar so navigation wraps instead of horizontally scrolling on mobile and remains sticky on desktop.
+- Hardened dashboard responsive layouts across Dashboard, Servers, Routes, and Alerts pages for English and Persian.
+- Added stable navigation data attributes for browser-level responsive checks.
+
 ## 0.3.1 - 2026-05-23
 
 - Added local IRANSans/Iranian Sans font-face wiring for Persian dashboard mode without using a CDN.

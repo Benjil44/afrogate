@@ -53,6 +53,9 @@
 - Added multilingual UI policy documentation and linked it from README and AGENTS.
 - Added local IRANSans font-face wiring for Persian mode and an asset folder for licensed font files without using a CDN.
 - Moved the workspace-provided `Iranian Sans.ttf` into the dashboard font assets as `IranianSans.ttf`.
+- Reworked the dashboard sidebar so mobile navigation wraps instead of horizontally scrolling and desktop navigation remains sticky.
+- Tightened responsive dashboard layouts for storage chips, capacity cards, nav labels, and server row traffic details.
+- Added stable `data-view` attributes to sidebar navigation for browser-level layout verification.
 
 ### Current State
 
@@ -135,4 +138,5 @@ Repository remote is ready:
 - Verified dashboard upload/download split with `npm run version:check`, workspace typecheck, production build, and dependency audit.
 - Verified dashboard multilingual support with `npm run version:check`, workspace typecheck, production build, and dependency audit.
 - Verified Persian font asset wiring and copied font asset with version check, workspace typecheck, production build, and dependency audit.
+- Verified Dashboard, Servers, Routes, and Alerts pages in English and Persian at 375x812, 768x1024, 1440x900, and 1920x1080 using local Edge CDP against the Vite server on port 3100.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

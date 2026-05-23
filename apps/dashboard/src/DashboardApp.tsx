@@ -15,6 +15,7 @@ import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } f
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 type ActiveView = 'dashboard' | 'servers' | 'routes' | 'alerts';
+type AfroIcon = ComponentType<{ size?: number; className?: string }>;
 
 interface MetricCardData {
   label: string;
@@ -69,7 +70,7 @@ interface AlertRowData {
 interface NavItemData {
   id: ActiveView;
   labelKey: ActiveView;
-  icon: ComponentType<{ size?: number }>;
+  icon: AfroIcon;
 }
 
 const refreshIntervalMs = 10_000;
@@ -207,7 +208,7 @@ export function DashboardApp() {
 
   return (
     <main
-      className="grid min-h-screen grid-cols-1 bg-afro-page text-afro-ink lg:grid-cols-[248px_minmax(0,1fr)]"
+      className="grid min-h-screen grid-cols-1 overflow-x-hidden bg-afro-page text-afro-ink lg:grid-cols-[248px_minmax(0,1fr)]"
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
     >
@@ -219,7 +220,7 @@ export function DashboardApp() {
         t={t}
       />
 
-      <section className="min-w-0 p-[18px] md:p-7">
+      <section className="min-w-0 max-w-full p-4 md:p-7">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-1.5 text-[13px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
@@ -290,16 +291,16 @@ function SystemResourceHeader({
       </div>
 
       <div className="mt-3 overflow-x-auto rounded-lg border border-afro-line bg-afro-panel">
-        <div className="flex min-w-max gap-2 p-3">
+        <div className="grid min-w-[220px] gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
           {storages.map((storage) => (
-            <div className="min-w-[190px] rounded-md border border-afro-line px-3 py-2" key={`${storage.serverName}-${storage.path}`}>
+            <div className="min-w-0 rounded-md border border-afro-line px-3 py-2" key={`${storage.serverName}-${storage.path}`}>
               <div className="flex items-center justify-between gap-3">
-                <strong className="max-w-[118px] truncate text-sm">{storage.serverName}</strong>
+                <strong className="min-w-0 truncate text-sm">{storage.serverName}</strong>
                 <StatusBadge tone={getStorageTone(storage.freePercent ?? null)}>
                   {formatPercent(storage.freePercent ?? null)}
                 </StatusBadge>
               </div>
-              <div className={mutedTextClass}>{storage.path}</div>
+              <div className={`${mutedTextClass} truncate`}>{storage.path}</div>
             </div>
           ))}
         </div>
@@ -314,7 +315,7 @@ function ResourceStat({
   tone,
   value,
 }: {
-  icon: ComponentType<{ size?: number }>;
+  icon: AfroIcon;
   label: string;
   tone: Tone;
   value: string;
@@ -530,7 +531,7 @@ function CapacityPanel({ t, trafficTotals }: { t: DashboardStrings; trafficTotal
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.capacity} icon={Network} meta={t.panels.managerView} />
-      <div className="mt-3 grid grid-cols-2 gap-2.5">
+      <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
         {items.map((item) => (
           <div className="min-h-[70px] rounded-md border border-afro-line p-3" key={item.label}>
             <span className={mutedTextClass}>{item.label}</span>
@@ -768,12 +769,18 @@ function Sidebar({
   t: DashboardStrings;
 }) {
   return (
-    <aside className="flex flex-col bg-afro-sidebar px-[18px] py-4 text-[#eef6f4] md:py-6 lg:min-h-screen">
-      <div className="flex h-10 items-center gap-2.5 text-xl font-bold">
-        <ShieldCheck size={22} />
-        <span>AfroGate</span>
+    <aside className="bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:py-6">
+      <div className="flex items-center justify-between gap-3 lg:block">
+        <div className="flex h-10 items-center gap-2.5 text-xl font-bold">
+          <ShieldCheck size={22} />
+          <span>AfroGate</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-[#91a5a2] lg:hidden">
+          <span>v{appVersion}</span>
+          <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+        </div>
       </div>
-      <nav className="mt-4 grid auto-cols-max grid-flow-col gap-1.5 overflow-x-auto lg:mt-8 lg:flex-1 lg:grid-flow-row lg:content-start">
+      <nav className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:mt-8 lg:flex-1 lg:grid-cols-1 lg:content-start">
         {navItems.map((item) => (
           <NavItem
             item={item}
@@ -790,16 +797,7 @@ function Sidebar({
             <div className="font-bold text-[#c8d7d5]">AfroGate</div>
             <div>v{appVersion}</div>
           </div>
-          <button
-            aria-label={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
-            className="inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white"
-            onClick={() => onLanguageChange(nextLanguage)}
-            title={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
-            type="button"
-          >
-            <Languages size={16} />
-            <span className="text-[11px] font-bold">{t.nextLanguageLabel}</span>
-          </button>
+          <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
         </div>
         <div className="mt-2">{t.languageName}</div>
       </div>
@@ -814,12 +812,37 @@ function NavItem({ item, isActive, onClick, t }: { item: NavItemData; isActive: 
   return (
     <button
       aria-current={isActive ? 'page' : undefined}
-      className={`flex min-h-10 items-center gap-2.5 rounded-md px-3 text-left ${activeClass}`}
+      aria-label={t.nav[item.labelKey]}
+      className={`flex min-h-10 min-w-0 items-center gap-2 rounded-md px-3 text-left text-sm font-bold ${activeClass}`}
+      data-view={item.id}
       onClick={onClick}
       type="button"
     >
-      <Icon size={18} />
-      {t.nav[item.labelKey]}
+      <Icon className="shrink-0" size={18} />
+      <span className="min-w-0 truncate">{t.nav[item.labelKey]}</span>
+    </button>
+  );
+}
+
+function LanguageButton({
+  nextLanguage,
+  onLanguageChange,
+  t,
+}: {
+  nextLanguage: DashboardLanguage;
+  onLanguageChange: (language: DashboardLanguage) => void;
+  t: DashboardStrings;
+}) {
+  return (
+    <button
+      aria-label={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
+      className="inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] px-2 text-[#c8d7d5] hover:border-[#5c7782] hover:text-white"
+      onClick={() => onLanguageChange(nextLanguage)}
+      title={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
+      type="button"
+    >
+      <Languages className="shrink-0" size={16} />
+      <span className="text-[11px] font-bold">{t.nextLanguageLabel}</span>
     </button>
   );
 }
@@ -879,7 +902,7 @@ function ServerRow({ server, t }: { server: ServerRowData; t: DashboardStrings }
         <UsageBar label={t.resources.cpu} value={server.cpu} />
         <UsageBar label={t.resources.ram} value={server.ram} />
         <UsageBar label={t.resources.diskFree} value={server.diskFree} invert />
-        <div className="grid grid-cols-2 gap-2 text-[12px] text-afro-muted">
+        <div className="grid gap-1.5 text-[12px] text-afro-muted sm:grid-cols-2 sm:gap-2">
           <span className="truncate">{t.resources.down} <strong className="text-afro-ink">{formatBytesPerSecond(server.inboundBps)}</strong></span>
           <span className="truncate">{t.resources.up} <strong className="text-afro-ink">{formatBytesPerSecond(server.outboundBps)}</strong></span>
         </div>
@@ -948,7 +971,7 @@ function PanelHeading({
   meta,
 }: {
   title: string;
-  icon: ComponentType<{ size?: number }>;
+  icon: AfroIcon;
   meta?: string;
 }) {
   return (
