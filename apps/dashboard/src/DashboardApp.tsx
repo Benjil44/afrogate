@@ -421,8 +421,8 @@ function DashboardPage({
 }) {
   return (
     <>
-      <section className="mt-2.5 grid items-start gap-2.5 2xl:grid-cols-[minmax(320px,0.42fr)_minmax(0,1fr)]">
-        <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-2" aria-label={t.aria.summary}>
+      <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(300px,0.42fr)_minmax(0,1fr)]">
+        <section className="grid gap-2 sm:grid-cols-2" aria-label={t.aria.summary}>
           {summary.map((item) => (
             <MetricCard item={item} key={item.label} />
           ))}
@@ -437,13 +437,13 @@ function DashboardPage({
         />
       </section>
 
-      <section className="mt-2.5 grid items-start gap-2.5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
+      <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
         <ServerPanel format={format} servers={servers} t={t} />
         <TunnelPanel format={format} t={t} />
         <AlertsPanel alerts={alerts} format={format} t={t} />
       </section>
 
-      <section className="mt-2.5 grid items-start gap-2.5 xl:grid-cols-3">
+      <section className="mt-2 grid items-start gap-2 xl:grid-cols-3">
         <OutboundsPanel format={format} t={t} />
         <CapacityPanel format={format} t={t} trafficTotals={trafficTotals} />
         <ControlPlanePanel format={format} t={t} />
@@ -469,7 +469,7 @@ function HealthChartPanel({
 
   return (
     <section className={panelClass}>
-      <div className="flex flex-col gap-2.5 border-b border-afro-line pb-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 border-b border-afro-line pb-2 sm:flex-row sm:items-center sm:justify-between">
         <PanelHeadingContent title={t.panels.healthTimeline} meta={t.panels.monitoredNodes(format.integer(series.length))} />
         <div className="inline-grid w-fit grid-flow-col rounded-md border border-afro-line bg-[#eef3f5] p-1">
           {timeRanges.map((item) => {
@@ -491,7 +491,7 @@ function HealthChartPanel({
       </div>
       <EChart
         ariaLabel={t.aria.healthChart}
-        className="mt-2 h-[145px] w-full xl:h-[150px] 2xl:h-[135px]"
+        className="mt-2 h-[138px] w-full xl:h-[142px] 2xl:h-[136px]"
         option={option}
       />
     </section>
@@ -645,9 +645,9 @@ function ServerManagementCard({ format, index, server, t }: { format: DashboardF
       </div>
 
       <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
-        <UsageBar format={format} label={t.resources.cpu} value={server.cpu} />
-        <UsageBar format={format} label={t.resources.ram} value={server.ram} />
-        <UsageBar format={format} label={t.resources.diskFree} value={server.diskFree} invert />
+        <UsageBar format={format} icon={Cpu} label={t.resources.cpu} value={server.cpu} />
+        <UsageBar format={format} icon={MemoryStick} label={t.resources.ram} value={server.ram} />
+        <UsageBar format={format} icon={HardDrive} label={t.resources.diskFree} value={server.diskFree} invert />
       </div>
 
       <div className="mt-2.5 grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -958,26 +958,40 @@ function ServerPanel({ format, servers, t }: { format: DashboardFormatters; serv
 
 function ServerRow({ format, server, t }: { format: DashboardFormatters; server: ServerRowData; t: DashboardStrings }) {
   return (
-    <div className="grid min-h-[54px] items-center gap-2 rounded-md border border-afro-line p-2 sm:grid-cols-[116px_1fr_96px_36px]">
+    <div className="grid min-h-[54px] grid-cols-[minmax(116px,1fr)_auto] items-center gap-2 rounded-md border border-afro-line p-2 sm:grid-cols-[minmax(116px,1fr)_auto_auto]">
       <div className="min-w-0">
         <strong className="block truncate text-[13px]">{format.label(server.name)}</strong>
         <span className="block truncate text-[12px] text-afro-muted">{format.label(server.meta)}</span>
       </div>
-      <div className="grid gap-1 sm:grid-cols-3">
-        <UsageBar format={format} label={t.resources.cpu} value={server.cpu} />
-        <UsageBar format={format} label={t.resources.ram} value={server.ram} />
-        <UsageBar format={format} label={t.resources.diskFree} value={server.diskFree} invert />
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-afro-muted">
+        <UsageBar format={format} icon={Cpu} label={t.resources.cpu} value={server.cpu} />
+        <UsageBar format={format} icon={MemoryStick} label={t.resources.ram} value={server.ram} />
+        <UsageBar format={format} icon={HardDrive} label={t.resources.diskFree} value={server.diskFree} invert />
       </div>
-      <div className="grid gap-0.5 text-[11px] text-afro-muted">
-        <span className="truncate">{t.resources.down} <strong className="text-afro-ink">{format.bytesPerSecond(server.inboundBps)}</strong></span>
-        <span className="truncate">{t.resources.up} <strong className="text-afro-ink">{format.bytesPerSecond(server.outboundBps)}</strong></span>
+      <div className="col-span-2 flex min-w-0 items-center justify-between gap-1.5 sm:col-span-1 sm:justify-end">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:justify-end">
+          <MetricPill icon={Download} label={t.resources.down} value={format.bytesPerSecond(server.inboundBps)} />
+          <MetricPill icon={Upload} label={t.resources.up} value={format.bytesPerSecond(server.outboundBps)} />
+        </div>
+        <b className={`shrink-0 text-[17px] ${getScoreClass(server.score)}`}>{format.integer(server.score)}</b>
       </div>
-      <b className={`text-left text-[17px] sm:text-right ${getScoreClass(server.score)}`}>{format.integer(server.score)}</b>
     </div>
   );
 }
 
-function UsageBar({ format, label, value, invert = false }: { format: DashboardFormatters; label: string; value: number | null; invert?: boolean }) {
+function UsageBar({
+  format,
+  icon: Icon,
+  label,
+  value,
+  invert = false,
+}: {
+  format: DashboardFormatters;
+  icon: AfroIcon;
+  label: string;
+  value: number | null;
+  invert?: boolean;
+}) {
   const hasValue = typeof value === 'number' && Number.isFinite(value);
   const boundedValue = hasValue ? clamp(value, 0, 100) : 0;
   const fillValue = invert ? 100 - boundedValue : boundedValue;
@@ -985,12 +999,28 @@ function UsageBar({ format, label, value, invert = false }: { format: DashboardF
 
   return (
     <span
-      className="min-h-[18px] rounded-full px-1.5 py-0.5 text-[11px] leading-tight text-[#243238]"
+      aria-label={`${label} ${displayValue}`}
+      className="inline-flex min-h-[19px] min-w-[46px] items-center justify-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] leading-tight text-[#243238]"
       style={{
         background: `linear-gradient(90deg, #a9d8d1 ${fillValue}%, #edf2f4 0)`,
       } as CSSProperties}
+      title={`${label} ${displayValue}`}
     >
-      {label} {displayValue}
+      <Icon className="shrink-0" size={12} />
+      <span className="whitespace-nowrap font-bold">{displayValue}</span>
+    </span>
+  );
+}
+
+function MetricPill({ icon: Icon, label, value }: { icon: AfroIcon; label: string; value: string }) {
+  return (
+    <span
+      aria-label={`${label} ${value}`}
+      className="inline-flex min-h-[19px] min-w-[80px] shrink-0 items-center justify-center gap-1 rounded-full bg-[#f4f7f8] px-1.5 py-0.5 text-[11px] font-bold leading-tight text-afro-ink"
+      title={`${label} ${value}`}
+    >
+      <Icon className="shrink-0 text-afro-muted" size={12} />
+      <span className="whitespace-nowrap">{value}</span>
     </span>
   );
 }
@@ -1210,11 +1240,11 @@ function createHealthChartOption(
       },
     },
     grid: {
-      bottom: 48,
+      bottom: 24,
       containLabel: true,
       left: 6,
       right: 8,
-      top: 42,
+      top: 36,
     },
     xAxis: {
       type: 'time',
@@ -1224,15 +1254,19 @@ function createHealthChartOption(
       axisLabel: {
         color: '#60717a',
         formatter: (value: string | number) => format.chartTime(value),
+        hideOverlap: true,
+        margin: 8,
       },
     },
     yAxis: {
       type: 'value',
       min: 0,
       max: 100,
+      splitNumber: 4,
       axisLabel: {
         color: '#60717a',
         formatter: (value: string | number) => format.integer(Number(value)),
+        margin: 6,
       },
       splitLine: {
         lineStyle: { color: '#edf2f4' },
@@ -1242,15 +1276,6 @@ function createHealthChartOption(
       {
         type: 'inside',
         throttle: 50,
-      },
-      {
-        type: 'slider',
-        bottom: 8,
-        height: 18,
-        borderColor: '#dce4e8',
-        fillerColor: 'rgba(39, 100, 168, 0.14)',
-        handleSize: 12,
-        showDetail: false,
       },
     ],
     series: chartSeries,

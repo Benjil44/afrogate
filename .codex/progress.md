@@ -150,4 +150,6 @@ Repository remote is ready:
 - Verified packet-loss translation fix with dashboard typecheck and version consistency check.
 - Verified Persian dashboard font and runtime text in local Edge CDP: `main` and buttons compute to `"AfroGate IRANSans"`, and sample text renders Persian digits, units, latency, packet loss, and localized sample labels.
 - Verified sidebar alert warning state in local Edge CDP with the fallback warning sample; critical severity uses the same alert-row source with a red class path.
+- Added a UI/UX audit checklist and fixed the first dashboard density issues: compact icon resource rows, simplified health timeline spacing, and zero main-content overflow on the 1920x1080 Dashboard view in English and Persian.
+- Verified the latest UI/UX pass with dashboard typecheck and local Edge CDP across Dashboard, Servers, Routes, and Alerts in English/Persian at mobile, tablet, desktop, and second-LCD sizes; measured text overflow cases are now zero.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

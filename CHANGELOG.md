@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.8 - 2026-05-23
+
+- Added a UI/UX audit checklist for the dense monitoring dashboard and remaining layout hardening work.
+- Reworked dashboard server rows into compact icon-based CPU/RAM/disk/download/upload indicators with accessible labels and tooltips.
+- Simplified the ECharts health timeline density by removing the visible slider, tightening chart spacing, and keeping inside zoom support.
+- Verified the 1920x1080 second-LCD Dashboard view has zero main-content overflow and no measured text overflow in English or Persian.
+
 ## 0.3.7 - 2026-05-23
 
 - Added sidebar alert severity state so the Alerts navigation item shows an amber warning badge or a red critical badge with localized counts.

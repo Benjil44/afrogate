@@ -102,6 +102,22 @@
 - [ ] Tunnel detail page.
 - [ ] Real alert API-bound Alerts page.
 
+## UI/UX Audit Backlog
+
+- [x] Run browser UI audit across Dashboard, Servers, Routes, and Alerts in English/Persian at mobile, tablet, desktop, and second-LCD widths.
+- [x] Sidebar alert severity indicator with red critical state.
+- [x] Persian font and number/unit localization pass.
+- [x] Replace cramped server CPU/RAM/disk text chips with icon+value indicators.
+- [x] Simplify the health chart so timeline labels and the plot are readable in dashboard density.
+- [x] Keep the 1920x1080 second-LCD dashboard at zero main-content overflow in English and Persian.
+- [x] Reduce dashboard vertical scroll at 1440x900 without making the 1920x1080 NOC display feel sparse.
+- [ ] Improve mobile/tablet resource strip density.
+- [ ] Add empty/loading/error states for every dashboard panel.
+- [ ] Add hover/tooltips for dense icon-only monitoring controls and metrics.
+- [ ] Review color contrast for warning/critical states in light and dark sidebar contexts.
+- [ ] Bind alert/sidebar severity to real alert API rows instead of fallback/computed rows.
+- [ ] Add screenshot-based visual regression captures for the dense dashboard layout.
+
 ## Phase 2: Users, Usage, Billing
 
 - [ ] Telegram identity user model.

@@ -112,3 +112,5 @@
 - Desktop dashboard shell uses a fixed-height viewport layout: document scrolling is disabled, the sidebar stays fixed at the left in English/LTR, and `main > section` owns vertical scrolling.
 - The second-LCD dashboard target is 1920x1080 with no main-content overflow; keep NOC sections compact, use truncation for dense labels, and prefer panel-internal density over growing the page height.
 - Sidebar alert navigation state is driven by computed alert rows: critical count wins and must render red; warning-only state renders amber; counts should use the current dashboard formatter.
+- Dashboard UI/UX audits should check Dashboard, Servers, Routes, and Alerts in English and Persian at mobile, tablet, 1440x900, and 1920x1080; the second-LCD Dashboard target is `0px` main-content overflow and zero measured text-overflow cases.
+- Dense dashboard rows should use compact icon indicators with accessible labels/tooltips for repeated CPU/RAM/disk/download/upload values, especially in Persian where localized units are longer.
