@@ -117,3 +117,6 @@
 - Desktop sidebar collapse state is stored in `afrogate.dashboard.sidebar`; expanded width is 248px, collapsed width is 80px, and mobile/tablet navigation should stay full-width even when the stored state is collapsed.
 - Sidebar collapse/expand should remain an icon-only edge handle on the sidebar/content divider, not a text button row inside the sidebar header.
 - Panel header metadata such as node/link/visible counts should stay inline with the panel title; avoid two-line headers for short operational metadata.
+- Backend admin server/outbound APIs live under `/api/admin/*`, use `AdminTokenGuard` plus `RolesGuard`, allow read access to admin/support/auditor roles, and reserve writes for admin/owner.
+- Server and outbound write APIs create audit log rows for create, update, delete, and outbound priority moves.
+- Outbound API responses do not expose `secretRef` values; they expose `hasSecretRef`, redact secret-like config keys, and reject new outbound config payloads containing secret-looking keys so raw secrets stay out of normal route management.

@@ -55,17 +55,17 @@
 - [x] Backend bootstrap auth guard for admin APIs.
 - [x] Role guard/decorator foundation.
 - [ ] Dashboard session login and MFA-ready admin auth.
-- [ ] Apply admin guards to sensitive server/outbound APIs.
-- [ ] Audit log foundation.
-- [ ] CRUD for servers.
+- [x] Apply admin guards to sensitive server/outbound APIs.
+- [x] Audit log foundation.
+- [x] CRUD for servers.
 - [x] Data model for server access and outbound failover.
 - [ ] Server edit screen with safe access/bootstrap tabs.
 - [ ] Encrypted server credential storage.
 - [ ] CRUD for tunnels and interfaces.
-- [ ] CRUD for outbound routes/gateways.
-- [ ] Outbound priority move up/down.
+- [x] CRUD for outbound routes/gateways.
+- [x] Outbound priority move up/down.
 - [ ] Outbound health check scheduler.
-- [ ] Outbound failover history.
+- [x] Outbound failover history.
 - [ ] Agent registration endpoint.
 - [x] Metrics ingest endpoint.
 - [x] Protect metrics ingest with agent bearer token.

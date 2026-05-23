@@ -63,13 +63,19 @@
 - Strengthened Persian dashboard typography and number formatting so Persian mode uses local IRANSans, Persian digits, Persian units, localized clock/latency/threshold values, and localized fallback sample names.
 - Added alert-aware sidebar navigation so the Alerts item shows warning/critical counts and turns red when critical alerts exist.
 
+- Added guarded backend admin APIs under `/api/admin` for server inventory/detail/create/update/delete, outbound list/detail/create/update/delete, outbound priority moves, and route failover history reads.
+- Added shared TypeScript contracts for admin server, access profile, outbound, and route failover event responses.
+- Added a backend audit service and audit events for server and outbound mutations.
+- Kept outbound route management secret-safe by rejecting secret-like config keys, redacting legacy secret-like config values in responses, and exposing only `hasSecretRef` instead of saved secret references.
+- Bumped AfroGate to `0.4.0` for the guarded admin management API capability.
+
 ### Current State
 
 - The repository now has a scaffolded backend, dashboard, agent, shared package, and infra samples.
 - Local git repository exists on branch `main`.
 - Remote target is configured for `Benjil44/afrogate` and local `main` tracks `origin/main`.
 - Backend, dashboard, agent, shared package, and infra folders are scaffolded.
-- Current highest priority remains the monitoring MVP, now moving from overview metrics into alert delivery and admin security.
+- Current highest priority remains the monitoring MVP, now moving from guarded admin management APIs into real dashboard edit flows, alert API binding, and alert delivery.
 - Enhancement approach is documented, but not implemented yet.
 - First real data path exists: agent-style metrics can be accepted by the backend, persisted to PostgreSQL, and rendered by the dashboard when the API/database are configured.
 
@@ -77,11 +83,11 @@
 
 Continue the monitoring MVP:
 
-1. Add admin-safe server/outbound read APIs and mutation APIs after roles are enforced.
-2. Add real server edit flow with safe access/bootstrap tabs.
-3. Add alert listing endpoints and bind dashboard alerts to real alert rows.
-4. Add Telegram critical alert delivery using the shared control-plane egress policy.
-5. Add WireGuard tunnel metrics to the Python agent.
+1. Add real server edit flow with safe access/bootstrap tabs.
+2. Add alert listing endpoints and bind dashboard alerts to real alert rows.
+3. Add Telegram critical alert delivery using the shared control-plane egress policy.
+4. Add WireGuard tunnel metrics to the Python agent.
+5. Add dashboard API binding for guarded server/outbound reads once the dashboard has an admin session flow.
 
 Repository remote is ready:
 
@@ -155,4 +161,7 @@ Repository remote is ready:
 - Added desktop sidebar collapse/expand support with persisted state, localized labels/tooltips, English left-side collapse, and Persian right-side collapse verification in local Edge CDP.
 - Repositioned the sidebar collapse control from an awkward internal row to an icon-only edge handle on the sidebar/content divider, mirrored for RTL.
 - Compacted dashboard panel headers and panel/table spacing so metadata counts stay inline with titles; verified English/Persian dashboard headings stay same-line with zero measured text overflow in local Edge CDP.
+- Verified guarded admin management API code with workspace typecheck and production build.
+- Verified `npm run version:check` after the `0.4.0` bump.
+- Verified `npm audit` still reports zero vulnerabilities.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

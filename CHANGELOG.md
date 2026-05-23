@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 - 2026-05-23
+
+- Added guarded `/api/admin` server management APIs for inventory, detail, create, update, and delete operations.
+- Added guarded outbound management APIs for listing, detail, create, update, delete, priority moves, and route failover history reads.
+- Added shared admin management response contracts and audit log writes for server and outbound mutations.
+- Kept outbound management secret-safe by rejecting secret-like config keys and returning only `hasSecretRef` with redacted config values.
+
 ## 0.3.11 - 2026-05-23
 
 - Compacted shared panel headers so metadata such as `3 nodes`, `3 links`, and `3 visible` renders inline with the title.

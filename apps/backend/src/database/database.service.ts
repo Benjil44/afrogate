@@ -5,6 +5,13 @@ import * as schema from './schema';
 
 export type AfroGateDatabase = NodePgDatabase<typeof schema>;
 
+export interface DatabaseQueryExecutor {
+  query<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values?: unknown[],
+  ): Promise<QueryResult<T>>;
+}
+
 @Injectable()
 export class DatabaseService implements OnApplicationShutdown {
   private readonly pool = new Pool({
@@ -25,6 +32,25 @@ export class DatabaseService implements OnApplicationShutdown {
     values: unknown[] = [],
   ): Promise<QueryResult<T>> {
     return this.pool.query<T>(text, values);
+  }
+
+  async transaction<T>(callback: (executor: DatabaseQueryExecutor) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const result = await callback({
+        query: <R extends QueryResultRow = QueryResultRow>(text: string, values: unknown[] = []) =>
+          client.query<R>(text, values),
+      });
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async onApplicationShutdown() {

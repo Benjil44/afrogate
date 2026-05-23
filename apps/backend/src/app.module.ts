@@ -6,6 +6,9 @@ import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
 import { MetricsService } from './metrics/metrics.service';
 import { PostgresMetricsRepository } from './metrics/postgres-metrics.repository';
+import { AuditService } from './audit/audit.service';
+import { OperationsController } from './operations/operations.controller';
+import { OperationsService } from './operations/operations.service';
 import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
 import { RolesGuard } from './security/roles.guard';
@@ -17,9 +20,11 @@ import { RolesGuard } from './security/roles.guard';
     }),
     DatabaseModule,
   ],
-  controllers: [HealthController, MetricsController],
+  controllers: [HealthController, MetricsController, OperationsController],
   providers: [
+    AuditService,
     MetricsService,
+    OperationsService,
     AdminTokenGuard,
     AgentTokenGuard,
     RolesGuard,
