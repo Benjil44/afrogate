@@ -115,3 +115,4 @@
 - Dashboard UI/UX audits should check Dashboard, Servers, Routes, and Alerts in English and Persian at mobile, tablet, 1440x900, and 1920x1080; the second-LCD Dashboard target is `0px` main-content overflow and zero measured text-overflow cases.
 - Dense dashboard rows should use compact icon indicators with accessible labels/tooltips for repeated CPU/RAM/disk/download/upload values, especially in Persian where localized units are longer.
 - Desktop sidebar collapse state is stored in `afrogate.dashboard.sidebar`; expanded width is 248px, collapsed width is 80px, and mobile/tablet navigation should stay full-width even when the stored state is collapsed.
+- Sidebar collapse/expand should remain an icon-only edge handle on the sidebar/content divider, not a text button row inside the sidebar header.

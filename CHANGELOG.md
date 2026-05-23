@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.10 - 2026-05-23
+
+- Repositioned the desktop sidebar collapse control as a professional icon-only handle on the sidebar/content divider.
+- Mirrored the collapse handle placement and icon direction for Persian/RTL layouts.
+
 ## 0.3.9 - 2026-05-23
 
 - Added a desktop sidebar collapse/expand control that turns the sidebar into an 80px icon rail.

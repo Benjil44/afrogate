@@ -153,4 +153,5 @@ Repository remote is ready:
 - Added a UI/UX audit checklist and fixed the first dashboard density issues: compact icon resource rows, simplified health timeline spacing, and zero main-content overflow on the 1920x1080 Dashboard view in English and Persian.
 - Verified the latest UI/UX pass with dashboard typecheck and local Edge CDP across Dashboard, Servers, Routes, and Alerts in English/Persian at mobile, tablet, desktop, and second-LCD sizes; measured text overflow cases are now zero.
 - Added desktop sidebar collapse/expand support with persisted state, localized labels/tooltips, English left-side collapse, and Persian right-side collapse verification in local Edge CDP.
+- Repositioned the sidebar collapse control from an awkward internal row to an icon-only edge handle on the sidebar/content divider, mirrored for RTL.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

@@ -21,6 +21,8 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Route,
   Server,
   ShieldCheck,
@@ -254,6 +256,7 @@ export function DashboardApp() {
       <Sidebar
         activeView={activeView}
         isCollapsed={isSidebarCollapsed}
+        isRtl={isRtl}
         nextLanguage={nextLanguage}
         onLanguageChange={setLanguage}
         onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
@@ -813,6 +816,7 @@ function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: Das
 function Sidebar({
   activeView,
   isCollapsed,
+  isRtl,
   nextLanguage,
   onLanguageChange,
   onToggleCollapse,
@@ -822,6 +826,7 @@ function Sidebar({
 }: {
   activeView: ActiveView;
   isCollapsed: boolean;
+  isRtl: boolean;
   nextLanguage: DashboardLanguage;
   onLanguageChange: (language: DashboardLanguage) => void;
   onToggleCollapse: () => void;
@@ -831,7 +836,7 @@ function Sidebar({
 }) {
   return (
     <aside
-      className={`bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:py-6 ${isCollapsed ? 'lg:px-3' : ''}`}
+      className={`relative bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:flex lg:h-screen lg:flex-col lg:overflow-visible lg:py-6 ${isCollapsed ? 'lg:px-3' : ''}`}
       data-sidebar-collapsed={isCollapsed ? 'true' : 'false'}
     >
       <div className={`flex items-center justify-between gap-3 ${isCollapsed ? 'lg:justify-center' : 'lg:block'}`}>
@@ -844,10 +849,8 @@ function Sidebar({
           <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
         </div>
       </div>
-      <div className={`hidden lg:flex ${isCollapsed ? 'mt-3 justify-center' : 'mt-4 justify-end'}`}>
-        <SidebarToggle isCollapsed={isCollapsed} onToggle={onToggleCollapse} t={t} />
-      </div>
-      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:flex-1 lg:grid-cols-1 lg:content-start ${isCollapsed ? 'lg:mt-4' : 'lg:mt-8'}`}>
+      <SidebarToggle isCollapsed={isCollapsed} isRtl={isRtl} onToggle={onToggleCollapse} t={t} />
+      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:flex-1 lg:grid-cols-1 lg:content-start ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
         {navItems.map((item) => (
           <NavItem
             item={item}
@@ -885,28 +888,32 @@ function Sidebar({
 
 function SidebarToggle({
   isCollapsed,
+  isRtl,
   onToggle,
   t,
 }: {
   isCollapsed: boolean;
+  isRtl: boolean;
   onToggle: () => void;
   t: DashboardStrings;
 }) {
-  const Icon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
+  const Icon = isRtl
+    ? isCollapsed ? PanelRightOpen : PanelRightClose
+    : isCollapsed ? PanelLeftOpen : PanelLeftClose;
   const label = isCollapsed ? t.expandSidebar : t.collapseSidebar;
+  const edgeClass = isRtl ? 'lg:-left-4' : 'lg:-right-4';
 
   return (
     <button
       aria-pressed={isCollapsed}
       aria-label={label}
-      className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white ${isCollapsed ? 'min-w-9 px-2' : 'px-2.5'}`}
+      className={`absolute top-6 z-20 hidden size-8 items-center justify-center rounded-full border border-[#334852] bg-[#16262d] text-[#c8d7d5] shadow-lg hover:border-[#5c7782] hover:bg-[#1f3138] hover:text-white lg:inline-flex ${edgeClass}`}
       data-sidebar-toggle="true"
       onClick={onToggle}
       title={label}
       type="button"
     >
       <Icon className="shrink-0" size={16} />
-      <span className={`text-[11px] font-bold ${isCollapsed ? 'lg:sr-only' : ''}`}>{label}</span>
     </button>
   );
 }
