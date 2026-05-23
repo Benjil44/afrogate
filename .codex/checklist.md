@@ -89,6 +89,7 @@
 - [x] Sidebar footer language icon.
 - [x] Local Persian font-face wiring for IRANSans assets.
 - [x] Non-scrolling responsive sidebar.
+- [x] Desktop fixed sidebar with main-content-only scrolling.
 - [x] Responsive smoke check for dashboard pages in English and Persian.
 - [x] Sidebar pages implementation checklist.
 - [x] Sidebar navigation state.

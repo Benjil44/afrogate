@@ -208,7 +208,7 @@ export function DashboardApp() {
 
   return (
     <main
-      className="grid min-h-screen grid-cols-1 overflow-x-hidden bg-afro-page text-afro-ink lg:grid-cols-[248px_minmax(0,1fr)]"
+      className="grid min-h-screen grid-cols-1 overflow-x-hidden bg-afro-page text-afro-ink lg:h-screen lg:min-h-0 lg:grid-cols-[248px_minmax(0,1fr)] lg:overflow-hidden"
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
     >
@@ -220,7 +220,7 @@ export function DashboardApp() {
         t={t}
       />
 
-      <section className="min-w-0 max-w-full p-4 md:p-7">
+      <section className="min-w-0 max-w-full p-4 md:p-7 lg:h-screen lg:overflow-y-auto">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-1.5 text-[13px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
@@ -769,7 +769,7 @@ function Sidebar({
   t: DashboardStrings;
 }) {
   return (
-    <aside className="bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:py-6">
+    <aside className="bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:py-6">
       <div className="flex items-center justify-between gap-3 lg:block">
         <div className="flex h-10 items-center gap-2.5 text-xl font-bold">
           <ShieldCheck size={22} />

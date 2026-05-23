@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3 - 2026-05-23
+
+- Changed the desktop dashboard shell so the sidebar remains fixed in place and only the main content pane scrolls.
+- Verified English/LTR desktop and second-LCD layouts keep the sidebar flush left with no document-level scrolling.
+
 ## 0.3.2 - 2026-05-23
 
 - Fixed the dashboard sidebar so navigation wraps instead of horizontally scrolling on mobile and remains sticky on desktop.

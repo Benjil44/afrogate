@@ -56,6 +56,7 @@
 - Reworked the dashboard sidebar so mobile navigation wraps instead of horizontally scrolling and desktop navigation remains sticky.
 - Tightened responsive dashboard layouts for storage chips, capacity cards, nav labels, and server row traffic details.
 - Added stable `data-view` attributes to sidebar navigation for browser-level layout verification.
+- Changed the desktop shell to `h-screen`/`overflow-hidden` and made the main content pane the only vertical scroll container.
 
 ### Current State
 
@@ -139,4 +140,5 @@ Repository remote is ready:
 - Verified dashboard multilingual support with `npm run version:check`, workspace typecheck, production build, and dependency audit.
 - Verified Persian font asset wiring and copied font asset with version check, workspace typecheck, production build, and dependency audit.
 - Verified Dashboard, Servers, Routes, and Alerts pages in English and Persian at 375x812, 768x1024, 1440x900, and 1920x1080 using local Edge CDP against the Vite server on port 3100.
+- Verified English/LTR fixed-sidebar behavior at 1440x900 and 1920x1080: window scroll stays at 0, document height equals viewport height, sidebar stays top-left, and content scrolls independently when needed.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

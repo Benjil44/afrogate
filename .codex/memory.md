@@ -106,3 +106,4 @@
 - Persian dashboard typography is wired to local IRANSans assets under `apps/dashboard/public/assets/fonts/iransans/`; no CDN font source should be used, and proprietary font files should only be committed with a valid license.
 - Dashboard sidebar should not use horizontal scrolling; mobile nav wraps in a compact grid and desktop sidebar stays sticky with no sidebar scroll.
 - Responsive checks should cover Dashboard, Servers, Routes, and Alerts in English and Persian at mobile, tablet, desktop, and second-LCD widths.
+- Desktop dashboard shell uses a fixed-height viewport layout: document scrolling is disabled, the sidebar stays fixed at the left in English/LTR, and `main > section` owns vertical scrolling.
