@@ -1,6 +1,6 @@
 {
   "name": "@afrogate/dashboard",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "private": true,
   "scripts": {
     "predev": "npm --workspace @afrogate/shared run build",
@@ -13,7 +13,7 @@
     "lint": "echo \"dashboard lint not configured yet\""
   },
   "dependencies": {
-    "@afrogate/shared": "0.3.6",
+    "@afrogate/shared": "0.3.7",
     "echarts": "^6.1.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",

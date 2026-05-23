@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.7 - 2026-05-23
+
+- Added sidebar alert severity state so the Alerts navigation item shows an amber warning badge or a red critical badge with localized counts.
+- Improved Alerts navigation accessibility by including the current warning/critical count in the item label.
+
 ## 0.3.6 - 2026-05-23
 
 - Strengthened Persian dashboard typography so the app subtree, controls, bold text, and ECharts use the local IRANSans family.

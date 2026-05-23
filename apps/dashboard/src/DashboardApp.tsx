@@ -73,6 +73,11 @@ interface NavItemData {
   icon: AfroIcon;
 }
 
+interface SidebarAlertState {
+  tone: 'warning' | 'critical';
+  countLabel: string;
+}
+
 type DashboardFormatters = ReturnType<typeof createDashboardFormatters>;
 
 const refreshIntervalMs = 10_000;
@@ -206,6 +211,7 @@ export function DashboardApp() {
     [serverRows, timeRange, timeseries],
   );
   const alerts = useMemo(() => createAlertRows(serverRows, t), [serverRows, t]);
+  const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t);
 
@@ -220,6 +226,7 @@ export function DashboardApp() {
         nextLanguage={nextLanguage}
         onLanguageChange={setLanguage}
         onViewChange={setActiveView}
+        sidebarAlertState={sidebarAlertState}
         t={t}
       />
 
@@ -776,12 +783,14 @@ function Sidebar({
   nextLanguage,
   onLanguageChange,
   onViewChange,
+  sidebarAlertState,
   t,
 }: {
   activeView: ActiveView;
   nextLanguage: DashboardLanguage;
   onLanguageChange: (language: DashboardLanguage) => void;
   onViewChange: (view: ActiveView) => void;
+  sidebarAlertState: SidebarAlertState | null;
   t: DashboardStrings;
 }) {
   return (
@@ -800,6 +809,7 @@ function Sidebar({
         {navItems.map((item) => (
           <NavItem
             item={item}
+            alertState={item.id === 'alerts' ? sidebarAlertState : null}
             isActive={activeView === item.id}
             key={item.id}
             onClick={() => onViewChange(item.id)}
@@ -821,21 +831,60 @@ function Sidebar({
   );
 }
 
-function NavItem({ item, isActive, onClick, t }: { item: NavItemData; isActive: boolean; onClick: () => void; t: DashboardStrings }) {
+function NavItem({
+  alertState,
+  item,
+  isActive,
+  onClick,
+  t,
+}: {
+  alertState: SidebarAlertState | null;
+  item: NavItemData;
+  isActive: boolean;
+  onClick: () => void;
+  t: DashboardStrings;
+}) {
   const Icon = item.icon;
-  const activeClass = isActive ? 'bg-[#1f3138] text-white' : 'text-[#c8d7d5] hover:bg-[#1f3138] hover:text-white';
+  const alertClass = alertState
+    ? {
+        critical: isActive
+          ? 'bg-[#4a1118] text-white ring-1 ring-[#ef4444]/50'
+          : 'text-[#fecaca] hover:bg-[#3b1014] hover:text-white',
+        warning: isActive
+          ? 'bg-[#3c2a12] text-white ring-1 ring-[#d9972b]/50'
+          : 'text-[#f4d7a1] hover:bg-[#3c2a12] hover:text-white',
+      }[alertState.tone]
+    : null;
+  const defaultClass = isActive ? 'bg-[#1f3138] text-white' : 'text-[#c8d7d5] hover:bg-[#1f3138] hover:text-white';
+  const activeClass = alertClass ?? defaultClass;
+  const badgeClass = alertState
+    ? {
+        critical: 'border-[#ef4444] bg-[#dc2626] text-white',
+        warning: 'border-[#d9972b] bg-[#f5b84b] text-[#20160a]',
+      }[alertState.tone]
+    : '';
+  const ariaLabel = alertState
+    ? `${t.nav[item.labelKey]} ${alertState.countLabel} ${t.status[alertState.tone]}`
+    : t.nav[item.labelKey];
 
   return (
     <button
       aria-current={isActive ? 'page' : undefined}
-      aria-label={t.nav[item.labelKey]}
-      className={`flex min-h-10 min-w-0 items-center gap-2 rounded-md px-3 text-left text-sm font-bold ${activeClass}`}
+      aria-label={ariaLabel}
+      className={`flex min-h-10 min-w-0 items-center justify-between gap-2 rounded-md px-3 text-left text-sm font-bold ${activeClass}`}
       data-view={item.id}
       onClick={onClick}
       type="button"
     >
-      <Icon className="shrink-0" size={18} />
-      <span className="min-w-0 truncate">{t.nav[item.labelKey]}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <Icon className="shrink-0" size={18} />
+        <span className="min-w-0 truncate">{t.nav[item.labelKey]}</span>
+      </span>
+      {alertState ? (
+        <span className={`inline-flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full border px-1 text-[11px] leading-none ${badgeClass}`}>
+          {alertState.countLabel}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -1085,6 +1134,26 @@ function createAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRo
     { title: t.alerts.outboundFailoverReady, source: t.alerts.routes, severity: 'neutral' },
     { title: t.alerts.backupMonitorPending, source: t.alerts.controlPlane, severity: 'warning' },
   ];
+}
+
+function createSidebarAlertState(alerts: AlertRowData[], format: DashboardFormatters): SidebarAlertState | null {
+  const criticalCount = alerts.filter((alert) => alert.severity === 'critical').length;
+  if (criticalCount > 0) {
+    return {
+      tone: 'critical',
+      countLabel: format.integer(criticalCount),
+    };
+  }
+
+  const warningCount = alerts.filter((alert) => alert.severity === 'warning').length;
+  if (warningCount > 0) {
+    return {
+      tone: 'warning',
+      countLabel: format.integer(warningCount),
+    };
+  }
+
+  return null;
 }
 
 function createHealthChartOption(
