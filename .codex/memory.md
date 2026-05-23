@@ -104,7 +104,9 @@
 - Dashboard multilingual support uses `apps/dashboard/src/i18n.ts` for English/Persian strings, persists language in localStorage, and exposes the language icon toggle in the sidebar footer.
 - New dashboard user-facing labels should be added to the typed translation object in the same commit as the UI change.
 - Packet loss should be labeled `Packet loss` / `Loss` in English and `افت بسته` in Persian dashboard contexts.
+- Persian mode should format generated numbers/times/units through the dashboard formatter: Persian digits, `٪`, `مگابایت/ث`, `میلی‌ثانیه`, localized thresholds, and local sample display labels.
 - Persian dashboard typography is wired to local IRANSans assets under `apps/dashboard/public/assets/fonts/iransans/`; no CDN font source should be used, and proprietary font files should only be committed with a valid license.
+- Persian typography must be applied both through CSS (`html[lang="fa"]` and `[lang="fa"]`) and ECharts options, because canvas chart text does not inherit DOM font styles reliably.
 - Dashboard sidebar should not use horizontal scrolling; mobile nav wraps in a compact grid and desktop sidebar stays sticky with no sidebar scroll.
 - Responsive checks should cover Dashboard, Servers, Routes, and Alerts in English and Persian at mobile, tablet, desktop, and second-LCD widths.
 - Desktop dashboard shell uses a fixed-height viewport layout: document scrolling is disabled, the sidebar stays fixed at the left in English/LTR, and `main > section` owns vertical scrolling.

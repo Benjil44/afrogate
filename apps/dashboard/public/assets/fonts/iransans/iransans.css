@@ -23,5 +23,6 @@
     local("IRANSansWeb Bold"),
     url("./IRANSans-Bold.woff2") format("woff2"),
     url("./IRANSansWeb_Bold.woff2") format("woff2"),
+    url("./IranianSans.ttf") format("truetype"),
     url("./IRANSans-Bold.woff") format("woff");
 }

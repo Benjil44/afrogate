@@ -73,6 +73,8 @@ interface NavItemData {
   icon: AfroIcon;
 }
 
+type DashboardFormatters = ReturnType<typeof createDashboardFormatters>;
+
 const refreshIntervalMs = 10_000;
 const timeRanges: Array<{ label: string; value: MetricsTimeRange }> = [
   { label: '15m', value: '15m' },
@@ -148,13 +150,14 @@ const appVersion = rootPackage.version;
 
 export function DashboardApp() {
   const { isRtl, language, nextLanguage, setLanguage, strings: t } = useDashboardLanguage();
+  const format = useMemo(() => createDashboardFormatters(language), [language]);
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
   const [dataState, setDataState] = useState<DataState>('loading');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const wallClock = useWallClock();
+  const wallClock = useWallClock(format);
 
   useEffect(() => {
     let isActive = true;
@@ -197,13 +200,13 @@ export function DashboardApp() {
     [metrics],
   );
   const trafficTotals = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
-  const summary = useMemo(() => createSummary(serverRows, trafficTotals, t), [serverRows, trafficTotals, t]);
+  const summary = useMemo(() => createSummary(serverRows, trafficTotals, t, format), [format, serverRows, trafficTotals, t]);
   const chartSeries = useMemo(
     () => (timeseries.length > 0 ? timeseries : createFallbackTimeseries(serverRows, timeRange)),
     [serverRows, timeRange, timeseries],
   );
   const alerts = useMemo(() => createAlertRows(serverRows, t), [serverRows, t]);
-  const status = getDataStatus(dataState, lastUpdated, t);
+  const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t);
 
   return (
@@ -238,7 +241,7 @@ export function DashboardApp() {
           </div>
         </header>
 
-        <SystemResourceHeader servers={serverRows} t={t} trafficTotals={trafficTotals} />
+        <SystemResourceHeader format={format} servers={serverRows} t={t} trafficTotals={trafficTotals} />
 
         <div className="mt-2.5 border-t border-afro-line" />
 
@@ -246,6 +249,7 @@ export function DashboardApp() {
           activeView={activeView}
           alerts={alerts}
           chartSeries={chartSeries}
+          format={format}
           onRangeChange={setTimeRange}
           servers={serverRows}
           summary={summary}
@@ -259,10 +263,12 @@ export function DashboardApp() {
 }
 
 function SystemResourceHeader({
+  format,
   servers,
   t,
   trafficTotals,
 }: {
+  format: DashboardFormatters;
   servers: ServerRowData[];
   t: DashboardStrings;
   trafficTotals: TrafficTotals;
@@ -283,11 +289,11 @@ function SystemResourceHeader({
   return (
     <section className="mt-2.5" aria-label={t.aria.systemResources}>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={formatPercent(cpuAverage)} />
-        <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={formatPercent(ramAverage)} />
-        <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={formatPercent(lowestStorage)} />
-        <ResourceStat icon={Download} label={t.resources.download} tone="neutral" value={formatBytesPerSecond(trafficTotals.downloadBps)} />
-        <ResourceStat icon={Upload} label={t.resources.upload} tone="neutral" value={formatBytesPerSecond(trafficTotals.uploadBps)} />
+        <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={format.percent(cpuAverage)} />
+        <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={format.percent(ramAverage)} />
+        <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={format.percent(lowestStorage)} />
+        <ResourceStat icon={Download} label={t.resources.download} tone="neutral" value={format.bytesPerSecond(trafficTotals.downloadBps)} />
+        <ResourceStat icon={Upload} label={t.resources.upload} tone="neutral" value={format.bytesPerSecond(trafficTotals.uploadBps)} />
       </div>
 
       <div className="mt-2 overflow-x-auto rounded-md border border-afro-line bg-afro-panel">
@@ -295,9 +301,9 @@ function SystemResourceHeader({
           {storages.map((storage) => (
             <div className="min-w-0 rounded-md border border-afro-line px-2 py-1" key={`${storage.serverName}-${storage.path}`}>
               <div className="flex items-center justify-between gap-2">
-                <strong className="min-w-0 truncate text-[13px]">{storage.serverName}</strong>
+                <strong className="min-w-0 truncate text-[13px]">{format.label(storage.serverName)}</strong>
                 <StatusBadge tone={getStorageTone(storage.freePercent ?? null)}>
-                  {formatPercent(storage.freePercent ?? null)}
+                  {format.percent(storage.freePercent ?? null)}
                 </StatusBadge>
               </div>
               <div className={`${mutedTextClass} truncate`}>{storage.path}</div>
@@ -342,6 +348,7 @@ function ActivePage({
   activeView,
   alerts,
   chartSeries,
+  format,
   onRangeChange,
   servers,
   summary,
@@ -352,6 +359,7 @@ function ActivePage({
   activeView: ActiveView;
   alerts: AlertRowData[];
   chartSeries: ServerMetricTimeseries[];
+  format: DashboardFormatters;
   onRangeChange: (range: MetricsTimeRange) => void;
   servers: ServerRowData[];
   summary: MetricCardData[];
@@ -361,16 +369,17 @@ function ActivePage({
 }) {
   switch (activeView) {
     case 'servers':
-      return <ServersPage servers={servers} t={t} />;
+      return <ServersPage format={format} servers={servers} t={t} />;
     case 'routes':
-      return <RoutesPage t={t} />;
+      return <RoutesPage format={format} t={t} />;
     case 'alerts':
-      return <AlertsPage alerts={alerts} t={t} />;
+      return <AlertsPage alerts={alerts} format={format} t={t} />;
     default:
       return (
         <DashboardPage
           alerts={alerts}
           chartSeries={chartSeries}
+          format={format}
           onRangeChange={onRangeChange}
           servers={servers}
           summary={summary}
@@ -385,6 +394,7 @@ function ActivePage({
 function DashboardPage({
   alerts,
   chartSeries,
+  format,
   onRangeChange,
   servers,
   summary,
@@ -394,6 +404,7 @@ function DashboardPage({
 }: {
   alerts: AlertRowData[];
   chartSeries: ServerMetricTimeseries[];
+  format: DashboardFormatters;
   onRangeChange: (range: MetricsTimeRange) => void;
   servers: ServerRowData[];
   summary: MetricCardData[];
@@ -411,6 +422,7 @@ function DashboardPage({
         </section>
 
         <HealthChartPanel
+          format={format}
           range={timeRange}
           series={chartSeries}
           t={t}
@@ -419,37 +431,39 @@ function DashboardPage({
       </section>
 
       <section className="mt-2.5 grid items-start gap-2.5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
-        <ServerPanel servers={servers} t={t} />
-        <TunnelPanel t={t} />
-        <AlertsPanel alerts={alerts} t={t} />
+        <ServerPanel format={format} servers={servers} t={t} />
+        <TunnelPanel format={format} t={t} />
+        <AlertsPanel alerts={alerts} format={format} t={t} />
       </section>
 
       <section className="mt-2.5 grid items-start gap-2.5 xl:grid-cols-3">
-        <OutboundsPanel t={t} />
-        <CapacityPanel t={t} trafficTotals={trafficTotals} />
-        <ControlPlanePanel t={t} />
+        <OutboundsPanel format={format} t={t} />
+        <CapacityPanel format={format} t={t} trafficTotals={trafficTotals} />
+        <ControlPlanePanel format={format} t={t} />
       </section>
     </>
   );
 }
 
 function HealthChartPanel({
+  format,
   range,
   series,
   t,
   onRangeChange,
 }: {
+  format: DashboardFormatters;
   range: MetricsTimeRange;
   series: ServerMetricTimeseries[];
   t: DashboardStrings;
   onRangeChange: (range: MetricsTimeRange) => void;
 }) {
-  const option = useMemo(() => createHealthChartOption(series, t), [series, t]);
+  const option = useMemo(() => createHealthChartOption(series, t, format), [format, series, t]);
 
   return (
     <section className={panelClass}>
       <div className="flex flex-col gap-2.5 border-b border-afro-line pb-2.5 sm:flex-row sm:items-center sm:justify-between">
-        <PanelHeadingContent title={t.panels.healthTimeline} meta={t.panels.monitoredNodes(series.length)} />
+        <PanelHeadingContent title={t.panels.healthTimeline} meta={t.panels.monitoredNodes(format.integer(series.length))} />
         <div className="inline-grid w-fit grid-flow-col rounded-md border border-afro-line bg-[#eef3f5] p-1">
           {timeRanges.map((item) => {
             const isActive = item.value === range;
@@ -462,7 +476,7 @@ function HealthChartPanel({
                 onClick={() => onRangeChange(item.value)}
                 type="button"
               >
-                {item.label}
+                {format.timeRange(item.value)}
               </button>
             );
           })}
@@ -477,23 +491,23 @@ function HealthChartPanel({
   );
 }
 
-function OutboundsPanel({ t }: { t: DashboardStrings }) {
+function OutboundsPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.outbounds} icon={ArrowDownUp} meta={t.panels.priorityFailover} />
       <div className="mt-2.5 grid gap-2">
         {outbounds.map((outbound) => (
           <div className="grid min-h-[46px] grid-cols-[24px_1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={outbound.name}>
-            <span className="grid size-6 place-items-center rounded bg-[#eef3f5] text-[12px] font-bold text-afro-ink">{outbound.priority}</span>
+            <span className="grid size-6 place-items-center rounded bg-[#eef3f5] text-[12px] font-bold text-afro-ink">{format.integer(outbound.priority)}</span>
             <div className="min-w-0">
-              <strong className="block truncate">{outbound.name}</strong>
-              <span className={`${mutedTextClass} block truncate`}>{outbound.type} / {outbound.mode}</span>
+              <strong className="block truncate">{format.label(outbound.name)}</strong>
+              <span className={`${mutedTextClass} block truncate`}>{format.label(outbound.type)} / {format.label(outbound.mode)}</span>
             </div>
             <div className="text-right">
               <StatusBadge tone={outbound.status === 'healthy' ? 'good' : outbound.status === 'standby' ? 'neutral' : 'warning'}>
                 {t.status[outbound.status]}
               </StatusBadge>
-              <div className={mutedTextClass}>{outbound.latencyMs === null ? '--' : `${outbound.latencyMs} ms`}</div>
+              <div className={mutedTextClass}>{format.latency(outbound.latencyMs)}</div>
             </div>
           </div>
         ))}
@@ -502,16 +516,16 @@ function OutboundsPanel({ t }: { t: DashboardStrings }) {
   );
 }
 
-function AlertsPanel({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings }) {
+function AlertsPanel({ alerts, format, t }: { alerts: AlertRowData[]; format: DashboardFormatters; t: DashboardStrings }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(alerts.length)} />
+      <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(format.integer(alerts.length))} />
       <div className="mt-2.5 grid gap-2">
         {alerts.map((alert) => (
           <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={`${alert.source}-${alert.title}`}>
             <div className="min-w-0">
               <strong className="block truncate">{alert.title}</strong>
-              <span className={`${mutedTextClass} block truncate`}>{alert.source}</span>
+              <span className={`${mutedTextClass} block truncate`}>{format.label(alert.source)}</span>
             </div>
             <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
           </div>
@@ -521,12 +535,12 @@ function AlertsPanel({ alerts, t }: { alerts: AlertRowData[]; t: DashboardString
   );
 }
 
-function CapacityPanel({ t, trafficTotals }: { t: DashboardStrings; trafficTotals: TrafficTotals }) {
+function CapacityPanel({ format, t, trafficTotals }: { format: DashboardFormatters; t: DashboardStrings; trafficTotals: TrafficTotals }) {
   const items = [
-    { label: t.capacity.usersOnline, value: '150' },
-    { label: t.summary.downloadNow, value: formatBytesPerSecond(trafficTotals.downloadBps) },
-    { label: t.summary.uploadNow, value: formatBytesPerSecond(trafficTotals.uploadBps) },
-    { label: t.capacity.minTargetUser, value: '1 MB/s' },
+    { label: t.capacity.usersOnline, value: format.integer(150) },
+    { label: t.summary.downloadNow, value: format.bytesPerSecond(trafficTotals.downloadBps) },
+    { label: t.summary.uploadNow, value: format.bytesPerSecond(trafficTotals.uploadBps) },
+    { label: t.capacity.minTargetUser, value: format.bytesPerSecond(1024 * 1024) },
     { label: t.capacity.routeMode, value: t.capacity.autoLock },
   ];
 
@@ -545,11 +559,11 @@ function CapacityPanel({ t, trafficTotals }: { t: DashboardStrings; trafficTotal
   );
 }
 
-function ControlPlanePanel({ t }: { t: DashboardStrings }) {
+function ControlPlanePanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
   const rows = [
-    { label: t.controlPlaneRows.metricsIngest, value: '10s', tone: 'good' as Tone },
+    { label: t.controlPlaneRows.metricsIngest, value: format.durationSeconds(10), tone: 'good' as Tone },
     { label: t.controlPlaneRows.telegramApiEgress, value: t.controlPlaneRows.proxyReady, tone: 'neutral' as Tone },
-    { label: t.controlPlaneRows.storageAlert, value: '< 10%', tone: 'warning' as Tone },
+    { label: t.controlPlaneRows.storageAlert, value: format.percentThreshold('<', 10), tone: 'warning' as Tone },
     { label: t.controlPlaneRows.backups, value: t.controlPlaneRows.pending, tone: 'warning' as Tone },
   ];
 
@@ -568,14 +582,14 @@ function ControlPlanePanel({ t }: { t: DashboardStrings }) {
   );
 }
 
-function ServersPage({ servers, t }: { servers: ServerRowData[]; t: DashboardStrings }) {
+function ServersPage({ format, servers, t }: { format: DashboardFormatters; servers: ServerRowData[]; t: DashboardStrings }) {
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
       <section className={panelClass}>
-        <PanelHeading title={t.panels.serverInventory} icon={Server} meta={t.panels.managedNodes(servers.length)} />
+        <PanelHeading title={t.panels.serverInventory} icon={Server} meta={t.panels.managedNodes(format.integer(servers.length))} />
         <div className="mt-2.5 grid gap-2.5">
           {servers.map((server, index) => (
-            <ServerManagementCard index={index} server={server} key={server.id} t={t} />
+            <ServerManagementCard format={format} index={index} server={server} key={server.id} t={t} />
           ))}
         </div>
       </section>
@@ -601,7 +615,7 @@ function ServersPage({ servers, t }: { servers: ServerRowData[]; t: DashboardStr
   );
 }
 
-function ServerManagementCard({ index, server, t }: { index: number; server: ServerRowData; t: DashboardStrings }) {
+function ServerManagementCard({ format, index, server, t }: { format: DashboardFormatters; index: number; server: ServerRowData; t: DashboardStrings }) {
   const interfaces = index === 0
     ? ['ether1 / Mobinnet / wg1', 'ether2 / Irancell / wireguard2']
     : index === 1
@@ -612,8 +626,8 @@ function ServerManagementCard({ index, server, t }: { index: number; server: Ser
     <article className="rounded-md border border-afro-line p-2.5">
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <strong className="block truncate text-base">{server.name}</strong>
-          <span className={mutedTextClass}>{server.meta}</span>
+          <strong className="block truncate text-base">{format.label(server.name)}</strong>
+          <span className={mutedTextClass}>{format.label(server.meta)}</span>
         </div>
         <button
           className="min-h-8 rounded-md border border-afro-line bg-white px-2.5 text-[13px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue"
@@ -624,45 +638,45 @@ function ServerManagementCard({ index, server, t }: { index: number; server: Ser
       </div>
 
       <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
-        <UsageBar label={t.resources.cpu} value={server.cpu} />
-        <UsageBar label={t.resources.ram} value={server.ram} />
-        <UsageBar label={t.resources.diskFree} value={server.diskFree} invert />
+        <UsageBar format={format} label={t.resources.cpu} value={server.cpu} />
+        <UsageBar format={format} label={t.resources.ram} value={server.ram} />
+        <UsageBar format={format} label={t.resources.diskFree} value={server.diskFree} invert />
       </div>
 
       <div className="mt-2.5 grid gap-2 sm:grid-cols-[1fr_auto]">
         <div className="grid gap-1.5">
           {interfaces.map((item) => (
             <span className="rounded-md bg-[#eef3f5] px-2 py-1 text-[12px] text-afro-muted" key={item}>
-              {item}
+              {format.label(item)}
             </span>
           ))}
         </div>
         <div className="text-left sm:text-right">
           <span className={mutedTextClass}>{t.resources.health}</span>
-          <b className={`block text-[20px] ${getScoreClass(server.score)}`}>{server.score}</b>
+          <b className={`block text-[20px] ${getScoreClass(server.score)}`}>{format.integer(server.score)}</b>
         </div>
       </div>
     </article>
   );
 }
 
-function RoutesPage({ t }: { t: DashboardStrings }) {
+function RoutesPage({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <TunnelPanel t={t} />
-      <OutboundsPanel t={t} />
-      <RoutePolicyPanel t={t} />
-      <FailoverPanel t={t} />
+      <TunnelPanel format={format} t={t} />
+      <OutboundsPanel format={format} t={t} />
+      <RoutePolicyPanel format={format} t={t} />
+      <FailoverPanel format={format} t={t} />
     </section>
   );
 }
 
-function RoutePolicyPanel({ t }: { t: DashboardStrings }) {
+function RoutePolicyPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
   const policies: Array<[string, string, Tone]> = [
     [t.routePolicy.autoRoute, t.routePolicy.enabled, 'good'],
     [t.routePolicy.routeLock, t.routePolicy.available, 'neutral'],
-    [t.routePolicy.cooldown, '120s', 'neutral'],
-    [t.routePolicy.hysteresis, t.routePolicy.score, 'neutral'],
+    [t.routePolicy.cooldown, format.durationSeconds(120), 'neutral'],
+    [t.routePolicy.hysteresis, format.scoreDelta(15), 'neutral'],
   ];
 
   return (
@@ -680,7 +694,7 @@ function RoutePolicyPanel({ t }: { t: DashboardStrings }) {
   );
 }
 
-function FailoverPanel({ t }: { t: DashboardStrings }) {
+function FailoverPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
   const events: Array<[string, string, Tone]> = [
     ['Germany gateway', t.failover.primaryRouteHealthy, 'good'],
     ['Control egress', t.failover.standbyTelegramApi, 'neutral'],
@@ -694,7 +708,7 @@ function FailoverPanel({ t }: { t: DashboardStrings }) {
         {events.map(([title, detail, tone]) => (
           <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={title}>
             <div className="min-w-0">
-              <strong className="block truncate">{title}</strong>
+              <strong className="block truncate">{format.label(title)}</strong>
               <span className={`${mutedTextClass} block truncate`}>{detail}</span>
             </div>
             <StatusBadge tone={tone}>{t.status[tone]}</StatusBadge>
@@ -705,11 +719,11 @@ function FailoverPanel({ t }: { t: DashboardStrings }) {
   );
 }
 
-function AlertsPage({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings }) {
+function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: DashboardFormatters; t: DashboardStrings }) {
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
       <section className={panelClass}>
-        <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(alerts.length)} />
+        <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(format.integer(alerts.length))} />
         <div className="mt-2.5 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -727,7 +741,7 @@ function AlertsPage({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings
                   <TableCell>
                     <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
                   </TableCell>
-                  <TableCell>{alert.source}</TableCell>
+                  <TableCell>{format.label(alert.source)}</TableCell>
                   <TableCell>{alert.title}</TableCell>
                   <TableCell>{t.alerts.dashboard}</TableCell>
                 </tr>
@@ -741,10 +755,10 @@ function AlertsPage({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings
         <PanelHeading title={t.panels.alertRules} icon={Bell} meta={t.panels.mvpThresholds} />
         <div className="mt-2.5 grid gap-2">
           {([
-            [t.alertRules.storage, '< 10%', 'critical'],
-            [t.alertRules.healthScore, '< 60', 'warning'],
-            [t.alertRules.ping, '> 150 ms', 'warning'],
-            [t.alertRules.packetLoss, '> 1%', 'critical'],
+            [t.alertRules.storage, format.percentThreshold('<', 10), 'critical'],
+            [t.alertRules.healthScore, format.numberThreshold('<', 60), 'warning'],
+            [t.alertRules.ping, format.latencyThreshold('>', 150), 'warning'],
+            [t.alertRules.packetLoss, format.percentThreshold('>', 1), 'critical'],
           ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
             <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
               <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
@@ -880,45 +894,45 @@ function MetricCard({ item }: { item: MetricCardData }) {
   );
 }
 
-function ServerPanel({ servers, t }: { servers: ServerRowData[]; t: DashboardStrings }) {
+function ServerPanel({ format, servers, t }: { format: DashboardFormatters; servers: ServerRowData[]; t: DashboardStrings }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.panels.servers} icon={Gauge} meta={t.panels.nodes(servers.length)} />
+      <PanelHeading title={t.panels.servers} icon={Gauge} meta={t.panels.nodes(format.integer(servers.length))} />
       <div className="mt-2 grid gap-2">
         {servers.map((server) => (
-          <ServerRow server={server} key={server.id} t={t} />
+          <ServerRow format={format} server={server} key={server.id} t={t} />
         ))}
       </div>
     </section>
   );
 }
 
-function ServerRow({ server, t }: { server: ServerRowData; t: DashboardStrings }) {
+function ServerRow({ format, server, t }: { format: DashboardFormatters; server: ServerRowData; t: DashboardStrings }) {
   return (
     <div className="grid min-h-[54px] items-center gap-2 rounded-md border border-afro-line p-2 sm:grid-cols-[116px_1fr_96px_36px]">
       <div className="min-w-0">
-        <strong className="block truncate text-[13px]">{server.name}</strong>
-        <span className="block truncate text-[12px] text-afro-muted">{server.meta}</span>
+        <strong className="block truncate text-[13px]">{format.label(server.name)}</strong>
+        <span className="block truncate text-[12px] text-afro-muted">{format.label(server.meta)}</span>
       </div>
       <div className="grid gap-1 sm:grid-cols-3">
-        <UsageBar label={t.resources.cpu} value={server.cpu} />
-        <UsageBar label={t.resources.ram} value={server.ram} />
-        <UsageBar label={t.resources.diskFree} value={server.diskFree} invert />
+        <UsageBar format={format} label={t.resources.cpu} value={server.cpu} />
+        <UsageBar format={format} label={t.resources.ram} value={server.ram} />
+        <UsageBar format={format} label={t.resources.diskFree} value={server.diskFree} invert />
       </div>
       <div className="grid gap-0.5 text-[11px] text-afro-muted">
-        <span className="truncate">{t.resources.down} <strong className="text-afro-ink">{formatBytesPerSecond(server.inboundBps)}</strong></span>
-        <span className="truncate">{t.resources.up} <strong className="text-afro-ink">{formatBytesPerSecond(server.outboundBps)}</strong></span>
+        <span className="truncate">{t.resources.down} <strong className="text-afro-ink">{format.bytesPerSecond(server.inboundBps)}</strong></span>
+        <span className="truncate">{t.resources.up} <strong className="text-afro-ink">{format.bytesPerSecond(server.outboundBps)}</strong></span>
       </div>
-      <b className={`text-left text-[17px] sm:text-right ${getScoreClass(server.score)}`}>{server.score}</b>
+      <b className={`text-left text-[17px] sm:text-right ${getScoreClass(server.score)}`}>{format.integer(server.score)}</b>
     </div>
   );
 }
 
-function UsageBar({ label, value, invert = false }: { label: string; value: number | null; invert?: boolean }) {
+function UsageBar({ format, label, value, invert = false }: { format: DashboardFormatters; label: string; value: number | null; invert?: boolean }) {
   const hasValue = typeof value === 'number' && Number.isFinite(value);
   const boundedValue = hasValue ? clamp(value, 0, 100) : 0;
   const fillValue = invert ? 100 - boundedValue : boundedValue;
-  const displayValue = hasValue ? `${Math.round(value)}%` : '--';
+  const displayValue = format.percent(hasValue ? value : null);
 
   return (
     <span
@@ -932,10 +946,10 @@ function UsageBar({ label, value, invert = false }: { label: string; value: numb
   );
 }
 
-function TunnelPanel({ t }: { t: DashboardStrings }) {
+function TunnelPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(3)} />
+      <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(format.integer(3))} />
       <div className="mt-2.5 overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -951,12 +965,12 @@ function TunnelPanel({ t }: { t: DashboardStrings }) {
             {tunnels.map((tunnel) => (
               <tr key={tunnel.name}>
                 <TableCell>{tunnel.name}</TableCell>
-                <TableCell>{tunnel.operator}</TableCell>
-                <TableCell>{tunnel.ping} ms</TableCell>
-                <TableCell>{tunnel.jitter} ms</TableCell>
-                <TableCell>{tunnel.loss}%</TableCell>
+                <TableCell>{format.label(tunnel.operator)}</TableCell>
+                <TableCell>{format.latency(tunnel.ping)}</TableCell>
+                <TableCell>{format.latency(tunnel.jitter)}</TableCell>
+                <TableCell>{format.packetLoss(tunnel.loss)}</TableCell>
                 <TableCell alignRight>
-                  <strong className={getScoreClass(tunnel.score)}>{tunnel.score}</strong>
+                  <strong className={getScoreClass(tunnel.score)}>{format.integer(tunnel.score)}</strong>
                 </TableCell>
               </tr>
             ))}
@@ -1020,14 +1034,19 @@ function mapSnapshotToServerRow(snapshot: ServerMetricSnapshot): ServerRowData {
   };
 }
 
-function createSummary(servers: ServerRowData[], trafficTotals: TrafficTotals, t: DashboardStrings): MetricCardData[] {
+function createSummary(
+  servers: ServerRowData[],
+  trafficTotals: TrafficTotals,
+  t: DashboardStrings,
+  format: DashboardFormatters,
+): MetricCardData[] {
   const criticalAlerts = servers.filter((server) => server.score < 50 || (server.diskFree !== null && server.diskFree < 10)).length;
 
   return [
-    { label: t.summary.activeUsers, value: '150', tone: 'neutral' },
-    { label: t.summary.downloadNow, value: formatBytesPerSecond(trafficTotals.downloadBps), tone: 'good' },
-    { label: t.summary.uploadNow, value: formatBytesPerSecond(trafficTotals.uploadBps), tone: 'neutral' },
-    { label: t.summary.criticalAlerts, value: String(criticalAlerts), tone: criticalAlerts > 0 ? 'critical' : 'good' },
+    { label: t.summary.activeUsers, value: format.integer(150), tone: 'neutral' },
+    { label: t.summary.downloadNow, value: format.bytesPerSecond(trafficTotals.downloadBps), tone: 'good' },
+    { label: t.summary.uploadNow, value: format.bytesPerSecond(trafficTotals.uploadBps), tone: 'neutral' },
+    { label: t.summary.criticalAlerts, value: format.integer(criticalAlerts), tone: criticalAlerts > 0 ? 'critical' : 'good' },
   ];
 }
 
@@ -1068,9 +1087,13 @@ function createAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRo
   ];
 }
 
-function createHealthChartOption(series: ServerMetricTimeseries[], t: DashboardStrings): AfroChartOption {
+function createHealthChartOption(
+  series: ServerMetricTimeseries[],
+  t: DashboardStrings,
+  format: DashboardFormatters,
+): AfroChartOption {
   const chartSeries = series.map((item, index) => ({
-    name: item.hostname || item.serverId,
+    name: format.label(item.hostname || item.serverId),
     type: 'line' as const,
     showSymbol: false,
     smooth: true,
@@ -1099,9 +1122,12 @@ function createHealthChartOption(series: ServerMetricTimeseries[], t: DashboardS
 
   return {
     color: ['#238a4b', '#2764a8', '#c27a1a', '#0f8f83', '#b91c1c'],
+    textStyle: {
+      fontFamily: format.fontFamily,
+    },
     tooltip: {
       trigger: 'axis',
-      valueFormatter: (value) => `${Math.round(Number(value))}`,
+      valueFormatter: (value) => format.integer(Math.round(Number(value))),
     },
     legend: {
       top: 0,
@@ -1111,6 +1137,7 @@ function createHealthChartOption(series: ServerMetricTimeseries[], t: DashboardS
       itemWidth: 18,
       textStyle: {
         color: '#60717a',
+        fontFamily: format.fontFamily,
       },
     },
     grid: {
@@ -1127,6 +1154,7 @@ function createHealthChartOption(series: ServerMetricTimeseries[], t: DashboardS
       },
       axisLabel: {
         color: '#60717a',
+        formatter: (value: string | number) => format.chartTime(value),
       },
     },
     yAxis: {
@@ -1135,6 +1163,7 @@ function createHealthChartOption(series: ServerMetricTimeseries[], t: DashboardS
       max: 100,
       axisLabel: {
         color: '#60717a',
+        formatter: (value: string | number) => format.integer(Number(value)),
       },
       splitLine: {
         lineStyle: { color: '#edf2f4' },
@@ -1192,8 +1221,13 @@ function createFallbackTimeseries(
   }));
 }
 
-function getDataStatus(dataState: DataState, lastUpdated: string | null, t: DashboardStrings) {
-  const updatedAt = lastUpdated ? ` ${new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+function getDataStatus(
+  dataState: DataState,
+  lastUpdated: string | null,
+  t: DashboardStrings,
+  format: DashboardFormatters,
+) {
+  const updatedAt = lastUpdated ? ` ${format.time(new Date(lastUpdated), false)}` : '';
 
   switch (dataState) {
     case 'live':
@@ -1280,23 +1314,129 @@ function sumNullable(values: Array<number | null>): number | null {
   return validValues.reduce((sum, value) => sum + value, 0);
 }
 
-function formatPercent(value: number | null): string {
-  return value === null ? '--' : `${Math.round(value)}%`;
-}
+function createDashboardFormatters(language: DashboardLanguage) {
+  const isPersian = language === 'fa';
+  const locale = isPersian ? 'fa-IR-u-nu-arabext' : 'en-US';
+  const percentSign = isPersian ? '٪' : '%';
+  const fontFamily = isPersian
+    ? '"AfroGate IRANSans", Tahoma, Arial, sans-serif'
+    : 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  const integerFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+  const decimalFormatter = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 0,
+  });
+  const clockFormatter = new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    hour12: !isPersian,
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const shortTimeFormatter = new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    hour12: !isPersian,
+    minute: '2-digit',
+  });
 
-function formatBytesPerSecond(value: number | null): string {
-  if (value === null) return '--';
+  const integer = (value: number): string => integerFormatter.format(Number.isFinite(value) ? value : 0);
+  const decimal = (value: number): string => decimalFormatter.format(Number.isFinite(value) ? value : 0);
+  const percent = (value: number | null): string => value === null ? '--' : `${integer(Math.round(value))}${percentSign}`;
+  const persianLabels: Record<string, string> = {
+    'Iran Edge 01': 'لبه ایران ۰۱',
+    'Iran Edge 02': 'لبه ایران ۰۲',
+    'Germany Core 01': 'هسته آلمان ۰۱',
+    'Germany gateway': 'درگاه آلمان',
+    'Control egress': 'خروجی کنترل',
+    'Iran direct': 'مسیر مستقیم ایران',
+    'Mobinnet': 'مبین‌نت',
+    'Irancell': 'ایرانسل',
+    'IR': 'ایران',
+    'DE': 'آلمان',
+    'WireGuard': 'وایرگارد',
+    'VLESS proxy': 'پراکسی VLESS',
+    'Direct': 'مستقیم',
+    'primary': 'اصلی',
+    'telegram/api': 'تلگرام/API',
+    'last resort': 'آخرین مسیر',
+    'ether1 / Mobinnet / wg1': 'ether1 / مبین‌نت / wg1',
+    'ether2 / Irancell / wireguard2': 'ether2 / ایرانسل / wireguard2',
+    'ether5 / Irancell / wireguard3': 'ether5 / ایرانسل / wireguard3',
+    'core uplink / Germany / gateway': 'آپ‌لینک هسته / آلمان / درگاه',
+  };
 
-  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-  let currentValue = value;
-  let unitIndex = 0;
+  const formatCompactNumber = (value: number): string => {
+    const roundedValue = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
 
-  while (currentValue >= 1024 && unitIndex < units.length - 1) {
-    currentValue /= 1024;
-    unitIndex += 1;
-  }
+    return Number.isInteger(roundedValue) ? integer(roundedValue) : decimal(roundedValue);
+  };
 
-  return `${currentValue >= 10 ? currentValue.toFixed(0) : currentValue.toFixed(1)} ${units[unitIndex]}`;
+  return {
+    fontFamily,
+    integer,
+    percent,
+    label(value: string): string {
+      return isPersian ? persianLabels[value] ?? value : value;
+    },
+    bytesPerSecond(value: number | null): string {
+      if (value === null) return '--';
+
+      const units = isPersian
+        ? ['بایت/ث', 'کیلوبایت/ث', 'مگابایت/ث', 'گیگابایت/ث']
+        : ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+      let currentValue = value;
+      let unitIndex = 0;
+
+      while (currentValue >= 1024 && unitIndex < units.length - 1) {
+        currentValue /= 1024;
+        unitIndex += 1;
+      }
+
+      return `${formatCompactNumber(currentValue)} ${units[unitIndex]}`;
+    },
+    packetLoss(value: number | null): string {
+      return value === null ? '--' : `${decimal(value)}${percentSign}`;
+    },
+    latency(value: number | null): string {
+      if (value === null) return '--';
+
+      return isPersian ? `${integer(value)} میلی‌ثانیه` : `${integer(value)} ms`;
+    },
+    durationSeconds(value: number): string {
+      return isPersian ? `${integer(value)} ثانیه` : `${integer(value)}s`;
+    },
+    percentThreshold(operator: '<' | '>', value: number): string {
+      return `${operator} ${percent(value)}`;
+    },
+    numberThreshold(operator: '<' | '>', value: number): string {
+      return `${operator} ${integer(value)}`;
+    },
+    latencyThreshold(operator: '<' | '>', value: number): string {
+      return `${operator} ${isPersian ? `${integer(value)} میلی‌ثانیه` : `${integer(value)} ms`}`;
+    },
+    scoreDelta(value: number): string {
+      return isPersian ? `+${integer(value)} امتیاز` : `+${integer(value)} score`;
+    },
+    time(date: Date, includeSeconds = true): string {
+      return includeSeconds ? clockFormatter.format(date) : shortTimeFormatter.format(date);
+    },
+    timeRange(range: MetricsTimeRange): string {
+      if (!isPersian) return timeRanges.find((item) => item.value === range)?.label ?? range;
+
+      const ranges: Record<MetricsTimeRange, string> = {
+        '15m': `${integer(15)}د`,
+        '1h': `${integer(1)}س`,
+        '6h': `${integer(6)}س`,
+        '24h': `${integer(24)}س`,
+      };
+
+      return ranges[range];
+    },
+    chartTime(value: string | number): string {
+      const timestamp = typeof value === 'number' ? value : Date.parse(value);
+
+      return Number.isFinite(timestamp) ? shortTimeFormatter.format(new Date(timestamp)) : String(value);
+    },
+  };
 }
 
 function dashboardLanguageLabel(language: DashboardLanguage): string {
@@ -1307,7 +1447,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function useWallClock(): string {
+function useWallClock(format: DashboardFormatters): string {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -1316,9 +1456,5 @@ function useWallClock(): string {
     return () => window.clearInterval(timer);
   }, []);
 
-  return now.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return format.time(now);
 }

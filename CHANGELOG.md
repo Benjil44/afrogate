@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6 - 2026-05-23
+
+- Strengthened Persian dashboard typography so the app subtree, controls, bold text, and ECharts use the local IRANSans family.
+- Added Persian-aware dashboard formatting for clock, percentages, throughput units, latency, packet loss, thresholds, counts, and chart labels.
+- Localized known fallback monitoring sample labels in Persian mode, including server names, operators, outbounds, and CPU/RAM labels.
+
 ## 0.3.5 - 2026-05-23
 
 - Fixed dashboard packet-loss translations so English uses `Packet loss` / `Loss` and Persian uses `افت بسته`.

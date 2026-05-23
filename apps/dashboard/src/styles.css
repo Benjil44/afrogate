@@ -27,11 +27,15 @@
     @apply text-inherit no-underline;
   }
 
+  html[lang="fa"],
   html[lang="fa"] body,
-  html[lang="fa"] button,
-  html[lang="fa"] input,
-  html[lang="fa"] select,
-  html[lang="fa"] textarea {
+  [lang="fa"] {
     font-family: var(--font-afro-persian);
+  }
+
+  html[lang="fa"] :where(button, input, select, textarea),
+  [lang="fa"] :where(button, input, select, textarea),
+  [lang="fa"] * {
+    font-family: inherit;
   }
 }
