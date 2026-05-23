@@ -16,6 +16,7 @@
 - [x] Add versioning policy, changelog, and VERSION tracking.
 - [x] Add local AfroGate versioning plugin and skill.
 - [x] Show application version in dashboard sidebar.
+- [x] Add multilingual UI policy documentation.
 
 ## Phase 0: Foundation
 
@@ -84,6 +85,8 @@
 - [x] Second-LCD NOC dashboard layout.
 - [x] Header system resource strip.
 - [x] Separate dashboard download and upload traffic values.
+- [x] English/Persian dashboard language toggle.
+- [x] Sidebar footer language icon.
 - [x] Sidebar pages implementation checklist.
 - [x] Sidebar navigation state.
 - [x] Initial Servers page.

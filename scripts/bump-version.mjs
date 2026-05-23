@@ -14,12 +14,19 @@ const rootPackage = readJson(rootPackagePath);
 const currentVersion = rootPackage.version;
 const nextVersion = resolveNextVersion(currentVersion, bumpTarget);
 const workspacePackagePaths = findWorkspacePackages(rootPackage.workspaces ?? []);
+const pluginManifestPaths = findPluginManifests();
 
 for (const packagePath of [rootPackagePath, ...workspacePackagePaths]) {
   const packageJson = readJson(packagePath);
   packageJson.version = nextVersion;
   updateInternalDependencies(packageJson, nextVersion);
   writeJson(packagePath, packageJson);
+}
+
+for (const pluginManifestPath of pluginManifestPaths) {
+  const pluginManifest = readJson(pluginManifestPath);
+  pluginManifest.version = nextVersion;
+  writeJson(pluginManifestPath, pluginManifest);
 }
 
 updatePackageLock(nextVersion);
@@ -74,6 +81,22 @@ function findWorkspacePackages(workspacePatterns) {
   }
 
   return packagePaths.sort();
+}
+
+function findPluginManifests() {
+  const pluginsRoot = path.join(repoRoot, 'plugins');
+  if (!fs.existsSync(pluginsRoot)) return [];
+
+  const manifestPaths = [];
+
+  for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const manifestPath = path.join(pluginsRoot, entry.name, '.codex-plugin', 'plugin.json');
+    if (fs.existsSync(manifestPath)) manifestPaths.push(manifestPath);
+  }
+
+  return manifestPaths.sort();
 }
 
 function updateInternalDependencies(packageJson, version) {

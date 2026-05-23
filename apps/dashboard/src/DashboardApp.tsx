@@ -6,10 +6,11 @@ import type {
   ServerMetricTimeseries,
   StorageVolumeMetric,
 } from '@afrogate/shared';
-import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Cpu, Download, Gauge, HardDrive, MemoryStick, Network, Route, Server, ShieldCheck, Upload } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Cpu, Download, Gauge, HardDrive, Languages, MemoryStick, Network, Route, Server, ShieldCheck, Upload } from 'lucide-react';
 import rootPackage from '../../../package.json';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
+import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } from './i18n';
 
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
@@ -67,7 +68,7 @@ interface AlertRowData {
 
 interface NavItemData {
   id: ActiveView;
-  label: string;
+  labelKey: ActiveView;
   icon: ComponentType<{ size?: number }>;
 }
 
@@ -134,10 +135,10 @@ const outbounds: OutboundRowData[] = [
 ];
 
 const navItems: NavItemData[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: Activity },
-  { id: 'servers', label: 'Servers', icon: Server },
-  { id: 'routes', label: 'Routes', icon: Route },
-  { id: 'alerts', label: 'Alerts', icon: Bell },
+  { id: 'dashboard', labelKey: 'dashboard', icon: Activity },
+  { id: 'servers', labelKey: 'servers', icon: Server },
+  { id: 'routes', labelKey: 'routes', icon: Route },
+  { id: 'alerts', labelKey: 'alerts', icon: Bell },
 ];
 
 const panelClass = 'min-w-0 rounded-lg border border-afro-line bg-afro-panel p-[18px]';
@@ -145,6 +146,7 @@ const mutedTextClass = 'text-[13px] text-afro-muted';
 const appVersion = rootPackage.version;
 
 export function DashboardApp() {
+  const { isRtl, language, nextLanguage, setLanguage, strings: t } = useDashboardLanguage();
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
@@ -194,18 +196,28 @@ export function DashboardApp() {
     [metrics],
   );
   const trafficTotals = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
-  const summary = useMemo(() => createSummary(serverRows, trafficTotals), [serverRows, trafficTotals]);
+  const summary = useMemo(() => createSummary(serverRows, trafficTotals, t), [serverRows, trafficTotals, t]);
   const chartSeries = useMemo(
     () => (timeseries.length > 0 ? timeseries : createFallbackTimeseries(serverRows, timeRange)),
     [serverRows, timeRange, timeseries],
   );
-  const alerts = useMemo(() => createAlertRows(serverRows), [serverRows]);
-  const status = getDataStatus(dataState, lastUpdated);
-  const header = getPageHeader(activeView);
+  const alerts = useMemo(() => createAlertRows(serverRows, t), [serverRows, t]);
+  const status = getDataStatus(dataState, lastUpdated, t);
+  const header = getPageHeader(activeView, t);
 
   return (
-    <main className="grid min-h-screen grid-cols-1 bg-afro-page text-afro-ink lg:grid-cols-[248px_minmax(0,1fr)]">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+    <main
+      className="grid min-h-screen grid-cols-1 bg-afro-page text-afro-ink lg:grid-cols-[248px_minmax(0,1fr)]"
+      dir={isRtl ? 'rtl' : 'ltr'}
+      lang={language}
+    >
+      <Sidebar
+        activeView={activeView}
+        nextLanguage={nextLanguage}
+        onLanguageChange={setLanguage}
+        onViewChange={setActiveView}
+        t={t}
+      />
 
       <section className="min-w-0 p-[18px] md:p-7">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -225,7 +237,7 @@ export function DashboardApp() {
           </div>
         </header>
 
-        <SystemResourceHeader servers={serverRows} trafficTotals={trafficTotals} />
+        <SystemResourceHeader servers={serverRows} t={t} trafficTotals={trafficTotals} />
 
         <div className="mt-5 border-t border-afro-line" />
 
@@ -236,6 +248,7 @@ export function DashboardApp() {
           onRangeChange={setTimeRange}
           servers={serverRows}
           summary={summary}
+          t={t}
           timeRange={timeRange}
           trafficTotals={trafficTotals}
         />
@@ -246,9 +259,11 @@ export function DashboardApp() {
 
 function SystemResourceHeader({
   servers,
+  t,
   trafficTotals,
 }: {
   servers: ServerRowData[];
+  t: DashboardStrings;
   trafficTotals: TrafficTotals;
 }) {
   const cpuAverage = averagePercent(servers.map((server) => server.cpu));
@@ -265,13 +280,13 @@ function SystemResourceHeader({
   }, null);
 
   return (
-    <section className="mt-5" aria-label="System resources">
+    <section className="mt-5" aria-label={t.aria.systemResources}>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <ResourceStat icon={Cpu} label="CPU average" tone={getUsageTone(cpuAverage)} value={formatPercent(cpuAverage)} />
-        <ResourceStat icon={MemoryStick} label="RAM average" tone={getUsageTone(ramAverage)} value={formatPercent(ramAverage)} />
-        <ResourceStat icon={HardDrive} label="Lowest storage" tone={getStorageTone(lowestStorage)} value={formatPercent(lowestStorage)} />
-        <ResourceStat icon={Download} label="Download" tone="neutral" value={formatBytesPerSecond(trafficTotals.downloadBps)} />
-        <ResourceStat icon={Upload} label="Upload" tone="neutral" value={formatBytesPerSecond(trafficTotals.uploadBps)} />
+        <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={formatPercent(cpuAverage)} />
+        <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={formatPercent(ramAverage)} />
+        <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={formatPercent(lowestStorage)} />
+        <ResourceStat icon={Download} label={t.resources.download} tone="neutral" value={formatBytesPerSecond(trafficTotals.downloadBps)} />
+        <ResourceStat icon={Upload} label={t.resources.upload} tone="neutral" value={formatBytesPerSecond(trafficTotals.uploadBps)} />
       </div>
 
       <div className="mt-3 overflow-x-auto rounded-lg border border-afro-line bg-afro-panel">
@@ -329,6 +344,7 @@ function ActivePage({
   onRangeChange,
   servers,
   summary,
+  t,
   timeRange,
   trafficTotals,
 }: {
@@ -338,16 +354,17 @@ function ActivePage({
   onRangeChange: (range: MetricsTimeRange) => void;
   servers: ServerRowData[];
   summary: MetricCardData[];
+  t: DashboardStrings;
   timeRange: MetricsTimeRange;
   trafficTotals: TrafficTotals;
 }) {
   switch (activeView) {
     case 'servers':
-      return <ServersPage servers={servers} />;
+      return <ServersPage servers={servers} t={t} />;
     case 'routes':
-      return <RoutesPage />;
+      return <RoutesPage t={t} />;
     case 'alerts':
-      return <AlertsPage alerts={alerts} />;
+      return <AlertsPage alerts={alerts} t={t} />;
     default:
       return (
         <DashboardPage
@@ -356,6 +373,7 @@ function ActivePage({
           onRangeChange={onRangeChange}
           servers={servers}
           summary={summary}
+          t={t}
           timeRange={timeRange}
           trafficTotals={trafficTotals}
         />
@@ -369,6 +387,7 @@ function DashboardPage({
   onRangeChange,
   servers,
   summary,
+  t,
   timeRange,
   trafficTotals,
 }: {
@@ -377,12 +396,13 @@ function DashboardPage({
   onRangeChange: (range: MetricsTimeRange) => void;
   servers: ServerRowData[];
   summary: MetricCardData[];
+  t: DashboardStrings;
   timeRange: MetricsTimeRange;
   trafficTotals: TrafficTotals;
 }) {
   return (
     <>
-      <section className="mt-6 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4" aria-label="Summary">
+      <section className="mt-6 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4" aria-label={t.aria.summary}>
         {summary.map((item) => (
           <MetricCard item={item} key={item.label} />
         ))}
@@ -391,19 +411,20 @@ function DashboardPage({
       <HealthChartPanel
         range={timeRange}
         series={chartSeries}
+        t={t}
         onRangeChange={onRangeChange}
       />
 
       <section className="mt-[18px] grid gap-[18px] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
-        <ServerPanel servers={servers} />
-        <TunnelPanel />
-        <AlertsPanel alerts={alerts} />
+        <ServerPanel servers={servers} t={t} />
+        <TunnelPanel t={t} />
+        <AlertsPanel alerts={alerts} t={t} />
       </section>
 
       <section className="mt-[18px] grid gap-[18px] xl:grid-cols-3">
-        <OutboundsPanel />
-        <CapacityPanel trafficTotals={trafficTotals} />
-        <ControlPlanePanel />
+        <OutboundsPanel t={t} />
+        <CapacityPanel t={t} trafficTotals={trafficTotals} />
+        <ControlPlanePanel t={t} />
       </section>
     </>
   );
@@ -412,18 +433,20 @@ function DashboardPage({
 function HealthChartPanel({
   range,
   series,
+  t,
   onRangeChange,
 }: {
   range: MetricsTimeRange;
   series: ServerMetricTimeseries[];
+  t: DashboardStrings;
   onRangeChange: (range: MetricsTimeRange) => void;
 }) {
-  const option = useMemo(() => createHealthChartOption(series), [series]);
+  const option = useMemo(() => createHealthChartOption(series, t), [series, t]);
 
   return (
     <section className={`${panelClass} mt-[18px]`}>
       <div className="flex flex-col gap-3 border-b border-afro-line pb-3.5 sm:flex-row sm:items-center sm:justify-between">
-        <PanelHeadingContent title="Health timeline" meta={`${series.length} monitored nodes`} />
+        <PanelHeadingContent title={t.panels.healthTimeline} meta={t.panels.monitoredNodes(series.length)} />
         <div className="inline-grid w-fit grid-flow-col rounded-md border border-afro-line bg-[#eef3f5] p-1">
           {timeRanges.map((item) => {
             const isActive = item.value === range;
@@ -443,7 +466,7 @@ function HealthChartPanel({
         </div>
       </div>
       <EChart
-        ariaLabel="Server health score timeline"
+        ariaLabel={t.aria.healthChart}
         className="mt-4 h-[270px] w-full"
         option={option}
       />
@@ -451,10 +474,10 @@ function HealthChartPanel({
   );
 }
 
-function OutboundsPanel() {
+function OutboundsPanel({ t }: { t: DashboardStrings }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title="Outbounds" icon={ArrowDownUp} meta="priority failover" />
+      <PanelHeading title={t.panels.outbounds} icon={ArrowDownUp} meta={t.panels.priorityFailover} />
       <div className="mt-3 grid gap-2.5">
         {outbounds.map((outbound) => (
           <div className="grid min-h-[66px] grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={outbound.name}>
@@ -465,7 +488,7 @@ function OutboundsPanel() {
             </div>
             <div className="text-right">
               <StatusBadge tone={outbound.status === 'healthy' ? 'good' : outbound.status === 'standby' ? 'neutral' : 'warning'}>
-                {outbound.status}
+                {t.status[outbound.status]}
               </StatusBadge>
               <div className={mutedTextClass}>{outbound.latencyMs === null ? '--' : `${outbound.latencyMs} ms`}</div>
             </div>
@@ -476,10 +499,10 @@ function OutboundsPanel() {
   );
 }
 
-function AlertsPanel({ alerts }: { alerts: AlertRowData[] }) {
+function AlertsPanel({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title="Alerts" icon={AlertTriangle} meta={`${alerts.length} visible`} />
+      <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(alerts.length)} />
       <div className="mt-3 grid gap-2.5">
         {alerts.map((alert) => (
           <div className="grid min-h-[58px] grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={`${alert.source}-${alert.title}`}>
@@ -487,7 +510,7 @@ function AlertsPanel({ alerts }: { alerts: AlertRowData[] }) {
               <strong className="block truncate">{alert.title}</strong>
               <span className={mutedTextClass}>{alert.source}</span>
             </div>
-            <StatusBadge tone={alert.severity}>{alert.severity}</StatusBadge>
+            <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
           </div>
         ))}
       </div>
@@ -495,18 +518,18 @@ function AlertsPanel({ alerts }: { alerts: AlertRowData[] }) {
   );
 }
 
-function CapacityPanel({ trafficTotals }: { trafficTotals: TrafficTotals }) {
+function CapacityPanel({ t, trafficTotals }: { t: DashboardStrings; trafficTotals: TrafficTotals }) {
   const items = [
-    { label: 'Users online', value: '150' },
-    { label: 'Download now', value: formatBytesPerSecond(trafficTotals.downloadBps) },
-    { label: 'Upload now', value: formatBytesPerSecond(trafficTotals.uploadBps) },
-    { label: 'Min target/user', value: '1 MB/s' },
-    { label: 'Route mode', value: 'Auto + lock' },
+    { label: t.capacity.usersOnline, value: '150' },
+    { label: t.summary.downloadNow, value: formatBytesPerSecond(trafficTotals.downloadBps) },
+    { label: t.summary.uploadNow, value: formatBytesPerSecond(trafficTotals.uploadBps) },
+    { label: t.capacity.minTargetUser, value: '1 MB/s' },
+    { label: t.capacity.routeMode, value: t.capacity.autoLock },
   ];
 
   return (
     <section className={panelClass}>
-      <PanelHeading title="Capacity" icon={Network} meta="manager view" />
+      <PanelHeading title={t.panels.capacity} icon={Network} meta={t.panels.managerView} />
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         {items.map((item) => (
           <div className="min-h-[70px] rounded-md border border-afro-line p-3" key={item.label}>
@@ -519,17 +542,17 @@ function CapacityPanel({ trafficTotals }: { trafficTotals: TrafficTotals }) {
   );
 }
 
-function ControlPlanePanel() {
+function ControlPlanePanel({ t }: { t: DashboardStrings }) {
   const rows = [
-    { label: 'Metrics ingest', value: '10s', tone: 'good' as Tone },
-    { label: 'Telegram/API egress', value: 'Proxy ready', tone: 'neutral' as Tone },
-    { label: 'Storage alert', value: '< 10%', tone: 'warning' as Tone },
-    { label: 'Backups', value: 'Pending', tone: 'warning' as Tone },
+    { label: t.controlPlaneRows.metricsIngest, value: '10s', tone: 'good' as Tone },
+    { label: t.controlPlaneRows.telegramApiEgress, value: t.controlPlaneRows.proxyReady, tone: 'neutral' as Tone },
+    { label: t.controlPlaneRows.storageAlert, value: '< 10%', tone: 'warning' as Tone },
+    { label: t.controlPlaneRows.backups, value: t.controlPlaneRows.pending, tone: 'warning' as Tone },
   ];
 
   return (
     <section className={panelClass}>
-      <PanelHeading title="Control Plane" icon={ShieldCheck} meta="operations" />
+      <PanelHeading title={t.panels.controlPlane} icon={ShieldCheck} meta={t.panels.operations} />
       <div className="mt-3 grid gap-2.5">
         {rows.map((row) => (
           <div className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={row.label}>
@@ -542,27 +565,27 @@ function ControlPlanePanel() {
   );
 }
 
-function ServersPage({ servers }: { servers: ServerRowData[] }) {
+function ServersPage({ servers, t }: { servers: ServerRowData[]; t: DashboardStrings }) {
   return (
     <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
       <section className={panelClass}>
-        <PanelHeading title="Server Inventory" icon={Server} meta={`${servers.length} managed nodes`} />
+        <PanelHeading title={t.panels.serverInventory} icon={Server} meta={t.panels.managedNodes(servers.length)} />
         <div className="mt-3 grid gap-3">
           {servers.map((server, index) => (
-            <ServerManagementCard index={index} server={server} key={server.id} />
+            <ServerManagementCard index={index} server={server} key={server.id} t={t} />
           ))}
         </div>
       </section>
 
       <section className={panelClass}>
-        <PanelHeading title="Access & Bootstrap" icon={ShieldCheck} meta="safe operations" />
+        <PanelHeading title={t.panels.accessBootstrap} icon={ShieldCheck} meta={t.panels.safeOperations} />
         <div className="mt-3 grid gap-2.5">
           {[
-            ['Default user', 'afrogate'],
-            ['Access method', 'SSH key'],
-            ['Root password', 'bootstrap only'],
-            ['Credential view', 'hidden'],
-            ['Audit mode', 'required'],
+            [t.accessRows.defaultUser, 'afrogate'],
+            [t.accessRows.accessMethod, t.accessRows.sshKey],
+            [t.accessRows.rootPassword, t.accessRows.bootstrapOnly],
+            [t.accessRows.credentialView, t.accessRows.hidden],
+            [t.accessRows.auditMode, t.accessRows.required],
           ].map(([label, value]) => (
             <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
               <span className={mutedTextClass}>{label}</span>
@@ -575,7 +598,7 @@ function ServersPage({ servers }: { servers: ServerRowData[] }) {
   );
 }
 
-function ServerManagementCard({ index, server }: { index: number; server: ServerRowData }) {
+function ServerManagementCard({ index, server, t }: { index: number; server: ServerRowData; t: DashboardStrings }) {
   const interfaces = index === 0
     ? ['ether1 / Mobinnet / wg1', 'ether2 / Irancell / wireguard2']
     : index === 1
@@ -593,14 +616,14 @@ function ServerManagementCard({ index, server }: { index: number; server: Server
           className="min-h-9 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue"
           type="button"
         >
-          Edit
+          {t.actions.edit}
         </button>
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <UsageBar label="CPU" value={server.cpu} />
-        <UsageBar label="RAM" value={server.ram} />
-        <UsageBar label="Disk free" value={server.diskFree} invert />
+        <UsageBar label={t.resources.cpu} value={server.cpu} />
+        <UsageBar label={t.resources.ram} value={server.ram} />
+        <UsageBar label={t.resources.diskFree} value={server.diskFree} invert />
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -612,7 +635,7 @@ function ServerManagementCard({ index, server }: { index: number; server: Server
           ))}
         </div>
         <div className="text-left sm:text-right">
-          <span className={mutedTextClass}>Health</span>
+          <span className={mutedTextClass}>{t.resources.health}</span>
           <b className={`block text-[24px] ${getScoreClass(server.score)}`}>{server.score}</b>
         </div>
       </div>
@@ -620,28 +643,28 @@ function ServerManagementCard({ index, server }: { index: number; server: Server
   );
 }
 
-function RoutesPage() {
+function RoutesPage({ t }: { t: DashboardStrings }) {
   return (
     <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <TunnelPanel />
-      <OutboundsPanel />
-      <RoutePolicyPanel />
-      <FailoverPanel />
+      <TunnelPanel t={t} />
+      <OutboundsPanel t={t} />
+      <RoutePolicyPanel t={t} />
+      <FailoverPanel t={t} />
     </section>
   );
 }
 
-function RoutePolicyPanel() {
+function RoutePolicyPanel({ t }: { t: DashboardStrings }) {
   const policies: Array<[string, string, Tone]> = [
-    ['Auto route', 'enabled', 'good'],
-    ['Route lock', 'available', 'neutral'],
-    ['Cooldown', '120s', 'neutral'],
-    ['Hysteresis', '+15 score', 'neutral'],
+    [t.routePolicy.autoRoute, t.routePolicy.enabled, 'good'],
+    [t.routePolicy.routeLock, t.routePolicy.available, 'neutral'],
+    [t.routePolicy.cooldown, '120s', 'neutral'],
+    [t.routePolicy.hysteresis, t.routePolicy.score, 'neutral'],
   ];
 
   return (
     <section className={panelClass}>
-      <PanelHeading title="Route Policy" icon={Route} meta="stability rules" />
+      <PanelHeading title={t.panels.routePolicy} icon={Route} meta={t.panels.stabilityRules} />
       <div className="mt-3 grid gap-2.5">
         {policies.map(([label, value, tone]) => (
           <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
@@ -654,16 +677,16 @@ function RoutePolicyPanel() {
   );
 }
 
-function FailoverPanel() {
+function FailoverPanel({ t }: { t: DashboardStrings }) {
   const events: Array<[string, string, Tone]> = [
-    ['Germany gateway', 'primary route healthy', 'good'],
-    ['Control egress', 'standby for Telegram/API', 'neutral'],
-    ['Iran direct', 'restricted internet path', 'warning'],
+    ['Germany gateway', t.failover.primaryRouteHealthy, 'good'],
+    ['Control egress', t.failover.standbyTelegramApi, 'neutral'],
+    ['Iran direct', t.failover.restrictedInternetPath, 'warning'],
   ];
 
   return (
     <section className={panelClass}>
-      <PanelHeading title="Failover" icon={ArrowDownUp} meta="latest decisions" />
+      <PanelHeading title={t.panels.failover} icon={ArrowDownUp} meta={t.panels.latestDecisions} />
       <div className="mt-3 grid gap-2.5">
         {events.map(([title, detail, tone]) => (
           <div className="grid min-h-[58px] grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-afro-line p-3" key={title}>
@@ -671,7 +694,7 @@ function FailoverPanel() {
               <strong className="block truncate">{title}</strong>
               <span className={mutedTextClass}>{detail}</span>
             </div>
-            <StatusBadge tone={tone}>{tone}</StatusBadge>
+            <StatusBadge tone={tone}>{t.status[tone]}</StatusBadge>
           </div>
         ))}
       </div>
@@ -679,16 +702,16 @@ function FailoverPanel() {
   );
 }
 
-function AlertsPage({ alerts }: { alerts: AlertRowData[] }) {
+function AlertsPage({ alerts, t }: { alerts: AlertRowData[]; t: DashboardStrings }) {
   return (
     <section className="mt-6 grid gap-[18px] xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
       <section className={panelClass}>
-        <PanelHeading title="Open Alerts" icon={AlertTriangle} meta={`${alerts.length} active rows`} />
+        <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(alerts.length)} />
         <div className="mt-3 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Severity', 'Source', 'Alert', 'Channel'].map((heading) => (
+                {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.channel].map((heading) => (
                   <th className="border-b border-afro-line px-2 py-[13px] text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
                     {heading}
                   </th>
@@ -699,11 +722,11 @@ function AlertsPage({ alerts }: { alerts: AlertRowData[] }) {
               {alerts.map((alert) => (
                 <tr key={`${alert.source}-${alert.title}`}>
                   <TableCell>
-                    <StatusBadge tone={alert.severity}>{alert.severity}</StatusBadge>
+                    <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
                   </TableCell>
                   <TableCell>{alert.source}</TableCell>
                   <TableCell>{alert.title}</TableCell>
-                  <TableCell>Dashboard</TableCell>
+                  <TableCell>{t.alerts.dashboard}</TableCell>
                 </tr>
               ))}
             </tbody>
@@ -712,13 +735,13 @@ function AlertsPage({ alerts }: { alerts: AlertRowData[] }) {
       </section>
 
       <section className={panelClass}>
-        <PanelHeading title="Alert Rules" icon={Bell} meta="MVP thresholds" />
+        <PanelHeading title={t.panels.alertRules} icon={Bell} meta={t.panels.mvpThresholds} />
         <div className="mt-3 grid gap-2.5">
           {([
-            ['Storage', '< 10%', 'critical'],
-            ['Health score', '< 60', 'warning'],
-            ['Ping', '> 150 ms', 'warning'],
-            ['Packet loss', '> 1%', 'critical'],
+            [t.alertRules.storage, '< 10%', 'critical'],
+            [t.alertRules.healthScore, '< 60', 'warning'],
+            [t.alertRules.ping, '> 150 ms', 'warning'],
+            [t.alertRules.packetLoss, '> 1%', 'critical'],
           ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
             <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-afro-line px-3" key={label}>
               <span className={mutedTextClass}>{label}</span>
@@ -733,10 +756,16 @@ function AlertsPage({ alerts }: { alerts: AlertRowData[] }) {
 
 function Sidebar({
   activeView,
+  nextLanguage,
+  onLanguageChange,
   onViewChange,
+  t,
 }: {
   activeView: ActiveView;
+  nextLanguage: DashboardLanguage;
+  onLanguageChange: (language: DashboardLanguage) => void;
   onViewChange: (view: ActiveView) => void;
+  t: DashboardStrings;
 }) {
   return (
     <aside className="flex flex-col bg-afro-sidebar px-[18px] py-4 text-[#eef6f4] md:py-6 lg:min-h-screen">
@@ -751,18 +780,34 @@ function Sidebar({
             isActive={activeView === item.id}
             key={item.id}
             onClick={() => onViewChange(item.id)}
+            t={t}
           />
         ))}
       </nav>
       <div className="hidden text-xs text-[#91a5a2] lg:mt-6 lg:block lg:border-t lg:border-[#334852] lg:pt-3">
-        <div className="font-bold text-[#c8d7d5]">AfroGate</div>
-        <div>v{appVersion}</div>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-bold text-[#c8d7d5]">AfroGate</div>
+            <div>v{appVersion}</div>
+          </div>
+          <button
+            aria-label={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
+            className="inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white"
+            onClick={() => onLanguageChange(nextLanguage)}
+            title={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
+            type="button"
+          >
+            <Languages size={16} />
+            <span className="text-[11px] font-bold">{t.nextLanguageLabel}</span>
+          </button>
+        </div>
+        <div className="mt-2">{t.languageName}</div>
       </div>
     </aside>
   );
 }
 
-function NavItem({ item, isActive, onClick }: { item: NavItemData; isActive: boolean; onClick: () => void }) {
+function NavItem({ item, isActive, onClick, t }: { item: NavItemData; isActive: boolean; onClick: () => void; t: DashboardStrings }) {
   const Icon = item.icon;
   const activeClass = isActive ? 'bg-[#1f3138] text-white' : 'text-[#c8d7d5] hover:bg-[#1f3138] hover:text-white';
 
@@ -774,7 +819,7 @@ function NavItem({ item, isActive, onClick }: { item: NavItemData; isActive: boo
       type="button"
     >
       <Icon size={18} />
-      {item.label}
+      {t.nav[item.labelKey]}
     </button>
   );
 }
@@ -810,20 +855,20 @@ function MetricCard({ item }: { item: MetricCardData }) {
   );
 }
 
-function ServerPanel({ servers }: { servers: ServerRowData[] }) {
+function ServerPanel({ servers, t }: { servers: ServerRowData[]; t: DashboardStrings }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title="Servers" icon={Gauge} meta={`${servers.length} nodes`} />
+      <PanelHeading title={t.panels.servers} icon={Gauge} meta={t.panels.nodes(servers.length)} />
       <div className="mt-3.5 grid gap-3">
         {servers.map((server) => (
-          <ServerRow server={server} key={server.id} />
+          <ServerRow server={server} key={server.id} t={t} />
         ))}
       </div>
     </section>
   );
 }
 
-function ServerRow({ server }: { server: ServerRowData }) {
+function ServerRow({ server, t }: { server: ServerRowData; t: DashboardStrings }) {
   return (
     <div className="grid min-h-[86px] items-center gap-3.5 rounded-md border border-afro-line p-3 sm:grid-cols-[150px_1fr_48px]">
       <div className="grid gap-1">
@@ -831,12 +876,12 @@ function ServerRow({ server }: { server: ServerRowData }) {
         <span className={mutedTextClass}>{server.meta}</span>
       </div>
       <div className="grid gap-[7px]">
-        <UsageBar label="CPU" value={server.cpu} />
-        <UsageBar label="RAM" value={server.ram} />
-        <UsageBar label="Disk free" value={server.diskFree} invert />
+        <UsageBar label={t.resources.cpu} value={server.cpu} />
+        <UsageBar label={t.resources.ram} value={server.ram} />
+        <UsageBar label={t.resources.diskFree} value={server.diskFree} invert />
         <div className="grid grid-cols-2 gap-2 text-[12px] text-afro-muted">
-          <span className="truncate">Down <strong className="text-afro-ink">{formatBytesPerSecond(server.inboundBps)}</strong></span>
-          <span className="truncate">Up <strong className="text-afro-ink">{formatBytesPerSecond(server.outboundBps)}</strong></span>
+          <span className="truncate">{t.resources.down} <strong className="text-afro-ink">{formatBytesPerSecond(server.inboundBps)}</strong></span>
+          <span className="truncate">{t.resources.up} <strong className="text-afro-ink">{formatBytesPerSecond(server.outboundBps)}</strong></span>
         </div>
       </div>
       <b className={`text-left text-[22px] sm:text-right ${getScoreClass(server.score)}`}>{server.score}</b>
@@ -862,15 +907,15 @@ function UsageBar({ label, value, invert = false }: { label: string; value: numb
   );
 }
 
-function TunnelPanel() {
+function TunnelPanel({ t }: { t: DashboardStrings }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title="Tunnels" icon={Route} meta="3 links" />
+      <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(3)} />
       <div className="mt-3.5 overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Tunnel', 'Operator', 'Ping', 'Jitter', 'Loss', 'Score'].map((heading) => (
+              {[t.tables.tunnel, t.tables.operator, t.tables.ping, t.tables.jitter, t.tables.loss, t.tables.score].map((heading) => (
                 <th className="border-b border-afro-line px-2 py-[13px] text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
                   {heading}
                 </th>
@@ -950,14 +995,14 @@ function mapSnapshotToServerRow(snapshot: ServerMetricSnapshot): ServerRowData {
   };
 }
 
-function createSummary(servers: ServerRowData[], trafficTotals: TrafficTotals): MetricCardData[] {
+function createSummary(servers: ServerRowData[], trafficTotals: TrafficTotals, t: DashboardStrings): MetricCardData[] {
   const criticalAlerts = servers.filter((server) => server.score < 50 || (server.diskFree !== null && server.diskFree < 10)).length;
 
   return [
-    { label: 'Active users', value: '150', tone: 'neutral' },
-    { label: 'Download now', value: formatBytesPerSecond(trafficTotals.downloadBps), tone: 'good' },
-    { label: 'Upload now', value: formatBytesPerSecond(trafficTotals.uploadBps), tone: 'neutral' },
-    { label: 'Critical alerts', value: String(criticalAlerts), tone: criticalAlerts > 0 ? 'critical' : 'good' },
+    { label: t.summary.activeUsers, value: '150', tone: 'neutral' },
+    { label: t.summary.downloadNow, value: formatBytesPerSecond(trafficTotals.downloadBps), tone: 'good' },
+    { label: t.summary.uploadNow, value: formatBytesPerSecond(trafficTotals.uploadBps), tone: 'neutral' },
+    { label: t.summary.criticalAlerts, value: String(criticalAlerts), tone: criticalAlerts > 0 ? 'critical' : 'good' },
   ];
 }
 
@@ -968,13 +1013,13 @@ function createTrafficTotals(servers: ServerRowData[]): TrafficTotals {
   };
 }
 
-function createAlertRows(servers: ServerRowData[]): AlertRowData[] {
+function createAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRowData[] {
   const rows: AlertRowData[] = [];
 
   for (const server of servers) {
     if (server.diskFree !== null && server.diskFree < 10) {
       rows.push({
-        title: 'Storage below 10%',
+        title: t.alerts.storageBelow,
         source: server.name,
         severity: 'critical',
       });
@@ -982,7 +1027,7 @@ function createAlertRows(servers: ServerRowData[]): AlertRowData[] {
 
     if (server.score < 60) {
       rows.push({
-        title: 'Health score degraded',
+        title: t.alerts.healthScoreDegraded,
         source: server.name,
         severity: server.score < 40 ? 'critical' : 'warning',
       });
@@ -992,13 +1037,13 @@ function createAlertRows(servers: ServerRowData[]): AlertRowData[] {
   if (rows.length > 0) return rows.slice(0, 4);
 
   return [
-    { title: 'No critical server alerts', source: 'Monitoring', severity: 'good' },
-    { title: 'Outbound failover ready', source: 'Routes', severity: 'neutral' },
-    { title: 'Backup monitor pending', source: 'Control plane', severity: 'warning' },
+    { title: t.alerts.noCriticalServerAlerts, source: t.alerts.monitoring, severity: 'good' },
+    { title: t.alerts.outboundFailoverReady, source: t.alerts.routes, severity: 'neutral' },
+    { title: t.alerts.backupMonitorPending, source: t.alerts.controlPlane, severity: 'warning' },
   ];
 }
 
-function createHealthChartOption(series: ServerMetricTimeseries[]): AfroChartOption {
+function createHealthChartOption(series: ServerMetricTimeseries[], t: DashboardStrings): AfroChartOption {
   const chartSeries = series.map((item, index) => ({
     name: item.hostname || item.serverId,
     type: 'line' as const,
@@ -1014,7 +1059,7 @@ function createHealthChartOption(series: ServerMetricTimeseries[]): AfroChartOpt
           symbol: 'none',
           label: {
             color: '#9a5b00',
-            formatter: 'watch',
+            formatter: t.chart.watch,
           },
           lineStyle: {
             color: '#c27a1a',
@@ -1122,60 +1167,39 @@ function createFallbackTimeseries(
   }));
 }
 
-function getDataStatus(dataState: DataState, lastUpdated: string | null) {
+function getDataStatus(dataState: DataState, lastUpdated: string | null, t: DashboardStrings) {
   const updatedAt = lastUpdated ? ` ${new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
 
   switch (dataState) {
     case 'live':
       return {
-        label: `Live${updatedAt}`,
+        label: `${t.dataStatus.live}${updatedAt}`,
         className: 'border-[#b8e1cf] bg-[#e7f6ef] text-afro-green',
         dotClassName: 'bg-afro-green',
       };
     case 'stale':
       return {
-        label: `Stale${updatedAt}`,
+        label: `${t.dataStatus.stale}${updatedAt}`,
         className: 'border-[#e6cf9c] bg-[#fff7e6] text-[#9a5b00]',
         dotClassName: 'bg-[#c27a1a]',
       };
     case 'loading':
       return {
-        label: 'Connecting',
+        label: t.dataStatus.loading,
         className: 'border-[#bfd1ea] bg-[#edf4ff] text-afro-blue',
         dotClassName: 'bg-afro-blue',
       };
     default:
       return {
-        label: 'Local sample',
+        label: t.dataStatus.fallback,
         className: 'border-afro-line bg-white text-afro-muted',
         dotClassName: 'bg-afro-muted',
       };
   }
 }
 
-function getPageHeader(activeView: ActiveView) {
-  switch (activeView) {
-    case 'servers':
-      return {
-        eyebrow: 'Infrastructure',
-        title: 'Server management',
-      };
-    case 'routes':
-      return {
-        eyebrow: 'Routing',
-        title: 'Routes and failover',
-      };
-    case 'alerts':
-      return {
-        eyebrow: 'Incidents',
-        title: 'Alerts and delivery',
-      };
-    default:
-      return {
-        eyebrow: 'Operations',
-        title: 'Network operations display',
-      };
-  }
+function getPageHeader(activeView: ActiveView, t: DashboardStrings) {
+  return t.pageHeaders[activeView];
 }
 
 function getStorageTone(value: number | null): Tone {
@@ -1248,6 +1272,10 @@ function formatBytesPerSecond(value: number | null): string {
   }
 
   return `${currentValue >= 10 ? currentValue.toFixed(0) : currentValue.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function dashboardLanguageLabel(language: DashboardLanguage): string {
+  return language === 'fa' ? 'فارسی' : 'English';
 }
 
 function clamp(value: number, min: number, max: number): number {

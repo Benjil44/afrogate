@@ -9,6 +9,7 @@ const failures = [];
 
 checkVersionFile(expectedVersion);
 checkWorkspacePackages(expectedVersion);
+checkPluginManifests(expectedVersion);
 checkPackageLock(expectedVersion);
 checkChangelog(expectedVersion);
 
@@ -45,6 +46,24 @@ function checkWorkspacePackages(version) {
     }
 
     checkInternalDependencies(packageJson, relativePath, version);
+  }
+}
+
+function checkPluginManifests(version) {
+  const pluginsRoot = path.join(repoRoot, 'plugins');
+  if (!fs.existsSync(pluginsRoot)) return;
+
+  for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const manifestPath = path.join(pluginsRoot, entry.name, '.codex-plugin', 'plugin.json');
+    if (!fs.existsSync(manifestPath)) continue;
+
+    const relativePath = path.relative(repoRoot, manifestPath);
+    const manifest = readJson(manifestPath);
+    if (manifest.version !== version) {
+      failures.push(`${relativePath} is ${manifest.version}, expected ${version}.`);
+    }
   }
 }
 

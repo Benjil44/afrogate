@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-05-23
+
+- Added English/Persian dashboard translations with persisted language selection and page direction updates.
+- Added a language icon toggle at the bottom of the sidebar beside the version display.
+- Added multilingual UI policy documentation and extended version checks to cover local plugin manifests.
+
 ## 0.2.1 - 2026-05-23
 
 - Split dashboard traffic monitoring into separate download and upload values in the resource strip, summary cards, capacity panel, and server rows.

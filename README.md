@@ -14,6 +14,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Control-plane egress](docs/control-plane-egress.md)
 - [Server access and outbound management](docs/server-access-and-outbound-management.md)
 - [Dashboard sidebar pages checklist](docs/dashboard-sidebar-pages-checklist.md)
+- [Multilingual UI policy](docs/multilingual-ui.md)
 - [Versioning policy](docs/versioning-policy.md)
 - [Repository structure](docs/repository-structure.md)
 - [Security and performance policy](docs/security-performance-policy.md)

@@ -101,3 +101,5 @@
 - After every meaningful implementation section, agents should run the appropriate `npm run version:*` command, update `CHANGELOG.md`, run `npm run version:check`, and commit the bump with the implementation.
 - Local versioning guidance lives in `docs/versioning-policy.md` and the `plugins/afrogate-versioning` Codex plugin.
 - Dashboard traffic display separates download and upload values; current MVP mapping uses agent aggregate inbound/RX as download and outbound/TX as upload until route-aware attribution is added.
+- Dashboard multilingual support uses `apps/dashboard/src/i18n.ts` for English/Persian strings, persists language in localStorage, and exposes the language icon toggle in the sidebar footer.
+- New dashboard user-facing labels should be added to the typed translation object in the same commit as the UI change.

@@ -34,6 +34,7 @@ The version script updates:
 - root `package.json`
 - workspace package versions
 - internal `@afrogate/*` dependency versions
+- local plugin manifest versions
 - `package-lock.json`
 
 The version check verifies that those files and `CHANGELOG.md` stay aligned.

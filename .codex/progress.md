@@ -48,6 +48,9 @@
 - Added AfroGate versioning workflow with SemVer bump scripts, version consistency checks, changelog, and local Codex plugin/skill.
 - Added dashboard sidebar version footer sourced from root `package.json`.
 - Split dashboard traffic into separate download and upload values in the header resource strip, summary cards, capacity panel, and server rows.
+- Added typed English/Persian dashboard translations with persisted language choice and page `lang`/`dir` updates.
+- Added a sidebar footer language icon toggle beside the version display.
+- Added multilingual UI policy documentation and linked it from README and AGENTS.
 
 ### Current State
 
@@ -128,4 +131,5 @@ Repository remote is ready:
 - Verified dashboard system resource header with dependency audit, workspace typecheck, and production build.
 - Verified versioning workflow with `npm run version:check`, workspace typecheck, and production build.
 - Verified dashboard upload/download split with `npm run version:check`, workspace typecheck, production build, and dependency audit.
+- Verified dashboard multilingual support with `npm run version:check`, workspace typecheck, production build, and dependency audit.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

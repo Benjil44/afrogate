@@ -1,6 +1,6 @@
 {
   "name": "@afrogate/backend",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "predev": "npm --workspace @afrogate/shared run build",
@@ -14,7 +14,7 @@
     "lint": "echo \"backend lint not configured yet\""
   },
   "dependencies": {
-    "@afrogate/shared": "0.2.1",
+    "@afrogate/shared": "0.3.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
