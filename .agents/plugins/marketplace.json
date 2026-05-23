@@ -1,0 +1,20 @@
+{
+  "name": "afrogate-local",
+  "interface": {
+    "displayName": "AfroGate Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "afrogate-versioning",
+      "source": {
+        "source": "local",
+        "path": "./plugins/afrogate-versioning"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

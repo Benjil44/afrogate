@@ -7,6 +7,7 @@ import type {
   StorageVolumeMetric,
 } from '@afrogate/shared';
 import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Cpu, Gauge, HardDrive, MemoryStick, Network, Route, Server, ShieldCheck } from 'lucide-react';
+import rootPackage from '../../../package.json';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
 
@@ -136,6 +137,7 @@ const navItems: NavItemData[] = [
 
 const panelClass = 'min-w-0 rounded-lg border border-afro-line bg-afro-panel p-[18px]';
 const mutedTextClass = 'text-[13px] text-afro-muted';
+const appVersion = rootPackage.version;
 
 export function DashboardApp() {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
@@ -724,12 +726,12 @@ function Sidebar({
   onViewChange: (view: ActiveView) => void;
 }) {
   return (
-    <aside className="bg-afro-sidebar px-[18px] py-4 text-[#eef6f4] md:py-6">
+    <aside className="flex flex-col bg-afro-sidebar px-[18px] py-4 text-[#eef6f4] md:py-6 lg:min-h-screen">
       <div className="flex h-10 items-center gap-2.5 text-xl font-bold">
         <ShieldCheck size={22} />
         <span>AfroGate</span>
       </div>
-      <nav className="mt-4 grid auto-cols-max grid-flow-col gap-1.5 overflow-x-auto lg:mt-8 lg:grid-flow-row">
+      <nav className="mt-4 grid auto-cols-max grid-flow-col gap-1.5 overflow-x-auto lg:mt-8 lg:flex-1 lg:grid-flow-row lg:content-start">
         {navItems.map((item) => (
           <NavItem
             item={item}
@@ -739,6 +741,10 @@ function Sidebar({
           />
         ))}
       </nav>
+      <div className="hidden text-xs text-[#91a5a2] lg:mt-6 lg:block lg:border-t lg:border-[#334852] lg:pt-3">
+        <div className="font-bold text-[#c8d7d5]">AfroGate</div>
+        <div>v{appVersion}</div>
+      </div>
     </aside>
   );
 }

@@ -1,0 +1,40 @@
+{
+  "name": "afrogate-versioning",
+  "version": "0.2.0",
+  "description": "Versioning workflow for AfroGate implementation sessions.",
+  "author": {
+    "name": "AfroGate",
+    "email": "versioning@afrogate.local",
+    "url": "https://github.com/Benjil44/afrogate"
+  },
+  "homepage": "https://github.com/Benjil44/afrogate",
+  "repository": "https://github.com/Benjil44/afrogate",
+  "license": "UNLICENSED",
+  "keywords": [
+    "afrogate",
+    "versioning",
+    "semver",
+    "changelog"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AfroGate Versioning",
+    "shortDescription": "Keep AfroGate versions and changelog aligned with implementation work.",
+    "longDescription": "Guides agents to bump SemVer, update the changelog, and keep sidebar version display current after meaningful implementation sections.",
+    "developerName": "AfroGate",
+    "category": "Productivity",
+    "capabilities": [
+      "Write",
+      "Workflow"
+    ],
+    "websiteURL": "https://github.com/Benjil44/afrogate",
+    "privacyPolicyURL": "https://github.com/Benjil44/afrogate",
+    "termsOfServiceURL": "https://github.com/Benjil44/afrogate",
+    "defaultPrompt": [
+      "Bump AfroGate version for this implementation section.",
+      "Check whether this change requires a version bump.",
+      "Update changelog and package versions after the current section."
+    ],
+    "brandColor": "#0f8f83"
+  }
+}

@@ -19,6 +19,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Update `.codex/progress.md` after each session.
 - Update `.codex/checklist.md` when a task changes state.
 - Update `.codex/memory.md` only for durable decisions and facts.
+- For every meaningful implementation section, bump the AfroGate version, update `CHANGELOG.md`, run `npm run version:check`, and commit the version with the work.
 
 ## Product Priorities
 

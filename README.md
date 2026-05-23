@@ -14,6 +14,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Control-plane egress](docs/control-plane-egress.md)
 - [Server access and outbound management](docs/server-access-and-outbound-management.md)
 - [Dashboard sidebar pages checklist](docs/dashboard-sidebar-pages-checklist.md)
+- [Versioning policy](docs/versioning-policy.md)
 - [Repository structure](docs/repository-structure.md)
 - [Security and performance policy](docs/security-performance-policy.md)
 - [Security policy](SECURITY.md)
@@ -41,6 +42,13 @@ npm --workspace @afrogate/backend run db:migrate
 npm run dev:backend
 npm run dev:dashboard
 python apps/agent/run.py --once
+```
+
+Version after each meaningful implementation section:
+
+```powershell
+npm run version:patch
+npm run version:check
 ```
 
 The backend expects `DATABASE_URL` and a real `AFROGATE_AGENT_TOKEN` before accepting agent metrics. The dashboard reads `VITE_API_BASE_URL` and falls back to local sample data when the API is unavailable.

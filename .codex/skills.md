@@ -39,6 +39,7 @@
 - Update docs as architecture stabilizes.
 - Keep `.env.example` current once apps are scaffolded.
 - Avoid committing generated files, logs, local databases, or backups.
+- Use the local `afrogate-versioning` plugin/skill after meaningful implementation sections so versions, `CHANGELOG.md`, and sidebar display stay aligned.
 
 ## Future App Skills
 
@@ -49,4 +50,3 @@
 - Billing and usage accounting.
 - Backup and restore.
 - Marzban/X-UI integration.
-

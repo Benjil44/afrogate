@@ -13,6 +13,9 @@
 - [x] Keep repository local-first for now.
 - [x] Create remote repository named `afrogate`.
 - [x] Push initial commits to GitHub.
+- [x] Add versioning policy, changelog, and VERSION tracking.
+- [x] Add local AfroGate versioning plugin and skill.
+- [x] Show application version in dashboard sidebar.
 
 ## Phase 0: Foundation
 

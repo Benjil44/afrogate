@@ -97,3 +97,6 @@
 - Outbound management should support ordered priorities, move up/down, health checks, failover thresholds, cooldowns, maintenance mode, and route locks.
 - Server access and outbound failover database foundation exists in PostgreSQL migration `0002_server_access_outbounds.sql`; mutation APIs should wait for admin auth/roles.
 - Backend has bootstrap admin bearer-token and role-guard foundations; future sensitive APIs should use `AdminTokenGuard` plus `Roles`.
+- AfroGate uses one product version across root/workspace packages, shown in the dashboard sidebar and tracked in `VERSION` plus `CHANGELOG.md`.
+- After every meaningful implementation section, agents should run the appropriate `npm run version:*` command, update `CHANGELOG.md`, run `npm run version:check`, and commit the bump with the implementation.
+- Local versioning guidance lives in `docs/versioning-policy.md` and the `plugins/afrogate-versioning` Codex plugin.

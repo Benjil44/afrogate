@@ -14,15 +14,17 @@ Before changing code or architecture in this repository, read these files first:
 10. `docs/control-plane-egress.md`
 11. `docs/server-access-and-outbound-management.md`
 12. `docs/dashboard-sidebar-pages-checklist.md`
-13. `docs/repository-structure.md`
-14. `docs/security-performance-policy.md`
-15. `SECURITY.md`
+13. `docs/versioning-policy.md`
+14. `docs/repository-structure.md`
+15. `docs/security-performance-policy.md`
+16. `SECURITY.md`
 
 After each meaningful implementation session:
 
 - Update `.codex/progress.md` with what changed, what was verified, and what remains.
 - Update `.codex/memory.md` when a stable product or technical decision is made.
 - Update `.codex/checklist.md` when tasks move from pending to done.
+- Bump the AfroGate version, update `CHANGELOG.md`, and run `npm run version:check` for each meaningful implementation section.
 - Keep privacy, safety, and human-rights requirements visible in every design decision.
 - Keep code clean, typed, and deduplicated.
 - Optimize for low-resource VPS machines: low CPU, low RAM, compact metrics, no unnecessary services.
