@@ -111,6 +111,7 @@
 - [x] Simplify the health chart so timeline labels and the plot are readable in dashboard density.
 - [x] Keep the 1920x1080 second-LCD dashboard at zero main-content overflow in English and Persian.
 - [x] Reduce dashboard vertical scroll at 1440x900 without making the 1920x1080 NOC display feel sparse.
+- [x] Add a desktop sidebar collapse/expand control with persisted state and accessible labels.
 - [ ] Improve mobile/tablet resource strip density.
 - [ ] Add empty/loading/error states for every dashboard panel.
 - [ ] Add hover/tooltips for dense icon-only monitoring controls and metrics.

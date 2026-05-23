@@ -1,6 +1,6 @@
 {
   "name": "afrogate-versioning",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Versioning workflow for AfroGate implementation sessions.",
   "author": {
     "name": "AfroGate",

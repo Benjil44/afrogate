@@ -9,6 +9,8 @@ export const dashboardTranslations = {
     languageName: 'English',
     nextLanguageLabel: 'FA',
     switchLanguage: 'Switch language',
+    collapseSidebar: 'Collapse sidebar',
+    expandSidebar: 'Expand sidebar',
     nav: {
       dashboard: 'Dashboard',
       servers: 'Servers',
@@ -167,6 +169,8 @@ export const dashboardTranslations = {
     languageName: 'فارسی',
     nextLanguageLabel: 'EN',
     switchLanguage: 'تغییر زبان',
+    collapseSidebar: 'جمع کردن منو',
+    expandSidebar: 'باز کردن منو',
     nav: {
       dashboard: 'داشبورد',
       servers: 'سرورها',

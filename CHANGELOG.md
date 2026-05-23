@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.9 - 2026-05-23
+
+- Added a desktop sidebar collapse/expand control that turns the sidebar into an 80px icon rail.
+- Persisted the sidebar width preference in local storage so monitoring displays reopen in the chosen layout.
+- Added English and Persian accessible labels/tooltips for the sidebar collapse control.
+
 ## 0.3.8 - 2026-05-23
 
 - Added a UI/UX audit checklist for the dense monitoring dashboard and remaining layout hardening work.

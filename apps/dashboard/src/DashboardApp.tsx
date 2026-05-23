@@ -6,7 +6,26 @@ import type {
   ServerMetricTimeseries,
   StorageVolumeMetric,
 } from '@afrogate/shared';
-import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Cpu, Download, Gauge, HardDrive, Languages, MemoryStick, Network, Route, Server, ShieldCheck, Upload } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  ArrowDownUp,
+  Bell,
+  Clock,
+  Cpu,
+  Download,
+  Gauge,
+  HardDrive,
+  Languages,
+  MemoryStick,
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Route,
+  Server,
+  ShieldCheck,
+  Upload,
+} from 'lucide-react';
 import rootPackage from '../../../package.json';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
@@ -152,6 +171,11 @@ const navItems: NavItemData[] = [
 const panelClass = 'min-w-0 rounded-md border border-afro-line bg-afro-panel p-3';
 const mutedTextClass = 'text-[13px] text-afro-muted';
 const appVersion = rootPackage.version;
+const sidebarStorageKey = 'afrogate.dashboard.sidebar';
+
+function loadInitialSidebarCollapsed() {
+  return window.localStorage.getItem(sidebarStorageKey) === 'collapsed';
+}
 
 export function DashboardApp() {
   const { isRtl, language, nextLanguage, setLanguage, strings: t } = useDashboardLanguage();
@@ -162,6 +186,7 @@ export function DashboardApp() {
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
   const [dataState, setDataState] = useState<DataState>('loading');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const wallClock = useWallClock(format);
 
   useEffect(() => {
@@ -200,6 +225,10 @@ export function DashboardApp() {
     };
   }, [timeRange]);
 
+  useEffect(() => {
+    window.localStorage.setItem(sidebarStorageKey, isSidebarCollapsed ? 'collapsed' : 'expanded');
+  }, [isSidebarCollapsed]);
+
   const serverRows = useMemo(
     () => (metrics.length > 0 ? metrics.map(mapSnapshotToServerRow) : fallbackServers),
     [metrics],
@@ -214,17 +243,20 @@ export function DashboardApp() {
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t);
+  const shellGridClass = isSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
 
   return (
     <main
-      className="grid min-h-screen grid-cols-1 overflow-x-hidden bg-afro-page text-afro-ink lg:h-screen lg:min-h-0 lg:grid-cols-[248px_minmax(0,1fr)] lg:overflow-hidden"
+      className={`grid min-h-screen grid-cols-1 overflow-x-hidden bg-afro-page text-afro-ink lg:h-screen lg:min-h-0 lg:overflow-hidden ${shellGridClass}`}
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
     >
       <Sidebar
         activeView={activeView}
+        isCollapsed={isSidebarCollapsed}
         nextLanguage={nextLanguage}
         onLanguageChange={setLanguage}
+        onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
         onViewChange={setActiveView}
         sidebarAlertState={sidebarAlertState}
         t={t}
@@ -780,37 +812,48 @@ function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: Das
 
 function Sidebar({
   activeView,
+  isCollapsed,
   nextLanguage,
   onLanguageChange,
+  onToggleCollapse,
   onViewChange,
   sidebarAlertState,
   t,
 }: {
   activeView: ActiveView;
+  isCollapsed: boolean;
   nextLanguage: DashboardLanguage;
   onLanguageChange: (language: DashboardLanguage) => void;
+  onToggleCollapse: () => void;
   onViewChange: (view: ActiveView) => void;
   sidebarAlertState: SidebarAlertState | null;
   t: DashboardStrings;
 }) {
   return (
-    <aside className="bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:py-6">
-      <div className="flex items-center justify-between gap-3 lg:block">
-        <div className="flex h-10 items-center gap-2.5 text-xl font-bold">
+    <aside
+      className={`bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:py-6 ${isCollapsed ? 'lg:px-3' : ''}`}
+      data-sidebar-collapsed={isCollapsed ? 'true' : 'false'}
+    >
+      <div className={`flex items-center justify-between gap-3 ${isCollapsed ? 'lg:justify-center' : 'lg:block'}`}>
+        <div className={`flex h-10 items-center gap-2.5 text-xl font-bold ${isCollapsed ? 'lg:justify-center' : ''}`}>
           <ShieldCheck size={22} />
-          <span>AfroGate</span>
+          <span className={isCollapsed ? 'lg:sr-only' : ''}>AfroGate</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-[#91a5a2] lg:hidden">
           <span>v{appVersion}</span>
           <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
         </div>
       </div>
-      <nav className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:mt-8 lg:flex-1 lg:grid-cols-1 lg:content-start">
+      <div className={`hidden lg:flex ${isCollapsed ? 'mt-3 justify-center' : 'mt-4 justify-end'}`}>
+        <SidebarToggle isCollapsed={isCollapsed} onToggle={onToggleCollapse} t={t} />
+      </div>
+      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:flex-1 lg:grid-cols-1 lg:content-start ${isCollapsed ? 'lg:mt-4' : 'lg:mt-8'}`}>
         {navItems.map((item) => (
           <NavItem
             item={item}
             alertState={item.id === 'alerts' ? sidebarAlertState : null}
             isActive={activeView === item.id}
+            isSidebarCollapsed={isCollapsed}
             key={item.id}
             onClick={() => onViewChange(item.id)}
             t={t}
@@ -818,16 +861,53 @@ function Sidebar({
         ))}
       </nav>
       <div className="hidden text-xs text-[#91a5a2] lg:mt-6 lg:block lg:border-t lg:border-[#334852] lg:pt-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-bold text-[#c8d7d5]">AfroGate</div>
-            <div>v{appVersion}</div>
+        {isCollapsed ? (
+          <div className="flex flex-col items-center gap-2">
+            <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+            <div className="text-[11px] font-bold text-[#c8d7d5]">v{appVersion}</div>
           </div>
-          <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
-        </div>
-        <div className="mt-2">{t.languageName}</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-bold text-[#c8d7d5]">AfroGate</div>
+                <div>v{appVersion}</div>
+              </div>
+              <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+            </div>
+            <div className="mt-2">{t.languageName}</div>
+          </>
+        )}
       </div>
     </aside>
+  );
+}
+
+function SidebarToggle({
+  isCollapsed,
+  onToggle,
+  t,
+}: {
+  isCollapsed: boolean;
+  onToggle: () => void;
+  t: DashboardStrings;
+}) {
+  const Icon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
+  const label = isCollapsed ? t.expandSidebar : t.collapseSidebar;
+
+  return (
+    <button
+      aria-pressed={isCollapsed}
+      aria-label={label}
+      className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white ${isCollapsed ? 'min-w-9 px-2' : 'px-2.5'}`}
+      data-sidebar-toggle="true"
+      onClick={onToggle}
+      title={label}
+      type="button"
+    >
+      <Icon className="shrink-0" size={16} />
+      <span className={`text-[11px] font-bold ${isCollapsed ? 'lg:sr-only' : ''}`}>{label}</span>
+    </button>
   );
 }
 
@@ -835,12 +915,14 @@ function NavItem({
   alertState,
   item,
   isActive,
+  isSidebarCollapsed,
   onClick,
   t,
 }: {
   alertState: SidebarAlertState | null;
   item: NavItemData;
   isActive: boolean;
+  isSidebarCollapsed: boolean;
   onClick: () => void;
   t: DashboardStrings;
 }) {
@@ -871,14 +953,15 @@ function NavItem({
     <button
       aria-current={isActive ? 'page' : undefined}
       aria-label={ariaLabel}
-      className={`flex min-h-10 min-w-0 items-center justify-between gap-2 rounded-md px-3 text-left text-sm font-bold ${activeClass}`}
+      className={`flex min-h-10 min-w-0 items-center justify-between gap-2 rounded-md px-3 text-left text-sm font-bold ${activeClass} ${isSidebarCollapsed ? 'lg:justify-center lg:px-2' : ''}`}
       data-view={item.id}
       onClick={onClick}
+      title={ariaLabel}
       type="button"
     >
-      <span className="flex min-w-0 items-center gap-2">
+      <span className={`flex min-w-0 items-center gap-2 ${isSidebarCollapsed ? 'lg:justify-center' : ''}`}>
         <Icon className="shrink-0" size={18} />
-        <span className="min-w-0 truncate">{t.nav[item.labelKey]}</span>
+        <span className={`min-w-0 truncate ${isSidebarCollapsed ? 'lg:sr-only' : ''}`}>{t.nav[item.labelKey]}</span>
       </span>
       {alertState ? (
         <span className={`inline-flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full border px-1 text-[11px] leading-none ${badgeClass}`}>
