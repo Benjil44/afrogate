@@ -47,6 +47,7 @@
 - Added dashboard header system resource strip before the connectivity/routing monitor sections.
 - Added AfroGate versioning workflow with SemVer bump scripts, version consistency checks, changelog, and local Codex plugin/skill.
 - Added dashboard sidebar version footer sourced from root `package.json`.
+- Split dashboard traffic into separate download and upload values in the header resource strip, summary cards, capacity panel, and server rows.
 
 ### Current State
 
@@ -125,5 +126,6 @@ Repository remote is ready:
 - Verified sidebar navigation pages with dependency audit, workspace typecheck, and production build.
 - Verified system resource metric collection with Python compile/run and workspace typecheck.
 - Verified dashboard system resource header with dependency audit, workspace typecheck, and production build.
-- Versioning workflow is being verified with `npm run version:check`, workspace typecheck, and production build.
+- Verified versioning workflow with `npm run version:check`, workspace typecheck, and production build.
+- Verified dashboard upload/download split with `npm run version:check`, workspace typecheck, production build, and dependency audit.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

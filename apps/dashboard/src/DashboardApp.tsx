@@ -6,7 +6,7 @@ import type {
   ServerMetricTimeseries,
   StorageVolumeMetric,
 } from '@afrogate/shared';
-import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Cpu, Gauge, HardDrive, MemoryStick, Network, Route, Server, ShieldCheck } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownUp, Bell, Clock, Cpu, Download, Gauge, HardDrive, MemoryStick, Network, Route, Server, ShieldCheck, Upload } from 'lucide-react';
 import rootPackage from '../../../package.json';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
@@ -19,6 +19,11 @@ interface MetricCardData {
   label: string;
   value: string;
   tone: Tone;
+}
+
+interface TrafficTotals {
+  downloadBps: number | null;
+  uploadBps: number | null;
 }
 
 interface ServerRowData {
@@ -188,7 +193,8 @@ export function DashboardApp() {
     () => (metrics.length > 0 ? metrics.map(mapSnapshotToServerRow) : fallbackServers),
     [metrics],
   );
-  const summary = useMemo(() => createSummary(serverRows), [serverRows]);
+  const trafficTotals = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
+  const summary = useMemo(() => createSummary(serverRows, trafficTotals), [serverRows, trafficTotals]);
   const chartSeries = useMemo(
     () => (timeseries.length > 0 ? timeseries : createFallbackTimeseries(serverRows, timeRange)),
     [serverRows, timeRange, timeseries],
@@ -219,7 +225,7 @@ export function DashboardApp() {
           </div>
         </header>
 
-        <SystemResourceHeader servers={serverRows} />
+        <SystemResourceHeader servers={serverRows} trafficTotals={trafficTotals} />
 
         <div className="mt-5 border-t border-afro-line" />
 
@@ -231,13 +237,20 @@ export function DashboardApp() {
           servers={serverRows}
           summary={summary}
           timeRange={timeRange}
+          trafficTotals={trafficTotals}
         />
       </section>
     </main>
   );
 }
 
-function SystemResourceHeader({ servers }: { servers: ServerRowData[] }) {
+function SystemResourceHeader({
+  servers,
+  trafficTotals,
+}: {
+  servers: ServerRowData[];
+  trafficTotals: TrafficTotals;
+}) {
   const cpuAverage = averagePercent(servers.map((server) => server.cpu));
   const ramAverage = averagePercent(servers.map((server) => server.ram));
   const storages = servers.flatMap((server) =>
@@ -250,21 +263,15 @@ function SystemResourceHeader({ servers }: { servers: ServerRowData[] }) {
     if (typeof storage.freePercent !== 'number') return lowest;
     return lowest === null ? storage.freePercent : Math.min(lowest, storage.freePercent);
   }, null);
-  const inboundTotal = sumNullable(servers.map((server) => server.inboundBps));
-  const outboundTotal = sumNullable(servers.map((server) => server.outboundBps));
 
   return (
     <section className="mt-5" aria-label="System resources">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <ResourceStat icon={Cpu} label="CPU average" tone={getUsageTone(cpuAverage)} value={formatPercent(cpuAverage)} />
         <ResourceStat icon={MemoryStick} label="RAM average" tone={getUsageTone(ramAverage)} value={formatPercent(ramAverage)} />
         <ResourceStat icon={HardDrive} label="Lowest storage" tone={getStorageTone(lowestStorage)} value={formatPercent(lowestStorage)} />
-        <ResourceStat
-          icon={Network}
-          label="Local traffic"
-          tone="neutral"
-          value={`${formatBytesPerSecond(inboundTotal)} / ${formatBytesPerSecond(outboundTotal)}`}
-        />
+        <ResourceStat icon={Download} label="Download" tone="neutral" value={formatBytesPerSecond(trafficTotals.downloadBps)} />
+        <ResourceStat icon={Upload} label="Upload" tone="neutral" value={formatBytesPerSecond(trafficTotals.uploadBps)} />
       </div>
 
       <div className="mt-3 overflow-x-auto rounded-lg border border-afro-line bg-afro-panel">
@@ -323,6 +330,7 @@ function ActivePage({
   servers,
   summary,
   timeRange,
+  trafficTotals,
 }: {
   activeView: ActiveView;
   alerts: AlertRowData[];
@@ -331,6 +339,7 @@ function ActivePage({
   servers: ServerRowData[];
   summary: MetricCardData[];
   timeRange: MetricsTimeRange;
+  trafficTotals: TrafficTotals;
 }) {
   switch (activeView) {
     case 'servers':
@@ -348,6 +357,7 @@ function ActivePage({
           servers={servers}
           summary={summary}
           timeRange={timeRange}
+          trafficTotals={trafficTotals}
         />
       );
   }
@@ -360,6 +370,7 @@ function DashboardPage({
   servers,
   summary,
   timeRange,
+  trafficTotals,
 }: {
   alerts: AlertRowData[];
   chartSeries: ServerMetricTimeseries[];
@@ -367,6 +378,7 @@ function DashboardPage({
   servers: ServerRowData[];
   summary: MetricCardData[];
   timeRange: MetricsTimeRange;
+  trafficTotals: TrafficTotals;
 }) {
   return (
     <>
@@ -390,7 +402,7 @@ function DashboardPage({
 
       <section className="mt-[18px] grid gap-[18px] xl:grid-cols-3">
         <OutboundsPanel />
-        <CapacityPanel />
+        <CapacityPanel trafficTotals={trafficTotals} />
         <ControlPlanePanel />
       </section>
     </>
@@ -483,10 +495,11 @@ function AlertsPanel({ alerts }: { alerts: AlertRowData[] }) {
   );
 }
 
-function CapacityPanel() {
+function CapacityPanel({ trafficTotals }: { trafficTotals: TrafficTotals }) {
   const items = [
     { label: 'Users online', value: '150' },
-    { label: 'Outbound now', value: '20 MB/s' },
+    { label: 'Download now', value: formatBytesPerSecond(trafficTotals.downloadBps) },
+    { label: 'Upload now', value: formatBytesPerSecond(trafficTotals.uploadBps) },
     { label: 'Min target/user', value: '1 MB/s' },
     { label: 'Route mode', value: 'Auto + lock' },
   ];
@@ -821,6 +834,10 @@ function ServerRow({ server }: { server: ServerRowData }) {
         <UsageBar label="CPU" value={server.cpu} />
         <UsageBar label="RAM" value={server.ram} />
         <UsageBar label="Disk free" value={server.diskFree} invert />
+        <div className="grid grid-cols-2 gap-2 text-[12px] text-afro-muted">
+          <span className="truncate">Down <strong className="text-afro-ink">{formatBytesPerSecond(server.inboundBps)}</strong></span>
+          <span className="truncate">Up <strong className="text-afro-ink">{formatBytesPerSecond(server.outboundBps)}</strong></span>
+        </div>
       </div>
       <b className={`text-left text-[22px] sm:text-right ${getScoreClass(server.score)}`}>{server.score}</b>
     </div>
@@ -933,23 +950,22 @@ function mapSnapshotToServerRow(snapshot: ServerMetricSnapshot): ServerRowData {
   };
 }
 
-function createSummary(servers: ServerRowData[]): MetricCardData[] {
-  const storageValues = servers
-    .map((server) => server.diskFree)
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  const lowestStorage = storageValues.length > 0 ? Math.min(...storageValues) : null;
+function createSummary(servers: ServerRowData[], trafficTotals: TrafficTotals): MetricCardData[] {
   const criticalAlerts = servers.filter((server) => server.score < 50 || (server.diskFree !== null && server.diskFree < 10)).length;
 
   return [
     { label: 'Active users', value: '150', tone: 'neutral' },
-    { label: 'Outbound', value: '20 MB/s', tone: 'good' },
+    { label: 'Download now', value: formatBytesPerSecond(trafficTotals.downloadBps), tone: 'good' },
+    { label: 'Upload now', value: formatBytesPerSecond(trafficTotals.uploadBps), tone: 'neutral' },
     { label: 'Critical alerts', value: String(criticalAlerts), tone: criticalAlerts > 0 ? 'critical' : 'good' },
-    {
-      label: 'Lowest storage',
-      value: lowestStorage === null ? '--' : `${Math.round(lowestStorage)}%`,
-      tone: getStorageTone(lowestStorage),
-    },
   ];
+}
+
+function createTrafficTotals(servers: ServerRowData[]): TrafficTotals {
+  return {
+    downloadBps: sumNullable(servers.map((server) => server.inboundBps)),
+    uploadBps: sumNullable(servers.map((server) => server.outboundBps)),
+  };
 }
 
 function createAlertRows(servers: ServerRowData[]): AlertRowData[] {

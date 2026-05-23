@@ -100,3 +100,4 @@
 - AfroGate uses one product version across root/workspace packages, shown in the dashboard sidebar and tracked in `VERSION` plus `CHANGELOG.md`.
 - After every meaningful implementation section, agents should run the appropriate `npm run version:*` command, update `CHANGELOG.md`, run `npm run version:check`, and commit the bump with the implementation.
 - Local versioning guidance lives in `docs/versioning-policy.md` and the `plugins/afrogate-versioning` Codex plugin.
+- Dashboard traffic display separates download and upload values; current MVP mapping uses agent aggregate inbound/RX as download and outbound/TX as upload until route-aware attribution is added.
