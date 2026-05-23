@@ -87,6 +87,7 @@
 - [x] Separate dashboard download and upload traffic values.
 - [x] English/Persian dashboard language toggle.
 - [x] Sidebar footer language icon.
+- [x] Local Persian font-face wiring for IRANSans assets.
 - [x] Sidebar pages implementation checklist.
 - [x] Sidebar navigation state.
 - [x] Initial Servers page.

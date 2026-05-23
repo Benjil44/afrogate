@@ -51,6 +51,8 @@
 - Added typed English/Persian dashboard translations with persisted language choice and page `lang`/`dir` updates.
 - Added a sidebar footer language icon toggle beside the version display.
 - Added multilingual UI policy documentation and linked it from README and AGENTS.
+- Added local IRANSans font-face wiring for Persian mode and an asset folder for licensed font files without using a CDN.
+- Moved the workspace-provided `Iranian Sans.ttf` into the dashboard font assets as `IranianSans.ttf`.
 
 ### Current State
 
@@ -132,4 +134,5 @@ Repository remote is ready:
 - Verified versioning workflow with `npm run version:check`, workspace typecheck, and production build.
 - Verified dashboard upload/download split with `npm run version:check`, workspace typecheck, production build, and dependency audit.
 - Verified dashboard multilingual support with `npm run version:check`, workspace typecheck, production build, and dependency audit.
+- Verified Persian font asset wiring and copied font asset with version check, workspace typecheck, production build, and dependency audit.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-05-23
+
+- Added local IRANSans/Iranian Sans font-face wiring for Persian dashboard mode without using a CDN.
+- Added the dashboard font asset folder, copied the local `Iranian Sans.ttf` asset into it, and documented license-safe font handling.
+
 ## 0.3.0 - 2026-05-23
 
 - Added English/Persian dashboard translations with persisted language selection and page direction updates.

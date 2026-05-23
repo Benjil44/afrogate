@@ -1,0 +1,27 @@
+@font-face {
+  font-family: "AfroGate IRANSans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("IRANSans"),
+    local("IRANSansWeb"),
+    local("A Iranian Sans"),
+    url("./IRANSans.woff2") format("woff2"),
+    url("./IRANSansWeb.woff2") format("woff2"),
+    url("./IranianSans.ttf") format("truetype"),
+    url("./IRANSans.woff") format("woff");
+}
+
+@font-face {
+  font-family: "AfroGate IRANSans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src:
+    local("IRANSans Bold"),
+    local("IRANSansWeb Bold"),
+    url("./IRANSans-Bold.woff2") format("woff2"),
+    url("./IRANSansWeb_Bold.woff2") format("woff2"),
+    url("./IRANSans-Bold.woff") format("woff");
+}

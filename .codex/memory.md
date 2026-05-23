@@ -103,3 +103,4 @@
 - Dashboard traffic display separates download and upload values; current MVP mapping uses agent aggregate inbound/RX as download and outbound/TX as upload until route-aware attribution is added.
 - Dashboard multilingual support uses `apps/dashboard/src/i18n.ts` for English/Persian strings, persists language in localStorage, and exposes the language icon toggle in the sidebar footer.
 - New dashboard user-facing labels should be added to the typed translation object in the same commit as the UI change.
+- Persian dashboard typography is wired to local IRANSans assets under `apps/dashboard/public/assets/fonts/iransans/`; no CDN font source should be used, and proprietary font files should only be committed with a valid license.

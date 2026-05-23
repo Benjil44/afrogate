@@ -9,6 +9,7 @@ AfroGate dashboard supports English and Persian from the first MVP stage.
 - The selected language updates the page `lang` and `dir` attributes.
 - The sidebar footer contains the language icon toggle beside the version.
 - Current language support covers English and Persian dashboard operations copy.
+- Persian typography uses local IRANSans/Iranian Sans assets from `apps/dashboard/public/assets/fonts/iransans/`; `index.html` loads `iransans.css` directly and no CDN font source is used.
 
 ## Rules
 
@@ -17,6 +18,7 @@ AfroGate dashboard supports English and Persian from the first MVP stage.
 - Prefer short operational Persian labels that fit dense monitoring panels.
 - Keep English and Persian keys in the same typed object so TypeScript catches missing translations.
 - When adding a new page or sidebar item, add the translation keys in the same commit.
+- Do not commit proprietary Persian font files unless the project has a license that allows repository storage and distribution.
 
 ## Future Improvements
 
