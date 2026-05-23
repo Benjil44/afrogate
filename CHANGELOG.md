@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5 - 2026-05-23
+
+- Fixed dashboard packet-loss translations so English uses `Packet loss` / `Loss` and Persian uses `افت بسته`.
+
 ## 0.3.4 - 2026-05-23
 
 - Compacted the dashboard information density with smaller panels, cards, rows, charts, and resource strips.

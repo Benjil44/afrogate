@@ -59,6 +59,7 @@
 - Changed the desktop shell to `h-screen`/`overflow-hidden` and made the main content pane the only vertical scroll container.
 - Compacted the dashboard into a denser NOC layout with smaller cards, rows, charts, resource strips, and earlier multi-column dashboard sections.
 - Verified the dashboard, Servers, Routes, and Alerts pages fit without main-content overflow on a 1920x1080 second-LCD viewport.
+- Fixed the packet-loss dashboard translations so Persian shows `افت بسته` and English no longer shows Persian text.
 
 ### Current State
 
@@ -144,4 +145,5 @@ Repository remote is ready:
 - Verified Dashboard, Servers, Routes, and Alerts pages in English and Persian at 375x812, 768x1024, 1440x900, and 1920x1080 using local Edge CDP against the Vite server on port 3100.
 - Verified English/LTR fixed-sidebar behavior at 1440x900 and 1920x1080: window scroll stays at 0, document height equals viewport height, sidebar stays top-left, and content scrolls independently when needed.
 - Verified compact dashboard density in local Edge CDP: 1920x1080 reports `0px` main-content overflow for Dashboard, Servers, Routes, and Alerts; 1440x900 Dashboard content was reduced from about `2581px` to `1182px`.
+- Verified packet-loss translation fix with dashboard typecheck and version consistency check.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.
