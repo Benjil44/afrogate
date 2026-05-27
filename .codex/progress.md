@@ -798,3 +798,14 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added guarded write-only server credential storage at `/api/admin/servers/:id/credentials`; credentials are encrypted with `AFROGATE_SECRETS_KEY`, stored in `server_credentials`, linked to the server access profile, and returned only as metadata.
+- Updated access-profile saving so existing credential links are preserved unless explicitly changed, preventing profile edits from silently unlinking the active credential.
+- Added Servers page Access-tab forms for access-profile metadata and write-only credential replacement with typed English/Persian labels.
+- Updated protocol/server access docs, memory, and checklist to mark encrypted server credential storage complete while keeping credential decrypt, SSH execution, service reloads, OS route mutation, and outbound enablement blocked until the audited production apply engine exists.
+- Bumped AfroGate to `0.56.0` for encrypted server credential storage and access-profile editing.
+- Verified `0.56.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

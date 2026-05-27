@@ -68,7 +68,7 @@
 - [x] CRUD for servers.
 - [x] Data model for server access and outbound failover.
 - [x] Server edit screen with safe access/bootstrap tabs.
-- [ ] Encrypted server credential storage.
+- [x] Encrypted server credential storage.
 - [ ] CRUD for tunnels and interfaces.
 - [x] CRUD for outbound routes/gateways.
 - [x] Outbound priority move up/down.

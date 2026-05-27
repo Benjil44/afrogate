@@ -18,8 +18,10 @@ import type {
   AdminRouteQualityAnalyticsResponse,
   AdminSecretRefSummary,
   AdminSettingsResponse,
+  AdminServerDetail,
   AdminUserSummary,
   AdminUsersResponse,
+  CreateServerCredentialRequest,
   CreateProtocolSetupRequest,
   CreateSettingsSecretRequest,
   CreateAdminUserRequest,
@@ -31,8 +33,10 @@ import type {
   RequestProtocolServerApplyRequest,
   RequestProtocolServerApplyResponse,
   RouteFailoverEventsResponse,
+  StoreServerCredentialResponse,
   UpsertRouteAssignmentRequest,
   UpsertRouteSettingsRequest,
+  UpdateServerRequest,
   UpdateAdminUserPasswordRequest,
   UpdateAdminUserRequest,
 } from '@afrogate/shared';
@@ -95,6 +99,34 @@ export async function fetchAdminServers(sessionToken: string, signal?: AbortSign
   });
 
   return response.json() as Promise<AdminServersResponse>;
+}
+
+export async function updateAdminServer(
+  sessionToken: string,
+  serverId: string,
+  payload: UpdateServerRequest,
+): Promise<AdminServerDetail> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/servers/${encodeURIComponent(serverId)}`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminServerDetail>;
+}
+
+export async function storeAdminServerCredential(
+  sessionToken: string,
+  serverId: string,
+  payload: CreateServerCredentialRequest,
+): Promise<StoreServerCredentialResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/servers/${encodeURIComponent(serverId)}/credentials`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<StoreServerCredentialResponse>;
 }
 
 export async function fetchAdminOutbounds(sessionToken: string, signal?: AbortSignal): Promise<AdminOutboundsResponse> {

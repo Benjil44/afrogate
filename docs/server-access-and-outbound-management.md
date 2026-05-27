@@ -62,6 +62,13 @@ password auth: disabled when possible
 
 OpenSSH supports controls such as `PermitRootLogin`, `PasswordAuthentication`, and `AuthorizedKeysFile`; AfroGate should generate hardening guidance around these options instead of encouraging permanent root-password use.
 
+Current implementation:
+
+- The Servers page Access tab can save server access profile metadata such as address, SSH port, username, access method, bootstrap state, and notes through the guarded admin server API.
+- `POST /api/admin/servers/:id/credentials` accepts a server credential once, encrypts it with `AFROGATE_SECRETS_KEY`, stores it in `server_credentials`, links the active credential id to `server_access_profiles.credential_ref`, and returns only metadata plus the refreshed server summary.
+- Replacing a linked credential revokes the previous active linked credential row. The dashboard never reads or displays decrypted server credentials.
+- This storage path does not test SSH, decrypt credentials, execute commands, reload services, change OS routes, or enable outbounds. Those actions remain part of the future audited production apply engine.
+
 ## Monitoring Data Collection
 
 Normal traffic and health visibility should come from the agent, not repeated SSH commands.
@@ -254,7 +261,7 @@ Protocol server apply plans and stored dry-run snapshots now include a dedicated
 
 The first live-apply boundary is intentionally non-mutating. Superadmins can submit a live protocol apply request through `/api/admin/settings/protocol-setups/:id/server-apply/live-request`, and AfroGate records a `protocol_apply_events` row plus audit metadata with `applyMode = live`, blocked reason codes, preflight state, and `dataPlaneMutationExecuted = false`. This proves the API, UI, and audit path before any SSH command runner, secret decrypt for server installation, service reload, OS route change, or outbound enablement is allowed.
 
-Protocol server apply plans now expose an adapter scaffold. The adapter reports supported protocols, disabled feature-flag state, missing live implementation state, a dry-run-only command-runner boundary, and a server-access boundary that checks for an installed access profile plus an active `server_credentials` record without decrypting the credential. The command runner remains dry-run-only and `credentialDecryptAllowed = false` until the production server-side apply engine is implemented and audited.
+Protocol server apply plans now expose an adapter scaffold. The adapter reports supported protocols, disabled feature-flag state, missing live implementation state, a dry-run-only command-runner boundary, and a server-access boundary that checks for an installed access profile plus an active `server_credentials` record without decrypting the credential. The credential storage path is available from the Servers page, but the command runner remains dry-run-only and `credentialDecryptAllowed = false` until the production server-side apply engine is implemented and audited.
 
 ## Security References
 

@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -20,6 +21,8 @@ export const SERVER_ACCESS_METHODS = [
 ] as const;
 
 export const SERVER_BOOTSTRAP_STATES = ['not_started', 'pending', 'installed', 'failed', 'revoked'] as const;
+
+export const SERVER_CREDENTIAL_KINDS = ['ssh_private_key', 'ssh_password', 'api_token'] as const;
 
 export class UpsertServerAccessProfileDto {
   @IsString()
@@ -157,4 +160,18 @@ export class UpdateServerDto {
   @ValidateNested()
   @Type(() => UpsertServerAccessProfileDto)
   accessProfile?: UpsertServerAccessProfileDto;
+}
+
+export class CreateServerCredentialDto {
+  @IsString()
+  @MaxLength(120)
+  name!: string;
+
+  @IsIn(SERVER_CREDENTIAL_KINDS)
+  kind!: string;
+
+  @IsString()
+  @MinLength(4)
+  @MaxLength(30000)
+  secret!: string;
 }

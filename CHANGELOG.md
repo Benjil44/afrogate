@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.56.0 - 2026-05-27
+
+- Added guarded write-only server credential storage that encrypts submitted credentials, stores only metadata in API responses, links the active credential to the server access profile, and revokes the previously linked active credential.
+- Added Servers page Access-tab forms for access-profile metadata and encrypted credential replacement with English and Persian labels.
+- Preserved existing credential links when access profiles are updated without a credential field, while keeping credential decrypt, SSH execution, service reloads, OS route changes, and outbound enablement blocked.
+
 ## 0.55.0 - 2026-05-27
 
 - Added protocol server apply adapter metadata to plans and stored snapshots, including supported protocols, dry-run support, command-runner mode, and data-plane readiness.

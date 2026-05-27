@@ -29,6 +29,7 @@ import type {
   AdminRouteDecisionPreviewResponse,
   AdminRouteSettingsSummary,
   AdminRouteQualityAnalyticsResponse,
+  StoreServerCredentialResponse,
   AdminSecretRefSummary,
   AdminSettingsResponse,
   AdminUserSummary,
@@ -46,7 +47,7 @@ import type { RequestWithAuth } from '../security/auth-request';
 import { Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { CreateOutboundDto, MoveOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
-import { CreateServerDto, UpdateServerDto } from './dto/server.dto';
+import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto } from './dto/server.dto';
 import {
   ApplyRouteDecisionPreviewDto,
   CreateProtocolSetupDto,
@@ -171,6 +172,16 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<void> {
     return this.operationsService.deleteServer(id, request.actor);
+  }
+
+  @Post('servers/:id/credentials')
+  @Roles('admin')
+  storeServerCredential(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: CreateServerCredentialDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<StoreServerCredentialResponse> {
+    return this.operationsService.storeServerCredential(id, payload, request.actor);
   }
 
   @Get('outbounds')

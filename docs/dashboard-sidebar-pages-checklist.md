@@ -24,6 +24,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Server inventory table/cards.
 - [x] Server edit action.
 - [x] Safe access/bootstrap tab.
+- [x] Access-profile edit form with write-only encrypted server credential storage.
 - [x] Monitoring tab with CPU/RAM/disk/network history.
 - [x] Interfaces tab for operators and linked tunnels.
 - [x] Agent WireGuard status telemetry in Monitoring and Interfaces tabs.

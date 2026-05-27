@@ -43,6 +43,10 @@ import type {
   RouteProbeMetric,
   RouteSelectionMode,
   Role,
+  ServerAccessMethod,
+  ServerBootstrapState,
+  ServerCredentialKind,
+  AdminServerDetail,
   ServerMetricSnapshot,
   ServerMetricTimeseries,
   StorageVolumeMetric,
@@ -103,8 +107,10 @@ import {
   recordAdminProtocolServerApplyDryRun,
   recordRouteDecisionPreview,
   requestAdminProtocolServerApply,
+  storeAdminServerCredential,
   updateAdminRouteAssignment,
   updateAdminRouteSettings,
+  updateAdminServer,
   updateAdminUser,
   updateAdminUserPassword,
   applyRouteDecisionPreview,
@@ -396,6 +402,9 @@ const protocolDefaultPorts: Record<ProtocolKind, string> = {
 
 const panelClass = 'min-w-0 rounded-md border border-afro-line bg-afro-panel p-2.5';
 const mutedTextClass = 'text-[13px] text-afro-muted';
+const fieldLabelClass = 'grid gap-1 text-[12px] font-bold text-afro-muted';
+const fieldInputClass = 'min-h-9 rounded-md border border-afro-line bg-white px-2 text-[13px] text-afro-ink outline-none focus:border-afro-blue disabled:bg-[#eef3f5] disabled:text-afro-muted';
+const primaryButtonClass = 'min-h-9 rounded-md bg-afro-blue px-3 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#9fb1bd]';
 const appVersion = rootPackage.version;
 const sidebarStorageKey = 'afrogate.dashboard.sidebar';
 
@@ -609,6 +618,14 @@ function AuthenticatedDashboard({
       : createFallbackFailoverRows(t)),
     [routeDataState, routeFailoverEvents, t],
   );
+  const handleAdminServerUpdated = (server: AdminServerDetail) => {
+    setAdminServers((current) => (
+      current.some((item) => item.id === server.id)
+        ? current.map((item) => (item.id === server.id ? server : item))
+        : [server, ...current]
+    ));
+    setServerDataState('live');
+  };
   const trafficTotals = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
   const computedAlerts = useMemo(() => createComputedAlertRows(serverRows, t), [serverRows, t]);
   const apiAlertRows = useMemo(() => mapAdminAlertsToRows(apiAlerts, t), [apiAlerts, t]);
@@ -682,6 +699,7 @@ function AuthenticatedDashboard({
           alerts={alerts}
           chartSeries={chartSeries}
           format={format}
+          onServerUpdated={handleAdminServerUpdated}
           onRangeChange={setTimeRange}
           routeDataState={routeDataState}
           routeFailoverRows={failoverRows}
@@ -904,6 +922,7 @@ function ActivePage({
   alerts,
   chartSeries,
   format,
+  onServerUpdated,
   onRangeChange,
   routeDataState,
   routeFailoverRows,
@@ -922,6 +941,7 @@ function ActivePage({
   alerts: AlertRowData[];
   chartSeries: ServerMetricTimeseries[];
   format: DashboardFormatters;
+  onServerUpdated: (server: AdminServerDetail) => void;
   onRangeChange: (range: MetricsTimeRange) => void;
   routeDataState: DataState;
   routeFailoverRows: RouteFailoverRowData[];
@@ -938,7 +958,17 @@ function ActivePage({
 }) {
   switch (activeView) {
     case 'servers':
-      return <ServersPage dataState={serverDataState} format={format} servers={managementServers} t={t} />;
+      return (
+        <ServersPage
+          dataState={serverDataState}
+          format={format}
+          onServerUpdated={onServerUpdated}
+          servers={managementServers}
+          session={session}
+          sessionToken={sessionToken}
+          t={t}
+        />
+      );
     case 'users':
       return <UsersPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     case 'routes':
@@ -1183,12 +1213,18 @@ function ControlPlanePanel({ format, t }: { format: DashboardFormatters; t: Dash
 function ServersPage({
   dataState,
   format,
+  onServerUpdated,
   servers,
+  session,
+  sessionToken,
   t,
 }: {
   dataState: DataState;
   format: DashboardFormatters;
+  onServerUpdated: (server: AdminServerDetail) => void;
   servers: ServerRowData[];
+  session: AdminSessionResponse;
+  sessionToken: string;
   t: DashboardStrings;
 }) {
   const [selectedServerId, setSelectedServerId] = useState<string | null>(() => servers[0]?.id ?? null);
@@ -1229,7 +1265,15 @@ function ServersPage({
         </div>
       </section>
 
-      <ServerEditPanel format={format} server={selectedServer} serverIndex={selectedServerIndex} t={t} />
+      <ServerEditPanel
+        format={format}
+        onServerUpdated={onServerUpdated}
+        server={selectedServer}
+        serverIndex={selectedServerIndex}
+        session={session}
+        sessionToken={sessionToken}
+        t={t}
+      />
     </section>
   );
 }
@@ -1301,13 +1345,19 @@ function ServerManagementCard({
 
 function ServerEditPanel({
   format,
+  onServerUpdated,
   server,
   serverIndex,
+  session,
+  sessionToken,
   t,
 }: {
   format: DashboardFormatters;
+  onServerUpdated: (server: AdminServerDetail) => void;
   server: ServerRowData | null;
   serverIndex: number;
+  session: AdminSessionResponse;
+  sessionToken: string;
   t: DashboardStrings;
 }) {
   const [activeTab, setActiveTab] = useState<ServerEditTab>('overview');
@@ -1353,7 +1403,15 @@ function ServerEditPanel({
 
       <div className="mt-2">
         {activeTab === 'overview' ? <ServerOverviewTab format={format} server={server} t={t} /> : null}
-        {activeTab === 'access' ? <ServerAccessTab server={server} t={t} /> : null}
+        {activeTab === 'access' ? (
+          <ServerAccessTab
+            onServerUpdated={onServerUpdated}
+            server={server}
+            session={session}
+            sessionToken={sessionToken}
+            t={t}
+          />
+        ) : null}
         {activeTab === 'monitoring' ? <ServerMonitoringTab format={format} server={server} t={t} /> : null}
         {activeTab === 'interfaces' ? <ServerInterfacesTab format={format} interfaces={interfaces} server={server} t={t} /> : null}
         {activeTab === 'audit' ? <ServerAuditTab format={format} server={server} t={t} /> : null}
@@ -1383,16 +1441,163 @@ function ServerOverviewTab({ format, server, t }: { format: DashboardFormatters;
   );
 }
 
-function ServerAccessTab({ server, t }: { server: ServerRowData; t: DashboardStrings }) {
+function ServerAccessTab({
+  onServerUpdated,
+  server,
+  session,
+  sessionToken,
+  t,
+}: {
+  onServerUpdated: (server: AdminServerDetail) => void;
+  server: ServerRowData;
+  session: AdminSessionResponse;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
   const profile = server.accessProfile;
+  const canManageAccess = server.source === 'admin' && ['superadmin', 'owner', 'admin'].includes(session.actor.role);
+  const [address, setAddress] = useState(profile?.address ?? server.externalId ?? server.name);
+  const [sshPort, setSshPort] = useState(String(profile?.sshPort ?? 22));
+  const [username, setUsername] = useState(profile?.username ?? 'afrogate');
+  const [accessMethod, setAccessMethod] = useState<ServerAccessMethod>(
+    isServerAccessMethod(profile?.accessMethod) ? profile.accessMethod : 'ssh_key',
+  );
+  const [bootstrapState, setBootstrapState] = useState<ServerBootstrapState>(
+    isServerBootstrapState(profile?.bootstrapState) ? profile.bootstrapState : 'not_started',
+  );
+  const [notes, setNotes] = useState(profile?.notes ?? '');
+  const [credentialName, setCredentialName] = useState(profile?.credentialName ?? `${server.name} SSH`);
+  const [credentialKind, setCredentialKind] = useState<ServerCredentialKind>(
+    isServerCredentialKind(profile?.credentialKind) ? profile.credentialKind : 'ssh_private_key',
+  );
+  const [credentialSecret, setCredentialSecret] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isStoringCredential, setIsStoringCredential] = useState(false);
+  const [accessMessage, setAccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAddress(profile?.address ?? server.externalId ?? server.name);
+    setSshPort(String(profile?.sshPort ?? 22));
+    setUsername(profile?.username ?? 'afrogate');
+    setAccessMethod(isServerAccessMethod(profile?.accessMethod) ? profile.accessMethod : 'ssh_key');
+    setBootstrapState(isServerBootstrapState(profile?.bootstrapState) ? profile.bootstrapState : 'not_started');
+    setNotes(profile?.notes ?? '');
+    setCredentialName(profile?.credentialName ?? `${server.name} SSH`);
+    setCredentialKind(isServerCredentialKind(profile?.credentialKind) ? profile.credentialKind : 'ssh_private_key');
+    setCredentialSecret('');
+    setAccessMessage(null);
+  }, [
+    profile?.accessMethod,
+    profile?.address,
+    profile?.bootstrapState,
+    profile?.credentialKind,
+    profile?.credentialName,
+    profile?.notes,
+    profile?.sshPort,
+    profile?.username,
+    server.externalId,
+    server.id,
+    server.name,
+  ]);
+
+  const accessMethodOptions: Array<[ServerAccessMethod, string]> = [
+    ['ssh_key', t.accessRows.sshKey],
+    ['temporary_root_password', t.accessRows.temporaryRootPassword],
+    ['temporary_root_key', t.accessRows.temporaryRootKey],
+    ['existing_admin_key', t.accessRows.existingAdminKey],
+  ];
+  const bootstrapStateOptions: Array<[ServerBootstrapState, string]> = [
+    ['not_started', t.serverEdit.values.pending],
+    ['pending', t.accessRows.bootstrapPending],
+    ['installed', t.accessRows.bootstrapInstalled],
+    ['failed', t.accessRows.bootstrapFailed],
+    ['revoked', t.accessRows.bootstrapRevoked],
+  ];
+  const credentialKindOptions: Array<[ServerCredentialKind, string]> = [
+    ['ssh_private_key', t.accessRows.sshPrivateKey],
+    ['ssh_password', t.accessRows.sshPassword],
+    ['api_token', t.accessRows.apiToken],
+  ];
+
+  const handleSaveProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const port = Number(sshPort);
+
+    if (!address.trim() || !username.trim() || !Number.isInteger(port) || port < 1 || port > 65535) {
+      setAccessMessage(t.accessRows.profileSaveFailed);
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setAccessMessage(null);
+
+    try {
+      const updated = await updateAdminServer(sessionToken, server.id, {
+        accessProfile: {
+          address: address.trim(),
+          accessMethod,
+          bootstrapState,
+          notes: notes.trim() || null,
+          sshPort: port,
+          username: username.trim(),
+        },
+      });
+      onServerUpdated(updated);
+      setAccessMessage(t.accessRows.profileSaved);
+    } catch {
+      setAccessMessage(t.accessRows.profileSaveFailed);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleStoreCredential = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!profile?.id) {
+      setAccessMessage(t.accessRows.profileRequired);
+      return;
+    }
+    if (!credentialName.trim() || !credentialSecret.trim()) {
+      setAccessMessage(t.accessRows.credentialStoreFailed);
+      return;
+    }
+
+    setIsStoringCredential(true);
+    setAccessMessage(null);
+
+    try {
+      const response = await storeAdminServerCredential(sessionToken, server.id, {
+        kind: credentialKind,
+        name: credentialName.trim(),
+        secret: credentialSecret,
+      });
+      onServerUpdated(response.server);
+      setCredentialSecret('');
+      setAccessMessage(t.accessRows.credentialStored);
+    } catch {
+      setAccessMessage(t.accessRows.credentialStoreFailed);
+    } finally {
+      setIsStoringCredential(false);
+    }
+  };
 
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-3">
       <DetailRow label={t.accessRows.defaultUser}>{profile?.username ?? 'afrogate'}</DetailRow>
       <DetailRow label={t.accessRows.accessMethod}>{profile?.accessMethod ?? t.accessRows.sshKey}</DetailRow>
       <DetailRow label={t.serverEdit.labels.sshPort}>{profile?.sshPort ?? 22}</DetailRow>
       <DetailRow label={t.accessRows.rootPassword}>{t.accessRows.bootstrapOnly}</DetailRow>
       <DetailRow label={t.accessRows.credentialView}>{profile?.hasCredentialRef ? t.accessRows.hidden : t.serverEdit.values.notRun}</DetailRow>
+      <DetailRow label={t.accessRows.credentialStatus}>
+        <StatusBadge tone={profile?.hasActiveCredential ? 'good' : profile?.hasCredentialRef ? 'warning' : 'neutral'}>
+          {profile?.hasActiveCredential
+            ? t.accessRows.activeCredential
+            : profile?.hasCredentialRef
+              ? t.accessRows.inactiveCredential
+              : t.serverEdit.values.notRun}
+        </StatusBadge>
+      </DetailRow>
       <DetailRow label={t.serverEdit.labels.bootstrapState}>
         <StatusBadge tone={profile?.bootstrapState === 'installed' ? 'good' : 'warning'}>
           {profile?.bootstrapState ?? t.serverEdit.values.pending}
@@ -1400,6 +1605,127 @@ function ServerAccessTab({ server, t }: { server: ServerRowData; t: DashboardStr
       </DetailRow>
       <DetailRow label={t.serverEdit.labels.connectionTest}>{profile?.lastTestStatus ?? t.serverEdit.values.notRun}</DetailRow>
       <DetailRow label={t.serverEdit.labels.secretPolicy}>{t.serverEdit.values.secretsHidden}</DetailRow>
+
+      <form className="grid gap-2 rounded-md border border-afro-line bg-[#f8fafb] p-2.5" onSubmit={handleSaveProfile}>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className={fieldLabelClass}>
+            {t.accessRows.address}
+            <input
+              className={fieldInputClass}
+              disabled={!canManageAccess || isSavingProfile}
+              onChange={(event) => setAddress(event.target.value)}
+              required
+              value={address}
+            />
+          </label>
+          <label className={fieldLabelClass}>
+            {t.serverEdit.labels.sshPort}
+            <input
+              className={fieldInputClass}
+              disabled={!canManageAccess || isSavingProfile}
+              inputMode="numeric"
+              max={65535}
+              min={1}
+              onChange={(event) => setSshPort(event.target.value)}
+              required
+              type="number"
+              value={sshPort}
+            />
+          </label>
+          <label className={fieldLabelClass}>
+            {t.accessRows.defaultUser}
+            <input
+              className={fieldInputClass}
+              disabled={!canManageAccess || isSavingProfile}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              value={username}
+            />
+          </label>
+          <label className={fieldLabelClass}>
+            {t.accessRows.accessMethod}
+            <select
+              className={fieldInputClass}
+              disabled={!canManageAccess || isSavingProfile}
+              onChange={(event) => setAccessMethod(event.target.value as ServerAccessMethod)}
+              value={accessMethod}
+            >
+              {accessMethodOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className={fieldLabelClass}>
+            {t.serverEdit.labels.bootstrapState}
+            <select
+              className={fieldInputClass}
+              disabled={!canManageAccess || isSavingProfile}
+              onChange={(event) => setBootstrapState(event.target.value as ServerBootstrapState)}
+              value={bootstrapState}
+            >
+              {bootstrapStateOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className={fieldLabelClass}>
+            {t.accessRows.notes}
+            <input
+              className={fieldInputClass}
+              disabled={!canManageAccess || isSavingProfile}
+              onChange={(event) => setNotes(event.target.value)}
+              value={notes}
+            />
+          </label>
+        </div>
+        <button className={primaryButtonClass} disabled={!canManageAccess || isSavingProfile} type="submit">
+          {isSavingProfile ? t.accessRows.saving : t.accessRows.saveAccessProfile}
+        </button>
+      </form>
+
+      <form className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5" onSubmit={handleStoreCredential}>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className={fieldLabelClass}>
+            {t.accessRows.credentialName}
+            <input
+              className={fieldInputClass}
+              disabled={!canManageAccess || isStoringCredential}
+              onChange={(event) => setCredentialName(event.target.value)}
+              required
+              value={credentialName}
+            />
+          </label>
+          <label className={fieldLabelClass}>
+            {t.accessRows.credentialKind}
+            <select
+              className={fieldInputClass}
+              disabled={!canManageAccess || isStoringCredential}
+              onChange={(event) => setCredentialKind(event.target.value as ServerCredentialKind)}
+              value={credentialKind}
+            >
+              {credentialKindOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className={fieldLabelClass}>
+          {t.accessRows.credentialSecret}
+          <textarea
+            className={`${fieldInputClass} min-h-24 resize-y py-2`}
+            disabled={!canManageAccess || isStoringCredential || !profile?.id}
+            onChange={(event) => setCredentialSecret(event.target.value)}
+            required
+            value={credentialSecret}
+          />
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <span className={`${mutedTextClass} text-[12px]`}>{profile?.id ? t.accessRows.writeOnlyCredential : t.accessRows.profileRequired}</span>
+          <button
+            className={primaryButtonClass}
+            disabled={!canManageAccess || isStoringCredential || !profile?.id || !credentialSecret.trim()}
+            type="submit"
+          >
+            {isStoringCredential ? t.accessRows.storingCredential : t.accessRows.storeCredential}
+          </button>
+        </div>
+      </form>
+
+      {accessMessage ? <p className={`${mutedTextClass} text-[12px]`}>{accessMessage}</p> : null}
     </div>
   );
 }
@@ -6878,7 +7204,35 @@ function getWireGuardScoreTone(score: number): Tone {
 }
 
 function serverAccessReady(server: ServerRowData): boolean {
-  return Boolean(server.accessProfile?.hasCredentialRef && server.accessProfile.bootstrapState === 'installed');
+  if (!server.accessProfile || server.accessProfile.bootstrapState !== 'installed') return false;
+
+  const credentialReady =
+    typeof server.accessProfile.hasActiveCredential === 'boolean'
+      ? server.accessProfile.hasActiveCredential
+      : server.accessProfile.hasCredentialRef;
+
+  return Boolean(credentialReady);
+}
+
+function isServerAccessMethod(value: unknown): value is ServerAccessMethod {
+  return value === 'ssh_key' ||
+    value === 'temporary_root_password' ||
+    value === 'temporary_root_key' ||
+    value === 'existing_admin_key';
+}
+
+function isServerBootstrapState(value: unknown): value is ServerBootstrapState {
+  return value === 'not_started' ||
+    value === 'pending' ||
+    value === 'installed' ||
+    value === 'failed' ||
+    value === 'revoked';
+}
+
+function isServerCredentialKind(value: unknown): value is ServerCredentialKind {
+  return value === 'ssh_private_key' ||
+    value === 'ssh_password' ||
+    value === 'api_token';
 }
 
 function wireGuardCandidateSourceLabel(candidate: WireGuardHealthCandidate, t: DashboardStrings): string {

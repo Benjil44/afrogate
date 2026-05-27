@@ -246,6 +246,10 @@ export type ServerAccessMethod = 'ssh_key' | 'temporary_root_password' | 'tempor
 
 export type ServerBootstrapState = 'not_started' | 'pending' | 'installed' | 'failed' | 'revoked';
 
+export type ServerCredentialKind = 'ssh_private_key' | 'ssh_password' | 'api_token';
+
+export type ServerCredentialStatus = 'active' | 'revoked' | 'disabled';
+
 export interface ServerAccessProfileSummary {
   id: string;
   address: string;
@@ -254,9 +258,54 @@ export interface ServerAccessProfileSummary {
   accessMethod: ServerAccessMethod | string;
   bootstrapState: ServerBootstrapState | string;
   hasCredentialRef: boolean;
+  hasActiveCredential: boolean;
+  credentialName?: string | null;
+  credentialKind?: ServerCredentialKind | string | null;
+  credentialStatus?: ServerCredentialStatus | string | null;
   lastTestedAt?: string | null;
   lastTestStatus?: string | null;
   notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertServerAccessProfileRequest {
+  address: string;
+  sshPort?: number;
+  username?: string;
+  accessMethod?: ServerAccessMethod;
+  bootstrapState?: ServerBootstrapState;
+  lastTestStatus?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateServerRequest {
+  externalId?: string;
+  hostname?: string | null;
+  platform?: string | null;
+  country?: string | null;
+  region?: string | null;
+  role?: string | null;
+  tags?: string[];
+  status?: string;
+  accessProfile?: UpsertServerAccessProfileRequest;
+}
+
+export interface CreateServerCredentialRequest {
+  name: string;
+  kind: ServerCredentialKind;
+  secret: string;
+}
+
+export interface AdminServerCredentialSummary {
+  id: string;
+  serverId: string;
+  name: string;
+  kind: ServerCredentialKind | string;
+  status: ServerCredentialStatus | string;
+  lastUsedAt?: string | null;
+  lastRotatedAt?: string | null;
+  revokedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -283,6 +332,11 @@ export interface AdminServerSummary {
 
 export interface AdminServerDetail extends AdminServerSummary {
   outbounds: AdminOutboundSummary[];
+}
+
+export interface StoreServerCredentialResponse {
+  server: AdminServerDetail;
+  credential: AdminServerCredentialSummary;
 }
 
 export type OutboundType =

@@ -34,6 +34,7 @@ import type {
   AdminRouteDecisionPreviewResponse,
   AdminSecretRefSummary,
   AdminRouteQualityAnalyticsResponse,
+  AdminServerCredentialSummary,
   AdminServerDetail,
   AdminServerSummary,
   AdminSettingsResponse,
@@ -56,6 +57,7 @@ import type {
   RouteScoreProfile,
   RouteScoreReason,
   ServerMetricSnapshot,
+  StoreServerCredentialResponse,
   WireGuardInterfaceMetric,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
@@ -63,7 +65,7 @@ import { DatabaseService, type DatabaseQueryExecutor } from '../database/databas
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
-import { CreateServerDto, UpdateServerDto, UpsertServerAccessProfileDto } from './dto/server.dto';
+import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto, UpsertServerAccessProfileDto } from './dto/server.dto';
 import {
   ApplyRouteDecisionPreviewDto,
   CreateProtocolSetupDto,
@@ -107,6 +109,9 @@ interface ServerInventoryRow {
   username: string | null;
   accessMethod: string | null;
   credentialRef: string | null;
+  credentialName: string | null;
+  credentialKind: string | null;
+  credentialStatus: string | null;
   bootstrapState: string | null;
   lastTestedAt: Date | null;
   lastTestStatus: string | null;
@@ -359,6 +364,19 @@ interface SecretRecordRow {
   lastRotatedAt: Date | null;
 }
 
+interface ServerCredentialRow {
+  id: string;
+  serverId: string;
+  name: string;
+  kind: string;
+  status: string;
+  lastUsedAt: Date | null;
+  lastRotatedAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 interface OutboundOrderRow {
   id: string;
   routeGroup: string;
@@ -544,6 +562,119 @@ export class OperationsService {
         executor,
       );
     });
+  }
+
+  async storeServerCredential(
+    serverId: string,
+    dto: CreateServerCredentialDto,
+    actor: AuthActor | undefined,
+  ): Promise<StoreServerCredentialResponse> {
+    const name = dto.name.trim();
+    const secret = dto.secret;
+
+    if (!name || !secret.trim()) {
+      throw new BadRequestException('Credential name and secret are required');
+    }
+
+    const credentialId = randomUUID();
+
+    await this.database.transaction(async (executor) => {
+      await this.ensureServerExists(executor, serverId);
+
+      const accessResult = await executor.query<{ id: string; credentialRef: string | null }>(
+        `
+          SELECT id, credential_ref AS "credentialRef"
+          FROM server_access_profiles
+          WHERE server_id = $1
+          FOR UPDATE
+        `,
+        [serverId],
+      );
+      const accessProfile = accessResult.rows[0];
+
+      if (!accessProfile) {
+        throw new ConflictException('Server access profile must be configured before storing credentials');
+      }
+
+      const previousCredentialRef = accessProfile.credentialRef?.trim() || null;
+      const encrypted = this.secretVault.encryptJson(
+        {
+          kind: dto.kind,
+          value: secret,
+        },
+        this.serverCredentialEncryptionContext(serverId, credentialId, dto.kind),
+      );
+      const fingerprint = this.secretVault.fingerprint(secret);
+
+      await executor.query(
+        `
+          INSERT INTO server_credentials (
+            id, server_id, name, kind, encrypted_payload, key_id,
+            fingerprint, status, last_rotated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now())
+        `,
+        [
+          credentialId,
+          serverId,
+          name,
+          dto.kind,
+          encrypted.payload,
+          encrypted.keyId,
+          fingerprint,
+        ],
+      );
+
+      await executor.query(
+        `
+          UPDATE server_access_profiles
+          SET credential_ref = $2,
+              updated_at = now()
+          WHERE server_id = $1
+        `,
+        [serverId, credentialId],
+      );
+
+      if (previousCredentialRef && previousCredentialRef !== credentialId) {
+        await executor.query(
+          `
+            UPDATE server_credentials
+            SET status = 'revoked',
+                revoked_at = COALESCE(revoked_at, now()),
+                updated_at = now()
+            WHERE server_id = $1
+              AND id::text = $2
+              AND status = 'active'
+          `,
+          [serverId, previousCredentialRef],
+        );
+      }
+
+      await this.audit.record(
+        actor,
+        'server.credential.store',
+        'server',
+        serverId,
+        {
+          credentialId,
+          credentialKind: dto.kind,
+          credentialName: name,
+          replacedCredentialRef: previousCredentialRef,
+          keyId: encrypted.keyId,
+        },
+        executor,
+      );
+    });
+
+    const [server, credential] = await Promise.all([
+      this.getServer(serverId),
+      this.getServerCredential(credentialId),
+    ]);
+
+    return {
+      server,
+      credential,
+    };
   }
 
   async listOutbounds(
@@ -2188,6 +2319,32 @@ export class OperationsService {
     return this.mapSecretRef(row);
   }
 
+  async getServerCredential(id: string): Promise<AdminServerCredentialSummary> {
+    const result = await this.database.query<ServerCredentialRow>(
+      `
+        SELECT
+          id,
+          server_id AS "serverId",
+          name,
+          kind,
+          status,
+          last_used_at AS "lastUsedAt",
+          last_rotated_at AS "lastRotatedAt",
+          revoked_at AS "revokedAt",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM server_credentials
+        WHERE id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Server credential not found');
+
+    return this.mapServerCredential(row);
+  }
+
   async getRouteSettings(routeGroup: string): Promise<AdminRouteSettingsSummary> {
     const result = await this.database.query<RouteSettingsRow>(
       `
@@ -3165,6 +3322,9 @@ export class OperationsService {
         ap.username,
         ap.access_method AS "accessMethod",
         ap.credential_ref AS "credentialRef",
+        sc.name AS "credentialName",
+        sc.kind AS "credentialKind",
+        sc.status AS "credentialStatus",
         ap.bootstrap_state AS "bootstrapState",
         ap.last_tested_at AS "lastTestedAt",
         ap.last_test_status AS "lastTestStatus",
@@ -3182,6 +3342,7 @@ export class OperationsService {
         LIMIT 1
       ) m ON true
       LEFT JOIN server_access_profiles ap ON ap.server_id = s.id
+      LEFT JOIN server_credentials sc ON sc.id::text = NULLIF(btrim(ap.credential_ref), '')
       LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS outbound_count
         FROM outbounds o
@@ -3310,6 +3471,10 @@ export class OperationsService {
       accessMethod: row.accessMethod,
       bootstrapState: row.bootstrapState,
       hasCredentialRef: Boolean(row.credentialRef),
+      hasActiveCredential: row.credentialStatus === 'active',
+      credentialName: row.credentialName,
+      credentialKind: row.credentialKind,
+      credentialStatus: row.credentialStatus,
       lastTestedAt: row.lastTestedAt?.toISOString() ?? null,
       lastTestStatus: row.lastTestStatus,
       notes: row.accessNotes,
@@ -3382,6 +3547,21 @@ export class OperationsService {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       lastRotatedAt: row.lastRotatedAt?.toISOString() ?? null,
+    };
+  }
+
+  private mapServerCredential(row: ServerCredentialRow): AdminServerCredentialSummary {
+    return {
+      id: row.id,
+      serverId: row.serverId,
+      name: row.name,
+      kind: row.kind,
+      status: row.status,
+      lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+      lastRotatedAt: row.lastRotatedAt?.toISOString() ?? null,
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
     };
   }
 
@@ -6394,6 +6574,10 @@ export class OperationsService {
     return ['settings-secret', secretRef, kind, routeGroup, protocol ?? 'any'].join(':');
   }
 
+  private serverCredentialEncryptionContext(serverId: string, credentialId: string, kind: string): string {
+    return ['server-credential', serverId, credentialId, kind].join(':');
+  }
+
   private buildProtocolServerApplyPlan(setup: ProtocolServerApplySource): AdminProtocolServerApplyPlanSummary {
     const config = this.asRecord(setup.config);
     const featureFlagEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED', false);
@@ -7339,7 +7523,10 @@ export class OperationsService {
           ssh_port = excluded.ssh_port,
           username = excluded.username,
           access_method = excluded.access_method,
-          credential_ref = excluded.credential_ref,
+          credential_ref = CASE
+            WHEN $10 THEN excluded.credential_ref
+            ELSE server_access_profiles.credential_ref
+          END,
           bootstrap_state = excluded.bootstrap_state,
           last_test_status = excluded.last_test_status,
           notes = excluded.notes,
@@ -7355,6 +7542,7 @@ export class OperationsService {
         profile.bootstrapState ?? 'not_started',
         profile.lastTestStatus ?? null,
         profile.notes ?? null,
+        profile.credentialRef !== undefined,
       ],
     );
   }

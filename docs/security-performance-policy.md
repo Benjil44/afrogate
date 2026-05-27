@@ -137,6 +137,7 @@ Required protections:
 - Separate tokens per agent.
 - Secret rotation plan.
 - `AFROGATE_SECRETS_KEY` must be configured from a deployment secret source before storing Settings/server private keys; encrypted secret rows must expose only references to dashboard clients.
+- Server credential storage is write-only: the guarded server credential endpoint may encrypt and link SSH/API credential material to an access profile, but API responses must return only metadata and active/readiness flags, never decrypted credential payloads.
 - Protocol provisioning must stay secret-safe and default-inactive: control-plane draft provisioning may create disabled maintenance outbounds, while real server apply actions require audit logs and post-apply health validation.
 - Protocol server apply adapters must expose a dry-run-only command-runner and server-credential readiness boundary before live execution is enabled. The readiness path may confirm an active credential reference exists, but decrypted server credentials must remain unavailable until the audited production apply engine needs them for an explicit superadmin action.
 - Server root passwords must not be kept as normal long-term credentials; use temporary bootstrap credentials, then agent plus SSH keys for a dedicated management user.
