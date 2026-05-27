@@ -87,6 +87,8 @@ Route decision previews and event detail also include `switchPreflight`. This re
 
 Route decision previews and event detail also include `switchRollout`. This advisory plan records the future rollout strategy, pinned existing-session behavior, initial and maximum new-session canary percentages, health rollback thresholds, route-consistency hold time, and rollout steps. It remains planning-only and must not mutate OS routing until the audited apply adapter exists.
 
+Route decision previews and event detail also include `switchRolloutEvaluation`. This advisory guard result records observed candidate loss, jitter, latency, and score against the rollout thresholds, then recommends hold, start canary, expand canary, manual review, or rollback without mutating OS routing.
+
 Route-quality analytics currently live in the backend operations service and dashboard Settings page. The first endpoint, `/api/admin/route-quality/analytics`, derives hourly recommendations from historical synthetic route probes already stored in `server_metrics.raw`, so it adds no extra agent payload and no new traffic-derived user data.
 
 Hourly route-quality summaries are stored in `route_quality_hourly` through migration `0007_route_quality_hourly.sql`. Migration `0008_route_quality_dimensions.sql` adds outbound, operator, score-profile, and day/hour dimensions so route intelligence can identify patterns such as one operator being better or worse during specific windows. The backend aggregation service keeps this table fresh from recent synthetic route probes, allowing day/week/month intelligence to query compact rows instead of repeatedly scanning raw JSON metrics.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.47.0 - 2026-05-27
+
+- Added advisory switch-rollout health evaluation to route decision previews, comparing canary candidates against packet-loss, jitter, latency, and score guards.
+- Persisted rollout evaluation context in route decision event detail for audit.
+- Surfaced the canary guard in Settings with English/Persian labels while keeping route movement planning-only until an audited adapter exists.
+
 ## 0.46.0 - 2026-05-27
 
 - Added advisory switch-rollout/canary plans to route decision previews, including new-session canary percentages, route-consistency holds, rollback thresholds, and rollout steps.

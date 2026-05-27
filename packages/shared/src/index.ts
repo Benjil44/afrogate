@@ -1040,6 +1040,58 @@ export interface AdminRouteDecisionSwitchRolloutSummary {
   steps: AdminRouteDecisionSwitchRolloutStep[];
 }
 
+export type RouteDecisionSwitchRolloutEvaluationStatus =
+  | 'notRequired'
+  | 'blocked'
+  | 'planningOnly'
+  | 'hold'
+  | 'canaryReady'
+  | 'expandReady'
+  | 'rollbackRecommended';
+
+export type RouteDecisionSwitchRolloutEvaluationAction =
+  | 'none'
+  | 'manualReview'
+  | 'hold'
+  | 'startCanary'
+  | 'expandCanary'
+  | 'rollback';
+
+export type RouteDecisionSwitchRolloutEvaluationReason =
+  | 'noSwitchNeeded'
+  | 'rolloutBlocked'
+  | 'dataPlaneDisabled'
+  | 'preflightBlocked'
+  | 'guardPassed'
+  | 'healthUnknown'
+  | 'lossGuardTriggered'
+  | 'jitterGuardTriggered'
+  | 'latencyGuardTriggered'
+  | 'scoreTooLow'
+  | 'routeConsistencyHold'
+  | 'canaryReady'
+  | 'expansionReady'
+  | 'gamingSensitive'
+  | 'manualReviewRequired';
+
+export interface AdminRouteDecisionSwitchRolloutEvaluationSummary {
+  status: RouteDecisionSwitchRolloutEvaluationStatus | string;
+  recommendedAction: RouteDecisionSwitchRolloutEvaluationAction | string;
+  evaluatedAt: string;
+  dataPlaneReady: boolean;
+  guardPassed: boolean;
+  routeConsistencyHoldActive: boolean;
+  canaryPercent: number;
+  nextPercent: number;
+  maxPercent: number;
+  holdSecondsRemaining: number;
+  observedLossPercent?: number | null;
+  observedJitterMs?: number | null;
+  observedLatencyMs?: number | null;
+  observedScore?: number | null;
+  reasonCodes: Array<RouteDecisionSwitchRolloutEvaluationReason | string>;
+}
+
 export type RouteDecisionApplyPlanStatus =
   | 'notRequired'
   | 'assignmentOnlyReady'
@@ -1157,6 +1209,7 @@ export interface AdminRouteDecisionPreviewResponse {
   switchEngine: AdminRouteDecisionSwitchEngineSummary;
   switchPreflight: AdminRouteDecisionSwitchPreflightSummary;
   switchRollout: AdminRouteDecisionSwitchRolloutSummary;
+  switchRolloutEvaluation: AdminRouteDecisionSwitchRolloutEvaluationSummary;
   applyPlan: AdminRouteDecisionApplyPlanSummary;
   scoreDelta?: number | null;
   action: RouteDecisionAction;
@@ -1196,6 +1249,7 @@ export interface AdminRouteDecisionEventDetail extends AdminRouteDecisionEventSu
   switchExecution?: AdminRouteDecisionSwitchExecutionSummary | null;
   switchPreflight?: AdminRouteDecisionSwitchPreflightSummary | null;
   switchRollout?: AdminRouteDecisionSwitchRolloutSummary | null;
+  switchRolloutEvaluation?: AdminRouteDecisionSwitchRolloutEvaluationSummary | null;
 }
 
 export interface RecordRouteDecisionPreviewRequest {

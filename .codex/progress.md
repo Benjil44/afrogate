@@ -552,6 +552,10 @@ Repository remote is ready:
 - Persisted switch-rollout context in route decision event detail for audit.
 - Surfaced the switch-rollout plan in Settings with typed English/Persian labels while keeping all data-plane movement planning-only until the audited adapter exists.
 - Bumped AfroGate to `0.46.0` for advisory switch-rollout/canary planning.
+- Added advisory switch-rollout health evaluation to route decision previews so canary candidates are checked against packet-loss, jitter, latency, and score guards.
+- Persisted switch-rollout evaluation context in route decision event detail for audit.
+- Surfaced canary guard pass/hold/rollback guidance in Settings with typed English/Persian labels while keeping traffic movement planning-only.
+- Bumped AfroGate to `0.47.0` for advisory switch-rollout health evaluation.
 
 ### Verification
 
@@ -699,6 +703,12 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Verified switch-rollout contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
 - Verified `0.46.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified switch-rollout health evaluation contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.47.0` with `npm run version:check`.
 - Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
 - Verified production build with `npm run build --workspaces --if-present`.
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.

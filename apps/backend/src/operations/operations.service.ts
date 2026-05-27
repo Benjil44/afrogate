@@ -20,6 +20,7 @@ import type {
   AdminRouteDecisionSwitchExecutionSummary,
   AdminRouteDecisionSwitchEngineSummary,
   AdminRouteDecisionSwitchPreflightSummary,
+  AdminRouteDecisionSwitchRolloutEvaluationSummary,
   AdminRouteDecisionSwitchRolloutSummary,
   AdminRouteSettingsSummary,
   AdminRouteDecisionCandidateSummary,
@@ -935,6 +936,14 @@ export class OperationsService {
       switchPreflight,
       applyPlan,
     });
+    const switchRolloutEvaluation = this.buildRouteDecisionSwitchRolloutEvaluationSummary({
+      action,
+      selectedProfile: selectedScoreProfile,
+      evaluatedAt: now,
+      recommendedCandidate,
+      switchPreflight,
+      switchRollout,
+    });
 
     return {
       routeGroup,
@@ -967,6 +976,7 @@ export class OperationsService {
       switchEngine,
       switchPreflight,
       switchRollout,
+      switchRolloutEvaluation,
       applyPlan,
       scoreDelta,
       action,
@@ -1104,6 +1114,7 @@ export class OperationsService {
       switchEngine: preview.switchEngine,
       switchPreflight: preview.switchPreflight,
       switchRollout: preview.switchRollout,
+      switchRolloutEvaluation: preview.switchRolloutEvaluation,
       applyPlan: preview.applyPlan,
       dryRunSnapshot: this.buildRouteDecisionDryRunSnapshot(preview),
     };
@@ -1258,6 +1269,7 @@ export class OperationsService {
       switchEngine: preview.switchEngine,
       switchPreflight: preview.switchPreflight,
       switchRollout: preview.switchRollout,
+      switchRolloutEvaluation: preview.switchRolloutEvaluation,
       switchExecution,
       applyPlan: preview.applyPlan,
       dryRunSnapshot: this.buildRouteDecisionDryRunSnapshot(preview),
@@ -2047,6 +2059,32 @@ export class OperationsService {
       switchExecution: this.mapRouteDecisionSwitchExecution(decisionContext.switchExecution),
       switchPreflight: this.mapRouteDecisionSwitchPreflight(decisionContext.switchPreflight),
       switchRollout: this.mapRouteDecisionSwitchRollout(decisionContext.switchRollout),
+      switchRolloutEvaluation: this.mapRouteDecisionSwitchRolloutEvaluation(decisionContext.switchRolloutEvaluation),
+    };
+  }
+
+  private mapRouteDecisionSwitchRolloutEvaluation(
+    value: unknown,
+  ): AdminRouteDecisionSwitchRolloutEvaluationSummary | null {
+    const evaluation = this.asRecord(value);
+    if (Object.keys(evaluation).length === 0) return null;
+
+    return {
+      status: this.stringOrFallback(evaluation.status, 'blocked'),
+      recommendedAction: this.stringOrFallback(evaluation.recommendedAction, 'manualReview'),
+      evaluatedAt: this.stringOrFallback(evaluation.evaluatedAt, new Date(0).toISOString()),
+      dataPlaneReady: evaluation.dataPlaneReady === true,
+      guardPassed: evaluation.guardPassed === true,
+      routeConsistencyHoldActive: evaluation.routeConsistencyHoldActive === true,
+      canaryPercent: this.numberOrFallback(evaluation.canaryPercent, 0),
+      nextPercent: this.numberOrFallback(evaluation.nextPercent, 0),
+      maxPercent: this.numberOrFallback(evaluation.maxPercent, 0),
+      holdSecondsRemaining: this.numberOrFallback(evaluation.holdSecondsRemaining, 0),
+      observedLossPercent: this.nullableNumber(evaluation.observedLossPercent),
+      observedJitterMs: this.nullableNumber(evaluation.observedJitterMs),
+      observedLatencyMs: this.nullableNumber(evaluation.observedLatencyMs),
+      observedScore: this.nullableNumber(evaluation.observedScore),
+      reasonCodes: this.stringArrayOrEmpty(evaluation.reasonCodes),
     };
   }
 
@@ -4132,6 +4170,116 @@ export class OperationsService {
     };
   }
 
+  private buildRouteDecisionSwitchRolloutEvaluationSummary(context: {
+    action: RouteDecisionAction;
+    selectedProfile: RouteScoreProfile;
+    evaluatedAt: Date;
+    recommendedCandidate: AdminWireGuardCandidate | null;
+    switchPreflight: AdminRouteDecisionSwitchPreflightSummary;
+    switchRollout: AdminRouteDecisionSwitchRolloutSummary;
+  }): AdminRouteDecisionSwitchRolloutEvaluationSummary {
+    const switchRequired = context.action === 'switchRecommended';
+    const observedLossPercent = context.recommendedCandidate?.packetLossPercent ?? null;
+    const observedJitterMs = context.recommendedCandidate?.jitterMs ?? null;
+    const observedLatencyMs = context.recommendedCandidate?.latencyMs ?? null;
+    const observedScore = context.recommendedCandidate?.score ?? null;
+    const lossTriggered =
+      observedLossPercent !== null && observedLossPercent > context.switchRollout.rollbackOnLossPercent;
+    const jitterTriggered =
+      observedJitterMs !== null && observedJitterMs > context.switchRollout.rollbackOnJitterMs;
+    const latencyTriggered =
+      observedLatencyMs !== null && observedLatencyMs > context.switchRollout.rollbackOnLatencyMs;
+    const scoreTooLow = observedScore !== null && observedScore < 50;
+    const hasHealthSignals =
+      observedLossPercent !== null ||
+      observedJitterMs !== null ||
+      observedLatencyMs !== null ||
+      observedScore !== null;
+    const rolloutBlocked =
+      context.switchRollout.status === 'blocked' ||
+      context.switchPreflight.status === 'blocked' ||
+      context.switchRollout.reasonCodes.includes('preflightBlocked');
+    const regressionDetected = lossTriggered || jitterTriggered || latencyTriggered || scoreTooLow;
+    const routeConsistencyHoldActive =
+      switchRequired &&
+      context.switchRollout.existingSessionsPinned &&
+      context.switchRollout.routeConsistencyHoldSeconds > 0;
+    const guardPassed =
+      switchRequired &&
+      !rolloutBlocked &&
+      hasHealthSignals &&
+      !regressionDetected;
+    const reasonCodes = new Set<string>();
+
+    if (!switchRequired) reasonCodes.add('noSwitchNeeded');
+    if (rolloutBlocked) reasonCodes.add('rolloutBlocked');
+    if (context.switchPreflight.status === 'blocked') reasonCodes.add('preflightBlocked');
+    if (!context.switchRollout.dataPlaneReady) reasonCodes.add('dataPlaneDisabled');
+    if (!hasHealthSignals && switchRequired) reasonCodes.add('healthUnknown');
+    if (lossTriggered) reasonCodes.add('lossGuardTriggered');
+    if (jitterTriggered) reasonCodes.add('jitterGuardTriggered');
+    if (latencyTriggered) reasonCodes.add('latencyGuardTriggered');
+    if (scoreTooLow) reasonCodes.add('scoreTooLow');
+    if (routeConsistencyHoldActive) reasonCodes.add('routeConsistencyHold');
+    if (this.isSessionSensitiveRouteProfile(context.selectedProfile)) reasonCodes.add('gamingSensitive');
+    if (guardPassed) reasonCodes.add('guardPassed');
+
+    const status: AdminRouteDecisionSwitchRolloutEvaluationSummary['status'] = !switchRequired
+      ? 'notRequired'
+      : rolloutBlocked
+        ? 'blocked'
+        : regressionDetected
+          ? 'rollbackRecommended'
+          : !hasHealthSignals
+            ? 'hold'
+            : !context.switchRollout.dataPlaneReady
+              ? 'planningOnly'
+              : context.switchRollout.automaticExpansion && !routeConsistencyHoldActive
+                ? 'expandReady'
+                : 'canaryReady';
+    const recommendedAction: AdminRouteDecisionSwitchRolloutEvaluationSummary['recommendedAction'] = !switchRequired
+      ? 'none'
+      : rolloutBlocked || !hasHealthSignals
+        ? 'manualReview'
+        : regressionDetected
+          ? 'rollback'
+          : !context.switchRollout.dataPlaneReady
+            ? 'hold'
+            : status === 'expandReady'
+              ? 'expandCanary'
+              : 'startCanary';
+
+    if (recommendedAction === 'manualReview') reasonCodes.add('manualReviewRequired');
+    if (recommendedAction === 'startCanary') reasonCodes.add('canaryReady');
+    if (recommendedAction === 'expandCanary') reasonCodes.add('expansionReady');
+
+    const canaryPercent = switchRequired ? context.switchRollout.initialPercent : 0;
+    const nextPercent =
+      recommendedAction === 'expandCanary'
+        ? Math.min(context.switchRollout.maxPercent, Math.max(canaryPercent * 2, 10))
+        : recommendedAction === 'startCanary'
+          ? canaryPercent
+          : 0;
+
+    return {
+      status,
+      recommendedAction,
+      evaluatedAt: context.evaluatedAt.toISOString(),
+      dataPlaneReady: context.switchRollout.dataPlaneReady,
+      guardPassed,
+      routeConsistencyHoldActive,
+      canaryPercent,
+      nextPercent,
+      maxPercent: context.switchRollout.maxPercent,
+      holdSecondsRemaining: routeConsistencyHoldActive ? context.switchRollout.routeConsistencyHoldSeconds : 0,
+      observedLossPercent,
+      observedJitterMs,
+      observedLatencyMs,
+      observedScore,
+      reasonCodes: [...reasonCodes],
+    };
+  }
+
   private buildRouteDecisionSwitchExecutionSummary(context: {
     preview: AdminRouteDecisionPreviewResponse;
     appliedAt: Date;
@@ -5589,6 +5737,12 @@ export class OperationsService {
     const numericValue = Number(value);
 
     return Number.isFinite(numericValue) ? numericValue : fallback;
+  }
+
+  private nullableNumber(value: unknown): number | null {
+    const numericValue = Number(value);
+
+    return Number.isFinite(numericValue) ? numericValue : null;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

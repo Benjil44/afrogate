@@ -184,6 +184,7 @@
 - [x] Assignment-only switch execution envelope with sticky-session, drain, cooldown, and data-plane-blocked audit state.
 - [x] Switch-engine preflight/readiness checklist for feature flag, adapter, dry-run, guard, session-safety, rollback, cooldown, audit, and health-verify gates.
 - [x] Advisory route canary rollout plan with pinned existing sessions, new-session canary percentages, rollback thresholds, and route-consistency holds.
+- [x] Advisory route canary health evaluation for packet-loss, jitter, latency, score, and rollback/hold recommendations.
 - [ ] Transparent route switch engine with sticky sessions, route locks, cooldown, and drain-safe apply behavior.
 - [x] Hysteresis and cooldown.
 - [x] Route decision audit reason.

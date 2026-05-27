@@ -19,6 +19,7 @@ import type {
   AdminRouteDecisionSwitchExecutionSummary,
   AdminRouteDecisionSwitchEngineSummary,
   AdminRouteDecisionSwitchPreflightSummary,
+  AdminRouteDecisionSwitchRolloutEvaluationSummary,
   AdminRouteDecisionSwitchRolloutSummary,
   AdminServerSummary,
   AdminSettingsResponse,
@@ -3186,7 +3187,12 @@ function RouteDecisionPreviewPanel({
           <RouteDecisionSessionSafetyCard sessionSafety={preview.sessionSafety} format={format} t={t} />
           <RouteDecisionSwitchEngineCard switchEngine={preview.switchEngine} format={format} t={t} />
           <RouteDecisionSwitchPreflightCard preflight={preview.switchPreflight} format={format} t={t} />
-          <RouteDecisionSwitchRolloutCard rollout={preview.switchRollout} format={format} t={t} />
+          <RouteDecisionSwitchRolloutCard
+            evaluation={preview.switchRolloutEvaluation}
+            rollout={preview.switchRollout}
+            format={format}
+            t={t}
+          />
           <RouteDecisionSwitchExecutionCard execution={switchExecution} format={format} t={t} />
           <RouteDecisionCandidateReviewList reviews={preview.candidateReviews ?? []} format={format} t={t} />
           <RouteDecisionApplyPlanCard plan={preview.applyPlan} t={t} />
@@ -3626,10 +3632,12 @@ function RouteDecisionSwitchPreflightCard({
 }
 
 function RouteDecisionSwitchRolloutCard({
+  evaluation,
   rollout,
   format,
   t,
 }: {
+  evaluation?: AdminRouteDecisionSwitchRolloutEvaluationSummary | null;
   rollout?: AdminRouteDecisionSwitchRolloutSummary | null;
   format: DashboardFormatters;
   t: DashboardStrings;
@@ -3667,6 +3675,48 @@ function RouteDecisionSwitchRolloutCard({
         <MetricPill icon={Activity} label={t.settings.switchRolloutJitterGuard} value={format.latency(rollout.rollbackOnJitterMs)} />
         <MetricPill icon={Clock} label={t.settings.switchRolloutLatencyGuard} value={format.latency(rollout.rollbackOnLatencyMs)} />
       </div>
+
+      {evaluation ? (
+        <div className="grid gap-1.5 rounded-md border border-afro-line bg-afro-soft/60 p-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <strong className="block text-[13px]">{t.settings.switchRolloutEvaluation}</strong>
+              <span className={`${mutedTextClass} block truncate`}>
+                {routeSwitchRolloutEvaluationActionLabel(evaluation.recommendedAction, t)}
+              </span>
+            </div>
+            <span className="inline-flex flex-wrap justify-end gap-1">
+              <StatusBadge tone={routeSwitchRolloutEvaluationStatusTone(evaluation.status)}>
+                {routeSwitchRolloutEvaluationStatusLabel(evaluation.status, t)}
+              </StatusBadge>
+              <StatusBadge tone={evaluation.guardPassed ? 'good' : 'neutral'}>
+                {evaluation.guardPassed ? t.settings.switchRolloutGuardPassed : t.settings.switchRolloutGuardPending}
+              </StatusBadge>
+            </span>
+          </div>
+
+          <div className="grid gap-1.5 sm:grid-cols-4">
+            <MetricPill icon={Gauge} label={t.settings.switchRolloutCanary} value={format.percent(evaluation.canaryPercent)} />
+            <MetricPill icon={ArrowDownUp} label={t.settings.switchRolloutNext} value={format.percent(evaluation.nextPercent)} />
+            <MetricPill icon={LockKeyhole} label={t.settings.switchRolloutHoldRemaining} value={format.durationSeconds(evaluation.holdSecondsRemaining)} />
+            <MetricPill icon={ShieldCheck} label={t.settings.switchRolloutObservedScore} value={format.percent(evaluation.observedScore ?? null)} />
+          </div>
+
+          <div className="grid gap-1.5 sm:grid-cols-3">
+            <MetricPill icon={AlertTriangle} label={t.settings.switchRolloutObservedLoss} value={format.packetLoss(evaluation.observedLossPercent ?? null)} />
+            <MetricPill icon={Activity} label={t.settings.switchRolloutObservedJitter} value={format.latency(evaluation.observedJitterMs ?? null)} />
+            <MetricPill icon={Clock} label={t.settings.switchRolloutObservedLatency} value={format.latency(evaluation.observedLatencyMs ?? null)} />
+          </div>
+
+          <div className="flex flex-wrap gap-1">
+            {evaluation.reasonCodes.slice(0, 8).map((reason) => (
+              <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`switch-rollout-eval-${reason}`}>
+                {routeSwitchRolloutEvaluationReasonLabel(reason, t)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-1.5 md:grid-cols-2">
         {visibleSteps.map((step) => (
@@ -4058,7 +4108,12 @@ function RouteDecisionEventDetailCard({
       </div>
 
       <RouteDecisionSwitchPreflightCard preflight={detail.switchPreflight} format={format} t={t} />
-      <RouteDecisionSwitchRolloutCard rollout={detail.switchRollout} format={format} t={t} />
+      <RouteDecisionSwitchRolloutCard
+        evaluation={detail.switchRolloutEvaluation}
+        rollout={detail.switchRollout}
+        format={format}
+        t={t}
+      />
       <RouteDecisionSwitchExecutionCard execution={detail.switchExecution} format={format} t={t} />
 
       {snapshot ? (
@@ -5131,6 +5186,99 @@ function routeSwitchRolloutReasonLabel(reason: string, t: DashboardStrings): str
       return t.settings.switchRolloutReasonConsistency;
     case 'dataPlaneReady':
       return t.settings.switchPreflightReasonDataPlaneReady;
+    default:
+      return reason;
+  }
+}
+
+function routeSwitchRolloutEvaluationStatusTone(status: string): Tone {
+  switch (status) {
+    case 'canaryReady':
+    case 'expandReady':
+      return 'good';
+    case 'planningOnly':
+    case 'hold':
+      return 'warning';
+    case 'blocked':
+    case 'rollbackRecommended':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchRolloutEvaluationStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'notRequired':
+      return t.settings.switchRolloutEvalStatusNotRequired;
+    case 'blocked':
+      return t.settings.switchRolloutEvalStatusBlocked;
+    case 'planningOnly':
+      return t.settings.switchRolloutEvalStatusPlanning;
+    case 'hold':
+      return t.settings.switchRolloutEvalStatusHold;
+    case 'canaryReady':
+      return t.settings.switchRolloutEvalStatusCanaryReady;
+    case 'expandReady':
+      return t.settings.switchRolloutEvalStatusExpandReady;
+    case 'rollbackRecommended':
+      return t.settings.switchRolloutEvalStatusRollback;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchRolloutEvaluationActionLabel(action: string, t: DashboardStrings): string {
+  switch (action) {
+    case 'none':
+      return t.settings.switchRolloutEvalActionNone;
+    case 'manualReview':
+      return t.settings.switchRolloutEvalActionManual;
+    case 'hold':
+      return t.settings.switchRolloutEvalActionHold;
+    case 'startCanary':
+      return t.settings.switchRolloutEvalActionStart;
+    case 'expandCanary':
+      return t.settings.switchRolloutEvalActionExpand;
+    case 'rollback':
+      return t.settings.switchRolloutEvalActionRollback;
+    default:
+      return action;
+  }
+}
+
+function routeSwitchRolloutEvaluationReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'noSwitchNeeded':
+      return t.settings.switchPreflightReasonNoSwitch;
+    case 'rolloutBlocked':
+      return t.settings.switchRolloutEvalReasonBlocked;
+    case 'dataPlaneDisabled':
+      return t.settings.switchEngineReasonDataPlaneOff;
+    case 'preflightBlocked':
+      return t.settings.switchRolloutReasonPreflightBlocked;
+    case 'guardPassed':
+      return t.settings.switchRolloutEvalReasonGuardPassed;
+    case 'healthUnknown':
+      return t.settings.switchRolloutEvalReasonHealthUnknown;
+    case 'lossGuardTriggered':
+      return t.settings.switchRolloutEvalReasonLoss;
+    case 'jitterGuardTriggered':
+      return t.settings.switchRolloutEvalReasonJitter;
+    case 'latencyGuardTriggered':
+      return t.settings.switchRolloutEvalReasonLatency;
+    case 'scoreTooLow':
+      return t.settings.switchRolloutEvalReasonScore;
+    case 'routeConsistencyHold':
+      return t.settings.switchRolloutReasonConsistency;
+    case 'canaryReady':
+      return t.settings.switchRolloutEvalReasonCanary;
+    case 'expansionReady':
+      return t.settings.switchRolloutEvalReasonExpand;
+    case 'gamingSensitive':
+      return t.settings.switchRolloutReasonGaming;
+    case 'manualReviewRequired':
+      return t.settings.switchRolloutEvalReasonManual;
     default:
       return reason;
   }
