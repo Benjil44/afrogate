@@ -36,6 +36,7 @@ import type {
   ProvisionProtocolSetupResponse,
   RecordProtocolServerApplyResponse,
   RecordRouteDecisionPreviewResponse,
+  RequestProtocolServerApplyResponse,
   RouteFailoverEventsResponse,
 } from '@afrogate/shared';
 import { AuthService } from '../auth/auth.service';
@@ -52,6 +53,7 @@ import {
   CreateSettingsSecretDto,
   RecordProtocolServerApplyDto,
   RecordRouteDecisionPreviewDto,
+  RequestProtocolServerApplyDto,
   UpsertRouteAssignmentDto,
   UpsertRouteSettingsDto,
 } from './dto/settings.dto';
@@ -352,6 +354,16 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<RecordProtocolServerApplyResponse> {
     return this.operationsService.recordProtocolServerApplyDryRun(id, payload ?? {}, request.actor);
+  }
+
+  @Post('settings/protocol-setups/:id/server-apply/live-request')
+  @Roles('admin')
+  requestProtocolServerApply(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: RequestProtocolServerApplyDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<RequestProtocolServerApplyResponse> {
+    return this.operationsService.requestProtocolServerApply(id, payload ?? {}, request.actor);
   }
 
   @Post('settings/secrets')

@@ -28,6 +28,8 @@ import type {
   RecordProtocolServerApplyResponse,
   RecordRouteDecisionPreviewRequest,
   RecordRouteDecisionPreviewResponse,
+  RequestProtocolServerApplyRequest,
+  RequestProtocolServerApplyResponse,
   RouteFailoverEventsResponse,
   UpsertRouteAssignmentRequest,
   UpsertRouteSettingsRequest,
@@ -333,6 +335,23 @@ export async function recordAdminProtocolServerApplyDryRun(
   );
 
   return response.json() as Promise<RecordProtocolServerApplyResponse>;
+}
+
+export async function requestAdminProtocolServerApply(
+  sessionToken: string,
+  protocolSetupId: string,
+  payload: RequestProtocolServerApplyRequest = { applyMode: 'live' },
+): Promise<RequestProtocolServerApplyResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/settings/protocol-setups/${encodeURIComponent(protocolSetupId)}/server-apply/live-request`,
+    {
+      body: JSON.stringify(payload),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+
+  return response.json() as Promise<RequestProtocolServerApplyResponse>;
 }
 
 export async function updateAdminRouteSettings(

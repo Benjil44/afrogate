@@ -101,6 +101,7 @@ import {
   provisionAdminProtocolSetup,
   recordAdminProtocolServerApplyDryRun,
   recordRouteDecisionPreview,
+  requestAdminProtocolServerApply,
   updateAdminRouteAssignment,
   updateAdminRouteSettings,
   updateAdminUser,
@@ -2113,6 +2114,7 @@ function SettingsPage({
   const [isProtocolSaving, setIsProtocolSaving] = useState(false);
   const [provisioningSetupId, setProvisioningSetupId] = useState<string | null>(null);
   const [serverApplyingSetupId, setServerApplyingSetupId] = useState<string | null>(null);
+  const [serverLiveApplyingSetupId, setServerLiveApplyingSetupId] = useState<string | null>(null);
   const [isRouteSaving, setIsRouteSaving] = useState(false);
   const [isDecisionRecording, setIsDecisionRecording] = useState(false);
   const [isDecisionApplying, setIsDecisionApplying] = useState(false);
@@ -2209,6 +2211,7 @@ function SettingsPage({
     setProtocolApplyEventsBySetupId({});
     setIsDecisionEventDetailLoading(false);
     setIsProtocolApplyEventDetailLoading(false);
+    setServerLiveApplyingSetupId(null);
 
     fetchAdminSettings(sessionToken, 'main', controller.signal)
       .then((data: AdminSettingsResponse) => {
@@ -2539,6 +2542,38 @@ function SettingsPage({
       setServerApplyMessage(t.settings.serverApplyDryRunFailed);
     } finally {
       setServerApplyingSetupId(null);
+    }
+  };
+
+  const requestProtocolServerApplyLive = async (setup: AdminProtocolSetupSummary) => {
+    if (!canCreateProtocols) {
+      setServerApplyMessage(t.settings.superadminRequired);
+      return;
+    }
+
+    setServerLiveApplyingSetupId(setup.id);
+    setServerApplyMessage(null);
+
+    try {
+      const response = await requestAdminProtocolServerApply(sessionToken, setup.id, { applyMode: 'live' });
+
+      setPersistedProtocolSetups((current) =>
+        current.map((item) => (item.id === response.protocolSetup.id ? response.protocolSetup : item)),
+      );
+      setProtocolApplyEventsBySetupId((current) => ({
+        ...current,
+        [setup.id]: response.event,
+      }));
+      setProtocolApplyEvents((current) => [
+        response.event,
+        ...current.filter((event) => event.id !== response.event.id),
+      ].slice(0, 10));
+      setProtocolApplyEventDetail(response.event);
+      setServerApplyMessage(t.settings.serverApplyLiveRequestRecorded);
+    } catch (error) {
+      setServerApplyMessage(t.settings.serverApplyLiveRequestFailed);
+    } finally {
+      setServerLiveApplyingSetupId(null);
     }
   };
 
@@ -2988,6 +3023,7 @@ function SettingsPage({
                     const isProvisioned = Boolean(setup.provisionedOutboundId);
                     const isProvisioning = provisioningSetupId === setup.id;
                     const isServerApplying = serverApplyingSetupId === setup.id;
+                    const isServerLiveApplying = serverLiveApplyingSetupId === setup.id;
                     const lastServerApplyEvent = protocolApplyEventsBySetupId[setup.id];
                     const serverApplyPlan = setup.serverApplyPlan;
 
@@ -3018,15 +3054,26 @@ function SettingsPage({
                               </button>
                             ) : null}
                             {isProvisioned ? (
-                              <button
-                                className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-wait disabled:opacity-55"
-                                disabled={!canCreateProtocols || Boolean(serverApplyingSetupId)}
-                                onClick={() => void recordProtocolServerApplyDryRun(setup)}
-                                type="button"
-                              >
-                                <ShieldCheck size={14} />
-                                {isServerApplying ? t.settings.recordingServerApply : t.settings.recordServerApplyDryRun}
-                              </button>
+                              <>
+                                <button
+                                  className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-wait disabled:opacity-55"
+                                  disabled={!canCreateProtocols || Boolean(serverApplyingSetupId) || Boolean(serverLiveApplyingSetupId)}
+                                  onClick={() => void recordProtocolServerApplyDryRun(setup)}
+                                  type="button"
+                                >
+                                  <ShieldCheck size={14} />
+                                  {isServerApplying ? t.settings.recordingServerApply : t.settings.recordServerApplyDryRun}
+                                </button>
+                                <button
+                                  className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-[#f0b7b7] hover:text-[#b91c1c] disabled:cursor-wait disabled:opacity-55"
+                                  disabled={!canCreateProtocols || Boolean(serverApplyingSetupId) || Boolean(serverLiveApplyingSetupId)}
+                                  onClick={() => void requestProtocolServerApplyLive(setup)}
+                                  type="button"
+                                >
+                                  <AlertTriangle size={14} />
+                                  {isServerLiveApplying ? t.settings.requestingServerApplyLive : t.settings.requestServerApplyLive}
+                                </button>
+                              </>
                             ) : null}
                           </div>
                         </div>
@@ -6909,6 +6956,9 @@ function ProtocolApplyEventsPanel({
                   <StatusBadge tone={protocolServerApplyTone(event.applyStatus)}>
                     {protocolServerApplyEventStatusLabel(event.applyStatus, t)}
                   </StatusBadge>
+                  <StatusBadge tone={event.applyMode === 'live' ? 'warning' : 'neutral'}>
+                    {protocolServerApplyModeLabel(event.applyMode, t)}
+                  </StatusBadge>
                   <span className={`${mutedTextClass} min-w-0 truncate`}>{format.time(new Date(event.createdAt), false)}</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
@@ -6958,12 +7008,12 @@ function ProtocolApplyEventDetailCard({
         <MetricPill
           icon={ShieldCheck}
           label={t.settings.protocolApplySnapshot}
-          value={snapshot ? t.settings.dryRunSnapshot : t.settings.noDryRunSnapshot}
+          value={snapshot ? (detail.applyMode === 'live' ? t.settings.protocolApplyRequestSnapshot : t.settings.dryRunSnapshot) : t.settings.noDryRunSnapshot}
         />
         <MetricPill
           icon={Route}
           label={t.settings.protocolApplyMode}
-          value={String(detail.applyMode)}
+          value={protocolServerApplyModeLabel(detail.applyMode, t)}
         />
         <MetricPill
           icon={SettingsIcon}
@@ -7200,6 +7250,17 @@ function protocolServerApplyEventStatusLabel(status: string, t: DashboardStrings
   if (status === 'recorded') return t.settings.protocolApplyRecorded;
 
   return protocolServerApplyStatusLabel(status, t);
+}
+
+function protocolServerApplyModeLabel(mode: string, t: DashboardStrings): string {
+  switch (mode) {
+    case 'dryRun':
+      return t.settings.protocolApplyModeDryRun;
+    case 'live':
+      return t.settings.protocolApplyModeLive;
+    default:
+      return mode;
+  }
 }
 
 function protocolApplyGateStatusLabel(status: string, t: DashboardStrings): string {

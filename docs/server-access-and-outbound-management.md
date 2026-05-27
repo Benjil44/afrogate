@@ -252,6 +252,8 @@ Protocol server apply dry-runs are now auditable without server mutation. Record
 
 Protocol server apply plans and stored dry-run snapshots now include a dedicated preflight readiness summary. The preflight gates check the disabled-by-default feature flag, missing audited apply adapter, dry-run secret safety, provisioned outbound presence, outbound health, default disabled/maintenance posture, secret reference, server access, rollback artifacts, audit readiness, and post-apply health verification. Dry-run recording remains available when the snapshot is secret-safe and provisioned, but live server mutation remains blocked until every data-plane gate passes and the audited adapter exists.
 
+The first live-apply boundary is intentionally non-mutating. Superadmins can submit a live protocol apply request through `/api/admin/settings/protocol-setups/:id/server-apply/live-request`, and AfroGate records a `protocol_apply_events` row plus audit metadata with `applyMode = live`, blocked reason codes, preflight state, and `dataPlaneMutationExecuted = false`. This proves the API, UI, and audit path before any SSH command runner, secret decrypt for server installation, service reload, OS route change, or outbound enablement is allowed.
+
 ## Security References
 
 - OWASP recommends centralizing, standardizing, access-controlling, auditing, and rotating secrets: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html

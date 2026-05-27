@@ -187,3 +187,9 @@ export class RecordProtocolServerApplyDto {
   @IsIn(['dryRun'])
   applyMode?: string;
 }
+
+export class RequestProtocolServerApplyDto {
+  @IsOptional()
+  @IsIn(['live'])
+  applyMode?: string;
+}

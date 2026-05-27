@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.54.0 - 2026-05-27
+
+- Added a superadmin-only live protocol apply request endpoint that records blocked audit events without executing SSH, shell commands, service reloads, OS route changes, secret decrypts, or outbound enablement.
+- Extended protocol apply contracts and snapshots with `live` request mode plus blocked reason codes so stored event detail can explain why live mutation did not run.
+- Surfaced a Settings live-apply request action and mode labels in English and Persian while keeping the production server-side apply engine disabled.
+
 ## 0.53.0 - 2026-05-27
 
 - Added explicit protocol server apply preflight gates for feature flag, audited adapter, dry-run safety, provisioned outbound, outbound health, default disabled/maintenance posture, secret reference, server access, rollback, audit, and health verification.

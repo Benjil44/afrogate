@@ -465,6 +465,9 @@ export type ProtocolServerApplyReason =
   | 'outboundHealthDegraded'
   | 'dryRunSafe'
   | 'dryRunUnsafe'
+  | 'liveApplyRequested'
+  | 'liveApplyBlocked'
+  | 'liveExecutorMissing'
   | 'rollbackRequired'
   | 'rollbackReady'
   | 'dataPlaneReady';
@@ -547,7 +550,7 @@ export interface AdminProtocolServerApplyPlanSummary {
   configChanges: AdminProtocolServerApplyConfigChange[];
 }
 
-export type ProtocolServerApplyMode = 'dryRun';
+export type ProtocolServerApplyMode = 'dryRun' | 'live';
 
 export interface AdminProtocolServerApplyDryRunSnapshot {
   generatedAt: string;
@@ -641,7 +644,11 @@ export interface CreateProtocolSetupRequest {
 }
 
 export interface RecordProtocolServerApplyRequest {
-  applyMode?: ProtocolServerApplyMode;
+  applyMode?: 'dryRun';
+}
+
+export interface RequestProtocolServerApplyRequest {
+  applyMode?: 'live';
 }
 
 export interface AdminRouteSettingsSummary {
@@ -1624,6 +1631,16 @@ export interface RecordProtocolServerApplyResponse {
   event: AdminProtocolServerApplyEventDetail;
   protocolSetup: AdminProtocolSetupSummary;
   serverApplyPlan: AdminProtocolServerApplyPlanSummary;
+}
+
+export interface RequestProtocolServerApplyResponse {
+  event: AdminProtocolServerApplyEventDetail;
+  protocolSetup: AdminProtocolSetupSummary;
+  serverApplyPlan: AdminProtocolServerApplyPlanSummary;
+  liveApplyRequested: boolean;
+  liveApplyAccepted: boolean;
+  dataPlaneMutationExecuted: boolean;
+  blockedReasonCodes: Array<ProtocolServerApplyReason | string>;
 }
 
 export interface AdminServersResponse {

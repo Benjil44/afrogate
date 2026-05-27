@@ -775,3 +775,14 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added a superadmin-only live protocol apply request boundary at `/api/admin/settings/protocol-setups/:id/server-apply/live-request`.
+- Live protocol apply requests now persist blocked `protocol_apply_events` snapshots with `applyMode=live`, preflight context, blocked reason codes, and `dataPlaneMutationExecuted=false` without SSH, shell execution, service reload, OS route mutation, secret decrypt, or outbound enablement.
+- Surfaced a Settings live-apply request action and apply-mode labels in English/Persian while preserving the disabled production server-side apply engine boundary.
+- Updated protocol apply docs, memory, checklist, and dashboard checklist for the non-mutating live request boundary.
+- Bumped AfroGate to `0.54.0` for the live protocol apply request workflow.
+- Verified `0.54.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

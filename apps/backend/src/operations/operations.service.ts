@@ -39,9 +39,11 @@ import type {
   AdminWireGuardCandidate,
   LoadBalanceStrategy,
   ProvisionProtocolSetupResponse,
+  ProtocolServerApplyMode,
   ProtocolServerApplyReason,
   RecordProtocolServerApplyResponse,
   RecordRouteDecisionPreviewResponse,
+  RequestProtocolServerApplyResponse,
   RouteFailoverEventSummary,
   RouteDecisionAction,
   RouteBufferbloatRecommendation,
@@ -67,6 +69,7 @@ import {
   CreateSettingsSecretDto,
   RecordProtocolServerApplyDto,
   RecordRouteDecisionPreviewDto,
+  RequestProtocolServerApplyDto,
   UpsertRouteAssignmentDto,
   UpsertRouteSettingsDto,
 } from './dto/settings.dto';
@@ -1819,42 +1822,8 @@ export class OperationsService {
 
       const plan = this.buildProtocolServerApplyPlan(setup);
       const snapshot = this.buildProtocolServerApplyDryRunSnapshot(setup, plan, applyMode);
-      const reasonCodes = snapshot.reasonCodes.map(String);
       const createdBy = actor?.username ?? actor?.id ?? null;
-
-      await executor.query(
-        `
-          INSERT INTO protocol_apply_events (
-            id, protocol_setup_id, outbound_id, target_server_id, apply_mode,
-            apply_status, feature_flag_enabled, adapter_implemented, can_execute,
-            command_count, config_change_count, secret_safe, reason_codes,
-            dry_run_snapshot, created_by
-          )
-          VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7, $8, $9,
-            $10, $11, $12, $13::jsonb,
-            $14::jsonb, $15
-          )
-        `,
-        [
-          eventId,
-          setup.id,
-          snapshot.outboundId ?? setup.provisionedOutboundId,
-          snapshot.targetServerId ?? setup.targetServerId,
-          applyMode,
-          snapshot.applyStatus,
-          snapshot.featureFlagEnabled,
-          snapshot.adapterImplemented,
-          snapshot.canExecute,
-          snapshot.commandCount,
-          snapshot.configChangeCount,
-          snapshot.secretSafe,
-          JSON.stringify(reasonCodes),
-          JSON.stringify(snapshot),
-          createdBy,
-        ],
-      );
+      const reasonCodes = await this.insertProtocolApplyEvent(executor, eventId, setup, snapshot, createdBy);
 
       await this.audit.record(
         actor,
@@ -1897,6 +1866,131 @@ export class OperationsService {
       protocolSetup,
       serverApplyPlan: protocolSetup.serverApplyPlan ?? this.buildProtocolServerApplyPlan(protocolSetup),
     };
+  }
+
+  async requestProtocolServerApply(
+    id: string,
+    dto: RequestProtocolServerApplyDto,
+    actor: AuthActor | undefined,
+  ): Promise<RequestProtocolServerApplyResponse> {
+    this.assertSuperadmin(actor);
+
+    const applyMode = (dto?.applyMode ?? 'live') as 'live';
+    if (applyMode !== 'live') {
+      throw new BadRequestException('Only live protocol server apply requests are supported by this endpoint');
+    }
+
+    const eventId = randomUUID();
+    let blockedReasonCodes: string[] = [];
+
+    await this.database.transaction(async (executor) => {
+      const setup = await this.getProtocolSetupForUpdate(executor, id);
+      if (!setup.provisionedOutboundId) {
+        throw new ConflictException('Protocol setup must be provisioned before server apply request');
+      }
+
+      await this.ensureOutboundExists(executor, setup.provisionedOutboundId);
+
+      const plan = this.buildProtocolServerApplyPlan(setup);
+      blockedReasonCodes = this.protocolServerApplyLiveBlockedReasonCodes(plan);
+      const snapshot = this.buildProtocolServerApplyLiveRequestSnapshot(setup, plan, applyMode, blockedReasonCodes);
+      const createdBy = actor?.username ?? actor?.id ?? null;
+      const reasonCodes = await this.insertProtocolApplyEvent(executor, eventId, setup, snapshot, createdBy);
+
+      await this.audit.record(
+        actor,
+        'settings.protocol.server_apply.live.request',
+        'protocol_apply_event',
+        eventId,
+        {
+          protocolSetupId: setup.id,
+          protocol: setup.protocol,
+          profile: setup.profile,
+          routeGroup: setup.routeGroup,
+          outboundId: snapshot.outboundId,
+          targetServerId: snapshot.targetServerId,
+          applyMode,
+          applyStatus: snapshot.applyStatus,
+          featureFlagEnabled: snapshot.featureFlagEnabled,
+          adapterImplemented: snapshot.adapterImplemented,
+          canExecute: snapshot.canExecute,
+          commandCount: snapshot.commandCount,
+          configChangeCount: snapshot.configChangeCount,
+          secretSafe: snapshot.secretSafe,
+          reasonCodes,
+          preflightStatus: snapshot.preflight.status,
+          canRecordDryRun: snapshot.preflight.canRecordDryRun,
+          canExecuteDataPlane: snapshot.preflight.canExecuteDataPlane,
+          preflightBlockedReasonCodes: snapshot.preflight.blockedReasonCodes,
+          liveApplyRequested: true,
+          liveApplyAccepted: false,
+          dataPlaneMutationExecuted: false,
+          blockedReasonCodes,
+        },
+        executor,
+      );
+    });
+
+    const [event, protocolSetup] = await Promise.all([
+      this.getProtocolApplyEventDetail(eventId),
+      this.getProtocolSetup(id),
+    ]);
+
+    return {
+      event,
+      protocolSetup,
+      serverApplyPlan: protocolSetup.serverApplyPlan ?? this.buildProtocolServerApplyPlan(protocolSetup),
+      liveApplyRequested: true,
+      liveApplyAccepted: false,
+      dataPlaneMutationExecuted: false,
+      blockedReasonCodes,
+    };
+  }
+
+  private async insertProtocolApplyEvent(
+    executor: DatabaseQueryExecutor,
+    eventId: string,
+    setup: ProtocolServerApplySource,
+    snapshot: AdminProtocolServerApplyDryRunSnapshot,
+    createdBy: string | null,
+  ): Promise<string[]> {
+    const reasonCodes = snapshot.reasonCodes.map(String);
+
+    await executor.query(
+      `
+        INSERT INTO protocol_apply_events (
+          id, protocol_setup_id, outbound_id, target_server_id, apply_mode,
+          apply_status, feature_flag_enabled, adapter_implemented, can_execute,
+          command_count, config_change_count, secret_safe, reason_codes,
+          dry_run_snapshot, created_by
+        )
+        VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9,
+          $10, $11, $12, $13::jsonb,
+          $14::jsonb, $15
+        )
+      `,
+      [
+        eventId,
+        setup.id,
+        snapshot.outboundId ?? setup.provisionedOutboundId,
+        snapshot.targetServerId ?? setup.targetServerId,
+        snapshot.applyMode,
+        snapshot.applyStatus,
+        snapshot.featureFlagEnabled,
+        snapshot.adapterImplemented,
+        snapshot.canExecute,
+        snapshot.commandCount,
+        snapshot.configChangeCount,
+        snapshot.secretSafe,
+        JSON.stringify(reasonCodes),
+        JSON.stringify(snapshot),
+        createdBy,
+      ],
+    );
+
+    return reasonCodes;
   }
 
   async listProtocolApplyEvents(
@@ -6355,7 +6449,7 @@ export class OperationsService {
   private buildProtocolServerApplyDryRunSnapshot(
     setup: ProtocolServerApplySource,
     plan: AdminProtocolServerApplyPlanSummary,
-    applyMode: 'dryRun',
+    applyMode: ProtocolServerApplyMode,
   ): AdminProtocolServerApplyDryRunSnapshot {
     const commands = plan.commands.map((command) => ({ ...command }));
     const configChanges = plan.configChanges.map((change) => ({ ...change }));
@@ -6400,6 +6494,50 @@ export class OperationsService {
       commands,
       configChanges,
     };
+  }
+
+  private buildProtocolServerApplyLiveRequestSnapshot(
+    setup: ProtocolServerApplySource,
+    plan: AdminProtocolServerApplyPlanSummary,
+    applyMode: 'live',
+    blockedReasonCodes: string[],
+  ): AdminProtocolServerApplyDryRunSnapshot {
+    const snapshot = this.buildProtocolServerApplyDryRunSnapshot(setup, plan, applyMode);
+    const reasonCodes = this.uniqueStrings([
+      ...snapshot.reasonCodes.map(String),
+      'liveApplyRequested',
+      'liveApplyBlocked',
+      ...blockedReasonCodes,
+    ]);
+    const liveApplyBlockedReasonCodes = this.uniqueStrings([
+      ...snapshot.preflight.liveApplyBlockedReasonCodes.map(String),
+      ...blockedReasonCodes,
+    ]);
+
+    return {
+      ...snapshot,
+      applyStatus: 'blocked',
+      liveApply: false,
+      dataPlaneMutationExecuted: false,
+      dataPlaneReady: false,
+      canExecute: false,
+      reasonCodes,
+      preflight: {
+        ...snapshot.preflight,
+        canExecuteDataPlane: false,
+        liveApplyBlockedReasonCodes,
+      },
+    };
+  }
+
+  private protocolServerApplyLiveBlockedReasonCodes(plan: AdminProtocolServerApplyPlanSummary): string[] {
+    const preflightReasons = plan.preflight.liveApplyBlockedReasonCodes.map(String);
+
+    if (!plan.preflight.canExecuteDataPlane || !plan.canExecute) {
+      return this.uniqueStrings(['liveApplyBlocked', ...preflightReasons]);
+    }
+
+    return ['liveExecutorMissing'];
   }
 
   private protocolServerApplyStatus(input: {
