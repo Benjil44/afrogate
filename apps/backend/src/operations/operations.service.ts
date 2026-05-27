@@ -187,6 +187,9 @@ interface ProtocolSetupRow {
   status: string;
   config: Record<string, unknown> | null;
   secretRef: string | null;
+  targetServerId: string | null;
+  targetServerLabel: string | null;
+  targetServerAccessReady: boolean;
   provisionedOutboundId: string | null;
   provisionedAt: Date | null;
   createdBy: string | null;
@@ -201,6 +204,9 @@ type ProtocolServerApplySource = Pick<
   hasSecretRef?: boolean;
   provisionedOutboundId?: string | null;
   secretRef?: string | null;
+  targetServerId?: string | null;
+  targetServerLabel?: string | null;
+  targetServerAccessReady?: boolean;
 };
 
 interface RouteSettingsRow {
@@ -1577,14 +1583,16 @@ export class OperationsService {
     const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
     const protocolSetupId = await this.database.transaction(async (executor) => {
       const secretRef = dto.secretRef?.trim() || null;
+      const targetServerId = dto.targetServerId?.trim() || null;
       if (secretRef) await this.ensureSecretRefExists(executor, secretRef, routeGroup, dto.protocol);
+      if (targetServerId) await this.ensureServerExists(executor, targetServerId);
 
       const result = await executor.query<{ id: string }>(
         `
           INSERT INTO protocol_setups (
-            name, protocol, profile, route_group, port, config, secret_ref, created_by
+            name, protocol, profile, route_group, port, config, secret_ref, target_server_id, created_by
           )
-          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
           RETURNING id
         `,
         [
@@ -1595,6 +1603,7 @@ export class OperationsService {
           dto.port,
           JSON.stringify(dto.config ?? {}),
           secretRef,
+          targetServerId,
           actor?.username ?? actor?.id ?? null,
         ],
       );
@@ -1610,6 +1619,7 @@ export class OperationsService {
           profile: dto.profile,
           routeGroup,
           hasSecretRef: Boolean(secretRef),
+          targetServerId,
         },
         executor,
       );
@@ -1679,10 +1689,11 @@ export class OperationsService {
             config, secret_ref, health_interval_seconds, fail_threshold,
             recovery_threshold, cooldown_seconds, weight, max_users, health_status
           )
-          VALUES (NULL, $1, $2, $3, $4, false, true, $5::jsonb, $6, $7, $8, $9, $10, $11, NULL, 'unknown')
+          VALUES ($1, $2, $3, $4, $5, false, true, $6::jsonb, $7, $8, $9, $10, $11, $12, NULL, 'unknown')
           RETURNING id
         `,
         [
+          setup.targetServerId,
           setup.name,
           outboundType,
           routeGroup,
@@ -1721,6 +1732,7 @@ export class OperationsService {
           routeGroup,
           outboundId,
           outboundType,
+          targetServerId: setup.targetServerId,
           hasSecretRef: Boolean(setup.secretRef),
           enabled: false,
           maintenanceMode: true,
@@ -1804,27 +1816,7 @@ export class OperationsService {
 
   async listProtocolSetups(routeGroup: string): Promise<AdminProtocolSetupSummary[]> {
     const result = await this.database.query<ProtocolSetupRow>(
-      `
-        SELECT
-          id,
-          name,
-          protocol,
-          profile,
-          route_group AS "routeGroup",
-          port,
-          status,
-          config,
-          secret_ref AS "secretRef",
-          provisioned_outbound_id AS "provisionedOutboundId",
-          provisioned_at AS "provisionedAt",
-          created_by AS "createdBy",
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM protocol_setups
-        WHERE route_group = $1
-        ORDER BY updated_at DESC, created_at DESC
-        LIMIT 100
-      `,
+      this.protocolSetupSelectSql('ps.route_group = $1', 'ORDER BY ps.updated_at DESC, ps.created_at DESC LIMIT 100'),
       [routeGroup],
     );
 
@@ -1833,25 +1825,7 @@ export class OperationsService {
 
   async getProtocolSetup(id: string): Promise<AdminProtocolSetupSummary> {
     const result = await this.database.query<ProtocolSetupRow>(
-      `
-        SELECT
-          id,
-          name,
-          protocol,
-          profile,
-          route_group AS "routeGroup",
-          port,
-          status,
-          config,
-          secret_ref AS "secretRef",
-          provisioned_outbound_id AS "provisionedOutboundId",
-          provisioned_at AS "provisionedAt",
-          created_by AS "createdBy",
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM protocol_setups
-        WHERE id = $1
-      `,
+      this.protocolSetupSelectSql('ps.id = $1'),
       [id],
     );
     const row = result.rows[0];
@@ -2618,6 +2592,41 @@ export class OperationsService {
     `;
   }
 
+  private protocolSetupSelectSql(whereClause: string, suffix = ''): string {
+    return `
+      SELECT
+        ps.id,
+        ps.name,
+        ps.protocol,
+        ps.profile,
+        ps.route_group AS "routeGroup",
+        ps.port,
+        ps.status,
+        ps.config,
+        ps.secret_ref AS "secretRef",
+        ps.target_server_id AS "targetServerId",
+        COALESCE(ts.hostname, ts.external_id) AS "targetServerLabel",
+        (
+          sap.id IS NOT NULL
+          AND sap.address IS NOT NULL
+          AND sap.ssh_port IS NOT NULL
+          AND sap.username IS NOT NULL
+          AND NULLIF(btrim(sap.credential_ref), '') IS NOT NULL
+          AND sap.bootstrap_state = 'installed'
+        ) AS "targetServerAccessReady",
+        ps.provisioned_outbound_id AS "provisionedOutboundId",
+        ps.provisioned_at AS "provisionedAt",
+        ps.created_by AS "createdBy",
+        ps.created_at AS "createdAt",
+        ps.updated_at AS "updatedAt"
+      FROM protocol_setups ps
+      LEFT JOIN servers ts ON ts.id = ps.target_server_id
+      LEFT JOIN server_access_profiles sap ON sap.server_id = ts.id
+      WHERE ${whereClause}
+      ${suffix}
+    `;
+  }
+
   private mapServer(row: ServerInventoryRow): AdminServerSummary {
     return {
       id: row.id,
@@ -2731,6 +2740,9 @@ export class OperationsService {
       status: row.status,
       config: this.redactConfig(this.asRecord(row.config)),
       hasSecretRef: Boolean(row.secretRef),
+      targetServerId: row.targetServerId,
+      targetServerLabel: row.targetServerLabel,
+      targetServerAccessReady: row.targetServerAccessReady,
       provisionedOutboundId: row.provisionedOutboundId,
       provisionedAt: row.provisionedAt?.toISOString() ?? null,
       serverApplyPlan: this.buildProtocolServerApplyPlan(row),
@@ -5719,26 +5731,7 @@ export class OperationsService {
     id: string,
   ): Promise<ProtocolSetupRow> {
     const result = await executor.query<ProtocolSetupRow>(
-      `
-        SELECT
-          id,
-          name,
-          protocol,
-          profile,
-          route_group AS "routeGroup",
-          port,
-          status,
-          config,
-          secret_ref AS "secretRef",
-          provisioned_outbound_id AS "provisionedOutboundId",
-          provisioned_at AS "provisionedAt",
-          created_by AS "createdBy",
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM protocol_setups
-        WHERE id = $1
-        FOR UPDATE
-      `,
+      this.protocolSetupSelectSql('ps.id = $1', 'FOR UPDATE OF ps'),
       [id],
     );
     const row = result.rows[0];
@@ -5793,8 +5786,11 @@ export class OperationsService {
     const requiresSecret = this.protocolRequiresServerSecret(setup.protocol);
     const hasSecretRef = this.protocolSetupHasSecretRef(setup);
     const requiresServerAccess = true;
-    const hasServerAccess = false;
+    const targetServerId = setup.targetServerId ?? null;
+    const hasTargetServer = Boolean(targetServerId);
+    const hasServerAccess = hasTargetServer && Boolean(setup.targetServerAccessReady);
     const targetServerLabel =
+      setup.targetServerLabel ??
       this.stringFromConfig(config.serverName) ??
       this.stringFromConfig(config.activeWireGuardServerExternalId) ??
       null;
@@ -5802,7 +5798,7 @@ export class OperationsService {
     const commands = this.buildProtocolServerApplyCommands(setup, unitName);
     const configChanges = this.buildProtocolServerApplyConfigChanges(setup, unitName);
     const missingSecret = requiresSecret && !hasSecretRef;
-    const missingTargetAccess = hasOutbound && requiresServerAccess && !hasServerAccess;
+    const missingTargetAccess = hasOutbound && requiresServerAccess && (!hasTargetServer || !hasServerAccess);
     const dataPlaneReady =
       featureFlagEnabled &&
       adapterImplemented &&
@@ -5828,10 +5824,12 @@ export class OperationsService {
     }
     if (requiresSecret) reasonCodes.add(hasSecretRef ? 'secretReady' : 'secretMissing');
     if (requiresServerAccess) {
-      if (hasServerAccess) {
+      if (!hasTargetServer) {
+        reasonCodes.add('serverMissing');
+        reasonCodes.add('serverAccessMissing');
+      } else if (hasServerAccess) {
         reasonCodes.add('serverAccessReady');
       } else {
-        reasonCodes.add('serverMissing');
         reasonCodes.add('serverAccessMissing');
       }
     }
@@ -5851,7 +5849,7 @@ export class OperationsService {
       profile: setup.profile,
       routeGroup: setup.routeGroup,
       outboundId,
-      targetServerId: null,
+      targetServerId,
       targetServerLabel,
       featureFlagEnabled,
       adapterImplemented,
@@ -5875,6 +5873,7 @@ export class OperationsService {
         requiresSecret,
         hasSecretRef,
         requiresServerAccess,
+        hasTargetServer,
         hasServerAccess,
       }),
       commands,
@@ -5905,6 +5904,7 @@ export class OperationsService {
     requiresSecret: boolean;
     hasSecretRef: boolean;
     requiresServerAccess: boolean;
+    hasTargetServer: boolean;
     hasServerAccess: boolean;
   }): AdminProtocolServerApplyPlanSummary['steps'] {
     const reason = (...items: Array<ProtocolServerApplyReason | false | null | undefined>) =>
@@ -5955,6 +5955,7 @@ export class OperationsService {
           : 'notRequired',
         reason(
           input.hasOutbound ? 'outboundReady' : 'outboundMissing',
+          input.requiresServerAccess && !input.hasTargetServer && 'serverMissing',
           input.requiresServerAccess && (input.hasServerAccess ? 'serverAccessReady' : 'serverAccessMissing'),
         ),
       ),
@@ -6145,6 +6146,9 @@ export class OperationsService {
       serverApplyPlanVersion: 1,
       serverApplyFeatureFlag: 'AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED',
       serverApplyDryRunOnly: true,
+      serverApplyTargetServerId: setup.targetServerId ?? null,
+      serverApplyTargetServerLabel: setup.targetServerLabel ?? null,
+      serverApplyTargetServerAccessReady: Boolean(setup.targetServerAccessReady),
       provisionedFromProtocolSetupId: setup.id,
       provisionedRouteGroup: setup.routeGroup,
       materialRefAttached: Boolean(setup.secretRef),

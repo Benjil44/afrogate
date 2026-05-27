@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.50.0 - 2026-05-27
+
+- Added target-server selection to Settings protocol drafts so WireGuard, VLESS, L2TP, and IKEv2 provisioning can bind generated managed outbounds to a real managed server.
+- Added PostgreSQL/API support for `protocol_setups.target_server_id` and surfaced target labels plus server-access readiness in protocol setup responses.
+- Updated protocol server apply plans to distinguish missing target servers from missing access profiles while still keeping all server OS/service mutation disabled until the audited adapter exists.
+
 ## 0.49.0 - 2026-05-27
 
 - Added secret-safe protocol server apply plan summaries for saved WireGuard, VLESS, L2TP, and IKEv2 setup drafts, including readiness status, future command previews, config-change counts, and blocker reason codes.

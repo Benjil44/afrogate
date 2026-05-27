@@ -78,6 +78,10 @@ export class CreateProtocolSetupDto {
   @IsString()
   @MaxLength(255)
   secretRef?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  targetServerId?: string | null;
 }
 
 export class UpsertRouteSettingsDto {

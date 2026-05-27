@@ -217,6 +217,7 @@ interface ProtocolSetupDraft {
   profile: ProtocolProfile;
   port: string;
   routeGroup: string;
+  targetServerId: string;
 }
 
 interface NavItemData {
@@ -945,7 +946,7 @@ function ActivePage({
     case 'alerts':
       return <AlertsPage alerts={alerts} format={format} t={t} />;
     case 'settings':
-      return <SettingsPage format={format} session={session} sessionToken={sessionToken} t={t} />;
+      return <SettingsPage format={format} managementServers={managementServers} session={session} sessionToken={sessionToken} t={t} />;
     default:
       return (
         <DashboardPage
@@ -2043,11 +2044,13 @@ function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: Das
 
 function SettingsPage({
   format,
+  managementServers,
   session,
   sessionToken,
   t,
 }: {
   format: DashboardFormatters;
+  managementServers: ServerRowData[];
   session: AdminSessionResponse;
   sessionToken: string;
   t: DashboardStrings;
@@ -2080,6 +2083,7 @@ function SettingsPage({
     profile: 'balanced',
     port: protocolDefaultPorts.wireguard,
     routeGroup: 'main',
+    targetServerId: '',
   });
   const [privateKeyAccepted, setPrivateKeyAccepted] = useState(false);
   const [privateKeySecretRef, setPrivateKeySecretRef] = useState<string | null>(null);
@@ -2311,10 +2315,19 @@ function SettingsPage({
     ['highSecurity', t.settings.profileHighSecurity],
     ['gaming', t.settings.profileGaming],
   ];
+  const protocolTargetServers = managementServers.filter((server) => server.source === 'admin');
+  const targetServerOptions = protocolTargetServers.map((server) => ({
+    value: server.id,
+    label: `${format.label(server.name)} / ${serverAccessReady(server) ? t.settings.accessReady : t.settings.accessPending}`,
+  }));
+  const selectedTargetServer = protocolTargetServers.find((server) => server.id === protocolDraft.targetServerId) ?? null;
+  const selectedTargetServerAccessReady = selectedTargetServer ? serverAccessReady(selectedTargetServer) : false;
   const readinessRows: Array<[string, string, Tone]> = [
     [t.settings.systemUser, 'afrogate', 'good'],
     [t.settings.protocolCreation, canCreateProtocols ? t.settings.superadminReady : t.settings.superadminOnly, canCreateProtocols ? 'good' : 'warning'],
     [t.settings.protocolProfile, profileOptions.find(([value]) => value === protocolDraft.profile)?.[1] ?? t.settings.profileBalanced, 'neutral'],
+    [t.settings.targetServer, selectedTargetServer ? selectedTargetServer.name : t.settings.noTargetServer, selectedTargetServer ? 'neutral' : 'warning'],
+    [t.settings.serverAccess, selectedTargetServer ? selectedTargetServerAccessReady ? t.settings.accessReady : t.settings.accessPending : t.settings.pending, selectedTargetServerAccessReady ? 'good' : 'warning'],
     [t.settings.routeMode, routeMode === 'automatic' ? t.settings.automatic : t.settings.manual, routeMode === 'automatic' ? 'good' : 'neutral'],
     [t.settings.activeWireGuard, activeWireGuard.name, getWireGuardScoreTone(activeWireGuard.score)],
     [t.settings.privateKeyStatus, hasSavedPrivateKey ? t.settings.encryptedSecretSaved : hasPrivateKey ? t.settings.acceptedWriteOnly : t.settings.pending, hasPrivateKey ? 'good' : 'warning'],
@@ -2328,6 +2341,7 @@ function SettingsPage({
     [t.settings.protocol, protocolOptions.find(([value]) => value === protocolDraft.protocol)?.[1] ?? '-'],
     [t.settings.protocolProfile, profileOptions.find(([value]) => value === protocolDraft.profile)?.[1] ?? '-'],
     [t.settings.protocolPort, protocolDraft.port || '-'],
+    [t.settings.targetServer, selectedTargetServer ? selectedTargetServer.name : t.settings.noTargetServer],
     [t.settings.serverName, draft.serverName || '-'],
     [t.settings.interfaceName, draft.interfaceName || '-'],
     [t.settings.routeGroup, draft.routeGroup || '-'],
@@ -2421,8 +2435,9 @@ function SettingsPage({
         profile: protocolDraft.profile,
         routeGroup: protocolDraft.routeGroup.trim(),
         port,
-        config: createProtocolSetupConfig(draft, routeMode, loadBalanceStrategy, activeWireGuard),
+        config: createProtocolSetupConfig(draft, routeMode, loadBalanceStrategy, activeWireGuard, selectedTargetServer),
         secretRef,
+        targetServerId: protocolDraft.targetServerId || null,
       });
 
       setPersistedProtocolSetups((current) => [created, ...current.filter((item) => item.id !== created.id)]);
@@ -2863,10 +2878,16 @@ function SettingsPage({
               </div>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-4">
               <SettingsInput label={t.settings.protocolName} onChange={(value) => updateProtocolDraft('name', value)} required value={protocolDraft.name} />
               <SettingsInput inputMode="numeric" label={t.settings.protocolPort} onChange={(value) => updateProtocolDraft('port', value)} required value={protocolDraft.port} />
               <SettingsInput label={t.settings.routeGroup} onChange={(value) => updateProtocolDraft('routeGroup', value)} required value={protocolDraft.routeGroup} />
+              <SettingsSelect
+                label={t.settings.targetServer}
+                onChange={(value) => updateProtocolDraft('targetServerId', value)}
+                options={[{ label: t.settings.noTargetServer, value: '' }, ...targetServerOptions]}
+                value={protocolDraft.targetServerId}
+              />
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
@@ -2898,6 +2919,7 @@ function SettingsPage({
                             <strong className="block truncate text-[13px]">{setup.name}</strong>
                             <span className="block truncate text-[12px] text-afro-muted">
                               {setup.protocol} / {setup.routeGroup}
+                              {setup.targetServerLabel ? ` / ${setup.targetServerLabel}` : ''}
                               {isProvisioned ? ` / ${t.settings.managedOutbound}` : ''}
                             </span>
                           </div>
@@ -5740,11 +5762,41 @@ function SettingsInput({
   );
 }
 
+function SettingsSelect({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-[13px] font-bold text-afro-muted">{label}</span>
+      <select
+        className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option.value || 'empty'} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function createProtocolSetupConfig(
   draft: WireGuardSetupDraft,
   routeMode: RouteSelectionMode,
   loadBalanceStrategy: LoadBalanceStrategy,
   activeWireGuard: WireGuardHealthCandidate,
+  targetServer: ServerRowData | null,
 ): Record<string, unknown> {
   return {
     serverName: draft.serverName.trim() || undefined,
@@ -5763,6 +5815,9 @@ function createProtocolSetupConfig(
     activeWireGuardSource: activeWireGuard.source,
     activeWireGuardInterfaceName: activeWireGuard.interfaceName ?? undefined,
     activeWireGuardServerExternalId: activeWireGuard.serverExternalId ?? undefined,
+    targetServerId: targetServer?.id,
+    targetServerLabel: targetServer?.name,
+    targetServerExternalId: targetServer?.externalId,
   };
 }
 
@@ -6662,6 +6717,10 @@ function getWireGuardScoreTone(score: number): Tone {
   if (score >= 70) return 'neutral';
   if (score >= 50) return 'warning';
   return 'critical';
+}
+
+function serverAccessReady(server: ServerRowData): boolean {
+  return Boolean(server.accessProfile?.hasCredentialRef && server.accessProfile.bootstrapState === 'installed');
 }
 
 function wireGuardCandidateSourceLabel(candidate: WireGuardHealthCandidate, t: DashboardStrings): string {

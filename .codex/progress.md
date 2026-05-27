@@ -564,6 +564,10 @@ Repository remote is ready:
 - Returned protocol apply readiness from Settings provisioning responses while preserving disabled server OS/service mutation until an audited adapter and server access target exist.
 - Surfaced the protocol apply plan in Settings with typed English/Persian labels for planning, dry-run, blocked, apply-ready, target, command, and config-change state.
 - Bumped AfroGate to `0.49.0` for protocol server apply readiness planning.
+- Added target-server selection to Settings protocol drafts so provisioning can bind generated managed outbounds to a selected managed server.
+- Added `protocol_setups.target_server_id` persistence plus backend response fields for target labels and server-access readiness.
+- Updated protocol server apply plans to distinguish missing target servers from missing access profiles while keeping server OS/service mutation disabled.
+- Bumped AfroGate to `0.50.0` for target-server protocol provisioning readiness.
 
 ### Verification
 
@@ -731,4 +735,11 @@ Repository remote is ready:
 - Verified `0.49.0` with `npm run version:check`.
 - Verified production build with `npm run build --workspaces --if-present`.
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Applied PostgreSQL migrations through `0010_protocol_target_server.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified `0.50.0` with `npm run version:check`.
+- Verified target-server provisioning contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

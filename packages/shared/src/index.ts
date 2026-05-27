@@ -501,6 +501,9 @@ export interface AdminProtocolSetupSummary {
   status: string;
   config: Record<string, unknown>;
   hasSecretRef: boolean;
+  targetServerId?: string | null;
+  targetServerLabel?: string | null;
+  targetServerAccessReady?: boolean;
   provisionedOutboundId?: string | null;
   provisionedAt?: string | null;
   serverApplyPlan?: AdminProtocolServerApplyPlanSummary | null;
@@ -517,6 +520,7 @@ export interface CreateProtocolSetupRequest {
   port: number;
   config?: Record<string, unknown>;
   secretRef?: string | null;
+  targetServerId?: string | null;
 }
 
 export interface AdminRouteSettingsSummary {

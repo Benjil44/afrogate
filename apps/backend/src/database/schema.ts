@@ -348,6 +348,7 @@ export const protocolSetups = pgTable(
     status: text('status').notNull().default('draft'),
     config: jsonb('config').notNull().default(sql`'{}'::jsonb`),
     secretRef: text('secret_ref'),
+    targetServerId: uuid('target_server_id').references(() => servers.id, { onDelete: 'set null' }),
     provisionedOutboundId: uuid('provisioned_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
     provisionedAt: timestamp('provisioned_at', { withTimezone: true }),
     createdBy: text('created_by'),
@@ -358,6 +359,7 @@ export const protocolSetups = pgTable(
     routeNameIdx: uniqueIndex('protocol_setups_route_name_idx').on(table.routeGroup, table.name),
     protocolIdx: index('protocol_setups_protocol_idx').on(table.protocol),
     statusIdx: index('protocol_setups_status_idx').on(table.status),
+    targetServerIdx: index('protocol_setups_target_server_idx').on(table.targetServerId),
     provisionedOutboundIdx: index('protocol_setups_provisioned_outbound_idx').on(table.provisionedOutboundId),
   }),
 );
