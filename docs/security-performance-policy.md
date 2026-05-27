@@ -52,10 +52,21 @@ Routing must be fast, explainable, and stable.
   - health score
   - reason for change or rejection
   - cooldown state
+- Health-based movement may bypass normal score hysteresis only when the current managed route is unhealthy and a healthy managed candidate exists; route lock, manual mode, cooldown, and audit requirements still apply.
 - Use hysteresis to avoid route flapping.
 - Support route lock for users/configs that should not move.
 - Prefer kernel-level routing and firewall tools over app-level hacks.
 - Monitor per-route ping, jitter, packet loss, throughput, and saturation.
+- Score routes by protocol profile where useful: TCP, UDP, QUIC/HTTP3, DNS, and WireGuard/tunnel health can differ on the same server.
+- Keep smart-route profile recommendations advisory and synthetic-signal-based. Do not infer a user's actual destinations or traffic contents to choose TCP, UDP, QUIC, DNS, WireGuard, gaming, stability, or throughput policy.
+- Keep protocol probes privacy-safe: use synthetic configured targets, do not inspect user payloads, and do not store user destination history.
+- Classify route use cases by speed profile. Low-speed paths should favor stability and low loss; high-speed paths should favor throughput headroom without accepting bad jitter/loss.
+- Keep the latency-sensitive/gaming profile available before production auto-routing. This advisory profile prioritizes stable latency, low jitter, low packet loss, route consistency, and fast congestion avoidance over raw bandwidth or speedtest throughput.
+- For gaming, UDP, QUIC, WireGuard, and stability-sensitive profiles, normal route improvements must prefer sticky sessions and new-session-only drains over mid-session route changes; emergency switching is reserved for failing current routes where staying put is worse than possible session reset.
+- Keep profile scoring, persisted assignment controls, and route decision preview conservative until the route apply engine is audited: admins may save auto-route, route lock, current/locked route, cooldown, and hysteresis policy; preview events may record the proposed action, reason codes, non-secret candidate-review context, advisory smart-load-balancing roles/weights, session-safety policy, transparent switch-engine planning steps, structured apply-plan context, apply-adapter readiness, and normalized secret-safe dry-run snapshots with `applied_at = null`; read-role admins may inspect stored event detail on demand without bloating the recent-events list; and assignment-only apply may update saved control-plane assignment with `dataPlaneApplied = false` plus a switch-execution summary for sticky-session, drain, cooldown, rollback, and data-plane-blocked state. Automatic server OS/data-plane movement still requires `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=true`, a real audited adapter, safe apply logic, cooldown enforcement, hysteresis checks, route lock checks, and drain-safe behavior in the apply path.
+- Before any future data-plane movement, route decision previews must pass a switch-preflight checklist for feature flag, adapter implementation/support, dry-run safety, route guards, session safety, rollback, cooldown, audit, and health verification. Failing or future preflight gates must stay visible to admins and persisted in decision context.
+- Future data-plane movement must start with a rollout plan that pins existing sessions, canaries new sessions first, verifies packet loss/jitter/latency rollback thresholds, honors a route-consistency hold, and persists the planned steps for audit before any automatic expansion.
+- Do not require GPU acceleration for MVP route intelligence. Packet-loss and jitter reduction depends on path measurement, bufferbloat control, policy routing, and stable switching rules; compact CPU-side time-series scoring is the right default for low-resource VPS machines.
 
 ## Buffering and Latency Policy
 
@@ -63,6 +74,7 @@ Throughput alone is not success. High speed with high latency under load is stil
 
 - Track latency while links are busy, not only idle ping.
 - Detect bufferbloat by comparing idle ping vs loaded ping.
+- Treat loaded-latency deltas as route-quality signals: medium risk should recommend SQM/AQM review, and high risk should avoid the path for latency-sensitive or under-load routing decisions unless an admin deliberately locks it.
 - Prefer SQM/AQM where useful:
   - CAKE when CPU can handle it.
   - fq_codel when resources are weaker.
@@ -91,6 +103,7 @@ No production database, Redis, or backend admin port should be exposed directly 
 
 Initial roles:
 
+- Superadmin: permanent bootstrap root account for the system owner. It must not be removable, disableable, or mutable by other admins.
 - Owner: full control, security settings, roles, backups.
 - Admin: operational management, users, servers, routes.
 - Support: user support and safe read/update actions only.
@@ -101,6 +114,8 @@ Rules:
 
 - Deny by default.
 - Role checks must happen server-side.
+- Admins can have broad operational access, but they must not remove, disable, or change the superadmin account.
+- Managed admin accounts must store password hashes only; local MVP storage uses scrypt hashes in `AFROGATE_ADMIN_USERS_FILE`, and production should move this to PostgreSQL with the same superadmin invariant.
 - Support must not access secrets or private routing keys.
 - Agent tokens must not be accepted for admin APIs.
 - Sensitive role changes require audit logs and later MFA.
@@ -119,6 +134,8 @@ Required protections:
 - Agent authentication for metrics ingest.
 - Separate tokens per agent.
 - Secret rotation plan.
+- `AFROGATE_SECRETS_KEY` must be configured from a deployment secret source before storing Settings/server private keys; encrypted secret rows must expose only references to dashboard clients.
+- Protocol provisioning must stay secret-safe and default-inactive: control-plane draft provisioning may create disabled maintenance outbounds, while real server apply actions require audit logs and post-apply health validation.
 - Server root passwords must not be kept as normal long-term credentials; use temporary bootstrap credentials, then agent plus SSH keys for a dedicated management user.
 - Saved server secrets must never be displayed back to admins; support replace, test, rotate, revoke, and audit instead.
 - Database least-privilege accounts.
@@ -131,7 +148,7 @@ Required protections:
 3. Add audit logs.
 4. Add rate limiting and brute-force protection.
 5. Add secure backup/restore.
-6. Add route decision audit and route lock.
+6. Add route decision audit writes, route lock controls, and audited route apply.
 7. Add dependency scanning and secret scanning.
 
 ## References

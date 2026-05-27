@@ -71,6 +71,19 @@
 - Switched Persian dashboard typography from IRANSans to the local YekanBakh FaNum variable webfont under `apps/dashboard/public/assets/fonts/YekanBakh/`.
 - Updated dashboard DOM CSS and ECharts font-family wiring to use `AfroGate YekanBakh`.
 - Bumped AfroGate to `0.4.1` for the Persian font update.
+- Replaced the dashboard-facing admin token login with username/password login through `/api/auth/login`.
+- Added signed admin session tokens for dashboard sessions, with `/api/admin/session` verifying the signed bearer session.
+- Added the permanent `superadmin` role concept and optional configured `admin` login support while keeping the legacy admin bearer token as an API/bootstrap fallback.
+- Updated dashboard English/Persian login copy, `.env.example`, and the security/performance policy for the superadmin/admin login model.
+- Bumped AfroGate to `0.5.0` for the username/password admin session auth capability.
+- Fixed a local login UX issue where `superadmin` appeared as placeholder text but was not submitted; the login form now pre-fills `superadmin`, marks both fields required, and focuses the password field.
+- Bumped AfroGate to `0.5.1` for the login form usability fix.
+- Added a `Users` sidebar page for superadmin-focused admin account management.
+- Added guarded `/api/admin/users` endpoints for listing, creating, disabling/enabling, deleting, and changing passwords for managed admin users.
+- Kept bootstrap/env admin accounts protected: the bootstrap `superadmin` is listed but cannot be removed, disabled, or password-changed through normal user-management actions.
+- Added `supervisor` as a managed admin-user role with read-oriented dashboard access.
+- Added local scrypt-hashed managed admin user storage through `AFROGATE_ADMIN_USERS_FILE`, defaulting to git-ignored `tmp/admin-users.json`.
+- Bumped AfroGate to `0.6.0` for the admin user-management capability.
 
 ### Current State
 
@@ -78,7 +91,7 @@
 - Local git repository exists on branch `main`.
 - Remote target is configured for `Benjil44/afrogate` and local `main` tracks `origin/main`.
 - Backend, dashboard, agent, shared package, and infra folders are scaffolded.
-- Current highest priority remains the monitoring MVP, now moving from guarded admin management APIs into real dashboard edit flows, alert API binding, and alert delivery.
+- Current highest priority remains the monitoring MVP, now moving from admin user management into guarded dashboard server/outbound edit flows, alert API binding, and alert delivery.
 - Enhancement approach is documented, but not implemented yet.
 - First real data path exists: agent-style metrics can be accepted by the backend, persisted to PostgreSQL, and rendered by the dashboard when the API/database are configured.
 
@@ -90,7 +103,7 @@ Continue the monitoring MVP:
 2. Add alert listing endpoints and bind dashboard alerts to real alert rows.
 3. Add Telegram critical alert delivery using the shared control-plane egress policy.
 4. Add WireGuard tunnel metrics to the Python agent.
-5. Add dashboard API binding for guarded server/outbound reads once the dashboard has an admin session flow.
+5. Add dashboard API binding for guarded server/outbound reads now that the dashboard has an admin session flow.
 
 Repository remote is ready:
 
@@ -172,3 +185,521 @@ Repository remote is ready:
 - Verified `npm run version:check` after the `0.4.1` bump.
 - Verified `npm audit` still reports zero vulnerabilities after the YekanBakh switch.
 - Database migration script was added but not run in this session because no local PostgreSQL connection was configured.
+- Verified username/password login by restarting the local backend with `superadmin` and `admin` development credentials and calling `/api/auth/login` plus `/api/admin/session`.
+- Verified the admin session auth change with workspace typecheck, production build, `npm run version:check`, and `npm audit --audit-level=moderate`.
+- Verified the local dashboard server on `127.0.0.1:3003` returns HTTP 200 after the auth UI change.
+- Fixed a local login UX issue where `superadmin` appeared as placeholder text but was not submitted; the login form now pre-fills `superadmin`, marks both fields required, and focuses the password field.
+- Bumped AfroGate to `0.5.1` for the login form usability fix.
+- Verified the `0.5.1` login usability fix with workspace typecheck, production build, and `npm run version:check`.
+- Verified admin user management by logging in as superadmin, listing users, creating a temporary support user, confirming it was deletable, deleting it, and confirming the bootstrap superadmin stayed protected.
+- Verified the `supervisor` role path by creating and deleting a temporary supervisor user through the guarded admin user API.
+- Verified the `0.6.0` user-management capability with workspace typecheck, production build, `npm run version:check`, and `npm audit --audit-level=moderate`.
+
+## 2026-05-24
+
+### Completed
+
+- Synced `.codex` control notes after the superadmin/users implementation.
+- Updated memory and agent rules to include the `supervisor` role, protected `superadmin` invariant, and hashed admin-user runtime storage expectations.
+- Updated checklist state so the admin-user role foundation is marked done while production fine-grained RBAC remains pending.
+- Simplified the dashboard Users page so it focuses on the admin-user table instead of showing the global server/resource strip.
+- Moved admin-user creation out of the side panel and toward a top Add user flow available to the protected `superadmin` session.
+- Updated the Users table action heading through the typed multilingual layer and inserted newly created users directly into the visible table after successful API persistence.
+- Bumped AfroGate to `0.6.1` for the Users page UI refinement.
+- Restored the Users page title, replaced the add-user modal with a separate inline create-user section above the history table, and kept server card country metadata inline with server names.
+- Bumped AfroGate to `0.6.2` for the follow-up Users and Servers page layout refinement.
+- Documented protocol-aware smart routing across the architecture, PRD, route-management, security/performance, roadmap, and repository-structure docs.
+- Added pending checklist tasks for agent TCP/UDP/QUIC/DNS/WireGuard probes, backend protocol-aware route scoring, and smart-route profile selection.
+- Bumped AfroGate to `0.6.3` for the protocol-aware smart-routing documentation update.
+- Added the initial Servers page edit workflow with selectable server cards and a right-side edit panel.
+- Added Overview, Access, Monitoring, Interfaces, and Audit tabs to the server edit panel while keeping access/bootstrap read-only and secret-safe.
+- Marked the server edit screen and dashboard edit tabs complete in the project checklists.
+- Bumped AfroGate to `0.7.0` for the server edit workflow capability.
+- Added the admin-guarded `POST /api/agents/register` backend endpoint to upsert a server and issue a one-time agent token.
+- Changed metrics ingest authentication so non-revoked database-issued agent tokens with `metrics:write` scope are accepted alongside the legacy environment fallback token.
+- Added shared request/response contracts for agent registration and documented the registered-token environment flow.
+- Marked the agent registration endpoint checklist item complete.
+- Bumped AfroGate to `0.8.0` for the agent registration capability.
+- Added protected `POST /api/agents/heartbeat` for lightweight server agent heartbeats.
+- Updated the Python agent to send heartbeat metadata before each metrics push through the same token and outbound proxy path.
+- Marked the server agent heartbeat checklist item complete.
+- Bumped AfroGate to `0.9.0` for the server agent heartbeat capability.
+- Standardized direct local development ports to dashboard `3000` and backend `8000`.
+- Added strict Vite port behavior so AfroGate does not drift to `3001+` when port `3000` is busy.
+- Installed and wired Playwright browser smoke tests for fixed-port dashboard rendering.
+- Documented frontend/backend/agent local API wiring in `docs/local-development.md`.
+- Bumped AfroGate to `0.9.1` for local development and Playwright test wiring.
+- Tried to install local PostgreSQL with Chocolatey, but Windows blocked the install because the current shell is not running as Administrator.
+- Confirmed PostgreSQL remains the preferred development database over SQLite because the backend already depends on PostgreSQL-specific migrations and queries.
+- Added `scripts/setup-local-postgres.ps1` and root `db:setup:local` to install/prepare local PostgreSQL, create the `afrogate` role/database, optionally write `.env`, and run migrations.
+- Documented local PostgreSQL setup in `docs/local-development.md` and `infra/postgres/README.md`.
+- Bumped AfroGate to `0.9.2` for local PostgreSQL setup tooling and documentation.
+- Installed PostgreSQL 18.4 locally on Windows, created the `afrogate` role/database, wrote the local ignored `.env`, and applied all PostgreSQL migrations.
+- Added `C:\Program Files\PostgreSQL\18\bin` to the user PATH so new shells can run `psql` directly.
+- Fixed `scripts/setup-local-postgres.ps1` so missing role/database scalar checks handle empty `psql` output.
+- Added guarded read-only `/api/admin/alerts` listing with status/severity/source filters and shared alert response contracts.
+- Bound the dashboard Alerts page, dashboard alert panel, summary critical count, and sidebar alert badge to real backend alert rows when the admin API is available.
+- Marked local PostgreSQL setup, real alert API binding, and real alert/sidebar severity binding complete in the project checklists.
+- Bumped AfroGate to `0.10.0` for the guarded alert API and dashboard alert binding capability.
+- Stopped local Node dev-server listeners that were occupying ports `3000`, `8000`, and `8080`.
+- Stopped a later restarted local Node listener on port `8000` so old backend port stays clear.
+- Moved AfroGate direct local development wiring to dashboard `4000` and backend `7000` so ports `3000` and `8080` can be used by another app.
+- Updated dashboard defaults, backend default port, Playwright smoke-test URL, `.env.example`, the local PostgreSQL `.env` template, docs, Ubuntu samples, and the local ignored `.env` for the new ports.
+- Updated backend configuration loading to read both backend-workspace and repository-root `.env` files for root workspace dev commands.
+- Bumped AfroGate to `0.10.1` for the local port migration.
+- Fixed the local login CORS mismatch where the dashboard on `127.0.0.1:4000` called `localhost:7000` while the backend allowed only `localhost:4000`.
+- Added a login password show/hide icon button with typed English/Persian labels.
+- Updated the local ignored `.env` to allow both local origins, call the backend through `127.0.0.1:7000`, and match the local superadmin password chosen for this machine.
+- Bumped AfroGate to `0.10.2` for the local login/CORS and password visibility fix.
+
+### Verification
+
+- Earlier documentation-only sync required no product version bump or code verification.
+- Verified the Users page UI refinement with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified version consistency with `npm run version:check`.
+- Verified the `0.6.2` layout refinement with workspace typecheck, production build, and version consistency check.
+- Verified the `0.6.3` protocol-aware routing documentation bump with `npm run version:check`.
+- Verified the server edit workflow implementation with `npm run typecheck --workspaces --if-present`.
+- Verified the `0.7.0` server edit workflow with `npm run version:check`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified the agent registration endpoint implementation with `npm run typecheck --workspaces --if-present`.
+- Verified the `0.8.0` agent registration capability with `npm run version:check`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified the heartbeat backend contracts with `npm run typecheck --workspaces --if-present`.
+- Verified the Python heartbeat client changes with `python -m compileall apps\agent`.
+- Verified the `0.9.0` heartbeat capability with `npm run version:check`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified Playwright CLI availability with `npx playwright --version`.
+- Verified the `0.9.1` local development/test wiring with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified fixed-port dashboard rendering with `npm run test:e2e`.
+- Verified dependency audit after adding Playwright with `npm audit --audit-level=moderate`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified the direct-run backend on `http://127.0.0.1:8000/api/health` and dashboard on `http://127.0.0.1:3000`.
+- Verified local superadmin login against backend `8000` using local-only development credentials.
+- Verified the local PostgreSQL setup script parses with the PowerShell parser.
+- Verified `package.json` parses after adding `db:setup:local`.
+- Verified the `0.9.2` local PostgreSQL setup tooling with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified dependency audit with `npm audit --audit-level=moderate`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified local PostgreSQL service, app database connectivity, and migrated tables after install.
+- Verified `npm run db:setup:local -- -SkipInstall` is idempotent after the scalar-output fix.
+- Verified the `0.10.0` alert binding capability with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified the guarded alert API by logging in locally and calling `/api/admin/alerts?status=open&limit=100`; the current local database returned a valid empty alert list.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified there are no active `LISTENING` processes on ports `3000`, `4000`, `7000`, `8000`, or `8080` after cleanup.
+- Verified local ignored `.env` points to `PORT=7000`, `CORS_ORIGIN=http://localhost:4000`, and API URLs on `http://localhost:7000/api`.
+- Verified the `0.10.1` port migration with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test on `http://127.0.0.1:4000` with `npm run test:e2e`.
+- Verified the fixed local CORS preflight for `Origin: http://127.0.0.1:4000`; backend now returns `Access-Control-Allow-Origin: http://127.0.0.1:4000`.
+- Verified direct `superadmin` login against `http://127.0.0.1:7000/api/auth/login` with the local `.env` password and confirmed a session token is returned.
+- Verified the Vite-served dashboard API module uses `http://127.0.0.1:7000/api` instead of `localhost:7000`.
+- Verified fixed-port dashboard smoke test again with `npm run test:e2e`.
+- Added dashboard admin API fetchers for servers, outbounds, and route failover events.
+- Bound the Servers page to guarded `/api/admin/servers`, preserving local metric fallback only when the API is unavailable.
+- Bound the Routes page and dashboard outbound panel to guarded `/api/admin/outbounds` and `/api/admin/route-failover-events`, with localized empty states for real empty lists.
+- Marked real server and route/outbound dashboard API bindings complete in the project checklists.
+- Bumped AfroGate to `0.11.0` for real Servers/Routes API binding.
+- Verified the `0.11.0` API binding with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Added a backend alert engine scheduler that creates and resolves alerts from server freshness, latest metrics, route-quality thresholds, and outbound health status.
+- Added configurable alert thresholds for stale heartbeats/metrics, CPU, RAM, disk free, ping, jitter, and packet loss.
+- Marked the Alert engine checklist item complete.
+- Added pending checklist and agent guidance for a guided, secret-safe WireGuard/system Settings page before real-server onboarding.
+- Bumped AfroGate to `0.14.0` for the alert engine capability.
+- Verified the `0.14.0` alert engine with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Added a backend outbound health scheduler for due enabled/non-maintenance outbounds.
+- Added synthetic HTTP and TCP health probes driven by outbound config (`healthUrl` or `healthHost`/`healthPort`) without inspecting user traffic.
+- Persisted outbound health samples to `outbound_health_checks` and updated `outbounds.health_status`, `last_checked_at`, and `last_healthy_at` with fail/recovery threshold handling.
+- Documented outbound health scheduler environment variables and local test config.
+- Marked the outbound health check scheduler checklist item complete.
+- Bumped AfroGate to `0.13.0` for the outbound health scheduler capability.
+- Verified the `0.13.0` outbound health scheduler with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified local logged-in admin reads for `/api/admin/servers`, `/api/admin/outbounds`, and `/api/admin/route-failover-events`; the current local database returned valid empty lists.
+- Added a backend shared outbound HTTP client for Telegram/API control-plane calls with direct HTTP/HTTPS and localhost HTTP proxy support.
+- Added disabled-by-default Telegram critical-alert delivery that polls open critical backend alerts when Telegram bot/chat environment values are configured.
+- Added best-effort audit rows for Telegram alert send/failure outcomes without storing bot tokens or message secrets.
+- Documented local Telegram alert configuration and marked the Telegram sender, shared outbound HTTP client, and Telegram critical alert flow checklist items complete.
+- Bumped AfroGate to `0.12.0` for the Telegram critical-alert delivery foundation.
+- Verified the `0.12.0` Telegram alert foundation with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Added a dashboard Settings page with a real sidebar entry for guided WireGuard and system setup.
+- Added write-only private-key draft handling: validation accepts the key, clears it from the form, and never echoes it in the safe preview.
+- Added Settings route controls for automatic/manual mode, manual WireGuard selection, smart load-balance strategy, and sample WireGuard health comparison by score, latency, jitter, packet loss, and load.
+- Added a superadmin-only protocol draft factory for WireGuard, VLESS, L2TP, and IKEv2 with balanced, high-speed, and high-security profiles.
+- Marked the Settings page, initial secret-safe WireGuard setup draft, WireGuard health comparison UI, route mode controls, and initial protocol draft factory complete in the checklists.
+- Tracked remaining production work: encrypted backend persistence, real per-tunnel WireGuard health checks, protocol provisioning, and advanced smart load balancing.
+- Bumped AfroGate to `0.15.0` for the Settings/protocol setup workflow.
+- Verified the `0.15.0` Settings/protocol setup workflow with `npm run typecheck --workspaces --if-present`.
+- Verified the `0.15.0` Settings/protocol setup workflow with `npm run version:check`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Added PostgreSQL migration `0004_settings_protocols.sql` for `protocol_setups` and `route_settings`.
+- Added guarded backend Settings APIs for reading Settings state, saving route mode/load-balance settings, and creating superadmin-only protocol setup drafts.
+- Kept Settings persistence secret-safe by storing non-secret protocol shape and optional secret references, not raw private keys.
+- Bound the dashboard Settings page to the backend Settings API, including saved protocol drafts and real WireGuard candidates from existing `wireguard` outbound health samples when available.
+- Verified the new local Settings API read/write path by logging in with the local superadmin account, reading `/api/admin/settings`, creating a non-secret WireGuard protocol draft, and saving route settings.
+- Bumped AfroGate to `0.16.0` for the Settings persistence/API foundation.
+- Verified the `0.16.0` Settings persistence/API foundation with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+
+## 2026-05-25
+
+### Completed
+
+- Added PostgreSQL migration `0005_secret_records.sql` for encrypted Settings/server secret references.
+- Added backend `SecretVaultService` using AES-256-GCM with `AFROGATE_SECRETS_KEY` and `AFROGATE_SECRETS_KEY_ID`.
+- Added guarded superadmin `POST /api/admin/settings/secrets` to store write-only Settings private-key material and return only `secretRef` metadata.
+- Linked protocol setup draft creation to active matching `secretRef` records so raw private keys stay out of `protocol_setups.config`.
+- Updated the dashboard Settings WireGuard setup flow to save private keys through the encrypted backend secret API, clear the field, and show encrypted-storage readiness.
+- Documented the local/deployment requirement for `AFROGATE_SECRETS_KEY`.
+- Marked the encrypted Settings private-key persistence checklist item complete.
+- Bumped AfroGate to `0.17.0` for the encrypted Settings secret-storage capability.
+- Added PostgreSQL migration `0006_protocol_provisioning.sql` to link protocol setup drafts to provisioned outbound rows.
+- Added guarded superadmin `POST /api/admin/settings/protocol-setups/:id/provision` to convert a saved protocol draft into a managed outbound row without applying server OS/service changes.
+- Kept initial provisioned outbounds disabled and in maintenance mode by default, with `health_status='unknown'`, secret references preserved, and audit logging for the provisioning action.
+- Added Settings UI actions for provisioning saved protocol drafts and showing when a draft has become a managed outbound.
+- Tightened the backend direct-run bind address to default to `127.0.0.1`, with `HOST` available for explicit deployment overrides.
+- Documented that current provisioning is control-plane-only and that production server-side apply plus health validation remains pending.
+- Marked the initial backend protocol provisioning engine complete while tracking the production server-side apply engine separately.
+- Bumped AfroGate to `0.18.0` for the initial protocol provisioning capability.
+- Added privacy-safe WireGuard telemetry to the Python agent using `wg show all dump` when available, including interface status, peer counts, handshake age, transfer counters, and rate deltas.
+- Fingerprinted WireGuard peer public keys before reporting them and kept raw public keys, private keys, and preshared keys out of metrics payloads.
+- Added shared/backend metric contracts and DTO validation for `wireGuardInterfaces`, and returned that telemetry through latest metrics and admin server inventory rows.
+- Included WireGuard interface health in backend health-score penalties when all/some peers are down or degraded.
+- Surfaced WireGuard status, active-peer counts, handshake age, and traffic rates in the dashboard Server Monitoring and Interfaces tabs with English/Persian labels.
+- Marked WireGuard tunnel status metrics complete while keeping route-selection health scoring and active protocol probes pending.
+- Bumped AfroGate to `0.19.0` for the WireGuard tunnel telemetry capability.
+- Merged live agent WireGuard telemetry into the Settings WireGuard route candidate list alongside managed outbound health rows.
+- Added backend scoring for agent-sourced WireGuard candidates using tunnel state, active peer ratio, handshake freshness, and server health.
+- Added Settings UI source badges plus active-peer, handshake, and throughput details for WireGuard candidates.
+- Marked real per-tunnel WireGuard health checks for admin route selection complete while keeping ping/jitter/packet-loss and full protocol-aware probes pending.
+- Bumped AfroGate to `0.20.0` for agent-backed WireGuard route candidates.
+- Finished opt-in agent ping/jitter/packet-loss probes using configured synthetic targets from `AFROGATE_PING_TARGETS`.
+- Kept empty ping target configuration privacy-safe by reporting null route-quality values rather than probing uncontrolled destinations.
+- Added the missing typed English/Persian `routeQuality` dashboard label used by the server monitoring tab.
+- Marked ping/jitter/packet-loss probes complete while keeping full TCP/UDP/QUIC/DNS protocol-aware probes pending.
+- Bumped AfroGate to `0.21.0` for the opt-in ping/jitter/packet-loss probe capability.
+
+### Verification
+
+- Applied PostgreSQL migrations through `0005_secret_records.sql` with `npm.cmd --workspace @afrogate/backend run db:migrate`.
+- Verified the local Settings secret API by logging in as the local superadmin, storing a fake WireGuard private key with a temporary in-process encryption key, creating a protocol setup linked to the returned `secretRef`, reading Settings, and confirming the fake key was not stored in plaintext.
+- Removed the local `verify-wg-secret-*` smoke-test rows from `protocol_setups` and `secret_records` after verification.
+- Verified `0.17.0` with `npm.cmd run version:check`.
+- Verified workspace TypeScript checks with `npm.cmd run typecheck --workspaces --if-present`.
+- Verified production build with `npm.cmd run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm.cmd run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Applied PostgreSQL migrations through `0006_protocol_provisioning.sql` with `npm.cmd --workspace @afrogate/backend run db:migrate`.
+- Verified the local provision API by logging in as superadmin, storing a fake encrypted WireGuard private key, creating a temporary protocol setup, provisioning it into a disabled maintenance-mode outbound, checking the Settings linkage, and cleaning the smoke-test rows.
+- Verified `0.18.0` with `npm.cmd run version:check`.
+- Verified workspace TypeScript checks with `npm.cmd run typecheck --workspaces --if-present`.
+- Verified production build with `npm.cmd run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm.cmd run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified the WireGuard telemetry implementation with `python -m compileall apps\agent`.
+- Verified a one-shot local agent run returns `wireGuardInterfaces: []` cleanly when `wg` is not installed on the Windows dev machine.
+- Verified `0.19.0` with `npm.cmd run version:check`.
+- Verified backend/dashboard/shared TypeScript checks with `npm.cmd run typecheck --workspaces --if-present`.
+- Verified production build with `npm.cmd run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm.cmd run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified the Settings WireGuard candidate merge with `npm.cmd run typecheck --workspaces --if-present`.
+- Verified `0.20.0` with `npm.cmd run version:check`.
+- Verified production build with `npm.cmd run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm.cmd run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified the ping/jitter/packet-loss agent path with `python -m compileall apps\agent`.
+- Verified a one-shot local agent run with `AFROGATE_PING_TARGETS=127.0.0.1` returns populated `pingMs`, `jitterMs`, and `packetLossPercent` values without sending data to the backend.
+- Verified `0.21.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+
+## 2026-05-26
+
+### Completed
+
+- Added opt-in agent protocol-aware route probes for TCP connect, UDP response, QUIC-labeled UDP response, and DNS lookup targets.
+- Added route-probe settings through `AFROGATE_TCP_PROBE_TARGETS`, `AFROGATE_UDP_PROBE_TARGETS`, `AFROGATE_QUIC_PROBE_TARGETS`, `AFROGATE_DNS_PROBE_TARGETS`, `AFROGATE_ROUTE_PROBE_COUNT`, and `AFROGATE_ROUTE_PROBE_TIMEOUT_SECONDS`.
+- Added shared/backend `routeProbes` contracts, metrics ingest validation, latest-metrics mapping, admin server metric mapping, and health-score penalties for degraded route-probe status.
+- Surfaced route-probe health in the dashboard Server Monitoring tab with typed English/Persian labels.
+- Documented the route-probe local development and synthetic-target rules.
+- Marked the initial protocol-aware route probe foundation complete while keeping full QUIC/HTTP3 handshake/request probing and backend protocol-aware route scoring pending.
+- Bumped AfroGate to `0.22.0` for the protocol-aware route-probe foundation.
+- Added backend advisory route scoring for Settings WireGuard candidates across balanced, stability, throughput, TCP, UDP, QUIC, DNS, and WireGuard profiles.
+- Kept Settings candidate scoring privacy-safe by using managed outbound health, latest synthetic route probes, server health, load, and WireGuard telemetry without inspecting user traffic or applying routes automatically.
+- Marked backend protocol-aware route scoring for low-speed/high-speed and traffic-profile decisions complete while leaving route apply, cooldown, hysteresis, and decision audit work pending.
+- Bumped AfroGate to `0.23.0` for the advisory protocol-aware route scoring capability.
+- Captured the next route-intelligence direction: historical quality analytics by time window, operator, outbound, and protocol profile, with predictive suggestions before known bad windows.
+- Added future work for transparent route switching that preserves user experience through sticky assignments, route locks, cooldown, hysteresis, drain-safe apply behavior, and audit reasons.
+- Added a guarded read-only route-quality analytics endpoint at `/api/admin/route-quality/analytics` that groups historical synthetic route probes by server, protocol, and hour-of-day.
+- Added shared route-quality analytics contracts and a Settings page Route Intelligence panel with best/degraded time-window recommendations.
+- Marked the initial advisory route-quality analytics slice complete while keeping operator/outbound/day-of-week reports, proactive recommendations, and automatic transparent switching pending.
+- Bumped AfroGate to `0.24.0` for the initial route-quality analytics and recommendation capability.
+- Added PostgreSQL migration `0007_route_quality_hourly.sql` for compact hourly route-quality summaries.
+- Added `RouteQualityAggregationService` to keep hourly summaries fresh from recent synthetic route probes, with configurable enable/interval/lookback environment values.
+- Updated the route-quality analytics endpoint to prefer the compact hourly summary table and fall back to raw metrics when summaries are unavailable.
+- Marked the initial hourly route-quality aggregation scheduler complete while keeping full outbound/operator/profile aggregation pending.
+- Bumped AfroGate to `0.25.0` for the hourly route-quality aggregation foundation.
+- Added migration `0008_route_quality_dimensions.sql` to expand hourly route-quality summaries by outbound, operator, protocol score profile, day-of-week, and hour.
+- Added optional non-secret route-probe metadata in the agent/backend contracts so synthetic probes can identify route group, outbound, operator, and score profile without inspecting user traffic.
+- Added predictive read-only route recommendations for upcoming historically degraded windows and surfaced operator/profile context in the Settings Route Intelligence panel.
+- Marked route-quality aggregation by server/outbound/operator/profile/time bucket, day-of-week analytics, and predictive advisory recommendations complete while keeping automatic transparent route switching pending.
+- Recorded latency-sensitive/gaming routing direction: optimize stable latency, low jitter, low packet loss, route consistency, and congestion avoidance over raw bandwidth, with CPU-side analytics as the MVP default rather than GPU dependency.
+- Bumped AfroGate to `0.26.0` for dimensioned route intelligence and predictive advisory recommendations.
+- Added a first-class advisory `gaming` route score profile for latency-sensitive users, with stricter packet-loss, jitter, latency, load, and tunnel-freshness penalties.
+- Extended backend route settings, metrics probe metadata validation, shared profile-score contracts, and Settings UI profile selection to understand the `gaming` profile.
+- Added `gaming` rows to route-quality profile expansion so hourly analytics and future recommendations can compare latency-sensitive windows without inspecting user traffic.
+- Marked the latency-sensitive/gaming route profile checklist item complete while keeping automatic transparent route switching, route locks, cooldown, hysteresis, and drain-safe apply behavior pending.
+- Bumped AfroGate to `0.27.0` for the advisory gaming route profile capability.
+- Added route decision foundation tables for assignments and future decision events.
+- Added a read-only `/api/admin/route-decisions/preview` endpoint that evaluates current route, recommended route, route lock, cooldown, hysteresis, score profile, and reason codes without applying route changes.
+- Added a Settings Decision Preview panel with typed English/Persian labels so admins can see what AfroGate would do before an audited switch engine exists.
+- Marked the route assignment model and read-only route decision preview checklist items complete while keeping auto-route toggles, route-lock controls, live transparent switching, and decision event writes pending.
+- Bumped AfroGate to `0.28.0` for the route decision preview foundation.
+- Added guarded route assignment read/update APIs for the default assignment.
+- Persisted auto-route, route lock, current managed outbound, locked managed outbound, hysteresis score delta, and cooldown seconds with audit metadata but no live route apply.
+- Added Settings controls for those assignment policies and refreshed the decision preview after saving.
+- Marked auto-route toggle, route lock toggle, manual route override, and hysteresis/cooldown controls complete while keeping transparent switching and persisted decision-event writes pending.
+- Bumped AfroGate to `0.29.0` for persisted route assignment controls.
+- Added guarded APIs to list recent route decision events and record the current preview as an advisory decision event.
+- Stored advisory decision events with action, score profile, current/recommended managed outbounds, score delta, hysteresis, cooldown, lock state, reason codes, and non-secret preview context while keeping `applied_at` null.
+- Updated the Settings Decision Preview panel with a record action and recent decision-event history.
+- Marked route decision audit reasons complete while keeping live transparent route apply and drain-safe switching pending.
+- Bumped AfroGate to `0.30.0` for advisory route decision event logging.
+- Added candidate-review rows to the advisory route decision preview response, including dispositions, score deltas from the current route, rejection/recommendation reasons, and compact score-penalty details.
+- Surfaced candidate review details in the Settings Decision Preview panel with typed English/Persian labels.
+- Marked candidate recommendation/rejection detail review complete while keeping live transparent route apply and drain-safe switching pending.
+- Bumped AfroGate to `0.31.0` for candidate recommendation/rejection explanations in the advisory route decision preview.
+- Added guarded `POST /api/admin/route-decisions/apply-preview` for assignment-only route decision apply.
+- Enforced the apply boundary through the existing preview: only `switchRecommended` managed outbound decisions can update saved assignment state, set cooldown, and write an `assignment_apply` event.
+- Kept live server/data-plane routing disabled by returning and recording `dataPlaneApplied = false`.
+- Added a Settings Decision Preview action to apply the recommended route to saved assignment state with English/Persian labels.
+- Bumped AfroGate to `0.32.0` for the assignment-only route decision apply boundary.
+- Added a structured route apply plan to decision preview responses with guard, assignment, drain, switch, verify, and rollback steps.
+- Surfaced the apply plan in the Settings Decision Preview panel, including whether steps are control-plane-only or future data-plane mutations.
+- Bumped AfroGate to `0.33.0` for the route apply plan foundation.
+- Added route apply adapter readiness metadata to preview apply plans for the future WireGuard policy-routing adapter.
+- Added disabled-by-default `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false` configuration and surfaced the adapter/feature-flag state in Settings.
+- Kept adapter implementation marked missing and `dataPlaneReady=false` until the real server-side apply adapter is audited.
+- Bumped AfroGate to `0.34.0` for the route apply adapter readiness layer.
+- Added secret-safe dry-run command strings and config-change previews to the future WireGuard policy-routing adapter metadata.
+- Surfaced dry-run commands in the Settings apply plan without executing any OS command or exposing tunnel secrets.
+- Bumped AfroGate to `0.35.0` for the dry-run WireGuard apply preview.
+- Added normalized `dryRunSnapshot` persistence to route decision event context for both advisory preview records and assignment-only apply events.
+- Added dry-run command/config counts to route decision audit payloads.
+- Bumped AfroGate to `0.36.0` for persisted dry-run apply snapshots in route decision events.
+- Added guarded route decision event detail reads at `/api/admin/route-decisions/events/:id` so read-role admins can inspect stored decision context on demand.
+- Added a Settings recent-decision inspector that fetches a stored event detail and renders the normalized dry-run snapshot, adapter status, command/config counts, and secret-safe command/config previews.
+- Kept the list endpoint compact by leaving large `decision_context` payloads out of recent-event summaries.
+- Bumped AfroGate to `0.37.0` for route decision event detail inspection.
+- Added optional loaded-latency fields to route-probe contracts and backend ingest validation.
+- Added backend bufferbloat assessment for route candidates, including loaded-latency delta, severity, SQM/AQM recommendation, and avoid-under-load guidance.
+- Penalized route health and profile scores when loaded latency rises, with stronger impact on stability/gaming profiles and decision-review reason labels.
+- Surfaced loaded-latency guidance in Settings route candidate and decision review panels with English/Persian labels.
+- Bumped AfroGate to `0.38.0` for loaded-latency and bufferbloat-aware route guidance.
+- Added advisory smart-route profile recommendations to route decision previews across balanced, stability, throughput, gaming, TCP, UDP, QUIC, DNS, and WireGuard profiles.
+- Compared usable managed candidates by existing privacy-safe per-profile scores, including score delta from the currently selected profile and the best candidate for each profile.
+- Surfaced smart-route profile recommendations in the Settings decision preview with typed English/Persian labels.
+- Bumped AfroGate to `0.39.0` for advisory smart-route profile recommendations.
+- Added explicit health-based switch reasons to route decision previews when the current managed route is unhealthy and a healthy managed candidate exists.
+- Let assignment-only apply and apply-plan guards bypass score-delta hysteresis for health-based switches while still respecting route lock, manual mode, cooldown, and managed-candidate checks.
+- Surfaced current-route-unhealthy and health-based-switch reason labels in English/Persian Settings UI.
+- Bumped AfroGate to `0.40.0` for explicit health-based route decisions.
+- Added advisory smart-load-balancing summaries to route decision previews with primary, secondary, standby, weight, adjusted-score, and risk guidance.
+- Weighted managed candidates by selected route profile plus health, packet loss, jitter, latency, throughput/load, loaded-latency, and high-security/route-consistency constraints while keeping data-plane routing disabled.
+- Surfaced the smart-load-balancing panel in Settings with typed English/Persian labels.
+- Bumped AfroGate to `0.41.0` for advisory smart load balancing.
+- Added gaming-safe session-safety summaries to route decision previews so future data-plane switching can distinguish safe switches, sticky holds, new-session-only drains, and emergency health switches.
+- Wired session-safety drain timing into the apply-plan estimate while keeping real data-plane movement disabled.
+- Surfaced the session-safety panel in Settings with typed English/Persian labels for sticky TTL, drain wait, new-session-only movement, emergency permission, and disconnect risk.
+- Bumped AfroGate to `0.42.0` for gaming-safe session-safety route decision guidance.
+- Added transparent switch-engine planning summaries to route decision previews with guard, session pinning, new-session routing, drain, switch, verify, and rollback stages.
+- Surfaced switch-engine readiness in Settings with planning-only/data-plane-ready status, session impact, step state, and rollback indicators in English/Persian.
+- Kept every data-plane mutation step future/planning-only while the server apply adapter remains disabled or missing.
+- Bumped AfroGate to `0.43.0` for transparent switch-engine planning.
+- Added switch-execution summaries to assignment-only route apply events so applied decisions record control-plane assignment, sticky-session deadlines, drain deadlines, cooldown deadlines, rollback readiness, and future data-plane steps.
+- Surfaced switch-execution results in Settings and decision event detail with typed English/Persian labels.
+- Kept switch execution data-plane state blocked/not-applied until the audited apply adapter exists.
+- Bumped AfroGate to `0.44.0` for assignment-only switch execution audit state.
+- Added switch-preflight readiness summaries to route decision previews so future data-plane switching is gated by feature-flag, apply-adapter, dry-run, guard, session-safety, rollback, cooldown, audit, and health-verification checks.
+- Persisted switch-preflight context in route decision event detail and surfaced it in Settings with typed English/Persian labels.
+- Kept preflight `canExecuteDataPlane=false` while the feature flag is off or the audited server apply adapter is missing.
+- Bumped AfroGate to `0.45.0` for switch preflight/readiness gating.
+- Added advisory switch-rollout plans to route decision previews with pinned existing sessions, new-session canary percentages, route-consistency holds, health verification, rollback thresholds, and future expansion steps.
+- Persisted switch-rollout context in route decision event detail for audit.
+- Surfaced the switch-rollout plan in Settings with typed English/Persian labels while keeping all data-plane movement planning-only until the audited adapter exists.
+- Bumped AfroGate to `0.46.0` for advisory switch-rollout/canary planning.
+
+### Verification
+
+- Verified the route-probe agent changes with `python -m compileall apps\agent`.
+- Verified a one-shot local agent run with `AFROGATE_DNS_PROBE_TARGETS=localhost` returns a healthy `routeProbes` DNS row without sending data to the backend.
+- Verified `0.22.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified the route-quality aggregation scheduler wiring with `npm run typecheck --workspaces --if-present`.
+- Verified the advisory route scoring contracts with `npm run typecheck --workspaces --if-present`.
+- Verified `0.23.0` with `npm run version:check`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- No new code verification was required for the route-intelligence planning note.
+- Verified the route-quality analytics API and dashboard contracts with `npm run typecheck --workspaces --if-present`.
+- Verified `0.24.0` with `npm run version:check`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified `0.25.0` with `npm run version:check`.
+- Applied PostgreSQL migrations through `0007_route_quality_hourly.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified route-quality aggregation type safety with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified `0.26.0` with `npm run version:check`.
+- Applied PostgreSQL migrations through `0008_route_quality_dimensions.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified Python agent compilation with `python -m compileall apps\agent`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified `0.27.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Applied PostgreSQL migrations through `0009_route_decision_foundation.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified `0.28.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified `0.29.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified `0.30.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified `0.31.0` with `npm run version:check`.
+- Verified candidate-review contracts and dashboard rendering with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified the assignment-only apply contract and Settings UI with `npm run typecheck --workspaces --if-present`.
+- Verified `0.32.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified the route apply plan contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.33.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified adapter-readiness contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.34.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified dry-run adapter contracts and Settings command rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.35.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified dry-run snapshot persistence typing with `npm run typecheck --workspaces --if-present`.
+- Verified `0.36.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified route decision event detail contracts and Settings inspector rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.37.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified loaded-latency/bufferbloat contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.38.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified smart-route profile recommendation contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.39.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified health-based route decision behavior and Settings labels with `npm run typecheck --workspaces --if-present`.
+- Verified `0.40.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified smart-load-balancing preview contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.41.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified gaming-safe session-safety preview contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.42.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified transparent switch-engine planning contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.43.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified switch-execution response/event-detail contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.44.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified switch-preflight contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.45.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified switch-rollout contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.46.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

@@ -15,6 +15,8 @@ import {
 export const OUTBOUND_TYPES = [
   'wireguard',
   'vless-local-proxy',
+  'l2tp',
+  'ikev2',
   'http-proxy',
   'socks-proxy',
   'direct',

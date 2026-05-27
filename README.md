@@ -13,6 +13,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Implementation start plan](docs/implementation-start-plan-fa.md)
 - [Control-plane egress](docs/control-plane-egress.md)
 - [Server access and outbound management](docs/server-access-and-outbound-management.md)
+- [Local development](docs/local-development.md)
 - [Dashboard sidebar pages checklist](docs/dashboard-sidebar-pages-checklist.md)
 - [Multilingual UI policy](docs/multilingual-ui.md)
 - [Versioning policy](docs/versioning-policy.md)
@@ -45,6 +46,8 @@ npm run dev:dashboard
 python apps/agent/run.py --once
 ```
 
+Fixed local ports are dashboard `4000` and backend `7000`; Vite is configured with `strictPort` so duplicate frontend servers do not move AfroGate onto random ports.
+
 Version after each meaningful implementation section:
 
 ```powershell
@@ -53,6 +56,12 @@ npm run version:check
 ```
 
 The backend expects `DATABASE_URL` and a real `AFROGATE_AGENT_TOKEN` before accepting agent metrics. The dashboard reads `VITE_API_BASE_URL` and falls back to local sample data when the API is unavailable.
+
+Browser smoke tests use Playwright:
+
+```powershell
+npm run test:e2e
+```
 
 Restricted servers can route AfroGate Telegram/API calls through a local egress proxy with `AFROGATE_OUTBOUND_PROXY_URL`; see [control-plane egress](docs/control-plane-egress.md).
 

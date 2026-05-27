@@ -69,8 +69,8 @@ Security rules:
 ## Implementation Notes
 
 - The Python agent already supports `AFROGATE_OUTBOUND_PROXY_URL` for HTTP/HTTPS API pushes.
-- Future Telegram sender code should reuse the same environment variable.
-- Future backend HTTP clients should use a shared outbound client factory, so proxy, timeout, retry, and audit behavior are consistent.
+- The backend has a shared outbound HTTP client for Telegram/API calls. It uses direct HTTP/HTTPS by default and can route through `AFROGATE_OUTBOUND_PROXY_URL` when that value points to a localhost HTTP proxy.
+- Telegram critical-alert delivery is controlled by `AFROGATE_TELEGRAM_ALERTS_ENABLED`, `AFROGATE_TELEGRAM_BOT_TOKEN`, and `AFROGATE_TELEGRAM_ALERT_CHAT_ID`. Leave it disabled until real bot settings are installed through environment or systemd config.
 - SOCKS/VLESS should be handled by a local client that exposes an HTTP proxy. This avoids adding protocol-specific code to AfroGate.
 
 ## Monitoring
@@ -79,8 +79,8 @@ The egress path itself should become a monitored dependency:
 
 - proxy process up/down.
 - Telegram API reachability.
-- outbound request latency.
-- outbound request failure rate.
+- outbound request latency through synthetic `healthUrl` or TCP health targets.
+- outbound request failure rate stored in `outbound_health_checks`.
 - gateway health score.
 
 When egress fails, AfroGate should create a critical control-plane alert because user support, charging, and admin alerts may be delayed.

@@ -19,7 +19,17 @@ dist/
 build/
 .next/
 coverage/
+playwright-report/
+test-results/
 *.tsbuildinfo
+
+# Keep only the dashboard-served Persian webfont files that are explicitly referenced.
+apps/dashboard/public/assets/fonts/YekanBakh/**
+!apps/dashboard/public/assets/fonts/YekanBakh/
+!apps/dashboard/public/assets/fonts/YekanBakh/Yekan Bakh Variable/
+!apps/dashboard/public/assets/fonts/YekanBakh/Yekan Bakh Variable/webfonts/
+!apps/dashboard/public/assets/fonts/YekanBakh/Yekan Bakh Variable/webfonts/YekanBakhFaNum-VF.woff
+!apps/dashboard/public/assets/fonts/YekanBakh/Yekan Bakh Variable/webfonts/YekanBakhFaNum-VF.woff2
 
 # Python / backend / agent
 __pycache__/

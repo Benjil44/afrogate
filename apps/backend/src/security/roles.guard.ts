@@ -23,7 +23,7 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Admin role is required');
     }
 
-    if (actor.role === 'owner' || requiredRoles.includes(actor.role)) return true;
+    if (actor.role === 'superadmin' || actor.role === 'owner' || requiredRoles.includes(actor.role)) return true;
 
     throw new ForbiddenException('Insufficient role');
   }

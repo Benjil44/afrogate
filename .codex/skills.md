@@ -26,6 +26,8 @@
 - Store Telegram identity and paid number only when needed.
 - Avoid long-term IP history unless justified by security needs and retention rules.
 - Encrypt sensitive fields and backups.
+- Keep admin-user management privacy-safe: never commit admin passwords, runtime admin-user files, or real account data; store only password hashes in the configured runtime store.
+- Preserve the immutable `superadmin` account rule when building role, user, or settings workflows.
 
 ### Telegram Operations
 

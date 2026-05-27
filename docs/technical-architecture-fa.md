@@ -42,6 +42,15 @@
 - service status
 - queue/API probe status
 
+Protocol-aware smart routing probes should be added to the agent as lightweight synthetic checks, not by inspecting user traffic:
+
+- TCP connect latency, TCP failure rate, and optional TLS handshake latency to configured targets.
+- UDP reachability, jitter, packet loss, and response delay when a safe echo/probe target exists.
+- QUIC/HTTP3 handshake/request timing where UDP-based web traffic matters.
+- DNS lookup latency and failure rate when DNS behavior affects route quality.
+- WireGuard handshake freshness, peer transfer counters, and tunnel up/down state.
+- Short bounded loaded-latency and throughput probes for low-speed/high-speed classification.
+
 agent باید lightweight باشد و حتی با سرورهای 4 core / 4 GB RAM هم مشکلی ایجاد نکند.
 
 ### Metrics Store
@@ -208,6 +217,8 @@ Alert engine باید rule های ساده داشته باشد:
 - ping/jitter
 - bandwidth pressure
 - user route lock
+- protocol profile: TCP, UDP, QUIC/HTTP3, DNS, WireGuard
+- speed profile: low-speed stability, balanced, high-speed throughput
 
 قانون ساده:
 
@@ -216,6 +227,15 @@ Alert engine باید rule های ساده داشته باشد:
 3. اگر user route lock دارد، همان tunnel نگه داشته شود و فقط هشدار داده شود.
 4. بین گزینه‌های باقی‌مانده، tunnel با بیشترین health score انتخاب شود.
 5. برای جلوگیری از جابه‌جایی زیاد، hysteresis استفاده شود: مسیر جدید باید مثلاً 15 امتیاز بهتر باشد.
+
+Protocol-aware route scoring:
+
+1. A route can have separate scores for TCP, UDP, QUIC/HTTP3, DNS, and WireGuard health.
+2. Low-speed users or unstable paths should prefer routes with lower loss, lower jitter, and consistent latency.
+3. High-speed paths should prefer routes with better throughput headroom and lower saturation while still rejecting bad loss/jitter.
+4. UDP-heavy configs should prefer UDP loss/jitter/NAT stability over raw bandwidth.
+5. TCP-heavy configs should prefer TCP connect/TLS/request timing and retransmission symptoms over raw ping alone.
+6. Every automatic decision must store the selected protocol profile, speed profile, old route, new route, score delta, cooldown state, and reason.
 
 ## SLO های MVP
 

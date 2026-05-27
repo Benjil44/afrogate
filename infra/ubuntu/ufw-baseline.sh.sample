@@ -26,8 +26,8 @@ for port in "${WG_PORTS[@]}"; do
 done
 
 # These should stay private behind Nginx or localhost bindings.
-sudo ufw deny 3000/tcp comment "dashboard dev/preview only"
-sudo ufw deny 4000/tcp comment "backend internal only"
+sudo ufw deny 4000/tcp comment "dashboard dev/preview only"
+sudo ufw deny 7000/tcp comment "backend internal only"
 sudo ufw deny 5432/tcp comment "postgres internal only"
 sudo ufw deny 6379/tcp comment "redis internal only"
 

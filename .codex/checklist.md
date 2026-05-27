@@ -31,6 +31,8 @@
 - [ ] Define optional Docker Compose for later reproducible deployment.
 - [x] Add `.env.example`.
 - [x] Define database schema migration tool.
+- [x] Add local PostgreSQL setup script.
+- [x] Install local PostgreSQL, create the AfroGate development database, and run migrations.
 - [ ] Add basic CI checks.
 - [x] Scaffold `apps/backend`.
 - [x] Scaffold `apps/dashboard`.
@@ -38,6 +40,9 @@
 - [x] Scaffold `packages/shared`.
 - [x] Scaffold `infra/ubuntu`.
 - [x] Add root workspace scripts.
+- [x] Standardize direct local development ports.
+- [x] Move direct local development ports to dashboard `4000` and backend `7000`.
+- [x] Add Playwright dashboard smoke test wiring.
 - [x] Add security and performance policy.
 - [x] Add UFW baseline sample.
 - [x] Add systemd hardening sample.
@@ -54,31 +59,48 @@
 
 - [x] Backend bootstrap auth guard for admin APIs.
 - [x] Role guard/decorator foundation.
-- [ ] Dashboard session login and MFA-ready admin auth.
+- [x] Dashboard session login and MFA-ready admin auth.
+- [x] Superadmin/admin user management foundation.
+- [x] Users sidebar page for admin account management.
+- [x] Supervisor role foundation for read-oriented dashboard access.
 - [x] Apply admin guards to sensitive server/outbound APIs.
 - [x] Audit log foundation.
 - [x] CRUD for servers.
 - [x] Data model for server access and outbound failover.
-- [ ] Server edit screen with safe access/bootstrap tabs.
+- [x] Server edit screen with safe access/bootstrap tabs.
 - [ ] Encrypted server credential storage.
 - [ ] CRUD for tunnels and interfaces.
 - [x] CRUD for outbound routes/gateways.
 - [x] Outbound priority move up/down.
-- [ ] Outbound health check scheduler.
+- [x] Outbound health check scheduler.
 - [x] Outbound failover history.
-- [ ] Agent registration endpoint.
+- [x] Settings page for guided WireGuard and system setup.
+- [x] Initial secret-safe WireGuard private-key/config setup draft workflow.
+- [x] Initial WireGuard health comparison UI for route selection.
+- [x] Initial automatic/manual route selection controls.
+- [x] Initial superadmin protocol draft factory for WireGuard, VLESS, L2TP, and IKEv2.
+- [x] Persist Settings protocol drafts and route selection settings through guarded backend APIs.
+- [x] Shape real WireGuard route candidates from outbound health rows when available.
+- [x] Persist secret-safe WireGuard private-key/config workflow with encrypted backend credential storage.
+- [x] Initial backend protocol provisioning engine that converts saved WireGuard, VLESS, L2TP, and IKEv2 drafts into disabled managed outbound rows.
+- [ ] Production server-side protocol apply engine for WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols.
+- [x] Agent registration endpoint.
 - [x] Metrics ingest endpoint.
 - [x] Protect metrics ingest with agent bearer token.
-- [ ] Server agent heartbeat.
+- [x] Server agent heartbeat.
 - [x] CPU/RAM/disk metrics.
 - [x] Multi-storage volume metrics.
 - [x] Network throughput metrics.
-- [ ] WireGuard tunnel status metrics.
-- [ ] Ping/jitter/packet loss probes.
+- [x] WireGuard tunnel status metrics.
+- [x] Real WireGuard health checks per tunnel for admin route selection.
+- [x] Ping/jitter/packet loss probes.
+- [x] Initial protocol-aware route probe contract and opt-in agent TCP/UDP/QUIC-reachability/DNS probes.
+- [ ] Protocol-aware route probes for TCP, UDP, QUIC/HTTP3, DNS, and WireGuard.
 - [x] Health score calculation.
-- [ ] Alert engine.
-- [ ] Telegram alert sender.
-- [ ] Backend shared outbound HTTP client for Telegram/API calls.
+- [x] Backend protocol-aware route scoring for low-speed/high-speed and traffic-profile decisions.
+- [x] Alert engine.
+- [x] Telegram alert sender.
+- [x] Backend shared outbound HTTP client for Telegram/API calls.
 - [x] Agent outbound proxy support for restricted servers.
 - [x] Dashboard overview.
 - [x] Realtime dashboard health chart with ECharts.
@@ -100,7 +122,9 @@
 - [x] Initial Alerts page.
 - [ ] Server detail page.
 - [ ] Tunnel detail page.
-- [ ] Real alert API-bound Alerts page.
+- [x] Real server API-bound Servers page.
+- [x] Real route/outbound API-bound Routes page.
+- [x] Real alert API-bound Alerts page.
 
 ## UI/UX Audit Backlog
 
@@ -117,7 +141,8 @@
 - [ ] Add empty/loading/error states for every dashboard panel.
 - [ ] Add hover/tooltips for dense icon-only monitoring controls and metrics.
 - [ ] Review color contrast for warning/critical states in light and dark sidebar contexts.
-- [ ] Bind alert/sidebar severity to real alert API rows instead of fallback/computed rows.
+- [x] Bind alert/sidebar severity to real alert API rows instead of fallback/computed rows.
+- [x] Add Playwright browser smoke test for fixed-port dashboard rendering.
 - [ ] Add screenshot-based visual regression captures for the dense dashboard layout.
 
 ## Phase 2: Users, Usage, Billing
@@ -132,12 +157,36 @@
 
 ## Phase 3: Auto Route
 
-- [ ] Route assignment model.
-- [ ] Auto route toggle.
-- [ ] Route lock toggle.
-- [ ] Health-based route decision.
-- [ ] Hysteresis and cooldown.
-- [ ] Route decision audit reason.
+- [x] Route assignment model.
+- [x] Read-only route decision preview with advisory action, route lock, cooldown, hysteresis, and reason codes.
+- [x] Candidate recommendation/rejection detail review in the read-only route decision preview.
+- [x] Assignment-only route decision apply boundary with audit event and data-plane disabled.
+- [x] Route apply plan with guard, assignment, drain, switch, verify, and rollback steps.
+- [x] Route apply adapter readiness registry with data-plane apply disabled by default.
+- [x] Dry-run-only WireGuard apply command and config preview.
+- [x] Persist dry-run route apply snapshots in decision event context.
+- [x] Admin-visible route decision event detail with stored dry-run snapshot inspection.
+- [x] Auto route toggle.
+- [x] Route lock toggle.
+- [x] Manual route override for choosing a specific WireGuard/protocol path.
+- [x] Advanced smart load balancing by health score, packet loss, jitter, latency, throughput, load, and security profile.
+- [x] Health-based route decision.
+- [x] Smart-route profile selection for TCP-heavy, UDP-heavy, QUIC, DNS-sensitive, low-speed, and high-speed routes.
+- [x] Latency-sensitive/gaming route profile prioritizing stable latency, low jitter, low packet loss, and route consistency over raw bandwidth.
+- [x] Bufferbloat and loaded-latency detection with SQM/AQM recommendations for routes that look fast but lag under load.
+- [x] Initial route quality history analytics API and Settings recommendations from synthetic probes.
+- [x] Initial hourly route quality summary table and aggregation scheduler.
+- [x] Route quality history aggregation by server, outbound, operator, protocol profile, and time bucket.
+- [x] Time-of-day and day-of-week route analytics for operator/outbound patterns such as Irancell/BTS windows.
+- [x] Predictive route recommendations before historically degraded time windows.
+- [x] Gaming-safe sticky-session and drain policy preview for active session protection.
+- [x] Transparent switch-engine planning preview with guard, session pinning, new-session routing, drain, active switch, verify, and rollback phases.
+- [x] Assignment-only switch execution envelope with sticky-session, drain, cooldown, and data-plane-blocked audit state.
+- [x] Switch-engine preflight/readiness checklist for feature flag, adapter, dry-run, guard, session-safety, rollback, cooldown, audit, and health-verify gates.
+- [x] Advisory route canary rollout plan with pinned existing sessions, new-session canary percentages, rollback thresholds, and route-consistency holds.
+- [ ] Transparent route switch engine with sticky sessions, route locks, cooldown, and drain-safe apply behavior.
+- [x] Hysteresis and cooldown.
+- [x] Route decision audit reason.
 
 ## Phase 4: Current Panel Integration
 
@@ -148,7 +197,8 @@
 
 ## Phase 5: Enterprise Path
 
-- [ ] Owner/Admin/Support roles.
+- [x] Owner/Admin/Supervisor/Support/Auditor role foundation.
+- [ ] Fine-grained production RBAC policy and permission UI.
 - [ ] Backup and restore UI.
 - [ ] Reports and data analysis.
 - [ ] Tenant/brand settings.
@@ -157,8 +207,11 @@
 ## Enhancement Tracks
 
 - [ ] Incident timeline.
-- [ ] Telegram critical alert flow.
+- [x] Telegram critical alert flow.
 - [ ] Route health score history.
+- [x] Operator and outbound time-window quality reports.
+- [x] Initial advisory route quality suggestions from historical synthetic probes.
+- [x] Predictive route quality suggestions.
 - [ ] Charge allocation delay tracking.
 - [ ] Backup status monitoring.
 - [ ] Route canary rollout.
@@ -170,4 +223,4 @@
 - [ ] Secret scan in CI.
 - [ ] Per-agent token rotation.
 - [ ] Database least-privilege roles.
-- [ ] Loaded latency and bufferbloat monitoring.
+- [x] Loaded latency and bufferbloat monitoring.

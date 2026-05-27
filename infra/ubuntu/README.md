@@ -11,8 +11,8 @@ This is the first deployment path for AfroGate. Docker is optional later; the fi
 
 ## Suggested Ports
 
-- Backend API: `4000`
-- Dashboard dev/preview only: `3000`
+- Backend API: `7000`
+- Dashboard dev/preview only: `4000`
 - PostgreSQL: `5432`
 
 ## First Setup Outline

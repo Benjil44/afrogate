@@ -112,6 +112,8 @@
 
 سیستم باید بتواند بهترین مسیر را به صورت خودکار انتخاب کند، اما بعضی کاربران یا کانفیگ‌ها باید بتوانند روی یک مسیر ثابت بمانند.
 
+Smart routing should become protocol-aware. The agent should collect privacy-safe synthetic TCP, UDP, QUIC/HTTP3, DNS, and WireGuard route-health signals. The backend should choose routes by profile: low-speed stability, high-speed throughput, TCP-heavy, UDP-heavy, QUIC-heavy, or DNS-sensitive. Automatic decisions must still use cooldown, hysteresis, route lock, and audit reasons.
+
 ### قوانین MVP
 
 - هر tunnel هر چند ثانیه health check شود.
@@ -225,4 +227,3 @@ score = 100
 - مصرف GB هر کاربر قابل محاسبه باشد.
 - حداقل 150 کاربر بدون اختلال مدیریتی پوشش داده شود.
 - معماری برای رشد تا 10000 کاربر نیازمند بازنویسی کامل نباشد.
-

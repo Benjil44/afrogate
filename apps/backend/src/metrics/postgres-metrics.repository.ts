@@ -110,6 +110,8 @@ export class PostgresMetricsRepository implements MetricsRepository {
       diskFreePercent: row.diskFreePercent,
       storages: row.raw?.storages,
       networkInterfaces: row.raw?.networkInterfaces,
+      wireGuardInterfaces: row.raw?.wireGuardInterfaces,
+      routeProbes: row.raw?.routeProbes,
       inboundBps: row.inboundBps,
       outboundBps: row.outboundBps,
       pingMs: row.pingMs,
@@ -186,7 +188,7 @@ export class PostgresMetricsRepository implements MetricsRepository {
       await this.database.query(
         `
           INSERT INTO alerts (severity, status, source_type, source_id, title, message)
-          VALUES ('critical', 'open', 'server_disk', $1, 'Storage below 10%', $2)
+          VALUES ('critical', 'open', 'server_disk', $1, 'Storage below safe threshold', $2)
           ON CONFLICT (source_type, source_id, title) WHERE status = 'open'
           DO UPDATE SET
             severity = excluded.severity,
@@ -209,7 +211,7 @@ export class PostgresMetricsRepository implements MetricsRepository {
             last_seen_at = now()
         WHERE source_type = 'server_disk'
           AND source_id = $1
-          AND title = 'Storage below 10%'
+          AND title IN ('Storage below safe threshold', 'Storage below 10%')
           AND status = 'open'
       `,
       [snapshot.serverId],

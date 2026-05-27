@@ -17,7 +17,7 @@ server {
 
     location /api/ {
         limit_req zone=afrogate_api burst=30 nodelay;
-        proxy_pass http://127.0.0.1:4000/api/;
+        proxy_pass http://127.0.0.1:7000/api/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -27,7 +27,7 @@ server {
 
     location /api/auth/login {
         limit_req zone=afrogate_login burst=5 nodelay;
-        proxy_pass http://127.0.0.1:4000/api/auth/login;
+        proxy_pass http://127.0.0.1:7000/api/auth/login;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

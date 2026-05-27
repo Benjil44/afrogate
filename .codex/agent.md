@@ -16,6 +16,18 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Keep dashboard operations fast enough for remote travel management.
 - Keep control-plane egress separate from user/data traffic; use the documented outbound proxy/gateway pattern for Telegram and external APIs on restricted servers.
 - Treat server access as bootstrap-plus-agent-first: avoid storing reusable root passwords, prefer dedicated management users, SSH keys, secret rotation, and audit logs.
+- Build protocol and system setup as a guided Settings workflow before relying on real-server onboarding. Private keys and tunnel secrets must be write-only, secret-safe, and never shown back in UI, logs, `.codex`, or git.
+- Keep protocol creation superadmin-owned. The setup engine should support WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols without forcing admins to edit raw config files.
+- Keep Settings persistence secret-safe: store non-secret protocol shape and route settings in PostgreSQL, store only secret references for key material, and reject raw private keys or token-like config values.
+- Store Settings private keys only through the encrypted `secret_records` path and return `secretRef` metadata only; do not add dashboard or admin endpoints that read decrypted secret material back to users.
+- Keep protocol provisioning control-plane-first until real server access exists: draft provisioning may create disabled, maintenance-mode managed outbounds, but server OS/service changes need a separate audited apply step and health validation.
+- Keep WireGuard telemetry privacy-safe: collect tunnel/peer health from the local `wg` command when available, send peer public-key fingerprints only, and never persist or return raw WireGuard private keys, preshared keys, or full public keys.
+- Treat agent-sourced WireGuard route candidates as live health signals for admin selection, not as applied routes, until a managed outbound or audited server-side apply step links them to real routing state.
+- Optional route-probe metadata must stay non-secret and operational only: route group, outbound key/name/id, operator, and score profile are allowed; user destinations, user IP history, credentials, and traffic contents are not.
+- Treat username/password admin login as the dashboard-facing auth path; `AFROGATE_ADMIN_TOKEN` is only a legacy direct API/bootstrap fallback.
+- Preserve the permanent `superadmin` account invariant in future user-management work: normal admins must not remove, disable, or change it.
+- Treat managed dashboard roles as `owner`, `admin`, `supervisor`, `support`, and `auditor`; `supervisor` is read-oriented supervision, while superadmin remains the protected bootstrap root.
+- Store managed admin-user passwords as hashes only. The MVP local store is `AFROGATE_ADMIN_USERS_FILE`; never place real passwords or admin-user runtime data in `.codex` or git.
 - Update `.codex/progress.md` after each session.
 - Update `.codex/checklist.md` when a task changes state.
 - Update `.codex/memory.md` only for durable decisions and facts.
@@ -51,3 +63,5 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Avoid marketing-style UI for operations pages.
 - Use dense but readable layouts for repeated operational use.
 - Build role-based access early enough that support staff can help safely.
+- Prefer guided setup pages for complex infrastructure tasks such as WireGuard, outbound gateways, and agent bootstrap so admins do not have to edit raw config files for normal workflows.
+- Treat automatic/manual route selection and advanced load balancing as core UX: admins need health visibility for each WireGuard/protocol path, automatic best-path selection, and manual override when operations require it.

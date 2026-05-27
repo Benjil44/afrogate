@@ -24,6 +24,8 @@ Each server card can have an `Edit` button. The edit screen should be split into
 - Routing: route group, auto route, route lock support, failover settings.
 - Audit: who changed what and when.
 
+WireGuard and system prerequisites should also have a guided Settings workflow so first-time setup is not hidden behind raw files. Any private key or tunnel secret entered there must be write-only: accept, validate, store by encrypted reference later, and never display the original secret back.
+
 ## Access Model
 
 ### Bootstrap Credential
@@ -71,8 +73,22 @@ Agent metrics:
 - total inbound/outbound bps.
 - WireGuard peer transfer and handshake state.
 - ping/jitter/packet loss to configured targets.
+- protocol-aware route probes:
+  - TCP connect latency, failure rate, and optional TLS handshake latency.
+  - UDP reachability, packet loss, jitter, and response delay when a safe probe target exists.
+  - QUIC/HTTP3 timing when UDP-based web traffic matters.
+  - DNS lookup latency and failure rate through the route.
+  - short bounded loaded-latency and throughput samples for low-speed/high-speed classification.
 - service health.
 - control-plane egress health.
+
+The current WireGuard status telemetry uses the local `wg show all dump` command when present. It keeps private keys, preshared keys, and full public keys out of payloads; peer identity is reduced to a short SHA-256 fingerprint for health correlation only.
+
+Settings route selection can use these agent-sourced WireGuard tunnel rows as real health candidates alongside managed outbound health rows. Agent candidates are selection/diagnostic signals until a managed outbound or audited server-side apply step owns the actual route change.
+
+Ping/jitter/packet-loss collection is opt-in through configured synthetic targets such as `AFROGATE_PING_TARGETS`. Do not use user destinations or traffic-derived hosts as probe targets.
+
+Initial protocol-aware route probes are opt-in through `AFROGATE_TCP_PROBE_TARGETS`, `AFROGATE_UDP_PROBE_TARGETS`, `AFROGATE_QUIC_PROBE_TARGETS`, and `AFROGATE_DNS_PROBE_TARGETS`. TCP probes measure connect latency/failure rate. DNS probes measure lookup latency/failure rate. UDP and QUIC-labeled probes require a configured responder that replies to the small probe payload; they are reachability signals, not continuous speed tests.
 
 SSH can still be used for:
 
@@ -134,6 +150,45 @@ Do not fail back immediately. Use:
 - hysteresis: new route must be meaningfully better.
 - route lock: locked users stay on their route and only receive alerts.
 
+## Smart Route Protocol Profiles
+
+Automatic routing should use protocol-aware scores instead of one generic health number:
+
+- `tcp`: prioritize TCP connect success, TLS/request timing, and retransmission symptoms.
+- `udp`: prioritize packet loss, jitter, NAT stability, and WireGuard/UDP reachability.
+- `quic`: prioritize UDP reachability plus QUIC/HTTP3 handshake/request timing.
+- `dns`: prioritize lookup success and latency when DNS behavior affects the user path.
+- `low-speed`: prefer stable latency, low loss, and low jitter over raw throughput.
+- `high-speed`: prefer throughput headroom and lower saturation while still rejecting bad loss/jitter.
+- `gaming`: prioritize stable latency, very low jitter, very low packet loss, route consistency, and congestion avoidance over raw throughput.
+
+The backend route decision should store which profile was used, the old route, the candidate route, the score delta, and the reason. This keeps automatic routing explainable and auditable.
+
+Probe rules:
+
+- Use synthetic configured targets only; do not inspect user destinations or traffic contents.
+- Keep probes compact and interval-based so small VPS machines are not overloaded.
+- Use short active throughput checks only when needed, never continuous speed tests.
+- Apply cooldown and hysteresis per protocol profile so one bad UDP sample does not move TCP-heavy users unnecessarily.
+
+Current Settings route candidates are advisory only: the backend returns a selected score plus per-profile scores for balanced, stability, throughput, gaming, TCP, UDP, QUIC, DNS, and WireGuard health. These scores can use managed outbound health rows, latest agent route probes, server health, load, and WireGuard telemetry, but they do not apply route changes. Candidates also include loaded-latency and bufferbloat guidance when synthetic probes or outbound metadata provide it; medium risk recommends SQM/AQM review and high risk makes the route unattractive for under-load or gaming-sensitive use. Route decision previews now compare usable managed candidates across profile scores and show advisory profile recommendations, so an admin can see whether TCP, UDP/QUIC, DNS, WireGuard, gaming, stability, or throughput policy is currently the better fit without inspecting user traffic.
+
+The first route-decision foundation adds `route_assignments`, `route_decision_events`, `/api/admin/route-assignments/current`, the read-only `/api/admin/route-decisions/preview` endpoint, advisory event endpoints for listing, detail inspection, and recording preview decisions, and an assignment-only `/api/admin/route-decisions/apply-preview` endpoint. The Settings page can now persist the default assignment's auto-route toggle, route lock toggle, current managed outbound, locked managed outbound, hysteresis score delta, and cooldown seconds. These controls update control-plane policy and audit logs only; they do not mutate OS routes or user traffic. The preview evaluates that saved state before any future automatic data-plane apply path exists and shows whether AfroGate would keep, switch, pause for cooldown, stay locked, or require better candidates. It can also recommend a health-based switch when the current managed route is unhealthy and a healthy managed candidate is available; this bypasses the normal score-delta hysteresis blocker only for assignment-only control-plane movement and still respects lock, manual mode, cooldown, and managed-candidate gates. It also returns candidate-review rows with dispositions, rejection reasons, score deltas, score-penalty reasons, an advisory smart-load-balancing summary with primary/secondary/standby roles and weights, a gaming-safe session-safety summary, a transparent switch-engine stage plan, and a structured apply plan with guard, assignment, drain, switch, verify, rollback, apply-adapter readiness details, and secret-safe dry-run command/config previews for the future WireGuard policy-routing adapter. The load-balancing summary weighs health, packet loss, jitter, latency, throughput/load, loaded-latency, and high-security/route-consistency constraints without inspecting user traffic or applying data-plane changes. The session-safety summary keeps active gaming/UDP/QUIC/WireGuard flows sticky during normal improvements, moves only new sessions during a drain window, and allows emergency switching only when the current managed route is failing. The switch-engine plan sequences guard checks, session pinning, new-session routing, drain, active switch, verify, and rollback readiness, while marking real mutation stages as future until the audited adapter exists. Recording or applying a preview stores a normalized `dryRunSnapshot` in `route_decision_events.decision_context` with adapter status, command/config counts, secret-safety state, commands, and config targets. The recent-events API remains compact, while `/api/admin/route-decisions/events/:id` lets read-role admins inspect stored non-secret decision context and dry-run snapshots on demand from Settings. Recording a preview stores the action, reason codes, score delta, cooldown/lock state, and candidate context with `applied_at = null`. Applying a preview is currently guarded to `assignmentOnly`: it accepts only a `switchRecommended` preview, updates the saved current outbound, sets cooldown, records `decision_kind = assignment_apply`, and marks `dataPlaneApplied = false` in context until the audited server-side apply engine exists. Data-plane apply is also gated by `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false` by default; enabling that flag alone is not enough until a real adapter is implemented and audited.
+
+Assignment-only apply now also records a switch-execution summary. This captures the control-plane assignment result, whether existing sessions must stay sticky, the sticky/drain/cooldown deadlines, rollback readiness, and which data-plane steps remain future/blocked. It is an audit and UX safety layer for gaming-sensitive routes; it does not change server OS routing or user traffic.
+
+Decision previews also include a switch-preflight readiness summary before any future live route movement. It checks the disabled data-plane feature flag, missing or unsupported apply adapter, secret-safe dry-run artifacts, route guards, session-safety requirements, rollback readiness, cooldown policy, audit readiness, and post-switch health verification. These checks are visible in Settings and persisted in decision-event context, but they remain planning-only until an audited adapter can execute them safely.
+
+Decision previews and event detail also include an advisory switch-rollout plan. For normal gaming/stability-sensitive improvements, the plan keeps existing sessions pinned, starts with a small new-session canary, verifies packet loss, jitter, and latency rollback thresholds, observes a route-consistency hold, and only then describes future expansion. Emergency plans stay separate and are still planning-only until an audited adapter can enforce them safely.
+
+The first route-intelligence analytics endpoint, `/api/admin/route-quality/analytics`, reads historical synthetic route probes from `server_metrics.raw`, groups them by server, protocol, and hour-of-day, and returns advisory best/degraded time-window recommendations for the Settings page. This is intentionally read-only and privacy-safe: it does not inspect user destinations and does not change routes.
+
+To keep this efficient on small VPS machines, `RouteQualityAggregationService` compacts recent synthetic probe history into `route_quality_hourly`. The scheduler is enabled by default through `AFROGATE_ROUTE_QUALITY_AGGREGATION_ENABLED=true`, runs every `AFROGATE_ROUTE_QUALITY_AGGREGATION_INTERVAL_SECONDS`, and looks back `AFROGATE_ROUTE_QUALITY_AGGREGATION_LOOKBACK_HOURS`. The analytics endpoint prefers these hourly summaries and falls back to raw metrics if the table is empty or not migrated yet.
+
+Migration `0008_route_quality_dimensions.sql` expands these summaries by server, outbound key/name, operator, protocol, score profile, day-of-week, and hour-of-day. Agents can optionally tag synthetic route probes with non-secret metadata through `AFROGATE_ROUTE_PROBE_ROUTE_GROUP`, `AFROGATE_ROUTE_PROBE_OUTBOUND_ID`, `AFROGATE_ROUTE_PROBE_OUTBOUND_KEY`, `AFROGATE_ROUTE_PROBE_OUTBOUND_NAME`, `AFROGATE_ROUTE_PROBE_OPERATOR`, and `AFROGATE_ROUTE_PROBE_SCORE_PROFILE`. This supports operator/outbound patterns such as Irancell/BTS windows without storing user destinations or inspecting traffic.
+
+Predictive recommendations stay advisory. The backend can flag historically degraded windows within `AFROGATE_ROUTE_QUALITY_PREDICTION_LOOKAHEAD_HOURS`, but it does not apply routes automatically; route locks, sticky assignments, cooldown, hysteresis, drain-safe switching, and audit reasons are still required before transparent route changes.
+
 ## Health Check Intervals
 
 Recommended defaults:
@@ -146,10 +201,22 @@ Recommended defaults:
 
 Permanent 1-second checks can waste CPU/network on small VPS machines and can cause noisy route flapping. If 1-second mode is added, it should auto-expire and require admin permission.
 
+## Backend Health Scheduler
+
+The backend runs a lightweight outbound health scheduler when `AFROGATE_OUTBOUND_HEALTH_SCHEDULER_ENABLED` is true. It checks only enabled, non-maintenance outbounds whose `last_checked_at` is older than their own `health_interval_seconds`.
+
+Supported MVP probe targets are intentionally simple and synthetic:
+
+- HTTP/HTTPS: set `config.healthUrl`, `config.url`, or `config.targetUrl`.
+- TCP connect: set `config.healthHost`/`config.healthPort`, or `config.host`/`config.port`.
+
+The scheduler stores every sample in `outbound_health_checks`, updates `outbounds.health_status`, and respects each outbound's `fail_threshold` and `recovery_threshold` so one bad sample does not immediately create a route flap. It does not inspect user traffic and it does not switch routes yet.
+
 ## Data Model Direction
 
 Future tables:
 
+- `secret_records`
 - `server_access_profiles`
 - `server_credentials`
 - `outbounds`
@@ -172,6 +239,10 @@ They should not store:
 - plaintext passwords.
 - user traffic content.
 - unrestricted shell history without explicit enterprise audit mode.
+
+Current Settings secret storage uses `secret_records` for write-only private-key material. The dashboard sends the secret once, the backend encrypts it with `AFROGATE_SECRETS_KEY`, and protocol setup rows store only `secretRef`. The dashboard must not read decrypted secret material back.
+
+Initial Settings protocol provisioning is control-plane-only. A saved protocol setup can be converted into a managed outbound row with the encrypted secret reference preserved, but the outbound is created disabled and in maintenance mode until a later server-side apply step installs or updates the real WireGuard/VLESS/L2TP/IKEv2 service and health checks confirm it is usable.
 
 ## Security References
 

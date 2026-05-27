@@ -61,6 +61,72 @@ export const serverMetrics = pgTable(
   }),
 );
 
+export const routeQualityHourly = pgTable(
+  'route_quality_hourly',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    routeGroup: text('route_group').notNull().default('main'),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    outboundId: uuid('outbound_id'),
+    outboundKey: text('outbound_key').notNull().default('unassigned'),
+    outboundName: text('outbound_name'),
+    operator: text('operator').notNull().default('unknown'),
+    protocol: text('protocol').notNull(),
+    scoreProfile: text('score_profile').notNull().default('balanced'),
+    bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
+    hourOfDay: integer('hour_of_day').notNull(),
+    dayOfWeek: integer('day_of_week').notNull(),
+    sampleCount: integer('sample_count').notNull(),
+    averageScore: real('average_score').notNull(),
+    averageLatencyMs: real('average_latency_ms'),
+    averageJitterMs: real('average_jitter_ms'),
+    averagePacketLossPercent: real('average_packet_loss_percent'),
+    degradedSamplePercent: real('degraded_sample_percent').notNull().default(0),
+    criticalSamplePercent: real('critical_sample_percent').notNull().default(0),
+    firstObservedAt: timestamp('first_observed_at', { withTimezone: true }).notNull(),
+    lastObservedAt: timestamp('last_observed_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueIdx: uniqueIndex('route_quality_hourly_unique_idx').on(
+      table.routeGroup,
+      table.serverId,
+      table.outboundKey,
+      table.operator,
+      table.protocol,
+      table.scoreProfile,
+      table.bucketStart,
+    ),
+    routeBucketIdx: index('route_quality_hourly_route_bucket_idx').on(table.routeGroup, table.bucketStart),
+    serverProtocolIdx: index('route_quality_hourly_server_protocol_idx').on(
+      table.serverId,
+      table.protocol,
+      table.bucketStart,
+    ),
+    patternIdx: index('route_quality_hourly_pattern_idx').on(
+      table.routeGroup,
+      table.protocol,
+      table.dayOfWeek,
+      table.hourOfDay,
+    ),
+    profilePatternIdx: index('route_quality_hourly_profile_pattern_idx').on(
+      table.routeGroup,
+      table.scoreProfile,
+      table.dayOfWeek,
+      table.hourOfDay,
+    ),
+    outboundPatternIdx: index('route_quality_hourly_outbound_pattern_idx').on(
+      table.routeGroup,
+      table.outboundKey,
+      table.operator,
+      table.dayOfWeek,
+      table.hourOfDay,
+    ),
+  }),
+);
+
 export const alerts = pgTable(
   'alerts',
   {
@@ -142,6 +208,35 @@ export const serverCredentials = pgTable(
   (table) => ({
     serverIdx: index('server_credentials_server_idx').on(table.serverId),
     statusIdx: index('server_credentials_status_idx').on(table.status),
+  }),
+);
+
+export const secretRecords = pgTable(
+  'secret_records',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    secretRef: text('secret_ref').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    scope: text('scope').notNull().default('settings'),
+    routeGroup: text('route_group'),
+    protocol: text('protocol'),
+    encryptedPayload: text('encrypted_payload').notNull(),
+    keyId: text('key_id').notNull(),
+    fingerprint: text('fingerprint'),
+    status: text('status').notNull().default('active'),
+    createdBy: text('created_by'),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    lastRotatedAt: timestamp('last_rotated_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    refIdx: uniqueIndex('secret_records_ref_idx').on(table.secretRef),
+    scopeIdx: index('secret_records_scope_idx').on(table.scope, table.routeGroup),
+    statusIdx: index('secret_records_status_idx').on(table.status),
+    protocolIdx: index('secret_records_protocol_idx').on(table.protocol),
   }),
 );
 
@@ -241,6 +336,118 @@ export const routeFailoverEvents = pgTable(
   }),
 );
 
+export const protocolSetups = pgTable(
+  'protocol_setups',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    protocol: text('protocol').notNull(),
+    profile: text('profile').notNull().default('balanced'),
+    routeGroup: text('route_group').notNull().default('main'),
+    port: integer('port').notNull(),
+    status: text('status').notNull().default('draft'),
+    config: jsonb('config').notNull().default(sql`'{}'::jsonb`),
+    secretRef: text('secret_ref'),
+    provisionedOutboundId: uuid('provisioned_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    provisionedAt: timestamp('provisioned_at', { withTimezone: true }),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    routeNameIdx: uniqueIndex('protocol_setups_route_name_idx').on(table.routeGroup, table.name),
+    protocolIdx: index('protocol_setups_protocol_idx').on(table.protocol),
+    statusIdx: index('protocol_setups_status_idx').on(table.status),
+    provisionedOutboundIdx: index('protocol_setups_provisioned_outbound_idx').on(table.provisionedOutboundId),
+  }),
+);
+
+export const routeSettings = pgTable(
+  'route_settings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    routeGroup: text('route_group').notNull(),
+    mode: text('mode').notNull().default('automatic'),
+    selectedOutboundId: uuid('selected_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    loadBalanceStrategy: text('load_balance_strategy').notNull().default('balanced'),
+    protocolProfile: text('protocol_profile').notNull().default('balanced'),
+    speedProfile: text('speed_profile').notNull().default('balanced'),
+    updatedBy: text('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    routeGroupIdx: uniqueIndex('route_settings_route_group_idx').on(table.routeGroup),
+    modeIdx: index('route_settings_mode_idx').on(table.mode),
+    selectedOutboundIdx: index('route_settings_selected_outbound_idx').on(table.selectedOutboundId),
+  }),
+);
+
+export const routeAssignments = pgTable(
+  'route_assignments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    routeGroup: text('route_group').notNull().default('main'),
+    assignmentKey: text('assignment_key').notNull().default('default'),
+    assignmentLabel: text('assignment_label'),
+    currentOutboundId: uuid('current_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    lockedOutboundId: uuid('locked_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    autoRouteEnabled: boolean('auto_route_enabled').notNull().default(true),
+    routeLocked: boolean('route_locked').notNull().default(false),
+    protocolProfile: text('protocol_profile').notNull().default('balanced'),
+    speedProfile: text('speed_profile').notNull().default('balanced'),
+    hysteresisScoreDelta: integer('hysteresis_score_delta').notNull().default(15),
+    cooldownSeconds: integer('cooldown_seconds').notNull().default(180),
+    cooldownUntil: timestamp('cooldown_until', { withTimezone: true }),
+    lastDecisionEventId: uuid('last_decision_event_id'),
+    lastDecisionAt: timestamp('last_decision_at', { withTimezone: true }),
+    decisionState: text('decision_state').notNull().default('monitoring'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    routeKeyIdx: uniqueIndex('route_assignments_route_key_idx').on(table.routeGroup, table.assignmentKey),
+    currentOutboundIdx: index('route_assignments_current_outbound_idx').on(table.currentOutboundId),
+    lockedOutboundIdx: index('route_assignments_locked_outbound_idx').on(table.lockedOutboundId),
+    cooldownIdx: index('route_assignments_cooldown_idx').on(table.routeGroup, table.cooldownUntil),
+  }),
+);
+
+export const routeDecisionEvents = pgTable(
+  'route_decision_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    routeGroup: text('route_group').notNull(),
+    assignmentKey: text('assignment_key').notNull().default('default'),
+    decisionKind: text('decision_kind').notNull(),
+    decisionState: text('decision_state').notNull(),
+    scoreProfile: text('score_profile'),
+    fromOutboundId: uuid('from_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    toOutboundId: uuid('to_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    fromScore: integer('from_score'),
+    toScore: integer('to_score'),
+    scoreDelta: integer('score_delta'),
+    hysteresisScoreDelta: integer('hysteresis_score_delta'),
+    cooldownUntil: timestamp('cooldown_until', { withTimezone: true }),
+    routeLocked: boolean('route_locked').notNull().default(false),
+    autoRouteEnabled: boolean('auto_route_enabled').notNull().default(true),
+    reasonCodes: jsonb('reason_codes').notNull().default(sql`'[]'::jsonb`),
+    decisionContext: jsonb('decision_context').notNull().default(sql`'{}'::jsonb`),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    routeCreatedIdx: index('route_decision_events_route_created_idx').on(table.routeGroup, table.createdAt),
+    assignmentCreatedIdx: index('route_decision_events_assignment_created_idx').on(
+      table.routeGroup,
+      table.assignmentKey,
+      table.createdAt,
+    ),
+    toOutboundIdx: index('route_decision_events_to_outbound_idx').on(table.toOutboundId),
+  }),
+);
+
 export const serversRelations = relations(servers, ({ many }) => ({
   metrics: many(serverMetrics),
   agentTokens: many(agentTokens),
@@ -252,6 +459,13 @@ export const serversRelations = relations(servers, ({ many }) => ({
 export const serverMetricsRelations = relations(serverMetrics, ({ one }) => ({
   server: one(servers, {
     fields: [serverMetrics.serverId],
+    references: [servers.id],
+  }),
+}));
+
+export const routeQualityHourlyRelations = relations(routeQualityHourly, ({ one }) => ({
+  server: one(servers, {
+    fields: [routeQualityHourly.serverId],
     references: [servers.id],
   }),
 }));

@@ -29,4 +29,21 @@ export class AuditService {
       ],
     );
   }
+
+  async recordBestEffort(
+    actor: AuthActor | undefined,
+    action: string,
+    targetType: string,
+    targetId: string | null,
+    metadata: Record<string, unknown> = {},
+    executor: DatabaseQueryExecutor = this.database,
+  ): Promise<void> {
+    if (!process.env.DATABASE_URL) return;
+
+    try {
+      await this.record(actor, action, targetType, targetId, metadata, executor);
+    } catch {
+      // Login and local diagnostics must keep working when PostgreSQL is not configured yet.
+    }
+  }
 }

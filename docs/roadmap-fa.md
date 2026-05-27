@@ -19,6 +19,8 @@
 - CRUD tunnel ها و interface ها.
 - endpoint دریافت metrics از agent.
 - ذخیره metrics کلیدی.
+- protocol-aware route metrics schema for TCP/UDP/QUIC/DNS/WireGuard probe results.
+- smart-route scoring service with speed profiles for low-speed stability and high-speed throughput.
 - alert engine ساده.
 - Telegram alert sender.
 - audit log.
@@ -30,6 +32,8 @@
 - ارسال network counters.
 - ارسال WireGuard status.
 - اجرای ping/jitter/packet loss probe.
+- اجرای lightweight TCP/UDP/QUIC/DNS route probes against configured synthetic targets.
+- گزارش low-speed/high-speed route classification signals without inspecting user traffic.
 - ارسال heartbeat.
 
 ### Dashboard
@@ -58,6 +62,7 @@
 - auto route toggle.
 - route lock toggle.
 - health-based route decision.
+- protocol-aware route decision for TCP-heavy, UDP-heavy, QUIC, DNS-sensitive, low-speed, and high-speed profiles.
 - cooldown/hysteresis برای جلوگیری از route flapping.
 - نمایش reason انتخاب مسیر.
 

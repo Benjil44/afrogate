@@ -1,42 +1,113 @@
-import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type {
+  AdminAlertSummary,
+  AdminProtocolSetupSummary,
+  AdminOutboundSummary,
+  AdminRouteAssignmentSummary,
+  AdminRouteDecisionApplyAdapterSummary,
+  AdminRouteDecisionApplyPlanSummary,
+  AdminRouteDecisionApplyPlanStep,
+  AdminRouteDecisionEventDetail,
+  AdminRouteDecisionEventSummary,
+  AdminRouteQualityAnalyticsResponse,
+  AdminRouteDecisionCandidateSummary,
+  AdminRouteDecisionCandidateReviewSummary,
+  AdminRouteDecisionLoadBalancingSummary,
+  AdminRouteDecisionProfileRecommendation,
+  AdminRouteDecisionPreviewResponse,
+  AdminRouteDecisionSessionSafetySummary,
+  AdminRouteDecisionSwitchExecutionSummary,
+  AdminRouteDecisionSwitchEngineSummary,
+  AdminRouteDecisionSwitchPreflightSummary,
+  AdminRouteDecisionSwitchRolloutSummary,
+  AdminServerSummary,
+  AdminSettingsResponse,
+  AdminSessionResponse,
+  AdminWireGuardCandidate,
+  LoadBalanceStrategy,
+  AdminUserSummary,
   MetricsTimeRange,
   NetworkInterfaceMetric,
+  ProtocolKind,
+  ProtocolProfile,
+  RouteFailoverEventSummary,
+  RouteDecisionAction,
+  RouteQualityRecommendation,
+  RouteProbeMetric,
+  RouteSelectionMode,
+  Role,
   ServerMetricSnapshot,
   ServerMetricTimeseries,
   StorageVolumeMetric,
+  WireGuardInterfaceMetric,
 } from '@afrogate/shared';
 import {
   Activity,
   AlertTriangle,
   ArrowDownUp,
   Bell,
+  CheckCircle2,
   Clock,
   Cpu,
   Download,
+  Eye,
+  EyeOff,
   Gauge,
   HardDrive,
   Languages,
+  LockKeyhole,
+  LogIn,
+  LogOut,
   MemoryStick,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Plus,
   Route,
   Server,
+  Settings as SettingsIcon,
   ShieldCheck,
   Upload,
+  UserRound,
 } from 'lucide-react';
 import rootPackage from '../../../package.json';
+import { useAdminSession } from './auth';
+import {
+  createAdminProtocolSetup,
+  createAdminSettingsSecret,
+  createAdminUser,
+  deleteAdminUser,
+  fetchAdminAlerts,
+  fetchAdminOutbounds,
+  fetchAdminServers,
+  fetchAdminSettings,
+  fetchAdminUsers,
+  fetchRouteAssignment,
+  fetchRouteFailoverEvents,
+  fetchRouteQualityAnalytics,
+  fetchRouteDecisionEvent,
+  fetchRouteDecisionEvents,
+  fetchRouteDecisionPreview,
+  provisionAdminProtocolSetup,
+  recordRouteDecisionPreview,
+  updateAdminRouteAssignment,
+  updateAdminRouteSettings,
+  updateAdminUser,
+  updateAdminUserPassword,
+  applyRouteDecisionPreview,
+} from './api/admin';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
 import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } from './i18n';
 
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
-type ActiveView = 'dashboard' | 'servers' | 'routes' | 'alerts';
+type ActiveView = 'dashboard' | 'servers' | 'users' | 'routes' | 'alerts' | 'settings';
+type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
 type AfroIcon = ComponentType<{ size?: number; className?: string }>;
+type AdminSessionHook = ReturnType<typeof useAdminSession>;
 
 interface MetricCardData {
   label: string;
@@ -51,17 +122,32 @@ interface TrafficTotals {
 
 interface ServerRowData {
   id: string;
+  externalId?: string;
   name: string;
   meta: string;
+  status?: string;
+  role?: string | null;
+  region?: string | null;
+  tags?: string[];
   cpu: number | null;
   ram: number | null;
   diskFree: number | null;
   storages: StorageVolumeMetric[];
   networkInterfaces: NetworkInterfaceMetric[];
+  wireGuardInterfaces: WireGuardInterfaceMetric[];
+  routeProbes: RouteProbeMetric[];
   inboundBps: number | null;
   outboundBps: number | null;
+  pingMs: number | null;
+  jitterMs: number | null;
+  packetLossPercent: number | null;
   score: number;
   observedAt?: string;
+  accessProfile?: AdminServerSummary['accessProfile'];
+  outboundCount?: number;
+  openAlertCount?: number;
+  updatedAt?: string;
+  source?: 'admin' | 'metrics' | 'sample';
 }
 
 interface TunnelRowData {
@@ -74,18 +160,60 @@ interface TunnelRowData {
 }
 
 interface OutboundRowData {
+  id: string;
   name: string;
   type: string;
   priority: number;
-  status: 'healthy' | 'standby' | 'restricted';
+  statusText: string;
+  statusTone: Tone;
   latencyMs: number | null;
   mode: string;
+  serverLabel?: string | null;
+}
+
+interface RouteFailoverRowData {
+  id: string;
+  title: string;
+  detail: string;
+  tone: Tone;
+  createdAt?: string;
 }
 
 interface AlertRowData {
+  id: string;
   title: string;
   source: string;
   severity: Tone;
+  message?: string;
+  status?: string;
+  lastSeenAt?: string;
+  isPlaceholder?: boolean;
+}
+
+interface WireGuardSetupDraft {
+  serverName: string;
+  interfaceName: string;
+  routeGroup: string;
+  addressCidr: string;
+  listenPort: string;
+  privateKey: string;
+  peerPublicKey: string;
+  endpoint: string;
+  allowedIps: string;
+  persistentKeepalive: string;
+  healthTarget: string;
+}
+
+type WireGuardHealthCandidate = Omit<AdminWireGuardCandidate, 'source'> & {
+  source: AdminWireGuardCandidate['source'] | 'sample';
+};
+
+interface ProtocolSetupDraft {
+  name: string;
+  protocol: ProtocolKind;
+  profile: ProtocolProfile;
+  port: string;
+  routeGroup: string;
 }
 
 interface NavItemData {
@@ -119,8 +247,24 @@ const fallbackServers: ServerRowData[] = [
     diskFree: 64,
     storages: [{ path: '/', freePercent: 64, usedPercent: 36 }],
     networkInterfaces: [{ name: 'ether1', rxBps: 7_800_000, txBps: 3_200_000 }],
+    routeProbes: [],
+    wireGuardInterfaces: [
+      {
+        name: 'wg1',
+        listenPort: 51820,
+        peerCount: 12,
+        activePeerCount: 11,
+        latestHandshakeAgeSeconds: 24,
+        rxBps: 4_900_000,
+        txBps: 2_100_000,
+        status: 'degraded',
+      },
+    ],
     inboundBps: 7_800_000,
     outboundBps: 3_200_000,
+    pingMs: 48,
+    jitterMs: 5,
+    packetLossPercent: 0.1,
     score: 94,
   },
   {
@@ -132,8 +276,24 @@ const fallbackServers: ServerRowData[] = [
     diskFree: 71,
     storages: [{ path: '/', freePercent: 71, usedPercent: 29 }],
     networkInterfaces: [{ name: 'ether2', rxBps: 6_400_000, txBps: 2_700_000 }],
+    routeProbes: [],
+    wireGuardInterfaces: [
+      {
+        name: 'wireguard2',
+        listenPort: 51821,
+        peerCount: 8,
+        activePeerCount: 8,
+        latestHandshakeAgeSeconds: 18,
+        rxBps: 3_700_000,
+        txBps: 1_800_000,
+        status: 'up',
+      },
+    ],
     inboundBps: 6_400_000,
     outboundBps: 2_700_000,
+    pingMs: 63,
+    jitterMs: 9,
+    packetLossPercent: 0.3,
     score: 91,
   },
   {
@@ -145,8 +305,24 @@ const fallbackServers: ServerRowData[] = [
     diskFree: 82,
     storages: [{ path: '/', freePercent: 82, usedPercent: 18 }],
     networkInterfaces: [{ name: 'wg-core', rxBps: 12_500_000, txBps: 9_100_000 }],
+    routeProbes: [],
+    wireGuardInterfaces: [
+      {
+        name: 'wg-core',
+        listenPort: 51820,
+        peerCount: 24,
+        activePeerCount: 24,
+        latestHandshakeAgeSeconds: 11,
+        rxBps: 12_500_000,
+        txBps: 9_100_000,
+        status: 'up',
+      },
+    ],
     inboundBps: 12_500_000,
     outboundBps: 9_100_000,
+    pingMs: 42,
+    jitterMs: 4,
+    packetLossPercent: 0.0,
     score: 96,
   },
 ];
@@ -158,17 +334,53 @@ const tunnels: TunnelRowData[] = [
 ];
 
 const outbounds: OutboundRowData[] = [
-  { name: 'Germany gateway', type: 'WireGuard', priority: 1, status: 'healthy', latencyMs: 50, mode: 'primary' },
-  { name: 'Control egress', type: 'VLESS proxy', priority: 2, status: 'standby', latencyMs: 67, mode: 'telegram/api' },
-  { name: 'Iran direct', type: 'Direct', priority: 3, status: 'restricted', latencyMs: null, mode: 'last resort' },
+  {
+    id: 'sample-germany-gateway',
+    name: 'Germany gateway',
+    type: 'WireGuard',
+    priority: 1,
+    statusText: 'healthy',
+    statusTone: 'good',
+    latencyMs: 50,
+    mode: 'primary',
+  },
+  {
+    id: 'sample-control-egress',
+    name: 'Control egress',
+    type: 'VLESS proxy',
+    priority: 2,
+    statusText: 'standby',
+    statusTone: 'neutral',
+    latencyMs: 67,
+    mode: 'telegram/api',
+  },
+  {
+    id: 'sample-iran-direct',
+    name: 'Iran direct',
+    type: 'Direct',
+    priority: 3,
+    statusText: 'restricted',
+    statusTone: 'warning',
+    latencyMs: null,
+    mode: 'last resort',
+  },
 ];
 
 const navItems: NavItemData[] = [
   { id: 'dashboard', labelKey: 'dashboard', icon: Activity },
   { id: 'servers', labelKey: 'servers', icon: Server },
+  { id: 'users', labelKey: 'users', icon: UserRound },
   { id: 'routes', labelKey: 'routes', icon: Route },
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
+  { id: 'settings', labelKey: 'settings', icon: SettingsIcon },
 ];
+const managedAdminRoles: Role[] = ['owner', 'admin', 'supervisor', 'support', 'auditor'];
+const protocolDefaultPorts: Record<ProtocolKind, string> = {
+  wireguard: '51820',
+  vless: '443',
+  l2tp: '1701',
+  ikev2: '500',
+};
 
 const panelClass = 'min-w-0 rounded-md border border-afro-line bg-afro-panel p-2.5';
 const mutedTextClass = 'text-[13px] text-afro-muted';
@@ -182,12 +394,71 @@ function loadInitialSidebarCollapsed() {
 export function DashboardApp() {
   const { isRtl, language, nextLanguage, setLanguage, strings: t } = useDashboardLanguage();
   const format = useMemo(() => createDashboardFormatters(language), [language]);
+  const adminSession = useAdminSession();
+
+  if (adminSession.status !== 'signedIn' || !adminSession.session || !adminSession.sessionToken) {
+    return (
+      <AdminLoginPage
+        auth={adminSession}
+        format={format}
+        isRtl={isRtl}
+        language={language}
+        nextLanguage={nextLanguage}
+        onLanguageChange={setLanguage}
+        t={t}
+      />
+    );
+  }
+
+  return (
+    <AuthenticatedDashboard
+      format={format}
+      isRtl={isRtl}
+      language={language}
+      nextLanguage={nextLanguage}
+      onLanguageChange={setLanguage}
+      onSignOut={adminSession.signOut}
+      session={adminSession.session}
+      sessionToken={adminSession.sessionToken}
+      t={t}
+    />
+  );
+}
+
+function AuthenticatedDashboard({
+  format,
+  isRtl,
+  language,
+  nextLanguage,
+  onLanguageChange,
+  onSignOut,
+  session,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  isRtl: boolean;
+  language: DashboardLanguage;
+  nextLanguage: DashboardLanguage;
+  onLanguageChange: (language: DashboardLanguage) => void;
+  onSignOut: () => void;
+  session: AdminSessionResponse;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
   const [dataState, setDataState] = useState<DataState>('loading');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [apiAlerts, setApiAlerts] = useState<AdminAlertSummary[]>([]);
+  const [alertDataState, setAlertDataState] = useState<DataState>('loading');
+  const [adminServers, setAdminServers] = useState<AdminServerSummary[]>([]);
+  const [serverDataState, setServerDataState] = useState<DataState>('loading');
+  const [adminOutbounds, setAdminOutbounds] = useState<AdminOutboundSummary[]>([]);
+  const [routeFailoverEvents, setRouteFailoverEvents] = useState<RouteFailoverEventSummary[]>([]);
+  const [routeDataState, setRouteDataState] = useState<DataState>('loading');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const wallClock = useWallClock(format);
 
@@ -228,20 +499,119 @@ export function DashboardApp() {
   }, [timeRange]);
 
   useEffect(() => {
+    let isActive = true;
+    let controller: AbortController | null = null;
+
+    const loadAlerts = async () => {
+      controller?.abort();
+      controller = new AbortController();
+
+      try {
+        const response = await fetchAdminAlerts(sessionToken, controller.signal);
+        if (!isActive) return;
+
+        setApiAlerts(response.alerts);
+        setAlertDataState('live');
+      } catch (error) {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setAlertDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+      }
+    };
+
+    void loadAlerts();
+    const timer = window.setInterval(loadAlerts, refreshIntervalMs);
+
+    return () => {
+      isActive = false;
+      controller?.abort();
+      window.clearInterval(timer);
+    };
+  }, [sessionToken]);
+
+  useEffect(() => {
+    let isActive = true;
+    let controller: AbortController | null = null;
+
+    const loadManagementData = async () => {
+      controller?.abort();
+      controller = new AbortController();
+
+      try {
+        const [serverResponse, outboundResponse, failoverResponse] = await Promise.all([
+          fetchAdminServers(sessionToken, controller.signal),
+          fetchAdminOutbounds(sessionToken, controller.signal),
+          fetchRouteFailoverEvents(sessionToken, controller.signal),
+        ]);
+        if (!isActive) return;
+
+        setAdminServers(serverResponse.servers);
+        setServerDataState('live');
+        setAdminOutbounds(outboundResponse.outbounds);
+        setRouteFailoverEvents(failoverResponse.events);
+        setRouteDataState('live');
+      } catch (error) {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setServerDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+        setRouteDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+      }
+    };
+
+    void loadManagementData();
+    const timer = window.setInterval(loadManagementData, refreshIntervalMs);
+
+    return () => {
+      isActive = false;
+      controller?.abort();
+      window.clearInterval(timer);
+    };
+  }, [sessionToken]);
+
+  useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, isSidebarCollapsed ? 'collapsed' : 'expanded');
   }, [isSidebarCollapsed]);
 
-  const serverRows = useMemo(
+  const metricServerRows = useMemo(
     () => (metrics.length > 0 ? metrics.map(mapSnapshotToServerRow) : fallbackServers),
     [metrics],
   );
+  const adminServerRows = useMemo(() => adminServers.map(mapAdminServerToServerRow), [adminServers]);
+  const managementServerRows = useMemo(
+    () => (serverDataState === 'live' || serverDataState === 'stale' ? adminServerRows : metricServerRows),
+    [adminServerRows, metricServerRows, serverDataState],
+  );
+  const serverRows = useMemo(
+    () => (adminServerRows.length > 0 ? adminServerRows : metricServerRows),
+    [adminServerRows, metricServerRows],
+  );
+  const routeOutbounds = useMemo(
+    () => (routeDataState === 'live' || routeDataState === 'stale'
+      ? adminOutbounds.map(mapAdminOutboundToRow)
+      : outbounds),
+    [adminOutbounds, routeDataState],
+  );
+  const failoverRows = useMemo(
+    () => (routeDataState === 'live' || routeDataState === 'stale'
+      ? routeFailoverEvents.map(mapRouteFailoverEventToRow)
+      : createFallbackFailoverRows(t)),
+    [routeDataState, routeFailoverEvents, t],
+  );
   const trafficTotals = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
-  const summary = useMemo(() => createSummary(serverRows, trafficTotals, t, format), [format, serverRows, trafficTotals, t]);
+  const computedAlerts = useMemo(() => createComputedAlertRows(serverRows, t), [serverRows, t]);
+  const apiAlertRows = useMemo(() => mapAdminAlertsToRows(apiAlerts, t), [apiAlerts, t]);
+  const alerts = useMemo(() => {
+    if (alertDataState === 'live' || alertDataState === 'stale') {
+      return apiAlertRows.length > 0 ? apiAlertRows : [createNoOpenAlertsRow(t)];
+    }
+
+    return computedAlerts;
+  }, [alertDataState, apiAlertRows, computedAlerts, t]);
+  const summary = useMemo(() => createSummary(serverRows, trafficTotals, alerts, t, format), [alerts, format, serverRows, trafficTotals, t]);
   const chartSeries = useMemo(
     () => (timeseries.length > 0 ? timeseries : createFallbackTimeseries(serverRows, timeRange)),
     [serverRows, timeRange, timeseries],
   );
-  const alerts = useMemo(() => createAlertRows(serverRows, t), [serverRows, t]);
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t);
@@ -258,10 +628,12 @@ export function DashboardApp() {
         isCollapsed={isSidebarCollapsed}
         isRtl={isRtl}
         nextLanguage={nextLanguage}
-        onLanguageChange={setLanguage}
+        onLanguageChange={onLanguageChange}
+        onSignOut={onSignOut}
         onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
         onViewChange={setActiveView}
         sidebarAlertState={sidebarAlertState}
+        session={session}
         t={t}
       />
 
@@ -271,21 +643,27 @@ export function DashboardApp() {
             <p className="mb-0.5 text-[11px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
             <h1 className="text-[21px] leading-tight font-bold md:text-[22px]">{header.title}</h1>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <div className="inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border border-afro-line bg-white px-2.5 text-[12px] font-bold text-afro-ink">
-              <Clock size={15} />
-              {wallClock}
+          {activeView === 'users' ? null : (
+            <div className="flex flex-wrap gap-2">
+              <div className="inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border border-afro-line bg-white px-2.5 text-[12px] font-bold text-afro-ink">
+                <Clock size={15} />
+                {wallClock}
+              </div>
+              <div className={`inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-bold ${status.className}`}>
+                <span className={`size-2 rounded-full ${status.dotClassName}`} />
+                {status.label}
+              </div>
             </div>
-            <div className={`inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-bold ${status.className}`}>
-              <span className={`size-2 rounded-full ${status.dotClassName}`} />
-              {status.label}
-            </div>
-          </div>
+          )}
         </header>
 
-        <SystemResourceHeader format={format} servers={serverRows} t={t} trafficTotals={trafficTotals} />
+        {activeView === 'dashboard' ? (
+          <>
+            <SystemResourceHeader format={format} servers={serverRows} t={t} trafficTotals={trafficTotals} />
 
-        <div className="mt-2.5 border-t border-afro-line" />
+            <div className="mt-2.5 border-t border-afro-line" />
+          </>
+        ) : null}
 
         <ActivePage
           activeView={activeView}
@@ -293,12 +671,135 @@ export function DashboardApp() {
           chartSeries={chartSeries}
           format={format}
           onRangeChange={setTimeRange}
+          routeDataState={routeDataState}
+          routeFailoverRows={failoverRows}
+          routeOutbounds={routeOutbounds}
+          serverDataState={serverDataState}
+          managementServers={managementServerRows}
           servers={serverRows}
+          session={session}
+          sessionToken={sessionToken}
           summary={summary}
           t={t}
           timeRange={timeRange}
           trafficTotals={trafficTotals}
         />
+      </section>
+    </main>
+  );
+}
+
+function AdminLoginPage({
+  auth,
+  format,
+  isRtl,
+  language,
+  nextLanguage,
+  onLanguageChange,
+  t,
+}: {
+  auth: AdminSessionHook;
+  format: DashboardFormatters;
+  isRtl: boolean;
+  language: DashboardLanguage;
+  nextLanguage: DashboardLanguage;
+  onLanguageChange: (language: DashboardLanguage) => void;
+  t: DashboardStrings;
+}) {
+  const [username, setUsername] = useState('superadmin');
+  const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const isChecking = auth.status === 'checking';
+  const errorMessage = auth.errorCode ? t.auth.errors[auth.errorCode] : null;
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void auth.signIn({ username, password });
+  };
+
+  return (
+    <main
+      className="grid min-h-screen place-items-center overflow-x-hidden bg-afro-page px-4 py-6 text-afro-ink"
+      dir={isRtl ? 'rtl' : 'ltr'}
+      lang={language}
+    >
+      <section className="w-full max-w-[420px] rounded-md border border-afro-line bg-afro-panel p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="mb-1 text-[11px] font-bold uppercase text-afro-teal">{t.auth.eyebrow}</p>
+            <h1 className="text-[22px] leading-tight font-bold">{t.auth.title}</h1>
+          </div>
+          <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} variant="light" />
+        </div>
+
+        <form className="mt-4 grid gap-3" onSubmit={handleSubmit}>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{t.auth.username}</span>
+            <span className="relative">
+              <UserRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-afro-muted" size={16} />
+              <input
+                autoComplete="username"
+                className="min-h-11 w-full rounded-md border border-afro-line bg-white px-10 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+                dir="ltr"
+                disabled={isChecking}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder={t.auth.usernamePlaceholder}
+                required
+                type="text"
+                value={username}
+              />
+            </span>
+          </label>
+
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{t.auth.password}</span>
+            <span className="relative">
+              <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-afro-muted" size={16} />
+              <input
+                autoComplete="current-password"
+                autoFocus
+                className="min-h-11 w-full rounded-md border border-afro-line bg-white px-10 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+                dir="ltr"
+                disabled={isChecking}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={t.auth.passwordPlaceholder}
+                required
+                type={isPasswordVisible ? 'text' : 'password'}
+                value={password}
+              />
+              <button
+                aria-label={isPasswordVisible ? t.auth.hidePassword : t.auth.showPassword}
+                className="absolute right-2 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-afro-muted hover:bg-[#f4f7f8] hover:text-afro-ink disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isChecking}
+                onClick={() => setIsPasswordVisible((current) => !current)}
+                title={isPasswordVisible ? t.auth.hidePassword : t.auth.showPassword}
+                type="button"
+              >
+                {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </span>
+          </label>
+
+          {errorMessage ? (
+            <div className="rounded-md border border-[#f0b7b7] bg-[#fff1f1] px-3 py-2 text-[13px] font-bold text-[#b91c1c]">
+              {errorMessage}
+            </div>
+          ) : null}
+
+          <button
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-70"
+            disabled={isChecking}
+            type="submit"
+          >
+            <LogIn size={17} />
+            {isChecking ? t.auth.signingIn : t.auth.signIn}
+          </button>
+        </form>
+
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-afro-line pt-3 text-[12px] text-afro-muted">
+          <span>{isChecking ? t.auth.checking : t.auth.mfaReady}</span>
+          <span className="font-bold text-afro-ink">v{appVersion}</span>
+        </div>
       </section>
     </main>
   );
@@ -392,7 +893,14 @@ function ActivePage({
   chartSeries,
   format,
   onRangeChange,
+  routeDataState,
+  routeFailoverRows,
+  routeOutbounds,
+  serverDataState,
+  managementServers,
   servers,
+  session,
+  sessionToken,
   summary,
   t,
   timeRange,
@@ -403,7 +911,14 @@ function ActivePage({
   chartSeries: ServerMetricTimeseries[];
   format: DashboardFormatters;
   onRangeChange: (range: MetricsTimeRange) => void;
+  routeDataState: DataState;
+  routeFailoverRows: RouteFailoverRowData[];
+  routeOutbounds: OutboundRowData[];
+  serverDataState: DataState;
+  managementServers: ServerRowData[];
   servers: ServerRowData[];
+  session: AdminSessionResponse;
+  sessionToken: string;
   summary: MetricCardData[];
   t: DashboardStrings;
   timeRange: MetricsTimeRange;
@@ -411,11 +926,23 @@ function ActivePage({
 }) {
   switch (activeView) {
     case 'servers':
-      return <ServersPage format={format} servers={servers} t={t} />;
+      return <ServersPage dataState={serverDataState} format={format} servers={managementServers} t={t} />;
+    case 'users':
+      return <UsersPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     case 'routes':
-      return <RoutesPage format={format} t={t} />;
+      return (
+        <RoutesPage
+          dataState={routeDataState}
+          failoverRows={routeFailoverRows}
+          format={format}
+          outbounds={routeOutbounds}
+          t={t}
+        />
+      );
     case 'alerts':
       return <AlertsPage alerts={alerts} format={format} t={t} />;
+    case 'settings':
+      return <SettingsPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     default:
       return (
         <DashboardPage
@@ -423,6 +950,7 @@ function ActivePage({
           chartSeries={chartSeries}
           format={format}
           onRangeChange={onRangeChange}
+          outbounds={routeOutbounds.length > 0 ? routeOutbounds : outbounds}
           servers={servers}
           summary={summary}
           t={t}
@@ -438,6 +966,7 @@ function DashboardPage({
   chartSeries,
   format,
   onRangeChange,
+  outbounds,
   servers,
   summary,
   t,
@@ -448,6 +977,7 @@ function DashboardPage({
   chartSeries: ServerMetricTimeseries[];
   format: DashboardFormatters;
   onRangeChange: (range: MetricsTimeRange) => void;
+  outbounds: OutboundRowData[];
   servers: ServerRowData[];
   summary: MetricCardData[];
   t: DashboardStrings;
@@ -479,7 +1009,7 @@ function DashboardPage({
       </section>
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-3">
-        <OutboundsPanel format={format} t={t} />
+        <OutboundsPanel format={format} outbounds={outbounds} t={t} />
         <CapacityPanel format={format} t={t} trafficTotals={trafficTotals} />
         <ControlPlanePanel format={format} t={t} />
       </section>
@@ -533,22 +1063,34 @@ function HealthChartPanel({
   );
 }
 
-function OutboundsPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
+function OutboundsPanel({
+  emptyMessage,
+  format,
+  outbounds,
+  t,
+}: {
+  emptyMessage?: string;
+  format: DashboardFormatters;
+  outbounds: OutboundRowData[];
+  t: DashboardStrings;
+}) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.outbounds} icon={ArrowDownUp} meta={t.panels.priorityFailover} />
       <div className="mt-2 grid gap-2">
+        {outbounds.length === 0 && emptyMessage ? <EmptyState message={emptyMessage} /> : null}
         {outbounds.map((outbound) => (
-          <div className="grid min-h-[46px] grid-cols-[24px_1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={outbound.name}>
+          <div className="grid min-h-[46px] grid-cols-[24px_1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={outbound.id}>
             <span className="grid size-6 place-items-center rounded bg-[#eef3f5] text-[12px] font-bold text-afro-ink">{format.integer(outbound.priority)}</span>
             <div className="min-w-0">
               <strong className="block truncate">{format.label(outbound.name)}</strong>
-              <span className={`${mutedTextClass} block truncate`}>{format.label(outbound.type)} / {format.label(outbound.mode)}</span>
+              <span className={`${mutedTextClass} block truncate`}>
+                {format.label(outbound.type)} / {format.label(outbound.mode)}
+                {outbound.serverLabel ? ` / ${format.label(outbound.serverLabel)}` : ''}
+              </span>
             </div>
             <div className="text-right">
-              <StatusBadge tone={outbound.status === 'healthy' ? 'good' : outbound.status === 'standby' ? 'neutral' : 'warning'}>
-                {t.status[outbound.status]}
-              </StatusBadge>
+              <StatusBadge tone={outbound.statusTone}>{format.label(outbound.statusText)}</StatusBadge>
               <div className={mutedTextClass}>{format.latency(outbound.latencyMs)}</div>
             </div>
           </div>
@@ -559,12 +1101,14 @@ function OutboundsPanel({ format, t }: { format: DashboardFormatters; t: Dashboa
 }
 
 function AlertsPanel({ alerts, format, t }: { alerts: AlertRowData[]; format: DashboardFormatters; t: DashboardStrings }) {
+  const activeAlertCount = countActiveAlertRows(alerts);
+
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(format.integer(alerts.length))} />
+      <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(format.integer(activeAlertCount))} />
       <div className="mt-2 grid gap-2">
         {alerts.map((alert) => (
-          <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={`${alert.source}-${alert.title}`}>
+          <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={alert.id}>
             <div className="min-w-0">
               <strong className="block truncate">{alert.title}</strong>
               <span className={`${mutedTextClass} block truncate`}>{format.label(alert.source)}</span>
@@ -624,55 +1168,96 @@ function ControlPlanePanel({ format, t }: { format: DashboardFormatters; t: Dash
   );
 }
 
-function ServersPage({ format, servers, t }: { format: DashboardFormatters; servers: ServerRowData[]; t: DashboardStrings }) {
+function ServersPage({
+  dataState,
+  format,
+  servers,
+  t,
+}: {
+  dataState: DataState;
+  format: DashboardFormatters;
+  servers: ServerRowData[];
+  t: DashboardStrings;
+}) {
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(() => servers[0]?.id ?? null);
+
+  useEffect(() => {
+    if (servers.length === 0) {
+      setSelectedServerId(null);
+      return;
+    }
+
+    if (!selectedServerId || !servers.some((server) => server.id === selectedServerId)) {
+      setSelectedServerId(servers[0].id);
+    }
+  }, [selectedServerId, servers]);
+
+  const selectedServerIndex = Math.max(0, servers.findIndex((server) => server.id === selectedServerId));
+  const selectedServer = servers[selectedServerIndex] ?? null;
+
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
       <section className={panelClass}>
         <PanelHeading title={t.panels.serverInventory} icon={Server} meta={t.panels.managedNodes(format.integer(servers.length))} />
         <div className="mt-2 grid gap-2.5">
+          {servers.length === 0 ? (
+            <EmptyState message={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noServers} />
+          ) : null}
           {servers.map((server, index) => (
-            <ServerManagementCard format={format} index={index} server={server} key={server.id} t={t} />
+            <ServerManagementCard
+              format={format}
+              index={index}
+              isSelected={server.id === selectedServerId}
+              key={server.id}
+              onEdit={() => setSelectedServerId(server.id)}
+              server={server}
+              t={t}
+            />
           ))}
         </div>
       </section>
 
-      <section className={panelClass}>
-        <PanelHeading title={t.panels.accessBootstrap} icon={ShieldCheck} meta={t.panels.safeOperations} />
-        <div className="mt-2 grid gap-2">
-          {[
-            [t.accessRows.defaultUser, 'afrogate'],
-            [t.accessRows.accessMethod, t.accessRows.sshKey],
-            [t.accessRows.rootPassword, t.accessRows.bootstrapOnly],
-            [t.accessRows.credentialView, t.accessRows.hidden],
-            [t.accessRows.auditMode, t.accessRows.required],
-          ].map(([label, value]) => (
-            <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
-              <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
-              <strong className="text-sm">{value}</strong>
-            </div>
-          ))}
-        </div>
-      </section>
+      <ServerEditPanel format={format} server={selectedServer} serverIndex={selectedServerIndex} t={t} />
     </section>
   );
 }
 
-function ServerManagementCard({ format, index, server, t }: { format: DashboardFormatters; index: number; server: ServerRowData; t: DashboardStrings }) {
-  const interfaces = index === 0
+function getServerInterfaces(index: number): string[] {
+  return index === 0
     ? ['ether1 / Mobinnet / wg1', 'ether2 / Irancell / wireguard2']
     : index === 1
       ? ['ether5 / Irancell / wireguard3']
       : ['core uplink / Germany / gateway'];
+}
+
+function ServerManagementCard({
+  format,
+  index,
+  isSelected,
+  onEdit,
+  server,
+  t,
+}: {
+  format: DashboardFormatters;
+  index: number;
+  isSelected: boolean;
+  onEdit: () => void;
+  server: ServerRowData;
+  t: DashboardStrings;
+}) {
+  const interfaces = getServerInterfaces(index);
+  const selectedClass = isSelected ? 'border-afro-blue ring-2 ring-afro-blue/15' : 'border-afro-line';
 
   return (
-    <article className="rounded-md border border-afro-line p-2.5">
+    <article className={`rounded-md border p-2.5 ${selectedClass}`}>
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <strong className="block truncate text-base">{format.label(server.name)}</strong>
-          <span className={mutedTextClass}>{format.label(server.meta)}</span>
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <strong className="min-w-0 truncate text-base">{format.label(server.name)}</strong>
+          <span className={`${mutedTextClass} shrink-0`}>{format.label(server.meta)}</span>
         </div>
         <button
           className="min-h-8 rounded-md border border-afro-line bg-white px-2.5 text-[13px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue"
+          onClick={onEdit}
           type="button"
         >
           {t.actions.edit}
@@ -702,13 +1287,640 @@ function ServerManagementCard({ format, index, server, t }: { format: DashboardF
   );
 }
 
-function RoutesPage({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
+function ServerEditPanel({
+  format,
+  server,
+  serverIndex,
+  t,
+}: {
+  format: DashboardFormatters;
+  server: ServerRowData | null;
+  serverIndex: number;
+  t: DashboardStrings;
+}) {
+  const [activeTab, setActiveTab] = useState<ServerEditTab>('overview');
+
+  if (!server) {
+    return (
+      <section className={panelClass}>
+        <PanelHeading title={t.panels.serverEdit} icon={ShieldCheck} meta={t.serverEdit.noServer} />
+      </section>
+    );
+  }
+
+  const interfaces = getServerInterfaces(serverIndex);
+  const tabs: Array<{ id: ServerEditTab; label: string }> = [
+    { id: 'overview', label: t.serverEdit.tabs.overview },
+    { id: 'access', label: t.serverEdit.tabs.access },
+    { id: 'monitoring', label: t.serverEdit.tabs.monitoring },
+    { id: 'interfaces', label: t.serverEdit.tabs.interfaces },
+    { id: 'audit', label: t.serverEdit.tabs.audit },
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.panels.serverEdit} icon={ShieldCheck} meta={format.label(server.name)} />
+      <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+        {tabs.map((tab) => {
+          const activeClass = activeTab === tab.id
+            ? 'border-afro-blue bg-[#edf4ff] text-afro-blue'
+            : 'border-afro-line bg-white text-afro-muted hover:border-afro-blue hover:text-afro-blue';
+
+          return (
+            <button
+              className={`min-h-9 rounded-md border px-2 text-[12px] font-bold ${activeClass}`}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-2">
+        {activeTab === 'overview' ? <ServerOverviewTab format={format} server={server} t={t} /> : null}
+        {activeTab === 'access' ? <ServerAccessTab server={server} t={t} /> : null}
+        {activeTab === 'monitoring' ? <ServerMonitoringTab format={format} server={server} t={t} /> : null}
+        {activeTab === 'interfaces' ? <ServerInterfacesTab format={format} interfaces={interfaces} server={server} t={t} /> : null}
+        {activeTab === 'audit' ? <ServerAuditTab format={format} server={server} t={t} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function ServerOverviewTab({ format, server, t }: { format: DashboardFormatters; server: ServerRowData; t: DashboardStrings }) {
+  return (
+    <div className="grid gap-2">
+      <DetailRow label={t.serverEdit.labels.country}>{format.label(server.meta)}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.status}>
+        <StatusBadge tone={server.score >= 70 ? 'good' : server.score >= 50 ? 'warning' : 'critical'}>
+          {server.score >= 70 ? t.status.healthy : server.score >= 50 ? t.status.warning : t.status.critical}
+        </StatusBadge>
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.role}>
+        {server.role ? format.label(server.role) : server.name.toLowerCase().includes('core') ? t.serverEdit.values.gatewayNode : t.serverEdit.values.edgeNode}
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.routeGroup}>{t.serverEdit.values.routeGroupMain}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.lastSeen}>
+        {server.observedAt ? format.time(new Date(server.observedAt), false) : t.serverEdit.values.localSample}
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.healthScore}>{format.integer(server.score)}</DetailRow>
+    </div>
+  );
+}
+
+function ServerAccessTab({ server, t }: { server: ServerRowData; t: DashboardStrings }) {
+  const profile = server.accessProfile;
+
+  return (
+    <div className="grid gap-2">
+      <DetailRow label={t.accessRows.defaultUser}>{profile?.username ?? 'afrogate'}</DetailRow>
+      <DetailRow label={t.accessRows.accessMethod}>{profile?.accessMethod ?? t.accessRows.sshKey}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.sshPort}>{profile?.sshPort ?? 22}</DetailRow>
+      <DetailRow label={t.accessRows.rootPassword}>{t.accessRows.bootstrapOnly}</DetailRow>
+      <DetailRow label={t.accessRows.credentialView}>{profile?.hasCredentialRef ? t.accessRows.hidden : t.serverEdit.values.notRun}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.bootstrapState}>
+        <StatusBadge tone={profile?.bootstrapState === 'installed' ? 'good' : 'warning'}>
+          {profile?.bootstrapState ?? t.serverEdit.values.pending}
+        </StatusBadge>
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.connectionTest}>{profile?.lastTestStatus ?? t.serverEdit.values.notRun}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.secretPolicy}>{t.serverEdit.values.secretsHidden}</DetailRow>
+    </div>
+  );
+}
+
+function ServerMonitoringTab({ format, server, t }: { format: DashboardFormatters; server: ServerRowData; t: DashboardStrings }) {
+  const wireGuardSummary = summarizeWireGuardInterfaces(server.wireGuardInterfaces, format, t);
+  const wireGuardRows = server.wireGuardInterfaces.slice(0, 3);
+  const routeProbeSummary = summarizeRouteProbes(server.routeProbes, format, t);
+
+  return (
+    <div className="grid gap-2">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <UsageBar format={format} icon={Cpu} label={t.resources.cpu} value={server.cpu} />
+        <UsageBar format={format} icon={MemoryStick} label={t.resources.ram} value={server.ram} />
+        <UsageBar format={format} icon={HardDrive} label={t.resources.diskFree} value={server.diskFree} invert />
+      </div>
+      <DetailRow label={t.serverEdit.labels.metricsInterval}>{format.durationSeconds(10)}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.networkRate}>
+        {format.bytesPerSecond(server.inboundBps)} / {format.bytesPerSecond(server.outboundBps)}
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.routeQuality}>
+        {format.latency(server.pingMs)} / {format.latency(server.jitterMs)} / {format.packetLoss(server.packetLossPercent)}
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.tunnelHealth}>
+        <StatusBadge tone={wireGuardSummary.tone}>{wireGuardSummary.label}</StatusBadge>
+      </DetailRow>
+      {wireGuardRows.map((item) => (
+        <DetailRow key={item.name} label={`${t.serverEdit.labels.wireGuardInterface} ${item.name}`}>
+          <span className="inline-flex items-center gap-1.5">
+            <StatusBadge tone={wireGuardTone(item)}>{wireGuardStatusLabel(item.status, t)}</StatusBadge>
+            <span>{formatWireGuardPeerSummary(item, format, t)}</span>
+          </span>
+        </DetailRow>
+      ))}
+      <DetailRow label={t.serverEdit.labels.protocolProbes}>
+        <StatusBadge tone={routeProbeSummary.tone}>{routeProbeSummary.label}</StatusBadge>
+      </DetailRow>
+    </div>
+  );
+}
+
+function ServerInterfacesTab({
+  format,
+  interfaces,
+  server,
+  t,
+}: {
+  format: DashboardFormatters;
+  interfaces: string[];
+  server: ServerRowData;
+  t: DashboardStrings;
+}) {
+  const metricRows = server.networkInterfaces.length > 0
+    ? server.networkInterfaces.map((item) => ({
+        name: item.name,
+        value: `${format.bytesPerSecond(item.rxBps ?? null)} / ${format.bytesPerSecond(item.txBps ?? null)}`,
+      }))
+    : interfaces.map((item) => ({ name: format.label(item), value: t.serverEdit.values.localSample }));
+  const wireGuardRows = server.wireGuardInterfaces.map((item) => ({
+    name: item.name,
+    status: wireGuardStatusLabel(item.status, t),
+    tone: wireGuardTone(item),
+    peerSummary: formatWireGuardPeerSummary(item, format, t),
+    rate: `${format.bytesPerSecond(item.rxBps ?? null)} / ${format.bytesPerSecond(item.txBps ?? null)}`,
+    handshake: formatWireGuardHandshake(item, format, t),
+  }));
+
+  return (
+    <div className="grid gap-2">
+      {metricRows.map((item) => (
+        <DetailRow key={item.name} label={item.name}>{item.value}</DetailRow>
+      ))}
+      {wireGuardRows.map((item) => (
+        <DetailRow key={`wg-${item.name}`} label={`${t.serverEdit.labels.wireGuardInterface} ${item.name}`}>
+          <span className="inline-flex items-center gap-1.5">
+            <StatusBadge tone={item.tone}>{item.status}</StatusBadge>
+            <span>{item.peerSummary}</span>
+          </span>
+        </DetailRow>
+      ))}
+      {wireGuardRows.map((item) => (
+        <DetailRow key={`wg-rate-${item.name}`} label={`${item.name} ${t.serverEdit.labels.networkRate}`}>
+          {item.rate}
+        </DetailRow>
+      ))}
+      {wireGuardRows.map((item) => (
+        <DetailRow key={`wg-handshake-${item.name}`} label={`${item.name} ${t.serverEdit.labels.latestHandshake}`}>
+          {item.handshake}
+        </DetailRow>
+      ))}
+      {wireGuardRows.length === 0 ? (
+        <DetailRow label={t.serverEdit.labels.wireGuardInterfaces}>{t.serverEdit.values.noWireGuardTelemetry}</DetailRow>
+      ) : null}
+      <DetailRow label={t.serverEdit.labels.interfaceMap}>{interfaces.map((item) => format.label(item)).join(' / ')}</DetailRow>
+    </div>
+  );
+}
+
+function summarizeWireGuardInterfaces(
+  interfaces: WireGuardInterfaceMetric[],
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): { label: string; tone: Tone } {
+  if (interfaces.length === 0) {
+    return { label: t.serverEdit.values.noWireGuardTelemetry, tone: 'neutral' };
+  }
+
+  const totalPeers = interfaces.reduce((sum, item) => sum + item.peerCount, 0);
+  const activePeers = interfaces.reduce((sum, item) => sum + item.activePeerCount, 0);
+  const worstStatus = interfaces.reduce((current, item) => {
+    const currentRank = wireGuardStatusRank(current);
+    const nextRank = wireGuardStatusRank(item.status);
+
+    return nextRank > currentRank ? item.status : current;
+  }, 'up');
+  const statusLabel = wireGuardStatusLabel(worstStatus, t);
+  const peerSummary = totalPeers > 0
+    ? t.serverEdit.values.wireGuardPeerSummary(format.integer(activePeers), format.integer(totalPeers))
+    : t.serverEdit.values.wireGuardNoPeers;
+
+  return {
+    label: `${statusLabel} / ${peerSummary}`,
+    tone: wireGuardTone({ status: worstStatus, peerCount: totalPeers, activePeerCount: activePeers } as WireGuardInterfaceMetric),
+  };
+}
+
+function wireGuardTone(item: WireGuardInterfaceMetric): Tone {
+  if (item.status === 'up' && item.peerCount > 0 && item.activePeerCount === item.peerCount) return 'good';
+  if (item.status === 'degraded' || item.activePeerCount > 0) return 'warning';
+  if (item.status === 'down' || item.peerCount > 0) return 'critical';
+
+  return 'neutral';
+}
+
+function wireGuardStatusRank(status: string): number {
+  if (status === 'down') return 3;
+  if (status === 'degraded') return 2;
+  if (status === 'unknown') return 1;
+
+  return 0;
+}
+
+function summarizeRouteProbes(
+  probes: RouteProbeMetric[],
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): { label: string; tone: Tone } {
+  if (probes.length === 0) {
+    return { label: t.serverEdit.values.noProtocolProbes, tone: 'neutral' };
+  }
+
+  const criticalCount = probes.filter((probe) => probe.status === 'critical').length;
+  const degradedCount = probes.filter((probe) => probe.status === 'degraded').length;
+  const healthyCount = probes.filter((probe) => probe.status === 'healthy').length;
+  const tone: Tone = criticalCount > 0 ? 'critical' : degradedCount > 0 ? 'warning' : 'good';
+
+  return {
+    label: t.serverEdit.values.protocolProbeSummary(
+      format.integer(healthyCount),
+      format.integer(probes.length),
+    ),
+    tone,
+  };
+}
+
+function wireGuardStatusLabel(status: string, t: DashboardStrings): string {
+  if (status === 'up') return t.serverEdit.values.wireGuardStatusUp;
+  if (status === 'degraded') return t.serverEdit.values.wireGuardStatusDegraded;
+  if (status === 'down') return t.serverEdit.values.wireGuardStatusDown;
+
+  return t.serverEdit.values.wireGuardStatusUnknown;
+}
+
+function formatWireGuardPeerSummary(
+  item: WireGuardInterfaceMetric,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  return item.peerCount > 0
+    ? t.serverEdit.values.wireGuardPeerSummary(format.integer(item.activePeerCount), format.integer(item.peerCount))
+    : t.serverEdit.values.wireGuardNoPeers;
+}
+
+function formatWireGuardHandshake(
+  item: WireGuardInterfaceMetric,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  return typeof item.latestHandshakeAgeSeconds === 'number'
+    ? t.serverEdit.values.latestHandshakeAge(format.durationSeconds(item.latestHandshakeAgeSeconds))
+    : t.serverEdit.values.noHandshake;
+}
+
+function ServerAuditTab({ format, server, t }: { format: DashboardFormatters; server: ServerRowData; t: DashboardStrings }) {
+  return (
+    <div className="grid gap-2">
+      <DetailRow label={t.accessRows.auditMode}>
+        <StatusBadge tone="warning">{t.accessRows.required}</StatusBadge>
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.lastChange}>
+        {server.observedAt ? format.time(new Date(server.observedAt), false) : t.serverEdit.values.localSample}
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.auditTrail}>{t.serverEdit.values.readOnlyMvp}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.agentFirst}>{t.serverEdit.values.agentFirst}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.secretPolicy}>{t.serverEdit.values.secretsHidden}</DetailRow>
+    </div>
+  );
+}
+
+function DetailRow({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5">
+      <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
+      <strong className="shrink-0 text-right text-sm">{children}</strong>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-afro-line bg-[#f8fafb] px-3 py-3 text-center text-[13px] font-bold text-afro-muted">
+      {message}
+    </div>
+  );
+}
+
+function UsersPage({
+  format,
+  session,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  session: AdminSessionResponse;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const [users, setUsers] = useState<AdminUserSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState<Role>('admin');
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
+  const canManageUsers = session.actor.role === 'superadmin' && session.actor.isSuperAdmin === true;
+
+  const loadUsers = useMemo(() => async (signal?: AbortSignal) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetchAdminUsers(sessionToken, signal);
+      setUsers(response.users);
+    } catch (loadError) {
+      if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
+      setError(t.userManagement.errors.load);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sessionToken, t]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadUsers(controller.signal);
+
+    return () => controller.abort();
+  }, [loadUsers]);
+
+  const resetCreateForm = () => {
+    setNewUsername('');
+    setNewPassword('');
+    setNewRole('admin');
+  };
+
+  const closeCreateForm = () => {
+    setIsCreateFormOpen(false);
+    resetCreateForm();
+  };
+
+  const handleCreateUser = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+
+    try {
+      const createdUser = await createAdminUser(sessionToken, {
+        username: newUsername,
+        password: newPassword,
+        role: newRole,
+        status: 'active',
+      });
+      setUsers((current) => [createdUser, ...current.filter((item) => item.id !== createdUser.id)]);
+      closeCreateForm();
+    } catch {
+      setError(t.userManagement.errors.save);
+    }
+  };
+
+  const handleToggleStatus = async (user: AdminUserSummary) => {
+    setError(null);
+
+    try {
+      const updatedUser = await updateAdminUser(sessionToken, user.id, {
+        status: user.status === 'active' ? 'disabled' : 'active',
+      });
+      setUsers((current) => current.map((item) => item.id === updatedUser.id ? updatedUser : item));
+    } catch {
+      setError(t.userManagement.errors.save);
+    }
+  };
+
+  const handleDeleteUser = async (user: AdminUserSummary) => {
+    setError(null);
+
+    try {
+      await deleteAdminUser(sessionToken, user.id);
+      setUsers((current) => current.filter((item) => item.id !== user.id));
+    } catch {
+      setError(t.userManagement.errors.save);
+    }
+  };
+
+  const handleChangePassword = async (user: AdminUserSummary) => {
+    const password = passwordDrafts[user.id]?.trim();
+    if (!password) return;
+    setError(null);
+
+    try {
+      const updatedUser = await updateAdminUserPassword(sessionToken, user.id, { password });
+      setUsers((current) => current.map((item) => item.id === updatedUser.id ? updatedUser : item));
+      setPasswordDrafts((current) => ({ ...current, [user.id]: '' }));
+    } catch {
+      setError(t.userManagement.errors.save);
+    }
+  };
+
+  return (
+    <section className="mt-0 grid gap-3">
+      {isCreateFormOpen ? (
+        <section className={panelClass}>
+          <div className="flex min-h-9 items-center justify-between gap-3 border-b border-afro-line pb-2">
+            <PanelHeadingContent title={t.panels.createUser} meta={t.panels.protectedAccess} />
+            <button
+              className="inline-flex min-h-9 items-center justify-center rounded-md border border-afro-line bg-white px-3 text-[13px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue"
+              onClick={closeCreateForm}
+              type="button"
+            >
+              {t.actions.cancel}
+            </button>
+          </div>
+          <form className="mt-2 grid gap-2 xl:grid-cols-[minmax(170px,1fr)_minmax(170px,1fr)_minmax(150px,0.7fr)_auto] xl:items-end" onSubmit={handleCreateUser}>
+            <label className="grid gap-1.5">
+              <span className={mutedTextClass}>{t.userManagement.username}</span>
+              <input
+                autoFocus
+                className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                disabled={!canManageUsers}
+                onChange={(event) => setNewUsername(event.target.value)}
+                required
+                type="text"
+                value={newUsername}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className={mutedTextClass}>{t.userManagement.password}</span>
+              <input
+                className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                disabled={!canManageUsers}
+                minLength={8}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+                type="password"
+                value={newPassword}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className={mutedTextClass}>{t.userManagement.role}</span>
+              <select
+                className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                disabled={!canManageUsers}
+                onChange={(event) => setNewRole(event.target.value as Role)}
+                value={newRole}
+              >
+                {managedAdminRoles.map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!canManageUsers}
+              type="submit"
+            >
+              <UserRound size={16} />
+              {t.actions.create}
+            </button>
+          </form>
+        </section>
+      ) : null}
+
+      <section className={panelClass}>
+        <div className="flex min-h-9 flex-col gap-2 border-b border-afro-line pb-2 sm:flex-row sm:items-center sm:justify-between">
+          <PanelHeadingContent
+            title={t.panels.adminUsers}
+            meta={isLoading ? t.dataStatus.loading : t.userManagement.usersLoaded(format.integer(users.length))}
+          />
+          <button
+            className="inline-flex min-h-9 w-fit items-center justify-center gap-2 rounded-md bg-afro-sidebar px-3 text-[13px] font-bold text-white hover:bg-[#1f3138] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canManageUsers}
+            onClick={() => setIsCreateFormOpen((current) => !current)}
+            type="button"
+          >
+            <Plus size={15} />
+            {t.actions.addUser}
+          </button>
+        </div>
+        {error ? (
+          <div className="mt-2 rounded-md border border-[#f0b7b7] bg-[#fff1f1] px-3 py-2 text-[13px] font-bold text-[#b91c1c]">
+            {error}
+          </div>
+        ) : null}
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse">
+            <thead>
+              <tr>
+                {[
+                  t.userManagement.username,
+                  t.userManagement.role,
+                  t.userManagement.status,
+                  t.userManagement.source,
+                  t.userManagement.protection,
+                  t.tables.actions,
+                ].map((heading) => (
+                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <TableCell>
+                    <strong className="block text-afro-ink">{user.username}</strong>
+                    <span className="text-[12px] text-afro-muted">{format.time(new Date(user.updatedAt), false)}</span>
+                  </TableCell>
+                  <TableCell>{user.role}</TableCell>
+                  <TableCell>
+                    <StatusBadge tone={user.status === 'active' ? 'good' : 'warning'}>
+                      {t.userManagement[user.status]}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell>{t.userManagement[user.source]}</TableCell>
+                  <TableCell>
+                    <StatusBadge tone={user.isSuperAdmin ? 'critical' : user.canDelete ? 'neutral' : 'warning'}>
+                      {user.isSuperAdmin ? t.userManagement.protected : user.canDelete ? t.userManagement.managed : t.userManagement.protected}
+                    </StatusBadge>
+                  </TableCell>
+                  <td className="border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0">
+                    <div className="flex min-w-[260px] flex-wrap gap-1.5">
+                      <button
+                        className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-ink disabled:cursor-not-allowed disabled:opacity-45"
+                        disabled={!canManageUsers || !user.canDisable}
+                        onClick={() => void handleToggleStatus(user)}
+                        type="button"
+                      >
+                        {user.status === 'active' ? t.actions.disable : t.actions.enable}
+                      </button>
+                      <button
+                        className="min-h-8 rounded-md border border-[#f0b7b7] bg-white px-2 text-[12px] font-bold text-[#b91c1c] disabled:cursor-not-allowed disabled:opacity-45"
+                        disabled={!canManageUsers || !user.canDelete}
+                        onClick={() => void handleDeleteUser(user)}
+                        type="button"
+                      >
+                        {t.actions.delete}
+                      </button>
+                      <input
+                        className="min-h-8 w-28 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-2 disabled:opacity-45"
+                        disabled={!canManageUsers || !user.canChangePassword}
+                        onChange={(event) => setPasswordDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
+                        placeholder={t.userManagement.newPassword}
+                        type="password"
+                        value={passwordDrafts[user.id] ?? ''}
+                      />
+                      <button
+                        className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+                        disabled={!canManageUsers || !user.canChangePassword || !passwordDrafts[user.id]}
+                        onClick={() => void handleChangePassword(user)}
+                        type="button"
+                      >
+                        {t.actions.savePassword}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function RoutesPage({
+  dataState,
+  failoverRows,
+  format,
+  outbounds,
+  t,
+}: {
+  dataState: DataState;
+  failoverRows: RouteFailoverRowData[];
+  format: DashboardFormatters;
+  outbounds: OutboundRowData[];
+  t: DashboardStrings;
+}) {
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <TunnelPanel format={format} t={t} />
-      <OutboundsPanel format={format} t={t} />
+      <OutboundsPanel
+        emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noOutbounds}
+        format={format}
+        outbounds={outbounds}
+        t={t}
+      />
       <RoutePolicyPanel format={format} t={t} />
-      <FailoverPanel format={format} t={t} />
+      <FailoverPanel
+        emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noFailoverEvents}
+        events={failoverRows}
+        format={format}
+        t={t}
+      />
     </section>
   );
 }
@@ -736,24 +1948,32 @@ function RoutePolicyPanel({ format, t }: { format: DashboardFormatters; t: Dashb
   );
 }
 
-function FailoverPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
-  const events: Array<[string, string, Tone]> = [
-    ['Germany gateway', t.failover.primaryRouteHealthy, 'good'],
-    ['Control egress', t.failover.standbyTelegramApi, 'neutral'],
-    ['Iran direct', t.failover.restrictedInternetPath, 'warning'],
-  ];
-
+function FailoverPanel({
+  emptyMessage,
+  events,
+  format,
+  t,
+}: {
+  emptyMessage?: string;
+  events: RouteFailoverRowData[];
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.failover} icon={ArrowDownUp} meta={t.panels.latestDecisions} />
       <div className="mt-2 grid gap-2">
-        {events.map(([title, detail, tone]) => (
-          <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={title}>
+        {events.length === 0 && emptyMessage ? <EmptyState message={emptyMessage} /> : null}
+        {events.map((event) => (
+          <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={event.id}>
             <div className="min-w-0">
-              <strong className="block truncate">{format.label(title)}</strong>
-              <span className={`${mutedTextClass} block truncate`}>{detail}</span>
+              <strong className="block truncate">{format.label(event.title)}</strong>
+              <span className={`${mutedTextClass} block truncate`}>
+                {event.detail}
+                {event.createdAt ? ` / ${format.time(new Date(event.createdAt), false)}` : ''}
+              </span>
             </div>
-            <StatusBadge tone={tone}>{t.status[tone]}</StatusBadge>
+            <StatusBadge tone={event.tone}>{t.status[event.tone]}</StatusBadge>
           </div>
         ))}
       </div>
@@ -762,10 +1982,12 @@ function FailoverPanel({ format, t }: { format: DashboardFormatters; t: Dashboar
 }
 
 function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: DashboardFormatters; t: DashboardStrings }) {
+  const activeAlertCount = countActiveAlertRows(alerts);
+
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
       <section className={panelClass}>
-        <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(format.integer(alerts.length))} />
+        <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(format.integer(activeAlertCount))} />
         <div className="mt-2 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -779,12 +2001,15 @@ function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: Das
             </thead>
             <tbody>
               {alerts.map((alert) => (
-                <tr key={`${alert.source}-${alert.title}`}>
+                <tr key={alert.id}>
                   <TableCell>
                     <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
                   </TableCell>
                   <TableCell>{format.label(alert.source)}</TableCell>
-                  <TableCell>{alert.title}</TableCell>
+                  <TableCell>
+                    <strong className="block truncate text-afro-ink">{alert.title}</strong>
+                    {alert.message ? <span className="block max-w-[420px] truncate text-[12px]">{alert.message}</span> : null}
+                  </TableCell>
                   <TableCell>{t.alerts.dashboard}</TableCell>
                 </tr>
               ))}
@@ -813,15 +2038,3352 @@ function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: Das
   );
 }
 
+function SettingsPage({
+  format,
+  session,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  session: AdminSessionResponse;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const [draft, setDraft] = useState<WireGuardSetupDraft>({
+    serverName: '',
+    interfaceName: 'wg0',
+    routeGroup: 'main',
+    addressCidr: '',
+    listenPort: '51820',
+    privateKey: '',
+    peerPublicKey: '',
+    endpoint: '',
+    allowedIps: '0.0.0.0/0, ::/0',
+    persistentKeepalive: '25',
+    healthTarget: '',
+  });
+  const [routeMode, setRouteMode] = useState<RouteSelectionMode>('automatic');
+  const [loadBalanceStrategy, setLoadBalanceStrategy] = useState<LoadBalanceStrategy>('balanced');
+  const [selectedWireGuardId, setSelectedWireGuardId] = useState('wg-primary');
+  const [assignmentAutoRouteEnabled, setAssignmentAutoRouteEnabled] = useState(true);
+  const [assignmentRouteLocked, setAssignmentRouteLocked] = useState(false);
+  const [assignmentCurrentOutboundId, setAssignmentCurrentOutboundId] = useState('');
+  const [assignmentLockedOutboundId, setAssignmentLockedOutboundId] = useState('');
+  const [assignmentHysteresisScoreDelta, setAssignmentHysteresisScoreDelta] = useState('15');
+  const [assignmentCooldownSeconds, setAssignmentCooldownSeconds] = useState('180');
+  const [protocolDraft, setProtocolDraft] = useState<ProtocolSetupDraft>({
+    name: 'wg-main',
+    protocol: 'wireguard',
+    profile: 'balanced',
+    port: protocolDefaultPorts.wireguard,
+    routeGroup: 'main',
+  });
+  const [privateKeyAccepted, setPrivateKeyAccepted] = useState(false);
+  const [privateKeySecretRef, setPrivateKeySecretRef] = useState<string | null>(null);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const [protocolMessage, setProtocolMessage] = useState<string | null>(null);
+  const [provisionMessage, setProvisionMessage] = useState<string | null>(null);
+  const [routeMessage, setRouteMessage] = useState<string | null>(null);
+  const [settingsDataState, setSettingsDataState] = useState<DataState>('loading');
+  const [persistedProtocolSetups, setPersistedProtocolSetups] = useState<AdminProtocolSetupSummary[]>([]);
+  const [apiWireGuardCandidates, setApiWireGuardCandidates] = useState<AdminWireGuardCandidate[]>([]);
+  const [routeQualityAnalytics, setRouteQualityAnalytics] = useState<AdminRouteQualityAnalyticsResponse | null>(null);
+  const [routeDecisionPreview, setRouteDecisionPreview] = useState<AdminRouteDecisionPreviewResponse | null>(null);
+  const [routeDecisionEvents, setRouteDecisionEvents] = useState<AdminRouteDecisionEventSummary[]>([]);
+  const [routeDecisionEventDetail, setRouteDecisionEventDetail] = useState<AdminRouteDecisionEventDetail | null>(null);
+  const [routeDecisionSwitchExecution, setRouteDecisionSwitchExecution] = useState<AdminRouteDecisionSwitchExecutionSummary | null>(null);
+  const [isSecretSaving, setIsSecretSaving] = useState(false);
+  const [isProtocolSaving, setIsProtocolSaving] = useState(false);
+  const [provisioningSetupId, setProvisioningSetupId] = useState<string | null>(null);
+  const [isRouteSaving, setIsRouteSaving] = useState(false);
+  const [isDecisionRecording, setIsDecisionRecording] = useState(false);
+  const [isDecisionApplying, setIsDecisionApplying] = useState(false);
+  const [isDecisionEventDetailLoading, setIsDecisionEventDetailLoading] = useState(false);
+  const canCreateProtocols = session.actor.role === 'superadmin' || Boolean(session.actor.isSuperAdmin);
+  const sampleWireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
+    () => [
+      {
+        id: 'wg-primary',
+        name: t.settings.primaryGateway,
+        endpoint: draft.endpoint.trim() || 'gateway.example.com:51820',
+        routeGroup: 'main',
+        healthStatus: 'healthy',
+        score: 92,
+        latencyMs: 48,
+        jitterMs: 5,
+        packetLossPercent: 0.1,
+        loadPercent: 42,
+        checkedAt: null,
+        source: 'sample',
+      },
+      {
+        id: 'wg-backup',
+        name: t.settings.backupGateway,
+        endpoint: 'backup.example.com:51820',
+        routeGroup: 'main',
+        healthStatus: 'healthy',
+        score: 84,
+        latencyMs: 63,
+        jitterMs: 9,
+        packetLossPercent: 0.3,
+        loadPercent: 31,
+        checkedAt: null,
+        source: 'sample',
+      },
+      {
+        id: 'wg-control',
+        name: t.settings.controlGateway,
+        endpoint: 'control.example.com:51820',
+        routeGroup: 'main',
+        healthStatus: 'degraded',
+        score: 71,
+        latencyMs: 88,
+        jitterMs: 15,
+        packetLossPercent: 0.7,
+        loadPercent: 58,
+        checkedAt: null,
+        source: 'sample',
+      },
+    ],
+    [draft.endpoint, t],
+  );
+  const wireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
+    () => (apiWireGuardCandidates.length > 0 ? apiWireGuardCandidates : sampleWireGuardCandidates),
+    [apiWireGuardCandidates, sampleWireGuardCandidates],
+  );
+  const managedWireGuardCandidates = useMemo(
+    () => wireGuardCandidates.filter((candidate) => candidate.source === 'outbound'),
+    [wireGuardCandidates],
+  );
+  const applyRouteAssignment = (assignment: AdminRouteAssignmentSummary) => {
+    setAssignmentAutoRouteEnabled(assignment.autoRouteEnabled);
+    setAssignmentRouteLocked(assignment.routeLocked);
+    setAssignmentCurrentOutboundId(assignment.currentOutboundId ?? '');
+    setAssignmentLockedOutboundId(assignment.lockedOutboundId ?? assignment.currentOutboundId ?? '');
+    setAssignmentHysteresisScoreDelta(String(assignment.hysteresisScoreDelta));
+    setAssignmentCooldownSeconds(String(assignment.cooldownSeconds));
+    setRouteMode(assignment.autoRouteEnabled ? 'automatic' : 'manual');
+    if (assignment.currentOutboundId) setSelectedWireGuardId(assignment.currentOutboundId);
+    setProtocolDraft((current) => ({
+      ...current,
+      profile:
+        assignment.speedProfile === 'balanced' ||
+        assignment.speedProfile === 'highSpeed' ||
+        assignment.speedProfile === 'highSecurity' ||
+        assignment.speedProfile === 'gaming'
+          ? assignment.speedProfile
+          : current.profile,
+    }));
+  };
+
+  useEffect(() => {
+    let isActive = true;
+    const controller = new AbortController();
+
+    setSettingsDataState('loading');
+    setRouteQualityAnalytics(null);
+    setRouteDecisionPreview(null);
+    setRouteDecisionEvents([]);
+    setRouteDecisionEventDetail(null);
+    setIsDecisionEventDetailLoading(false);
+
+    fetchAdminSettings(sessionToken, 'main', controller.signal)
+      .then((data: AdminSettingsResponse) => {
+        if (!isActive) return;
+
+        setPersistedProtocolSetups(data.protocolSetups);
+        setApiWireGuardCandidates(data.wireGuardCandidates);
+        setSettingsDataState('live');
+
+        if (
+          data.routeSettings.loadBalanceStrategy === 'balanced' ||
+          data.routeSettings.loadBalanceStrategy === 'stability' ||
+          data.routeSettings.loadBalanceStrategy === 'throughput'
+        ) {
+          setLoadBalanceStrategy(data.routeSettings.loadBalanceStrategy);
+        }
+        if (data.routeSettings.selectedOutboundId) {
+          setSelectedWireGuardId(data.routeSettings.selectedOutboundId);
+        }
+        setProtocolDraft((current) => ({
+          ...current,
+          routeGroup: data.routeSettings.routeGroup,
+          profile:
+            data.routeSettings.protocolProfile === 'balanced' ||
+            data.routeSettings.protocolProfile === 'highSpeed' ||
+            data.routeSettings.protocolProfile === 'highSecurity' ||
+            data.routeSettings.protocolProfile === 'gaming'
+              ? data.routeSettings.protocolProfile
+              : current.profile,
+        }));
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setSettingsDataState('fallback');
+      });
+
+    fetchRouteAssignment(sessionToken, 'main', 'default', controller.signal)
+      .then((data) => {
+        if (!isActive) return;
+
+        applyRouteAssignment(data);
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+      });
+
+    fetchRouteQualityAnalytics(sessionToken, 'main', 168, controller.signal)
+      .then((data) => {
+        if (!isActive) return;
+
+        setRouteQualityAnalytics(data);
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setRouteQualityAnalytics(null);
+      });
+
+    fetchRouteDecisionPreview(sessionToken, 'main', 'default', controller.signal)
+      .then((data) => {
+        if (!isActive) return;
+
+        setRouteDecisionPreview(data);
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setRouteDecisionPreview(null);
+      });
+
+    fetchRouteDecisionEvents(sessionToken, 'main', 'default', 10, controller.signal)
+      .then((data) => {
+        if (!isActive) return;
+
+        setRouteDecisionEvents(data.events);
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setRouteDecisionEvents([]);
+      });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [sessionToken]);
+
+  const hasSavedPrivateKey = Boolean(privateKeySecretRef);
+  const hasPrivateKey = draft.privateKey.trim().length > 0 || privateKeyAccepted || hasSavedPrivateKey;
+  const hasTunnelShape = Boolean(
+    draft.interfaceName.trim() &&
+      draft.routeGroup.trim() &&
+      draft.addressCidr.trim() &&
+      draft.listenPort.trim() &&
+      draft.peerPublicKey.trim() &&
+      draft.endpoint.trim() &&
+      draft.allowedIps.trim(),
+  );
+  const hasHealthTarget = draft.healthTarget.trim().length > 0;
+  const bestWireGuard = wireGuardCandidates.reduce((best, candidate) => candidate.score > best.score ? candidate : best, wireGuardCandidates[0]);
+  const selectedWireGuard = wireGuardCandidates.find((candidate) => candidate.id === selectedWireGuardId) ?? bestWireGuard;
+  const activeWireGuard = routeMode === 'manual' ? selectedWireGuard : bestWireGuard;
+  const routeModeDescription = routeMode === 'automatic' ? t.settings.autoModeDescription : t.settings.manualModeDescription;
+  const loadBalanceOptions: Array<[LoadBalanceStrategy, string]> = [
+    ['balanced', t.settings.balancedStrategy],
+    ['stability', t.settings.stabilityStrategy],
+    ['throughput', t.settings.throughputStrategy],
+  ];
+  const protocolOptions: Array<[ProtocolKind, string]> = [
+    ['wireguard', t.settings.protocolWireGuard],
+    ['vless', t.settings.protocolVless],
+    ['l2tp', t.settings.protocolL2tp],
+    ['ikev2', t.settings.protocolIkev2],
+  ];
+  const profileOptions: Array<[ProtocolProfile, string]> = [
+    ['balanced', t.settings.profileBalanced],
+    ['highSpeed', t.settings.profileHighSpeed],
+    ['highSecurity', t.settings.profileHighSecurity],
+    ['gaming', t.settings.profileGaming],
+  ];
+  const readinessRows: Array<[string, string, Tone]> = [
+    [t.settings.systemUser, 'afrogate', 'good'],
+    [t.settings.protocolCreation, canCreateProtocols ? t.settings.superadminReady : t.settings.superadminOnly, canCreateProtocols ? 'good' : 'warning'],
+    [t.settings.protocolProfile, profileOptions.find(([value]) => value === protocolDraft.profile)?.[1] ?? t.settings.profileBalanced, 'neutral'],
+    [t.settings.routeMode, routeMode === 'automatic' ? t.settings.automatic : t.settings.manual, routeMode === 'automatic' ? 'good' : 'neutral'],
+    [t.settings.activeWireGuard, activeWireGuard.name, getWireGuardScoreTone(activeWireGuard.score)],
+    [t.settings.privateKeyStatus, hasSavedPrivateKey ? t.settings.encryptedSecretSaved : hasPrivateKey ? t.settings.acceptedWriteOnly : t.settings.pending, hasPrivateKey ? 'good' : 'warning'],
+    [t.settings.tunnelConfig, hasTunnelShape ? t.settings.ready : t.settings.incomplete, hasTunnelShape ? 'good' : 'warning'],
+    [t.settings.healthTarget, hasHealthTarget ? t.settings.configured : t.settings.pending, hasHealthTarget ? 'good' : 'neutral'],
+    [t.settings.settingsStorage, settingsDataState === 'live' ? t.settings.configured : t.settings.pending, settingsDataState === 'live' ? 'good' : 'warning'],
+    [t.settings.secretStorage, hasSavedPrivateKey ? t.settings.encryptedStorageReady : t.settings.encryptedStoragePending, hasSavedPrivateKey ? 'good' : 'neutral'],
+  ];
+  const previewRows: Array<[string, string]> = [
+    [t.settings.protocolName, protocolDraft.name || '-'],
+    [t.settings.protocol, protocolOptions.find(([value]) => value === protocolDraft.protocol)?.[1] ?? '-'],
+    [t.settings.protocolProfile, profileOptions.find(([value]) => value === protocolDraft.profile)?.[1] ?? '-'],
+    [t.settings.protocolPort, protocolDraft.port || '-'],
+    [t.settings.serverName, draft.serverName || '-'],
+    [t.settings.interfaceName, draft.interfaceName || '-'],
+    [t.settings.routeGroup, draft.routeGroup || '-'],
+    [t.settings.routeMode, routeMode === 'automatic' ? t.settings.automatic : t.settings.manual],
+    [t.settings.loadBalanceStrategy, loadBalanceOptions.find(([value]) => value === loadBalanceStrategy)?.[1] ?? t.settings.balancedStrategy],
+    [t.settings.activeWireGuard, activeWireGuard.name],
+    [t.settings.addressCidr, draft.addressCidr || '-'],
+    [t.settings.listenPort, draft.listenPort || '-'],
+    [t.settings.peerPublicKey, draft.peerPublicKey ? t.settings.publicKeyPresent : '-'],
+    [t.settings.endpoint, draft.endpoint || '-'],
+    [t.settings.allowedIps, draft.allowedIps || '-'],
+    [t.settings.privateKey, hasPrivateKey ? t.settings.writeOnly : '-'],
+  ];
+
+  const updateDraft = (field: keyof WireGuardSetupDraft, value: string) => {
+    setDraft((current) => ({ ...current, [field]: value }));
+    if (field === 'privateKey') {
+      setPrivateKeyAccepted(false);
+      setPrivateKeySecretRef(null);
+    }
+  };
+
+  const updateProtocolDraft = <K extends keyof ProtocolSetupDraft>(field: K, value: ProtocolSetupDraft[K]) => {
+    setProtocolDraft((current) => ({ ...current, [field]: value }));
+    setProtocolMessage(null);
+  };
+
+  const selectProtocol = (protocol: ProtocolKind) => {
+    setProtocolDraft((current) => ({
+      ...current,
+      protocol,
+      port: protocolDefaultPorts[protocol],
+      name: current.name || `${protocol}-main`,
+    }));
+    setProtocolMessage(null);
+  };
+
+  const savePrivateKeySecret = async (): Promise<string | null> => {
+    const privateKey = draft.privateKey.trim();
+    if (!privateKey) return privateKeySecretRef;
+
+    setIsSecretSaving(true);
+
+    try {
+      const saved = await createAdminSettingsSecret(sessionToken, {
+        name: `${protocolDraft.name.trim() || draft.interfaceName.trim() || 'wireguard'} private key`,
+        kind: 'wireguardPrivateKey',
+        secret: privateKey,
+        routeGroup: protocolDraft.routeGroup.trim() || draft.routeGroup.trim() || 'main',
+        protocol: 'wireguard',
+      });
+
+      setPrivateKeySecretRef(saved.secretRef);
+      setPrivateKeyAccepted(true);
+      setDraft((current) => ({ ...current, privateKey: '' }));
+      return saved.secretRef;
+    } catch (error) {
+      setValidationMessage(t.settings.secretSaveFailed);
+      return null;
+    } finally {
+      setIsSecretSaving(false);
+    }
+  };
+
+  const createProtocolDraft = async () => {
+    if (!canCreateProtocols) {
+      setProtocolMessage(t.settings.superadminRequired);
+      return;
+    }
+
+    const port = Number(protocolDraft.port);
+    if (!protocolDraft.name.trim() || !Number.isInteger(port) || port < 1 || port > 65535 || !protocolDraft.routeGroup.trim()) {
+      setProtocolMessage(t.settings.requiredFields);
+      return;
+    }
+
+    setIsProtocolSaving(true);
+    setProtocolMessage(null);
+
+    try {
+      const secretRef = protocolDraft.protocol === 'wireguard' ? await savePrivateKeySecret() : privateKeySecretRef;
+
+      if (protocolDraft.protocol === 'wireguard' && !secretRef) {
+        setProtocolMessage(t.settings.privateKeyRequired);
+        return;
+      }
+
+      const created = await createAdminProtocolSetup(sessionToken, {
+        name: protocolDraft.name.trim(),
+        protocol: protocolDraft.protocol,
+        profile: protocolDraft.profile,
+        routeGroup: protocolDraft.routeGroup.trim(),
+        port,
+        config: createProtocolSetupConfig(draft, routeMode, loadBalanceStrategy, activeWireGuard),
+        secretRef,
+      });
+
+      setPersistedProtocolSetups((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setProtocolMessage(t.settings.protocolDraftSaved);
+    } catch (error) {
+      setProtocolMessage(t.settings.saveFailed);
+    } finally {
+      setIsProtocolSaving(false);
+    }
+  };
+
+  const provisionProtocolDraft = async (setup: AdminProtocolSetupSummary) => {
+    if (!canCreateProtocols) {
+      setProvisionMessage(t.settings.superadminRequired);
+      return;
+    }
+
+    setProvisioningSetupId(setup.id);
+    setProvisionMessage(null);
+
+    try {
+      const provisioned = await provisionAdminProtocolSetup(sessionToken, setup.id);
+      setPersistedProtocolSetups((current) =>
+        current.map((item) => (item.id === provisioned.protocolSetup.id ? provisioned.protocolSetup : item)),
+      );
+
+      const wireGuardCandidate = outboundToWireGuardCandidate(provisioned.outbound);
+      if (wireGuardCandidate) {
+        setApiWireGuardCandidates((current) => [
+          wireGuardCandidate,
+          ...current.filter((candidate) => candidate.id !== wireGuardCandidate.id),
+        ]);
+      }
+
+      setProvisionMessage(t.settings.protocolProvisioned);
+    } catch (error) {
+      setProvisionMessage(t.settings.provisionFailed);
+    } finally {
+      setProvisioningSetupId(null);
+    }
+  };
+
+  const saveRouteSettings = async () => {
+    setIsRouteSaving(true);
+    setRouteMessage(null);
+
+    try {
+      const routeGroup = protocolDraft.routeGroup.trim() || draft.routeGroup.trim() || 'main';
+      const selectedManagedOutboundId = activeWireGuard.source === 'outbound' ? activeWireGuard.id : null;
+      const currentOutboundId = assignmentCurrentOutboundId || selectedManagedOutboundId;
+      const lockedOutboundId = assignmentRouteLocked ? assignmentLockedOutboundId || currentOutboundId : null;
+      const mode: RouteSelectionMode = assignmentAutoRouteEnabled ? 'automatic' : 'manual';
+      const hysteresisScoreDelta = clamp(Math.round(Number(assignmentHysteresisScoreDelta) || 15), 1, 100);
+      const cooldownSeconds = clamp(Math.round(Number(assignmentCooldownSeconds) || 180), 30, 3600);
+
+      await updateAdminRouteSettings(sessionToken, {
+        routeGroup,
+        mode,
+        selectedOutboundId: mode === 'manual' ? currentOutboundId || null : null,
+        loadBalanceStrategy,
+        protocolProfile: protocolDraft.profile,
+        speedProfile: protocolDraft.profile,
+      });
+      const savedAssignment = await updateAdminRouteAssignment(sessionToken, {
+        routeGroup,
+        assignmentKey: 'default',
+        assignmentLabel: t.settings.defaultAssignment,
+        currentOutboundId: currentOutboundId || null,
+        lockedOutboundId: lockedOutboundId || null,
+        autoRouteEnabled: assignmentAutoRouteEnabled,
+        routeLocked: assignmentRouteLocked,
+        protocolProfile: protocolDraft.profile,
+        speedProfile: protocolDraft.profile,
+        hysteresisScoreDelta,
+        cooldownSeconds,
+      });
+      const preview = await fetchRouteDecisionPreview(sessionToken, routeGroup, 'default');
+
+      applyRouteAssignment(savedAssignment);
+      setRouteDecisionPreview(preview);
+      setRouteDecisionEventDetail(null);
+      setRouteDecisionSwitchExecution(null);
+      setRouteMode(mode);
+      setRouteMessage(t.settings.routeSettingsSaved);
+      setSettingsDataState('live');
+    } catch (error) {
+      setRouteMessage(t.settings.saveFailed);
+    } finally {
+      setIsRouteSaving(false);
+    }
+  };
+
+  const recordDecisionEvent = async () => {
+    setIsDecisionRecording(true);
+    setRouteMessage(null);
+
+    try {
+      const routeGroup = protocolDraft.routeGroup.trim() || draft.routeGroup.trim() || 'main';
+      const response = await recordRouteDecisionPreview(sessionToken, {
+        routeGroup,
+        assignmentKey: 'default',
+      });
+
+      setRouteDecisionPreview(response.preview);
+      setRouteDecisionEvents((current) => [
+        response.event,
+        ...current.filter((event) => event.id !== response.event.id),
+      ].slice(0, 10));
+      setRouteDecisionEventDetail(null);
+      setRouteDecisionSwitchExecution(null);
+      setRouteMessage(t.settings.routeDecisionRecorded);
+    } catch (error) {
+      setRouteMessage(t.settings.routeDecisionRecordFailed);
+    } finally {
+      setIsDecisionRecording(false);
+    }
+  };
+
+  const inspectDecisionEvent = async (eventId: string) => {
+    setIsDecisionEventDetailLoading(true);
+    setRouteMessage(null);
+
+    try {
+      const response = await fetchRouteDecisionEvent(sessionToken, eventId);
+
+      setRouteDecisionEventDetail(response.event);
+      setRouteDecisionSwitchExecution(response.event.switchExecution ?? null);
+    } catch (error) {
+      setRouteMessage(t.settings.decisionEventDetailFailed);
+    } finally {
+      setIsDecisionEventDetailLoading(false);
+    }
+  };
+
+  const applyDecisionAssignment = async () => {
+    setIsDecisionApplying(true);
+    setRouteMessage(null);
+
+    try {
+      const routeGroup = protocolDraft.routeGroup.trim() || draft.routeGroup.trim() || 'main';
+      const response = await applyRouteDecisionPreview(sessionToken, {
+        routeGroup,
+        assignmentKey: 'default',
+        applyMode: 'assignmentOnly',
+      });
+
+      applyRouteAssignment(response.assignment);
+      setRouteDecisionPreview(response.preview);
+      setRouteDecisionSwitchExecution(response.switchExecution);
+      setRouteDecisionEvents((current) => [
+        response.event,
+        ...current.filter((event) => event.id !== response.event.id),
+      ].slice(0, 10));
+      setRouteDecisionEventDetail(null);
+      setRouteMessage(response.dataPlaneApplied ? t.settings.routeDecisionApplied : t.settings.routeDecisionAssignmentApplied);
+    } catch (error) {
+      setRouteMessage(t.settings.routeDecisionApplyFailed);
+    } finally {
+      setIsDecisionApplying(false);
+    }
+  };
+
+  const validateWireGuardDraft = async () => {
+    setValidationMessage(null);
+
+    if (!draft.privateKey.trim() && !privateKeySecretRef) {
+      setValidationMessage(t.settings.privateKeyRequired);
+      return;
+    }
+
+    if (!hasTunnelShape) {
+      setValidationMessage(t.settings.requiredFields);
+      return;
+    }
+
+    const secretRef = await savePrivateKeySecret();
+    if (!secretRef) return;
+
+    setPrivateKeyAccepted(true);
+    setValidationMessage(t.settings.draftReady);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void validateWireGuardDraft();
+  };
+
+  const clearDraft = () => {
+    setDraft({
+      serverName: '',
+      interfaceName: 'wg0',
+      routeGroup: 'main',
+      addressCidr: '',
+      listenPort: '51820',
+      privateKey: '',
+      peerPublicKey: '',
+      endpoint: '',
+      allowedIps: '0.0.0.0/0, ::/0',
+      persistentKeepalive: '25',
+      healthTarget: '',
+    });
+    setPrivateKeyAccepted(false);
+    setPrivateKeySecretRef(null);
+    setValidationMessage(null);
+  };
+
+  return (
+    <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+      <section className="grid gap-3">
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.routeControl} icon={ArrowDownUp} meta={t.settings.smartRoute} />
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(['automatic', 'manual'] as RouteSelectionMode[]).map((mode) => {
+                const isSelected = routeMode === mode;
+
+                return (
+                  <button
+                    aria-pressed={isSelected}
+                    className={`min-h-10 rounded-md border px-3 text-sm font-bold transition ${isSelected ? 'border-afro-teal bg-[#e7f6ef] text-afro-green' : 'border-afro-line bg-white text-afro-ink hover:border-afro-teal hover:text-afro-teal'}`}
+                    key={mode}
+                    onClick={() => {
+                      setRouteMode(mode);
+                      setAssignmentAutoRouteEnabled(mode === 'automatic');
+                      if (mode === 'manual' && !assignmentCurrentOutboundId && activeWireGuard.source === 'outbound') {
+                        setAssignmentCurrentOutboundId(activeWireGuard.id);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {mode === 'automatic' ? t.settings.automatic : t.settings.manual}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="rounded-md border border-afro-line bg-white px-3 py-2 text-[13px] font-bold text-afro-muted">
+              {routeModeDescription}
+            </p>
+
+            <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <strong className="text-[13px]">{t.settings.routeAssignment}</strong>
+                <StatusBadge tone={assignmentRouteLocked ? 'warning' : assignmentAutoRouteEnabled ? 'good' : 'neutral'}>
+                  {assignmentRouteLocked ? t.routePolicy.routeLock : assignmentAutoRouteEnabled ? t.routePolicy.autoRoute : t.settings.manual}
+                </StatusBadge>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3 py-2">
+                  <span className="text-[13px] font-bold text-afro-muted">{t.settings.autoRouteToggle}</span>
+                  <input
+                    checked={assignmentAutoRouteEnabled}
+                    className="size-4 accent-afro-teal"
+                    onChange={(event) => {
+                      setAssignmentAutoRouteEnabled(event.target.checked);
+                      setRouteMode(event.target.checked ? 'automatic' : 'manual');
+                    }}
+                    type="checkbox"
+                  />
+                </label>
+                <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3 py-2">
+                  <span className="text-[13px] font-bold text-afro-muted">{t.settings.routeLockToggle}</span>
+                  <input
+                    checked={assignmentRouteLocked}
+                    className="size-4 accent-afro-teal"
+                    onChange={(event) => {
+                      setAssignmentRouteLocked(event.target.checked);
+                      if (event.target.checked && !assignmentLockedOutboundId) {
+                        setAssignmentLockedOutboundId(assignmentCurrentOutboundId || managedWireGuardCandidates[0]?.id || '');
+                      }
+                    }}
+                    type="checkbox"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <span className="text-[13px] font-bold text-afro-muted">{t.settings.currentManagedRoute}</span>
+                  <select
+                    className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+                    onChange={(event) => {
+                      setAssignmentCurrentOutboundId(event.target.value);
+                      if (!assignmentLockedOutboundId) setAssignmentLockedOutboundId(event.target.value);
+                    }}
+                    value={assignmentCurrentOutboundId}
+                  >
+                    <option value="">{t.settings.noManagedRouteSelected}</option>
+                    {managedWireGuardCandidates.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {format.label(candidate.name)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-[13px] font-bold text-afro-muted">{t.settings.lockedManagedRoute}</span>
+                  <select
+                    className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-50"
+                    disabled={!assignmentRouteLocked}
+                    onChange={(event) => setAssignmentLockedOutboundId(event.target.value)}
+                    value={assignmentLockedOutboundId}
+                  >
+                    <option value="">{t.settings.noManagedRouteSelected}</option>
+                    {managedWireGuardCandidates.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {format.label(candidate.name)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <SettingsInput inputMode="numeric" label={t.settings.hysteresisScoreDelta} onChange={setAssignmentHysteresisScoreDelta} value={assignmentHysteresisScoreDelta} />
+                <SettingsInput inputMode="numeric" label={t.settings.cooldownSeconds} onChange={setAssignmentCooldownSeconds} value={assignmentCooldownSeconds} />
+              </div>
+              {managedWireGuardCandidates.length === 0 ? <p className="text-[12px] font-bold text-afro-muted">{t.settings.noManagedWireGuard}</p> : null}
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[13px] font-bold text-afro-muted">{t.settings.loadBalanceStrategy}</div>
+              <div className="grid gap-2 md:grid-cols-3">
+                {loadBalanceOptions.map(([value, label]) => {
+                  const isSelected = loadBalanceStrategy === value;
+
+                  return (
+                    <button
+                      aria-pressed={isSelected}
+                      className={`min-h-10 rounded-md border px-3 text-sm font-bold transition ${isSelected ? 'border-afro-blue bg-[#edf4ff] text-afro-blue' : 'border-afro-line bg-white text-afro-ink hover:border-afro-blue hover:text-afro-blue'}`}
+                      key={value}
+                      onClick={() => setLoadBalanceStrategy(value)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {routeMode === 'manual' ? (
+              <div>
+                <div className="mb-1.5 text-[13px] font-bold text-afro-muted">{t.settings.manualWireGuard}</div>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {wireGuardCandidates.map((candidate) => {
+                    const isSelected = selectedWireGuard.id === candidate.id;
+
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className={`grid min-h-[74px] gap-1 rounded-md border px-3 py-2 text-start transition ${isSelected ? 'border-afro-teal bg-[#e7f6ef]' : 'border-afro-line bg-white hover:border-afro-teal'}`}
+                        key={candidate.id}
+                        onClick={() => setSelectedWireGuardId(candidate.id)}
+                        type="button"
+                      >
+                        <span className="truncate text-sm font-bold text-afro-ink">{candidate.name}</span>
+                        <span className="truncate text-[12px] text-afro-muted" dir="ltr">{candidate.endpoint ?? '-'}</span>
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          <StatusBadge tone={getWireGuardScoreTone(candidate.score)}>{format.percent(candidate.score)}</StatusBadge>
+                          <StatusBadge tone={candidate.source === 'agent' ? 'good' : 'neutral'}>
+                            {wireGuardCandidateSourceLabel(candidate, t)}
+                          </StatusBadge>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-3 py-2">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.autoRecommendation}</span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <strong className="min-w-0 truncate text-sm">{bestWireGuard.name}</strong>
+                  <StatusBadge tone={getWireGuardScoreTone(bestWireGuard.score)}>{t.settings.bestHealth}</StatusBadge>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
+              <span className="text-[13px] font-bold text-afro-muted">
+                {settingsDataState === 'live' ? t.settings.settingsStorageReady : t.settings.localDraftOnly}
+              </span>
+              <button
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-60"
+                disabled={isRouteSaving}
+                onClick={() => void saveRouteSettings()}
+                type="button"
+              >
+                <CheckCircle2 size={16} />
+                {isRouteSaving ? t.settings.saving : t.settings.saveRouteSettings}
+              </button>
+            </div>
+            {routeMessage ? <p className="text-[13px] font-bold text-afro-teal">{routeMessage}</p> : null}
+          </div>
+        </section>
+
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.protocolFactory} icon={Plus} meta={canCreateProtocols ? t.settings.superadminReady : t.settings.superadminOnly} />
+          <div className="mt-3 grid gap-3">
+            <div>
+              <div className="mb-1.5 text-[13px] font-bold text-afro-muted">{t.settings.protocol}</div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {protocolOptions.map(([value, label]) => {
+                  const isSelected = protocolDraft.protocol === value;
+
+                  return (
+                    <button
+                      aria-pressed={isSelected}
+                      className={`min-h-10 rounded-md border px-3 text-sm font-bold transition ${isSelected ? 'border-afro-teal bg-[#e7f6ef] text-afro-green' : 'border-afro-line bg-white text-afro-ink hover:border-afro-teal hover:text-afro-teal'}`}
+                      key={value}
+                      onClick={() => selectProtocol(value)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[13px] font-bold text-afro-muted">{t.settings.protocolProfile}</div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {profileOptions.map(([value, label]) => {
+                  const isSelected = protocolDraft.profile === value;
+
+                  return (
+                    <button
+                      aria-pressed={isSelected}
+                      className={`min-h-10 rounded-md border px-3 text-sm font-bold transition ${isSelected ? 'border-afro-blue bg-[#edf4ff] text-afro-blue' : 'border-afro-line bg-white text-afro-ink hover:border-afro-blue hover:text-afro-blue'}`}
+                      key={value}
+                      onClick={() => updateProtocolDraft('profile', value)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              <SettingsInput label={t.settings.protocolName} onChange={(value) => updateProtocolDraft('name', value)} required value={protocolDraft.name} />
+              <SettingsInput inputMode="numeric" label={t.settings.protocolPort} onChange={(value) => updateProtocolDraft('port', value)} required value={protocolDraft.port} />
+              <SettingsInput label={t.settings.routeGroup} onChange={(value) => updateProtocolDraft('routeGroup', value)} required value={protocolDraft.routeGroup} />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
+              <p className="min-w-0 text-[13px] font-bold text-afro-muted">{t.settings.protocolFactoryNote}</p>
+              <button
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-not-allowed disabled:opacity-55"
+                disabled={!canCreateProtocols || isProtocolSaving}
+                onClick={() => void createProtocolDraft()}
+                type="button"
+              >
+                <Plus size={16} />
+                {isProtocolSaving ? t.settings.saving : t.settings.createProtocolDraft}
+              </button>
+            </div>
+            {protocolMessage ? <p className="text-[13px] font-bold text-afro-teal">{protocolMessage}</p> : null}
+            {persistedProtocolSetups.length > 0 ? (
+              <div className="grid gap-2 border-t border-afro-line pt-3">
+                <div className="text-[13px] font-bold text-afro-muted">{t.settings.persistedDrafts}</div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {persistedProtocolSetups.slice(0, 4).map((setup) => {
+                    const isProvisioned = Boolean(setup.provisionedOutboundId);
+                    const isProvisioning = provisioningSetupId === setup.id;
+
+                    return (
+                      <div className="flex min-h-12 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2.5 py-1.5" key={setup.id}>
+                        <div className="min-w-0">
+                          <strong className="block truncate text-[13px]">{setup.name}</strong>
+                          <span className="block truncate text-[12px] text-afro-muted">
+                            {setup.protocol} / {setup.routeGroup}
+                            {isProvisioned ? ` / ${t.settings.managedOutbound}` : ''}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <StatusBadge tone={isProvisioned || setup.hasSecretRef ? 'good' : 'neutral'}>
+                            {isProvisioned ? t.settings.provisioned : setup.status}
+                          </StatusBadge>
+                          {!isProvisioned ? (
+                            <button
+                              className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:cursor-wait disabled:opacity-55"
+                              disabled={!canCreateProtocols || Boolean(provisioningSetupId)}
+                              onClick={() => void provisionProtocolDraft(setup)}
+                              type="button"
+                            >
+                              <CheckCircle2 size={14} />
+                              {isProvisioning ? t.settings.provisioning : t.settings.provisionDraft}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            {provisionMessage ? <p className="text-[13px] font-bold text-afro-teal">{provisionMessage}</p> : null}
+          </div>
+        </section>
+
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.wireguardSetup} icon={SettingsIcon} meta={t.settings.guidedSetup} />
+          <form className="mt-3 grid gap-3" onSubmit={handleSubmit}>
+            <div className="grid gap-2 md:grid-cols-3">
+              <SettingsInput label={t.settings.serverName} onChange={(value) => updateDraft('serverName', value)} value={draft.serverName} />
+              <SettingsInput label={t.settings.interfaceName} onChange={(value) => updateDraft('interfaceName', value)} required value={draft.interfaceName} />
+              <SettingsInput label={t.settings.routeGroup} onChange={(value) => updateDraft('routeGroup', value)} required value={draft.routeGroup} />
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              <SettingsInput label={t.settings.addressCidr} onChange={(value) => updateDraft('addressCidr', value)} placeholder="10.10.0.2/32" required value={draft.addressCidr} />
+              <SettingsInput inputMode="numeric" label={t.settings.listenPort} onChange={(value) => updateDraft('listenPort', value)} required value={draft.listenPort} />
+              <SettingsInput inputMode="numeric" label={t.settings.keepalive} onChange={(value) => updateDraft('persistentKeepalive', value)} value={draft.persistentKeepalive} />
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2">
+              <SettingsInput autoComplete="off" label={t.settings.privateKey} onChange={(value) => updateDraft('privateKey', value)} required type="password" value={draft.privateKey} />
+              <SettingsInput autoComplete="off" label={t.settings.peerPublicKey} onChange={(value) => updateDraft('peerPublicKey', value)} required value={draft.peerPublicKey} />
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2">
+              <SettingsInput label={t.settings.endpoint} onChange={(value) => updateDraft('endpoint', value)} placeholder="gateway.example.com:51820" required value={draft.endpoint} />
+              <SettingsInput label={t.settings.allowedIps} onChange={(value) => updateDraft('allowedIps', value)} required value={draft.allowedIps} />
+            </div>
+
+            <SettingsInput label={t.settings.healthTarget} onChange={(value) => updateDraft('healthTarget', value)} placeholder="https://example.com/health" value={draft.healthTarget} />
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
+              <div className="flex min-w-0 items-center gap-2 text-[13px] text-afro-muted">
+                <LockKeyhole className="shrink-0" size={16} />
+                <span className="min-w-0 truncate">{t.settings.writeOnlySecret}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button className="inline-flex min-h-10 items-center justify-center rounded-md border border-afro-line px-4 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal" onClick={clearDraft} type="button">
+                  {t.settings.clearDraft}
+                </button>
+                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-60" disabled={isSecretSaving} type="submit">
+                  <CheckCircle2 size={16} />
+                  {isSecretSaving ? t.settings.saving : t.settings.validateDraft}
+                </button>
+              </div>
+            </div>
+            {validationMessage ? <p className="text-[13px] font-bold text-afro-teal">{validationMessage}</p> : null}
+          </form>
+        </section>
+      </section>
+
+      <section className="grid gap-3">
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.setupReadiness} icon={ShieldCheck} meta={t.settings.secretSafe} />
+          <div className="mt-2 grid gap-2">
+            {readinessRows.map(([label, value, tone]) => (
+              <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+                <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
+                <StatusBadge tone={tone}>{value}</StatusBadge>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.wireguardHealth} icon={Gauge} meta={t.settings.healthChecked} />
+          <div className="mt-2 grid gap-2">
+            {wireGuardCandidates.map((candidate) => (
+              <div className="grid gap-2 rounded-md border border-afro-line px-2.5 py-2" key={candidate.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <strong className="block truncate text-[13px]">{candidate.name}</strong>
+                    <span className="block truncate text-[12px] text-afro-muted" dir="ltr">{candidate.endpoint ?? '-'}</span>
+                  </div>
+                  <span className="inline-flex shrink-0 flex-wrap justify-end gap-1">
+                    <StatusBadge tone={candidate.source === 'agent' ? 'good' : 'neutral'}>
+                      {wireGuardCandidateSourceLabel(candidate, t)}
+                    </StatusBadge>
+                    <StatusBadge tone={getWireGuardScoreTone(candidate.score)}>{format.percent(candidate.score)}</StatusBadge>
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 text-[12px] md:grid-cols-4">
+                  <MetricPill icon={Clock} label={t.settings.latency} value={format.latency(candidate.latencyMs ?? null)} />
+                  <MetricPill icon={ArrowDownUp} label={t.settings.jitter} value={format.latency(candidate.jitterMs ?? null)} />
+                  <MetricPill icon={AlertTriangle} label={t.settings.packetLoss} value={format.packetLoss(candidate.packetLossPercent ?? null)} />
+                  <MetricPill icon={Gauge} label={t.settings.load} value={format.percent(candidate.loadPercent ?? null)} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 text-[12px] md:grid-cols-3">
+                  <MetricPill icon={Network} label={t.settings.peers} value={formatWireGuardCandidatePeers(candidate, format, t)} />
+                  <MetricPill icon={Clock} label={t.settings.latestHandshake} value={formatWireGuardCandidateHandshake(candidate, format, t)} />
+                  <MetricPill icon={ArrowDownUp} label={t.settings.throughput} value={formatWireGuardCandidateRate(candidate, format)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <RouteIntelligencePanel analytics={routeQualityAnalytics} format={format} t={t} />
+
+        <RouteDecisionPreviewPanel
+          eventDetail={routeDecisionEventDetail}
+          events={routeDecisionEvents}
+          format={format}
+          isApplying={isDecisionApplying}
+          isEventDetailLoading={isDecisionEventDetailLoading}
+          isRecording={isDecisionRecording}
+          onApply={() => void applyDecisionAssignment()}
+          onInspectEvent={(eventId) => void inspectDecisionEvent(eventId)}
+          onRecord={() => void recordDecisionEvent()}
+          preview={routeDecisionPreview}
+          switchExecution={routeDecisionSwitchExecution}
+          t={t}
+        />
+
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.setupPreview} icon={Route} meta={t.settings.noSecretEcho} />
+          <div className="mt-2 grid gap-2">
+            {previewRows.map(([label, value]) => (
+              <div className="grid min-h-9 grid-cols-[minmax(96px,0.42fr)_minmax(0,1fr)] items-center gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+                <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
+                <strong className="min-w-0 truncate text-[13px]" dir="ltr">{value}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      </section>
+    </section>
+  );
+}
+
+function RouteIntelligencePanel({
+  analytics,
+  format,
+  t,
+}: {
+  analytics: AdminRouteQualityAnalyticsResponse | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  const recommendations = analytics?.recommendations ?? [];
+  const actionableRecommendations = recommendations.filter((item) => item.kind !== 'insufficientData');
+  const meta = analytics
+    ? t.settings.routeAnalyticsWindows(format.integer(analytics.windows.length))
+    : t.settings.routeAnalyticsLearning;
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.panels.routeIntelligence} icon={Activity} meta={meta} />
+      <div className="mt-2 grid gap-2">
+        {actionableRecommendations.length === 0 ? (
+          <EmptyState message={analytics ? t.settings.noRouteRecommendations : t.settings.routeAnalyticsLearning} />
+        ) : null}
+        {actionableRecommendations.map((recommendation) => (
+          <div className="grid gap-1.5 rounded-md border border-afro-line px-2.5 py-2" key={routeRecommendationKey(recommendation)}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px]">
+                  {routeRecommendationTitle(recommendation, t)}
+                </strong>
+                <span className="block truncate text-[12px] text-afro-muted">
+                  {routeRecommendationDetail(recommendation, format, t)}
+                </span>
+              </div>
+              <StatusBadge tone={recommendation.kind === 'degradedWindow' || recommendation.kind === 'upcomingDegradedWindow' ? 'warning' : 'good'}>
+                {routeRecommendationConfidence(recommendation, t)}
+              </StatusBadge>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-[12px] md:grid-cols-4">
+              <MetricPill
+                icon={Clock}
+                label={t.settings.routeWindow}
+                value={formatRouteHourWindow(recommendation.hourOfDay ?? null, format)}
+              />
+              <MetricPill
+                icon={Gauge}
+                label={t.settings.averageScore}
+                value={recommendation.averageScore === null || recommendation.averageScore === undefined ? '--' : format.integer(recommendation.averageScore)}
+              />
+              <MetricPill
+                icon={Network}
+                label={t.settings.routeOperator}
+                value={routeRecommendationOperator(recommendation, format, t)}
+              />
+              <MetricPill
+                icon={Route}
+                label={t.settings.routeProfile}
+                value={routeRecommendationProfile(recommendation, format, t)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RouteDecisionPreviewPanel({
+  eventDetail,
+  events,
+  preview,
+  format,
+  isApplying,
+  isEventDetailLoading,
+  isRecording,
+  onApply,
+  onInspectEvent,
+  onRecord,
+  t,
+  switchExecution,
+}: {
+  eventDetail: AdminRouteDecisionEventDetail | null;
+  events: AdminRouteDecisionEventSummary[];
+  preview: AdminRouteDecisionPreviewResponse | null;
+  format: DashboardFormatters;
+  isApplying: boolean;
+  isEventDetailLoading: boolean;
+  isRecording: boolean;
+  onApply: () => void;
+  onInspectEvent: (eventId: string) => void;
+  onRecord: () => void;
+  switchExecution: AdminRouteDecisionSwitchExecutionSummary | null;
+  t: DashboardStrings;
+}) {
+  const meta = preview
+    ? t.settings.routeDecisionCandidates(format.integer(preview.healthyCandidateCount), format.integer(preview.candidateCount))
+    : t.settings.routeDecisionAdvisory;
+  const canApplyAssignment = Boolean(
+    preview?.action === 'switchRecommended' &&
+      preview.recommendedCandidate?.source === 'outbound' &&
+      preview.autoRouteEnabled &&
+      !preview.routeLocked,
+  );
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.panels.routeDecision} icon={ShieldCheck} meta={meta} />
+      {preview ? (
+        <div className="mt-2 grid gap-2">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <RouteDecisionMetric label={t.settings.routeDecisionAction}>
+              <StatusBadge tone={routeDecisionActionTone(preview.action)}>{routeDecisionActionLabel(preview.action, t)}</StatusBadge>
+            </RouteDecisionMetric>
+            <RouteDecisionMetric label={t.settings.routeDecisionScoreDelta}>
+              {preview.scoreDelta === null || preview.scoreDelta === undefined ? '--' : format.integer(preview.scoreDelta)}
+            </RouteDecisionMetric>
+            <RouteDecisionMetric label={t.settings.routeDecisionHysteresis}>
+              {format.integer(preview.hysteresisScoreDelta)}
+            </RouteDecisionMetric>
+            <RouteDecisionMetric label={t.settings.routeDecisionCooldown}>
+              {preview.cooldownUntil ? format.time(new Date(preview.cooldownUntil)) : format.durationSeconds(preview.cooldownSeconds)}
+            </RouteDecisionMetric>
+          </div>
+
+          <div className="grid gap-2 xl:grid-cols-2">
+            <RouteDecisionCandidateCard candidate={preview.currentCandidate ?? null} format={format} label={t.settings.routeDecisionCurrent} t={t} />
+            <RouteDecisionCandidateCard candidate={preview.recommendedCandidate ?? null} format={format} label={t.settings.routeDecisionRecommended} t={t} />
+          </div>
+
+          <RouteDecisionProfileRecommendationList
+            format={format}
+            recommendations={preview.profileRecommendations ?? []}
+            selectedProfile={preview.selectedScoreProfile ?? null}
+            t={t}
+          />
+          <RouteDecisionLoadBalancingCard loadBalancing={preview.loadBalancing} format={format} t={t} />
+          <RouteDecisionSessionSafetyCard sessionSafety={preview.sessionSafety} format={format} t={t} />
+          <RouteDecisionSwitchEngineCard switchEngine={preview.switchEngine} format={format} t={t} />
+          <RouteDecisionSwitchPreflightCard preflight={preview.switchPreflight} format={format} t={t} />
+          <RouteDecisionSwitchRolloutCard rollout={preview.switchRollout} format={format} t={t} />
+          <RouteDecisionSwitchExecutionCard execution={switchExecution} format={format} t={t} />
+          <RouteDecisionCandidateReviewList reviews={preview.candidateReviews ?? []} format={format} t={t} />
+          <RouteDecisionApplyPlanCard plan={preview.applyPlan} t={t} />
+
+          <div className="flex flex-wrap gap-1.5">
+            {preview.reasonCodes.map((reason) => (
+              <span className="rounded-md border border-afro-line bg-white px-2 py-1 text-[12px] font-bold text-afro-muted" key={reason}>
+                {routeDecisionReasonLabel(reason, t)}
+              </span>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-[13px] font-bold text-afro-ink hover:border-afro-teal disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!canApplyAssignment || isApplying}
+              onClick={onApply}
+              type="button"
+            >
+              <Route size={15} />
+              {isApplying ? t.settings.applyingDecision : t.settings.applyDecisionAssignment}
+            </button>
+            <button
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-[13px] font-bold text-afro-ink hover:border-afro-teal disabled:cursor-wait disabled:opacity-60"
+              disabled={isRecording}
+              onClick={onRecord}
+              type="button"
+            >
+              <Clock size={15} />
+              {isRecording ? t.settings.recordingDecision : t.settings.recordDecisionEvent}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <EmptyState message={t.settings.routeDecisionNoPreview} />
+        </div>
+      )}
+      <RouteDecisionEventList
+        eventDetail={eventDetail}
+        events={events}
+        format={format}
+        isDetailLoading={isEventDetailLoading}
+        onInspectEvent={onInspectEvent}
+        t={t}
+      />
+    </section>
+  );
+}
+
+function RouteDecisionProfileRecommendationList({
+  recommendations,
+  selectedProfile,
+  format,
+  t,
+}: {
+  recommendations: AdminRouteDecisionProfileRecommendation[];
+  selectedProfile: string | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <strong className="text-[13px]">{t.settings.profileRecommendations}</strong>
+        <span className="text-[12px] font-bold text-afro-muted">
+          {selectedProfile ? routeScoreProfileLabel(selectedProfile, t) : t.settings.unknownProfile}
+        </span>
+      </div>
+      <div className="grid gap-1.5 md:grid-cols-2">
+        {recommendations.length === 0 ? <EmptyState message={t.settings.noProfileRecommendations} /> : null}
+        {recommendations.map((recommendation) => {
+          const isSelected = recommendation.profile === selectedProfile;
+          const delta = recommendation.scoreDeltaFromSelected > 0
+            ? `+${format.integer(recommendation.scoreDeltaFromSelected)}`
+            : format.integer(recommendation.scoreDeltaFromSelected);
+
+          return (
+            <div className="grid gap-1 rounded-md border border-afro-line px-2.5 py-2" key={recommendation.profile}>
+              <div className="flex min-h-7 items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <strong className="block truncate text-[13px]">{routeScoreProfileLabel(recommendation.profile, t)}</strong>
+                  <span className={`${mutedTextClass} block truncate`}>
+                    {recommendation.recommendedCandidateName ?? t.settings.noManagedRouteSelected}
+                  </span>
+                </div>
+                <span className="inline-flex shrink-0 flex-wrap justify-end gap-1">
+                  {isSelected ? <StatusBadge tone="neutral">{t.settings.selectedProfile}</StatusBadge> : null}
+                  <StatusBadge tone={recommendation.scoreDeltaFromSelected >= 8 ? 'good' : 'neutral'}>
+                    {format.integer(recommendation.score)}
+                  </StatusBadge>
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <MetricPill icon={ArrowDownUp} label={t.settings.routeDecisionCandidateDelta} value={delta} />
+                <MetricPill icon={Route} label={t.settings.usableCandidates} value={format.integer(recommendation.candidateCount)} />
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {recommendation.reasonCodes.slice(0, 3).map((reason) => (
+                  <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${recommendation.profile}-${reason}`}>
+                    {routeProfileRecommendationReasonLabel(reason, t)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionLoadBalancingCard({
+  loadBalancing,
+  format,
+  t,
+}: {
+  loadBalancing?: AdminRouteDecisionLoadBalancingSummary;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!loadBalancing) return null;
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.smartLoadBalancing}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {t.settings.loadBalancingEligible(format.integer(loadBalancing.eligibleCandidateCount), format.integer(loadBalancing.candidateCount))}
+          </span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeLoadBalancingModeTone(loadBalancing.mode)}>
+            {routeLoadBalancingModeLabel(loadBalancing.mode, t)}
+          </StatusBadge>
+          <StatusBadge tone="neutral">{routeLoadBalanceStrategyLabel(loadBalancing.strategy, t)}</StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-3">
+        <MetricPill
+          icon={Route}
+          label={t.settings.loadBalancingPrimary}
+          value={loadBalancing.primaryCandidateName ?? t.settings.routeDecisionNoCandidate}
+        />
+        <MetricPill
+          icon={ArrowDownUp}
+          label={t.settings.loadBalancingSecondary}
+          value={loadBalancing.secondaryCandidateName ?? t.settings.routeDecisionNoCandidate}
+        />
+        <MetricPill
+          icon={Gauge}
+          label={t.settings.loadBalancingTotalWeight}
+          value={format.percent(loadBalancing.totalAssignedWeightPercent)}
+        />
+      </div>
+
+      <div className="grid gap-1.5 md:grid-cols-2">
+        {loadBalancing.candidates.length === 0 ? <EmptyState message={t.settings.loadBalancingNoCandidates} /> : null}
+        {loadBalancing.candidates.map((candidate) => (
+          <div className="grid gap-1 rounded-md border border-afro-line px-2.5 py-2" key={candidate.id}>
+            <div className="flex min-h-7 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px]">{candidate.name}</strong>
+                <span className={`${mutedTextClass} block truncate`}>
+                  {routeLoadBalancingRoleLabel(candidate.role, t)}
+                </span>
+              </div>
+              <StatusBadge tone={routeLoadBalancingRiskTone(candidate.riskLevel)}>
+                {routeLoadBalancingRiskLabel(candidate.riskLevel, t)}
+              </StatusBadge>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <MetricPill icon={ArrowDownUp} label={t.settings.loadBalancingWeight} value={format.percent(candidate.weightPercent)} />
+              <MetricPill icon={Gauge} label={t.settings.loadBalancingAdjustedScore} value={format.integer(candidate.adjustedScore)} />
+              <MetricPill icon={ShieldCheck} label={t.settings.loadBalancingProfileScore} value={format.integer(candidate.profileScore)} />
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {candidate.reasonCodes.slice(0, 4).map((reason) => (
+                <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${candidate.id}-${reason}`}>
+                  {routeLoadBalancingReasonLabel(reason, t)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {loadBalancing.reasonCodes.slice(0, 8).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`load-balancing-${reason}`}>
+            {routeLoadBalancingReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionSessionSafetyCard({
+  sessionSafety,
+  format,
+  t,
+}: {
+  sessionSafety?: AdminRouteDecisionSessionSafetySummary;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!sessionSafety) return null;
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.sessionSafety}</strong>
+          <span className={`${mutedTextClass} block truncate`}>{routeSessionSafetyPolicyLabel(sessionSafety.policy, t)}</span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeSessionSafetyModeTone(sessionSafety.mode)}>
+            {routeSessionSafetyModeLabel(sessionSafety.mode, t)}
+          </StatusBadge>
+          <StatusBadge tone={routeSessionSafetyRiskTone(sessionSafety.riskLevel)}>
+            {routeSessionSafetyRiskLabel(sessionSafety.riskLevel, t)}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-4">
+        <MetricPill
+          icon={LockKeyhole}
+          label={t.settings.sessionSafetyStickyTtl}
+          value={format.durationSeconds(sessionSafety.stickySessionTtlSeconds)}
+        />
+        <MetricPill
+          icon={Clock}
+          label={t.settings.sessionSafetyDrain}
+          value={format.durationSeconds(sessionSafety.estimatedDrainSeconds)}
+        />
+        <MetricPill
+          icon={Route}
+          label={t.settings.sessionSafetyNewSessions}
+          value={sessionSafety.switchNewSessionsOnly ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+        <MetricPill
+          icon={AlertTriangle}
+          label={t.settings.sessionSafetyEmergency}
+          value={sessionSafety.emergencySwitchAllowed ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {sessionSafety.reasonCodes.slice(0, 8).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`session-safety-${reason}`}>
+            {routeSessionSafetyReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionSwitchEngineCard({
+  switchEngine,
+  format,
+  t,
+}: {
+  switchEngine?: AdminRouteDecisionSwitchEngineSummary;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!switchEngine) return null;
+
+  const visibleSteps = switchEngine.steps.slice(0, 8);
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.switchEngine}</strong>
+          <span className={`${mutedTextClass} block truncate`}>{routeSwitchEngineModeLabel(switchEngine.mode, t)}</span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeSwitchEngineStatusTone(switchEngine.status)}>
+            {routeSwitchEngineStatusLabel(switchEngine.status, t)}
+          </StatusBadge>
+          <StatusBadge tone={switchEngine.dataPlaneReady ? 'good' : 'neutral'}>
+            {switchEngine.dataPlaneReady ? t.settings.routeApplyDataPlaneReady : t.settings.routeApplyDataPlaneOff}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-4">
+        <MetricPill
+          icon={LockKeyhole}
+          label={t.settings.switchEnginePreserveExisting}
+          value={switchEngine.preserveExistingSessions ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+        <MetricPill
+          icon={Route}
+          label={t.settings.switchEngineNewSessions}
+          value={switchEngine.switchNewSessionsOnly ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+        <MetricPill
+          icon={Clock}
+          label={t.settings.switchEngineEstimated}
+          value={format.durationSeconds(switchEngine.estimatedTotalSeconds)}
+        />
+        <MetricPill
+          icon={ShieldCheck}
+          label={t.settings.switchEngineRollback}
+          value={switchEngine.rollbackReady ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+      </div>
+
+      <div className="grid gap-1.5 md:grid-cols-2">
+        {visibleSteps.map((step) => (
+          <div className="grid gap-1 rounded-md border border-afro-line px-2.5 py-2" key={step.id}>
+            <div className="flex min-h-7 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px]">{routeSwitchEngineStepLabel(step.code, t)}</strong>
+                <span className={`${mutedTextClass} block truncate`}>
+                  {routeSwitchEngineSessionImpactLabel(step.sessionImpact, t)}
+                </span>
+              </div>
+              <StatusBadge tone={routeSwitchEngineStepStatusTone(step.status)}>
+                {routeSwitchEngineStepStatusLabel(step.status, t)}
+              </StatusBadge>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <StatusBadge tone={step.dataPlaneMutation ? 'warning' : 'neutral'}>
+                {step.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+              </StatusBadge>
+              <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted">
+                {format.durationSeconds(step.estimatedSeconds ?? 0)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {switchEngine.reasonCodes.slice(0, 8).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`switch-engine-${reason}`}>
+            {routeSwitchEngineReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionSwitchPreflightCard({
+  preflight,
+  format,
+  t,
+}: {
+  preflight?: AdminRouteDecisionSwitchPreflightSummary | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!preflight) return null;
+
+  const visibleChecks = preflight.checks.slice(0, 8);
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.switchPreflight}</strong>
+          <span className={`${mutedTextClass} block truncate`}>{t.settings.switchPreflightChecks(format.integer(preflight.checkCount))}</span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeSwitchPreflightStatusTone(preflight.status)}>
+            {routeSwitchPreflightStatusLabel(preflight.status, t)}
+          </StatusBadge>
+          <StatusBadge tone={preflight.canExecuteDataPlane ? 'good' : 'neutral'}>
+            {preflight.canExecuteDataPlane ? t.settings.routeApplyDataPlaneReady : t.settings.routeApplyDataPlaneOff}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-4">
+        <MetricPill
+          icon={Network}
+          label={t.settings.routeApplyDataPlaneReady}
+          value={preflight.dataPlaneReady ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+        <MetricPill
+          icon={ShieldCheck}
+          label={t.settings.switchPreflightSafeToArm}
+          value={preflight.safeToArm ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+        <MetricPill icon={AlertTriangle} label={t.settings.switchPreflightFailed} value={format.integer(preflight.failedCheckCount)} />
+        <MetricPill icon={Clock} label={t.settings.switchPreflightFuture} value={format.integer(preflight.futureCheckCount)} />
+      </div>
+
+      <div className="grid gap-1.5 md:grid-cols-2">
+        {visibleChecks.map((check) => (
+          <div className="grid gap-1 rounded-md border border-afro-line px-2.5 py-2" key={check.id}>
+            <div className="flex min-h-7 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px]">{routeSwitchPreflightCheckLabel(check.code, t)}</strong>
+                <span className={`${mutedTextClass} block truncate`}>
+                  {check.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+                </span>
+              </div>
+              <StatusBadge tone={routeSwitchPreflightCheckStatusTone(check.status)}>
+                {routeSwitchPreflightCheckStatusLabel(check.status, t)}
+              </StatusBadge>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {check.estimatedSeconds !== null && check.estimatedSeconds !== undefined ? (
+                <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted">
+                  {format.durationSeconds(check.estimatedSeconds)}
+                </span>
+              ) : null}
+              {check.reasonCodes.slice(0, 3).map((reason) => (
+                <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${check.id}-${reason}`}>
+                  {routeSwitchPreflightReasonLabel(reason, t)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {preflight.reasonCodes.slice(0, 8).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`switch-preflight-${reason}`}>
+            {routeSwitchPreflightReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionSwitchRolloutCard({
+  rollout,
+  format,
+  t,
+}: {
+  rollout?: AdminRouteDecisionSwitchRolloutSummary | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!rollout) return null;
+
+  const visibleSteps = rollout.steps.slice(0, 7);
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.switchRollout}</strong>
+          <span className={`${mutedTextClass} block truncate`}>{routeSwitchRolloutStrategyLabel(rollout.strategy, t)}</span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeSwitchRolloutStatusTone(rollout.status)}>
+            {routeSwitchRolloutStatusLabel(rollout.status, t)}
+          </StatusBadge>
+          <StatusBadge tone={rollout.dataPlaneReady ? 'good' : 'neutral'}>
+            {rollout.dataPlaneReady ? t.settings.routeApplyDataPlaneReady : t.settings.routeApplyDataPlaneOff}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-4">
+        <MetricPill icon={Gauge} label={t.settings.switchRolloutInitial} value={format.percent(rollout.initialPercent)} />
+        <MetricPill icon={Route} label={t.settings.switchRolloutMax} value={format.percent(rollout.maxPercent)} />
+        <MetricPill icon={Clock} label={t.settings.switchRolloutCanaryDuration} value={format.durationSeconds(rollout.canaryDurationSeconds)} />
+        <MetricPill icon={LockKeyhole} label={t.settings.switchRolloutHold} value={format.durationSeconds(rollout.routeConsistencyHoldSeconds)} />
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-3">
+        <MetricPill icon={AlertTriangle} label={t.settings.switchRolloutLossGuard} value={format.packetLoss(rollout.rollbackOnLossPercent)} />
+        <MetricPill icon={Activity} label={t.settings.switchRolloutJitterGuard} value={format.latency(rollout.rollbackOnJitterMs)} />
+        <MetricPill icon={Clock} label={t.settings.switchRolloutLatencyGuard} value={format.latency(rollout.rollbackOnLatencyMs)} />
+      </div>
+
+      <div className="grid gap-1.5 md:grid-cols-2">
+        {visibleSteps.map((step) => (
+          <div className="grid gap-1 rounded-md border border-afro-line px-2.5 py-2" key={step.id}>
+            <div className="flex min-h-7 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px]">{routeSwitchRolloutStepLabel(step.code, t)}</strong>
+                <span className={`${mutedTextClass} block truncate`}>
+                  {routeSwitchRolloutTrafficScopeLabel(step.trafficScope, t)} / {format.percent(step.targetPercent)}
+                </span>
+              </div>
+              <StatusBadge tone={routeSwitchRolloutStepStatusTone(step.status)}>
+                {routeSwitchRolloutStepStatusLabel(step.status, t)}
+              </StatusBadge>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <StatusBadge tone={step.dataPlaneMutation ? 'warning' : 'neutral'}>
+                {step.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+              </StatusBadge>
+              {step.durationSeconds !== null && step.durationSeconds !== undefined ? (
+                <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted">
+                  {format.durationSeconds(step.durationSeconds)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {rollout.reasonCodes.slice(0, 8).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`switch-rollout-${reason}`}>
+            {routeSwitchRolloutReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionSwitchExecutionCard({
+  execution,
+  format,
+  t,
+}: {
+  execution?: AdminRouteDecisionSwitchExecutionSummary | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!execution) return null;
+
+  const timeOrDash = (value?: string | null) => (value ? format.time(new Date(value)) : '-');
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.switchExecution}</strong>
+          <span className={`${mutedTextClass} block truncate`}>{routeSwitchExecutionPhaseLabel(execution.phase, t)}</span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeSwitchExecutionStatusTone(execution.status)}>
+            {routeSwitchExecutionStatusLabel(execution.status, t)}
+          </StatusBadge>
+          <StatusBadge tone={execution.dataPlaneApplied ? 'good' : 'neutral'}>
+            {execution.dataPlaneApplied ? t.settings.routeApplyDataPlaneReady : t.settings.routeApplyDataPlaneOff}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
+        <MetricPill
+          icon={ShieldCheck}
+          label={t.settings.switchExecutionAssignment}
+          value={execution.assignmentApplied ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+        <MetricPill
+          icon={Network}
+          label={t.settings.switchExecutionDataPlane}
+          value={execution.dataPlaneApplied ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo}
+        />
+        <MetricPill icon={LockKeyhole} label={t.settings.switchExecutionStickyUntil} value={timeOrDash(execution.stickyUntil)} />
+        <MetricPill icon={Clock} label={t.settings.switchExecutionDrainUntil} value={timeOrDash(execution.drainUntil)} />
+        <MetricPill icon={Gauge} label={t.settings.switchExecutionCooldownUntil} value={timeOrDash(execution.cooldownUntil)} />
+        <MetricPill icon={Route} label={t.settings.switchExecutionFutureSteps} value={format.integer(execution.futureStepIds.length)} />
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {execution.reasonCodes.slice(0, 8).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`switch-execution-${reason}`}>
+            {routeSwitchExecutionReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionCandidateReviewList({
+  reviews,
+  format,
+  t,
+}: {
+  reviews: AdminRouteDecisionCandidateReviewSummary[];
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <strong className="text-[13px]">{t.settings.candidateReview}</strong>
+        <span className="text-[12px] font-bold text-afro-muted">{t.settings.candidateReviewCount(format.integer(reviews.length))}</span>
+      </div>
+      <div className="grid gap-1.5">
+        {reviews.length === 0 ? <EmptyState message={t.settings.noCandidateReview} /> : null}
+        {reviews.map((review) => (
+          <RouteDecisionCandidateReviewRow format={format} key={review.id} review={review} t={t} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionApplyPlanCard({
+  plan,
+  t,
+}: {
+  plan?: AdminRouteDecisionApplyPlanSummary;
+  t: DashboardStrings;
+}) {
+  if (!plan) return null;
+
+  const visibleSteps = plan.steps.slice(0, 8);
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <strong className="text-[13px]">{t.settings.routeApplyPlan}</strong>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeApplyPlanStatusTone(plan.status)}>{routeApplyPlanStatusLabel(plan.status, t)}</StatusBadge>
+          <StatusBadge tone={plan.dataPlaneReady ? 'good' : 'neutral'}>
+            {plan.dataPlaneReady ? t.settings.routeApplyDataPlaneReady : t.settings.routeApplyDataPlaneOff}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {plan.guardReasonCodes.slice(0, 6).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`apply-plan-${reason}`}>
+            {routeDecisionReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+
+      <RouteDecisionApplyAdapterCard adapter={plan.adapter} t={t} />
+
+      <div className="grid gap-1.5 md:grid-cols-2">
+        {visibleSteps.map((step) => (
+          <RouteDecisionApplyPlanStepRow key={step.id} step={step} t={t} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionApplyAdapterCard({
+  adapter,
+  t,
+}: {
+  adapter: AdminRouteDecisionApplyAdapterSummary;
+  t: DashboardStrings;
+}) {
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line px-2.5 py-1.5">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block truncate text-[12px]">{t.settings.routeApplyAdapter}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {adapter.label} / {adapter.outboundType ?? '-'}
+          </span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeApplyAdapterStatusTone(adapter.status)}>
+            {routeApplyAdapterStatusLabel(adapter.status, t)}
+          </StatusBadge>
+          <StatusBadge tone={adapter.enabled ? 'good' : 'neutral'}>
+            {adapter.enabled ? t.settings.routeApplyAdapterEnabled : t.settings.routeApplyAdapterDisabled}
+          </StatusBadge>
+        </span>
+      </div>
+
+      {adapter.dryRunCommands.length > 0 ? (
+        <div className="grid gap-1">
+          <strong className="text-[12px] text-afro-muted">{t.settings.routeApplyDryRunCommands}</strong>
+          {adapter.dryRunCommands.slice(0, 5).map((item) => (
+            <div className="grid gap-1 rounded border border-afro-line px-2 py-1" key={item.id}>
+              <code className="min-w-0 truncate text-[11px] font-bold text-afro-ink" dir="ltr">{item.command}</code>
+              <span className="flex flex-wrap gap-1">
+                <StatusBadge tone={item.dataPlaneMutation ? 'warning' : 'neutral'}>
+                  {item.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+                </StatusBadge>
+                <StatusBadge tone={item.requiresRoot ? 'warning' : 'neutral'}>
+                  {item.requiresRoot ? t.settings.routeApplyRootCommand : t.settings.routeApplyUserCommand}
+                </StatusBadge>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {adapter.dryRunConfigChanges.length > 0 ? (
+        <div className="grid gap-1">
+          <strong className="text-[12px] text-afro-muted">{t.settings.routeApplyConfigChanges}</strong>
+          {adapter.dryRunConfigChanges.slice(0, 3).map((item) => (
+            <div className="grid gap-0.5 rounded border border-afro-line px-2 py-1" key={item.id}>
+              <code className="min-w-0 truncate text-[11px] font-bold text-afro-ink" dir="ltr">{item.filePath}</code>
+              <span className={`${mutedTextClass} min-w-0 truncate`}>{item.description}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RouteDecisionApplyPlanStepRow({
+  step,
+  t,
+}: {
+  step: AdminRouteDecisionApplyPlanStep;
+  t: DashboardStrings;
+}) {
+  return (
+    <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line px-2 py-1">
+      <span className="min-w-0 truncate text-[12px] font-bold text-afro-ink">{routeApplyPlanStepLabel(step.code, t)}</span>
+      <StatusBadge tone={step.dataPlaneMutation ? 'warning' : 'neutral'}>
+        {step.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+      </StatusBadge>
+    </div>
+  );
+}
+
+function RouteDecisionCandidateReviewRow({
+  review,
+  format,
+  t,
+}: {
+  review: AdminRouteDecisionCandidateReviewSummary;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  const scoreDelta =
+    review.scoreDeltaFromCurrent === null || review.scoreDeltaFromCurrent === undefined ? '--' : format.integer(review.scoreDeltaFromCurrent);
+  const reasonCodes = review.reviewReasonCodes.slice(0, 5);
+  const scoreReasons = review.scoreReasons?.slice(0, 3) ?? [];
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line px-2.5 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block truncate text-[13px]">{format.label(review.name)}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {routeDecisionCandidateSourceLabel(review, t)} / {String(review.selectedScoreProfile ?? '-').toUpperCase()}
+          </span>
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeDecisionDispositionTone(review.disposition)}>
+            {routeDecisionDispositionLabel(review.disposition, t)}
+          </StatusBadge>
+          <StatusBadge tone={getWireGuardScoreTone(review.score)}>{format.integer(review.score)}</StatusBadge>
+        </div>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-5">
+        <MetricPill icon={Clock} label={t.settings.latency} value={format.latency(review.latencyMs ?? null)} />
+        <MetricPill icon={Activity} label={t.settings.jitter} value={format.latency(review.jitterMs ?? null)} />
+        <MetricPill icon={AlertTriangle} label={t.settings.packetLoss} value={format.packetLoss(review.packetLossPercent ?? null)} />
+        <MetricPill icon={Gauge} label={t.settings.loadedLatency} value={formatLoadedLatency(review, format, t)} />
+        <MetricPill icon={ArrowDownUp} label={t.settings.routeDecisionCandidateDelta} value={scoreDelta} />
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {reasonCodes.map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${review.id}-${reason}`}>
+            {routeDecisionReasonLabel(reason, t)}
+          </span>
+        ))}
+        {scoreReasons.map((reason, index) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${review.id}-score-${reason.code}-${index}`}>
+            {routeScoreReasonLabel(reason.code, t)} {format.integer(reason.impact)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RouteDecisionEventList({
+  eventDetail,
+  events,
+  format,
+  isDetailLoading,
+  onInspectEvent,
+  t,
+}: {
+  eventDetail: AdminRouteDecisionEventDetail | null;
+  events: AdminRouteDecisionEventSummary[];
+  format: DashboardFormatters;
+  isDetailLoading: boolean;
+  onInspectEvent: (eventId: string) => void;
+  t: DashboardStrings;
+}) {
+  return (
+    <div className="mt-3 border-t border-afro-line pt-2">
+      <div className="mb-1.5 text-[13px] font-bold text-afro-muted">{t.settings.recentDecisionEvents}</div>
+      <div className="grid gap-1.5">
+        {events.length === 0 ? <EmptyState message={t.settings.noDecisionEvents} /> : null}
+        {events.map((event) => {
+          const fromName = event.fromOutboundName ?? event.fromOutboundId ?? '-';
+          const toName = event.toOutboundName ?? event.toOutboundId ?? '-';
+          const isSelected = eventDetail?.id === event.id;
+
+          return (
+            <div
+              className={`grid gap-1 rounded-md border px-2.5 py-2 ${isSelected ? 'border-afro-teal bg-afro-surface' : 'border-afro-line bg-white'}`}
+              key={event.id}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <strong className="min-w-0 truncate text-[13px]">
+                  {t.settings.decisionEventRoute(format.label(fromName), format.label(toName))}
+                </strong>
+                <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-1">
+                  <StatusBadge tone={routeDecisionActionToneForState(event.decisionState)}>
+                    {routeDecisionStateLabel(event.decisionState, t)}
+                  </StatusBadge>
+                  <button
+                    className="inline-flex min-h-7 items-center justify-center gap-1 rounded-md border border-afro-line bg-white px-2 text-[11px] font-bold text-afro-ink hover:border-afro-teal disabled:cursor-wait disabled:opacity-60"
+                    disabled={isDetailLoading}
+                    onClick={() => onInspectEvent(event.id)}
+                    type="button"
+                  >
+                    <Eye size={13} />
+                    {isDetailLoading ? t.settings.loadingDecisionEvent : t.settings.inspectDecisionEvent}
+                  </button>
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[12px] font-bold text-afro-muted">
+                <span>{format.time(new Date(event.createdAt))}</span>
+                <span>{event.scoreDelta === null || event.scoreDelta === undefined ? '--' : format.integer(event.scoreDelta)}</span>
+                <span>{String(event.scoreProfile ?? '-').toUpperCase()}</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {event.reasonCodes.slice(0, 4).map((reason) => (
+                  <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${event.id}-${reason}`}>
+                    {routeDecisionReasonLabel(reason, t)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {eventDetail ? <RouteDecisionEventDetailCard detail={eventDetail} format={format} t={t} /> : null}
+    </div>
+  );
+}
+
+function RouteDecisionEventDetailCard({
+  detail,
+  format,
+  t,
+}: {
+  detail: AdminRouteDecisionEventDetail;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  const snapshot = detail.dryRunSnapshot ?? null;
+
+  return (
+    <div className="mt-2 grid gap-2 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block truncate text-[13px]">{t.settings.decisionEventContext}</strong>
+          <span className={`${mutedTextClass} block truncate`}>{format.time(new Date(detail.createdAt))}</span>
+        </div>
+        <StatusBadge tone={routeDecisionActionToneForState(detail.decisionState)}>
+          {routeDecisionStateLabel(detail.decisionState, t)}
+        </StatusBadge>
+      </div>
+
+      <RouteDecisionSwitchPreflightCard preflight={detail.switchPreflight} format={format} t={t} />
+      <RouteDecisionSwitchRolloutCard rollout={detail.switchRollout} format={format} t={t} />
+      <RouteDecisionSwitchExecutionCard execution={detail.switchExecution} format={format} t={t} />
+
+      {snapshot ? (
+        <>
+          <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricPill
+              icon={ShieldCheck}
+              label={t.settings.dryRunSnapshot}
+              value={snapshot.secretSafe ? t.settings.decisionEventSecretSafe : t.settings.decisionEventSecretUnsafe}
+            />
+            <MetricPill
+              icon={Route}
+              label={t.settings.routeApplyAdapter}
+              value={`${snapshot.adapterId || '-'} / ${routeApplyAdapterStatusLabel(snapshot.adapterStatus, t)}`}
+            />
+            <MetricPill
+              icon={SettingsIcon}
+              label={t.settings.routeApplyDryRunCommands}
+              value={t.settings.dryRunCommandsCount(format.integer(snapshot.commandCount))}
+            />
+            <MetricPill
+              icon={Network}
+              label={t.settings.routeApplyConfigChanges}
+              value={t.settings.dryRunConfigChangesCount(format.integer(snapshot.configChangeCount))}
+            />
+          </div>
+
+          {snapshot.commands.length > 0 ? (
+            <div className="grid gap-1">
+              <strong className="text-[12px] text-afro-muted">{t.settings.routeApplyDryRunCommands}</strong>
+              {snapshot.commands.slice(0, 5).map((item) => (
+                <div className="grid gap-1 rounded border border-afro-line px-2 py-1" key={item.id}>
+                  <code className="min-w-0 truncate text-[11px] font-bold text-afro-ink" dir="ltr">{item.command}</code>
+                  <span className="flex flex-wrap gap-1">
+                    <StatusBadge tone={item.dataPlaneMutation ? 'warning' : 'neutral'}>
+                      {item.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+                    </StatusBadge>
+                    <StatusBadge tone={item.requiresRoot ? 'warning' : 'neutral'}>
+                      {item.requiresRoot ? t.settings.routeApplyRootCommand : t.settings.routeApplyUserCommand}
+                    </StatusBadge>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {snapshot.configChanges.length > 0 ? (
+            <div className="grid gap-1">
+              <strong className="text-[12px] text-afro-muted">{t.settings.routeApplyConfigChanges}</strong>
+              {snapshot.configChanges.slice(0, 3).map((item) => (
+                <div className="grid gap-0.5 rounded border border-afro-line px-2 py-1" key={item.id}>
+                  <code className="min-w-0 truncate text-[11px] font-bold text-afro-ink" dir="ltr">{item.filePath}</code>
+                  <span className={`${mutedTextClass} min-w-0 truncate`}>{item.description}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <EmptyState message={t.settings.noDryRunSnapshot} />
+      )}
+    </div>
+  );
+}
+
+function RouteDecisionMetric({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <div className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2.5">
+      <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
+      <strong className="min-w-0 truncate text-[13px]">{children}</strong>
+    </div>
+  );
+}
+
+function RouteDecisionCandidateCard({
+  candidate,
+  format,
+  label,
+  t,
+}: {
+  candidate: AdminRouteDecisionCandidateSummary | null;
+  format: DashboardFormatters;
+  label: string;
+  t: DashboardStrings;
+}) {
+  if (!candidate) {
+    return (
+      <div className="rounded-md border border-dashed border-afro-line px-2.5 py-2">
+        <div className="text-[12px] font-bold uppercase text-afro-muted">{label}</div>
+        <div className="mt-1 text-[13px] font-bold text-afro-muted">{t.settings.routeDecisionNoCandidate}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-afro-line px-2.5 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-bold uppercase text-afro-muted">{label}</div>
+          <strong className="block truncate text-[13px]">{format.label(candidate.name)}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {routeDecisionCandidateSourceLabel(candidate, t)} / {String(candidate.selectedScoreProfile ?? '-').toUpperCase()}
+          </span>
+        </div>
+        <StatusBadge tone={getWireGuardScoreTone(candidate.score)}>{format.integer(candidate.score)}</StatusBadge>
+      </div>
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-4">
+        <MetricPill icon={Clock} label={t.settings.latency} value={format.latency(candidate.latencyMs ?? null)} />
+        <MetricPill icon={Activity} label={t.settings.jitter} value={format.latency(candidate.jitterMs ?? null)} />
+        <MetricPill icon={AlertTriangle} label={t.settings.packetLoss} value={format.packetLoss(candidate.packetLossPercent ?? null)} />
+        <MetricPill icon={Gauge} label={t.settings.loadedLatency} value={formatLoadedLatency(candidate, format, t)} />
+      </div>
+    </div>
+  );
+}
+
+function routeDecisionActionTone(action: RouteDecisionAction): Tone {
+  switch (action) {
+    case 'switchRecommended':
+      return 'warning';
+    case 'keepCurrent':
+      return 'good';
+    case 'cooldownActive':
+    case 'noHealthyCandidate':
+    case 'noManagedCandidate':
+    case 'insufficientCandidates':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeDecisionActionToneForState(state: string): Tone {
+  switch (state) {
+    case 'switchRecommended':
+      return 'warning';
+    case 'keepCurrent':
+      return 'good';
+    case 'routeLocked':
+    case 'cooldownActive':
+    case 'manualMode':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeDecisionDispositionTone(disposition: string): Tone {
+  switch (disposition) {
+    case 'recommended':
+    case 'eligible':
+      return 'good';
+    case 'unhealthy':
+      return 'critical';
+    case 'cooldownBlocked':
+    case 'belowHysteresis':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeDecisionDispositionLabel(disposition: string, t: DashboardStrings): string {
+  switch (disposition) {
+    case 'recommended':
+      return t.settings.decisionDispositionRecommended;
+    case 'current':
+      return t.settings.decisionDispositionCurrent;
+    case 'eligible':
+      return t.settings.decisionDispositionEligible;
+    case 'routeLocked':
+      return t.settings.decisionDispositionRouteLocked;
+    case 'cooldownBlocked':
+      return t.settings.decisionDispositionCooldown;
+    case 'manualMode':
+      return t.settings.decisionDispositionManual;
+    case 'diagnosticOnly':
+      return t.settings.decisionDispositionDiagnostic;
+    case 'unhealthy':
+      return t.settings.decisionDispositionUnhealthy;
+    case 'belowHysteresis':
+      return t.settings.decisionDispositionBelowHysteresis;
+    default:
+      return disposition;
+  }
+}
+
+function routeApplyPlanStatusTone(status: string): Tone {
+  switch (status) {
+    case 'assignmentOnlyReady':
+    case 'dataPlaneReady':
+      return 'good';
+    case 'blocked':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeApplyPlanStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'assignmentOnlyReady':
+      return t.settings.routeApplyPlanAssignmentOnlyReady;
+    case 'dataPlaneReady':
+      return t.settings.routeApplyPlanDataPlaneReady;
+    case 'blocked':
+      return t.settings.routeApplyPlanBlocked;
+    case 'notRequired':
+      return t.settings.routeApplyPlanNotRequired;
+    default:
+      return status;
+  }
+}
+
+function routeApplyAdapterStatusTone(status: string): Tone {
+  switch (status) {
+    case 'ready':
+      return 'good';
+    case 'missing':
+    case 'unsupported':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeApplyAdapterStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'ready':
+      return t.settings.routeApplyAdapterReady;
+    case 'disabled':
+      return t.settings.routeApplyAdapterDisabled;
+    case 'missing':
+      return t.settings.routeApplyAdapterMissing;
+    case 'unsupported':
+      return t.settings.routeApplyAdapterUnsupported;
+    default:
+      return status;
+  }
+}
+
+function routeApplyPlanStepLabel(code: string, t: DashboardStrings): string {
+  switch (code) {
+    case 'verify_preview_fresh':
+      return t.settings.routeApplyStepVerifyPreview;
+    case 'verify_route_lock_clear':
+      return t.settings.routeApplyStepVerifyLock;
+    case 'verify_cooldown_clear':
+      return t.settings.routeApplyStepVerifyCooldown;
+    case 'persist_assignment':
+      return t.settings.routeApplyStepPersistAssignment;
+    case 'set_cooldown':
+      return t.settings.routeApplyStepSetCooldown;
+    case 'drain_current_route':
+      return t.settings.routeApplyStepDrainCurrent;
+    case 'switch_data_plane_route':
+      return t.settings.routeApplyStepSwitchDataPlane;
+    case 'verify_route_health':
+      return t.settings.routeApplyStepVerifyHealth;
+    case 'restore_previous_route':
+      return t.settings.routeApplyStepRestorePrevious;
+    default:
+      return code;
+  }
+}
+
+function routeDecisionActionLabel(action: RouteDecisionAction, t: DashboardStrings): string {
+  switch (action) {
+    case 'switchRecommended':
+      return t.settings.decisionActionSwitch;
+    case 'manualMode':
+      return t.settings.decisionActionManual;
+    case 'routeLocked':
+      return t.settings.decisionActionLocked;
+    case 'cooldownActive':
+      return t.settings.decisionActionCooldown;
+    case 'insufficientCandidates':
+      return t.settings.decisionActionInsufficient;
+    case 'noHealthyCandidate':
+      return t.settings.decisionActionNoHealthy;
+    case 'noManagedCandidate':
+      return t.settings.decisionActionNoManaged;
+    default:
+      return t.settings.decisionActionKeep;
+  }
+}
+
+function routeDecisionStateLabel(state: string, t: DashboardStrings): string {
+  switch (state) {
+    case 'switchRecommended':
+    case 'manualMode':
+    case 'routeLocked':
+    case 'cooldownActive':
+    case 'insufficientCandidates':
+    case 'noHealthyCandidate':
+    case 'noManagedCandidate':
+    case 'keepCurrent':
+      return routeDecisionActionLabel(state, t);
+    default:
+      return state;
+  }
+}
+
+function routeDecisionReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'no_candidates':
+      return t.settings.decisionReasonNoCandidates;
+    case 'no_healthy_candidate':
+      return t.settings.decisionReasonNoHealthy;
+    case 'agent_candidate_not_applicable':
+      return t.settings.decisionReasonAgentOnly;
+    case 'route_locked':
+      return t.settings.decisionReasonLocked;
+    case 'manual_mode':
+      return t.settings.decisionReasonManual;
+    case 'cooldown_active':
+      return t.settings.decisionReasonCooldown;
+    case 'no_current_candidate':
+      return t.settings.decisionReasonNoCurrent;
+    case 'best_candidate_current':
+      return t.settings.decisionReasonBestCurrent;
+    case 'score_delta_meets_hysteresis':
+      return t.settings.decisionReasonDeltaMet;
+    case 'score_delta_below_hysteresis':
+      return t.settings.decisionReasonDeltaLow;
+    case 'auto_route_enabled':
+      return t.settings.decisionReasonAutoEnabled;
+    case 'has_previous_decision_state':
+      return t.settings.decisionReasonPreviousState;
+    case 'recommended_candidate':
+      return t.settings.decisionReasonRecommendedCandidate;
+    case 'current_candidate':
+      return t.settings.decisionReasonCurrentCandidate;
+    case 'candidate_unhealthy':
+      return t.settings.decisionReasonCandidateUnhealthy;
+    case 'current_candidate_unhealthy':
+      return t.settings.decisionReasonCurrentUnhealthy;
+    case 'health_based_switch':
+      return t.settings.decisionReasonHealthSwitch;
+    case 'score_below_threshold':
+      return t.settings.decisionReasonScoreLow;
+    case 'assignment_apply_requested':
+      return t.settings.decisionReasonApplyRequested;
+    case 'assignment_only_apply':
+      return t.settings.decisionReasonAssignmentOnly;
+    case 'data_plane_not_applied':
+      return t.settings.decisionReasonDataPlaneNotApplied;
+    case 'apply_requires_switch_recommended':
+      return t.settings.decisionReasonApplyRequiresSwitch;
+    case 'server_apply_adapter_missing':
+      return t.settings.decisionReasonApplyAdapterMissing;
+    case 'data_plane_apply_disabled':
+      return t.settings.decisionReasonDataPlaneDisabled;
+    case 'route_apply_adapter_unsupported':
+      return t.settings.decisionReasonApplyAdapterUnsupported;
+    case 'dry_run_only':
+      return t.settings.decisionReasonDryRunOnly;
+    case 'loaded_latency_high':
+      return t.settings.decisionReasonLoadedLatency;
+    default:
+      return reason;
+  }
+}
+
+function routeScoreReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'healthStatus':
+      return t.settings.decisionScoreReasonHealthStatus;
+    case 'latency':
+      return t.settings.decisionScoreReasonLatency;
+    case 'jitter':
+      return t.settings.decisionScoreReasonJitter;
+    case 'packetLoss':
+      return t.settings.decisionScoreReasonPacketLoss;
+    case 'loadedLatency':
+      return t.settings.decisionScoreReasonLoadedLatency;
+    case 'load':
+      return t.settings.decisionScoreReasonLoad;
+    case 'serverHealth':
+      return t.settings.decisionScoreReasonServerHealth;
+    case 'wireguardHandshake':
+      return t.settings.decisionScoreReasonHandshake;
+    case 'routeProbe':
+      return t.settings.decisionScoreReasonRouteProbe;
+    case 'maintenance':
+      return t.settings.decisionScoreReasonMaintenance;
+    default:
+      return reason;
+  }
+}
+
+function routeScoreProfileLabel(profile: string, t: DashboardStrings): string {
+  switch (profile) {
+    case 'balanced':
+      return t.settings.profileBalanced;
+    case 'stability':
+      return t.settings.stabilityStrategy;
+    case 'throughput':
+      return t.settings.throughputStrategy;
+    case 'gaming':
+      return t.settings.profileGaming;
+    case 'tcp':
+      return 'TCP';
+    case 'udp':
+      return 'UDP';
+    case 'quic':
+      return 'QUIC';
+    case 'dns':
+      return 'DNS';
+    case 'wireguard':
+      return 'WireGuard';
+    default:
+      return profile;
+  }
+}
+
+function routeProfileRecommendationReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'selectedProfile':
+      return t.settings.profileReasonSelected;
+    case 'bestProfileScore':
+      return t.settings.profileReasonBestScore;
+    case 'profileScoreLead':
+      return t.settings.profileReasonScoreLead;
+    case 'gamingSensitive':
+      return t.settings.profileReasonGaming;
+    case 'protocolSensitive':
+      return t.settings.profileReasonProtocol;
+    case 'throughputSensitive':
+      return t.settings.profileReasonThroughput;
+    case 'stabilitySensitive':
+      return t.settings.profileReasonStability;
+    default:
+      return reason;
+  }
+}
+
+function routeLoadBalanceStrategyLabel(strategy: string, t: DashboardStrings): string {
+  switch (strategy) {
+    case 'balanced':
+      return t.settings.balancedStrategy;
+    case 'stability':
+      return t.settings.stabilityStrategy;
+    case 'throughput':
+      return t.settings.throughputStrategy;
+    default:
+      return strategy;
+  }
+}
+
+function routeLoadBalancingModeTone(mode: string): Tone {
+  switch (mode) {
+    case 'weighted':
+      return 'good';
+    case 'primaryStandby':
+    case 'singlePrimary':
+      return 'neutral';
+    case 'insufficientCandidates':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeLoadBalancingModeLabel(mode: string, t: DashboardStrings): string {
+  switch (mode) {
+    case 'singlePrimary':
+      return t.settings.loadBalancingSinglePrimary;
+    case 'weighted':
+      return t.settings.loadBalancingWeighted;
+    case 'primaryStandby':
+      return t.settings.loadBalancingPrimaryStandby;
+    case 'insufficientCandidates':
+      return t.settings.loadBalancingInsufficient;
+    default:
+      return mode;
+  }
+}
+
+function routeLoadBalancingRoleLabel(role: string, t: DashboardStrings): string {
+  switch (role) {
+    case 'primary':
+      return t.settings.loadBalancingPrimary;
+    case 'secondary':
+      return t.settings.loadBalancingSecondary;
+    case 'standby':
+      return t.settings.loadBalancingStandby;
+    default:
+      return role;
+  }
+}
+
+function routeLoadBalancingRiskTone(risk: string): Tone {
+  switch (risk) {
+    case 'low':
+      return 'good';
+    case 'medium':
+      return 'warning';
+    case 'high':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeLoadBalancingRiskLabel(risk: string, t: DashboardStrings): string {
+  switch (risk) {
+    case 'low':
+      return t.settings.loadBalancingRiskLow;
+    case 'medium':
+      return t.settings.loadBalancingRiskMedium;
+    case 'high':
+      return t.settings.loadBalancingRiskHigh;
+    default:
+      return risk;
+  }
+}
+
+function routeLoadBalancingReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'advisoryOnly':
+      return t.settings.loadBalancingReasonAdvisory;
+    case 'dataPlaneDisabled':
+      return t.settings.loadBalancingReasonDataPlaneOff;
+    case 'profileWeighted':
+      return t.settings.loadBalancingReasonProfile;
+    case 'healthWeighted':
+      return t.settings.loadBalancingReasonHealth;
+    case 'packetLossWeighted':
+      return t.settings.loadBalancingReasonPacketLoss;
+    case 'jitterWeighted':
+      return t.settings.loadBalancingReasonJitter;
+    case 'latencyWeighted':
+      return t.settings.loadBalancingReasonLatency;
+    case 'throughputWeighted':
+      return t.settings.loadBalancingReasonThroughput;
+    case 'loadWeighted':
+      return t.settings.loadBalancingReasonLoad;
+    case 'securityProfileWeighted':
+      return t.settings.loadBalancingReasonSecurity;
+    case 'routeConsistency':
+      return t.settings.loadBalancingReasonConsistency;
+    case 'scoreCloseToPrimary':
+      return t.settings.loadBalancingReasonCloseScore;
+    case 'bestCompositeScore':
+      return t.settings.loadBalancingReasonBestComposite;
+    case 'standbyRoute':
+      return t.settings.loadBalancingReasonStandby;
+    case 'insufficientEligibleCandidates':
+      return t.settings.loadBalancingReasonInsufficient;
+    default:
+      return reason;
+  }
+}
+
+function routeSessionSafetyModeTone(mode: string): Tone {
+  switch (mode) {
+    case 'safeToSwitch':
+    case 'notRequired':
+      return 'good';
+    case 'stickyHold':
+    case 'drainNewSessions':
+      return 'warning';
+    case 'emergencySwitch':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSessionSafetyModeLabel(mode: string, t: DashboardStrings): string {
+  switch (mode) {
+    case 'notRequired':
+      return t.settings.sessionSafetyModeNoChange;
+    case 'safeToSwitch':
+      return t.settings.sessionSafetyModeSafe;
+    case 'stickyHold':
+      return t.settings.sessionSafetyModeStickyHold;
+    case 'drainNewSessions':
+      return t.settings.sessionSafetyModeDrain;
+    case 'emergencySwitch':
+      return t.settings.sessionSafetyModeEmergency;
+    default:
+      return mode;
+  }
+}
+
+function routeSessionSafetyPolicyLabel(policy: string, t: DashboardStrings): string {
+  switch (policy) {
+    case 'none':
+      return t.settings.sessionSafetyPolicyNone;
+    case 'keepExisting':
+      return t.settings.sessionSafetyPolicyKeepExisting;
+    case 'newSessionsOnly':
+      return t.settings.sessionSafetyPolicyNewOnly;
+    case 'emergencyReroute':
+      return t.settings.sessionSafetyPolicyEmergency;
+    default:
+      return policy;
+  }
+}
+
+function routeSessionSafetyRiskTone(risk: string): Tone {
+  switch (risk) {
+    case 'low':
+      return 'good';
+    case 'medium':
+      return 'warning';
+    case 'high':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSessionSafetyRiskLabel(risk: string, t: DashboardStrings): string {
+  switch (risk) {
+    case 'low':
+      return t.settings.sessionSafetyRiskLow;
+    case 'medium':
+      return t.settings.sessionSafetyRiskMedium;
+    case 'high':
+      return t.settings.sessionSafetyRiskHigh;
+    default:
+      return risk;
+  }
+}
+
+function routeSessionSafetyReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'gamingSensitive':
+      return t.settings.sessionSafetyReasonGaming;
+    case 'udpSessionSensitive':
+      return t.settings.sessionSafetyReasonUdp;
+    case 'routeConsistency':
+      return t.settings.sessionSafetyReasonConsistency;
+    case 'publicIpMayChange':
+      return t.settings.sessionSafetyReasonPublicIp;
+    case 'natStateMayReset':
+      return t.settings.sessionSafetyReasonNat;
+    case 'stickySessionsRequired':
+      return t.settings.sessionSafetyReasonSticky;
+    case 'drainExistingSessions':
+      return t.settings.sessionSafetyReasonDrain;
+    case 'newSessionsOnly':
+      return t.settings.sessionSafetyReasonNewOnly;
+    case 'emergencyHealthFailure':
+      return t.settings.sessionSafetyReasonEmergency;
+    case 'manualOrLocked':
+      return t.settings.sessionSafetyReasonManualLocked;
+    case 'cooldownActive':
+      return t.settings.sessionSafetyReasonCooldown;
+    case 'noSwitchNeeded':
+      return t.settings.sessionSafetyReasonNoSwitch;
+    case 'noCurrentRoute':
+      return t.settings.sessionSafetyReasonNoCurrent;
+    case 'assignmentOnly':
+      return t.settings.sessionSafetyReasonAssignmentOnly;
+    case 'dataPlaneDisabled':
+      return t.settings.sessionSafetyReasonDataPlaneOff;
+    case 'scoreDeltaSwitch':
+      return t.settings.sessionSafetyReasonScoreDelta;
+    default:
+      return reason;
+  }
+}
+
+function routeSwitchEngineStatusTone(status: string): Tone {
+  switch (status) {
+    case 'dataPlaneReady':
+      return 'good';
+    case 'planningOnly':
+      return 'warning';
+    case 'blocked':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchEngineStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'notRequired':
+      return t.settings.switchEngineStatusNotRequired;
+    case 'planningOnly':
+      return t.settings.switchEngineStatusPlanning;
+    case 'blocked':
+      return t.settings.switchEngineStatusBlocked;
+    case 'dataPlaneReady':
+      return t.settings.switchEngineStatusReady;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchEngineModeLabel(mode: string, t: DashboardStrings): string {
+  switch (mode) {
+    case 'noChange':
+      return t.settings.switchEngineModeNoChange;
+    case 'assignmentOnly':
+      return t.settings.switchEngineModeAssignment;
+    case 'stickyDrain':
+      return t.settings.switchEngineModeStickyDrain;
+    case 'newSessionsOnly':
+      return t.settings.switchEngineModeNewOnly;
+    case 'emergencyReroute':
+      return t.settings.switchEngineModeEmergency;
+    default:
+      return mode;
+  }
+}
+
+function routeSwitchEngineStepStatusTone(status: string): Tone {
+  switch (status) {
+    case 'ready':
+      return 'good';
+    case 'future':
+      return 'warning';
+    case 'blocked':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchEngineStepStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'ready':
+      return t.settings.switchEngineStepReady;
+    case 'future':
+      return t.settings.switchEngineStepFuture;
+    case 'blocked':
+      return t.settings.switchEngineStepBlocked;
+    case 'notRequired':
+      return t.settings.switchEngineStepNotRequired;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchEngineSessionImpactLabel(impact: string, t: DashboardStrings): string {
+  switch (impact) {
+    case 'none':
+      return t.settings.switchEngineImpactNone;
+    case 'newSessionsOnly':
+      return t.settings.switchEngineImpactNewOnly;
+    case 'existingSessions':
+      return t.settings.switchEngineImpactExisting;
+    case 'allSessions':
+      return t.settings.switchEngineImpactAll;
+    default:
+      return impact;
+  }
+}
+
+function routeSwitchEngineStepLabel(code: string, t: DashboardStrings): string {
+  switch (code) {
+    case 'verify_switch_guards':
+      return t.settings.switchEngineStepVerifyGuards;
+    case 'pin_existing_sessions':
+      return t.settings.switchEngineStepPinExisting;
+    case 'route_new_sessions':
+      return t.settings.switchEngineStepRouteNew;
+    case 'drain_existing_sessions':
+      return t.settings.switchEngineStepDrainExisting;
+    case 'switch_active_route':
+      return t.settings.switchEngineStepSwitchActive;
+    case 'emergency_switch_active_route':
+      return t.settings.switchEngineStepEmergencySwitch;
+    case 'verify_switched_route':
+      return t.settings.switchEngineStepVerifyRoute;
+    case 'rollback_previous_route':
+      return t.settings.switchEngineStepRollback;
+    default:
+      return code;
+  }
+}
+
+function routeSwitchEngineReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'assignmentOnly':
+      return t.settings.switchEngineReasonAssignmentOnly;
+    case 'dataPlaneDisabled':
+      return t.settings.switchEngineReasonDataPlaneOff;
+    case 'serverApplyAdapterMissing':
+      return t.settings.switchEngineReasonAdapterMissing;
+    case 'routeLock':
+      return t.settings.switchEngineReasonRouteLock;
+    case 'manualMode':
+      return t.settings.switchEngineReasonManual;
+    case 'cooldownActive':
+      return t.settings.switchEngineReasonCooldown;
+    case 'stickySessions':
+      return t.settings.switchEngineReasonSticky;
+    case 'newSessionsOnly':
+      return t.settings.switchEngineReasonNewOnly;
+    case 'drainSafe':
+      return t.settings.switchEngineReasonDrainSafe;
+    case 'emergencySwitch':
+      return t.settings.switchEngineReasonEmergency;
+    case 'rollbackPlanned':
+      return t.settings.switchEngineReasonRollback;
+    case 'noSwitchNeeded':
+      return t.settings.switchEngineReasonNoSwitch;
+    case 'guardBlocked':
+      return t.settings.switchEngineReasonGuardBlocked;
+    default:
+      return reason;
+  }
+}
+
+function routeSwitchPreflightStatusTone(status: string): Tone {
+  switch (status) {
+    case 'ready':
+      return 'good';
+    case 'planningOnly':
+      return 'warning';
+    case 'blocked':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchPreflightStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'notRequired':
+      return t.settings.switchPreflightStatusNotRequired;
+    case 'planningOnly':
+      return t.settings.switchPreflightStatusPlanning;
+    case 'blocked':
+      return t.settings.switchPreflightStatusBlocked;
+    case 'ready':
+      return t.settings.switchPreflightStatusReady;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchPreflightCheckStatusTone(status: string): Tone {
+  switch (status) {
+    case 'passed':
+      return 'good';
+    case 'warning':
+    case 'future':
+      return 'warning';
+    case 'failed':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchPreflightCheckStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'passed':
+      return t.settings.switchPreflightCheckPassed;
+    case 'warning':
+      return t.settings.switchPreflightCheckWarning;
+    case 'failed':
+      return t.settings.switchPreflightCheckFailed;
+    case 'future':
+      return t.settings.switchPreflightCheckFuture;
+    case 'notRequired':
+      return t.settings.switchPreflightCheckNotRequired;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchPreflightCheckLabel(code: string, t: DashboardStrings): string {
+  switch (code) {
+    case 'route_data_plane_feature_flag':
+      return t.settings.switchPreflightFeatureFlag;
+    case 'server_apply_adapter':
+      return t.settings.switchPreflightAdapter;
+    case 'secret_safe_dry_run':
+      return t.settings.switchPreflightDryRun;
+    case 'route_switch_guards':
+      return t.settings.switchPreflightGuards;
+    case 'session_safety_policy':
+      return t.settings.switchPreflightSessionSafety;
+    case 'rollback_plan':
+      return t.settings.switchPreflightRollback;
+    case 'cooldown_policy':
+      return t.settings.switchPreflightCooldown;
+    case 'decision_audit':
+      return t.settings.switchPreflightAudit;
+    case 'post_switch_health_verify':
+      return t.settings.switchPreflightHealthVerify;
+    default:
+      return code;
+  }
+}
+
+function routeSwitchPreflightReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'noSwitchNeeded':
+      return t.settings.switchPreflightReasonNoSwitch;
+    case 'featureFlagDisabled':
+      return t.settings.switchPreflightReasonFeatureFlag;
+    case 'adapterMissing':
+      return t.settings.switchPreflightReasonAdapterMissing;
+    case 'adapterUnsupported':
+      return t.settings.switchPreflightReasonAdapterUnsupported;
+    case 'dryRunOnly':
+      return t.settings.switchPreflightReasonDryRunOnly;
+    case 'guardBlocked':
+      return t.settings.switchPreflightReasonGuardBlocked;
+    case 'sessionSafetyRequired':
+      return t.settings.switchPreflightReasonSessionSafety;
+    case 'rollbackPlanned':
+      return t.settings.switchPreflightReasonRollback;
+    case 'cooldownRequired':
+      return t.settings.switchPreflightReasonCooldown;
+    case 'auditReady':
+      return t.settings.switchPreflightReasonAudit;
+    case 'healthVerifyRequired':
+      return t.settings.switchPreflightReasonHealthVerify;
+    case 'dataPlaneReady':
+      return t.settings.switchPreflightReasonDataPlaneReady;
+    default:
+      return reason;
+  }
+}
+
+function routeSwitchRolloutStatusTone(status: string): Tone {
+  switch (status) {
+    case 'canaryReady':
+      return 'good';
+    case 'planningOnly':
+    case 'emergencyOnly':
+      return 'warning';
+    case 'blocked':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchRolloutStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'notRequired':
+      return t.settings.switchRolloutStatusNotRequired;
+    case 'blocked':
+      return t.settings.switchRolloutStatusBlocked;
+    case 'planningOnly':
+      return t.settings.switchRolloutStatusPlanning;
+    case 'canaryReady':
+      return t.settings.switchRolloutStatusReady;
+    case 'emergencyOnly':
+      return t.settings.switchRolloutStatusEmergency;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchRolloutStrategyLabel(strategy: string, t: DashboardStrings): string {
+  switch (strategy) {
+    case 'none':
+      return t.settings.switchRolloutStrategyNone;
+    case 'assignmentOnly':
+      return t.settings.switchRolloutStrategyAssignment;
+    case 'newSessionCanary':
+      return t.settings.switchRolloutStrategyNewCanary;
+    case 'stickyDrainCanary':
+      return t.settings.switchRolloutStrategyStickyCanary;
+    case 'emergencyReroute':
+      return t.settings.switchRolloutStrategyEmergency;
+    default:
+      return strategy;
+  }
+}
+
+function routeSwitchRolloutStepStatusTone(status: string): Tone {
+  switch (status) {
+    case 'ready':
+      return 'good';
+    case 'future':
+      return 'warning';
+    case 'blocked':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchRolloutStepStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'ready':
+      return t.settings.switchEngineStepReady;
+    case 'future':
+      return t.settings.switchEngineStepFuture;
+    case 'blocked':
+      return t.settings.switchEngineStepBlocked;
+    case 'notRequired':
+      return t.settings.switchEngineStepNotRequired;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchRolloutStepLabel(code: string, t: DashboardStrings): string {
+  switch (code) {
+    case 'persist_control_plane_assignment':
+      return t.settings.switchRolloutStepPersistAssignment;
+    case 'pin_existing_sessions_for_rollout':
+      return t.settings.switchRolloutStepPinExisting;
+    case 'canary_new_sessions':
+      return t.settings.switchRolloutStepCanary;
+    case 'verify_canary_health':
+      return t.settings.switchRolloutStepVerify;
+    case 'expand_new_session_rollout':
+      return t.settings.switchRolloutStepExpand;
+    case 'complete_new_session_rollout':
+      return t.settings.switchRolloutStepComplete;
+    case 'rollback_on_regression':
+      return t.settings.switchRolloutStepRollback;
+    default:
+      return code;
+  }
+}
+
+function routeSwitchRolloutTrafficScopeLabel(scope: string, t: DashboardStrings): string {
+  switch (scope) {
+    case 'none':
+      return t.settings.switchRolloutScopeNone;
+    case 'controlPlane':
+      return t.settings.switchRolloutScopeControl;
+    case 'newSessions':
+      return t.settings.switchRolloutScopeNew;
+    case 'canary':
+      return t.settings.switchRolloutScopeCanary;
+    case 'allNewSessions':
+      return t.settings.switchRolloutScopeAllNew;
+    case 'allSessions':
+      return t.settings.switchRolloutScopeAll;
+    case 'emergency':
+      return t.settings.switchRolloutScopeEmergency;
+    default:
+      return scope;
+  }
+}
+
+function routeSwitchRolloutReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'noSwitchNeeded':
+      return t.settings.switchPreflightReasonNoSwitch;
+    case 'assignmentOnly':
+      return t.settings.switchEngineReasonAssignmentOnly;
+    case 'dataPlaneDisabled':
+      return t.settings.switchEngineReasonDataPlaneOff;
+    case 'preflightBlocked':
+      return t.settings.switchRolloutReasonPreflightBlocked;
+    case 'stickySessions':
+      return t.settings.switchEngineReasonSticky;
+    case 'newSessionsOnly':
+      return t.settings.switchEngineReasonNewOnly;
+    case 'emergencySwitch':
+      return t.settings.switchEngineReasonEmergency;
+    case 'canaryRequired':
+      return t.settings.switchRolloutReasonCanary;
+    case 'rollbackGuard':
+      return t.settings.switchRolloutReasonRollback;
+    case 'healthVerifyRequired':
+      return t.settings.switchPreflightReasonHealthVerify;
+    case 'gamingSensitive':
+      return t.settings.switchRolloutReasonGaming;
+    case 'routeConsistencyHold':
+      return t.settings.switchRolloutReasonConsistency;
+    case 'dataPlaneReady':
+      return t.settings.switchPreflightReasonDataPlaneReady;
+    default:
+      return reason;
+  }
+}
+
+function routeSwitchExecutionStatusTone(status: string): Tone {
+  switch (status) {
+    case 'dataPlaneApplied':
+      return 'good';
+    case 'controlPlaneApplied':
+    case 'dataPlaneBlocked':
+    case 'blocked':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchExecutionStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'notRequired':
+      return t.settings.switchExecutionStatusNotRequired;
+    case 'blocked':
+      return t.settings.switchExecutionStatusBlocked;
+    case 'controlPlaneApplied':
+      return t.settings.switchExecutionStatusControlPlane;
+    case 'dataPlaneBlocked':
+      return t.settings.switchExecutionStatusDataPlaneBlocked;
+    case 'dataPlaneApplied':
+      return t.settings.switchExecutionStatusDataPlaneApplied;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchExecutionPhaseLabel(phase: string, t: DashboardStrings): string {
+  switch (phase) {
+    case 'noChange':
+      return t.settings.switchExecutionPhaseNoChange;
+    case 'guarded':
+      return t.settings.switchExecutionPhaseGuarded;
+    case 'stickyDrainArmed':
+      return t.settings.switchExecutionPhaseStickyDrain;
+    case 'newSessionsArmed':
+      return t.settings.switchExecutionPhaseNewSessions;
+    case 'emergencyApplied':
+      return t.settings.switchExecutionPhaseEmergency;
+    case 'dataPlaneApplied':
+      return t.settings.switchExecutionPhaseDataPlane;
+    default:
+      return phase;
+  }
+}
+
+function routeSwitchExecutionReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'assignmentOnly':
+      return t.settings.switchEngineReasonAssignmentOnly;
+    case 'assignmentApplied':
+      return t.settings.switchExecutionReasonAssignmentApplied;
+    case 'dataPlaneNotApplied':
+      return t.settings.switchExecutionReasonDataPlaneNotApplied;
+    case 'dataPlaneDisabled':
+      return t.settings.switchEngineReasonDataPlaneOff;
+    case 'serverApplyAdapterMissing':
+      return t.settings.switchEngineReasonAdapterMissing;
+    case 'stickySessionsPreserved':
+      return t.settings.switchExecutionReasonStickyPreserved;
+    case 'newSessionsOnly':
+      return t.settings.switchEngineReasonNewOnly;
+    case 'drainWindowArmed':
+      return t.settings.switchExecutionReasonDrainArmed;
+    case 'cooldownArmed':
+      return t.settings.switchExecutionReasonCooldownArmed;
+    case 'emergencySwitch':
+      return t.settings.switchEngineReasonEmergency;
+    case 'rollbackReady':
+      return t.settings.switchEngineReasonRollback;
+    default:
+      return reason;
+  }
+}
+
+function formatLoadedLatency(
+  candidate: Pick<AdminRouteDecisionCandidateSummary, 'loadedLatencyDeltaMs' | 'loadedLatencyMs' | 'bufferbloatRecommendation' | 'bufferbloatSeverity'>,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  if (candidate.loadedLatencyDeltaMs !== null && candidate.loadedLatencyDeltaMs !== undefined) {
+    return `+${format.latency(candidate.loadedLatencyDeltaMs)}`;
+  }
+  if (candidate.loadedLatencyMs !== null && candidate.loadedLatencyMs !== undefined) {
+    return format.latency(candidate.loadedLatencyMs);
+  }
+  if (candidate.bufferbloatRecommendation && candidate.bufferbloatRecommendation !== 'none') {
+    return routeBufferbloatRecommendationLabel(candidate.bufferbloatRecommendation, t);
+  }
+
+  return routeBufferbloatSeverityLabel(candidate.bufferbloatSeverity ?? 'unknown', t);
+}
+
+function routeBufferbloatSeverityLabel(severity: string, t: DashboardStrings): string {
+  switch (severity) {
+    case 'none':
+      return t.settings.bufferbloatNone;
+    case 'low':
+      return t.settings.bufferbloatLow;
+    case 'medium':
+      return t.settings.bufferbloatMedium;
+    case 'high':
+      return t.settings.bufferbloatHigh;
+    default:
+      return t.settings.bufferbloatUnknown;
+  }
+}
+
+function routeBufferbloatRecommendationLabel(recommendation: string, t: DashboardStrings): string {
+  switch (recommendation) {
+    case 'watch':
+      return t.settings.bufferbloatRecommendationWatch;
+    case 'sqmRecommended':
+      return t.settings.bufferbloatRecommendationSqm;
+    case 'avoidUnderLoad':
+      return t.settings.bufferbloatRecommendationAvoid;
+    default:
+      return t.settings.bufferbloatRecommendationNone;
+  }
+}
+
+function routeDecisionCandidateSourceLabel(candidate: AdminRouteDecisionCandidateSummary, t: DashboardStrings): string {
+  if (candidate.source === 'agent') return t.settings.agentTelemetry;
+  if (candidate.source === 'outbound') return t.settings.outboundHealth;
+
+  return t.settings.localSample;
+}
+
+function SettingsInput({
+  autoComplete,
+  inputMode,
+  label,
+  onChange,
+  placeholder,
+  required = false,
+  type = 'text',
+  value,
+}: {
+  autoComplete?: string;
+  inputMode?: 'numeric';
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  type?: 'text' | 'password';
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-[13px] font-bold text-afro-muted">{label}</span>
+      <input
+        autoComplete={autoComplete}
+        className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+        dir="ltr"
+        inputMode={inputMode}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        required={required}
+        type={type}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function createProtocolSetupConfig(
+  draft: WireGuardSetupDraft,
+  routeMode: RouteSelectionMode,
+  loadBalanceStrategy: LoadBalanceStrategy,
+  activeWireGuard: WireGuardHealthCandidate,
+): Record<string, unknown> {
+  return {
+    serverName: draft.serverName.trim() || undefined,
+    interfaceName: draft.interfaceName.trim() || undefined,
+    routeGroup: draft.routeGroup.trim() || undefined,
+    addressCidr: draft.addressCidr.trim() || undefined,
+    listenPort: Number(draft.listenPort) || undefined,
+    peerPublicKeyPresent: Boolean(draft.peerPublicKey.trim()),
+    endpoint: draft.endpoint.trim() || undefined,
+    allowedIps: draft.allowedIps.trim() || undefined,
+    persistentKeepalive: Number(draft.persistentKeepalive) || undefined,
+    healthTarget: draft.healthTarget.trim() || undefined,
+    routeMode,
+    loadBalanceStrategy,
+    activeWireGuardId: activeWireGuard.source === 'outbound' ? activeWireGuard.id : undefined,
+    activeWireGuardSource: activeWireGuard.source,
+    activeWireGuardInterfaceName: activeWireGuard.interfaceName ?? undefined,
+    activeWireGuardServerExternalId: activeWireGuard.serverExternalId ?? undefined,
+  };
+}
+
+function outboundToWireGuardCandidate(outbound: AdminOutboundSummary): AdminWireGuardCandidate | null {
+  if (outbound.type !== 'wireguard') return null;
+
+  return {
+    id: outbound.id,
+    name: outbound.name,
+    endpoint: extractEndpointFromConfig(outbound.config),
+    routeGroup: outbound.routeGroup,
+    healthStatus: outbound.healthStatus,
+    score: outbound.enabled && !outbound.maintenanceMode ? 55 : 0,
+    latencyMs: null,
+    jitterMs: null,
+    packetLossPercent: null,
+    loadPercent: outbound.weight > 0 ? Math.max(0, 100 - Math.min(outbound.weight, 100)) : null,
+    serverExternalId: outbound.serverExternalId ?? null,
+    serverHostname: outbound.serverHostname ?? null,
+    interfaceName: typeof outbound.config.interfaceName === 'string' ? outbound.config.interfaceName : null,
+    peerCount: null,
+    activePeerCount: null,
+    latestHandshakeAgeSeconds: null,
+    rxBps: null,
+    txBps: null,
+    checkedAt: outbound.lastCheckedAt,
+    source: 'outbound',
+  };
+}
+
+function extractEndpointFromConfig(config: Record<string, unknown>): string | null {
+  for (const key of ['endpoint', 'healthEndpoint', 'targetEndpoint']) {
+    const value = config[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+
+  const host = ['healthHost', 'host', 'targetHost']
+    .map((key) => config[key])
+    .find((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+  const port = ['healthPort', 'port', 'targetPort']
+    .map((key) => config[key])
+    .find((value): value is string | number => typeof value === 'number' || typeof value === 'string');
+
+  return host ? `${host}${port ? `:${port}` : ''}` : null;
+}
+
 function Sidebar({
   activeView,
   isCollapsed,
   isRtl,
   nextLanguage,
   onLanguageChange,
+  onSignOut,
   onToggleCollapse,
   onViewChange,
   sidebarAlertState,
+  session,
   t,
 }: {
   activeView: ActiveView;
@@ -829,9 +5391,11 @@ function Sidebar({
   isRtl: boolean;
   nextLanguage: DashboardLanguage;
   onLanguageChange: (language: DashboardLanguage) => void;
+  onSignOut: () => void;
   onToggleCollapse: () => void;
   onViewChange: (view: ActiveView) => void;
   sidebarAlertState: SidebarAlertState | null;
+  session: AdminSessionResponse;
   t: DashboardStrings;
 }) {
   return (
@@ -847,10 +5411,11 @@ function Sidebar({
         <div className="flex items-center gap-2 text-xs text-[#91a5a2] lg:hidden">
           <span>v{appVersion}</span>
           <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+          <SignOutButton onSignOut={onSignOut} t={t} />
         </div>
       </div>
       <SidebarToggle isCollapsed={isCollapsed} isRtl={isRtl} onToggle={onToggleCollapse} t={t} />
-      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:flex-1 lg:grid-cols-1 lg:content-start ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
+      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-6 lg:flex-1 lg:grid-cols-1 lg:content-start ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
         {navItems.map((item) => (
           <NavItem
             item={item}
@@ -867,6 +5432,7 @@ function Sidebar({
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
             <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+            <SignOutButton onSignOut={onSignOut} t={t} />
             <div className="text-[11px] font-bold text-[#c8d7d5]">v{appVersion}</div>
           </div>
         ) : (
@@ -876,13 +5442,33 @@ function Sidebar({
                 <div className="font-bold text-[#c8d7d5]">AfroGate</div>
                 <div>v{appVersion}</div>
               </div>
-              <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+              <div className="flex items-center gap-2">
+                <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+                <SignOutButton onSignOut={onSignOut} t={t} />
+              </div>
             </div>
-            <div className="mt-2">{t.languageName}</div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span>{t.languageName}</span>
+              <span className="truncate font-bold text-[#c8d7d5]">{t.auth.sessionRole(session.actor.role)}</span>
+            </div>
           </>
         )}
       </div>
     </aside>
+  );
+}
+
+function SignOutButton({ onSignOut, t }: { onSignOut: () => void; t: DashboardStrings }) {
+  return (
+    <button
+      aria-label={t.auth.signOut}
+      className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md border border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white"
+      onClick={onSignOut}
+      title={t.auth.signOut}
+      type="button"
+    >
+      <LogOut className="shrink-0" size={16} />
+    </button>
   );
 }
 
@@ -982,16 +5568,22 @@ function NavItem({
 function LanguageButton({
   nextLanguage,
   onLanguageChange,
+  variant = 'dark',
   t,
 }: {
   nextLanguage: DashboardLanguage;
   onLanguageChange: (language: DashboardLanguage) => void;
+  variant?: 'dark' | 'light';
   t: DashboardStrings;
 }) {
+  const className = variant === 'light'
+    ? 'inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2 text-afro-ink hover:border-afro-teal hover:text-afro-teal'
+    : 'inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] px-2 text-[#c8d7d5] hover:border-[#5c7782] hover:text-white';
+
   return (
     <button
       aria-label={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
-      className="inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] px-2 text-[#c8d7d5] hover:border-[#5c7782] hover:text-white"
+      className={className}
       onClick={() => onLanguageChange(nextLanguage)}
       title={`${t.switchLanguage}: ${dashboardLanguageLabel(nextLanguage)}`}
       type="button"
@@ -1189,6 +5781,7 @@ function TableCell({ children, alignRight = false }: { children: ReactNode; alig
 function mapSnapshotToServerRow(snapshot: ServerMetricSnapshot): ServerRowData {
   return {
     id: snapshot.serverId,
+    externalId: snapshot.serverId,
     name: snapshot.hostname || snapshot.serverId,
     meta: snapshot.platform || snapshot.serverId,
     cpu: normalizePercent(snapshot.cpuPercent),
@@ -1196,20 +5789,137 @@ function mapSnapshotToServerRow(snapshot: ServerMetricSnapshot): ServerRowData {
     diskFree: normalizePercent(snapshot.diskFreePercent),
     storages: snapshot.storages ?? createStorageFallback(snapshot.diskFreePercent),
     networkInterfaces: snapshot.networkInterfaces ?? [],
+    wireGuardInterfaces: snapshot.wireGuardInterfaces ?? [],
+    routeProbes: snapshot.routeProbes ?? [],
     inboundBps: normalizePositive(snapshot.inboundBps),
     outboundBps: normalizePositive(snapshot.outboundBps),
+    pingMs: normalizePositive(snapshot.pingMs),
+    jitterMs: normalizePositive(snapshot.jitterMs),
+    packetLossPercent: normalizePercent(snapshot.packetLossPercent),
     score: snapshot.healthScore,
     observedAt: snapshot.observedAt,
+    source: 'metrics',
   };
+}
+
+function mapAdminServerToServerRow(server: AdminServerSummary): ServerRowData {
+  if (server.latestMetric) {
+    const row = mapSnapshotToServerRow(server.latestMetric);
+
+    return {
+      ...row,
+      id: server.id,
+      externalId: server.externalId,
+      name: server.hostname || server.externalId,
+      meta: createServerMeta(server),
+      status: server.status,
+      role: server.role,
+      region: server.region,
+      tags: server.tags,
+      accessProfile: server.accessProfile,
+      outboundCount: server.outboundCount,
+      openAlertCount: server.openAlertCount,
+      observedAt: server.latestMetric.observedAt || server.lastSeenAt,
+      updatedAt: server.updatedAt,
+      source: 'admin',
+    };
+  }
+
+  return {
+    id: server.id,
+    externalId: server.externalId,
+    name: server.hostname || server.externalId,
+    meta: createServerMeta(server),
+    status: server.status,
+    role: server.role,
+    region: server.region,
+    tags: server.tags,
+    cpu: null,
+    ram: null,
+    diskFree: null,
+    storages: [],
+    networkInterfaces: [],
+    wireGuardInterfaces: [],
+    routeProbes: [],
+    inboundBps: null,
+    outboundBps: null,
+    pingMs: null,
+    jitterMs: null,
+    packetLossPercent: null,
+    score: scoreFromHealthState(server.status),
+    observedAt: server.lastSeenAt,
+    accessProfile: server.accessProfile,
+    outboundCount: server.outboundCount,
+    openAlertCount: server.openAlertCount,
+    updatedAt: server.updatedAt,
+    source: 'admin',
+  };
+}
+
+function createServerMeta(server: AdminServerSummary): string {
+  return [server.country, server.region].filter(Boolean).join(' / ') || server.platform || server.externalId;
+}
+
+function scoreFromHealthState(status: string): number {
+  if (status === 'healthy') return 90;
+  if (status === 'degraded') return 60;
+  if (status === 'critical') return 25;
+  return 50;
+}
+
+function mapAdminOutboundToRow(outbound: AdminOutboundSummary): OutboundRowData {
+  const statusText = outbound.maintenanceMode
+    ? 'maintenance'
+    : outbound.enabled
+      ? outbound.healthStatus
+      : 'disabled';
+
+  return {
+    id: outbound.id,
+    name: outbound.name,
+    type: outbound.type,
+    priority: outbound.priority,
+    statusText,
+    statusTone: mapOutboundStatusToTone(statusText),
+    latencyMs: null,
+    mode: outbound.routeGroup,
+    serverLabel: outbound.serverHostname || outbound.serverExternalId,
+  };
+}
+
+function mapOutboundStatusToTone(status: string): Tone {
+  if (status === 'healthy') return 'good';
+  if (status === 'critical') return 'critical';
+  if (status === 'degraded' || status === 'maintenance') return 'warning';
+  return 'neutral';
+}
+
+function mapRouteFailoverEventToRow(event: RouteFailoverEventSummary): RouteFailoverRowData {
+  return {
+    id: event.id,
+    title: event.routeGroup,
+    detail: event.reason,
+    tone: 'neutral',
+    createdAt: event.createdAt,
+  };
+}
+
+function createFallbackFailoverRows(t: DashboardStrings): RouteFailoverRowData[] {
+  return [
+    { id: 'sample-primary-route-healthy', title: 'Germany gateway', detail: t.failover.primaryRouteHealthy, tone: 'good' },
+    { id: 'sample-standby-telegram-api', title: 'Control egress', detail: t.failover.standbyTelegramApi, tone: 'neutral' },
+    { id: 'sample-restricted-internet-path', title: 'Iran direct', detail: t.failover.restrictedInternetPath, tone: 'warning' },
+  ];
 }
 
 function createSummary(
   servers: ServerRowData[],
   trafficTotals: TrafficTotals,
+  alerts: AlertRowData[],
   t: DashboardStrings,
   format: DashboardFormatters,
 ): MetricCardData[] {
-  const criticalAlerts = servers.filter((server) => server.score < 50 || (server.diskFree !== null && server.diskFree < 10)).length;
+  const criticalAlerts = alerts.filter((alert) => !alert.isPlaceholder && alert.severity === 'critical').length;
 
   return [
     { label: t.summary.activeUsers, value: format.integer(150), tone: 'neutral' },
@@ -1226,12 +5936,13 @@ function createTrafficTotals(servers: ServerRowData[]): TrafficTotals {
   };
 }
 
-function createAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRowData[] {
+function createComputedAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRowData[] {
   const rows: AlertRowData[] = [];
 
   for (const server of servers) {
     if (server.diskFree !== null && server.diskFree < 10) {
       rows.push({
+        id: `${server.id}-storage`,
         title: t.alerts.storageBelow,
         source: server.name,
         severity: 'critical',
@@ -1240,6 +5951,7 @@ function createAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRo
 
     if (server.score < 60) {
       rows.push({
+        id: `${server.id}-health`,
         title: t.alerts.healthScoreDegraded,
         source: server.name,
         severity: server.score < 40 ? 'critical' : 'warning',
@@ -1250,14 +5962,57 @@ function createAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRo
   if (rows.length > 0) return rows.slice(0, 4);
 
   return [
-    { title: t.alerts.noCriticalServerAlerts, source: t.alerts.monitoring, severity: 'good' },
-    { title: t.alerts.outboundFailoverReady, source: t.alerts.routes, severity: 'neutral' },
-    { title: t.alerts.backupMonitorPending, source: t.alerts.controlPlane, severity: 'warning' },
+    { id: 'sample-no-critical-alerts', title: t.alerts.noCriticalServerAlerts, source: t.alerts.monitoring, severity: 'good', isPlaceholder: true },
+    { id: 'sample-outbound-failover-ready', title: t.alerts.outboundFailoverReady, source: t.alerts.routes, severity: 'neutral', isPlaceholder: true },
+    { id: 'sample-backup-monitor-pending', title: t.alerts.backupMonitorPending, source: t.alerts.controlPlane, severity: 'warning', isPlaceholder: true },
   ];
 }
 
+function mapAdminAlertsToRows(alerts: AdminAlertSummary[], t: DashboardStrings): AlertRowData[] {
+  return alerts.map((alert) => ({
+    id: alert.id,
+    title: localizeAlertTitle(alert.title, t),
+    source: alert.sourceLabel || alert.sourceId,
+    severity: mapAlertSeverityToTone(alert.severity),
+    message: alert.message,
+    status: alert.status,
+    lastSeenAt: alert.lastSeenAt,
+  }));
+}
+
+function createNoOpenAlertsRow(t: DashboardStrings): AlertRowData {
+  return {
+    id: 'no-open-alerts',
+    title: t.alerts.noOpenAlerts,
+    source: t.alerts.monitoring,
+    severity: 'good',
+    isPlaceholder: true,
+  };
+}
+
+function localizeAlertTitle(title: string, t: DashboardStrings): string {
+  const normalizedTitle = title.trim().toLowerCase();
+
+  if (normalizedTitle === 'storage below 10%') return t.alerts.storageBelow;
+  if (normalizedTitle === 'health score degraded') return t.alerts.healthScoreDegraded;
+
+  return title;
+}
+
+function mapAlertSeverityToTone(severity: string): Tone {
+  if (severity === 'critical') return 'critical';
+  if (severity === 'warning') return 'warning';
+  if (severity === 'healthy' || severity === 'good') return 'good';
+
+  return 'neutral';
+}
+
+function countActiveAlertRows(alerts: AlertRowData[]): number {
+  return alerts.filter((alert) => !alert.isPlaceholder).length;
+}
+
 function createSidebarAlertState(alerts: AlertRowData[], format: DashboardFormatters): SidebarAlertState | null {
-  const criticalCount = alerts.filter((alert) => alert.severity === 'critical').length;
+  const criticalCount = alerts.filter((alert) => !alert.isPlaceholder && alert.severity === 'critical').length;
   if (criticalCount > 0) {
     return {
       tone: 'critical',
@@ -1265,7 +6020,7 @@ function createSidebarAlertState(alerts: AlertRowData[], format: DashboardFormat
     };
   }
 
-  const warningCount = alerts.filter((alert) => alert.severity === 'warning').length;
+  const warningCount = alerts.filter((alert) => !alert.isPlaceholder && alert.severity === 'warning').length;
   if (warningCount > 0) {
     return {
       tone: 'warning',
@@ -1466,6 +6221,134 @@ function getScoreClass(score: number): string {
   return 'text-[#b91c1c]';
 }
 
+function getWireGuardScoreTone(score: number): Tone {
+  if (score >= 85) return 'good';
+  if (score >= 70) return 'neutral';
+  if (score >= 50) return 'warning';
+  return 'critical';
+}
+
+function wireGuardCandidateSourceLabel(candidate: WireGuardHealthCandidate, t: DashboardStrings): string {
+  if (candidate.source === 'agent') return t.settings.agentTelemetry;
+  if (candidate.source === 'outbound') return t.settings.outboundHealth;
+
+  return t.settings.localSample;
+}
+
+function formatWireGuardCandidatePeers(
+  candidate: WireGuardHealthCandidate,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  if (typeof candidate.peerCount !== 'number' || typeof candidate.activePeerCount !== 'number') return '--';
+
+  return t.settings.activePeers(format.integer(candidate.activePeerCount), format.integer(candidate.peerCount));
+}
+
+function formatWireGuardCandidateHandshake(
+  candidate: WireGuardHealthCandidate,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  if (typeof candidate.latestHandshakeAgeSeconds !== 'number') return t.settings.noHandshake;
+
+  return t.settings.latestHandshakeAge(format.durationSeconds(candidate.latestHandshakeAgeSeconds));
+}
+
+function formatWireGuardCandidateRate(candidate: WireGuardHealthCandidate, format: DashboardFormatters): string {
+  return `${format.bytesPerSecond(candidate.rxBps ?? null)} / ${format.bytesPerSecond(candidate.txBps ?? null)}`;
+}
+
+function routeRecommendationKey(recommendation: RouteQualityRecommendation): string {
+  return [
+    recommendation.kind,
+    recommendation.serverExternalId ?? 'none',
+    recommendation.outboundKey ?? recommendation.outboundId ?? 'unassigned',
+    recommendation.operator ?? 'unknown',
+    recommendation.protocol ?? 'any',
+    recommendation.scoreProfile ?? 'any',
+    recommendation.dayOfWeek ?? 'anyday',
+    recommendation.hourOfDay ?? 'all',
+  ].join(':');
+}
+
+function routeRecommendationTitle(recommendation: RouteQualityRecommendation, t: DashboardStrings): string {
+  if (recommendation.kind === 'upcomingDegradedWindow') return t.settings.upcomingRouteWindow;
+  if (recommendation.kind === 'bestWindow') return t.settings.bestRouteWindow;
+  if (recommendation.kind === 'degradedWindow') return t.settings.watchRouteWindow;
+
+  return t.settings.noRouteRecommendations;
+}
+
+function routeRecommendationDetail(
+  recommendation: RouteQualityRecommendation,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  const server = recommendation.outboundName || recommendation.serverHostname || recommendation.serverExternalId || t.settings.anyRoute;
+  const protocol = recommendation.protocol ? String(recommendation.protocol).toUpperCase() : t.settings.anyProtocol;
+  const window = formatRouteHourWindow(recommendation.hourOfDay ?? null, format);
+  const samples = t.settings.routeAnalyticsSamples(format.integer(recommendation.sampleCount));
+  const startsIn = t.settings.routeAnalyticsStartsIn(formatRouteStartsIn(recommendation.startsInMinutes ?? null, format));
+
+  if (recommendation.kind === 'bestWindow') {
+    return t.settings.bestRouteRecommendation(server, protocol, window, samples);
+  }
+  if (recommendation.kind === 'upcomingDegradedWindow') {
+    return t.settings.upcomingRouteRecommendation(server, protocol, window, startsIn, samples);
+  }
+  if (recommendation.kind === 'degradedWindow') {
+    return t.settings.watchRouteRecommendation(server, protocol, window, samples);
+  }
+
+  return t.settings.routeAnalyticsNeedsData;
+}
+
+function routeRecommendationConfidence(recommendation: RouteQualityRecommendation, t: DashboardStrings): string {
+  if (recommendation.confidence === 'high') return t.settings.confidenceHigh;
+  if (recommendation.confidence === 'medium') return t.settings.confidenceMedium;
+
+  return t.settings.confidenceLow;
+}
+
+function routeRecommendationOperator(
+  recommendation: RouteQualityRecommendation,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  const operator = recommendation.operator;
+  if (!operator || operator === 'unknown') return t.settings.unknownOperator;
+
+  return format.label(operator);
+}
+
+function routeRecommendationProfile(
+  recommendation: RouteQualityRecommendation,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  const profile = recommendation.scoreProfile;
+  if (!profile) return t.settings.unknownProfile;
+
+  return format.label(String(profile));
+}
+
+function formatRouteHourWindow(hourOfDay: number | null, format: DashboardFormatters): string {
+  if (hourOfDay === null || !Number.isFinite(hourOfDay)) return '--';
+
+  const startHour = ((Math.trunc(hourOfDay) % 24) + 24) % 24;
+  const endHour = (startHour + 1) % 24;
+
+  return `${format.integer(startHour)}:00-${format.integer(endHour)}:00`;
+}
+
+function formatRouteStartsIn(minutes: number | null, format: DashboardFormatters): string {
+  if (minutes === null || !Number.isFinite(minutes)) return '--';
+  if (minutes <= 0) return format.durationMinutes(0);
+
+  return format.durationMinutes(minutes);
+}
+
 function normalizePercent(value: number | null | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return clamp(value, 0, 100);
@@ -1542,6 +6425,15 @@ function createDashboardFormatters(language: DashboardLanguage) {
     'primary': 'اصلی',
     'telegram/api': 'تلگرام/API',
     'last resort': 'آخرین مسیر',
+    'balanced': 'متعادل',
+    'stability': 'پایداری',
+    'throughput': 'سرعت بالا',
+    'gaming': 'گیمینگ',
+    'tcp': 'TCP',
+    'udp': 'UDP',
+    'quic': 'QUIC',
+    'dns': 'DNS',
+    'wireguard': 'WireGuard',
     'ether1 / Mobinnet / wg1': 'ether1 / مبین‌نت / wg1',
     'ether2 / Irancell / wireguard2': 'ether2 / ایرانسل / wireguard2',
     'ether5 / Irancell / wireguard3': 'ether5 / ایرانسل / wireguard3',
@@ -1587,6 +6479,11 @@ function createDashboardFormatters(language: DashboardLanguage) {
     },
     durationSeconds(value: number): string {
       return isPersian ? `${integer(value)} ثانیه` : `${integer(value)}s`;
+    },
+    durationMinutes(value: number): string {
+      if (value <= 0) return isPersian ? 'اکنون' : 'now';
+
+      return isPersian ? `${integer(value)} دقیقه` : `${integer(value)}m`;
     },
     percentThreshold(operator: '<' | '>', value: number): string {
       return `${operator} ${percent(value)}`;

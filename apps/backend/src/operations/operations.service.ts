@@ -1,16 +1,66 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type {
+  AdminAlertSummary,
+  ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminProtocolSetupSummary,
+  AdminRouteAssignmentSummary,
+  AdminRouteDecisionApplyAdapterSummary,
+  AdminRouteDecisionApplyDryRunCommand,
+  AdminRouteDecisionApplyDryRunConfigChange,
+  AdminRouteDecisionApplyDryRunSnapshot,
+  AdminRouteDecisionApplyPlanSummary,
+  AdminRouteDecisionEventDetail,
+  AdminRouteDecisionEventSummary,
+  AdminRouteDecisionCandidateReviewSummary,
+  AdminRouteDecisionLoadBalancingSummary,
+  AdminRouteDecisionProfileRecommendation,
+  AdminRouteDecisionSessionSafetySummary,
+  AdminRouteDecisionSwitchExecutionSummary,
+  AdminRouteDecisionSwitchEngineSummary,
+  AdminRouteDecisionSwitchPreflightSummary,
+  AdminRouteDecisionSwitchRolloutSummary,
+  AdminRouteSettingsSummary,
+  AdminRouteDecisionCandidateSummary,
+  AdminRouteDecisionPreviewResponse,
+  AdminSecretRefSummary,
+  AdminRouteQualityAnalyticsResponse,
   AdminServerDetail,
   AdminServerSummary,
+  AdminSettingsResponse,
+  AdminWireGuardCandidate,
+  LoadBalanceStrategy,
+  ProvisionProtocolSetupResponse,
+  RecordRouteDecisionPreviewResponse,
   RouteFailoverEventSummary,
+  RouteDecisionAction,
+  RouteBufferbloatRecommendation,
+  RouteBufferbloatSeverity,
+  RouteQualityRecommendation,
+  RouteQualityWindowSummary,
+  RouteProbeMetric,
+  RouteProfileScores,
+  RouteScoreProfile,
+  RouteScoreReason,
   ServerMetricSnapshot,
+  WireGuardInterfaceMetric,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import type { AuthActor } from '../security/auth-request';
+import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
 import { CreateServerDto, UpdateServerDto, UpsertServerAccessProfileDto } from './dto/server.dto';
+import {
+  ApplyRouteDecisionPreviewDto,
+  CreateProtocolSetupDto,
+  CreateSettingsSecretDto,
+  RecordRouteDecisionPreviewDto,
+  UpsertRouteAssignmentDto,
+  UpsertRouteSettingsDto,
+} from './dto/settings.dto';
+import { RouteQualityAggregationService } from './route-quality-aggregation.service';
 
 interface ServerInventoryRow {
   id: string;
@@ -89,9 +139,194 @@ interface RouteFailoverEventRow {
   createdAt: Date;
 }
 
+interface RouteQualityWindowRow {
+  serverExternalId: string;
+  serverHostname: string | null;
+  outboundId: string | null;
+  outboundKey: string | null;
+  outboundName: string | null;
+  operator: string | null;
+  protocol: string;
+  scoreProfile: string | null;
+  hourOfDay: number;
+  dayOfWeek: number | null;
+  sampleCount: number;
+  averageScore: number;
+  averageLatencyMs: number | null;
+  averageJitterMs: number | null;
+  averagePacketLossPercent: number | null;
+  degradedSamplePercent: number;
+  criticalSamplePercent: number;
+}
+
+interface AlertRow {
+  id: string;
+  severity: string;
+  status: string;
+  sourceType: string;
+  sourceId: string;
+  sourceLabel: string | null;
+  title: string;
+  message: string;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+  resolvedAt: Date | null;
+}
+
+interface ProtocolSetupRow {
+  id: string;
+  name: string;
+  protocol: string;
+  profile: string;
+  routeGroup: string;
+  port: number;
+  status: string;
+  config: Record<string, unknown> | null;
+  secretRef: string | null;
+  provisionedOutboundId: string | null;
+  provisionedAt: Date | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface RouteSettingsRow {
+  routeGroup: string;
+  mode: string;
+  selectedOutboundId: string | null;
+  selectedOutboundName: string | null;
+  loadBalanceStrategy: string;
+  protocolProfile: string;
+  speedProfile: string;
+  updatedBy: string | null;
+  updatedAt: Date | null;
+}
+
+interface RouteAssignmentRow {
+  routeGroup: string;
+  assignmentKey: string;
+  assignmentLabel: string | null;
+  currentOutboundId: string | null;
+  currentOutboundName: string | null;
+  lockedOutboundId: string | null;
+  lockedOutboundName: string | null;
+  autoRouteEnabled: boolean;
+  routeLocked: boolean;
+  protocolProfile: string;
+  speedProfile: string;
+  hysteresisScoreDelta: number;
+  cooldownSeconds: number;
+  cooldownUntil: Date | null;
+  lastDecisionAt: Date | null;
+  decisionState: string;
+  updatedAt: Date | null;
+}
+
+interface RouteDecisionEventRow {
+  id: string;
+  routeGroup: string;
+  assignmentKey: string;
+  decisionKind: string;
+  decisionState: string;
+  scoreProfile: string | null;
+  fromOutboundId: string | null;
+  fromOutboundName: string | null;
+  toOutboundId: string | null;
+  toOutboundName: string | null;
+  fromScore: number | null;
+  toScore: number | null;
+  scoreDelta: number | null;
+  hysteresisScoreDelta: number | null;
+  cooldownUntil: Date | null;
+  routeLocked: boolean;
+  autoRouteEnabled: boolean;
+  reasonCodes: unknown;
+  decisionContext?: unknown;
+  appliedAt: Date | null;
+  createdBy: string | null;
+  createdAt: Date;
+}
+
+interface WireGuardCandidateRow {
+  id: string;
+  name: string;
+  serverExternalId: string | null;
+  serverHostname: string | null;
+  routeGroup: string;
+  config: Record<string, unknown> | null;
+  healthStatus: string;
+  latencyMs: number | null;
+  jitterMs: number | null;
+  packetLossPercent: number | null;
+  checkedAt: Date | null;
+  weight: number;
+  enabled: boolean;
+  maintenanceMode: boolean;
+  serverHealthScore: number | null;
+  serverMetricRaw: Partial<ServerMetricSnapshot> | null;
+}
+
+interface WireGuardTelemetryRow {
+  serverExternalId: string;
+  serverHostname: string | null;
+  observedAt: Date;
+  healthScore: number | null;
+  metricRaw: Partial<ServerMetricSnapshot> | null;
+}
+
+interface SecretRecordRow {
+  secretRef: string;
+  name: string;
+  kind: string;
+  routeGroup: string | null;
+  protocol: string | null;
+  fingerprint: string | null;
+  status: string;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastRotatedAt: Date | null;
+}
+
 interface OutboundOrderRow {
   id: string;
   routeGroup: string;
+}
+
+interface RouteScoringContext {
+  loadBalanceStrategy: LoadBalanceStrategy | string;
+  protocolProfile: string;
+  speedProfile: string;
+}
+
+interface RouteScoreResult {
+  selectedProfile: RouteScoreProfile;
+  selectedScore: number;
+  profileScores: RouteProfileScores;
+  reasons: RouteScoreReason[];
+}
+
+interface RouteScoreSignals {
+  baseScore: number;
+  healthStatus: string;
+  latencyMs: number | null;
+  jitterMs: number | null;
+  packetLossPercent: number | null;
+  loadedLatencyMs?: number | null;
+  loadedLatencyDeltaMs?: number | null;
+  loadPercent: number | null;
+  routeProbes: RouteProbeMetric[];
+  serverHealthScore?: number | null;
+  latestHandshakeAgeSeconds?: number | null;
+  enabled?: boolean;
+  maintenanceMode?: boolean;
+}
+
+interface RouteBufferbloatAssessment {
+  loadedLatencyMs: number | null;
+  loadedLatencyDeltaMs: number | null;
+  severity: RouteBufferbloatSeverity;
+  recommendation: RouteBufferbloatRecommendation;
 }
 
 const SENSITIVE_CONFIG_KEY_FRAGMENTS = [
@@ -111,6 +346,8 @@ export class OperationsService {
   constructor(
     private readonly database: DatabaseService,
     private readonly audit: AuditService,
+    private readonly secretVault: SecretVaultService,
+    private readonly routeQualityAggregation: RouteQualityAggregationService,
   ) {}
 
   async listServers(): Promise<AdminServerSummary[]> {
@@ -480,6 +717,1627 @@ export class OperationsService {
     return this.getOutbound(id);
   }
 
+  async listAlerts(
+    filters: { status?: string; severity?: string; sourceType?: string; limit?: number } = {},
+  ): Promise<AdminAlertSummary[]> {
+    const status = this.normalizeAlertStatus(filters.status);
+    const severity = this.normalizeSimpleText(filters.severity, 'severity');
+    const sourceType = this.normalizeSimpleText(filters.sourceType, 'sourceType');
+    const result = await this.database.query<AlertRow>(
+      `
+        SELECT
+          a.id,
+          a.severity,
+          a.status,
+          a.source_type AS "sourceType",
+          a.source_id AS "sourceId",
+          COALESCE(s.hostname, s.external_id) AS "sourceLabel",
+          a.title,
+          a.message,
+          a.first_seen_at AS "firstSeenAt",
+          a.last_seen_at AS "lastSeenAt",
+          a.resolved_at AS "resolvedAt"
+        FROM alerts a
+        LEFT JOIN servers s
+          ON a.source_type = 'server'
+          AND (s.external_id = a.source_id OR s.id::text = a.source_id)
+        WHERE ($1::text IS NULL OR a.status = $1::text)
+          AND ($2::text IS NULL OR a.severity = $2::text)
+          AND ($3::text IS NULL OR a.source_type = $3::text)
+        ORDER BY
+          CASE a.severity
+            WHEN 'critical' THEN 0
+            WHEN 'warning' THEN 1
+            ELSE 2
+          END,
+          a.last_seen_at DESC
+        LIMIT $4
+      `,
+      [status ?? null, severity ?? null, sourceType ?? null, filters.limit ?? 100],
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      severity: row.severity,
+      status: row.status,
+      sourceType: row.sourceType,
+      sourceId: row.sourceId,
+      sourceLabel: row.sourceLabel,
+      title: row.title,
+      message: row.message,
+      firstSeenAt: row.firstSeenAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    }));
+  }
+
+  async getSettings(routeGroupInput?: string): Promise<AdminSettingsResponse> {
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeSettings = await this.getRouteSettings(routeGroup);
+
+    return {
+      routeSettings,
+      protocolSetups: await this.listProtocolSetups(routeGroup),
+      wireGuardCandidates: await this.listWireGuardCandidates(routeGroup, routeSettings),
+    };
+  }
+
+  async getRouteQualityAnalytics(
+    routeGroupInput?: string,
+    rangeHours = 168,
+  ): Promise<AdminRouteQualityAnalyticsResponse> {
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const minimumSamples = this.minimumRouteAnalyticsSamples(rangeHours);
+    const windows = await this.listRouteQualityWindows(routeGroup, rangeHours);
+
+    return {
+      routeGroup,
+      rangeHours,
+      generatedAt: new Date().toISOString(),
+      minimumSamples,
+      windows,
+      recommendations: this.buildRouteQualityRecommendations(routeGroup, windows, minimumSamples, rangeHours),
+    };
+  }
+
+  async getRouteDecisionPreview(
+    routeGroupInput?: string,
+    assignmentKeyInput?: string,
+  ): Promise<AdminRouteDecisionPreviewResponse> {
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const assignmentKey = this.normalizeAssignmentKey(assignmentKeyInput);
+    const routeSettings = await this.getRouteSettings(routeGroup);
+    const assignment = await this.getRouteAssignment(routeGroup, assignmentKey);
+    const scoringContext = {
+      loadBalanceStrategy: routeSettings.loadBalanceStrategy,
+      protocolProfile: assignment?.protocolProfile ?? routeSettings.protocolProfile,
+      speedProfile: assignment?.speedProfile ?? routeSettings.speedProfile,
+    };
+    const candidates = await this.listWireGuardCandidates(routeGroup, scoringContext);
+    const now = new Date();
+    const selectedScoreProfile = this.selectRouteScoreProfile(scoringContext);
+    const currentOutboundId = assignment?.currentOutboundId ?? routeSettings.selectedOutboundId ?? null;
+    const lockedOutboundId = assignment?.lockedOutboundId ?? (routeSettings.mode === 'manual' ? routeSettings.selectedOutboundId : null);
+    const routeLocked = assignment?.routeLocked ?? Boolean(routeSettings.mode === 'manual' && lockedOutboundId);
+    const autoRouteEnabled = assignment?.autoRouteEnabled ?? routeSettings.mode === 'automatic';
+    const hysteresisScoreDelta = assignment?.hysteresisScoreDelta ?? 15;
+    const cooldownSeconds = assignment?.cooldownSeconds ?? 180;
+    const cooldownUntil = assignment?.cooldownUntil ?? null;
+    const cooldownActive = Boolean(cooldownUntil && cooldownUntil.getTime() > now.getTime());
+    const sortedCandidates = [...candidates].sort((left, right) => right.score - left.score);
+    const healthyCandidates = sortedCandidates.filter((candidate) => this.isRouteDecisionCandidateHealthy(candidate));
+    const managedHealthyCandidates = healthyCandidates.filter((candidate) => candidate.source === 'outbound');
+    const recommendedCandidate = managedHealthyCandidates[0] ?? healthyCandidates[0] ?? sortedCandidates[0] ?? null;
+    const currentCandidate =
+      (routeLocked && lockedOutboundId ? candidates.find((candidate) => candidate.id === lockedOutboundId) : null) ??
+      (currentOutboundId ? candidates.find((candidate) => candidate.id === currentOutboundId) : null) ??
+      null;
+    const scoreDelta = recommendedCandidate && currentCandidate
+      ? Math.round(recommendedCandidate.score - currentCandidate.score)
+      : recommendedCandidate ? Math.round(recommendedCandidate.score) : null;
+    const currentCandidateHealthy = currentCandidate ? this.isRouteDecisionCandidateHealthy(currentCandidate) : true;
+    const healthBasedSwitch = Boolean(
+      currentCandidate &&
+        !currentCandidateHealthy &&
+        recommendedCandidate &&
+        recommendedCandidate.source === 'outbound' &&
+        recommendedCandidate.id !== currentCandidate.id &&
+        this.isRouteDecisionCandidateHealthy(recommendedCandidate),
+    );
+    const reasonCodes: string[] = [];
+    let action: RouteDecisionAction = 'keepCurrent';
+
+    if (candidates.length === 0) {
+      action = 'insufficientCandidates';
+      reasonCodes.push('no_candidates');
+    } else if (!recommendedCandidate || healthyCandidates.length === 0) {
+      action = 'noHealthyCandidate';
+      reasonCodes.push('no_healthy_candidate');
+    } else if (recommendedCandidate.source !== 'outbound') {
+      action = 'noManagedCandidate';
+      reasonCodes.push('agent_candidate_not_applicable');
+    } else if (routeLocked) {
+      action = 'routeLocked';
+      reasonCodes.push('route_locked');
+    } else if (!autoRouteEnabled || routeSettings.mode !== 'automatic') {
+      action = 'manualMode';
+      reasonCodes.push('manual_mode');
+    } else if (cooldownActive) {
+      action = 'cooldownActive';
+      reasonCodes.push('cooldown_active');
+    } else if (!currentCandidate) {
+      action = 'switchRecommended';
+      reasonCodes.push('no_current_candidate');
+    } else if (recommendedCandidate.id === currentCandidate.id) {
+      action = 'keepCurrent';
+      reasonCodes.push('best_candidate_current');
+    } else if (healthBasedSwitch) {
+      action = 'switchRecommended';
+      reasonCodes.push('current_candidate_unhealthy', 'health_based_switch');
+    } else if ((scoreDelta ?? 0) >= hysteresisScoreDelta) {
+      action = 'switchRecommended';
+      reasonCodes.push('score_delta_meets_hysteresis');
+    } else {
+      action = 'keepCurrent';
+      reasonCodes.push('score_delta_below_hysteresis');
+    }
+
+    if (autoRouteEnabled) reasonCodes.push('auto_route_enabled');
+    if (assignment?.lastDecisionAt) reasonCodes.push('has_previous_decision_state');
+
+    const sessionSafety = this.buildRouteDecisionSessionSafetySummary({
+      action,
+      selectedProfile: selectedScoreProfile,
+      routeMode: routeSettings.mode,
+      routeLocked,
+      autoRouteEnabled,
+      cooldownActive,
+      currentCandidate,
+      recommendedCandidate,
+      healthBasedSwitch,
+      scoreDelta,
+      hysteresisScoreDelta,
+    });
+    const applyPlan = this.buildRouteDecisionApplyPlan({
+      action,
+      currentCandidate,
+      recommendedCandidate,
+      routeLocked,
+      autoRouteEnabled,
+      cooldownActive,
+      hysteresisScoreDelta,
+      healthBasedSwitch,
+      sessionSafety,
+      scoreDelta,
+    });
+    const switchEngine = this.buildRouteDecisionSwitchEngineSummary({
+      action,
+      currentCandidate,
+      recommendedCandidate,
+      routeLocked,
+      autoRouteEnabled,
+      routeMode: routeSettings.mode,
+      cooldownActive,
+      sessionSafety,
+      applyPlan,
+    });
+    const switchPreflight = this.buildRouteDecisionSwitchPreflightSummary({
+      action,
+      switchEngine,
+      applyPlan,
+      sessionSafety,
+    });
+    const switchRollout = this.buildRouteDecisionSwitchRolloutSummary({
+      action,
+      selectedProfile: selectedScoreProfile,
+      sessionSafety,
+      switchEngine,
+      switchPreflight,
+      applyPlan,
+    });
+
+    return {
+      routeGroup,
+      assignmentKey,
+      generatedAt: now.toISOString(),
+      mode: routeSettings.mode,
+      autoRouteEnabled,
+      routeLocked,
+      selectedScoreProfile,
+      hysteresisScoreDelta,
+      cooldownSeconds,
+      cooldownUntil: cooldownUntil?.toISOString() ?? null,
+      currentCandidate: this.toRouteDecisionCandidateSummary(currentCandidate),
+      recommendedCandidate: this.toRouteDecisionCandidateSummary(recommendedCandidate),
+      candidateReviews: this.buildRouteDecisionCandidateReviews(sortedCandidates, {
+        currentCandidate,
+        recommendedCandidate,
+        routeLocked,
+        autoRouteEnabled,
+        routeMode: routeSettings.mode,
+        cooldownActive,
+        hysteresisScoreDelta,
+      }),
+      profileRecommendations: this.buildRouteDecisionProfileRecommendations(sortedCandidates, selectedScoreProfile),
+      loadBalancing: this.buildRouteDecisionLoadBalancingSummary(sortedCandidates, {
+        ...scoringContext,
+        selectedProfile: selectedScoreProfile,
+      }),
+      sessionSafety,
+      switchEngine,
+      switchPreflight,
+      switchRollout,
+      applyPlan,
+      scoreDelta,
+      action,
+      reasonCodes: [...new Set(reasonCodes)],
+      candidateCount: candidates.length,
+      healthyCandidateCount: healthyCandidates.length,
+      managedCandidateCount: sortedCandidates.filter((candidate) => candidate.source === 'outbound').length,
+    };
+  }
+
+  async getRouteAssignmentSummary(
+    routeGroupInput?: string,
+    assignmentKeyInput?: string,
+  ): Promise<AdminRouteAssignmentSummary> {
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const assignmentKey = this.normalizeAssignmentKey(assignmentKeyInput);
+    const routeSettings = await this.getRouteSettings(routeGroup);
+    const assignment = await this.getRouteAssignment(routeGroup, assignmentKey);
+
+    return this.mapRouteAssignmentSummary(routeGroup, assignmentKey, routeSettings, assignment);
+  }
+
+  async upsertRouteAssignment(
+    dto: UpsertRouteAssignmentDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminRouteAssignmentSummary> {
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const assignmentKey = this.normalizeAssignmentKey(dto.assignmentKey);
+    const assignmentLabel = dto.assignmentLabel?.trim() || null;
+    const currentOutboundId = dto.currentOutboundId ?? null;
+    let lockedOutboundId = dto.lockedOutboundId ?? null;
+    const routeLocked = dto.routeLocked ?? false;
+    const protocolProfile = dto.protocolProfile ?? 'balanced';
+    const speedProfile = dto.speedProfile ?? this.defaultSpeedProfileForProtocol(protocolProfile);
+    const hysteresisScoreDelta = dto.hysteresisScoreDelta ?? 15;
+    const cooldownSeconds = dto.cooldownSeconds ?? 180;
+
+    if (routeLocked && !lockedOutboundId) {
+      lockedOutboundId = currentOutboundId;
+    }
+    if (routeLocked && !lockedOutboundId) {
+      throw new BadRequestException('lockedOutboundId is required when routeLocked is true');
+    }
+
+    await this.database.transaction(async (executor) => {
+      if (currentOutboundId) await this.ensureRouteOutboundCandidate(executor, currentOutboundId, routeGroup);
+      if (lockedOutboundId) await this.ensureRouteOutboundCandidate(executor, lockedOutboundId, routeGroup);
+
+      await executor.query(
+        `
+          INSERT INTO route_assignments (
+            route_group, assignment_key, assignment_label, current_outbound_id,
+            locked_outbound_id, auto_route_enabled, route_locked, protocol_profile,
+            speed_profile, hysteresis_score_delta, cooldown_seconds, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+          ON CONFLICT (route_group, assignment_key)
+          DO UPDATE SET
+            assignment_label = excluded.assignment_label,
+            current_outbound_id = excluded.current_outbound_id,
+            locked_outbound_id = excluded.locked_outbound_id,
+            auto_route_enabled = excluded.auto_route_enabled,
+            route_locked = excluded.route_locked,
+            protocol_profile = excluded.protocol_profile,
+            speed_profile = excluded.speed_profile,
+            hysteresis_score_delta = excluded.hysteresis_score_delta,
+            cooldown_seconds = excluded.cooldown_seconds,
+            updated_at = now()
+        `,
+        [
+          routeGroup,
+          assignmentKey,
+          assignmentLabel,
+          currentOutboundId,
+          lockedOutboundId,
+          dto.autoRouteEnabled ?? true,
+          routeLocked,
+          protocolProfile,
+          speedProfile,
+          hysteresisScoreDelta,
+          cooldownSeconds,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'route.assignment.update',
+        'route_assignment',
+        `${routeGroup}:${assignmentKey}`,
+        {
+          routeGroup,
+          assignmentKey,
+          currentOutboundId,
+          lockedOutboundId,
+          autoRouteEnabled: dto.autoRouteEnabled ?? true,
+          routeLocked,
+          protocolProfile,
+          speedProfile,
+          hysteresisScoreDelta,
+          cooldownSeconds,
+          liveApply: false,
+        },
+        executor,
+      );
+    });
+
+    return this.getRouteAssignmentSummary(routeGroup, assignmentKey);
+  }
+
+  async recordRouteDecisionPreview(
+    dto: RecordRouteDecisionPreviewDto,
+    actor: AuthActor | undefined,
+  ): Promise<RecordRouteDecisionPreviewResponse> {
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const assignmentKey = this.normalizeAssignmentKey(dto.assignmentKey);
+    const preview = await this.getRouteDecisionPreview(routeGroup, assignmentKey);
+    const eventId = randomUUID();
+    const fromOutboundId = preview.currentCandidate?.source === 'outbound' ? preview.currentCandidate.id : null;
+    const toOutboundId = preview.recommendedCandidate?.source === 'outbound' ? preview.recommendedCandidate.id : null;
+    const decisionContext = {
+      advisory: true,
+      liveApply: false,
+      generatedAt: preview.generatedAt,
+      mode: preview.mode,
+      cooldownSeconds: preview.cooldownSeconds,
+      candidateCount: preview.candidateCount,
+      healthyCandidateCount: preview.healthyCandidateCount,
+      managedCandidateCount: preview.managedCandidateCount,
+      currentCandidate: preview.currentCandidate,
+      recommendedCandidate: preview.recommendedCandidate,
+      candidateReviews: preview.candidateReviews,
+      profileRecommendations: preview.profileRecommendations,
+      loadBalancing: preview.loadBalancing,
+      sessionSafety: preview.sessionSafety,
+      switchEngine: preview.switchEngine,
+      switchPreflight: preview.switchPreflight,
+      switchRollout: preview.switchRollout,
+      applyPlan: preview.applyPlan,
+      dryRunSnapshot: this.buildRouteDecisionDryRunSnapshot(preview),
+    };
+
+    await this.database.transaction(async (executor) => {
+      await executor.query(
+        `
+          INSERT INTO route_decision_events (
+            id, route_group, assignment_key, decision_kind, decision_state,
+            score_profile, from_outbound_id, to_outbound_id, from_score,
+            to_score, score_delta, hysteresis_score_delta, cooldown_until,
+            route_locked, auto_route_enabled, reason_codes, decision_context,
+            created_by
+          )
+          VALUES (
+            $1, $2, $3, 'preview', $4,
+            $5, $6, $7, $8,
+            $9, $10, $11, $12,
+            $13, $14, $15::jsonb, $16::jsonb,
+            $17
+          )
+        `,
+        [
+          eventId,
+          routeGroup,
+          assignmentKey,
+          preview.action,
+          preview.selectedScoreProfile ?? null,
+          fromOutboundId,
+          toOutboundId,
+          preview.currentCandidate?.score ?? null,
+          preview.recommendedCandidate?.score ?? null,
+          preview.scoreDelta ?? null,
+          preview.hysteresisScoreDelta,
+          preview.cooldownUntil ? new Date(preview.cooldownUntil) : null,
+          preview.routeLocked,
+          preview.autoRouteEnabled,
+          JSON.stringify(preview.reasonCodes),
+          JSON.stringify(decisionContext),
+          actor?.username ?? actor?.id ?? null,
+        ],
+      );
+
+      await executor.query(
+        `
+          INSERT INTO route_assignments (
+            route_group, assignment_key, current_outbound_id, locked_outbound_id,
+            auto_route_enabled, route_locked, protocol_profile, speed_profile,
+            hysteresis_score_delta, cooldown_seconds, last_decision_event_id,
+            last_decision_at, decision_state, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'balanced', $8, $9, $10, now(), $11, now())
+          ON CONFLICT (route_group, assignment_key)
+          DO UPDATE SET
+            last_decision_event_id = excluded.last_decision_event_id,
+            last_decision_at = excluded.last_decision_at,
+            decision_state = excluded.decision_state,
+            updated_at = now()
+        `,
+        [
+          routeGroup,
+          assignmentKey,
+          fromOutboundId,
+          preview.routeLocked ? fromOutboundId : null,
+          preview.autoRouteEnabled,
+          preview.routeLocked,
+          preview.selectedScoreProfile ?? 'balanced',
+          preview.hysteresisScoreDelta,
+          preview.cooldownSeconds,
+          eventId,
+          preview.action,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'route.decision.preview.record',
+        'route_decision_event',
+        eventId,
+        {
+          routeGroup,
+          assignmentKey,
+          action: preview.action,
+          fromOutboundId,
+          toOutboundId,
+          scoreDelta: preview.scoreDelta ?? null,
+          reasonCodes: preview.reasonCodes,
+          dryRunCommandCount: preview.applyPlan.adapter.dryRunCommands.length,
+          dryRunConfigChangeCount: preview.applyPlan.adapter.dryRunConfigChanges.length,
+          liveApply: false,
+        },
+        executor,
+      );
+    });
+
+    return {
+      event: await this.getRouteDecisionEvent(eventId),
+      preview: await this.getRouteDecisionPreview(routeGroup, assignmentKey),
+    };
+  }
+
+  async applyRouteDecisionPreview(
+    dto: ApplyRouteDecisionPreviewDto,
+    actor: AuthActor | undefined,
+  ): Promise<ApplyRouteDecisionPreviewResponse> {
+    const applyMode = (dto.applyMode ?? 'assignmentOnly') as 'assignmentOnly';
+    if (applyMode !== 'assignmentOnly') {
+      throw new BadRequestException('Only assignmentOnly route decision apply mode is currently supported');
+    }
+
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const assignmentKey = this.normalizeAssignmentKey(dto.assignmentKey);
+    const preview = await this.getRouteDecisionPreview(routeGroup, assignmentKey);
+    const toOutboundId = preview.recommendedCandidate?.source === 'outbound' ? preview.recommendedCandidate.id : null;
+    const fromOutboundId = preview.currentCandidate?.source === 'outbound' ? preview.currentCandidate.id : null;
+
+    const blockReasons = this.routeDecisionApplyBlockReasons(preview);
+    if (blockReasons.length > 0 || !toOutboundId) {
+      throw new ConflictException(`Route decision is not ready to apply: ${[...blockReasons, ...(toOutboundId ? [] : ['no_managed_candidate'])].join(', ')}`);
+    }
+
+    const eventId = randomUUID();
+    const appliedAt = new Date();
+    const cooldownUntil = new Date(appliedAt.getTime() + preview.cooldownSeconds * 1000);
+    const reasonCodes = [...new Set([...preview.reasonCodes, 'assignment_apply_requested', 'assignment_only_apply', 'data_plane_not_applied'])];
+    const selectedScoreProfile = preview.selectedScoreProfile ?? 'balanced';
+    const switchExecution = this.buildRouteDecisionSwitchExecutionSummary({
+      preview,
+      appliedAt,
+      cooldownUntil,
+      assignmentApplied: true,
+      dataPlaneApplied: false,
+    });
+    const decisionContext = {
+      advisory: false,
+      applyMode,
+      assignmentApplied: true,
+      dataPlaneApplied: false,
+      liveApply: false,
+      generatedAt: preview.generatedAt,
+      appliedAt: appliedAt.toISOString(),
+      cooldownSeconds: preview.cooldownSeconds,
+      candidateCount: preview.candidateCount,
+      healthyCandidateCount: preview.healthyCandidateCount,
+      managedCandidateCount: preview.managedCandidateCount,
+      currentCandidate: preview.currentCandidate,
+      recommendedCandidate: preview.recommendedCandidate,
+      candidateReviews: preview.candidateReviews,
+      profileRecommendations: preview.profileRecommendations,
+      loadBalancing: preview.loadBalancing,
+      sessionSafety: preview.sessionSafety,
+      switchEngine: preview.switchEngine,
+      switchPreflight: preview.switchPreflight,
+      switchRollout: preview.switchRollout,
+      switchExecution,
+      applyPlan: preview.applyPlan,
+      dryRunSnapshot: this.buildRouteDecisionDryRunSnapshot(preview),
+    };
+
+    await this.database.transaction(async (executor) => {
+      await this.ensureRouteOutboundCandidate(executor, toOutboundId, routeGroup);
+
+      await executor.query(
+        `
+          INSERT INTO route_decision_events (
+            id, route_group, assignment_key, decision_kind, decision_state,
+            score_profile, from_outbound_id, to_outbound_id, from_score,
+            to_score, score_delta, hysteresis_score_delta, cooldown_until,
+            route_locked, auto_route_enabled, reason_codes, decision_context,
+            applied_at, created_by
+          )
+          VALUES (
+            $1, $2, $3, 'assignment_apply', $4,
+            $5, $6, $7, $8,
+            $9, $10, $11, $12,
+            $13, $14, $15::jsonb, $16::jsonb,
+            $17, $18
+          )
+        `,
+        [
+          eventId,
+          routeGroup,
+          assignmentKey,
+          preview.action,
+          selectedScoreProfile,
+          fromOutboundId,
+          toOutboundId,
+          preview.currentCandidate?.score ?? null,
+          preview.recommendedCandidate?.score ?? null,
+          preview.scoreDelta ?? null,
+          preview.hysteresisScoreDelta,
+          cooldownUntil,
+          preview.routeLocked,
+          preview.autoRouteEnabled,
+          JSON.stringify(reasonCodes),
+          JSON.stringify(decisionContext),
+          appliedAt,
+          actor?.username ?? actor?.id ?? null,
+        ],
+      );
+
+      await executor.query(
+        `
+          INSERT INTO route_assignments (
+            route_group, assignment_key, current_outbound_id,
+            auto_route_enabled, route_locked, protocol_profile, speed_profile,
+            hysteresis_score_delta, cooldown_seconds, cooldown_until,
+            last_decision_event_id, last_decision_at, decision_state, updated_at
+          )
+          VALUES ($1, $2, $3, $4, false, $5, $6, $7, $8, $9, $10, now(), $11, now())
+          ON CONFLICT (route_group, assignment_key)
+          DO UPDATE SET
+            current_outbound_id = excluded.current_outbound_id,
+            cooldown_until = excluded.cooldown_until,
+            last_decision_event_id = excluded.last_decision_event_id,
+            last_decision_at = excluded.last_decision_at,
+            decision_state = excluded.decision_state,
+            updated_at = now()
+        `,
+        [
+          routeGroup,
+          assignmentKey,
+          toOutboundId,
+          preview.autoRouteEnabled,
+          selectedScoreProfile,
+          this.defaultSpeedProfileForProtocol(selectedScoreProfile),
+          preview.hysteresisScoreDelta,
+          preview.cooldownSeconds,
+          cooldownUntil,
+          eventId,
+          preview.action,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'route.decision.assignment.apply',
+        'route_decision_event',
+        eventId,
+        {
+          routeGroup,
+          assignmentKey,
+          action: preview.action,
+          fromOutboundId,
+          toOutboundId,
+          scoreDelta: preview.scoreDelta ?? null,
+          reasonCodes,
+          applyMode,
+          assignmentApplied: true,
+          dataPlaneApplied: false,
+          switchExecutionStatus: switchExecution.status,
+          switchExecutionPhase: switchExecution.phase,
+          switchExecutionFutureStepCount: switchExecution.futureStepIds.length,
+          dryRunCommandCount: preview.applyPlan.adapter.dryRunCommands.length,
+          dryRunConfigChangeCount: preview.applyPlan.adapter.dryRunConfigChanges.length,
+          liveApply: false,
+        },
+        executor,
+      );
+    });
+
+    return {
+      event: await this.getRouteDecisionEvent(eventId),
+      preview: await this.getRouteDecisionPreview(routeGroup, assignmentKey),
+      assignment: await this.getRouteAssignmentSummary(routeGroup, assignmentKey),
+      applyMode,
+      assignmentApplied: true,
+      dataPlaneApplied: false,
+      switchExecution,
+      reasonCodes,
+    };
+  }
+
+  async listRouteDecisionEvents(
+    filters: { routeGroup?: string; assignmentKey?: string; limit?: number } = {},
+  ): Promise<AdminRouteDecisionEventSummary[]> {
+    const routeGroup = filters.routeGroup ? this.normalizeRouteGroup(filters.routeGroup) : undefined;
+    const assignmentKey = filters.assignmentKey ? this.normalizeAssignmentKey(filters.assignmentKey) : undefined;
+    const result = await this.database.query<RouteDecisionEventRow>(
+      `
+        SELECT
+          event.id,
+          event.route_group AS "routeGroup",
+          event.assignment_key AS "assignmentKey",
+          event.decision_kind AS "decisionKind",
+          event.decision_state AS "decisionState",
+          event.score_profile AS "scoreProfile",
+          event.from_outbound_id AS "fromOutboundId",
+          from_outbound.name AS "fromOutboundName",
+          event.to_outbound_id AS "toOutboundId",
+          to_outbound.name AS "toOutboundName",
+          event.from_score AS "fromScore",
+          event.to_score AS "toScore",
+          event.score_delta AS "scoreDelta",
+          event.hysteresis_score_delta AS "hysteresisScoreDelta",
+          event.cooldown_until AS "cooldownUntil",
+          event.route_locked AS "routeLocked",
+          event.auto_route_enabled AS "autoRouteEnabled",
+          event.reason_codes AS "reasonCodes",
+          event.applied_at AS "appliedAt",
+          event.created_by AS "createdBy",
+          event.created_at AS "createdAt"
+        FROM route_decision_events event
+        LEFT JOIN outbounds from_outbound ON from_outbound.id = event.from_outbound_id
+        LEFT JOIN outbounds to_outbound ON to_outbound.id = event.to_outbound_id
+        WHERE ($1::text IS NULL OR event.route_group = $1)
+          AND ($2::text IS NULL OR event.assignment_key = $2)
+        ORDER BY event.created_at DESC
+        LIMIT $3
+      `,
+      [routeGroup ?? null, assignmentKey ?? null, filters.limit ?? 50],
+    );
+
+    return result.rows.map((row) => this.mapRouteDecisionEvent(row));
+  }
+
+  async getRouteDecisionEventDetail(id: string): Promise<AdminRouteDecisionEventDetail> {
+    const result = await this.database.query<RouteDecisionEventRow>(
+      `
+        SELECT
+          event.id,
+          event.route_group AS "routeGroup",
+          event.assignment_key AS "assignmentKey",
+          event.decision_kind AS "decisionKind",
+          event.decision_state AS "decisionState",
+          event.score_profile AS "scoreProfile",
+          event.from_outbound_id AS "fromOutboundId",
+          from_outbound.name AS "fromOutboundName",
+          event.to_outbound_id AS "toOutboundId",
+          to_outbound.name AS "toOutboundName",
+          event.from_score AS "fromScore",
+          event.to_score AS "toScore",
+          event.score_delta AS "scoreDelta",
+          event.hysteresis_score_delta AS "hysteresisScoreDelta",
+          event.cooldown_until AS "cooldownUntil",
+          event.route_locked AS "routeLocked",
+          event.auto_route_enabled AS "autoRouteEnabled",
+          event.reason_codes AS "reasonCodes",
+          event.decision_context AS "decisionContext",
+          event.applied_at AS "appliedAt",
+          event.created_by AS "createdBy",
+          event.created_at AS "createdAt"
+        FROM route_decision_events event
+        LEFT JOIN outbounds from_outbound ON from_outbound.id = event.from_outbound_id
+        LEFT JOIN outbounds to_outbound ON to_outbound.id = event.to_outbound_id
+        WHERE event.id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Route decision event not found');
+
+    return this.mapRouteDecisionEventDetail(row);
+  }
+
+  async createSettingsSecret(
+    dto: CreateSettingsSecretDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminSecretRefSummary> {
+    this.assertSuperadmin(actor);
+
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const name = dto.name.trim();
+    const secret = dto.secret.trim();
+
+    if (!name || !secret) throw new BadRequestException('Secret name and value are required');
+
+    const secretRef = `secret:${randomUUID()}`;
+    const encryptionContext = this.secretEncryptionContext(secretRef, dto.kind, routeGroup, dto.protocol ?? null);
+    const encrypted = this.secretVault.encryptJson(
+      {
+        kind: dto.kind,
+        value: secret,
+      },
+      encryptionContext,
+    );
+    const fingerprint = this.secretVault.fingerprint(secret);
+
+    await this.database.transaction(async (executor) => {
+      await executor.query(
+        `
+          INSERT INTO secret_records (
+            secret_ref, name, kind, scope, route_group, protocol,
+            encrypted_payload, key_id, fingerprint, created_by
+          )
+          VALUES ($1, $2, $3, 'settings', $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          secretRef,
+          name,
+          dto.kind,
+          routeGroup,
+          dto.protocol ?? null,
+          encrypted.payload,
+          encrypted.keyId,
+          fingerprint,
+          actor?.username ?? actor?.id ?? null,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'settings.secret.create',
+        'secret_record',
+        secretRef,
+        {
+          kind: dto.kind,
+          routeGroup,
+          protocol: dto.protocol ?? null,
+          keyId: encrypted.keyId,
+          fingerprint,
+        },
+        executor,
+      );
+    });
+
+    return this.getSecretRef(secretRef);
+  }
+
+  async createProtocolSetup(
+    dto: CreateProtocolSetupDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminProtocolSetupSummary> {
+    this.assertSuperadmin(actor);
+    this.assertSafeConfig(dto.config);
+
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const protocolSetupId = await this.database.transaction(async (executor) => {
+      const secretRef = dto.secretRef?.trim() || null;
+      if (secretRef) await this.ensureSecretRefExists(executor, secretRef, routeGroup, dto.protocol);
+
+      const result = await executor.query<{ id: string }>(
+        `
+          INSERT INTO protocol_setups (
+            name, protocol, profile, route_group, port, config, secret_ref, created_by
+          )
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+          RETURNING id
+        `,
+        [
+          dto.name.trim(),
+          dto.protocol,
+          dto.profile,
+          routeGroup,
+          dto.port,
+          JSON.stringify(dto.config ?? {}),
+          secretRef,
+          actor?.username ?? actor?.id ?? null,
+        ],
+      );
+      const id = result.rows[0].id;
+
+      await this.audit.record(
+        actor,
+        'settings.protocol.create',
+        'protocol_setup',
+        id,
+        {
+          protocol: dto.protocol,
+          profile: dto.profile,
+          routeGroup,
+          hasSecretRef: Boolean(secretRef),
+        },
+        executor,
+      );
+
+      return id;
+    }).catch((error) => {
+      this.throwConflictIfUniqueViolation(error, 'Protocol setup name already exists for this route group');
+      throw error;
+    });
+
+    return this.getProtocolSetup(protocolSetupId);
+  }
+
+  async provisionProtocolSetup(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<ProvisionProtocolSetupResponse> {
+    this.assertSuperadmin(actor);
+
+    const provisioned = await this.database.transaction(async (executor) => {
+      const setup = await this.getProtocolSetupForUpdate(executor, id);
+      const routeGroup = this.normalizeRouteGroup(setup.routeGroup);
+
+      if (setup.provisionedOutboundId) {
+        const existing = await executor.query<{ id: string }>('SELECT id FROM outbounds WHERE id = $1', [
+          setup.provisionedOutboundId,
+        ]);
+
+        if (existing.rows[0]) {
+          await this.audit.record(
+            actor,
+            'settings.protocol.provision',
+            'protocol_setup',
+            setup.id,
+            {
+              protocol: setup.protocol,
+              profile: setup.profile,
+              routeGroup,
+              outboundId: setup.provisionedOutboundId,
+              idempotent: true,
+            },
+            executor,
+          );
+
+          return {
+            protocolSetupId: setup.id,
+            outboundId: setup.provisionedOutboundId,
+          };
+        }
+      }
+
+      if (setup.secretRef) {
+        await this.ensureSecretRefExists(executor, setup.secretRef, routeGroup, setup.protocol);
+      } else if (setup.protocol === 'wireguard') {
+        throw new BadRequestException('WireGuard provisioning requires an encrypted private-key reference');
+      }
+
+      const outboundConfig = this.buildProvisionedOutboundConfig(setup);
+      this.assertSafeConfig(outboundConfig);
+
+      const priority = await this.nextOutboundPriority(executor, routeGroup);
+      const outboundType = this.protocolToOutboundType(setup.protocol);
+      const outbound = await executor.query<{ id: string }>(
+        `
+          INSERT INTO outbounds (
+            server_id, name, type, route_group, priority, enabled, maintenance_mode,
+            config, secret_ref, health_interval_seconds, fail_threshold,
+            recovery_threshold, cooldown_seconds, weight, max_users, health_status
+          )
+          VALUES (NULL, $1, $2, $3, $4, false, true, $5::jsonb, $6, $7, $8, $9, $10, $11, NULL, 'unknown')
+          RETURNING id
+        `,
+        [
+          setup.name,
+          outboundType,
+          routeGroup,
+          priority,
+          JSON.stringify(outboundConfig),
+          setup.secretRef,
+          60,
+          3,
+          3,
+          120,
+          this.profileToOutboundWeight(setup.profile),
+        ],
+      );
+      const outboundId = outbound.rows[0].id;
+
+      await executor.query(
+        `
+          UPDATE protocol_setups
+          SET status = 'provisioned',
+              provisioned_outbound_id = $2,
+              provisioned_at = now(),
+              updated_at = now()
+          WHERE id = $1
+        `,
+        [setup.id, outboundId],
+      );
+
+      await this.audit.record(
+        actor,
+        'settings.protocol.provision',
+        'protocol_setup',
+        setup.id,
+        {
+          protocol: setup.protocol,
+          profile: setup.profile,
+          routeGroup,
+          outboundId,
+          outboundType,
+          hasSecretRef: Boolean(setup.secretRef),
+          enabled: false,
+          maintenanceMode: true,
+        },
+        executor,
+      );
+
+      return {
+        protocolSetupId: setup.id,
+        outboundId,
+      };
+    });
+
+    return {
+      protocolSetup: await this.getProtocolSetup(provisioned.protocolSetupId),
+      outbound: await this.getOutbound(provisioned.outboundId),
+    };
+  }
+
+  async upsertRouteSettings(
+    dto: UpsertRouteSettingsDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminRouteSettingsSummary> {
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const protocolProfile = dto.protocolProfile ?? 'balanced';
+    const speedProfile = dto.speedProfile ?? this.defaultSpeedProfileForProtocol(protocolProfile);
+
+    await this.database.transaction(async (executor) => {
+      if (dto.selectedOutboundId) await this.ensureRouteOutboundCandidate(executor, dto.selectedOutboundId, routeGroup);
+
+      await executor.query(
+        `
+          INSERT INTO route_settings (
+            route_group, mode, selected_outbound_id, load_balance_strategy,
+            protocol_profile, speed_profile, updated_by
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (route_group)
+          DO UPDATE SET
+            mode = excluded.mode,
+            selected_outbound_id = excluded.selected_outbound_id,
+            load_balance_strategy = excluded.load_balance_strategy,
+            protocol_profile = excluded.protocol_profile,
+            speed_profile = excluded.speed_profile,
+            updated_by = excluded.updated_by,
+            updated_at = now()
+        `,
+        [
+          routeGroup,
+          dto.mode,
+          dto.selectedOutboundId ?? null,
+          dto.loadBalanceStrategy,
+          protocolProfile,
+          speedProfile,
+          actor?.username ?? actor?.id ?? null,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'settings.route.update',
+        'route_settings',
+        routeGroup,
+        {
+          mode: dto.mode,
+          selectedOutboundId: dto.selectedOutboundId ?? null,
+          loadBalanceStrategy: dto.loadBalanceStrategy,
+          protocolProfile,
+          speedProfile,
+        },
+        executor,
+      );
+    });
+
+    return this.getRouteSettings(routeGroup);
+  }
+
+  async listProtocolSetups(routeGroup: string): Promise<AdminProtocolSetupSummary[]> {
+    const result = await this.database.query<ProtocolSetupRow>(
+      `
+        SELECT
+          id,
+          name,
+          protocol,
+          profile,
+          route_group AS "routeGroup",
+          port,
+          status,
+          config,
+          secret_ref AS "secretRef",
+          provisioned_outbound_id AS "provisionedOutboundId",
+          provisioned_at AS "provisionedAt",
+          created_by AS "createdBy",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM protocol_setups
+        WHERE route_group = $1
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 100
+      `,
+      [routeGroup],
+    );
+
+    return result.rows.map((row) => this.mapProtocolSetup(row));
+  }
+
+  async getProtocolSetup(id: string): Promise<AdminProtocolSetupSummary> {
+    const result = await this.database.query<ProtocolSetupRow>(
+      `
+        SELECT
+          id,
+          name,
+          protocol,
+          profile,
+          route_group AS "routeGroup",
+          port,
+          status,
+          config,
+          secret_ref AS "secretRef",
+          provisioned_outbound_id AS "provisionedOutboundId",
+          provisioned_at AS "provisionedAt",
+          created_by AS "createdBy",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM protocol_setups
+        WHERE id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Protocol setup not found');
+
+    return this.mapProtocolSetup(row);
+  }
+
+  async getSecretRef(secretRef: string): Promise<AdminSecretRefSummary> {
+    const result = await this.database.query<SecretRecordRow>(
+      `
+        SELECT
+          secret_ref AS "secretRef",
+          name,
+          kind,
+          route_group AS "routeGroup",
+          protocol,
+          fingerprint,
+          status,
+          created_by AS "createdBy",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt",
+          last_rotated_at AS "lastRotatedAt"
+        FROM secret_records
+        WHERE secret_ref = $1
+      `,
+      [secretRef],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Secret reference not found');
+
+    return this.mapSecretRef(row);
+  }
+
+  async getRouteSettings(routeGroup: string): Promise<AdminRouteSettingsSummary> {
+    const result = await this.database.query<RouteSettingsRow>(
+      `
+        SELECT
+          rs.route_group AS "routeGroup",
+          rs.mode,
+          rs.selected_outbound_id AS "selectedOutboundId",
+          o.name AS "selectedOutboundName",
+          rs.load_balance_strategy AS "loadBalanceStrategy",
+          rs.protocol_profile AS "protocolProfile",
+          rs.speed_profile AS "speedProfile",
+          rs.updated_by AS "updatedBy",
+          rs.updated_at AS "updatedAt"
+        FROM route_settings rs
+        LEFT JOIN outbounds o ON o.id = rs.selected_outbound_id
+        WHERE rs.route_group = $1
+      `,
+      [routeGroup],
+    );
+    const row = result.rows[0];
+
+    if (!row) {
+      return {
+        routeGroup,
+        mode: 'automatic',
+        selectedOutboundId: null,
+        selectedOutboundName: null,
+        loadBalanceStrategy: 'balanced',
+        protocolProfile: 'balanced',
+        speedProfile: 'balanced',
+        updatedBy: null,
+        updatedAt: null,
+      };
+    }
+
+    return {
+      routeGroup: row.routeGroup,
+      mode: row.mode,
+      selectedOutboundId: row.selectedOutboundId,
+      selectedOutboundName: row.selectedOutboundName,
+      loadBalanceStrategy: row.loadBalanceStrategy,
+      protocolProfile: row.protocolProfile,
+      speedProfile: row.speedProfile,
+      updatedBy: row.updatedBy,
+      updatedAt: row.updatedAt?.toISOString() ?? null,
+    };
+  }
+
+  private async getRouteAssignment(routeGroup: string, assignmentKey: string): Promise<RouteAssignmentRow | null> {
+    const result = await this.database.query<RouteAssignmentRow>(
+      `
+        SELECT
+          ra.route_group AS "routeGroup",
+          ra.assignment_key AS "assignmentKey",
+          ra.assignment_label AS "assignmentLabel",
+          ra.current_outbound_id AS "currentOutboundId",
+          current_outbound.name AS "currentOutboundName",
+          ra.locked_outbound_id AS "lockedOutboundId",
+          locked_outbound.name AS "lockedOutboundName",
+          ra.auto_route_enabled AS "autoRouteEnabled",
+          ra.route_locked AS "routeLocked",
+          ra.protocol_profile AS "protocolProfile",
+          ra.speed_profile AS "speedProfile",
+          ra.hysteresis_score_delta AS "hysteresisScoreDelta",
+          ra.cooldown_seconds AS "cooldownSeconds",
+          ra.cooldown_until AS "cooldownUntil",
+          ra.last_decision_at AS "lastDecisionAt",
+          ra.decision_state AS "decisionState",
+          ra.updated_at AS "updatedAt"
+        FROM route_assignments ra
+        LEFT JOIN outbounds current_outbound ON current_outbound.id = ra.current_outbound_id
+        LEFT JOIN outbounds locked_outbound ON locked_outbound.id = ra.locked_outbound_id
+        WHERE ra.route_group = $1 AND ra.assignment_key = $2
+      `,
+      [routeGroup, assignmentKey],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private mapRouteAssignmentSummary(
+    routeGroup: string,
+    assignmentKey: string,
+    routeSettings: AdminRouteSettingsSummary,
+    assignment: RouteAssignmentRow | null,
+  ): AdminRouteAssignmentSummary {
+    if (!assignment) {
+      const lockedOutboundId = routeSettings.mode === 'manual' ? routeSettings.selectedOutboundId ?? null : null;
+
+      return {
+        routeGroup,
+        assignmentKey,
+        assignmentLabel: null,
+        currentOutboundId: routeSettings.selectedOutboundId ?? null,
+        currentOutboundName: routeSettings.selectedOutboundName ?? null,
+        lockedOutboundId,
+        lockedOutboundName: lockedOutboundId ? routeSettings.selectedOutboundName ?? null : null,
+        autoRouteEnabled: routeSettings.mode === 'automatic',
+        routeLocked: Boolean(lockedOutboundId),
+        protocolProfile: routeSettings.protocolProfile,
+        speedProfile: routeSettings.speedProfile,
+        hysteresisScoreDelta: 15,
+        cooldownSeconds: 180,
+        cooldownUntil: null,
+        lastDecisionAt: null,
+        decisionState: 'monitoring',
+        updatedAt: routeSettings.updatedAt ?? null,
+      };
+    }
+
+    return {
+      routeGroup: assignment.routeGroup,
+      assignmentKey: assignment.assignmentKey,
+      assignmentLabel: assignment.assignmentLabel,
+      currentOutboundId: assignment.currentOutboundId,
+      currentOutboundName: assignment.currentOutboundName,
+      lockedOutboundId: assignment.lockedOutboundId,
+      lockedOutboundName: assignment.lockedOutboundName,
+      autoRouteEnabled: assignment.autoRouteEnabled,
+      routeLocked: assignment.routeLocked,
+      protocolProfile: assignment.protocolProfile,
+      speedProfile: assignment.speedProfile,
+      hysteresisScoreDelta: assignment.hysteresisScoreDelta,
+      cooldownSeconds: assignment.cooldownSeconds,
+      cooldownUntil: assignment.cooldownUntil?.toISOString() ?? null,
+      lastDecisionAt: assignment.lastDecisionAt?.toISOString() ?? null,
+      decisionState: assignment.decisionState,
+      updatedAt: assignment.updatedAt?.toISOString() ?? null,
+    };
+  }
+
+  private async getRouteDecisionEvent(id: string): Promise<AdminRouteDecisionEventSummary> {
+    const result = await this.database.query<RouteDecisionEventRow>(
+      `
+        SELECT
+          event.id,
+          event.route_group AS "routeGroup",
+          event.assignment_key AS "assignmentKey",
+          event.decision_kind AS "decisionKind",
+          event.decision_state AS "decisionState",
+          event.score_profile AS "scoreProfile",
+          event.from_outbound_id AS "fromOutboundId",
+          from_outbound.name AS "fromOutboundName",
+          event.to_outbound_id AS "toOutboundId",
+          to_outbound.name AS "toOutboundName",
+          event.from_score AS "fromScore",
+          event.to_score AS "toScore",
+          event.score_delta AS "scoreDelta",
+          event.hysteresis_score_delta AS "hysteresisScoreDelta",
+          event.cooldown_until AS "cooldownUntil",
+          event.route_locked AS "routeLocked",
+          event.auto_route_enabled AS "autoRouteEnabled",
+          event.reason_codes AS "reasonCodes",
+          event.applied_at AS "appliedAt",
+          event.created_by AS "createdBy",
+          event.created_at AS "createdAt"
+        FROM route_decision_events event
+        LEFT JOIN outbounds from_outbound ON from_outbound.id = event.from_outbound_id
+        LEFT JOIN outbounds to_outbound ON to_outbound.id = event.to_outbound_id
+        WHERE event.id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Route decision event not found');
+
+    return this.mapRouteDecisionEvent(row);
+  }
+
+  private mapRouteDecisionEvent(row: RouteDecisionEventRow): AdminRouteDecisionEventSummary {
+    return {
+      id: row.id,
+      routeGroup: row.routeGroup,
+      assignmentKey: row.assignmentKey,
+      decisionKind: row.decisionKind,
+      decisionState: row.decisionState,
+      scoreProfile: row.scoreProfile,
+      fromOutboundId: row.fromOutboundId,
+      fromOutboundName: row.fromOutboundName,
+      toOutboundId: row.toOutboundId,
+      toOutboundName: row.toOutboundName,
+      fromScore: row.fromScore,
+      toScore: row.toScore,
+      scoreDelta: row.scoreDelta,
+      hysteresisScoreDelta: row.hysteresisScoreDelta,
+      cooldownUntil: row.cooldownUntil?.toISOString() ?? null,
+      routeLocked: row.routeLocked,
+      autoRouteEnabled: row.autoRouteEnabled,
+      reasonCodes: Array.isArray(row.reasonCodes) ? row.reasonCodes.map(String) : [],
+      appliedAt: row.appliedAt?.toISOString() ?? null,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private mapRouteDecisionEventDetail(row: RouteDecisionEventRow): AdminRouteDecisionEventDetail {
+    const decisionContext = this.asRecord(row.decisionContext);
+
+    return {
+      ...this.mapRouteDecisionEvent(row),
+      decisionContext,
+      dryRunSnapshot: this.mapRouteDecisionDryRunSnapshot(decisionContext.dryRunSnapshot),
+      switchExecution: this.mapRouteDecisionSwitchExecution(decisionContext.switchExecution),
+      switchPreflight: this.mapRouteDecisionSwitchPreflight(decisionContext.switchPreflight),
+      switchRollout: this.mapRouteDecisionSwitchRollout(decisionContext.switchRollout),
+    };
+  }
+
+  private mapRouteDecisionSwitchRollout(value: unknown): AdminRouteDecisionSwitchRolloutSummary | null {
+    const rollout = this.asRecord(value);
+    if (Object.keys(rollout).length === 0) return null;
+
+    const steps = Array.isArray(rollout.steps)
+      ? rollout.steps
+          .map((item, index) => this.mapRouteDecisionSwitchRolloutStep(item, index))
+          .filter((item): item is AdminRouteDecisionSwitchRolloutSummary['steps'][number] => Boolean(item))
+      : [];
+
+    return {
+      status: this.stringOrFallback(rollout.status, 'blocked'),
+      strategy: this.stringOrFallback(rollout.strategy, 'assignmentOnly'),
+      dataPlaneReady: rollout.dataPlaneReady === true,
+      existingSessionsPinned: rollout.existingSessionsPinned === true,
+      newSessionsCanary: rollout.newSessionsCanary === true,
+      automaticExpansion: rollout.automaticExpansion === true,
+      initialPercent: this.numberOrFallback(rollout.initialPercent, 0),
+      maxPercent: this.numberOrFallback(rollout.maxPercent, 0),
+      canaryDurationSeconds: this.numberOrFallback(rollout.canaryDurationSeconds, 0),
+      routeConsistencyHoldSeconds: this.numberOrFallback(rollout.routeConsistencyHoldSeconds, 0),
+      rollbackOnLossPercent: this.numberOrFallback(rollout.rollbackOnLossPercent, 0),
+      rollbackOnJitterMs: this.numberOrFallback(rollout.rollbackOnJitterMs, 0),
+      rollbackOnLatencyMs: this.numberOrFallback(rollout.rollbackOnLatencyMs, 0),
+      reasonCodes: this.stringArrayOrEmpty(rollout.reasonCodes),
+      steps,
+    };
+  }
+
+  private mapRouteDecisionSwitchRolloutStep(
+    value: unknown,
+    index: number,
+  ): AdminRouteDecisionSwitchRolloutSummary['steps'][number] | null {
+    const step = this.asRecord(value);
+    const code = this.stringOrFallback(step.code, '');
+    if (!code) return null;
+
+    return {
+      id: this.stringOrFallback(step.id, `switch-rollout-step-${index + 1}`),
+      phase: this.stringOrFallback(step.phase, 'canary'),
+      code,
+      status: this.stringOrFallback(step.status, 'future'),
+      trafficScope: this.stringOrFallback(step.trafficScope, 'none'),
+      targetPercent: this.numberOrFallback(step.targetPercent, 0),
+      durationSeconds: step.durationSeconds === null || step.durationSeconds === undefined
+        ? null
+        : this.numberOrFallback(step.durationSeconds, 0),
+      dataPlaneMutation: step.dataPlaneMutation === true,
+      reasonCodes: this.stringArrayOrEmpty(step.reasonCodes),
+    };
+  }
+
+  private mapRouteDecisionSwitchPreflight(value: unknown): AdminRouteDecisionSwitchPreflightSummary | null {
+    const preflight = this.asRecord(value);
+    if (Object.keys(preflight).length === 0) return null;
+
+    const checks = Array.isArray(preflight.checks)
+      ? preflight.checks
+          .map((item, index) => this.mapRouteDecisionSwitchPreflightCheck(item, index))
+          .filter((item): item is AdminRouteDecisionSwitchPreflightSummary['checks'][number] => Boolean(item))
+      : [];
+
+    return {
+      status: this.stringOrFallback(preflight.status, 'blocked'),
+      dataPlaneReady: preflight.dataPlaneReady === true,
+      canExecuteDataPlane: preflight.canExecuteDataPlane === true,
+      safeToArm: preflight.safeToArm === true,
+      checkCount: this.numberOrFallback(preflight.checkCount, checks.length),
+      failedCheckCount: this.numberOrFallback(
+        preflight.failedCheckCount,
+        checks.filter((item) => item.status === 'failed').length,
+      ),
+      futureCheckCount: this.numberOrFallback(
+        preflight.futureCheckCount,
+        checks.filter((item) => item.status === 'future').length,
+      ),
+      reasonCodes: this.stringArrayOrEmpty(preflight.reasonCodes),
+      checks,
+    };
+  }
+
+  private mapRouteDecisionSwitchPreflightCheck(
+    value: unknown,
+    index: number,
+  ): AdminRouteDecisionSwitchPreflightSummary['checks'][number] | null {
+    const check = this.asRecord(value);
+    const code = this.stringOrFallback(check.code, '');
+    if (!code) return null;
+
+    return {
+      id: this.stringOrFallback(check.id, `preflight-check-${index + 1}`),
+      kind: this.stringOrFallback(check.kind, 'guards'),
+      code,
+      status: this.stringOrFallback(check.status, 'future'),
+      dataPlaneMutation: check.dataPlaneMutation === true,
+      estimatedSeconds: check.estimatedSeconds === null || check.estimatedSeconds === undefined
+        ? null
+        : this.numberOrFallback(check.estimatedSeconds, 0),
+      reasonCodes: this.stringArrayOrEmpty(check.reasonCodes),
+    };
+  }
+
+  private mapRouteDecisionSwitchExecution(value: unknown): AdminRouteDecisionSwitchExecutionSummary | null {
+    const execution = this.asRecord(value);
+    if (Object.keys(execution).length === 0) return null;
+
+    return {
+      status: this.stringOrFallback(execution.status, 'blocked'),
+      phase: this.stringOrFallback(execution.phase, 'guarded'),
+      generatedAt: this.stringOrFallback(execution.generatedAt, ''),
+      appliedAt: this.stringOrNullable(execution.appliedAt),
+      fromOutboundId: this.stringOrNullable(execution.fromOutboundId),
+      toOutboundId: this.stringOrNullable(execution.toOutboundId),
+      assignmentApplied: execution.assignmentApplied === true,
+      dataPlaneApplied: execution.dataPlaneApplied === true,
+      dataPlaneReady: execution.dataPlaneReady === true,
+      preserveExistingSessions: execution.preserveExistingSessions === true,
+      switchNewSessionsOnly: execution.switchNewSessionsOnly === true,
+      drainRequired: execution.drainRequired === true,
+      emergencySwitch: execution.emergencySwitch === true,
+      stickyUntil: this.stringOrNullable(execution.stickyUntil),
+      drainUntil: this.stringOrNullable(execution.drainUntil),
+      cooldownUntil: this.stringOrNullable(execution.cooldownUntil),
+      rollbackReady: execution.rollbackReady === true,
+      executedStepIds: this.stringArrayOrEmpty(execution.executedStepIds),
+      futureStepIds: this.stringArrayOrEmpty(execution.futureStepIds),
+      reasonCodes: this.stringArrayOrEmpty(execution.reasonCodes),
+    };
+  }
+
+  private mapRouteDecisionDryRunSnapshot(value: unknown): AdminRouteDecisionApplyDryRunSnapshot | null {
+    const snapshot = this.asRecord(value);
+    if (Object.keys(snapshot).length === 0) return null;
+
+    const commands = Array.isArray(snapshot.commands)
+      ? snapshot.commands
+          .map((item, index) => this.mapRouteDecisionDryRunCommand(item, index))
+          .filter((item): item is AdminRouteDecisionApplyDryRunCommand => Boolean(item))
+      : [];
+    const configChanges = Array.isArray(snapshot.configChanges)
+      ? snapshot.configChanges
+          .map((item, index) => this.mapRouteDecisionDryRunConfigChange(item, index))
+          .filter((item): item is AdminRouteDecisionApplyDryRunConfigChange => Boolean(item))
+      : [];
+
+    return {
+      generatedAt: this.stringOrFallback(snapshot.generatedAt, ''),
+      adapterId: this.stringOrFallback(snapshot.adapterId, ''),
+      adapterStatus: this.stringOrFallback(snapshot.adapterStatus, 'missing'),
+      adapterEnabled: snapshot.adapterEnabled === true,
+      adapterImplemented: snapshot.adapterImplemented === true,
+      dataPlaneReady: snapshot.dataPlaneReady === true,
+      dryRunSupported: snapshot.dryRunSupported === true,
+      secretSafe:
+        snapshot.secretSafe !== false &&
+        commands.every((item) => item.secretSafe) &&
+        configChanges.every((item) => item.secretSafe),
+      commandCount: this.numberOrFallback(snapshot.commandCount, commands.length),
+      configChangeCount: this.numberOrFallback(snapshot.configChangeCount, configChanges.length),
+      commands,
+      configChanges,
+    };
+  }
+
+  private mapRouteDecisionDryRunCommand(
+    value: unknown,
+    index: number,
+  ): AdminRouteDecisionApplyDryRunCommand | null {
+    const command = this.asRecord(value);
+    const commandText = this.stringOrFallback(command.command, '');
+    if (!commandText) return null;
+
+    return {
+      id: this.stringOrFallback(command.id, `command-${index + 1}`),
+      kind: this.stringOrFallback(command.kind, 'precheck'),
+      command: commandText,
+      requiresRoot: command.requiresRoot === true,
+      dataPlaneMutation: command.dataPlaneMutation === true,
+      secretSafe: command.secretSafe !== false,
+    };
+  }
+
+  private mapRouteDecisionDryRunConfigChange(
+    value: unknown,
+    index: number,
+  ): AdminRouteDecisionApplyDryRunConfigChange | null {
+    const configChange = this.asRecord(value);
+    const filePath = this.stringOrFallback(configChange.filePath, '');
+    if (!filePath) return null;
+
+    return {
+      id: this.stringOrFallback(configChange.id, `config-${index + 1}`),
+      filePath,
+      action: this.stringOrFallback(configChange.action, 'validate'),
+      description: this.stringOrFallback(configChange.description, filePath),
+      secretSafe: configChange.secretSafe !== false,
+    };
+  }
+
+  async listWireGuardCandidates(
+    routeGroup: string,
+    settings?: RouteScoringContext,
+  ): Promise<AdminWireGuardCandidate[]> {
+    const scoringSettings = settings ?? await this.getRouteSettings(routeGroup);
+    const result = await this.database.query<WireGuardCandidateRow>(
+      `
+        SELECT
+          o.id,
+          o.name,
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          o.route_group AS "routeGroup",
+          o.config,
+          o.health_status AS "healthStatus",
+          o.weight,
+          o.enabled,
+          o.maintenance_mode AS "maintenanceMode",
+          h.latency_ms AS "latencyMs",
+          h.jitter_ms AS "jitterMs",
+          h.packet_loss_percent AS "packetLossPercent",
+          h.checked_at AS "checkedAt",
+          sm.health_score AS "serverHealthScore",
+          sm.raw AS "serverMetricRaw"
+        FROM outbounds o
+        LEFT JOIN servers s ON s.id = o.server_id
+        LEFT JOIN LATERAL (
+          SELECT *
+          FROM outbound_health_checks oh
+          WHERE oh.outbound_id = o.id
+          ORDER BY oh.checked_at DESC
+          LIMIT 1
+        ) h ON true
+        LEFT JOIN LATERAL (
+          SELECT *
+          FROM server_metrics server_metric
+          WHERE server_metric.server_id = o.server_id
+          ORDER BY server_metric.observed_at DESC
+          LIMIT 1
+        ) sm ON true
+        WHERE o.type = 'wireguard'
+          AND o.route_group = $1
+        ORDER BY o.priority ASC, o.created_at ASC
+        LIMIT 100
+      `,
+      [routeGroup],
+    );
+    const outboundCandidates = result.rows.map((row) => this.mapWireGuardCandidate(row, scoringSettings));
+    const telemetryCandidates = await this.listWireGuardTelemetryCandidates(routeGroup, scoringSettings);
+
+    return [...outboundCandidates, ...telemetryCandidates]
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 100);
+  }
+
+  private async listWireGuardTelemetryCandidates(
+    routeGroup: string,
+    settings: RouteScoringContext,
+  ): Promise<AdminWireGuardCandidate[]> {
+    const result = await this.database.query<WireGuardTelemetryRow>(
+      `
+        SELECT
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          m.observed_at AS "observedAt",
+          m.health_score AS "healthScore",
+          m.raw AS "metricRaw"
+        FROM servers s
+        JOIN LATERAL (
+          SELECT *
+          FROM server_metrics sm
+          WHERE sm.server_id = s.id
+          ORDER BY sm.observed_at DESC
+          LIMIT 1
+        ) m ON true
+        WHERE jsonb_typeof(m.raw->'wireGuardInterfaces') = 'array'
+          AND jsonb_array_length(m.raw->'wireGuardInterfaces') > 0
+        ORDER BY m.observed_at DESC
+        LIMIT 100
+      `,
+    );
+
+    return result.rows.flatMap((row) =>
+      (row.metricRaw?.wireGuardInterfaces ?? [])
+        .filter((item): item is WireGuardInterfaceMetric => this.isWireGuardInterfaceMetric(item))
+        .map((item) => this.mapWireGuardTelemetryCandidate(row, item, routeGroup, settings)),
+    );
+  }
+
   async listRouteFailoverEvents(
     filters: { routeGroup?: string; limit?: number } = {},
   ): Promise<RouteFailoverEventSummary[]> {
@@ -523,11 +2381,39 @@ export class OperationsService {
     return Math.min(value, max);
   }
 
+  normalizeRouteAnalyticsRangeHours(input: string | undefined): number {
+    if (!input) return 168;
+
+    const value = Number(input);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new BadRequestException('rangeHours must be a positive integer');
+    }
+
+    return Math.min(value, 2160);
+  }
+
   normalizeUuidQuery(input: string | undefined, name: string): string | undefined {
     if (!input) return undefined;
 
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input)) {
       throw new BadRequestException(`${name} must be a UUID`);
+    }
+
+    return input;
+  }
+
+  private normalizeAlertStatus(input: string | undefined): string | undefined {
+    if (!input) return 'open';
+    if (input === 'open' || input === 'resolved') return input;
+
+    throw new BadRequestException('status must be open or resolved');
+  }
+
+  private normalizeSimpleText(input: string | undefined, name: string): string | undefined {
+    if (!input) return undefined;
+
+    if (!/^[a-z][a-z0-9_-]{0,31}$/i.test(input)) {
+      throw new BadRequestException(`${name} must be a simple text filter`);
     }
 
     return input;
@@ -632,6 +2518,8 @@ export class OperationsService {
       diskFreePercent: row.diskFreePercent,
       storages: row.metricRaw?.storages,
       networkInterfaces: row.metricRaw?.networkInterfaces,
+      wireGuardInterfaces: row.metricRaw?.wireGuardInterfaces,
+      routeProbes: row.metricRaw?.routeProbes,
       inboundBps: row.inboundBps,
       outboundBps: row.outboundBps,
       pingMs: row.pingMs,
@@ -697,6 +2585,2606 @@ export class OperationsService {
     };
   }
 
+  private mapProtocolSetup(row: ProtocolSetupRow): AdminProtocolSetupSummary {
+    return {
+      id: row.id,
+      name: row.name,
+      protocol: row.protocol,
+      profile: row.profile,
+      routeGroup: row.routeGroup,
+      port: row.port,
+      status: row.status,
+      config: this.redactConfig(this.asRecord(row.config)),
+      hasSecretRef: Boolean(row.secretRef),
+      provisionedOutboundId: row.provisionedOutboundId,
+      provisionedAt: row.provisionedAt?.toISOString() ?? null,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapSecretRef(row: SecretRecordRow): AdminSecretRefSummary {
+    return {
+      secretRef: row.secretRef,
+      name: row.name,
+      kind: row.kind,
+      routeGroup: row.routeGroup,
+      protocol: row.protocol,
+      fingerprint: row.fingerprint,
+      status: row.status,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      lastRotatedAt: row.lastRotatedAt?.toISOString() ?? null,
+    };
+  }
+
+  private async listRouteQualityWindows(
+    routeGroup: string,
+    rangeHours: number,
+  ): Promise<RouteQualityWindowSummary[]> {
+    try {
+      await this.routeQualityAggregation.aggregateRecent(routeGroup, Math.min(rangeHours, 168));
+      const summaryRows = await this.queryRouteQualitySummaryWindows(routeGroup, rangeHours);
+
+      if (summaryRows.length > 0) {
+        return summaryRows.map((row) => this.mapRouteQualityWindow(row, routeGroup));
+      }
+    } catch (error) {
+      if (!this.isUndefinedTableError(error)) throw error;
+    }
+
+    const rawRows = await this.queryRawRouteQualityWindows(routeGroup, rangeHours);
+    return rawRows.map((row) => this.mapRouteQualityWindow(row, routeGroup));
+  }
+
+  private async queryRouteQualitySummaryWindows(
+    routeGroup: string,
+    rangeHours: number,
+  ): Promise<RouteQualityWindowRow[]> {
+    const result = await this.database.query<RouteQualityWindowRow>(
+      `
+        SELECT
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          q.outbound_id AS "outboundId",
+          q.outbound_key AS "outboundKey",
+          q.outbound_name AS "outboundName",
+          q.operator,
+          q.protocol,
+          q.score_profile AS "scoreProfile",
+          q.hour_of_day AS "hourOfDay",
+          q.day_of_week AS "dayOfWeek",
+          SUM(q.sample_count)::int AS "sampleCount",
+          ROUND((SUM(q.average_score * q.sample_count) / NULLIF(SUM(q.sample_count), 0))::numeric, 1)::float AS "averageScore",
+          ROUND((SUM(q.average_latency_ms * q.sample_count) FILTER (WHERE q.average_latency_ms IS NOT NULL) / NULLIF(SUM(q.sample_count) FILTER (WHERE q.average_latency_ms IS NOT NULL), 0))::numeric, 1)::float AS "averageLatencyMs",
+          ROUND((SUM(q.average_jitter_ms * q.sample_count) FILTER (WHERE q.average_jitter_ms IS NOT NULL) / NULLIF(SUM(q.sample_count) FILTER (WHERE q.average_jitter_ms IS NOT NULL), 0))::numeric, 1)::float AS "averageJitterMs",
+          ROUND((SUM(q.average_packet_loss_percent * q.sample_count) FILTER (WHERE q.average_packet_loss_percent IS NOT NULL) / NULLIF(SUM(q.sample_count) FILTER (WHERE q.average_packet_loss_percent IS NOT NULL), 0))::numeric, 2)::float AS "averagePacketLossPercent",
+          ROUND((SUM(q.degraded_sample_percent * q.sample_count) / NULLIF(SUM(q.sample_count), 0))::numeric, 1)::float AS "degradedSamplePercent",
+          ROUND((SUM(q.critical_sample_percent * q.sample_count) / NULLIF(SUM(q.sample_count), 0))::numeric, 1)::float AS "criticalSamplePercent"
+        FROM route_quality_hourly q
+        JOIN servers s ON s.id = q.server_id
+        WHERE q.route_group = $1
+          AND q.bucket_start >= now() - ($2::int * interval '1 hour')
+        GROUP BY
+          s.external_id,
+          s.hostname,
+          q.outbound_id,
+          q.outbound_key,
+          q.outbound_name,
+          q.operator,
+          q.protocol,
+          q.score_profile,
+          q.hour_of_day,
+          q.day_of_week
+        ORDER BY "averageScore" DESC, "sampleCount" DESC
+        LIMIT 500
+      `,
+      [routeGroup, rangeHours],
+    );
+
+    return result.rows;
+  }
+
+  private async queryRawRouteQualityWindows(routeGroup: string, rangeHours: number): Promise<RouteQualityWindowRow[]> {
+    const result = await this.database.query<RouteQualityWindowRow>(
+      `
+        WITH probe_rows AS (
+          SELECT
+            s.external_id AS "serverExternalId",
+            s.hostname AS "serverHostname",
+            COALESCE(probe_outbound.id, matched_outbound.id) AS "outboundId",
+            COALESCE(
+              NULLIF(probe.value->>'outboundKey', ''),
+              probe_outbound.id::text,
+              matched_outbound.id::text,
+              NULLIF(probe.value->>'outboundName', ''),
+              probe_outbound.name,
+              matched_outbound.name,
+              'unassigned'
+            ) AS "outboundKey",
+            COALESCE(NULLIF(probe.value->>'outboundName', ''), probe_outbound.name, matched_outbound.name) AS "outboundName",
+            COALESCE(
+              NULLIF(probe.value->>'operator', ''),
+              NULLIF(probe_outbound.config->>'operator', ''),
+              NULLIF(probe_outbound.config->>'interfaceOperator', ''),
+              NULLIF(probe_outbound.config->>'isp', ''),
+              NULLIF(matched_outbound.config->>'operator', ''),
+              NULLIF(matched_outbound.config->>'interfaceOperator', ''),
+              NULLIF(matched_outbound.config->>'isp', ''),
+              'unknown'
+            ) AS operator,
+            lower(probe.value->>'protocol') AS protocol,
+            sm.observed_at AS "observedAt",
+            probe.value->>'status' AS status,
+            (probe.value->>'latencyMs')::double precision AS "latencyMs",
+            (probe.value->>'jitterMs')::double precision AS "jitterMs",
+            (probe.value->>'packetLossPercent')::double precision AS "packetLossPercent"
+          FROM server_metrics sm
+          JOIN servers s ON s.id = sm.server_id
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof(sm.raw->'routeProbes') = 'array' THEN sm.raw->'routeProbes'
+              ELSE '[]'::jsonb
+            END
+          ) AS probe(value)
+          LEFT JOIN outbounds probe_outbound
+            ON probe_outbound.id::text = probe.value->>'outboundId'
+            AND probe_outbound.server_id = sm.server_id
+            AND probe_outbound.route_group = $1
+          LEFT JOIN LATERAL (
+            SELECT o.id, o.name, o.type, o.config, o.priority, o.created_at
+            FROM outbounds o
+            WHERE o.server_id = sm.server_id
+              AND o.route_group = $1
+              AND (
+                lower(o.type) = lower(probe.value->>'protocol')
+                OR (lower(probe.value->>'protocol') IN ('udp', 'quic', 'wireguard') AND lower(o.type) = 'wireguard')
+                OR lower(o.type) = 'direct'
+              )
+            ORDER BY
+              CASE
+                WHEN lower(o.type) = lower(probe.value->>'protocol') THEN 0
+                WHEN lower(probe.value->>'protocol') IN ('udp', 'quic', 'wireguard') AND lower(o.type) = 'wireguard' THEN 1
+                ELSE 2
+              END,
+              o.priority ASC,
+              o.created_at ASC
+            LIMIT 1
+          ) AS matched_outbound ON true
+          WHERE sm.observed_at >= now() - ($2::int * interval '1 hour')
+            AND COALESCE(NULLIF(probe.value->>'routeGroup', ''), $1::text) = $1::text
+        ),
+        scored AS (
+          SELECT
+            *,
+            GREATEST(0, LEAST(100,
+              CASE status
+                WHEN 'healthy' THEN 100
+                WHEN 'degraded' THEN 72
+                WHEN 'critical' THEN 20
+                ELSE 55
+              END
+              - GREATEST(0, COALESCE("latencyMs", 0) - CASE protocol WHEN 'dns' THEN 80 WHEN 'tcp' THEN 100 ELSE 70 END) * 0.09
+              - GREATEST(0, COALESCE("jitterMs", 0) - CASE protocol WHEN 'tcp' THEN 25 WHEN 'dns' THEN 25 ELSE 10 END)
+              - GREATEST(0, COALESCE("packetLossPercent", 0)) * CASE protocol WHEN 'tcp' THEN 16 WHEN 'dns' THEN 16 ELSE 24 END
+            )) AS "sampleScore"
+          FROM probe_rows
+          WHERE protocol IN ('tcp', 'udp', 'quic', 'dns', 'wireguard')
+        ),
+        profile_rows AS (
+          SELECT
+            scored.*,
+            profile.score_profile AS "scoreProfile",
+            GREATEST(0, LEAST(100, profile.profile_score)) AS "profileScore"
+          FROM scored
+          CROSS JOIN LATERAL (
+            VALUES
+              ('balanced', "sampleScore"),
+              ('stability', CASE WHEN protocol IN ('udp', 'quic', 'wireguard') THEN "sampleScore" ELSE "sampleScore" - 6 END),
+              ('throughput', CASE WHEN status = 'healthy' THEN "sampleScore" + 3 ELSE "sampleScore" - 4 END),
+              ('gaming', CASE WHEN protocol IN ('udp', 'quic', 'wireguard', 'tcp') THEN "sampleScore" - GREATEST(0, COALESCE("latencyMs", 0) - 85) * 0.05 - GREATEST(0, COALESCE("jitterMs", 0) - 6) * 0.9 - GREATEST(0, COALESCE("packetLossPercent", 0) - 0.1) * 20 END),
+              ('tcp', CASE WHEN protocol = 'tcp' THEN "sampleScore" END),
+              ('udp', CASE WHEN protocol IN ('udp', 'wireguard') THEN "sampleScore" END),
+              ('quic', CASE WHEN protocol IN ('quic', 'udp') THEN "sampleScore" END),
+              ('dns', CASE WHEN protocol = 'dns' THEN "sampleScore" END),
+              ('wireguard', CASE WHEN protocol IN ('wireguard', 'udp') THEN "sampleScore" END)
+          ) AS profile(score_profile, profile_score)
+          WHERE profile.profile_score IS NOT NULL
+        )
+        SELECT
+          "serverExternalId",
+          "serverHostname",
+          "outboundId",
+          "outboundKey",
+          "outboundName",
+          operator,
+          protocol,
+          "scoreProfile",
+          EXTRACT(HOUR FROM "observedAt")::int AS "hourOfDay",
+          EXTRACT(DOW FROM "observedAt")::int AS "dayOfWeek",
+          COUNT(*)::int AS "sampleCount",
+          ROUND(AVG("profileScore")::numeric, 1)::float AS "averageScore",
+          ROUND(AVG("latencyMs")::numeric, 1)::float AS "averageLatencyMs",
+          ROUND(AVG("jitterMs")::numeric, 1)::float AS "averageJitterMs",
+          ROUND(AVG("packetLossPercent")::numeric, 2)::float AS "averagePacketLossPercent",
+          ROUND((COUNT(*) FILTER (WHERE status IN ('degraded', 'critical'))::numeric * 100 / COUNT(*)), 1)::float AS "degradedSamplePercent",
+          ROUND((COUNT(*) FILTER (WHERE status = 'critical')::numeric * 100 / COUNT(*)), 1)::float AS "criticalSamplePercent"
+        FROM profile_rows
+        GROUP BY
+          "serverExternalId",
+          "serverHostname",
+          "outboundId",
+          "outboundKey",
+          "outboundName",
+          operator,
+          protocol,
+          "scoreProfile",
+          EXTRACT(HOUR FROM "observedAt"),
+          EXTRACT(DOW FROM "observedAt")
+        ORDER BY "averageScore" DESC, "sampleCount" DESC
+        LIMIT 500
+      `,
+      [routeGroup, rangeHours],
+    );
+
+    return result.rows;
+  }
+
+  private mapRouteQualityWindow(row: RouteQualityWindowRow, routeGroup: string): RouteQualityWindowSummary {
+    return {
+      routeGroup,
+      serverExternalId: row.serverExternalId,
+      serverHostname: row.serverHostname,
+      outboundId: row.outboundId,
+      outboundKey: row.outboundKey,
+      outboundName: row.outboundName,
+      operator: row.operator,
+      protocol: row.protocol,
+      scoreProfile: row.scoreProfile,
+      hourOfDay: Number(row.hourOfDay),
+      dayOfWeek: row.dayOfWeek === null || row.dayOfWeek === undefined ? null : Number(row.dayOfWeek),
+      sampleCount: Number(row.sampleCount),
+      averageScore: this.roundMetric(row.averageScore, 1) ?? 0,
+      averageLatencyMs: this.roundMetric(row.averageLatencyMs, 1),
+      averageJitterMs: this.roundMetric(row.averageJitterMs, 1),
+      averagePacketLossPercent: this.roundMetric(row.averagePacketLossPercent, 2),
+      degradedSamplePercent: this.roundMetric(row.degradedSamplePercent, 1) ?? 0,
+      criticalSamplePercent: this.roundMetric(row.criticalSamplePercent, 1) ?? 0,
+    };
+  }
+
+  private buildRouteQualityRecommendations(
+    routeGroup: string,
+    windows: RouteQualityWindowSummary[],
+    minimumSamples: number,
+    rangeHours: number,
+  ): RouteQualityRecommendation[] {
+    const qualifiedWindows = windows.filter((window) => window.sampleCount >= minimumSamples);
+    const degradedCandidates = qualifiedWindows.filter((window) => this.isDegradedRouteQualityWindow(window));
+    const upcomingDegradedWindows = degradedCandidates
+      .map((window) => {
+        const nextWindowAt = this.nextRouteQualityWindowStart(window);
+        if (!nextWindowAt) return null;
+
+        const startsInMinutes = Math.max(0, Math.round((nextWindowAt.getTime() - Date.now()) / 60_000));
+        return { window, nextWindowAt, startsInMinutes };
+      })
+      .filter((item): item is { window: RouteQualityWindowSummary; nextWindowAt: Date; startsInMinutes: number } => {
+        if (!item) return false;
+
+        return item.startsInMinutes <= this.routeQualityPredictionLookaheadHours() * 60;
+      })
+      .sort(
+        (left, right) =>
+          left.startsInMinutes - right.startsInMinutes ||
+          left.window.averageScore - right.window.averageScore ||
+          right.window.degradedSamplePercent - left.window.degradedSamplePercent,
+      )
+      .slice(0, 3)
+      .map((item) =>
+        this.mapRouteQualityRecommendation(
+          'upcomingDegradedWindow',
+          item.window,
+          minimumSamples,
+          rangeHours,
+          item.nextWindowAt,
+          item.startsInMinutes,
+        ),
+      );
+    const bestWindows = qualifiedWindows
+      .filter((window) => this.isBestRouteQualityWindow(window))
+      .sort((left, right) => right.averageScore - left.averageScore || right.sampleCount - left.sampleCount)
+      .slice(0, 3)
+      .map((window) => this.mapRouteQualityRecommendation('bestWindow', window, minimumSamples, rangeHours));
+    const degradedWindows = degradedCandidates
+      .sort((left, right) => left.averageScore - right.averageScore || right.degradedSamplePercent - left.degradedSamplePercent)
+      .slice(0, 3)
+      .map((window) => this.mapRouteQualityRecommendation('degradedWindow', window, minimumSamples, rangeHours));
+    const recommendations = [...upcomingDegradedWindows, ...bestWindows, ...degradedWindows];
+
+    if (recommendations.length > 0) return recommendations;
+
+    return [
+      {
+        kind: 'insufficientData',
+        routeGroup,
+        serverExternalId: null,
+        serverHostname: null,
+        protocol: null,
+        hourOfDay: null,
+        averageScore: null,
+        sampleCount: windows.reduce((sum, window) => sum + window.sampleCount, 0),
+        confidence: windows.length >= 4 ? 'low' : 'low',
+        reason: 'insufficientRouteHistory',
+      },
+    ];
+  }
+
+  private mapRouteQualityRecommendation(
+    kind: 'bestWindow' | 'degradedWindow' | 'upcomingDegradedWindow',
+    window: RouteQualityWindowSummary,
+    minimumSamples: number,
+    rangeHours: number,
+    nextWindowAt?: Date | null,
+    startsInMinutes?: number | null,
+  ): RouteQualityRecommendation {
+    return {
+      kind,
+      routeGroup: window.routeGroup,
+      serverExternalId: window.serverExternalId,
+      serverHostname: window.serverHostname,
+      outboundId: window.outboundId,
+      outboundKey: window.outboundKey,
+      outboundName: window.outboundName,
+      operator: window.operator,
+      protocol: window.protocol,
+      scoreProfile: window.scoreProfile,
+      hourOfDay: window.hourOfDay,
+      dayOfWeek: window.dayOfWeek,
+      nextWindowAt: nextWindowAt?.toISOString() ?? null,
+      startsInMinutes: startsInMinutes ?? null,
+      averageScore: window.averageScore,
+      sampleCount: window.sampleCount,
+      confidence: this.routeQualityConfidence(window.sampleCount, minimumSamples, rangeHours),
+      reason:
+        kind === 'bestWindow'
+          ? 'strongHistoricalWindow'
+          : kind === 'upcomingDegradedWindow'
+            ? 'upcomingDegradedHistoricalWindow'
+            : 'degradedHistoricalWindow',
+    };
+  }
+
+  private isBestRouteQualityWindow(window: RouteQualityWindowSummary): boolean {
+    return window.averageScore >= 78 && window.degradedSamplePercent <= 25;
+  }
+
+  private isDegradedRouteQualityWindow(window: RouteQualityWindowSummary): boolean {
+    return window.averageScore < 60 || window.degradedSamplePercent >= 35;
+  }
+
+  private nextRouteQualityWindowStart(window: RouteQualityWindowSummary, now = new Date()): Date | null {
+    if (window.dayOfWeek === null || window.dayOfWeek === undefined) return null;
+    if (!Number.isFinite(window.dayOfWeek) || !Number.isFinite(window.hourOfDay)) return null;
+
+    const dayOfWeek = ((Math.trunc(window.dayOfWeek) % 7) + 7) % 7;
+    const hourOfDay = ((Math.trunc(window.hourOfDay) % 24) + 24) % 24;
+    const candidate = new Date(now);
+    candidate.setMilliseconds(0);
+    candidate.setSeconds(0);
+    candidate.setMinutes(0);
+    candidate.setHours(hourOfDay);
+    candidate.setDate(candidate.getDate() + ((dayOfWeek - candidate.getDay() + 7) % 7));
+
+    if (now.getTime() >= candidate.getTime() + 60 * 60 * 1000) {
+      candidate.setDate(candidate.getDate() + 7);
+    }
+
+    return candidate;
+  }
+
+  private routeQualityPredictionLookaheadHours(): number {
+    const value = Number(process.env.AFROGATE_ROUTE_QUALITY_PREDICTION_LOOKAHEAD_HOURS ?? 8);
+    if (!Number.isInteger(value)) return 8;
+
+    return Math.min(168, Math.max(1, value));
+  }
+
+  private routeQualityConfidence(sampleCount: number, minimumSamples: number, rangeHours: number): 'low' | 'medium' | 'high' {
+    if (sampleCount >= minimumSamples * 4 && rangeHours >= 168) return 'high';
+    if (sampleCount >= minimumSamples * 2) return 'medium';
+
+    return 'low';
+  }
+
+  private minimumRouteAnalyticsSamples(rangeHours: number): number {
+    if (rangeHours >= 720) return 8;
+    if (rangeHours >= 168) return 4;
+
+    return 2;
+  }
+
+  private roundMetric(value: number | null | undefined, digits: number): number | null {
+    if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
+
+    const multiplier = 10 ** digits;
+    return Math.round(Number(value) * multiplier) / multiplier;
+  }
+
+  private mapWireGuardTelemetryCandidate(
+    row: WireGuardTelemetryRow,
+    item: WireGuardInterfaceMetric,
+    routeGroup: string,
+    settings: RouteScoringContext,
+  ): AdminWireGuardCandidate {
+    const routeProbes = this.getRouteProbes(row.metricRaw);
+    const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
+    const baseScore = this.calculateWireGuardTelemetryScore(item, row.healthScore);
+    const bufferbloat = this.assessRouteBufferbloat({
+      latencyMs: routeProbeSummary.latencyMs,
+      jitterMs: routeProbeSummary.jitterMs,
+      loadPercent: null,
+      loadedLatencyMs: routeProbeSummary.loadedLatencyMs,
+      loadedLatencyDeltaMs: routeProbeSummary.loadedLatencyDeltaMs,
+    });
+    const scoreResult = this.calculateRouteProfileScores(
+      {
+        baseScore,
+        healthStatus: this.mapWireGuardTelemetryStatus(item.status),
+        latencyMs: routeProbeSummary.latencyMs,
+        jitterMs: routeProbeSummary.jitterMs,
+        packetLossPercent: routeProbeSummary.packetLossPercent,
+        loadedLatencyMs: bufferbloat.loadedLatencyMs,
+        loadedLatencyDeltaMs: bufferbloat.loadedLatencyDeltaMs,
+        loadPercent: null,
+        routeProbes,
+        serverHealthScore: row.healthScore,
+        latestHandshakeAgeSeconds: item.latestHandshakeAgeSeconds ?? null,
+      },
+      settings,
+    );
+
+    return {
+      id: `agent:${row.serverExternalId}:${item.name}`,
+      name: `${row.serverHostname || row.serverExternalId} / ${item.name}`,
+      endpoint: row.serverHostname || row.serverExternalId,
+      routeGroup,
+      healthStatus: this.mapWireGuardTelemetryStatus(item.status),
+      score: scoreResult.selectedScore,
+      selectedScoreProfile: scoreResult.selectedProfile,
+      profileScores: scoreResult.profileScores,
+      scoreReasons: scoreResult.reasons,
+      latencyMs: routeProbeSummary.latencyMs,
+      jitterMs: routeProbeSummary.jitterMs,
+      packetLossPercent: routeProbeSummary.packetLossPercent,
+      loadedLatencyMs: bufferbloat.loadedLatencyMs,
+      loadedLatencyDeltaMs: bufferbloat.loadedLatencyDeltaMs,
+      bufferbloatSeverity: bufferbloat.severity,
+      bufferbloatRecommendation: bufferbloat.recommendation,
+      loadPercent: null,
+      serverExternalId: row.serverExternalId,
+      serverHostname: row.serverHostname,
+      interfaceName: item.name,
+      peerCount: item.peerCount,
+      activePeerCount: item.activePeerCount,
+      latestHandshakeAgeSeconds: item.latestHandshakeAgeSeconds ?? null,
+      rxBps: item.rxBps ?? null,
+      txBps: item.txBps ?? null,
+      checkedAt: row.observedAt.toISOString(),
+      source: 'agent',
+    };
+  }
+
+  private mapWireGuardCandidate(row: WireGuardCandidateRow, settings: RouteScoringContext): AdminWireGuardCandidate {
+    const config = this.asRecord(row.config);
+    const loadPercent = this.extractLoadPercent(config, row.weight);
+    const routeProbes = this.getRouteProbes(row.serverMetricRaw);
+    const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
+    const bufferbloat = this.assessRouteBufferbloat({
+      latencyMs: row.latencyMs ?? routeProbeSummary.latencyMs,
+      jitterMs: row.jitterMs ?? routeProbeSummary.jitterMs,
+      loadPercent,
+      loadedLatencyMs: this.numberFromConfig(config.loadedLatencyMs) ?? routeProbeSummary.loadedLatencyMs,
+      loadedLatencyDeltaMs: this.numberFromConfig(config.loadedLatencyDeltaMs) ?? routeProbeSummary.loadedLatencyDeltaMs,
+    });
+    const scoreResult = this.calculateRouteProfileScores(
+      {
+        baseScore: this.calculateWireGuardScore(row),
+        healthStatus: row.healthStatus,
+        latencyMs: row.latencyMs,
+        jitterMs: row.jitterMs,
+        packetLossPercent: row.packetLossPercent,
+        loadedLatencyMs: bufferbloat.loadedLatencyMs,
+        loadedLatencyDeltaMs: bufferbloat.loadedLatencyDeltaMs,
+        loadPercent,
+        routeProbes,
+        serverHealthScore: row.serverHealthScore,
+        enabled: row.enabled,
+        maintenanceMode: row.maintenanceMode,
+      },
+      settings,
+    );
+
+    return {
+      id: row.id,
+      name: row.name,
+      endpoint: this.extractEndpoint(config),
+      routeGroup: row.routeGroup,
+      healthStatus: row.healthStatus,
+      score: scoreResult.selectedScore,
+      selectedScoreProfile: scoreResult.selectedProfile,
+      profileScores: scoreResult.profileScores,
+      scoreReasons: scoreResult.reasons,
+      latencyMs: row.latencyMs,
+      jitterMs: row.jitterMs,
+      packetLossPercent: row.packetLossPercent,
+      loadedLatencyMs: bufferbloat.loadedLatencyMs,
+      loadedLatencyDeltaMs: bufferbloat.loadedLatencyDeltaMs,
+      bufferbloatSeverity: bufferbloat.severity,
+      bufferbloatRecommendation: bufferbloat.recommendation,
+      loadPercent,
+      serverExternalId: row.serverExternalId,
+      serverHostname: row.serverHostname,
+      interfaceName: this.stringFromConfig(config.interfaceName),
+      peerCount: null,
+      activePeerCount: null,
+      latestHandshakeAgeSeconds: null,
+      rxBps: null,
+      txBps: null,
+      checkedAt: row.checkedAt?.toISOString() ?? null,
+      source: 'outbound',
+    };
+  }
+
+  private toRouteDecisionCandidateSummary(
+    candidate: AdminWireGuardCandidate | null | undefined,
+  ): AdminRouteDecisionCandidateSummary | null {
+    if (!candidate) return null;
+
+    return {
+      id: candidate.id,
+      name: candidate.name,
+      routeGroup: candidate.routeGroup,
+      source: candidate.source,
+      healthStatus: candidate.healthStatus,
+      score: candidate.score,
+      selectedScoreProfile: candidate.selectedScoreProfile,
+      latencyMs: candidate.latencyMs ?? null,
+      jitterMs: candidate.jitterMs ?? null,
+      packetLossPercent: candidate.packetLossPercent ?? null,
+      loadedLatencyMs: candidate.loadedLatencyMs ?? null,
+      loadedLatencyDeltaMs: candidate.loadedLatencyDeltaMs ?? null,
+      bufferbloatSeverity: candidate.bufferbloatSeverity ?? null,
+      bufferbloatRecommendation: candidate.bufferbloatRecommendation ?? null,
+      loadPercent: candidate.loadPercent ?? null,
+    };
+  }
+
+  private buildRouteDecisionCandidateReviews(
+    candidates: AdminWireGuardCandidate[],
+    context: {
+      currentCandidate: AdminWireGuardCandidate | null;
+      recommendedCandidate: AdminWireGuardCandidate | null;
+      routeLocked: boolean;
+      autoRouteEnabled: boolean;
+      routeMode: string;
+      cooldownActive: boolean;
+      hysteresisScoreDelta: number;
+    },
+  ): AdminRouteDecisionCandidateReviewSummary[] {
+    return candidates.slice(0, 12).map((candidate) => {
+      const summary = this.toRouteDecisionCandidateSummary(candidate);
+      const scoreDeltaFromCurrent = context.currentCandidate
+        ? Math.round(candidate.score - context.currentCandidate.score)
+        : null;
+      const reviewReasonCodes = new Set<string>();
+      const isRecommended = context.recommendedCandidate?.id === candidate.id;
+      const isCurrent = context.currentCandidate?.id === candidate.id;
+      const isHealthy = this.isRouteDecisionCandidateHealthy(candidate);
+      let disposition: AdminRouteDecisionCandidateReviewSummary['disposition'] = 'eligible';
+
+      if (isRecommended) reviewReasonCodes.add('recommended_candidate');
+      if (isCurrent) reviewReasonCodes.add('current_candidate');
+      if (!isHealthy) {
+        reviewReasonCodes.add('candidate_unhealthy');
+        if (isCurrent) reviewReasonCodes.add('current_candidate_unhealthy');
+        if (candidate.score < 50) reviewReasonCodes.add('score_below_threshold');
+      }
+      if (
+        candidate.bufferbloatRecommendation === 'sqmRecommended' ||
+        candidate.bufferbloatRecommendation === 'avoidUnderLoad'
+      ) {
+        reviewReasonCodes.add('loaded_latency_high');
+      }
+      if (candidate.source !== 'outbound') reviewReasonCodes.add('agent_candidate_not_applicable');
+      if (!isRecommended && !isCurrent && scoreDeltaFromCurrent !== null && scoreDeltaFromCurrent < context.hysteresisScoreDelta) {
+        reviewReasonCodes.add('score_delta_below_hysteresis');
+      }
+
+      if (isRecommended) {
+        disposition = 'recommended';
+      } else if (isCurrent) {
+        disposition = 'current';
+      } else if (!isHealthy) {
+        disposition = 'unhealthy';
+      } else if (candidate.source !== 'outbound') {
+        disposition = 'diagnosticOnly';
+      } else if (context.routeLocked) {
+        disposition = 'routeLocked';
+        reviewReasonCodes.add('route_locked');
+      } else if (!context.autoRouteEnabled || context.routeMode !== 'automatic') {
+        disposition = 'manualMode';
+        reviewReasonCodes.add('manual_mode');
+      } else if (context.cooldownActive) {
+        disposition = 'cooldownBlocked';
+        reviewReasonCodes.add('cooldown_active');
+      } else if (scoreDeltaFromCurrent !== null && scoreDeltaFromCurrent < context.hysteresisScoreDelta) {
+        disposition = 'belowHysteresis';
+      }
+
+      return {
+        ...summary!,
+        disposition,
+        scoreDeltaFromCurrent,
+        reviewReasonCodes: [...reviewReasonCodes],
+        scoreReasons: candidate.scoreReasons?.slice(0, 4) ?? [],
+      };
+    });
+  }
+
+  private buildRouteDecisionProfileRecommendations(
+    candidates: AdminWireGuardCandidate[],
+    selectedProfile: RouteScoreProfile,
+  ): AdminRouteDecisionProfileRecommendation[] {
+    const selectedBest = this.bestCandidateForRouteProfile(candidates, selectedProfile);
+    const selectedBestScore = selectedBest ? this.scoreForRouteProfile(selectedBest, selectedProfile) : 0;
+    const recommendations = this.routeDecisionScoreProfiles()
+      .map((profile) => {
+        const usableCandidates = this.usableCandidatesForRouteProfile(candidates, profile);
+        const bestCandidate = this.bestCandidateForRouteProfile(candidates, profile);
+        const score = bestCandidate ? this.scoreForRouteProfile(bestCandidate, profile) : 0;
+        const reasonCodes = new Set<string>();
+
+        if (profile === selectedProfile) reasonCodes.add('selectedProfile');
+        if (bestCandidate) reasonCodes.add('bestProfileScore');
+        if (score - selectedBestScore >= 8) reasonCodes.add('profileScoreLead');
+        if (profile === 'gaming') reasonCodes.add('gamingSensitive');
+        if (profile === 'stability' || profile === 'wireguard') reasonCodes.add('stabilitySensitive');
+        if (profile === 'throughput') reasonCodes.add('throughputSensitive');
+        if (['tcp', 'udp', 'quic', 'dns'].includes(profile)) reasonCodes.add('protocolSensitive');
+
+        return {
+          profile,
+          recommendedCandidateId: bestCandidate?.id ?? null,
+          recommendedCandidateName: bestCandidate?.name ?? null,
+          score,
+          scoreDeltaFromSelected: Math.round(score - selectedBestScore),
+          candidateCount: usableCandidates.length,
+          reasonCodes: [...reasonCodes],
+        };
+      })
+      .filter((item) => item.candidateCount > 0)
+      .sort((left, right) => right.score - left.score);
+
+    const selectedRecommendation = recommendations.find((item) => item.profile === selectedProfile);
+    const visible = recommendations.slice(0, 5);
+
+    if (selectedRecommendation && !visible.some((item) => item.profile === selectedProfile)) {
+      visible.push(selectedRecommendation);
+    }
+
+    return visible;
+  }
+
+  private buildRouteDecisionLoadBalancingSummary(
+    candidates: AdminWireGuardCandidate[],
+    context: RouteScoringContext & { selectedProfile: RouteScoreProfile },
+  ): AdminRouteDecisionLoadBalancingSummary {
+    const managedCandidateCount = candidates.filter((candidate) => candidate.source === 'outbound').length;
+    const reasonCodes = new Set<string>([
+      'advisoryOnly',
+      'dataPlaneDisabled',
+      'profileWeighted',
+      'healthWeighted',
+      'packetLossWeighted',
+      'jitterWeighted',
+      'latencyWeighted',
+    ]);
+    const securityProfile = context.speedProfile === 'highSecurity' || context.protocolProfile === 'highSecurity';
+    const routeConsistencyProfile = ['gaming', 'stability', 'udp', 'quic', 'wireguard'].includes(context.selectedProfile) || securityProfile;
+
+    if (context.selectedProfile === 'throughput' || context.loadBalanceStrategy === 'throughput') {
+      reasonCodes.add('throughputWeighted');
+    }
+    if (candidates.some((candidate) => candidate.loadPercent !== null && candidate.loadPercent !== undefined)) {
+      reasonCodes.add('loadWeighted');
+    }
+    if (securityProfile) reasonCodes.add('securityProfileWeighted');
+    if (routeConsistencyProfile) reasonCodes.add('routeConsistency');
+
+    const eligibleCandidates = this.usableCandidatesForRouteProfile(candidates, context.selectedProfile)
+      .map((candidate) => {
+        const profileScore = this.scoreForRouteProfile(candidate, context.selectedProfile);
+        const riskPenalty = this.calculateLoadBalancingRiskPenalty(candidate, context.selectedProfile);
+
+        return {
+          candidate,
+          profileScore,
+          adjustedScore: this.roundRouteScore(profileScore - riskPenalty),
+          riskPenalty,
+        };
+      })
+      .filter((candidate) => candidate.adjustedScore >= 45)
+      .sort((left, right) => right.adjustedScore - left.adjustedScore || right.profileScore - left.profileScore);
+
+    if (eligibleCandidates.length === 0) {
+      reasonCodes.add('insufficientEligibleCandidates');
+
+      return {
+        mode: 'insufficientCandidates',
+        strategy: context.loadBalanceStrategy,
+        selectedProfile: context.selectedProfile,
+        primaryCandidateId: null,
+        primaryCandidateName: null,
+        secondaryCandidateId: null,
+        secondaryCandidateName: null,
+        candidateCount: managedCandidateCount,
+        eligibleCandidateCount: 0,
+        totalAssignedWeightPercent: 0,
+        reasonCodes: [...reasonCodes],
+        candidates: [],
+      };
+    }
+
+    const primary = eligibleCandidates[0];
+    const secondary = eligibleCandidates[1] ?? null;
+    const closeScoreThreshold = context.selectedProfile === 'throughput' || context.loadBalanceStrategy === 'throughput'
+      ? 18
+      : context.selectedProfile === 'balanced'
+        ? 12
+        : 8;
+    const secondaryIsClose = Boolean(secondary && primary.adjustedScore - secondary.adjustedScore <= closeScoreThreshold);
+    const weightedMode =
+      !routeConsistencyProfile &&
+      Boolean(secondary) &&
+      secondaryIsClose &&
+      ['balanced', 'throughput', 'tcp', 'dns'].includes(context.selectedProfile);
+    const mode: AdminRouteDecisionLoadBalancingSummary['mode'] = weightedMode
+      ? 'weighted'
+      : eligibleCandidates.length > 1 ? 'primaryStandby' : 'singlePrimary';
+
+    if (weightedMode) reasonCodes.add('scoreCloseToPrimary');
+
+    const weightedCandidates = weightedMode
+      ? eligibleCandidates
+        .filter((item) => primary.adjustedScore - item.adjustedScore <= closeScoreThreshold)
+        .slice(0, context.selectedProfile === 'throughput' || context.loadBalanceStrategy === 'throughput' ? 3 : 2)
+      : [primary];
+    const weightByCandidateId = new Map<string, number>();
+
+    if (weightedMode) {
+      const weightBases = weightedCandidates.map((item) => Math.max(5, item.adjustedScore - 45));
+      const totalWeightBase = weightBases.reduce((sum, value) => sum + value, 0);
+      let assignedWeight = 0;
+
+      weightedCandidates.forEach((item, index) => {
+        const weight = index === weightedCandidates.length - 1
+          ? Math.max(0, 100 - assignedWeight)
+          : Math.round((weightBases[index] / totalWeightBase) * 100);
+        assignedWeight += weight;
+        weightByCandidateId.set(item.candidate.id, weight);
+      });
+    } else {
+      weightByCandidateId.set(primary.candidate.id, 100);
+    }
+
+    const visibleCandidates = eligibleCandidates.slice(0, 5);
+    const summaryCandidates = visibleCandidates.map((item, index) => {
+      const weightPercent = weightByCandidateId.get(item.candidate.id) ?? 0;
+      const role: AdminRouteDecisionLoadBalancingSummary['candidates'][number]['role'] =
+        index === 0 ? 'primary' : weightPercent > 0 ? 'secondary' : 'standby';
+
+      return {
+        id: item.candidate.id,
+        name: item.candidate.name,
+        role,
+        weightPercent,
+        score: item.candidate.score,
+        profileScore: item.profileScore,
+        adjustedScore: item.adjustedScore,
+        riskLevel: this.routeLoadBalancingRiskLevel(item.riskPenalty, item.adjustedScore),
+        reasonCodes: this.buildLoadBalancingCandidateReasons(item.candidate, {
+          role,
+          selectedProfile: context.selectedProfile,
+          loadBalanceStrategy: context.loadBalanceStrategy,
+          securityProfile,
+        }),
+      };
+    });
+    const secondaryCandidate = summaryCandidates.find((candidate) => candidate.role === 'secondary') ?? summaryCandidates[1] ?? null;
+    const totalAssignedWeightPercent = summaryCandidates.reduce((sum, candidate) => sum + candidate.weightPercent, 0);
+
+    return {
+      mode,
+      strategy: context.loadBalanceStrategy,
+      selectedProfile: context.selectedProfile,
+      primaryCandidateId: primary.candidate.id,
+      primaryCandidateName: primary.candidate.name,
+      secondaryCandidateId: secondaryCandidate?.id ?? null,
+      secondaryCandidateName: secondaryCandidate?.name ?? null,
+      candidateCount: managedCandidateCount,
+      eligibleCandidateCount: eligibleCandidates.length,
+      totalAssignedWeightPercent,
+      reasonCodes: [...reasonCodes],
+      candidates: summaryCandidates,
+    };
+  }
+
+  private calculateLoadBalancingRiskPenalty(candidate: AdminWireGuardCandidate, profile: RouteScoreProfile): number {
+    let penalty = 0;
+    const healthStatus = String(candidate.healthStatus).toLowerCase();
+    const packetLossThreshold = profile === 'gaming'
+      ? 0.1
+      : ['stability', 'udp', 'quic', 'wireguard'].includes(profile) ? 0.25 : 1;
+    const jitterThreshold = profile === 'gaming'
+      ? 6
+      : ['stability', 'udp', 'quic', 'wireguard'].includes(profile) ? 10 : 25;
+    const latencyThreshold = profile === 'gaming' ? 85 : profile === 'dns' ? 80 : profile === 'tcp' ? 100 : 130;
+
+    if (healthStatus === 'critical' || healthStatus === 'down') penalty += 100;
+    if (healthStatus === 'degraded') penalty += 12;
+    if (healthStatus === 'unknown') penalty += 6;
+    penalty += this.thresholdPenalty(candidate.packetLossPercent, packetLossThreshold, 18);
+    penalty += this.thresholdPenalty(candidate.jitterMs, jitterThreshold, 0.7);
+    penalty += this.thresholdPenalty(candidate.latencyMs, latencyThreshold, 0.05);
+    penalty += this.thresholdPenalty(candidate.loadPercent, profile === 'gaming' ? 60 : 72, 0.3);
+
+    if (candidate.bufferbloatSeverity === 'high') penalty += 24;
+    if (candidate.bufferbloatSeverity === 'medium') penalty += 12;
+    if (candidate.bufferbloatRecommendation === 'sqmRecommended') penalty += 8;
+    if (candidate.bufferbloatRecommendation === 'avoidUnderLoad') penalty += 40;
+
+    return Math.round(penalty * 10) / 10;
+  }
+
+  private routeLoadBalancingRiskLevel(riskPenalty: number, adjustedScore: number): 'low' | 'medium' | 'high' {
+    if (riskPenalty >= 24 || adjustedScore < 60) return 'high';
+    if (riskPenalty >= 10 || adjustedScore < 75) return 'medium';
+
+    return 'low';
+  }
+
+  private buildLoadBalancingCandidateReasons(
+    candidate: AdminWireGuardCandidate,
+    context: {
+      role: string;
+      selectedProfile: RouteScoreProfile;
+      loadBalanceStrategy: LoadBalanceStrategy | string;
+      securityProfile: boolean;
+    },
+  ): string[] {
+    const reasonCodes = new Set<string>(['profileWeighted']);
+
+    if (context.role === 'primary') reasonCodes.add('bestCompositeScore');
+    if (context.role === 'secondary') reasonCodes.add('scoreCloseToPrimary');
+    if (context.role === 'standby') reasonCodes.add('standbyRoute');
+    if (String(candidate.healthStatus).toLowerCase() !== 'healthy') reasonCodes.add('healthWeighted');
+    if ((candidate.packetLossPercent ?? 0) > 0.1) reasonCodes.add('packetLossWeighted');
+    if ((candidate.jitterMs ?? 0) > 6) reasonCodes.add('jitterWeighted');
+    if ((candidate.latencyMs ?? 0) > 85) reasonCodes.add('latencyWeighted');
+    if ((candidate.loadPercent ?? 0) > 65) reasonCodes.add('loadWeighted');
+    if (context.selectedProfile === 'throughput' || context.loadBalanceStrategy === 'throughput') {
+      reasonCodes.add('throughputWeighted');
+    }
+    if (context.securityProfile) reasonCodes.add('securityProfileWeighted');
+    if (['gaming', 'stability', 'udp', 'quic', 'wireguard'].includes(context.selectedProfile)) {
+      reasonCodes.add('routeConsistency');
+    }
+
+    return [...reasonCodes];
+  }
+
+  private bestCandidateForRouteProfile(
+    candidates: AdminWireGuardCandidate[],
+    profile: RouteScoreProfile,
+  ): AdminWireGuardCandidate | null {
+    const usableCandidates = this.usableCandidatesForRouteProfile(candidates, profile);
+    if (usableCandidates.length === 0) return null;
+
+    return usableCandidates.sort((left, right) => this.scoreForRouteProfile(right, profile) - this.scoreForRouteProfile(left, profile))[0];
+  }
+
+  private usableCandidatesForRouteProfile(
+    candidates: AdminWireGuardCandidate[],
+    profile: RouteScoreProfile,
+  ): AdminWireGuardCandidate[] {
+    return candidates.filter((candidate) => {
+      const status = String(candidate.healthStatus).toLowerCase();
+      if (candidate.source !== 'outbound') return false;
+      if (status === 'critical' || status === 'down') return false;
+      if (candidate.bufferbloatRecommendation === 'avoidUnderLoad') return false;
+
+      return this.scoreForRouteProfile(candidate, profile) >= 50;
+    });
+  }
+
+  private scoreForRouteProfile(candidate: AdminWireGuardCandidate, profile: RouteScoreProfile): number {
+    return candidate.profileScores?.[profile] ?? candidate.score;
+  }
+
+  private routeDecisionScoreProfiles(): RouteScoreProfile[] {
+    return ['balanced', 'stability', 'throughput', 'gaming', 'tcp', 'udp', 'quic', 'dns', 'wireguard'];
+  }
+
+  private buildRouteDecisionSessionSafetySummary(context: {
+    action: RouteDecisionAction;
+    selectedProfile: RouteScoreProfile;
+    routeMode: string;
+    routeLocked: boolean;
+    autoRouteEnabled: boolean;
+    cooldownActive: boolean;
+    currentCandidate: AdminWireGuardCandidate | null;
+    recommendedCandidate: AdminWireGuardCandidate | null;
+    healthBasedSwitch: boolean;
+    scoreDelta: number | null;
+    hysteresisScoreDelta: number;
+  }): AdminRouteDecisionSessionSafetySummary {
+    const reasonCodes = new Set<string>(['assignmentOnly', 'dataPlaneDisabled']);
+    const latencySensitive = this.isSessionSensitiveRouteProfile(context.selectedProfile);
+    const hasSwitchCandidate = Boolean(
+      context.action === 'switchRecommended' &&
+        context.recommendedCandidate?.source === 'outbound' &&
+        (!context.currentCandidate || context.recommendedCandidate.id !== context.currentCandidate.id),
+    );
+    const currentStatus = String(context.currentCandidate?.healthStatus ?? 'unknown').toLowerCase();
+    const currentRouteFailed = Boolean(
+      context.currentCandidate &&
+        (
+          context.healthBasedSwitch ||
+          currentStatus === 'critical' ||
+          currentStatus === 'down' ||
+          !this.isRouteDecisionCandidateHealthy(context.currentCandidate)
+        ),
+    );
+
+    if (context.selectedProfile === 'gaming') reasonCodes.add('gamingSensitive');
+    if (['udp', 'quic', 'wireguard'].includes(context.selectedProfile)) reasonCodes.add('udpSessionSensitive');
+    if (latencySensitive) reasonCodes.add('routeConsistency');
+    if (context.routeLocked || !context.autoRouteEnabled || context.routeMode !== 'automatic') reasonCodes.add('manualOrLocked');
+    if (context.cooldownActive) reasonCodes.add('cooldownActive');
+    if (!context.currentCandidate) reasonCodes.add('noCurrentRoute');
+    if (context.scoreDelta !== null && context.scoreDelta >= context.hysteresisScoreDelta) reasonCodes.add('scoreDeltaSwitch');
+
+    if (!hasSwitchCandidate) {
+      reasonCodes.add('noSwitchNeeded');
+
+      return {
+        mode: context.routeLocked || context.cooldownActive || !context.autoRouteEnabled ? 'stickyHold' : 'notRequired',
+        policy: 'keepExisting',
+        riskLevel: latencySensitive ? 'medium' : 'low',
+        selectedProfile: context.selectedProfile,
+        stickySessionTtlSeconds: latencySensitive ? 1800 : 600,
+        estimatedDrainSeconds: 0,
+        drainExistingSessions: false,
+        switchNewSessionsOnly: false,
+        emergencySwitchAllowed: false,
+        reasonCodes: [...reasonCodes],
+      };
+    }
+
+    if (!context.currentCandidate) {
+      return {
+        mode: 'safeToSwitch',
+        policy: 'none',
+        riskLevel: 'low',
+        selectedProfile: context.selectedProfile,
+        stickySessionTtlSeconds: latencySensitive ? 1800 : 600,
+        estimatedDrainSeconds: 0,
+        drainExistingSessions: false,
+        switchNewSessionsOnly: false,
+        emergencySwitchAllowed: false,
+        reasonCodes: [...reasonCodes],
+      };
+    }
+
+    reasonCodes.add('publicIpMayChange');
+    reasonCodes.add('natStateMayReset');
+
+    if (currentRouteFailed) {
+      reasonCodes.add('emergencyHealthFailure');
+
+      return {
+        mode: 'emergencySwitch',
+        policy: 'emergencyReroute',
+        riskLevel: 'high',
+        selectedProfile: context.selectedProfile,
+        stickySessionTtlSeconds: latencySensitive ? 1800 : 600,
+        estimatedDrainSeconds: 0,
+        drainExistingSessions: false,
+        switchNewSessionsOnly: false,
+        emergencySwitchAllowed: true,
+        reasonCodes: [...reasonCodes],
+      };
+    }
+
+    if (latencySensitive) {
+      reasonCodes.add('stickySessionsRequired');
+      reasonCodes.add('drainExistingSessions');
+      reasonCodes.add('newSessionsOnly');
+
+      return {
+        mode: 'drainNewSessions',
+        policy: 'newSessionsOnly',
+        riskLevel: context.selectedProfile === 'gaming' || ['udp', 'quic', 'wireguard'].includes(context.selectedProfile)
+          ? 'high'
+          : 'medium',
+        selectedProfile: context.selectedProfile,
+        stickySessionTtlSeconds: context.selectedProfile === 'gaming' ? 3600 : 1800,
+        estimatedDrainSeconds: context.selectedProfile === 'gaming' ? 600 : 300,
+        drainExistingSessions: true,
+        switchNewSessionsOnly: true,
+        emergencySwitchAllowed: false,
+        reasonCodes: [...reasonCodes],
+      };
+    }
+
+    return {
+      mode: 'safeToSwitch',
+      policy: 'none',
+      riskLevel: 'low',
+      selectedProfile: context.selectedProfile,
+      stickySessionTtlSeconds: 600,
+      estimatedDrainSeconds: 30,
+      drainExistingSessions: false,
+      switchNewSessionsOnly: false,
+      emergencySwitchAllowed: false,
+      reasonCodes: [...reasonCodes],
+    };
+  }
+
+  private isSessionSensitiveRouteProfile(profile: RouteScoreProfile): boolean {
+    return profile === 'gaming' || profile === 'stability' || profile === 'udp' || profile === 'quic' || profile === 'wireguard';
+  }
+
+  private buildRouteDecisionSwitchEngineSummary(context: {
+    action: RouteDecisionAction;
+    currentCandidate: AdminWireGuardCandidate | null;
+    recommendedCandidate: AdminWireGuardCandidate | null;
+    routeLocked: boolean;
+    autoRouteEnabled: boolean;
+    routeMode: string;
+    cooldownActive: boolean;
+    sessionSafety: AdminRouteDecisionSessionSafetySummary;
+    applyPlan: AdminRouteDecisionApplyPlanSummary;
+  }): AdminRouteDecisionSwitchEngineSummary {
+    const reasonCodes = new Set<string>(['assignmentOnly']);
+    const recommendedOutboundId = context.recommendedCandidate?.source === 'outbound' ? context.recommendedCandidate.id : null;
+    const currentOutboundId = context.currentCandidate?.source === 'outbound' ? context.currentCandidate.id : null;
+    const switchRequired = context.action === 'switchRecommended' && Boolean(recommendedOutboundId);
+
+    if (!context.applyPlan.dataPlaneReady) reasonCodes.add('dataPlaneDisabled');
+    if (context.applyPlan.adapter.reasonCodes.includes('server_apply_adapter_missing')) reasonCodes.add('serverApplyAdapterMissing');
+    if (context.routeLocked) reasonCodes.add('routeLock');
+    if (!context.autoRouteEnabled || context.routeMode !== 'automatic') reasonCodes.add('manualMode');
+    if (context.cooldownActive) reasonCodes.add('cooldownActive');
+    if (!switchRequired) reasonCodes.add('noSwitchNeeded');
+    if (context.sessionSafety.switchNewSessionsOnly) reasonCodes.add('newSessionsOnly');
+    if (context.sessionSafety.drainExistingSessions) reasonCodes.add('drainSafe');
+    if (context.sessionSafety.mode === 'stickyHold' || context.sessionSafety.drainExistingSessions) reasonCodes.add('stickySessions');
+    if (context.sessionSafety.emergencySwitchAllowed) reasonCodes.add('emergencySwitch');
+    reasonCodes.add('rollbackPlanned');
+
+    const blocked = context.applyPlan.status === 'blocked';
+    if (blocked) reasonCodes.add('guardBlocked');
+
+    const mode: AdminRouteDecisionSwitchEngineSummary['mode'] = !switchRequired
+      ? 'noChange'
+      : context.sessionSafety.emergencySwitchAllowed
+        ? 'emergencyReroute'
+        : context.sessionSafety.drainExistingSessions
+          ? 'stickyDrain'
+          : context.sessionSafety.switchNewSessionsOnly
+            ? 'newSessionsOnly'
+            : 'assignmentOnly';
+    const status: AdminRouteDecisionSwitchEngineSummary['status'] = !switchRequired
+      ? 'notRequired'
+      : blocked
+        ? 'blocked'
+        : context.applyPlan.dataPlaneReady ? 'dataPlaneReady' : 'planningOnly';
+    const futureOrReady = context.applyPlan.dataPlaneReady ? 'ready' : 'future';
+    const guardStatus = blocked ? 'blocked' : switchRequired ? 'ready' : 'notRequired';
+    const dataPlaneStepStatus = switchRequired && !blocked ? futureOrReady : 'notRequired';
+    const steps: AdminRouteDecisionSwitchEngineSummary['steps'] = [
+      {
+        id: 'verify-switch-guards',
+        kind: 'guard',
+        code: 'verify_switch_guards',
+        status: guardStatus,
+        sessionImpact: 'none',
+        targetOutboundId: recommendedOutboundId,
+        dataPlaneMutation: false,
+        estimatedSeconds: 1,
+        reasonCodes: context.applyPlan.guardReasonCodes,
+      },
+    ];
+
+    if (context.sessionSafety.drainExistingSessions || context.sessionSafety.switchNewSessionsOnly) {
+      steps.push({
+        id: 'pin-existing-sessions',
+        kind: 'sessionPin',
+        code: 'pin_existing_sessions',
+        status: dataPlaneStepStatus,
+        sessionImpact: 'existingSessions',
+        targetOutboundId: currentOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: 1,
+        reasonCodes: ['stickySessions'],
+      });
+      steps.push({
+        id: 'route-new-sessions',
+        kind: 'newSessionRoute',
+        code: 'route_new_sessions',
+        status: dataPlaneStepStatus,
+        sessionImpact: 'newSessionsOnly',
+        targetOutboundId: recommendedOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: 1,
+        reasonCodes: ['newSessionsOnly'],
+      });
+    }
+
+    if (context.sessionSafety.drainExistingSessions) {
+      steps.push({
+        id: 'drain-existing-sessions',
+        kind: 'drain',
+        code: 'drain_existing_sessions',
+        status: dataPlaneStepStatus,
+        sessionImpact: 'existingSessions',
+        targetOutboundId: currentOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: context.sessionSafety.estimatedDrainSeconds,
+        reasonCodes: ['drainSafe'],
+      });
+    }
+
+    if (switchRequired) {
+      steps.push({
+        id: 'switch-active-route',
+        kind: 'switch',
+        code: context.sessionSafety.emergencySwitchAllowed ? 'emergency_switch_active_route' : 'switch_active_route',
+        status: dataPlaneStepStatus,
+        sessionImpact: context.sessionSafety.emergencySwitchAllowed
+          ? 'allSessions'
+          : context.sessionSafety.drainExistingSessions
+            ? 'existingSessions'
+            : 'none',
+        targetOutboundId: recommendedOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: 2,
+        reasonCodes: context.sessionSafety.emergencySwitchAllowed
+          ? ['emergencySwitch']
+          : context.sessionSafety.drainExistingSessions
+            ? ['drainSafe']
+            : ['assignmentOnly'],
+      });
+    }
+
+    steps.push({
+      id: 'verify-switched-route',
+      kind: 'verify',
+      code: 'verify_switched_route',
+      status: switchRequired && !blocked ? futureOrReady : 'notRequired',
+      sessionImpact: 'none',
+      targetOutboundId: recommendedOutboundId,
+      dataPlaneMutation: false,
+      estimatedSeconds: 10,
+      reasonCodes: [],
+    });
+    steps.push({
+      id: 'rollback-previous-route',
+      kind: 'rollback',
+      code: 'rollback_previous_route',
+      status: switchRequired && !blocked ? futureOrReady : 'notRequired',
+      sessionImpact: 'allSessions',
+      targetOutboundId: currentOutboundId,
+      dataPlaneMutation: true,
+      estimatedSeconds: 2,
+      reasonCodes: ['rollbackPlanned'],
+    });
+
+    const estimatedTotalSeconds = steps.reduce((sum, step) => sum + (step.estimatedSeconds ?? 0), 0);
+
+    return {
+      status,
+      mode,
+      dataPlaneReady: context.applyPlan.dataPlaneReady,
+      preserveExistingSessions: context.sessionSafety.drainExistingSessions || context.sessionSafety.switchNewSessionsOnly,
+      switchNewSessionsOnly: context.sessionSafety.switchNewSessionsOnly,
+      drainRequired: context.sessionSafety.drainExistingSessions,
+      rollbackReady: switchRequired,
+      estimatedTotalSeconds,
+      reasonCodes: [...reasonCodes],
+      steps,
+    };
+  }
+
+  private buildRouteDecisionSwitchPreflightSummary(context: {
+    action: RouteDecisionAction;
+    switchEngine: AdminRouteDecisionSwitchEngineSummary;
+    applyPlan: AdminRouteDecisionApplyPlanSummary;
+    sessionSafety: AdminRouteDecisionSessionSafetySummary;
+  }): AdminRouteDecisionSwitchPreflightSummary {
+    const switchRequired = context.action === 'switchRecommended';
+    const adapter = context.applyPlan.adapter;
+    const checks: AdminRouteDecisionSwitchPreflightSummary['checks'] = [];
+    const reasonCodes = new Set<string>();
+    const dryRunSecretSafe =
+      adapter.dryRunCommands.every((command) => command.secretSafe) &&
+      adapter.dryRunConfigChanges.every((change) => change.secretSafe);
+    const hasFailedGuards = context.applyPlan.status === 'blocked' || context.switchEngine.status === 'blocked';
+    const cooldownBlocked = context.applyPlan.guardReasonCodes.includes('cooldown_active');
+    const sessionSafetyRequired =
+      context.sessionSafety.drainExistingSessions ||
+      context.sessionSafety.switchNewSessionsOnly ||
+      context.switchEngine.preserveExistingSessions;
+
+    const addCheck = (check: AdminRouteDecisionSwitchPreflightSummary['checks'][number]) => {
+      checks.push(check);
+      check.reasonCodes.forEach((reason) => reasonCodes.add(reason));
+    };
+    const notRequired = !switchRequired;
+
+    addCheck({
+      id: 'route-data-plane-feature-flag',
+      kind: 'featureFlag',
+      code: 'route_data_plane_feature_flag',
+      status: notRequired ? 'notRequired' : adapter.enabled ? 'passed' : 'future',
+      dataPlaneMutation: false,
+      estimatedSeconds: null,
+      reasonCodes: notRequired || adapter.enabled ? [] : ['featureFlagDisabled'],
+    });
+    addCheck({
+      id: 'server-apply-adapter',
+      kind: 'adapter',
+      code: 'server_apply_adapter',
+      status: notRequired
+        ? 'notRequired'
+        : adapter.status === 'unsupported'
+          ? 'failed'
+          : adapter.implemented
+            ? 'passed'
+            : 'future',
+      dataPlaneMutation: true,
+      estimatedSeconds: null,
+      reasonCodes: notRequired
+        ? []
+        : adapter.status === 'unsupported'
+          ? ['adapterUnsupported']
+          : adapter.implemented
+            ? ['dataPlaneReady']
+            : ['adapterMissing'],
+    });
+    addCheck({
+      id: 'secret-safe-dry-run',
+      kind: 'dryRun',
+      code: 'secret_safe_dry_run',
+      status: notRequired ? 'notRequired' : adapter.dryRunSupported && dryRunSecretSafe ? 'passed' : 'future',
+      dataPlaneMutation: false,
+      estimatedSeconds: 1,
+      reasonCodes: notRequired ? [] : ['dryRunOnly'],
+    });
+    addCheck({
+      id: 'route-switch-guards',
+      kind: 'guards',
+      code: 'route_switch_guards',
+      status: notRequired ? 'notRequired' : hasFailedGuards ? 'failed' : 'passed',
+      dataPlaneMutation: false,
+      estimatedSeconds: 1,
+      reasonCodes: notRequired || !hasFailedGuards ? [] : ['guardBlocked'],
+    });
+    addCheck({
+      id: 'session-safety-policy',
+      kind: 'sessionSafety',
+      code: 'session_safety_policy',
+      status: notRequired ? 'notRequired' : sessionSafetyRequired ? 'warning' : 'passed',
+      dataPlaneMutation: true,
+      estimatedSeconds: context.sessionSafety.estimatedDrainSeconds,
+      reasonCodes: notRequired || !sessionSafetyRequired ? [] : ['sessionSafetyRequired'],
+    });
+    addCheck({
+      id: 'rollback-plan',
+      kind: 'rollback',
+      code: 'rollback_plan',
+      status: notRequired ? 'notRequired' : context.switchEngine.rollbackReady ? 'passed' : 'future',
+      dataPlaneMutation: true,
+      estimatedSeconds: 2,
+      reasonCodes: notRequired ? [] : ['rollbackPlanned'],
+    });
+    addCheck({
+      id: 'cooldown-policy',
+      kind: 'cooldown',
+      code: 'cooldown_policy',
+      status: notRequired ? 'notRequired' : cooldownBlocked ? 'failed' : 'passed',
+      dataPlaneMutation: false,
+      estimatedSeconds: 1,
+      reasonCodes: notRequired ? [] : ['cooldownRequired'],
+    });
+    addCheck({
+      id: 'decision-audit',
+      kind: 'audit',
+      code: 'decision_audit',
+      status: notRequired ? 'notRequired' : 'passed',
+      dataPlaneMutation: false,
+      estimatedSeconds: 1,
+      reasonCodes: notRequired ? [] : ['auditReady'],
+    });
+    addCheck({
+      id: 'post-switch-health-verify',
+      kind: 'healthVerify',
+      code: 'post_switch_health_verify',
+      status: notRequired ? 'notRequired' : context.applyPlan.dataPlaneReady ? 'passed' : 'future',
+      dataPlaneMutation: false,
+      estimatedSeconds: 10,
+      reasonCodes: notRequired
+        ? []
+        : context.applyPlan.dataPlaneReady
+          ? ['dataPlaneReady']
+          : ['healthVerifyRequired'],
+    });
+
+    if (!switchRequired) reasonCodes.add('noSwitchNeeded');
+
+    const failedCheckCount = checks.filter((check) => check.status === 'failed').length;
+    const futureCheckCount = checks.filter((check) => check.status === 'future').length;
+    const dataPlaneReady = switchRequired && context.applyPlan.dataPlaneReady && context.switchEngine.dataPlaneReady && adapter.dataPlaneReady;
+    if (dataPlaneReady) reasonCodes.add('dataPlaneReady');
+
+    const canExecuteDataPlane = dataPlaneReady && failedCheckCount === 0 && futureCheckCount === 0;
+    const safeToArm = switchRequired && failedCheckCount === 0 && context.switchEngine.status !== 'blocked';
+    const status: AdminRouteDecisionSwitchPreflightSummary['status'] = !switchRequired
+      ? 'notRequired'
+      : failedCheckCount > 0
+        ? 'blocked'
+        : canExecuteDataPlane
+          ? 'ready'
+          : 'planningOnly';
+
+    return {
+      status,
+      dataPlaneReady,
+      canExecuteDataPlane,
+      safeToArm,
+      checkCount: checks.length,
+      failedCheckCount,
+      futureCheckCount,
+      reasonCodes: [...reasonCodes],
+      checks,
+    };
+  }
+
+  private buildRouteDecisionSwitchRolloutSummary(context: {
+    action: RouteDecisionAction;
+    selectedProfile: RouteScoreProfile;
+    sessionSafety: AdminRouteDecisionSessionSafetySummary;
+    switchEngine: AdminRouteDecisionSwitchEngineSummary;
+    switchPreflight: AdminRouteDecisionSwitchPreflightSummary;
+    applyPlan: AdminRouteDecisionApplyPlanSummary;
+  }): AdminRouteDecisionSwitchRolloutSummary {
+    const switchRequired = context.action === 'switchRecommended';
+    const blocked = context.switchPreflight.status === 'blocked' || context.applyPlan.status === 'blocked';
+    const latencySensitive = this.isSessionSensitiveRouteProfile(context.selectedProfile);
+    const dataPlaneReady =
+      context.applyPlan.dataPlaneReady &&
+      context.switchEngine.dataPlaneReady &&
+      context.switchPreflight.canExecuteDataPlane;
+    const emergencySwitch = context.sessionSafety.emergencySwitchAllowed;
+    const existingSessionsPinned =
+      context.sessionSafety.drainExistingSessions ||
+      context.sessionSafety.switchNewSessionsOnly ||
+      context.switchEngine.preserveExistingSessions;
+    const newSessionsCanary = switchRequired && !emergencySwitch;
+    const initialPercent = !switchRequired ? 0 : latencySensitive ? 5 : 10;
+    const maxPercent = switchRequired ? 100 : 0;
+    const canaryDurationSeconds = latencySensitive ? 600 : 300;
+    const routeConsistencyHoldSeconds = existingSessionsPinned
+      ? Math.max(context.sessionSafety.stickySessionTtlSeconds, context.sessionSafety.estimatedDrainSeconds)
+      : 0;
+    const rollbackOnLossPercent = latencySensitive ? 1 : 2;
+    const rollbackOnJitterMs = context.selectedProfile === 'gaming' ? 15 : latencySensitive ? 25 : 40;
+    const rollbackOnLatencyMs = context.selectedProfile === 'gaming' ? 80 : latencySensitive ? 120 : 180;
+    const reasonCodes = new Set<string>();
+
+    if (!switchRequired) reasonCodes.add('noSwitchNeeded');
+    if (!dataPlaneReady) reasonCodes.add('dataPlaneDisabled');
+    if (blocked) reasonCodes.add('preflightBlocked');
+    if (existingSessionsPinned) reasonCodes.add('stickySessions');
+    if (context.sessionSafety.switchNewSessionsOnly) reasonCodes.add('newSessionsOnly');
+    if (emergencySwitch) reasonCodes.add('emergencySwitch');
+    if (newSessionsCanary) reasonCodes.add('canaryRequired');
+    if (latencySensitive) reasonCodes.add('gamingSensitive');
+    if (routeConsistencyHoldSeconds > 0) reasonCodes.add('routeConsistencyHold');
+    if (switchRequired) {
+      reasonCodes.add('assignmentOnly');
+      reasonCodes.add('rollbackGuard');
+      reasonCodes.add('healthVerifyRequired');
+    }
+    if (dataPlaneReady) reasonCodes.add('dataPlaneReady');
+
+    const status: AdminRouteDecisionSwitchRolloutSummary['status'] = !switchRequired
+      ? 'notRequired'
+      : blocked
+        ? 'blocked'
+        : emergencySwitch
+          ? 'emergencyOnly'
+          : dataPlaneReady
+            ? 'canaryReady'
+            : 'planningOnly';
+    const strategy: AdminRouteDecisionSwitchRolloutSummary['strategy'] = !switchRequired
+      ? 'none'
+      : emergencySwitch
+        ? 'emergencyReroute'
+        : existingSessionsPinned
+          ? 'stickyDrainCanary'
+          : dataPlaneReady
+            ? 'newSessionCanary'
+            : 'assignmentOnly';
+    const futureOrReady = dataPlaneReady ? 'ready' : 'future';
+    const rolloutStepStatus = !switchRequired ? 'notRequired' : blocked ? 'blocked' : futureOrReady;
+    const assignmentStatus = !switchRequired ? 'notRequired' : blocked ? 'blocked' : 'ready';
+    const steps: AdminRouteDecisionSwitchRolloutSummary['steps'] = [
+      {
+        id: 'persist-control-plane-assignment',
+        phase: 'assignment',
+        code: 'persist_control_plane_assignment',
+        status: assignmentStatus,
+        trafficScope: 'controlPlane',
+        targetPercent: switchRequired ? 100 : 0,
+        durationSeconds: 1,
+        dataPlaneMutation: false,
+        reasonCodes: switchRequired ? ['assignmentOnly'] : ['noSwitchNeeded'],
+      },
+      {
+        id: 'pin-existing-sessions-for-rollout',
+        phase: 'pinExisting',
+        code: 'pin_existing_sessions_for_rollout',
+        status: switchRequired && existingSessionsPinned && !blocked ? rolloutStepStatus : 'notRequired',
+        trafficScope: 'newSessions',
+        targetPercent: 0,
+        durationSeconds: routeConsistencyHoldSeconds,
+        dataPlaneMutation: true,
+        reasonCodes: existingSessionsPinned ? ['stickySessions', 'routeConsistencyHold'] : [],
+      },
+      {
+        id: 'canary-new-sessions',
+        phase: 'canary',
+        code: 'canary_new_sessions',
+        status: switchRequired && newSessionsCanary && !blocked ? rolloutStepStatus : 'notRequired',
+        trafficScope: 'canary',
+        targetPercent: initialPercent,
+        durationSeconds: canaryDurationSeconds,
+        dataPlaneMutation: true,
+        reasonCodes: newSessionsCanary ? ['canaryRequired', 'newSessionsOnly'] : [],
+      },
+      {
+        id: 'verify-canary-health',
+        phase: 'verify',
+        code: 'verify_canary_health',
+        status: switchRequired && !blocked ? rolloutStepStatus : 'notRequired',
+        trafficScope: 'canary',
+        targetPercent: initialPercent,
+        durationSeconds: 60,
+        dataPlaneMutation: false,
+        reasonCodes: ['healthVerifyRequired'],
+      },
+      {
+        id: 'expand-new-session-rollout',
+        phase: 'expand',
+        code: 'expand_new_session_rollout',
+        status: switchRequired && newSessionsCanary && !blocked ? rolloutStepStatus : 'notRequired',
+        trafficScope: 'allNewSessions',
+        targetPercent: Math.min(50, maxPercent),
+        durationSeconds: canaryDurationSeconds,
+        dataPlaneMutation: true,
+        reasonCodes: ['canaryRequired'],
+      },
+      {
+        id: 'complete-new-session-rollout',
+        phase: 'full',
+        code: 'complete_new_session_rollout',
+        status: switchRequired && newSessionsCanary && !blocked ? rolloutStepStatus : 'notRequired',
+        trafficScope: 'allNewSessions',
+        targetPercent: maxPercent,
+        durationSeconds: routeConsistencyHoldSeconds,
+        dataPlaneMutation: true,
+        reasonCodes: ['routeConsistencyHold'],
+      },
+      {
+        id: 'rollback-on-regression',
+        phase: 'rollback',
+        code: 'rollback_on_regression',
+        status: switchRequired && !blocked ? rolloutStepStatus : 'notRequired',
+        trafficScope: 'allSessions',
+        targetPercent: 0,
+        durationSeconds: 2,
+        dataPlaneMutation: true,
+        reasonCodes: ['rollbackGuard'],
+      },
+    ];
+
+    return {
+      status,
+      strategy,
+      dataPlaneReady,
+      existingSessionsPinned,
+      newSessionsCanary,
+      automaticExpansion: dataPlaneReady && !latencySensitive && !emergencySwitch && !blocked,
+      initialPercent,
+      maxPercent,
+      canaryDurationSeconds,
+      routeConsistencyHoldSeconds,
+      rollbackOnLossPercent,
+      rollbackOnJitterMs,
+      rollbackOnLatencyMs,
+      reasonCodes: [...reasonCodes],
+      steps,
+    };
+  }
+
+  private buildRouteDecisionSwitchExecutionSummary(context: {
+    preview: AdminRouteDecisionPreviewResponse;
+    appliedAt: Date;
+    cooldownUntil: Date;
+    assignmentApplied: boolean;
+    dataPlaneApplied: boolean;
+  }): AdminRouteDecisionSwitchExecutionSummary {
+    const fromOutboundId = context.preview.currentCandidate?.source === 'outbound' ? context.preview.currentCandidate.id : null;
+    const toOutboundId = context.preview.recommendedCandidate?.source === 'outbound' ? context.preview.recommendedCandidate.id : null;
+    const switchRequired = context.preview.action === 'switchRecommended' && Boolean(toOutboundId);
+    const reasonCodes = new Set<string>(['assignmentOnly']);
+
+    if (context.assignmentApplied) reasonCodes.add('assignmentApplied');
+    if (!context.dataPlaneApplied) reasonCodes.add('dataPlaneNotApplied');
+    if (!context.preview.switchEngine.dataPlaneReady) reasonCodes.add('dataPlaneDisabled');
+    if (context.preview.applyPlan.adapter.reasonCodes.includes('server_apply_adapter_missing')) reasonCodes.add('serverApplyAdapterMissing');
+    if (context.preview.switchEngine.preserveExistingSessions) reasonCodes.add('stickySessionsPreserved');
+    if (context.preview.switchEngine.switchNewSessionsOnly) reasonCodes.add('newSessionsOnly');
+    if (context.preview.switchEngine.drainRequired) reasonCodes.add('drainWindowArmed');
+    if (context.preview.sessionSafety.emergencySwitchAllowed) reasonCodes.add('emergencySwitch');
+    if (context.preview.switchEngine.rollbackReady) reasonCodes.add('rollbackReady');
+    reasonCodes.add('cooldownArmed');
+
+    const status: AdminRouteDecisionSwitchExecutionSummary['status'] = !switchRequired
+      ? 'notRequired'
+      : !context.assignmentApplied
+        ? 'blocked'
+        : context.dataPlaneApplied
+          ? 'dataPlaneApplied'
+          : context.preview.switchEngine.dataPlaneReady
+            ? 'controlPlaneApplied'
+            : 'dataPlaneBlocked';
+    const phase: AdminRouteDecisionSwitchExecutionSummary['phase'] = !switchRequired
+      ? 'noChange'
+      : context.dataPlaneApplied
+        ? 'dataPlaneApplied'
+        : context.preview.sessionSafety.emergencySwitchAllowed
+          ? 'emergencyApplied'
+          : context.preview.switchEngine.drainRequired
+            ? 'stickyDrainArmed'
+            : context.preview.switchEngine.switchNewSessionsOnly
+              ? 'newSessionsArmed'
+              : 'guarded';
+    const stickyUntil = context.preview.switchEngine.preserveExistingSessions
+      ? new Date(context.appliedAt.getTime() + context.preview.sessionSafety.stickySessionTtlSeconds * 1000).toISOString()
+      : null;
+    const drainUntil = context.preview.switchEngine.drainRequired
+      ? new Date(context.appliedAt.getTime() + context.preview.sessionSafety.estimatedDrainSeconds * 1000).toISOString()
+      : null;
+    const executedStepIds = [
+      ...context.preview.switchEngine.steps
+        .filter((step) => !step.dataPlaneMutation && step.status !== 'blocked' && step.status !== 'notRequired')
+        .map((step) => step.id),
+      ...context.preview.applyPlan.steps
+        .filter((step) => !step.dataPlaneMutation && ['persist-assignment', 'set-cooldown'].includes(step.id))
+        .map((step) => step.id),
+    ];
+    const futureStepIds = context.preview.switchEngine.steps
+      .filter((step) => step.dataPlaneMutation && !context.dataPlaneApplied)
+      .map((step) => step.id);
+
+    return {
+      status,
+      phase,
+      generatedAt: context.preview.generatedAt,
+      appliedAt: context.appliedAt.toISOString(),
+      fromOutboundId,
+      toOutboundId,
+      assignmentApplied: context.assignmentApplied,
+      dataPlaneApplied: context.dataPlaneApplied,
+      dataPlaneReady: context.preview.switchEngine.dataPlaneReady,
+      preserveExistingSessions: context.preview.switchEngine.preserveExistingSessions,
+      switchNewSessionsOnly: context.preview.switchEngine.switchNewSessionsOnly,
+      drainRequired: context.preview.switchEngine.drainRequired,
+      emergencySwitch: context.preview.sessionSafety.emergencySwitchAllowed,
+      stickyUntil,
+      drainUntil,
+      cooldownUntil: context.cooldownUntil.toISOString(),
+      rollbackReady: context.preview.switchEngine.rollbackReady,
+      executedStepIds: [...new Set(executedStepIds)],
+      futureStepIds,
+      reasonCodes: [...reasonCodes],
+    };
+  }
+
+  private buildRouteDecisionApplyPlan(context: {
+    action: RouteDecisionAction;
+    currentCandidate: AdminWireGuardCandidate | null;
+    recommendedCandidate: AdminWireGuardCandidate | null;
+    routeLocked: boolean;
+    autoRouteEnabled: boolean;
+    cooldownActive: boolean;
+    hysteresisScoreDelta: number;
+    healthBasedSwitch: boolean;
+    sessionSafety: AdminRouteDecisionSessionSafetySummary;
+    scoreDelta: number | null;
+  }): AdminRouteDecisionApplyPlanSummary {
+    const guardReasonCodes = new Set<string>();
+    const recommendedOutboundId = context.recommendedCandidate?.source === 'outbound' ? context.recommendedCandidate.id : null;
+    const currentOutboundId = context.currentCandidate?.source === 'outbound' ? context.currentCandidate.id : null;
+    const adapter = this.buildRouteDecisionApplyAdapter(context.recommendedCandidate, context.currentCandidate);
+
+    if (context.action !== 'switchRecommended') guardReasonCodes.add('apply_requires_switch_recommended');
+    if (context.routeLocked) guardReasonCodes.add('route_locked');
+    if (!context.autoRouteEnabled) guardReasonCodes.add('manual_mode');
+    if (context.cooldownActive) guardReasonCodes.add('cooldown_active');
+    if (!recommendedOutboundId) guardReasonCodes.add('agent_candidate_not_applicable');
+    if (
+      !context.healthBasedSwitch &&
+      context.scoreDelta !== null &&
+      context.currentCandidate &&
+      context.scoreDelta < context.hysteresisScoreDelta
+    ) {
+      guardReasonCodes.add('score_delta_below_hysteresis');
+    }
+
+    const assignmentOnlyAvailable =
+      context.action === 'switchRecommended' &&
+      Boolean(recommendedOutboundId) &&
+      !context.routeLocked &&
+      context.autoRouteEnabled &&
+      !context.cooldownActive;
+
+    if (assignmentOnlyAvailable) {
+      adapter.reasonCodes.forEach((reason) => guardReasonCodes.add(reason));
+    }
+    const dataPlaneReady = assignmentOnlyAvailable && adapter.dataPlaneReady;
+
+    const status: AdminRouteDecisionApplyPlanSummary['status'] = assignmentOnlyAvailable
+      ? dataPlaneReady ? 'dataPlaneReady' : 'assignmentOnlyReady'
+      : context.action === 'keepCurrent'
+        ? 'notRequired'
+        : 'blocked';
+    const estimatedDrainSeconds = assignmentOnlyAvailable ? context.sessionSafety.estimatedDrainSeconds : 0;
+
+    return {
+      status,
+      applyMode: 'assignmentOnly',
+      dataPlaneReady,
+      assignmentOnlyAvailable,
+      adapter,
+      estimatedDrainSeconds,
+      guardReasonCodes: [...guardReasonCodes],
+      steps: [
+        {
+          id: 'verify-preview-fresh',
+          kind: 'guard',
+          code: 'verify_preview_fresh',
+          targetOutboundId: recommendedOutboundId,
+          dataPlaneMutation: false,
+          estimatedSeconds: 1,
+        },
+        {
+          id: 'verify-route-lock-clear',
+          kind: 'guard',
+          code: 'verify_route_lock_clear',
+          targetOutboundId: recommendedOutboundId,
+          dataPlaneMutation: false,
+          estimatedSeconds: 1,
+        },
+        {
+          id: 'verify-cooldown-clear',
+          kind: 'guard',
+          code: 'verify_cooldown_clear',
+          targetOutboundId: recommendedOutboundId,
+          dataPlaneMutation: false,
+          estimatedSeconds: 1,
+        },
+        {
+          id: 'persist-assignment',
+          kind: 'assignment',
+          code: 'persist_assignment',
+          targetOutboundId: recommendedOutboundId,
+          dataPlaneMutation: false,
+          estimatedSeconds: 1,
+        },
+        {
+          id: 'set-cooldown',
+          kind: 'assignment',
+          code: 'set_cooldown',
+          targetOutboundId: recommendedOutboundId,
+          dataPlaneMutation: false,
+          estimatedSeconds: 1,
+        },
+        {
+          id: 'drain-current-route',
+          kind: 'drain',
+          code: 'drain_current_route',
+          targetOutboundId: currentOutboundId,
+          dataPlaneMutation: true,
+          estimatedSeconds: estimatedDrainSeconds,
+        },
+        {
+          id: 'switch-data-plane-route',
+          kind: 'switch',
+          code: 'switch_data_plane_route',
+          targetOutboundId: recommendedOutboundId,
+          dataPlaneMutation: true,
+          estimatedSeconds: 2,
+        },
+        {
+          id: 'verify-route-health',
+          kind: 'verify',
+          code: 'verify_route_health',
+          targetOutboundId: recommendedOutboundId,
+          dataPlaneMutation: false,
+          estimatedSeconds: 10,
+        },
+      ],
+      rollbackSteps: [
+        {
+          id: 'restore-previous-route',
+          kind: 'rollback',
+          code: 'restore_previous_route',
+          targetOutboundId: currentOutboundId,
+          dataPlaneMutation: true,
+          estimatedSeconds: 2,
+        },
+      ],
+    };
+  }
+
+  private buildRouteDecisionApplyAdapter(
+    candidate: AdminWireGuardCandidate | null,
+    currentCandidate: AdminWireGuardCandidate | null,
+  ): AdminRouteDecisionApplyAdapterSummary {
+    const enabled = this.configFlag('AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED', false);
+    const outboundType = candidate?.source === 'outbound' ? 'wireguard' : null;
+    const supportedOutboundTypes = ['wireguard'];
+    const supportedProtocols = ['wireguard'];
+    const implemented = false;
+    const reasonCodes = new Set<string>();
+
+    if (!candidate) {
+      reasonCodes.add('no_managed_candidate');
+    } else if (candidate.source !== 'outbound') {
+      reasonCodes.add('agent_candidate_not_applicable');
+    } else if (!outboundType || !supportedOutboundTypes.includes(outboundType)) {
+      reasonCodes.add('route_apply_adapter_unsupported');
+    }
+
+    if (!enabled) reasonCodes.add('data_plane_apply_disabled');
+    if (!implemented) reasonCodes.add('server_apply_adapter_missing');
+    if (candidate?.source === 'outbound') reasonCodes.add('dry_run_only');
+
+    const dataPlaneReady = Boolean(candidate?.source === 'outbound' && outboundType && enabled && implemented);
+    const status: AdminRouteDecisionApplyAdapterSummary['status'] = dataPlaneReady
+      ? 'ready'
+      : !candidate || candidate.source !== 'outbound'
+        ? 'missing'
+        : !supportedOutboundTypes.includes(outboundType ?? '')
+          ? 'unsupported'
+          : 'disabled';
+
+    return {
+      id: 'wireguard-policy-routing',
+      label: 'WireGuard policy routing adapter',
+      status,
+      outboundType,
+      protocol: outboundType,
+      enabled,
+      implemented,
+      dataPlaneReady,
+      supportedOutboundTypes,
+      supportedProtocols,
+      reasonCodes: [...reasonCodes],
+      dryRunSupported: Boolean(candidate?.source === 'outbound'),
+      dryRunCommands: this.buildWireGuardDryRunCommands(candidate, currentCandidate),
+      dryRunConfigChanges: this.buildWireGuardDryRunConfigChanges(candidate),
+    };
+  }
+
+  private buildWireGuardDryRunCommands(
+    candidate: AdminWireGuardCandidate | null,
+    currentCandidate: AdminWireGuardCandidate | null,
+  ): AdminRouteDecisionApplyDryRunCommand[] {
+    if (!candidate || candidate.source !== 'outbound') return [];
+
+    const interfaceName = this.safeWireGuardInterfaceName(candidate.interfaceName, candidate.id);
+    const currentInterfaceName = currentCandidate?.source === 'outbound'
+      ? this.safeWireGuardInterfaceName(currentCandidate.interfaceName, currentCandidate.id)
+      : null;
+    const routeTable = this.safeRouteTableName(candidate.routeGroup);
+    const mark = this.routeMarkHex(candidate.routeGroup);
+
+    const commands: AdminRouteDecisionApplyDryRunCommand[] = [
+      {
+        id: 'precheck-interface',
+        kind: 'precheck',
+        command: `ip link show dev ${this.shellToken(interfaceName)}`,
+        requiresRoot: false,
+        dataPlaneMutation: false,
+        secretSafe: true,
+      },
+      {
+        id: 'precheck-wireguard',
+        kind: 'precheck',
+        command: `wg show ${this.shellToken(interfaceName)} latest-handshakes`,
+        requiresRoot: false,
+        dataPlaneMutation: false,
+        secretSafe: true,
+      },
+      {
+        id: 'precheck-current-table',
+        kind: 'precheck',
+        command: `ip route show table ${this.shellToken(routeTable)}`,
+        requiresRoot: false,
+        dataPlaneMutation: false,
+        secretSafe: true,
+      },
+      {
+        id: 'drain-route-mark',
+        kind: 'drain',
+        command: `nft list table inet afrogate`,
+        requiresRoot: true,
+        dataPlaneMutation: false,
+        secretSafe: true,
+      },
+      {
+        id: 'switch-route-table',
+        kind: 'switch',
+        command: `ip route replace default dev ${this.shellToken(interfaceName)} table ${this.shellToken(routeTable)}`,
+        requiresRoot: true,
+        dataPlaneMutation: true,
+        secretSafe: true,
+      },
+      {
+        id: 'switch-policy-rule',
+        kind: 'switch',
+        command: `ip rule replace fwmark ${mark} table ${this.shellToken(routeTable)} priority 1060`,
+        requiresRoot: true,
+        dataPlaneMutation: true,
+        secretSafe: true,
+      },
+      {
+        id: 'verify-selected-interface',
+        kind: 'verify',
+        command: `ip route get 1.1.1.1 mark ${mark}`,
+        requiresRoot: false,
+        dataPlaneMutation: false,
+        secretSafe: true,
+      },
+    ];
+
+    if (currentInterfaceName) {
+      commands.push({
+        id: 'rollback-previous-route',
+        kind: 'rollback',
+        command: `ip route replace default dev ${this.shellToken(currentInterfaceName)} table ${this.shellToken(routeTable)}`,
+        requiresRoot: true,
+        dataPlaneMutation: true,
+        secretSafe: true,
+      });
+    }
+
+    return commands;
+  }
+
+  private buildWireGuardDryRunConfigChanges(
+    candidate: AdminWireGuardCandidate | null,
+  ): AdminRouteDecisionApplyDryRunConfigChange[] {
+    if (!candidate || candidate.source !== 'outbound') return [];
+
+    const routeTable = this.safeRouteTableName(candidate.routeGroup);
+
+    return [
+      {
+        id: 'iproute-table',
+        filePath: '/etc/iproute2/rt_tables.d/afrogate.conf',
+        action: 'update',
+        description: `Ensure route table entry for ${routeTable}`,
+        secretSafe: true,
+      },
+      {
+        id: 'afrogate-assignment-record',
+        filePath: `/etc/afrogate/routes/${this.safePathSegment(candidate.routeGroup)}/default.json`,
+        action: 'update',
+        description: `Record selected outbound ${candidate.id} and interface ${this.safeWireGuardInterfaceName(candidate.interfaceName, candidate.id)}`,
+        secretSafe: true,
+      },
+    ];
+  }
+
+  private buildRouteDecisionDryRunSnapshot(
+    preview: AdminRouteDecisionPreviewResponse,
+  ): AdminRouteDecisionApplyDryRunSnapshot {
+    const adapter = preview.applyPlan.adapter;
+    const commands = adapter.dryRunCommands.map((item) => ({ ...item }));
+    const configChanges = adapter.dryRunConfigChanges.map((item) => ({ ...item }));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      adapterId: adapter.id,
+      adapterStatus: adapter.status,
+      adapterEnabled: adapter.enabled,
+      adapterImplemented: adapter.implemented,
+      dataPlaneReady: adapter.dataPlaneReady,
+      dryRunSupported: adapter.dryRunSupported,
+      secretSafe: commands.every((item) => item.secretSafe) && configChanges.every((item) => item.secretSafe),
+      commandCount: commands.length,
+      configChangeCount: configChanges.length,
+      commands,
+      configChanges,
+    };
+  }
+
+  private routeDecisionApplyBlockReasons(preview: AdminRouteDecisionPreviewResponse): string[] {
+    const reasonCodes = new Set<string>();
+
+    if (preview.action !== 'switchRecommended') reasonCodes.add('apply_requires_switch_recommended');
+    if (preview.routeLocked) reasonCodes.add('route_locked');
+    if (!preview.autoRouteEnabled) reasonCodes.add('manual_mode');
+    if (preview.cooldownUntil && new Date(preview.cooldownUntil).getTime() > Date.now()) reasonCodes.add('cooldown_active');
+    if (!preview.recommendedCandidate || preview.recommendedCandidate.source !== 'outbound') {
+      reasonCodes.add('agent_candidate_not_applicable');
+    }
+    if (
+      !preview.reasonCodes.includes('health_based_switch') &&
+      preview.scoreDelta !== null &&
+      preview.scoreDelta !== undefined &&
+      preview.currentCandidate &&
+      preview.scoreDelta < preview.hysteresisScoreDelta
+    ) {
+      reasonCodes.add('score_delta_below_hysteresis');
+    }
+
+    return [...reasonCodes];
+  }
+
+  private isRouteDecisionCandidateHealthy(candidate: AdminWireGuardCandidate): boolean {
+    const status = String(candidate.healthStatus).toLowerCase();
+
+    return (
+      candidate.score >= 50 &&
+      status !== 'critical' &&
+      status !== 'down' &&
+      candidate.bufferbloatRecommendation !== 'avoidUnderLoad'
+    );
+  }
+
+  private assessRouteBufferbloat(input: {
+    latencyMs: number | null;
+    jitterMs: number | null;
+    loadPercent: number | null;
+    loadedLatencyMs?: number | null;
+    loadedLatencyDeltaMs?: number | null;
+  }): RouteBufferbloatAssessment {
+    const loadedLatencyMs = this.roundMetric(input.loadedLatencyMs, 1);
+    const loadedLatencyDeltaMs = this.roundMetric(
+      input.loadedLatencyDeltaMs ??
+        (
+          loadedLatencyMs !== null && input.latencyMs !== null
+            ? loadedLatencyMs - input.latencyMs
+            : null
+        ),
+      1,
+    );
+    const severity = this.routeBufferbloatSeverity({
+      latencyMs: input.latencyMs,
+      jitterMs: input.jitterMs,
+      loadPercent: input.loadPercent,
+      loadedLatencyDeltaMs,
+    });
+
+    return {
+      loadedLatencyMs,
+      loadedLatencyDeltaMs,
+      severity,
+      recommendation: this.routeBufferbloatRecommendation(severity),
+    };
+  }
+
+  private routeBufferbloatSeverity(input: {
+    latencyMs: number | null;
+    jitterMs: number | null;
+    loadPercent: number | null;
+    loadedLatencyDeltaMs: number | null;
+  }): RouteBufferbloatSeverity {
+    if (input.loadedLatencyDeltaMs !== null) {
+      if (input.loadedLatencyDeltaMs >= 150) return 'high';
+      if (input.loadedLatencyDeltaMs >= 75) return 'medium';
+      if (input.loadedLatencyDeltaMs >= 30) return 'low';
+
+      return 'none';
+    }
+
+    if (input.loadPercent === null) return 'unknown';
+    if (input.loadPercent >= 85 && ((input.latencyMs ?? 0) >= 140 || (input.jitterMs ?? 0) >= 35)) return 'high';
+    if (input.loadPercent >= 75 && ((input.latencyMs ?? 0) >= 110 || (input.jitterMs ?? 0) >= 25)) return 'medium';
+    if (input.loadPercent >= 65 && ((input.latencyMs ?? 0) >= 90 || (input.jitterMs ?? 0) >= 15)) return 'low';
+
+    return 'none';
+  }
+
+  private routeBufferbloatRecommendation(severity: RouteBufferbloatSeverity): RouteBufferbloatRecommendation {
+    switch (severity) {
+      case 'high':
+        return 'avoidUnderLoad';
+      case 'medium':
+        return 'sqmRecommended';
+      case 'low':
+        return 'watch';
+      default:
+        return 'none';
+    }
+  }
+
+  private calculateLoadedLatencyPenalty(signals: RouteScoreSignals): number {
+    const assessment = this.assessRouteBufferbloat({
+      latencyMs: signals.latencyMs,
+      jitterMs: signals.jitterMs,
+      loadPercent: signals.loadPercent,
+      loadedLatencyMs: signals.loadedLatencyMs,
+      loadedLatencyDeltaMs: signals.loadedLatencyDeltaMs,
+    });
+
+    if (assessment.loadedLatencyDeltaMs !== null) {
+      return Math.min(28, Math.max(0, assessment.loadedLatencyDeltaMs - 30) * 0.12);
+    }
+
+    return {
+      high: 22,
+      medium: 12,
+      low: 5,
+      none: 0,
+      unknown: 0,
+    }[assessment.severity];
+  }
+
+  private calculateRouteProfileScores(signals: RouteScoreSignals, settings: RouteScoringContext): RouteScoreResult {
+    if (signals.enabled === false || signals.maintenanceMode) {
+      const profileScores = this.createUniformRouteScores(0);
+      const selectedProfile = this.selectRouteScoreProfile(settings);
+
+      return {
+        selectedProfile,
+        selectedScore: 0,
+        profileScores,
+        reasons: [{ code: 'maintenance', profile: selectedProfile, impact: 100 }],
+      };
+    }
+
+    const baseScore = this.clamp(signals.baseScore, 0, 100);
+    const serverPenalty = signals.serverHealthScore !== null && signals.serverHealthScore !== undefined && signals.serverHealthScore < 60
+      ? (60 - signals.serverHealthScore) / 2
+      : 0;
+    const latencyMs = signals.latencyMs;
+    const jitterMs = signals.jitterMs;
+    const packetLossPercent = signals.packetLossPercent;
+    const loadPercent = signals.loadPercent;
+    const handshakePenalty = signals.latestHandshakeAgeSeconds === undefined
+      ? 0
+      : this.calculateHandshakePenalty(signals.latestHandshakeAgeSeconds);
+    const loadedLatencyPenalty = this.calculateLoadedLatencyPenalty(signals);
+    const stableBase = baseScore
+      - this.thresholdPenalty(packetLossPercent, 0.2, 28)
+      - this.thresholdPenalty(jitterMs, 8, 1.15)
+      - this.thresholdPenalty(latencyMs, 100, 0.08)
+      - loadedLatencyPenalty * 0.8
+      - serverPenalty;
+    const throughputBase = baseScore
+      - this.thresholdPenalty(loadPercent, 70, 0.65)
+      - this.thresholdPenalty(packetLossPercent, 1, 24)
+      - this.thresholdPenalty(jitterMs, 35, 0.7)
+      - loadedLatencyPenalty * 0.3
+      - serverPenalty;
+    const balancedBase = baseScore
+      - this.thresholdPenalty(packetLossPercent, 1, 12)
+      - this.thresholdPenalty(jitterMs, 25, 0.45)
+      - this.thresholdPenalty(latencyMs, 140, 0.05)
+      - loadedLatencyPenalty * 0.45
+      - serverPenalty;
+    const gamingBase = baseScore
+      - this.thresholdPenalty(packetLossPercent, 0.1, 36)
+      - this.thresholdPenalty(jitterMs, 6, 1.35)
+      - this.thresholdPenalty(latencyMs, 85, 0.11)
+      - this.thresholdPenalty(loadPercent, 65, 0.35)
+      - loadedLatencyPenalty * 1.15
+      - serverPenalty
+      - handshakePenalty * 0.35;
+
+    const profileScores = this.roundRouteScores({
+      balanced: this.applyProbeScore(balancedBase, signals.routeProbes, this.protocolsForScoreProfile('balanced'), 0.22),
+      stability: this.applyProbeScore(stableBase, signals.routeProbes, this.protocolsForScoreProfile('stability'), 0.34),
+      throughput: this.applyProbeScore(throughputBase, signals.routeProbes, this.protocolsForScoreProfile('throughput'), 0.2),
+      gaming: this.applyProbeScore(gamingBase, signals.routeProbes, this.protocolsForScoreProfile('gaming'), 0.46),
+      tcp: this.applyProbeScore(balancedBase - this.thresholdPenalty(latencyMs, 100, 0.08), signals.routeProbes, ['tcp'], 0.42),
+      udp: this.applyProbeScore(stableBase, signals.routeProbes, ['udp', 'wireguard'], 0.42),
+      quic: this.applyProbeScore(stableBase, signals.routeProbes, ['quic', 'udp'], 0.42),
+      dns: this.applyProbeScore(balancedBase - this.thresholdPenalty(latencyMs, 80, 0.08), signals.routeProbes, ['dns'], 0.45),
+      wireguard: this.applyProbeScore(baseScore - handshakePenalty - serverPenalty, signals.routeProbes, ['wireguard', 'udp'], 0.32),
+    });
+    const selectedProfile = this.selectRouteScoreProfile(settings);
+
+    return {
+      selectedProfile,
+      selectedScore: profileScores[selectedProfile],
+      profileScores,
+      reasons: this.buildRouteScoreReasons(signals, selectedProfile),
+    };
+  }
+
+  private createUniformRouteScores(score: number): RouteProfileScores {
+    return {
+      balanced: score,
+      stability: score,
+      throughput: score,
+      gaming: score,
+      tcp: score,
+      udp: score,
+      quic: score,
+      dns: score,
+      wireguard: score,
+    };
+  }
+
+  private roundRouteScores(scores: RouteProfileScores): RouteProfileScores {
+    return {
+      balanced: this.roundRouteScore(scores.balanced),
+      stability: this.roundRouteScore(scores.stability),
+      throughput: this.roundRouteScore(scores.throughput),
+      gaming: this.roundRouteScore(scores.gaming),
+      tcp: this.roundRouteScore(scores.tcp),
+      udp: this.roundRouteScore(scores.udp),
+      quic: this.roundRouteScore(scores.quic),
+      dns: this.roundRouteScore(scores.dns),
+      wireguard: this.roundRouteScore(scores.wireguard),
+    };
+  }
+
+  private roundRouteScore(value: number): number {
+    return Math.round(this.clamp(value, 0, 100));
+  }
+
+  private selectRouteScoreProfile(settings: RouteScoringContext): RouteScoreProfile {
+    const protocolProfile = settings.protocolProfile;
+
+    if (this.isProtocolSpecificScoreProfile(protocolProfile)) return protocolProfile;
+    if (protocolProfile === 'gaming' || settings.speedProfile === 'gaming') return 'gaming';
+    if (
+      settings.loadBalanceStrategy === 'stability' ||
+      settings.speedProfile === 'highSecurity' ||
+      protocolProfile === 'highSecurity'
+    ) {
+      return 'stability';
+    }
+    if (
+      settings.loadBalanceStrategy === 'throughput' ||
+      settings.speedProfile === 'highSpeed' ||
+      protocolProfile === 'highSpeed'
+    ) {
+      return 'throughput';
+    }
+
+    return 'balanced';
+  }
+
+  private isProtocolSpecificScoreProfile(value: string): value is RouteScoreProfile {
+    return value === 'tcp' || value === 'udp' || value === 'quic' || value === 'dns' || value === 'wireguard';
+  }
+
+  private protocolsForScoreProfile(profile: RouteScoreProfile): string[] {
+    switch (profile) {
+      case 'tcp':
+        return ['tcp'];
+      case 'udp':
+        return ['udp', 'wireguard'];
+      case 'quic':
+        return ['quic', 'udp'];
+      case 'dns':
+        return ['dns'];
+      case 'wireguard':
+        return ['wireguard', 'udp'];
+      case 'gaming':
+        return ['udp', 'quic', 'wireguard', 'tcp'];
+      default:
+        return ['tcp', 'udp', 'quic', 'dns', 'wireguard'];
+    }
+  }
+
+  private applyProbeScore(
+    baseScore: number,
+    routeProbes: RouteProbeMetric[],
+    protocols: string[],
+    probeWeight: number,
+  ): number {
+    const probeScore = this.calculateProtocolProbeScore(routeProbes, protocols);
+
+    if (probeScore === null) return baseScore;
+
+    return baseScore * (1 - probeWeight) + probeScore * probeWeight;
+  }
+
+  private calculateProtocolProbeScore(routeProbes: RouteProbeMetric[], protocols: string[]): number | null {
+    const protocolSet = new Set(protocols);
+    const scores = routeProbes
+      .filter((probe) => protocolSet.has(String(probe.protocol).toLowerCase()))
+      .map((probe) => this.calculateSingleProbeScore(probe));
+
+    if (!scores.length) return null;
+
+    const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+    const worst = Math.min(...scores);
+
+    return average * 0.65 + worst * 0.35;
+  }
+
+  private calculateSingleProbeScore(probe: RouteProbeMetric): number {
+    const protocol = String(probe.protocol).toLowerCase();
+    const statusScore = {
+      healthy: 100,
+      degraded: 72,
+      critical: 20,
+      unknown: 55,
+    }[String(probe.status).toLowerCase()] ?? 55;
+    const latencyThreshold = protocol === 'dns' ? 80 : protocol === 'tcp' ? 100 : 70;
+    const jitterThreshold = protocol === 'tcp' || protocol === 'dns' ? 25 : 10;
+    const lossMultiplier = protocol === 'tcp' || protocol === 'dns' ? 16 : 24;
+    const loadedLatencyDeltaMs = this.loadedLatencyDeltaFromProbe(probe);
+    const score = statusScore
+      - this.thresholdPenalty(probe.latencyMs ?? null, latencyThreshold, 0.09)
+      - this.thresholdPenalty(probe.jitterMs ?? null, jitterThreshold, 1)
+      - this.thresholdPenalty(probe.packetLossPercent ?? null, 0, lossMultiplier)
+      - this.thresholdPenalty(loadedLatencyDeltaMs, 30, 0.18);
+
+    return this.clamp(score, 0, 100);
+  }
+
+  private summarizeRouteProbes(routeProbes: RouteProbeMetric[]): {
+    latencyMs: number | null;
+    jitterMs: number | null;
+    packetLossPercent: number | null;
+    loadedLatencyMs: number | null;
+    loadedLatencyDeltaMs: number | null;
+  } {
+    return {
+      latencyMs: this.averageMetric(routeProbes.map((probe) => probe.latencyMs)),
+      jitterMs: this.averageMetric(routeProbes.map((probe) => probe.jitterMs)),
+      packetLossPercent: this.averageMetric(routeProbes.map((probe) => probe.packetLossPercent)),
+      loadedLatencyMs: this.averageMetric(routeProbes.map((probe) => probe.loadedLatencyMs)),
+      loadedLatencyDeltaMs: this.averageMetric(routeProbes.map((probe) => this.loadedLatencyDeltaFromProbe(probe))),
+    };
+  }
+
+  private loadedLatencyDeltaFromProbe(probe: RouteProbeMetric): number | null {
+    if (typeof probe.loadedLatencyDeltaMs === 'number' && Number.isFinite(probe.loadedLatencyDeltaMs)) {
+      return probe.loadedLatencyDeltaMs;
+    }
+    if (
+      typeof probe.loadedLatencyMs === 'number' &&
+      Number.isFinite(probe.loadedLatencyMs) &&
+      typeof probe.latencyMs === 'number' &&
+      Number.isFinite(probe.latencyMs)
+    ) {
+      return probe.loadedLatencyMs - probe.latencyMs;
+    }
+
+    return null;
+  }
+
+  private averageMetric(values: Array<number | null | undefined>): number | null {
+    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+    if (!finiteValues.length) return null;
+
+    return Math.round((finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length) * 10) / 10;
+  }
+
+  private getRouteProbes(raw: Partial<ServerMetricSnapshot> | null | undefined): RouteProbeMetric[] {
+    if (!Array.isArray(raw?.routeProbes)) return [];
+
+    return raw.routeProbes.filter((probe): probe is RouteProbeMetric => this.isRouteProbeMetric(probe));
+  }
+
+  private isRouteProbeMetric(value: unknown): value is RouteProbeMetric {
+    if (!this.isRecord(value)) return false;
+
+    return (
+      typeof value.protocol === 'string' &&
+      typeof value.target === 'string' &&
+      typeof value.status === 'string'
+    );
+  }
+
+  private buildRouteScoreReasons(signals: RouteScoreSignals, selectedProfile: RouteScoreProfile): RouteScoreReason[] {
+    const reasons: RouteScoreReason[] = [];
+    const pushReason = (
+      code: RouteScoreReason['code'],
+      impact: number,
+      value?: number | null,
+      threshold?: number | null,
+      source?: string | null,
+    ) => {
+      if (impact <= 0.5) return;
+
+      reasons.push({
+        code,
+        profile: selectedProfile,
+        impact: Math.round(impact * 10) / 10,
+        value: value ?? null,
+        threshold: threshold ?? null,
+        source: source ?? null,
+      });
+    };
+
+    const healthImpact = {
+      critical: 55,
+      degraded: 22,
+      unknown: 8,
+    }[signals.healthStatus] ?? 0;
+    const strictLossProfile = ['stability', 'udp', 'quic', 'wireguard'].includes(selectedProfile);
+    const lossThreshold = selectedProfile === 'gaming' ? 0.2 : strictLossProfile ? 0.5 : 1;
+    const jitterThreshold = selectedProfile === 'gaming' ? 8 : strictLossProfile ? 10 : 25;
+    const latencyThreshold = selectedProfile === 'gaming' ? 90 : selectedProfile === 'dns' ? 80 : selectedProfile === 'tcp' ? 100 : 120;
+    const loadThreshold = selectedProfile === 'gaming' ? 65 : 70;
+    const selectedProbeScore = this.calculateProtocolProbeScore(
+      signals.routeProbes,
+      this.protocolsForScoreProfile(selectedProfile),
+    );
+    const loadedLatencyAssessment = this.assessRouteBufferbloat({
+      latencyMs: signals.latencyMs,
+      jitterMs: signals.jitterMs,
+      loadPercent: signals.loadPercent,
+      loadedLatencyMs: signals.loadedLatencyMs,
+      loadedLatencyDeltaMs: signals.loadedLatencyDeltaMs,
+    });
+
+    pushReason('healthStatus', healthImpact);
+    pushReason(
+      'packetLoss',
+      this.thresholdPenalty(signals.packetLossPercent, lossThreshold, 20),
+      signals.packetLossPercent,
+      lossThreshold,
+    );
+    pushReason('jitter', this.thresholdPenalty(signals.jitterMs, jitterThreshold, 0.8), signals.jitterMs, jitterThreshold);
+    pushReason(
+      'loadedLatency',
+      this.calculateLoadedLatencyPenalty(signals),
+      loadedLatencyAssessment.loadedLatencyDeltaMs ?? loadedLatencyAssessment.loadedLatencyMs,
+      loadedLatencyAssessment.loadedLatencyDeltaMs === null ? null : 30,
+      loadedLatencyAssessment.severity,
+    );
+    pushReason(
+      'latency',
+      this.thresholdPenalty(signals.latencyMs, latencyThreshold, 0.06),
+      signals.latencyMs,
+      latencyThreshold,
+    );
+    pushReason('load', this.thresholdPenalty(signals.loadPercent, loadThreshold, 0.55), signals.loadPercent, loadThreshold);
+    if (signals.serverHealthScore !== null && signals.serverHealthScore !== undefined) {
+      pushReason('serverHealth', this.thresholdPenalty(60 - signals.serverHealthScore, 0, 0.5), signals.serverHealthScore, 60);
+    }
+    if (signals.latestHandshakeAgeSeconds !== undefined) {
+      pushReason(
+        'wireguardHandshake',
+        this.calculateHandshakePenalty(signals.latestHandshakeAgeSeconds),
+        signals.latestHandshakeAgeSeconds,
+        180,
+      );
+    }
+    if (selectedProbeScore !== null) {
+      pushReason(
+        'routeProbe',
+        this.thresholdPenalty(80 - selectedProbeScore, 0, 1),
+        Math.round(selectedProbeScore * 10) / 10,
+        80,
+        this.protocolsForScoreProfile(selectedProfile).join(','),
+      );
+    }
+
+    return reasons.sort((left, right) => right.impact - left.impact).slice(0, 6);
+  }
+
+  private thresholdPenalty(value: number | null | undefined, threshold: number, multiplier: number): number {
+    if (value === null || value === undefined || !Number.isFinite(value)) return 0;
+
+    return Math.max(0, value - threshold) * multiplier;
+  }
+
+  private calculateWireGuardScore(row: WireGuardCandidateRow): number {
+    if (!row.enabled || row.maintenanceMode) return 0;
+
+    const baseScore = {
+      healthy: 90,
+      degraded: 68,
+      critical: 35,
+      unknown: 55,
+    }[row.healthStatus] ?? 55;
+    const latencyPenalty = row.latencyMs === null ? 0 : Math.max(0, (row.latencyMs - 50) / 4);
+    const jitterPenalty = row.jitterMs === null ? 0 : Math.max(0, (row.jitterMs - 10) / 2);
+    const lossPenalty = row.packetLossPercent === null ? 0 : row.packetLossPercent * 18;
+
+    return Math.round(this.clamp(baseScore - latencyPenalty - jitterPenalty - lossPenalty, 0, 100));
+  }
+
+  private calculateWireGuardTelemetryScore(item: WireGuardInterfaceMetric, serverHealthScore: number | null): number {
+    const baseScore = {
+      up: 92,
+      degraded: 72,
+      down: 20,
+      unknown: 52,
+    }[item.status] ?? 52;
+    const inactivePeerPenalty = item.peerCount > 0
+      ? ((item.peerCount - item.activePeerCount) / item.peerCount) * 25
+      : 0;
+    const handshakePenalty = this.calculateHandshakePenalty(item.latestHandshakeAgeSeconds ?? null);
+    const serverPenalty = typeof serverHealthScore === 'number' && serverHealthScore < 60
+      ? (60 - serverHealthScore) / 2
+      : 0;
+
+    return Math.round(this.clamp(baseScore - inactivePeerPenalty - handshakePenalty - serverPenalty, 0, 100));
+  }
+
+  private calculateHandshakePenalty(ageSeconds: number | null): number {
+    if (ageSeconds === null) return 18;
+    if (ageSeconds <= 180) return 0;
+
+    return Math.min(35, (ageSeconds - 180) / 12);
+  }
+
+  private mapWireGuardTelemetryStatus(status: string): string {
+    if (status === 'up') return 'healthy';
+    if (status === 'degraded') return 'degraded';
+    if (status === 'down') return 'critical';
+
+    return 'unknown';
+  }
+
+  private isWireGuardInterfaceMetric(value: unknown): value is WireGuardInterfaceMetric {
+    if (!this.isRecord(value)) return false;
+
+    return (
+      typeof value.name === 'string' &&
+      typeof value.peerCount === 'number' &&
+      typeof value.activePeerCount === 'number' &&
+      typeof value.status === 'string'
+    );
+  }
+
+  private extractEndpoint(config: Record<string, unknown>): string | null {
+    for (const key of ['endpoint', 'healthEndpoint', 'targetEndpoint']) {
+      const value = config[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+
+    const host = ['healthHost', 'host', 'targetHost']
+      .map((key) => config[key])
+      .find((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+    const port = ['healthPort', 'port', 'targetPort']
+      .map((key) => config[key])
+      .find((value): value is string | number => typeof value === 'number' || typeof value === 'string');
+
+    return host ? `${host}${port ? `:${port}` : ''}` : null;
+  }
+
+  private extractLoadPercent(config: Record<string, unknown>, weight: number): number | null {
+    for (const key of ['loadPercent', 'load', 'saturationPercent']) {
+      const value = this.numberFromConfig(config[key]);
+      if (value !== null) return Math.round(this.clamp(value, 0, 100));
+    }
+
+    if (weight <= 0) return null;
+
+    return Math.round(this.clamp(100 - Math.min(weight, 100), 0, 100));
+  }
+
+  private numberFromConfig(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+  }
+
+  private normalizeRouteGroup(input: string | undefined): string {
+    const routeGroup = input?.trim() || 'main';
+
+    if (!/^[a-z][a-z0-9_-]{0,79}$/i.test(routeGroup)) {
+      throw new BadRequestException('routeGroup must be simple text');
+    }
+
+    return routeGroup;
+  }
+
+  private normalizeAssignmentKey(input: string | undefined): string {
+    const assignmentKey = input?.trim() || 'default';
+
+    if (!/^[a-z][a-z0-9_.:-]{0,119}$/i.test(assignmentKey)) {
+      throw new BadRequestException('assignmentKey must be simple text');
+    }
+
+    return assignmentKey;
+  }
+
+  private defaultSpeedProfileForProtocol(protocolProfile: string): string {
+    if (
+      protocolProfile === 'balanced' ||
+      protocolProfile === 'highSpeed' ||
+      protocolProfile === 'highSecurity' ||
+      protocolProfile === 'gaming'
+    ) {
+      return protocolProfile;
+    }
+
+    return 'balanced';
+  }
+
+  private configFlag(name: string, fallback: boolean): boolean {
+    const value = process.env[name];
+    if (value === undefined || value === null || value.trim() === '') return fallback;
+
+    return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+  }
+
+  private safeWireGuardInterfaceName(value: string | null | undefined, id: string): string {
+    const normalized = value?.trim();
+    if (normalized && /^[a-zA-Z0-9_.:-]{1,32}$/.test(normalized)) return normalized;
+
+    return `wg-afro-${id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'route'}`;
+  }
+
+  private safeRouteTableName(routeGroup: string): string {
+    return `afrogate_${this.safePathSegment(routeGroup)}`;
+  }
+
+  private safePathSegment(value: string): string {
+    const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+    return normalized || 'main';
+  }
+
+  private routeMarkHex(routeGroup: string): string {
+    let hash = 0;
+    for (const char of routeGroup) hash = (hash * 31 + char.charCodeAt(0)) & 0xffff;
+
+    return `0x${(0xa000 | hash).toString(16)}`;
+  }
+
+  private shellToken(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+  }
+
+  private assertSuperadmin(actor: AuthActor | undefined): void {
+    if (actor?.role === 'superadmin' || actor?.isSuperAdmin) return;
+
+    throw new ForbiddenException('Only superadmin can create protocol setup drafts');
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
   private async ensureServerExists(executor: DatabaseQueryExecutor, id: string): Promise<void> {
     const result = await executor.query<{ id: string }>('SELECT id FROM servers WHERE id = $1', [id]);
     if (!result.rows[0]) throw new NotFoundException('Server not found');
@@ -705,6 +5193,179 @@ export class OperationsService {
   private async ensureOutboundExists(executor: DatabaseQueryExecutor, id: string): Promise<void> {
     const result = await executor.query<{ id: string }>('SELECT id FROM outbounds WHERE id = $1', [id]);
     if (!result.rows[0]) throw new NotFoundException('Outbound not found');
+  }
+
+  private async ensureRouteOutboundCandidate(
+    executor: DatabaseQueryExecutor,
+    id: string,
+    routeGroup: string,
+  ): Promise<void> {
+    const result = await executor.query<{ id: string; routeGroup: string; type: string }>(
+      'SELECT id, route_group AS "routeGroup", type FROM outbounds WHERE id = $1',
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Outbound not found');
+    if (row.routeGroup !== routeGroup) throw new BadRequestException('Outbound belongs to a different route group');
+    if (row.type !== 'wireguard') throw new BadRequestException('Route assignment requires a WireGuard outbound');
+  }
+
+  private async getProtocolSetupForUpdate(
+    executor: DatabaseQueryExecutor,
+    id: string,
+  ): Promise<ProtocolSetupRow> {
+    const result = await executor.query<ProtocolSetupRow>(
+      `
+        SELECT
+          id,
+          name,
+          protocol,
+          profile,
+          route_group AS "routeGroup",
+          port,
+          status,
+          config,
+          secret_ref AS "secretRef",
+          provisioned_outbound_id AS "provisionedOutboundId",
+          provisioned_at AS "provisionedAt",
+          created_by AS "createdBy",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM protocol_setups
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Protocol setup not found');
+
+    return row;
+  }
+
+  private async ensureSecretRefExists(
+    executor: DatabaseQueryExecutor,
+    secretRef: string,
+    routeGroup: string,
+    protocol: string,
+  ): Promise<void> {
+    const result = await executor.query<{ routeGroup: string | null; protocol: string | null }>(
+      `
+        SELECT route_group AS "routeGroup", protocol
+        FROM secret_records
+        WHERE secret_ref = $1
+          AND status = 'active'
+          AND revoked_at IS NULL
+      `,
+      [secretRef],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Secret reference not found');
+    if (row.routeGroup && row.routeGroup !== routeGroup) {
+      throw new BadRequestException('Secret reference belongs to a different route group');
+    }
+    if (row.protocol && row.protocol !== protocol) {
+      throw new BadRequestException('Secret reference belongs to a different protocol');
+    }
+  }
+
+  private secretEncryptionContext(
+    secretRef: string,
+    kind: string,
+    routeGroup: string,
+    protocol: string | null,
+  ): string {
+    return ['settings-secret', secretRef, kind, routeGroup, protocol ?? 'any'].join(':');
+  }
+
+  private buildProvisionedOutboundConfig(setup: ProtocolSetupRow): Record<string, unknown> {
+    const config = { ...this.asRecord(setup.config) };
+    const healthTarget = this.stringFromConfig(config.healthTarget);
+    const endpoint = this.stringFromConfig(config.endpoint);
+    const endpointTarget = this.parseHostPort(endpoint);
+
+    if (healthTarget && this.isHttpUrl(healthTarget) && !this.stringFromConfig(config.healthUrl)) {
+      config.healthUrl = healthTarget;
+    }
+
+    if (endpointTarget) {
+      if (!this.stringFromConfig(config.healthHost)) config.healthHost = endpointTarget.host;
+      if (this.numberFromConfig(config.healthPort) === null) config.healthPort = endpointTarget.port;
+    }
+
+    return {
+      ...config,
+      protocol: setup.protocol,
+      profile: setup.profile,
+      port: setup.port,
+      provisioningMode: 'control-plane-draft',
+      serverApplyState: 'pending',
+      provisionedFromProtocolSetupId: setup.id,
+      provisionedRouteGroup: setup.routeGroup,
+      materialRefAttached: Boolean(setup.secretRef),
+    };
+  }
+
+  private protocolToOutboundType(protocol: string): string {
+    switch (protocol) {
+      case 'wireguard':
+        return 'wireguard';
+      case 'vless':
+        return 'vless-local-proxy';
+      case 'l2tp':
+        return 'l2tp';
+      case 'ikev2':
+        return 'ikev2';
+      default:
+        return 'custom';
+    }
+  }
+
+  private profileToOutboundWeight(profile: string): number {
+    switch (profile) {
+      case 'highSpeed':
+        return 120;
+      case 'highSecurity':
+        return 80;
+      case 'gaming':
+        return 90;
+      default:
+        return 100;
+    }
+  }
+
+  private stringFromConfig(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private isHttpUrl(value: string): boolean {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
+  private parseHostPort(value: string | null): { host: string; port: number } | null {
+    if (!value) return null;
+
+    const trimmed = value.trim();
+    if (trimmed.includes('://') || trimmed.startsWith('[')) return null;
+
+    const match = /^(?<host>[a-z0-9.-]+):(?<port>[0-9]{1,5})$/i.exec(trimmed);
+    if (!match?.groups) return null;
+
+    const port = Number(match.groups.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+
+    return {
+      host: match.groups.host,
+      port,
+    };
   }
 
   private async updateServerFields(
@@ -912,6 +5573,24 @@ export class OperationsService {
     return this.isRecord(value) ? value : {};
   }
 
+  private stringOrFallback(value: unknown, fallback: string): string {
+    return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
+  }
+
+  private stringOrNullable(value: unknown): string | null {
+    return typeof value === 'string' && value.trim().length > 0 ? value : null;
+  }
+
+  private stringArrayOrEmpty(value: unknown): string[] {
+    return Array.isArray(value) ? value.map(String) : [];
+  }
+
+  private numberOrFallback(value: unknown, fallback: number): number {
+    const numericValue = Number(value);
+
+    return Number.isFinite(numericValue) ? numericValue : fallback;
+  }
+
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
@@ -920,6 +5599,10 @@ export class OperationsService {
     if (this.isErrorWithCode(error) && error.code === '23505') {
       throw new ConflictException(message);
     }
+  }
+
+  private isUndefinedTableError(error: unknown): boolean {
+    return this.isErrorWithCode(error) && ['42P01', '42703', '42P10'].includes(error.code);
   }
 
   private isErrorWithCode(error: unknown): error is { code: string } {

@@ -10,6 +10,21 @@ class AgentConfig:
     outbound_proxy_url: str | None
     state_file: str | None
     interval_seconds: int
+    ping_targets: tuple[str, ...]
+    ping_count: int
+    ping_timeout_seconds: int
+    tcp_probe_targets: tuple[str, ...]
+    udp_probe_targets: tuple[str, ...]
+    quic_probe_targets: tuple[str, ...]
+    dns_probe_targets: tuple[str, ...]
+    route_probe_count: int
+    route_probe_timeout_seconds: int
+    route_probe_route_group: str | None
+    route_probe_outbound_id: str | None
+    route_probe_outbound_key: str | None
+    route_probe_outbound_name: str | None
+    route_probe_operator: str | None
+    route_probe_score_profile: str | None
 
 
 def load_config() -> AgentConfig:
@@ -19,5 +34,43 @@ def load_config() -> AgentConfig:
         token=os.getenv("AFROGATE_AGENT_TOKEN"),
         outbound_proxy_url=os.getenv("AFROGATE_OUTBOUND_PROXY_URL"),
         state_file=os.getenv("AFROGATE_AGENT_STATE_FILE"),
-        interval_seconds=int(os.getenv("AFROGATE_PUSH_INTERVAL_SECONDS", "10")),
+        interval_seconds=_bounded_int("AFROGATE_PUSH_INTERVAL_SECONDS", 10, 1, 3600),
+        ping_targets=_parse_targets(os.getenv("AFROGATE_PING_TARGETS", "")),
+        ping_count=_bounded_int("AFROGATE_PING_COUNT", 3, 1, 10),
+        ping_timeout_seconds=_bounded_int("AFROGATE_PING_TIMEOUT_SECONDS", 2, 1, 10),
+        tcp_probe_targets=_parse_targets(os.getenv("AFROGATE_TCP_PROBE_TARGETS", "")),
+        udp_probe_targets=_parse_targets(os.getenv("AFROGATE_UDP_PROBE_TARGETS", "")),
+        quic_probe_targets=_parse_targets(os.getenv("AFROGATE_QUIC_PROBE_TARGETS", "")),
+        dns_probe_targets=_parse_targets(os.getenv("AFROGATE_DNS_PROBE_TARGETS", "")),
+        route_probe_count=_bounded_int("AFROGATE_ROUTE_PROBE_COUNT", 2, 1, 5),
+        route_probe_timeout_seconds=_bounded_int("AFROGATE_ROUTE_PROBE_TIMEOUT_SECONDS", 2, 1, 10),
+        route_probe_route_group=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_ROUTE_GROUP")),
+        route_probe_outbound_id=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_OUTBOUND_ID")),
+        route_probe_outbound_key=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_OUTBOUND_KEY")),
+        route_probe_outbound_name=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_OUTBOUND_NAME")),
+        route_probe_operator=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_OPERATOR")),
+        route_probe_score_profile=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_SCORE_PROFILE")),
     )
+
+
+def _parse_targets(value: str) -> tuple[str, ...]:
+    targets = [target.strip() for target in value.replace(";", ",").split(",")]
+
+    return tuple(target for target in targets if target)
+
+
+def _optional_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    stripped = value.strip()
+    return stripped or None
+
+
+def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+    return max(minimum, min(maximum, value))
