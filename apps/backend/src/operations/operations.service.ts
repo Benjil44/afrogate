@@ -4,6 +4,7 @@ import type {
   AdminAlertSummary,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminProtocolServerApplyAdapterSummary,
   AdminProtocolServerApplyDryRunSnapshot,
   AdminProtocolServerApplyEventDetail,
   AdminProtocolServerApplyEventSummary,
@@ -199,6 +200,10 @@ interface ProtocolSetupRow {
   targetServerId: string | null;
   targetServerLabel: string | null;
   targetServerAccessReady: boolean;
+  targetServerAccessProfileId: string | null;
+  targetServerAccessMethod: string | null;
+  targetServerCredentialRef: string | null;
+  targetServerCredentialReady: boolean;
   provisionedOutboundId: string | null;
   provisionedOutboundEnabled: boolean | null;
   provisionedOutboundMaintenanceMode: boolean | null;
@@ -226,6 +231,10 @@ type ProtocolServerApplySource = Pick<
   targetServerId?: string | null;
   targetServerLabel?: string | null;
   targetServerAccessReady?: boolean;
+  targetServerAccessProfileId?: string | null;
+  targetServerAccessMethod?: string | null;
+  targetServerCredentialRef?: string | null;
+  targetServerCredentialReady?: boolean;
 };
 
 interface ProtocolApplyEventRow {
@@ -2477,6 +2486,15 @@ export class OperationsService {
         commands.every((command) => command.secretSafe) &&
         configChanges.every((change) => change.secretSafe),
       reasonCodes: this.stringArrayOrEmpty(snapshot.reasonCodes),
+      adapter: this.mapProtocolServerApplyAdapter(snapshot.adapter, {
+        dataPlaneReady: snapshot.dataPlaneReady === true,
+        enabled: snapshot.featureFlagEnabled === true,
+        hasServerAccess: snapshot.hasServerAccess === true,
+        implemented: snapshot.adapterImplemented === true,
+        protocol: this.stringOrFallback(snapshot.protocol, 'wireguard'),
+        targetServerId: this.stringOrNullable(snapshot.targetServerId),
+        targetServerLabel: this.stringOrNullable(snapshot.targetServerLabel),
+      }),
       preflight: this.mapProtocolServerApplyPreflight(snapshot.preflight, {
         canExecuteDataPlane: snapshot.canExecute === true,
         canRecordDryRun: Boolean(this.stringOrNullable(snapshot.outboundId)) && snapshot.secretSafe !== false,
@@ -2485,6 +2503,63 @@ export class OperationsService {
       steps,
       commands,
       configChanges,
+    };
+  }
+
+  private mapProtocolServerApplyAdapter(
+    value: unknown,
+    fallback: {
+      dataPlaneReady: boolean;
+      enabled: boolean;
+      hasServerAccess: boolean;
+      implemented: boolean;
+      protocol: string;
+      targetServerId: string | null;
+      targetServerLabel: string | null;
+    },
+  ): AdminProtocolServerApplyAdapterSummary {
+    const adapter = this.asRecord(value);
+    const runner = this.asRecord(adapter.commandRunner);
+    const boundary = this.asRecord(adapter.serverAccessBoundary);
+    const implemented = typeof adapter.implemented === 'boolean' ? adapter.implemented : fallback.implemented;
+    const dataPlaneReady = typeof adapter.dataPlaneReady === 'boolean' ? adapter.dataPlaneReady : fallback.dataPlaneReady;
+    const enabled = typeof adapter.enabled === 'boolean' ? adapter.enabled : fallback.enabled;
+    const runnerImplemented = typeof runner.implemented === 'boolean' ? runner.implemented : implemented;
+    const liveExecutionEnabled =
+      typeof runner.liveExecutionEnabled === 'boolean' ? runner.liveExecutionEnabled : false;
+
+    return {
+      id: this.stringOrFallback(adapter.id, 'protocol-server-apply'),
+      label: this.stringOrFallback(adapter.label, 'Protocol server apply adapter'),
+      status: this.stringOrFallback(adapter.status, dataPlaneReady ? 'ready' : enabled ? 'dryRunOnly' : 'disabled'),
+      protocol: this.stringOrNullable(adapter.protocol) ?? fallback.protocol,
+      enabled,
+      implemented,
+      dataPlaneReady,
+      supportedProtocols: this.stringArrayOrEmpty(adapter.supportedProtocols).length > 0
+        ? this.stringArrayOrEmpty(adapter.supportedProtocols)
+        : ['wireguard', 'vless', 'l2tp', 'ikev2'],
+      reasonCodes: this.stringArrayOrEmpty(adapter.reasonCodes),
+      dryRunSupported: adapter.dryRunSupported !== false,
+      commandRunner: {
+        id: this.stringOrFallback(runner.id, 'protocol-server-command-runner'),
+        label: this.stringOrFallback(runner.label, 'Protocol server command runner'),
+        mode: this.stringOrFallback(runner.mode, dataPlaneReady ? 'live' : 'dryRunOnly'),
+        liveExecutionEnabled,
+        dryRunOnly: runner.dryRunOnly !== false,
+        implemented: runnerImplemented,
+        reasonCodes: this.stringArrayOrEmpty(runner.reasonCodes),
+      },
+      serverAccessBoundary: {
+        targetServerId: this.stringOrNullable(boundary.targetServerId) ?? fallback.targetServerId,
+        targetServerLabel: this.stringOrNullable(boundary.targetServerLabel) ?? fallback.targetServerLabel,
+        accessProfileReady:
+          typeof boundary.accessProfileReady === 'boolean' ? boundary.accessProfileReady : fallback.hasServerAccess,
+        credentialRefPresent: boundary.credentialRefPresent === true,
+        credentialRecordActive: boundary.credentialRecordActive === true,
+        credentialDecryptAllowed: boundary.credentialDecryptAllowed === true,
+        reasonCodes: this.stringArrayOrEmpty(boundary.reasonCodes),
+      },
     };
   }
 
@@ -3143,6 +3218,10 @@ export class OperationsService {
           AND NULLIF(btrim(sap.credential_ref), '') IS NOT NULL
           AND sap.bootstrap_state = 'installed'
         ) AS "targetServerAccessReady",
+        sap.id AS "targetServerAccessProfileId",
+        sap.access_method AS "targetServerAccessMethod",
+        NULLIF(btrim(sap.credential_ref), '') AS "targetServerCredentialRef",
+        (sc.id IS NOT NULL) AS "targetServerCredentialReady",
         ps.provisioned_outbound_id AS "provisionedOutboundId",
         po.enabled AS "provisionedOutboundEnabled",
         po.maintenance_mode AS "provisionedOutboundMaintenanceMode",
@@ -3156,6 +3235,9 @@ export class OperationsService {
       FROM protocol_setups ps
       LEFT JOIN servers ts ON ts.id = ps.target_server_id
       LEFT JOIN server_access_profiles sap ON sap.server_id = ts.id
+      LEFT JOIN server_credentials sc ON sc.id::text = NULLIF(btrim(sap.credential_ref), '')
+        AND sc.status = 'active'
+        AND sc.revoked_at IS NULL
       LEFT JOIN outbounds po ON po.id = ps.provisioned_outbound_id
       WHERE ${whereClause}
       ${suffix}
@@ -6315,7 +6397,6 @@ export class OperationsService {
   private buildProtocolServerApplyPlan(setup: ProtocolServerApplySource): AdminProtocolServerApplyPlanSummary {
     const config = this.asRecord(setup.config);
     const featureFlagEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED', false);
-    const adapterImplemented = false;
     const outboundId = setup.provisionedOutboundId ?? null;
     const hasOutbound = Boolean(outboundId);
     const requiresSecret = this.protocolRequiresServerSecret(setup.protocol);
@@ -6324,18 +6405,31 @@ export class OperationsService {
     const targetServerId = setup.targetServerId ?? null;
     const hasTargetServer = Boolean(targetServerId);
     const hasServerAccess = hasTargetServer && Boolean(setup.targetServerAccessReady);
+    const hasServerCredential = hasTargetServer && Boolean(setup.targetServerCredentialReady);
     const targetServerLabel =
       setup.targetServerLabel ??
       this.stringFromConfig(config.serverName) ??
       this.stringFromConfig(config.activeWireGuardServerExternalId) ??
       null;
+    const adapter = this.buildProtocolServerApplyAdapter({
+      featureFlagEnabled,
+      hasServerAccess,
+      hasServerCredential,
+      hasTargetServer,
+      requiresServerAccess,
+      setup,
+      targetServerId,
+      targetServerLabel,
+    });
+    const adapterImplemented = adapter.implemented;
     const unitName = this.safeProtocolUnitName(setup);
     const commands = this.buildProtocolServerApplyCommands(setup, unitName);
     const configChanges = this.buildProtocolServerApplyConfigChanges(setup, unitName);
     const missingSecret = requiresSecret && !hasSecretRef;
-    const missingTargetAccess = hasOutbound && requiresServerAccess && (!hasTargetServer || !hasServerAccess);
+    const missingTargetAccess = hasOutbound && requiresServerAccess && (!hasTargetServer || !hasServerAccess || !hasServerCredential);
     const secretSafe = commands.every((command) => command.secretSafe) && configChanges.every((change) => change.secretSafe);
     const preflightDraft = this.buildProtocolServerApplyPreflight({
+      adapter,
       adapterImplemented,
       commands,
       configChanges,
@@ -6343,6 +6437,7 @@ export class OperationsService {
       hasOutbound,
       hasSecretRef,
       hasServerAccess,
+      hasServerCredential,
       hasTargetServer,
       outboundEnabled: setup.provisionedOutboundEnabled ?? null,
       outboundHealthStatus: setup.provisionedOutboundHealthStatus ?? null,
@@ -6354,10 +6449,10 @@ export class OperationsService {
     });
     const dataPlaneReady =
       featureFlagEnabled &&
-      adapterImplemented &&
+      adapter.dataPlaneReady &&
       hasOutbound &&
       !missingSecret &&
-      (!requiresServerAccess || hasServerAccess) &&
+      (!requiresServerAccess || (hasServerAccess && hasServerCredential)) &&
       preflightDraft.canExecuteDataPlane;
     const canExecute = dataPlaneReady;
     const hardBlocked = preflightDraft.gates.some((gate) => gate.status === 'blocked' && gate.blocksDataPlane);
@@ -6373,6 +6468,7 @@ export class OperationsService {
     else reasonCodes.add('featureFlagDisabled');
     if (adapterImplemented) reasonCodes.add('adapterReady');
     else reasonCodes.add('adapterMissing');
+    for (const reason of adapter.reasonCodes) reasonCodes.add(reason);
     if (hasOutbound) {
       reasonCodes.add('outboundReady');
       reasonCodes.add('maintenanceMode');
@@ -6388,6 +6484,13 @@ export class OperationsService {
         reasonCodes.add('serverAccessReady');
       } else {
         reasonCodes.add('serverAccessMissing');
+      }
+      if (!hasTargetServer || !setup.targetServerCredentialRef) {
+        reasonCodes.add('serverCredentialRefMissing');
+      } else if (hasServerCredential) {
+        reasonCodes.add('serverCredentialReady');
+      } else {
+        reasonCodes.add('serverCredentialInactive');
       }
     }
     if (dataPlaneReady) reasonCodes.add('dataPlaneReady');
@@ -6427,6 +6530,7 @@ export class OperationsService {
       configChangeCount: configChanges.length,
       secretSafe,
       reasonCodes: Array.from(reasonCodes),
+      adapter,
       preflight,
       steps: this.buildProtocolServerApplySteps({
         setup,
@@ -6443,6 +6547,107 @@ export class OperationsService {
       }),
       commands,
       configChanges,
+    };
+  }
+
+  private buildProtocolServerApplyAdapter(input: {
+    featureFlagEnabled: boolean;
+    hasServerAccess: boolean;
+    hasServerCredential: boolean;
+    hasTargetServer: boolean;
+    requiresServerAccess: boolean;
+    setup: ProtocolServerApplySource;
+    targetServerId: string | null;
+    targetServerLabel: string | null;
+  }): AdminProtocolServerApplyAdapterSummary {
+    const supportedProtocols = ['wireguard', 'vless', 'l2tp', 'ikev2'];
+    const protocolSupported = supportedProtocols.includes(input.setup.protocol);
+    const liveExecutionEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED', false);
+    const implemented = false;
+    const credentialRefPresent = Boolean(input.setup.targetServerCredentialRef);
+    const credentialRecordActive = Boolean(input.setup.targetServerCredentialReady);
+    const accessReasonCodes = new Set<ProtocolServerApplyReason | string>();
+
+    if (!input.requiresServerAccess) {
+      accessReasonCodes.add('serverAccessReady');
+    } else if (!input.hasTargetServer) {
+      accessReasonCodes.add('serverMissing');
+      accessReasonCodes.add('serverAccessMissing');
+    } else if (input.hasServerAccess) {
+      accessReasonCodes.add('serverAccessReady');
+    } else {
+      accessReasonCodes.add('serverAccessMissing');
+    }
+
+    if (!credentialRefPresent) {
+      accessReasonCodes.add('serverCredentialRefMissing');
+    } else if (credentialRecordActive) {
+      accessReasonCodes.add('serverCredentialReady');
+    } else {
+      accessReasonCodes.add('serverCredentialInactive');
+    }
+    accessReasonCodes.add('serverCredentialDecryptDisabled');
+
+    const commandRunnerReasonCodes = new Set<ProtocolServerApplyReason | string>([
+      'commandRunnerDryRunOnly',
+      'liveExecutorMissing',
+    ]);
+    if (!liveExecutionEnabled) commandRunnerReasonCodes.add('liveExecutorDisabled');
+
+    const accessReady = !input.requiresServerAccess || (input.hasServerAccess && input.hasServerCredential);
+    const dataPlaneReady = Boolean(
+      input.featureFlagEnabled &&
+        liveExecutionEnabled &&
+        implemented &&
+        protocolSupported &&
+        accessReady,
+    );
+    const reasonCodes = new Set<ProtocolServerApplyReason | string>([
+      protocolSupported ? 'protocolSupported' : 'adapterMissing',
+      implemented ? 'adapterReady' : 'adapterMissing',
+      'adapterDryRunOnly',
+      ...accessReasonCodes,
+      ...commandRunnerReasonCodes,
+    ]);
+    if (input.featureFlagEnabled) reasonCodes.add('featureFlagReady');
+    else reasonCodes.add('featureFlagDisabled');
+    const status: AdminProtocolServerApplyAdapterSummary['status'] = dataPlaneReady
+      ? 'ready'
+      : !protocolSupported
+        ? 'unsupported'
+        : !input.featureFlagEnabled
+          ? 'disabled'
+          : 'dryRunOnly';
+
+    return {
+      id: 'protocol-server-apply',
+      label: 'Protocol server apply adapter',
+      status,
+      protocol: input.setup.protocol,
+      enabled: input.featureFlagEnabled,
+      implemented,
+      dataPlaneReady,
+      supportedProtocols,
+      reasonCodes: [...reasonCodes],
+      dryRunSupported: protocolSupported,
+      commandRunner: {
+        id: 'protocol-server-command-runner',
+        label: 'Protocol server command runner',
+        mode: dataPlaneReady ? 'live' : 'dryRunOnly',
+        liveExecutionEnabled,
+        dryRunOnly: !dataPlaneReady,
+        implemented,
+        reasonCodes: [...commandRunnerReasonCodes],
+      },
+      serverAccessBoundary: {
+        targetServerId: input.targetServerId,
+        targetServerLabel: input.targetServerLabel,
+        accessProfileReady: input.hasServerAccess,
+        credentialRefPresent,
+        credentialRecordActive,
+        credentialDecryptAllowed: false,
+        reasonCodes: [...accessReasonCodes],
+      },
     };
   }
 
@@ -6484,6 +6689,19 @@ export class OperationsService {
         commands.every((command) => command.secretSafe) &&
         configChanges.every((change) => change.secretSafe),
       reasonCodes: [...plan.reasonCodes],
+      adapter: {
+        ...plan.adapter,
+        reasonCodes: [...plan.adapter.reasonCodes],
+        supportedProtocols: [...plan.adapter.supportedProtocols],
+        commandRunner: {
+          ...plan.adapter.commandRunner,
+          reasonCodes: [...plan.adapter.commandRunner.reasonCodes],
+        },
+        serverAccessBoundary: {
+          ...plan.adapter.serverAccessBoundary,
+          reasonCodes: [...plan.adapter.serverAccessBoundary.reasonCodes],
+        },
+      },
       preflight: {
         ...plan.preflight,
         gates: plan.preflight.gates.map((gate) => ({ ...gate, reasonCodes: [...gate.reasonCodes] })),
@@ -6555,6 +6773,7 @@ export class OperationsService {
   }
 
   private buildProtocolServerApplyPreflight(input: {
+    adapter: AdminProtocolServerApplyAdapterSummary;
     adapterImplemented: boolean;
     commands: AdminProtocolServerApplyPlanSummary['commands'];
     configChanges: AdminProtocolServerApplyPlanSummary['configChanges'];
@@ -6562,6 +6781,7 @@ export class OperationsService {
     hasOutbound: boolean;
     hasSecretRef: boolean;
     hasServerAccess: boolean;
+    hasServerCredential: boolean;
     hasTargetServer: boolean;
     outboundEnabled: boolean | null;
     outboundHealthStatus: string | null;
@@ -6615,6 +6835,17 @@ export class OperationsService {
       input.commands.some((command) => command.kind === 'rollback') &&
       input.configChanges.some((change) => change.kind === 'rollback');
     const hasHealthVerificationCommand = input.commands.some((command) => command.kind === 'health');
+    const serverCredentialStatus =
+      !input.requiresServerAccess
+        ? 'notRequired'
+        : !input.hasTargetServer || !input.adapter.serverAccessBoundary.credentialRefPresent
+          ? 'blocked'
+          : input.hasServerCredential
+            ? 'passed'
+            : 'blocked';
+    const commandRunnerStatus = input.adapter.commandRunner.mode === 'live' && input.adapter.commandRunner.implemented
+      ? 'passed'
+      : 'future';
     const gates: Gate[] = [
       gate(
         'featureFlag',
@@ -6671,6 +6902,25 @@ export class OperationsService {
         ].filter((reason): reason is ProtocolServerApplyReason => Boolean(reason)),
       ),
       gate(
+        'serverCredential',
+        serverCredentialStatus,
+        input.requiresServerAccess
+          ? [
+              !input.hasTargetServer || !input.adapter.serverAccessBoundary.credentialRefPresent ? 'serverCredentialRefMissing' : null,
+              input.adapter.serverAccessBoundary.credentialRefPresent
+                ? input.hasServerCredential
+                  ? 'serverCredentialReady'
+                  : 'serverCredentialInactive'
+                : null,
+            ].filter((reason): reason is ProtocolServerApplyReason => Boolean(reason))
+          : [],
+      ),
+      gate(
+        'commandRunner',
+        commandRunnerStatus,
+        input.adapter.commandRunner.reasonCodes,
+      ),
+      gate(
         'rollback',
         input.adapterImplemented ? (hasRollbackArtifacts ? 'passed' : 'blocked') : 'future',
         [hasRollbackArtifacts ? 'rollbackReady' : 'rollbackRequired'],
@@ -6679,7 +6929,7 @@ export class OperationsService {
       gate(
         'healthVerification',
         input.adapterImplemented
-          ? hasHealthVerificationCommand && (!input.requiresServerAccess || input.hasServerAccess)
+          ? hasHealthVerificationCommand && (!input.requiresServerAccess || (input.hasServerAccess && input.hasServerCredential))
             ? 'passed'
             : 'blocked'
           : 'future',

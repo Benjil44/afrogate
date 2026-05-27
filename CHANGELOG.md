@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.55.0 - 2026-05-27
+
+- Added protocol server apply adapter metadata to plans and stored snapshots, including supported protocols, dry-run support, command-runner mode, and data-plane readiness.
+- Added a server-access credential boundary that verifies installed access profiles and active `server_credentials` records without decrypting credentials or executing commands.
+- Surfaced the protocol apply adapter, dry-run-only runner, and credential boundary in Settings with English and Persian labels while keeping live server mutation blocked.
+
 ## 0.54.0 - 2026-05-27
 
 - Added a superadmin-only live protocol apply request endpoint that records blocked audit events without executing SSH, shell commands, service reloads, OS route changes, secret decrypts, or outbound enablement.

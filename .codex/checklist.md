@@ -89,6 +89,7 @@
 - [x] Admin-visible protocol server apply event list/detail inspection with stored dry-run snapshots.
 - [x] Protocol server apply preflight/readiness gates for feature flag, adapter, dry-run safety, server access, outbound health, rollback, audit, and health verification.
 - [x] Superadmin-only live protocol apply request boundary that records blocked audit events without executing server mutation.
+- [x] Protocol server apply adapter scaffold with dry-run-only command runner and active server-credential readiness boundary.
 - [ ] Production server-side protocol apply engine for WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols.
 - [x] Agent registration endpoint.
 - [x] Metrics ingest endpoint.

@@ -425,6 +425,8 @@ export type ProtocolServerApplyPreflightGateKind =
   | 'defaultInactive'
   | 'secret'
   | 'serverAccess'
+  | 'serverCredential'
+  | 'commandRunner'
   | 'rollback'
   | 'audit'
   | 'healthVerification';
@@ -445,6 +447,10 @@ export type ProtocolServerApplyReason =
   | 'serverMissing'
   | 'serverAccessMissing'
   | 'serverAccessReady'
+  | 'serverCredentialRefMissing'
+  | 'serverCredentialReady'
+  | 'serverCredentialInactive'
+  | 'serverCredentialDecryptDisabled'
   | 'secretMissing'
   | 'secretReady'
   | 'adapterDryRunOnly'
@@ -468,9 +474,58 @@ export type ProtocolServerApplyReason =
   | 'liveApplyRequested'
   | 'liveApplyBlocked'
   | 'liveExecutorMissing'
+  | 'liveExecutorDisabled'
+  | 'commandRunnerDryRunOnly'
   | 'rollbackRequired'
   | 'rollbackReady'
   | 'dataPlaneReady';
+
+export type ProtocolServerApplyAdapterStatus =
+  | 'ready'
+  | 'disabled'
+  | 'missing'
+  | 'unsupported'
+  | 'dryRunOnly';
+
+export type ProtocolServerApplyCommandRunnerMode =
+  | 'disabled'
+  | 'dryRunOnly'
+  | 'live';
+
+export interface AdminProtocolServerApplyCommandRunnerSummary {
+  id: string;
+  label: string;
+  mode: ProtocolServerApplyCommandRunnerMode | string;
+  liveExecutionEnabled: boolean;
+  dryRunOnly: boolean;
+  implemented: boolean;
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+}
+
+export interface AdminProtocolServerApplyAccessBoundarySummary {
+  targetServerId?: string | null;
+  targetServerLabel?: string | null;
+  accessProfileReady: boolean;
+  credentialRefPresent: boolean;
+  credentialRecordActive: boolean;
+  credentialDecryptAllowed: boolean;
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+}
+
+export interface AdminProtocolServerApplyAdapterSummary {
+  id: string;
+  label: string;
+  status: ProtocolServerApplyAdapterStatus | string;
+  protocol?: ProtocolKind | string | null;
+  enabled: boolean;
+  implemented: boolean;
+  dataPlaneReady: boolean;
+  supportedProtocols: string[];
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+  dryRunSupported: boolean;
+  commandRunner: AdminProtocolServerApplyCommandRunnerSummary;
+  serverAccessBoundary: AdminProtocolServerApplyAccessBoundarySummary;
+}
 
 export interface AdminProtocolServerApplyPreflightGate {
   id: string;
@@ -544,6 +599,7 @@ export interface AdminProtocolServerApplyPlanSummary {
   configChangeCount: number;
   secretSafe: boolean;
   reasonCodes: Array<ProtocolServerApplyReason | string>;
+  adapter: AdminProtocolServerApplyAdapterSummary;
   preflight: AdminProtocolServerApplyPreflightSummary;
   steps: AdminProtocolServerApplyStep[];
   commands: AdminProtocolServerApplyCommand[];
@@ -577,6 +633,7 @@ export interface AdminProtocolServerApplyDryRunSnapshot {
   configChangeCount: number;
   secretSafe: boolean;
   reasonCodes: Array<ProtocolServerApplyReason | string>;
+  adapter: AdminProtocolServerApplyAdapterSummary;
   preflight: AdminProtocolServerApplyPreflightSummary;
   steps: AdminProtocolServerApplyStep[];
   commands: AdminProtocolServerApplyCommand[];

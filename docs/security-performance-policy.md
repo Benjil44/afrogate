@@ -138,6 +138,7 @@ Required protections:
 - Secret rotation plan.
 - `AFROGATE_SECRETS_KEY` must be configured from a deployment secret source before storing Settings/server private keys; encrypted secret rows must expose only references to dashboard clients.
 - Protocol provisioning must stay secret-safe and default-inactive: control-plane draft provisioning may create disabled maintenance outbounds, while real server apply actions require audit logs and post-apply health validation.
+- Protocol server apply adapters must expose a dry-run-only command-runner and server-credential readiness boundary before live execution is enabled. The readiness path may confirm an active credential reference exists, but decrypted server credentials must remain unavailable until the audited production apply engine needs them for an explicit superadmin action.
 - Server root passwords must not be kept as normal long-term credentials; use temporary bootstrap credentials, then agent plus SSH keys for a dedicated management user.
 - Saved server secrets must never be displayed back to admins; support replace, test, rotate, revoke, and audit instead.
 - Database least-privilege accounts.

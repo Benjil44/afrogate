@@ -86,6 +86,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Inspect stored protocol server apply dry-run events and snapshots from Settings.
 - [x] Show protocol server apply preflight gates for feature flag, adapter, dry-run safety, server access, outbound health, rollback, audit, and health verification.
 - [x] Request live protocol apply from Settings as a superadmin-only blocked audit event without server mutation.
+- [x] Show protocol server apply adapter, dry-run command-runner, and server-credential readiness boundaries.
 - [ ] Production server-side protocol apply engine with encrypted secret storage.
 
 ## Users Page

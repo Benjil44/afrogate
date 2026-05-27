@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type {
   AdminAlertSummary,
+  AdminProtocolServerApplyAdapterSummary,
   AdminProtocolServerApplyEventDetail,
   AdminProtocolServerApplyEventSummary,
   AdminProtocolSetupSummary,
@@ -7044,6 +7045,7 @@ function ProtocolApplyEventDetailCard({
           </div>
 
           <ProtocolServerApplyPreflightCard format={format} preflight={snapshot.preflight} t={t} />
+          <ProtocolServerApplyAdapterCard adapter={snapshot.adapter} t={t} />
 
           {snapshot.commands.length > 0 ? (
             <div className="grid gap-1">
@@ -7141,6 +7143,65 @@ function ProtocolServerApplyPreflightCard({
   );
 }
 
+function ProtocolServerApplyAdapterCard({
+  adapter,
+  compact = false,
+  t,
+}: {
+  adapter: AdminProtocolServerApplyAdapterSummary;
+  compact?: boolean;
+  t: DashboardStrings;
+}) {
+  const boundary = adapter.serverAccessBoundary;
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white px-2 py-1.5">
+      <div className="flex min-h-7 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block truncate text-[12px] text-afro-muted">{t.settings.protocolApplyAdapter}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {adapter.protocol ?? '-'} / {adapter.id}
+          </span>
+        </div>
+        <span className="flex flex-wrap items-center justify-end gap-1.5">
+          <StatusBadge tone={protocolApplyAdapterStatusTone(adapter.status)}>
+            {protocolApplyAdapterStatusLabel(adapter.status, t)}
+          </StatusBadge>
+          <StatusBadge tone={adapter.commandRunner.mode === 'live' ? 'warning' : 'neutral'}>
+            {protocolApplyRunnerModeLabel(adapter.commandRunner.mode, t)}
+          </StatusBadge>
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <StatusBadge tone={adapter.enabled ? 'good' : 'neutral'}>
+          {adapter.enabled ? t.settings.routeApplyAdapterEnabled : t.settings.routeApplyAdapterDisabled}
+        </StatusBadge>
+        <StatusBadge tone={adapter.implemented ? 'good' : 'neutral'}>
+          {adapter.implemented ? t.settings.protocolApplyAdapterImplemented : t.settings.protocolApplyAdapterNotImplemented}
+        </StatusBadge>
+        <StatusBadge tone={boundary.accessProfileReady ? 'good' : 'warning'}>
+          {boundary.accessProfileReady ? t.settings.accessReady : t.settings.accessPending}
+        </StatusBadge>
+        <StatusBadge tone={boundary.credentialRecordActive ? 'good' : 'warning'}>
+          {boundary.credentialRecordActive ? t.settings.protocolApplyCredentialReady : t.settings.protocolApplyCredentialBlocked}
+        </StatusBadge>
+        <StatusBadge tone={boundary.credentialDecryptAllowed ? 'good' : 'neutral'}>
+          {boundary.credentialDecryptAllowed ? t.settings.protocolApplyCredentialDecryptReady : t.settings.protocolApplyCredentialDecryptBlocked}
+        </StatusBadge>
+      </div>
+      {!compact && adapter.reasonCodes.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {adapter.reasonCodes.slice(0, 7).map((reason) => (
+            <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${adapter.id}-${reason}`}>
+              {reason}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProtocolServerApplyPlanCard({
   format,
   plan,
@@ -7173,6 +7234,7 @@ function ProtocolServerApplyPlanCard({
         </div>
       </div>
       <ProtocolServerApplyPreflightCard compact format={format} preflight={plan.preflight} t={t} />
+      <ProtocolServerApplyAdapterCard adapter={plan.adapter} compact t={t} />
       <div className="flex flex-wrap gap-1.5">
         {visibleSteps.map((step) => (
           <StatusBadge key={step.id} tone={protocolServerApplyStepTone(step.status)}>
@@ -7231,6 +7293,21 @@ function protocolApplyGateTone(status: string): Tone {
   }
 }
 
+function protocolApplyAdapterStatusTone(status: string): Tone {
+  switch (status) {
+    case 'ready':
+      return 'good';
+    case 'unsupported':
+    case 'missing':
+      return 'critical';
+    case 'dryRunOnly':
+    case 'disabled':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
 function protocolServerApplyStatusLabel(status: string, t: DashboardStrings): string {
   switch (status) {
     case 'applyReady':
@@ -7258,6 +7335,36 @@ function protocolServerApplyModeLabel(mode: string, t: DashboardStrings): string
       return t.settings.protocolApplyModeDryRun;
     case 'live':
       return t.settings.protocolApplyModeLive;
+    default:
+      return mode;
+  }
+}
+
+function protocolApplyAdapterStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'ready':
+      return t.settings.routeApplyAdapterReady;
+    case 'disabled':
+      return t.settings.routeApplyAdapterDisabled;
+    case 'missing':
+      return t.settings.routeApplyAdapterMissing;
+    case 'unsupported':
+      return t.settings.routeApplyAdapterUnsupported;
+    case 'dryRunOnly':
+      return t.settings.protocolApplyAdapterDryRunOnly;
+    default:
+      return status;
+  }
+}
+
+function protocolApplyRunnerModeLabel(mode: string, t: DashboardStrings): string {
+  switch (mode) {
+    case 'live':
+      return t.settings.protocolApplyRunnerLive;
+    case 'dryRunOnly':
+      return t.settings.protocolApplyRunnerDryRunOnly;
+    case 'disabled':
+      return t.settings.protocolApplyRunnerDisabled;
     default:
       return mode;
   }
@@ -7298,6 +7405,10 @@ function protocolApplyGateKindLabel(kind: string, t: DashboardStrings): string {
       return t.settings.protocolApplyGateSecret;
     case 'serverAccess':
       return t.settings.protocolApplyGateServerAccess;
+    case 'serverCredential':
+      return t.settings.protocolApplyGateServerCredential;
+    case 'commandRunner':
+      return t.settings.protocolApplyGateCommandRunner;
     case 'rollback':
       return t.settings.protocolApplyGateRollback;
     case 'audit':

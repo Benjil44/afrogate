@@ -786,3 +786,15 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added protocol server apply adapter metadata to plans and stored snapshots, including supported protocols, adapter status, dry-run support, command-runner mode, and data-plane readiness.
+- Added a server-access credential boundary for protocol server apply that checks installed access profiles and active `server_credentials` records without decrypting credentials or executing commands.
+- Extended preflight with server-credential and command-runner gates so live mutation remains blocked while the command runner is dry-run-only and credential decrypt is disabled.
+- Surfaced the protocol apply adapter, dry-run-only runner, access profile, credential record, and credential-decrypt boundary in Settings with typed English/Persian labels.
+- Updated protocol apply docs, memory, checklist, dashboard checklist, and security/performance policy for the adapter scaffold.
+- Bumped AfroGate to `0.55.0` for protocol apply adapter scaffolding.
+- Verified `0.55.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

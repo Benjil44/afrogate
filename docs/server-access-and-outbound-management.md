@@ -254,6 +254,8 @@ Protocol server apply plans and stored dry-run snapshots now include a dedicated
 
 The first live-apply boundary is intentionally non-mutating. Superadmins can submit a live protocol apply request through `/api/admin/settings/protocol-setups/:id/server-apply/live-request`, and AfroGate records a `protocol_apply_events` row plus audit metadata with `applyMode = live`, blocked reason codes, preflight state, and `dataPlaneMutationExecuted = false`. This proves the API, UI, and audit path before any SSH command runner, secret decrypt for server installation, service reload, OS route change, or outbound enablement is allowed.
 
+Protocol server apply plans now expose an adapter scaffold. The adapter reports supported protocols, disabled feature-flag state, missing live implementation state, a dry-run-only command-runner boundary, and a server-access boundary that checks for an installed access profile plus an active `server_credentials` record without decrypting the credential. The command runner remains dry-run-only and `credentialDecryptAllowed = false` until the production server-side apply engine is implemented and audited.
+
 ## Security References
 
 - OWASP recommends centralizing, standardizing, access-controlling, auditing, and rotating secrets: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
