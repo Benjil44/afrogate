@@ -5,6 +5,7 @@ import type {
   AdminProtocolServerApplyEventSummary,
   AdminProtocolSetupSummary,
   AdminProtocolServerApplyPlanSummary,
+  AdminProtocolServerApplyPreflightSummary,
   AdminOutboundSummary,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionApplyAdapterSummary,
@@ -6992,6 +6993,8 @@ function ProtocolApplyEventDetailCard({
             ))}
           </div>
 
+          <ProtocolServerApplyPreflightCard format={format} preflight={snapshot.preflight} t={t} />
+
           {snapshot.commands.length > 0 ? (
             <div className="grid gap-1">
               <strong className="text-[12px] text-afro-muted">{t.settings.protocolApplyCommandsPreview}</strong>
@@ -7032,6 +7035,62 @@ function ProtocolApplyEventDetailCard({
   );
 }
 
+function ProtocolServerApplyPreflightCard({
+  compact = false,
+  format,
+  preflight,
+  t,
+}: {
+  compact?: boolean;
+  format: DashboardFormatters;
+  preflight: AdminProtocolServerApplyPreflightSummary;
+  t: DashboardStrings;
+}) {
+  const visibleGates = preflight.gates.slice(0, compact ? 5 : 9);
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex min-h-7 flex-wrap items-center justify-between gap-2">
+        <strong className="text-[12px] text-afro-muted">{t.settings.protocolApplyPreflight}</strong>
+        <span className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge tone={preflight.canRecordDryRun ? 'good' : 'warning'}>
+            {preflight.canRecordDryRun ? t.settings.protocolApplyDryRunAllowed : t.settings.protocolApplyDryRunBlocked}
+          </StatusBadge>
+          <StatusBadge tone={preflight.canExecuteDataPlane ? 'good' : 'neutral'}>
+            {preflight.canExecuteDataPlane ? t.settings.protocolApplyLiveReady : t.settings.protocolApplyLiveBlocked}
+          </StatusBadge>
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <span className="rounded border border-afro-line bg-white px-1.5 py-0.5 text-[11px] font-bold text-afro-muted">
+          {t.settings.protocolApplyGateSummary(
+            format.integer(preflight.passedGateCount),
+            format.integer(preflight.blockedGateCount),
+            format.integer(preflight.futureGateCount),
+          )}
+        </span>
+        {visibleGates.map((gate) => (
+          <span className="inline-flex min-h-6 items-center gap-1 rounded border border-afro-line bg-white px-1.5 text-[11px] font-bold" key={gate.id}>
+            <span className="text-afro-muted">{protocolApplyGateKindLabel(gate.kind, t)}</span>
+            <StatusBadge tone={protocolApplyGateTone(gate.status)}>
+              {protocolApplyGateStatusLabel(gate.status, t)}
+            </StatusBadge>
+          </span>
+        ))}
+      </div>
+      {!compact && preflight.liveApplyBlockedReasonCodes.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {preflight.liveApplyBlockedReasonCodes.slice(0, 6).map((reason) => (
+            <span className="rounded border border-afro-line bg-white px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={reason}>
+              {reason}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProtocolServerApplyPlanCard({
   format,
   plan,
@@ -7063,6 +7122,7 @@ function ProtocolServerApplyPlanCard({
           <strong className="truncate">{plan.targetServerLabel ?? (plan.targetServerId ? t.settings.configured : t.settings.pending)}</strong>
         </div>
       </div>
+      <ProtocolServerApplyPreflightCard compact format={format} preflight={plan.preflight} t={t} />
       <div className="flex flex-wrap gap-1.5">
         {visibleSteps.map((step) => (
           <StatusBadge key={step.id} tone={protocolServerApplyStepTone(step.status)}>
@@ -7105,6 +7165,22 @@ function protocolServerApplyStepTone(status: string): Tone {
   }
 }
 
+function protocolApplyGateTone(status: string): Tone {
+  switch (status) {
+    case 'passed':
+      return 'good';
+    case 'blocked':
+      return 'critical';
+    case 'warning':
+      return 'warning';
+    case 'future':
+    case 'notRequired':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
 function protocolServerApplyStatusLabel(status: string, t: DashboardStrings): string {
   switch (status) {
     case 'applyReady':
@@ -7124,6 +7200,52 @@ function protocolServerApplyEventStatusLabel(status: string, t: DashboardStrings
   if (status === 'recorded') return t.settings.protocolApplyRecorded;
 
   return protocolServerApplyStatusLabel(status, t);
+}
+
+function protocolApplyGateStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'passed':
+      return t.settings.protocolApplyGatePassed;
+    case 'blocked':
+      return t.settings.protocolApplyGateBlocked;
+    case 'future':
+      return t.settings.protocolApplyGateFuture;
+    case 'warning':
+      return t.settings.protocolApplyGateWarning;
+    case 'notRequired':
+      return t.settings.protocolApplyGateNotRequired;
+    default:
+      return status;
+  }
+}
+
+function protocolApplyGateKindLabel(kind: string, t: DashboardStrings): string {
+  switch (kind) {
+    case 'featureFlag':
+      return t.settings.protocolApplyGateFeatureFlag;
+    case 'adapter':
+      return t.settings.protocolApplyGateAdapter;
+    case 'dryRunSafety':
+      return t.settings.protocolApplyGateDryRunSafety;
+    case 'outbound':
+      return t.settings.protocolApplyGateOutbound;
+    case 'outboundHealth':
+      return t.settings.protocolApplyGateOutboundHealth;
+    case 'defaultInactive':
+      return t.settings.protocolApplyGateDefaultInactive;
+    case 'secret':
+      return t.settings.protocolApplyGateSecret;
+    case 'serverAccess':
+      return t.settings.protocolApplyGateServerAccess;
+    case 'rollback':
+      return t.settings.protocolApplyGateRollback;
+    case 'audit':
+      return t.settings.protocolApplyGateAudit;
+    case 'healthVerification':
+      return t.settings.protocolApplyGateHealthVerification;
+    default:
+      return kind;
+  }
 }
 
 function protocolServerApplyStepLabel(kind: string, t: DashboardStrings): string {

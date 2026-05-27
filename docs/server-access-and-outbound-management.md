@@ -250,6 +250,8 @@ Initial Settings protocol provisioning is control-plane-only. A saved protocol s
 
 Protocol server apply dry-runs are now auditable without server mutation. Recording a dry-run stores a secret-safe `protocol_apply_events` snapshot with target server, provisioned outbound, readiness flags, blocker reason codes, command/config counts, and preview artifacts. Read-role admins can list compact recent events through `/api/admin/settings/protocol-apply-events` and inspect stored snapshots on demand through `/api/admin/settings/protocol-apply-events/:id`, while the Settings page keeps the recent list lightweight and fetches detail only when requested. These flows do not open SSH, run shell commands, decrypt secrets, change OS routes, or enable the generated outbound.
 
+Protocol server apply plans and stored dry-run snapshots now include a dedicated preflight readiness summary. The preflight gates check the disabled-by-default feature flag, missing audited apply adapter, dry-run secret safety, provisioned outbound presence, outbound health, default disabled/maintenance posture, secret reference, server access, rollback artifacts, audit readiness, and post-apply health verification. Dry-run recording remains available when the snapshot is secret-safe and provisioned, but live server mutation remains blocked until every data-plane gate passes and the audited adapter exists.
+
 ## Security References
 
 - OWASP recommends centralizing, standardizing, access-controlling, auditing, and rotating secrets: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html

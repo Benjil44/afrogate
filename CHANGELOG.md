@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.53.0 - 2026-05-27
+
+- Added explicit protocol server apply preflight gates for feature flag, audited adapter, dry-run safety, provisioned outbound, outbound health, default disabled/maintenance posture, secret reference, server access, rollback, audit, and health verification.
+- Persisted the preflight summary in protocol apply dry-run snapshots and audit payloads so stored event detail can explain why live server mutation is blocked or ready.
+- Surfaced the preflight gate summary in Settings protocol apply plans and stored snapshot inspection with English and Persian labels while keeping live server mutation disabled until every data-plane gate passes.
+
 ## 0.52.0 - 2026-05-27
 
 - Added read-role admin APIs for listing compact protocol server apply dry-run events and fetching stored snapshot detail on demand.

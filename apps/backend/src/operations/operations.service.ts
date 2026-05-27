@@ -9,6 +9,7 @@ import type {
   AdminProtocolServerApplyEventSummary,
   AdminProtocolSetupSummary,
   AdminProtocolServerApplyPlanSummary,
+  AdminProtocolServerApplyPreflightSummary,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionApplyAdapterSummary,
   AdminRouteDecisionApplyDryRunCommand,
@@ -196,6 +197,11 @@ interface ProtocolSetupRow {
   targetServerLabel: string | null;
   targetServerAccessReady: boolean;
   provisionedOutboundId: string | null;
+  provisionedOutboundEnabled: boolean | null;
+  provisionedOutboundMaintenanceMode: boolean | null;
+  provisionedOutboundHealthStatus: string | null;
+  provisionedOutboundLastCheckedAt: Date | null;
+  provisionedOutboundLastHealthyAt: Date | null;
   provisionedAt: Date | null;
   createdBy: string | null;
   createdAt: Date;
@@ -208,6 +214,11 @@ type ProtocolServerApplySource = Pick<
 > & {
   hasSecretRef?: boolean;
   provisionedOutboundId?: string | null;
+  provisionedOutboundEnabled?: boolean | null;
+  provisionedOutboundMaintenanceMode?: boolean | null;
+  provisionedOutboundHealthStatus?: string | null;
+  provisionedOutboundLastCheckedAt?: Date | string | null;
+  provisionedOutboundLastHealthyAt?: Date | string | null;
   secretRef?: string | null;
   targetServerId?: string | null;
   targetServerLabel?: string | null;
@@ -1866,6 +1877,10 @@ export class OperationsService {
           configChangeCount: snapshot.configChangeCount,
           secretSafe: snapshot.secretSafe,
           reasonCodes,
+          preflightStatus: snapshot.preflight.status,
+          canRecordDryRun: snapshot.preflight.canRecordDryRun,
+          canExecuteDataPlane: snapshot.preflight.canExecuteDataPlane,
+          preflightBlockedReasonCodes: snapshot.preflight.blockedReasonCodes,
           liveApply: false,
         },
         executor,
@@ -2368,9 +2383,73 @@ export class OperationsService {
         commands.every((command) => command.secretSafe) &&
         configChanges.every((change) => change.secretSafe),
       reasonCodes: this.stringArrayOrEmpty(snapshot.reasonCodes),
+      preflight: this.mapProtocolServerApplyPreflight(snapshot.preflight, {
+        canExecuteDataPlane: snapshot.canExecute === true,
+        canRecordDryRun: Boolean(this.stringOrNullable(snapshot.outboundId)) && snapshot.secretSafe !== false,
+        status: this.stringOrFallback(snapshot.applyStatus, 'recorded'),
+      }),
       steps,
       commands,
       configChanges,
+    };
+  }
+
+  private mapProtocolServerApplyPreflight(
+    value: unknown,
+    fallback: Pick<AdminProtocolServerApplyPreflightSummary, 'status' | 'canRecordDryRun' | 'canExecuteDataPlane'>,
+  ): AdminProtocolServerApplyPreflightSummary {
+    const preflight = this.asRecord(value);
+    const gates = Array.isArray(preflight.gates)
+      ? preflight.gates
+          .map((item, index) => this.mapProtocolServerApplyPreflightGate(item, index))
+          .filter((item): item is AdminProtocolServerApplyPreflightSummary['gates'][number] => Boolean(item))
+      : [];
+
+    return {
+      status: this.stringOrFallback(preflight.status, fallback.status),
+      canRecordDryRun: typeof preflight.canRecordDryRun === 'boolean' ? preflight.canRecordDryRun : fallback.canRecordDryRun,
+      canExecuteDataPlane:
+        typeof preflight.canExecuteDataPlane === 'boolean'
+          ? preflight.canExecuteDataPlane
+          : fallback.canExecuteDataPlane,
+      passedGateCount: this.numberOrFallback(
+        preflight.passedGateCount,
+        gates.filter((item) => item.status === 'passed').length,
+      ),
+      blockedGateCount: this.numberOrFallback(
+        preflight.blockedGateCount,
+        gates.filter((item) => item.status === 'blocked').length,
+      ),
+      futureGateCount: this.numberOrFallback(
+        preflight.futureGateCount,
+        gates.filter((item) => item.status === 'future').length,
+      ),
+      warningGateCount: this.numberOrFallback(
+        preflight.warningGateCount,
+        gates.filter((item) => item.status === 'warning').length,
+      ),
+      blockedReasonCodes: this.stringArrayOrEmpty(preflight.blockedReasonCodes),
+      liveApplyBlockedReasonCodes: this.stringArrayOrEmpty(preflight.liveApplyBlockedReasonCodes),
+      gates,
+    };
+  }
+
+  private mapProtocolServerApplyPreflightGate(
+    value: unknown,
+    index: number,
+  ): AdminProtocolServerApplyPreflightSummary['gates'][number] | null {
+    const gate = this.asRecord(value);
+    const kind = this.stringOrFallback(gate.kind, '');
+    if (!kind) return null;
+
+    return {
+      id: this.stringOrFallback(gate.id, `protocol-apply-preflight-${index + 1}`),
+      kind,
+      status: this.stringOrFallback(gate.status, 'future'),
+      blocksDryRun: gate.blocksDryRun === true,
+      blocksDataPlane: gate.blocksDataPlane !== false,
+      observedValue: this.stringOrNullable(gate.observedValue),
+      reasonCodes: this.stringArrayOrEmpty(gate.reasonCodes),
     };
   }
 
@@ -2971,6 +3050,11 @@ export class OperationsService {
           AND sap.bootstrap_state = 'installed'
         ) AS "targetServerAccessReady",
         ps.provisioned_outbound_id AS "provisionedOutboundId",
+        po.enabled AS "provisionedOutboundEnabled",
+        po.maintenance_mode AS "provisionedOutboundMaintenanceMode",
+        po.health_status AS "provisionedOutboundHealthStatus",
+        po.last_checked_at AS "provisionedOutboundLastCheckedAt",
+        po.last_healthy_at AS "provisionedOutboundLastHealthyAt",
         ps.provisioned_at AS "provisionedAt",
         ps.created_by AS "createdBy",
         ps.created_at AS "createdAt",
@@ -2978,6 +3062,7 @@ export class OperationsService {
       FROM protocol_setups ps
       LEFT JOIN servers ts ON ts.id = ps.target_server_id
       LEFT JOIN server_access_profiles sap ON sap.server_id = ts.id
+      LEFT JOIN outbounds po ON po.id = ps.provisioned_outbound_id
       WHERE ${whereClause}
       ${suffix}
     `;
@@ -6155,14 +6240,34 @@ export class OperationsService {
     const configChanges = this.buildProtocolServerApplyConfigChanges(setup, unitName);
     const missingSecret = requiresSecret && !hasSecretRef;
     const missingTargetAccess = hasOutbound && requiresServerAccess && (!hasTargetServer || !hasServerAccess);
+    const secretSafe = commands.every((command) => command.secretSafe) && configChanges.every((change) => change.secretSafe);
+    const preflightDraft = this.buildProtocolServerApplyPreflight({
+      adapterImplemented,
+      commands,
+      configChanges,
+      featureFlagEnabled,
+      hasOutbound,
+      hasSecretRef,
+      hasServerAccess,
+      hasTargetServer,
+      outboundEnabled: setup.provisionedOutboundEnabled ?? null,
+      outboundHealthStatus: setup.provisionedOutboundHealthStatus ?? null,
+      outboundMaintenanceMode: setup.provisionedOutboundMaintenanceMode ?? null,
+      requiresSecret,
+      requiresServerAccess,
+      secretSafe,
+      setup,
+    });
     const dataPlaneReady =
       featureFlagEnabled &&
       adapterImplemented &&
       hasOutbound &&
       !missingSecret &&
-      (!requiresServerAccess || hasServerAccess);
+      (!requiresServerAccess || hasServerAccess) &&
+      preflightDraft.canExecuteDataPlane;
     const canExecute = dataPlaneReady;
-    const reasonCodes = new Set<ProtocolServerApplyReason>([
+    const hardBlocked = preflightDraft.gates.some((gate) => gate.status === 'blocked' && gate.blocksDataPlane);
+    const reasonCodes = new Set<ProtocolServerApplyReason | string>([
       'protocolSupported',
       'auditRequired',
       'defaultInactive',
@@ -6170,8 +6275,10 @@ export class OperationsService {
       'healthVerifyRequired',
     ]);
 
-    if (!featureFlagEnabled) reasonCodes.add('featureFlagDisabled');
-    if (!adapterImplemented) reasonCodes.add('adapterMissing');
+    if (featureFlagEnabled) reasonCodes.add('featureFlagReady');
+    else reasonCodes.add('featureFlagDisabled');
+    if (adapterImplemented) reasonCodes.add('adapterReady');
+    else reasonCodes.add('adapterMissing');
     if (hasOutbound) {
       reasonCodes.add('outboundReady');
       reasonCodes.add('maintenanceMode');
@@ -6190,13 +6297,20 @@ export class OperationsService {
       }
     }
     if (dataPlaneReady) reasonCodes.add('dataPlaneReady');
+    for (const reason of preflightDraft.liveApplyBlockedReasonCodes) reasonCodes.add(reason);
 
     const status = this.protocolServerApplyStatus({
       dataPlaneReady,
+      hardBlocked,
       hasOutbound,
       missingSecret,
       missingTargetAccess,
     });
+    const preflight: AdminProtocolServerApplyPreflightSummary = {
+      ...preflightDraft,
+      status,
+      canExecuteDataPlane: dataPlaneReady,
+    };
 
     return {
       status,
@@ -6217,8 +6331,9 @@ export class OperationsService {
       hasServerAccess,
       commandCount: commands.length,
       configChangeCount: configChanges.length,
-      secretSafe: commands.every((command) => command.secretSafe) && configChanges.every((change) => change.secretSafe),
+      secretSafe,
       reasonCodes: Array.from(reasonCodes),
+      preflight,
       steps: this.buildProtocolServerApplySteps({
         setup,
         commands,
@@ -6275,6 +6390,12 @@ export class OperationsService {
         commands.every((command) => command.secretSafe) &&
         configChanges.every((change) => change.secretSafe),
       reasonCodes: [...plan.reasonCodes],
+      preflight: {
+        ...plan.preflight,
+        gates: plan.preflight.gates.map((gate) => ({ ...gate, reasonCodes: [...gate.reasonCodes] })),
+        blockedReasonCodes: [...plan.preflight.blockedReasonCodes],
+        liveApplyBlockedReasonCodes: [...plan.preflight.liveApplyBlockedReasonCodes],
+      },
       steps,
       commands,
       configChanges,
@@ -6283,15 +6404,173 @@ export class OperationsService {
 
   private protocolServerApplyStatus(input: {
     dataPlaneReady: boolean;
+    hardBlocked: boolean;
     hasOutbound: boolean;
     missingSecret: boolean;
     missingTargetAccess: boolean;
   }): AdminProtocolServerApplyPlanSummary['status'] {
     if (!input.hasOutbound) return 'planningOnly';
-    if (input.missingSecret || input.missingTargetAccess) return 'blocked';
+    if (input.missingSecret || input.missingTargetAccess || input.hardBlocked) return 'blocked';
     if (input.dataPlaneReady) return 'applyReady';
 
     return 'dryRunReady';
+  }
+
+  private buildProtocolServerApplyPreflight(input: {
+    adapterImplemented: boolean;
+    commands: AdminProtocolServerApplyPlanSummary['commands'];
+    configChanges: AdminProtocolServerApplyPlanSummary['configChanges'];
+    featureFlagEnabled: boolean;
+    hasOutbound: boolean;
+    hasSecretRef: boolean;
+    hasServerAccess: boolean;
+    hasTargetServer: boolean;
+    outboundEnabled: boolean | null;
+    outboundHealthStatus: string | null;
+    outboundMaintenanceMode: boolean | null;
+    requiresSecret: boolean;
+    requiresServerAccess: boolean;
+    secretSafe: boolean;
+    setup: ProtocolServerApplySource;
+  }): AdminProtocolServerApplyPreflightSummary {
+    type Gate = AdminProtocolServerApplyPreflightSummary['gates'][number];
+    const gate = (
+      kind: Gate['kind'],
+      status: Gate['status'],
+      reasonCodes: Array<ProtocolServerApplyReason | string>,
+      options: {
+        blocksDataPlane?: boolean;
+        blocksDryRun?: boolean;
+        observedValue?: string | null;
+      } = {},
+    ): Gate => ({
+      id: `${input.setup.id}:preflight:${kind}`,
+      kind,
+      status,
+      blocksDryRun: options.blocksDryRun === true,
+      blocksDataPlane: options.blocksDataPlane !== false,
+      observedValue: options.observedValue ?? null,
+      reasonCodes,
+    });
+    const outboundHealthStatus = (input.outboundHealthStatus ?? 'unknown').toLowerCase();
+    const outboundHealthGateStatus =
+      !input.hasOutbound
+        ? 'future'
+        : outboundHealthStatus === 'healthy'
+          ? 'passed'
+          : outboundHealthStatus === 'degraded' || outboundHealthStatus === 'critical' || outboundHealthStatus === 'unhealthy'
+            ? 'blocked'
+            : 'future';
+    const outboundHealthReason =
+      outboundHealthGateStatus === 'passed'
+        ? 'outboundHealthReady'
+        : outboundHealthGateStatus === 'blocked'
+          ? 'outboundHealthDegraded'
+          : 'outboundHealthUnknown';
+    const defaultInactiveStatus =
+      !input.hasOutbound
+        ? 'future'
+        : input.outboundEnabled === false && input.outboundMaintenanceMode === true
+          ? 'passed'
+          : 'warning';
+    const hasRollbackArtifacts =
+      input.commands.some((command) => command.kind === 'rollback') &&
+      input.configChanges.some((change) => change.kind === 'rollback');
+    const hasHealthVerificationCommand = input.commands.some((command) => command.kind === 'health');
+    const gates: Gate[] = [
+      gate(
+        'featureFlag',
+        input.featureFlagEnabled ? 'passed' : 'future',
+        [input.featureFlagEnabled ? 'featureFlagReady' : 'featureFlagDisabled'],
+      ),
+      gate(
+        'adapter',
+        input.adapterImplemented ? 'passed' : 'future',
+        [input.adapterImplemented ? 'adapterReady' : 'adapterMissing', !input.adapterImplemented ? 'adapterDryRunOnly' : null].filter(
+          (reason): reason is ProtocolServerApplyReason => Boolean(reason),
+        ),
+      ),
+      gate('dryRunSafety', input.secretSafe ? 'passed' : 'blocked', [input.secretSafe ? 'dryRunSafe' : 'dryRunUnsafe'], {
+        blocksDryRun: !input.secretSafe,
+      }),
+      gate('outbound', input.hasOutbound ? 'passed' : 'future', [input.hasOutbound ? 'outboundReady' : 'outboundMissing'], {
+        blocksDryRun: !input.hasOutbound,
+      }),
+      gate('outboundHealth', outboundHealthGateStatus, [outboundHealthReason], {
+        observedValue: input.outboundHealthStatus ?? 'unknown',
+      }),
+      gate(
+        'defaultInactive',
+        defaultInactiveStatus,
+        [
+          input.outboundEnabled === true ? 'outboundEnabled' : 'defaultInactive',
+          input.outboundMaintenanceMode === true ? 'maintenanceMode' : null,
+        ].filter((reason): reason is ProtocolServerApplyReason => Boolean(reason)),
+        {
+          blocksDataPlane: false,
+          observedValue: input.hasOutbound
+            ? `enabled=${input.outboundEnabled === true}; maintenance=${input.outboundMaintenanceMode === true}`
+            : null,
+        },
+      ),
+      gate(
+        'secret',
+        input.requiresSecret ? (input.hasSecretRef ? 'passed' : 'blocked') : 'notRequired',
+        input.requiresSecret ? [input.hasSecretRef ? 'secretReady' : 'secretMissing'] : [],
+      ),
+      gate(
+        'serverAccess',
+        input.requiresServerAccess
+          ? input.hasTargetServer
+            ? input.hasServerAccess
+              ? 'passed'
+              : 'blocked'
+            : 'blocked'
+          : 'notRequired',
+        [
+          input.requiresServerAccess && !input.hasTargetServer ? 'serverMissing' : null,
+          input.requiresServerAccess ? (input.hasServerAccess ? 'serverAccessReady' : 'serverAccessMissing') : null,
+        ].filter((reason): reason is ProtocolServerApplyReason => Boolean(reason)),
+      ),
+      gate(
+        'rollback',
+        input.adapterImplemented ? (hasRollbackArtifacts ? 'passed' : 'blocked') : 'future',
+        [hasRollbackArtifacts ? 'rollbackReady' : 'rollbackRequired'],
+      ),
+      gate('audit', 'passed', ['auditReady', 'auditRequired']),
+      gate(
+        'healthVerification',
+        input.adapterImplemented
+          ? hasHealthVerificationCommand && (!input.requiresServerAccess || input.hasServerAccess)
+            ? 'passed'
+            : 'blocked'
+          : 'future',
+        [hasHealthVerificationCommand ? 'postApplyHealthRequired' : 'healthVerifyRequired'],
+      ),
+    ];
+    const canRecordDryRun = gates.every((item) => !item.blocksDryRun || item.status === 'passed' || item.status === 'warning' || item.status === 'notRequired');
+    const canExecuteDataPlane = gates.every((item) => !item.blocksDataPlane || item.status === 'passed' || item.status === 'notRequired');
+    const liveApplyBlockedReasonCodes = this.uniqueStrings(
+      gates
+        .filter((item) => item.blocksDataPlane && item.status !== 'passed' && item.status !== 'notRequired')
+        .flatMap((item) => item.reasonCodes),
+    );
+    const blockedReasonCodes = this.uniqueStrings(
+      gates.filter((item) => item.status === 'blocked').flatMap((item) => item.reasonCodes),
+    );
+
+    return {
+      status: canExecuteDataPlane ? 'applyReady' : canRecordDryRun ? 'dryRunReady' : 'planningOnly',
+      canRecordDryRun,
+      canExecuteDataPlane,
+      passedGateCount: gates.filter((item) => item.status === 'passed').length,
+      blockedGateCount: gates.filter((item) => item.status === 'blocked').length,
+      futureGateCount: gates.filter((item) => item.status === 'future').length,
+      warningGateCount: gates.filter((item) => item.status === 'warning').length,
+      blockedReasonCodes,
+      liveApplyBlockedReasonCodes,
+      gates,
+    };
   }
 
   private buildProtocolServerApplySteps(input: {
@@ -6829,6 +7108,10 @@ export class OperationsService {
 
   private stringArrayOrEmpty(value: unknown): string[] {
     return Array.isArray(value) ? value.map(String) : [];
+  }
+
+  private uniqueStrings(values: Array<string | null | undefined>): string[] {
+    return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0))];
   }
 
   private numberOrFallback(value: unknown, fallback: number): number {

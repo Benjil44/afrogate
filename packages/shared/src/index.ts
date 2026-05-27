@@ -409,6 +409,26 @@ export type ProtocolServerApplyStepStatus =
   | 'future'
   | 'notRequired';
 
+export type ProtocolServerApplyPreflightGateStatus =
+  | 'passed'
+  | 'blocked'
+  | 'future'
+  | 'warning'
+  | 'notRequired';
+
+export type ProtocolServerApplyPreflightGateKind =
+  | 'featureFlag'
+  | 'adapter'
+  | 'dryRunSafety'
+  | 'outbound'
+  | 'outboundHealth'
+  | 'defaultInactive'
+  | 'secret'
+  | 'serverAccess'
+  | 'rollback'
+  | 'audit'
+  | 'healthVerification';
+
 export type ProtocolServerApplyStepKind =
   | 'preflight'
   | 'secret'
@@ -421,6 +441,7 @@ export type ProtocolServerApplyStepKind =
 
 export type ProtocolServerApplyReason =
   | 'featureFlagDisabled'
+  | 'featureFlagReady'
   | 'serverMissing'
   | 'serverAccessMissing'
   | 'serverAccessReady'
@@ -428,14 +449,48 @@ export type ProtocolServerApplyReason =
   | 'secretReady'
   | 'adapterDryRunOnly'
   | 'adapterMissing'
+  | 'adapterReady'
   | 'protocolSupported'
   | 'healthVerifyRequired'
+  | 'postApplyHealthRequired'
   | 'auditRequired'
+  | 'auditReady'
   | 'defaultInactive'
   | 'maintenanceMode'
   | 'outboundMissing'
   | 'outboundReady'
+  | 'outboundEnabled'
+  | 'outboundHealthReady'
+  | 'outboundHealthUnknown'
+  | 'outboundHealthDegraded'
+  | 'dryRunSafe'
+  | 'dryRunUnsafe'
+  | 'rollbackRequired'
+  | 'rollbackReady'
   | 'dataPlaneReady';
+
+export interface AdminProtocolServerApplyPreflightGate {
+  id: string;
+  kind: ProtocolServerApplyPreflightGateKind | string;
+  status: ProtocolServerApplyPreflightGateStatus | string;
+  blocksDryRun: boolean;
+  blocksDataPlane: boolean;
+  observedValue?: string | null;
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+}
+
+export interface AdminProtocolServerApplyPreflightSummary {
+  status: ProtocolServerApplyStatus | string;
+  canRecordDryRun: boolean;
+  canExecuteDataPlane: boolean;
+  passedGateCount: number;
+  blockedGateCount: number;
+  futureGateCount: number;
+  warningGateCount: number;
+  blockedReasonCodes: Array<ProtocolServerApplyReason | string>;
+  liveApplyBlockedReasonCodes: Array<ProtocolServerApplyReason | string>;
+  gates: AdminProtocolServerApplyPreflightGate[];
+}
 
 export interface AdminProtocolServerApplyStep {
   id: string;
@@ -486,6 +541,7 @@ export interface AdminProtocolServerApplyPlanSummary {
   configChangeCount: number;
   secretSafe: boolean;
   reasonCodes: Array<ProtocolServerApplyReason | string>;
+  preflight: AdminProtocolServerApplyPreflightSummary;
   steps: AdminProtocolServerApplyStep[];
   commands: AdminProtocolServerApplyCommand[];
   configChanges: AdminProtocolServerApplyConfigChange[];
@@ -518,6 +574,7 @@ export interface AdminProtocolServerApplyDryRunSnapshot {
   configChangeCount: number;
   secretSafe: boolean;
   reasonCodes: Array<ProtocolServerApplyReason | string>;
+  preflight: AdminProtocolServerApplyPreflightSummary;
   steps: AdminProtocolServerApplyStep[];
   commands: AdminProtocolServerApplyCommand[];
   configChanges: AdminProtocolServerApplyConfigChange[];

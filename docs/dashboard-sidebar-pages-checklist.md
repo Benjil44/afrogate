@@ -84,6 +84,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Show secret-safe protocol server apply plan/readiness previews for saved protocol drafts.
 - [x] Record secret-safe protocol server apply dry-run audit snapshots for provisioned protocol drafts.
 - [x] Inspect stored protocol server apply dry-run events and snapshots from Settings.
+- [x] Show protocol server apply preflight gates for feature flag, adapter, dry-run safety, server access, outbound health, rollback, audit, and health verification.
 - [ ] Production server-side protocol apply engine with encrypted secret storage.
 
 ## Users Page

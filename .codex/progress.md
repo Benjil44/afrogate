@@ -764,3 +764,14 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added protocol server apply preflight readiness gates for the feature flag, audited adapter, dry-run safety, provisioned outbound, outbound health, default disabled/maintenance posture, secret reference, server access, rollback, audit, and health verification.
+- Persisted protocol apply preflight summaries in plan responses, dry-run snapshots, and audit payloads while keeping live server mutation blocked until every data-plane gate passes.
+- Surfaced protocol apply preflight state in Settings plan cards and stored dry-run snapshot inspection with typed English/Persian labels.
+- Updated protocol apply docs, checklist, memory, and dashboard coverage checklist to keep the production server-side apply engine as the next unfinished milestone.
+- Bumped AfroGate to `0.53.0` for protocol server apply preflight gating.
+- Verified `0.53.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
