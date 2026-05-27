@@ -4,6 +4,8 @@ import type {
   AdminAlertSummary,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminProtocolServerApplyDryRunSnapshot,
+  AdminProtocolServerApplyEventSummary,
   AdminProtocolSetupSummary,
   AdminProtocolServerApplyPlanSummary,
   AdminRouteAssignmentSummary,
@@ -36,6 +38,7 @@ import type {
   LoadBalanceStrategy,
   ProvisionProtocolSetupResponse,
   ProtocolServerApplyReason,
+  RecordProtocolServerApplyResponse,
   RecordRouteDecisionPreviewResponse,
   RouteFailoverEventSummary,
   RouteDecisionAction,
@@ -60,6 +63,7 @@ import {
   ApplyRouteDecisionPreviewDto,
   CreateProtocolSetupDto,
   CreateSettingsSecretDto,
+  RecordProtocolServerApplyDto,
   RecordRouteDecisionPreviewDto,
   UpsertRouteAssignmentDto,
   UpsertRouteSettingsDto,
@@ -208,6 +212,26 @@ type ProtocolServerApplySource = Pick<
   targetServerLabel?: string | null;
   targetServerAccessReady?: boolean;
 };
+
+interface ProtocolApplyEventRow {
+  id: string;
+  protocolSetupId: string;
+  outboundId: string | null;
+  targetServerId: string | null;
+  targetServerLabel: string | null;
+  applyMode: string;
+  applyStatus: string;
+  featureFlagEnabled: boolean;
+  adapterImplemented: boolean;
+  canExecute: boolean;
+  commandCount: number;
+  configChangeCount: number;
+  secretSafe: boolean;
+  reasonCodes: unknown;
+  dryRunSnapshot: unknown;
+  createdBy: string | null;
+  createdAt: Date;
+}
 
 interface RouteSettingsRow {
   routeGroup: string;
@@ -1756,6 +1780,105 @@ export class OperationsService {
     };
   }
 
+  async recordProtocolServerApplyDryRun(
+    id: string,
+    dto: RecordProtocolServerApplyDto,
+    actor: AuthActor | undefined,
+  ): Promise<RecordProtocolServerApplyResponse> {
+    this.assertSuperadmin(actor);
+
+    const applyMode = (dto?.applyMode ?? 'dryRun') as 'dryRun';
+    if (applyMode !== 'dryRun') {
+      throw new BadRequestException('Only dryRun protocol server apply mode is currently supported');
+    }
+
+    const eventId = randomUUID();
+    await this.database.transaction(async (executor) => {
+      const setup = await this.getProtocolSetupForUpdate(executor, id);
+      if (!setup.provisionedOutboundId) {
+        throw new ConflictException('Protocol setup must be provisioned before server apply dry-run');
+      }
+
+      await this.ensureOutboundExists(executor, setup.provisionedOutboundId);
+
+      const plan = this.buildProtocolServerApplyPlan(setup);
+      const snapshot = this.buildProtocolServerApplyDryRunSnapshot(setup, plan, applyMode);
+      const reasonCodes = snapshot.reasonCodes.map(String);
+      const createdBy = actor?.username ?? actor?.id ?? null;
+
+      await executor.query(
+        `
+          INSERT INTO protocol_apply_events (
+            id, protocol_setup_id, outbound_id, target_server_id, apply_mode,
+            apply_status, feature_flag_enabled, adapter_implemented, can_execute,
+            command_count, config_change_count, secret_safe, reason_codes,
+            dry_run_snapshot, created_by
+          )
+          VALUES (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12, $13::jsonb,
+            $14::jsonb, $15
+          )
+        `,
+        [
+          eventId,
+          setup.id,
+          snapshot.outboundId ?? setup.provisionedOutboundId,
+          snapshot.targetServerId ?? setup.targetServerId,
+          applyMode,
+          snapshot.applyStatus,
+          snapshot.featureFlagEnabled,
+          snapshot.adapterImplemented,
+          snapshot.canExecute,
+          snapshot.commandCount,
+          snapshot.configChangeCount,
+          snapshot.secretSafe,
+          JSON.stringify(reasonCodes),
+          JSON.stringify(snapshot),
+          createdBy,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'settings.protocol.server_apply.dry_run.record',
+        'protocol_apply_event',
+        eventId,
+        {
+          protocolSetupId: setup.id,
+          protocol: setup.protocol,
+          profile: setup.profile,
+          routeGroup: setup.routeGroup,
+          outboundId: snapshot.outboundId,
+          targetServerId: snapshot.targetServerId,
+          applyMode,
+          applyStatus: snapshot.applyStatus,
+          featureFlagEnabled: snapshot.featureFlagEnabled,
+          adapterImplemented: snapshot.adapterImplemented,
+          canExecute: snapshot.canExecute,
+          commandCount: snapshot.commandCount,
+          configChangeCount: snapshot.configChangeCount,
+          secretSafe: snapshot.secretSafe,
+          reasonCodes,
+          liveApply: false,
+        },
+        executor,
+      );
+    });
+
+    const [event, protocolSetup] = await Promise.all([
+      this.getProtocolApplyEvent(eventId),
+      this.getProtocolSetup(id),
+    ]);
+
+    return {
+      event,
+      protocolSetup,
+      serverApplyPlan: protocolSetup.serverApplyPlan ?? this.buildProtocolServerApplyPlan(protocolSetup),
+    };
+  }
+
   async upsertRouteSettings(
     dto: UpsertRouteSettingsDto,
     actor: AuthActor | undefined,
@@ -1993,6 +2116,62 @@ export class OperationsService {
     };
   }
 
+  private async getProtocolApplyEvent(id: string): Promise<AdminProtocolServerApplyEventSummary> {
+    const result = await this.database.query<ProtocolApplyEventRow>(
+      `
+        SELECT
+          event.id,
+          event.protocol_setup_id AS "protocolSetupId",
+          event.outbound_id AS "outboundId",
+          event.target_server_id AS "targetServerId",
+          COALESCE(target_server.hostname, target_server.external_id) AS "targetServerLabel",
+          event.apply_mode AS "applyMode",
+          event.apply_status AS "applyStatus",
+          event.feature_flag_enabled AS "featureFlagEnabled",
+          event.adapter_implemented AS "adapterImplemented",
+          event.can_execute AS "canExecute",
+          event.command_count AS "commandCount",
+          event.config_change_count AS "configChangeCount",
+          event.secret_safe AS "secretSafe",
+          event.reason_codes AS "reasonCodes",
+          event.dry_run_snapshot AS "dryRunSnapshot",
+          event.created_by AS "createdBy",
+          event.created_at AS "createdAt"
+        FROM protocol_apply_events event
+        LEFT JOIN servers target_server ON target_server.id = event.target_server_id
+        WHERE event.id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Protocol apply event not found');
+
+    return this.mapProtocolApplyEvent(row);
+  }
+
+  private mapProtocolApplyEvent(row: ProtocolApplyEventRow): AdminProtocolServerApplyEventSummary {
+    return {
+      id: row.id,
+      protocolSetupId: row.protocolSetupId,
+      outboundId: row.outboundId,
+      targetServerId: row.targetServerId,
+      targetServerLabel: row.targetServerLabel,
+      applyMode: row.applyMode,
+      applyStatus: row.applyStatus,
+      featureFlagEnabled: row.featureFlagEnabled,
+      adapterImplemented: row.adapterImplemented,
+      canExecute: row.canExecute,
+      commandCount: row.commandCount,
+      configChangeCount: row.configChangeCount,
+      secretSafe: row.secretSafe,
+      reasonCodes: this.stringArrayOrEmpty(row.reasonCodes),
+      dryRunSnapshot: this.mapProtocolServerApplyDryRunSnapshot(row.dryRunSnapshot),
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
   private async getRouteDecisionEvent(id: string): Promise<AdminRouteDecisionEventSummary> {
     const result = await this.database.query<RouteDecisionEventRow>(
       `
@@ -2070,6 +2249,116 @@ export class OperationsService {
       switchRollout: this.mapRouteDecisionSwitchRollout(decisionContext.switchRollout),
       switchRolloutEvaluation: this.mapRouteDecisionSwitchRolloutEvaluation(decisionContext.switchRolloutEvaluation),
       switchOrchestration: this.mapRouteDecisionSwitchOrchestration(decisionContext.switchOrchestration),
+    };
+  }
+
+  private mapProtocolServerApplyDryRunSnapshot(value: unknown): AdminProtocolServerApplyDryRunSnapshot | null {
+    const snapshot = this.asRecord(value);
+    if (Object.keys(snapshot).length === 0) return null;
+
+    const steps = Array.isArray(snapshot.steps)
+      ? snapshot.steps
+          .map((item, index) => this.mapProtocolServerApplyStep(item, index))
+          .filter((item): item is AdminProtocolServerApplyPlanSummary['steps'][number] => Boolean(item))
+      : [];
+    const commands = Array.isArray(snapshot.commands)
+      ? snapshot.commands
+          .map((item, index) => this.mapProtocolServerApplyCommand(item, index))
+          .filter((item): item is AdminProtocolServerApplyPlanSummary['commands'][number] => Boolean(item))
+      : [];
+    const configChanges = Array.isArray(snapshot.configChanges)
+      ? snapshot.configChanges
+          .map((item, index) => this.mapProtocolServerApplyConfigChange(item, index))
+          .filter((item): item is AdminProtocolServerApplyPlanSummary['configChanges'][number] => Boolean(item))
+      : [];
+
+    return {
+      generatedAt: this.stringOrFallback(snapshot.generatedAt, ''),
+      protocolSetupId: this.stringOrFallback(snapshot.protocolSetupId, ''),
+      protocol: this.stringOrFallback(snapshot.protocol, 'wireguard'),
+      profile: this.stringOrFallback(snapshot.profile, 'balanced'),
+      routeGroup: this.stringOrFallback(snapshot.routeGroup, 'main'),
+      outboundId: this.stringOrNullable(snapshot.outboundId),
+      targetServerId: this.stringOrNullable(snapshot.targetServerId),
+      targetServerLabel: this.stringOrNullable(snapshot.targetServerLabel),
+      applyMode: this.stringOrFallback(snapshot.applyMode, 'dryRun'),
+      applyStatus: this.stringOrFallback(snapshot.applyStatus, 'recorded'),
+      liveApply: snapshot.liveApply === true,
+      dataPlaneMutationExecuted: snapshot.dataPlaneMutationExecuted === true,
+      featureFlagEnabled: snapshot.featureFlagEnabled === true,
+      adapterImplemented: snapshot.adapterImplemented === true,
+      dataPlaneReady: snapshot.dataPlaneReady === true,
+      canExecute: snapshot.canExecute === true,
+      requiresSecret: snapshot.requiresSecret === true,
+      hasSecretRef: snapshot.hasSecretRef === true,
+      requiresServerAccess: snapshot.requiresServerAccess !== false,
+      hasServerAccess: snapshot.hasServerAccess === true,
+      commandCount: this.numberOrFallback(snapshot.commandCount, commands.length),
+      configChangeCount: this.numberOrFallback(snapshot.configChangeCount, configChanges.length),
+      secretSafe:
+        snapshot.secretSafe !== false &&
+        steps.every((step) => step.secretSafe) &&
+        commands.every((command) => command.secretSafe) &&
+        configChanges.every((change) => change.secretSafe),
+      reasonCodes: this.stringArrayOrEmpty(snapshot.reasonCodes),
+      steps,
+      commands,
+      configChanges,
+    };
+  }
+
+  private mapProtocolServerApplyStep(
+    value: unknown,
+    index: number,
+  ): AdminProtocolServerApplyPlanSummary['steps'][number] | null {
+    const step = this.asRecord(value);
+    const kind = this.stringOrFallback(step.kind, '');
+    if (!kind) return null;
+
+    return {
+      id: this.stringOrFallback(step.id, `protocol-apply-step-${index + 1}`),
+      kind,
+      status: this.stringOrFallback(step.status, 'future'),
+      commandPreviewCount: this.numberOrFallback(step.commandPreviewCount, 0),
+      dataPlaneMutation: step.dataPlaneMutation === true,
+      secretSafe: step.secretSafe !== false,
+      reasonCodes: this.stringArrayOrEmpty(step.reasonCodes),
+    };
+  }
+
+  private mapProtocolServerApplyCommand(
+    value: unknown,
+    index: number,
+  ): AdminProtocolServerApplyPlanSummary['commands'][number] | null {
+    const command = this.asRecord(value);
+    const commandText = this.stringOrFallback(command.command, '');
+    if (!commandText) return null;
+
+    return {
+      id: this.stringOrFallback(command.id, `protocol-apply-command-${index + 1}`),
+      kind: this.stringOrFallback(command.kind, 'preflight'),
+      command: commandText,
+      requiresRoot: command.requiresRoot === true,
+      dataPlaneMutation: command.dataPlaneMutation === true,
+      secretSafe: command.secretSafe !== false,
+    };
+  }
+
+  private mapProtocolServerApplyConfigChange(
+    value: unknown,
+    index: number,
+  ): AdminProtocolServerApplyPlanSummary['configChanges'][number] | null {
+    const change = this.asRecord(value);
+    const filePath = this.stringOrFallback(change.filePath, '');
+    if (!filePath) return null;
+
+    return {
+      id: this.stringOrFallback(change.id, `protocol-apply-config-${index + 1}`),
+      kind: this.stringOrFallback(change.kind, 'config'),
+      filePath,
+      action: this.stringOrFallback(change.action, 'validate'),
+      dataPlaneMutation: change.dataPlaneMutation === true,
+      secretSafe: change.secretSafe !== false,
     };
   }
 
@@ -5876,6 +6165,50 @@ export class OperationsService {
         hasTargetServer,
         hasServerAccess,
       }),
+      commands,
+      configChanges,
+    };
+  }
+
+  private buildProtocolServerApplyDryRunSnapshot(
+    setup: ProtocolServerApplySource,
+    plan: AdminProtocolServerApplyPlanSummary,
+    applyMode: 'dryRun',
+  ): AdminProtocolServerApplyDryRunSnapshot {
+    const commands = plan.commands.map((command) => ({ ...command }));
+    const configChanges = plan.configChanges.map((change) => ({ ...change }));
+    const steps = plan.steps.map((step) => ({ ...step, reasonCodes: [...step.reasonCodes] }));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      protocolSetupId: setup.id,
+      protocol: plan.protocol,
+      profile: plan.profile,
+      routeGroup: plan.routeGroup,
+      outboundId: plan.outboundId ?? null,
+      targetServerId: plan.targetServerId ?? setup.targetServerId ?? null,
+      targetServerLabel: plan.targetServerLabel ?? setup.targetServerLabel ?? null,
+      applyMode,
+      applyStatus: 'recorded',
+      liveApply: false,
+      dataPlaneMutationExecuted: false,
+      featureFlagEnabled: plan.featureFlagEnabled,
+      adapterImplemented: plan.adapterImplemented,
+      dataPlaneReady: plan.dataPlaneReady,
+      canExecute: plan.canExecute,
+      requiresSecret: plan.requiresSecret,
+      hasSecretRef: plan.hasSecretRef,
+      requiresServerAccess: plan.requiresServerAccess,
+      hasServerAccess: plan.hasServerAccess,
+      commandCount: commands.length,
+      configChangeCount: configChanges.length,
+      secretSafe:
+        plan.secretSafe &&
+        steps.every((step) => step.secretSafe) &&
+        commands.every((command) => command.secretSafe) &&
+        configChanges.every((change) => change.secretSafe),
+      reasonCodes: [...plan.reasonCodes],
+      steps,
       commands,
       configChanges,
     };

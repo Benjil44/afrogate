@@ -22,6 +22,8 @@ import type {
   CreateSettingsSecretRequest,
   CreateAdminUserRequest,
   ProvisionProtocolSetupResponse,
+  RecordProtocolServerApplyRequest,
+  RecordProtocolServerApplyResponse,
   RecordRouteDecisionPreviewRequest,
   RecordRouteDecisionPreviewResponse,
   RouteFailoverEventsResponse,
@@ -275,6 +277,23 @@ export async function provisionAdminProtocolSetup(
   );
 
   return response.json() as Promise<ProvisionProtocolSetupResponse>;
+}
+
+export async function recordAdminProtocolServerApplyDryRun(
+  sessionToken: string,
+  protocolSetupId: string,
+  payload: RecordProtocolServerApplyRequest = { applyMode: 'dryRun' },
+): Promise<RecordProtocolServerApplyResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/settings/protocol-setups/${encodeURIComponent(protocolSetupId)}/server-apply/dry-run`,
+    {
+      body: JSON.stringify(payload),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+
+  return response.json() as Promise<RecordProtocolServerApplyResponse>;
 }
 
 export async function updateAdminRouteSettings(

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.51.0 - 2026-05-27
+
+- Added `protocol_apply_events` storage and a guarded admin API for recording secret-safe protocol server apply dry-run snapshots.
+- Persisted protocol apply plan status, blocker reason codes, command/config counts, target server, and audit metadata without executing SSH, shell, or data-plane mutations.
+- Surfaced a Settings action to record provisioned protocol apply dry-runs for audit in English and Persian while keeping the production server-side apply engine disabled.
+
 ## 0.50.0 - 2026-05-27
 
 - Added target-server selection to Settings protocol drafts so WireGuard, VLESS, L2TP, and IKEv2 provisioning can bind generated managed outbounds to a real managed server.

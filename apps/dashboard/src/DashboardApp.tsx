@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type {
   AdminAlertSummary,
+  AdminProtocolServerApplyEventSummary,
   AdminProtocolSetupSummary,
   AdminProtocolServerApplyPlanSummary,
   AdminOutboundSummary,
@@ -94,6 +95,7 @@ import {
   fetchRouteDecisionEvents,
   fetchRouteDecisionPreview,
   provisionAdminProtocolSetup,
+  recordAdminProtocolServerApplyDryRun,
   recordRouteDecisionPreview,
   updateAdminRouteAssignment,
   updateAdminRouteSettings,
@@ -2090,9 +2092,11 @@ function SettingsPage({
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [protocolMessage, setProtocolMessage] = useState<string | null>(null);
   const [provisionMessage, setProvisionMessage] = useState<string | null>(null);
+  const [serverApplyMessage, setServerApplyMessage] = useState<string | null>(null);
   const [routeMessage, setRouteMessage] = useState<string | null>(null);
   const [settingsDataState, setSettingsDataState] = useState<DataState>('loading');
   const [persistedProtocolSetups, setPersistedProtocolSetups] = useState<AdminProtocolSetupSummary[]>([]);
+  const [protocolApplyEventsBySetupId, setProtocolApplyEventsBySetupId] = useState<Record<string, AdminProtocolServerApplyEventSummary>>({});
   const [apiWireGuardCandidates, setApiWireGuardCandidates] = useState<AdminWireGuardCandidate[]>([]);
   const [routeQualityAnalytics, setRouteQualityAnalytics] = useState<AdminRouteQualityAnalyticsResponse | null>(null);
   const [routeDecisionPreview, setRouteDecisionPreview] = useState<AdminRouteDecisionPreviewResponse | null>(null);
@@ -2102,6 +2106,7 @@ function SettingsPage({
   const [isSecretSaving, setIsSecretSaving] = useState(false);
   const [isProtocolSaving, setIsProtocolSaving] = useState(false);
   const [provisioningSetupId, setProvisioningSetupId] = useState<string | null>(null);
+  const [serverApplyingSetupId, setServerApplyingSetupId] = useState<string | null>(null);
   const [isRouteSaving, setIsRouteSaving] = useState(false);
   const [isDecisionRecording, setIsDecisionRecording] = useState(false);
   const [isDecisionApplying, setIsDecisionApplying] = useState(false);
@@ -2192,6 +2197,7 @@ function SettingsPage({
     setRouteDecisionPreview(null);
     setRouteDecisionEvents([]);
     setRouteDecisionEventDetail(null);
+    setProtocolApplyEventsBySetupId({});
     setIsDecisionEventDetailLoading(false);
 
     fetchAdminSettings(sessionToken, 'main', controller.signal)
@@ -2477,6 +2483,33 @@ function SettingsPage({
       setProvisionMessage(t.settings.provisionFailed);
     } finally {
       setProvisioningSetupId(null);
+    }
+  };
+
+  const recordProtocolServerApplyDryRun = async (setup: AdminProtocolSetupSummary) => {
+    if (!canCreateProtocols) {
+      setServerApplyMessage(t.settings.superadminRequired);
+      return;
+    }
+
+    setServerApplyingSetupId(setup.id);
+    setServerApplyMessage(null);
+
+    try {
+      const response = await recordAdminProtocolServerApplyDryRun(sessionToken, setup.id, { applyMode: 'dryRun' });
+
+      setPersistedProtocolSetups((current) =>
+        current.map((item) => (item.id === response.protocolSetup.id ? response.protocolSetup : item)),
+      );
+      setProtocolApplyEventsBySetupId((current) => ({
+        ...current,
+        [setup.id]: response.event,
+      }));
+      setServerApplyMessage(t.settings.serverApplyDryRunRecorded);
+    } catch (error) {
+      setServerApplyMessage(t.settings.serverApplyDryRunFailed);
+    } finally {
+      setServerApplyingSetupId(null);
     }
   };
 
@@ -2910,6 +2943,8 @@ function SettingsPage({
                   {persistedProtocolSetups.slice(0, 4).map((setup) => {
                     const isProvisioned = Boolean(setup.provisionedOutboundId);
                     const isProvisioning = provisioningSetupId === setup.id;
+                    const isServerApplying = serverApplyingSetupId === setup.id;
+                    const lastServerApplyEvent = protocolApplyEventsBySetupId[setup.id];
                     const serverApplyPlan = setup.serverApplyPlan;
 
                     return (
@@ -2938,9 +2973,31 @@ function SettingsPage({
                                 {isProvisioning ? t.settings.provisioning : t.settings.provisionDraft}
                               </button>
                             ) : null}
+                            {isProvisioned ? (
+                              <button
+                                className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-wait disabled:opacity-55"
+                                disabled={!canCreateProtocols || Boolean(serverApplyingSetupId)}
+                                onClick={() => void recordProtocolServerApplyDryRun(setup)}
+                                type="button"
+                              >
+                                <ShieldCheck size={14} />
+                                {isServerApplying ? t.settings.recordingServerApply : t.settings.recordServerApplyDryRun}
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                         {serverApplyPlan ? <ProtocolServerApplyPlanCard format={format} plan={serverApplyPlan} t={t} /> : null}
+                        {lastServerApplyEvent ? (
+                          <div className="flex min-h-8 flex-wrap items-center justify-between gap-2 rounded-md border border-afro-line bg-[#f9fbfc] px-2 text-[12px]">
+                            <span className="font-bold text-afro-muted">{t.settings.serverApplyEventRecorded}</span>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <StatusBadge tone={lastServerApplyEvent.secretSafe ? 'good' : 'warning'}>
+                                {lastServerApplyEvent.secretSafe ? t.settings.secretSafe : t.settings.serverApplyBlocked}
+                              </StatusBadge>
+                              <strong className="truncate">{format.time(new Date(lastServerApplyEvent.createdAt), false)}</strong>
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -2948,6 +3005,7 @@ function SettingsPage({
               </div>
             ) : null}
             {provisionMessage ? <p className="text-[13px] font-bold text-afro-teal">{provisionMessage}</p> : null}
+            {serverApplyMessage ? <p className="text-[13px] font-bold text-afro-teal">{serverApplyMessage}</p> : null}
           </div>
         </section>
 

@@ -181,3 +181,9 @@ export class ApplyRouteDecisionPreviewDto extends RecordRouteDecisionPreviewDto 
   @IsIn(['assignmentOnly'])
   applyMode?: string;
 }
+
+export class RecordProtocolServerApplyDto {
+  @IsOptional()
+  @IsIn(['dryRun'])
+  applyMode?: string;
+}

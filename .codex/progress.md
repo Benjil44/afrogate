@@ -568,6 +568,10 @@ Repository remote is ready:
 - Added `protocol_setups.target_server_id` persistence plus backend response fields for target labels and server-access readiness.
 - Updated protocol server apply plans to distinguish missing target servers from missing access profiles while keeping server OS/service mutation disabled.
 - Bumped AfroGate to `0.50.0` for target-server protocol provisioning readiness.
+- Added `protocol_apply_events` storage and a guarded admin API for recording secret-safe protocol server apply dry-run snapshots.
+- Persisted provisioned protocol apply plan state, target server, outbound id, command/config counts, blocker reasons, and audit metadata without executing SSH, shell commands, secret decrypts, service reloads, or OS route changes.
+- Surfaced a Settings action to record dry-run protocol apply snapshots in English/Persian for provisioned protocol drafts.
+- Bumped AfroGate to `0.51.0` for audited protocol server apply dry-run recording.
 
 ### Verification
 
@@ -739,6 +743,13 @@ Repository remote is ready:
 - Applied PostgreSQL migrations through `0010_protocol_target_server.sql` with `npm --workspace @afrogate/backend run db:migrate`.
 - Verified `0.50.0` with `npm run version:check`.
 - Verified target-server provisioning contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified protocol server apply dry-run event contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Applied PostgreSQL migrations through `0011_protocol_apply_events.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified `0.51.0` with `npm run version:check`.
 - Verified production build with `npm run build --workspaces --if-present`.
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.

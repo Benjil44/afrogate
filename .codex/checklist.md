@@ -85,6 +85,7 @@
 - [x] Initial backend protocol provisioning engine that converts saved WireGuard, VLESS, L2TP, and IKEv2 drafts into disabled managed outbound rows.
 - [x] Secret-safe protocol server apply plan and readiness preview for WireGuard, VLESS, L2TP, and IKEv2.
 - [x] Target-server selection and server-access readiness binding for Settings protocol provisioning.
+- [x] Secret-safe protocol server apply dry-run event recording and audit snapshot storage.
 - [ ] Production server-side protocol apply engine for WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols.
 - [x] Agent registration endpoint.
 - [x] Metrics ingest endpoint.

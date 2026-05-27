@@ -82,6 +82,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Show advisory switch-rollout health evaluation with guard pass/hold/rollback recommendations from packet loss, jitter, latency, and score.
 - [x] Show session-safe switch orchestration with route-lock, cooldown, sticky-session, canary, hold, expand, rollback, and manual-review next-action guidance.
 - [x] Show secret-safe protocol server apply plan/readiness previews for saved protocol drafts.
+- [x] Record secret-safe protocol server apply dry-run audit snapshots for provisioned protocol drafts.
 - [ ] Production server-side protocol apply engine with encrypted secret storage.
 
 ## Users Page

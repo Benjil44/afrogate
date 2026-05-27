@@ -32,6 +32,7 @@ import type {
   AdminUserSummary,
   AdminUsersResponse,
   ProvisionProtocolSetupResponse,
+  RecordProtocolServerApplyResponse,
   RecordRouteDecisionPreviewResponse,
   RouteFailoverEventsResponse,
 } from '@afrogate/shared';
@@ -47,6 +48,7 @@ import {
   ApplyRouteDecisionPreviewDto,
   CreateProtocolSetupDto,
   CreateSettingsSecretDto,
+  RecordProtocolServerApplyDto,
   RecordRouteDecisionPreviewDto,
   UpsertRouteAssignmentDto,
   UpsertRouteSettingsDto,
@@ -312,6 +314,16 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<ProvisionProtocolSetupResponse> {
     return this.operationsService.provisionProtocolSetup(id, request.actor);
+  }
+
+  @Post('settings/protocol-setups/:id/server-apply/dry-run')
+  @Roles('admin')
+  recordProtocolServerApplyDryRun(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: RecordProtocolServerApplyDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<RecordProtocolServerApplyResponse> {
+    return this.operationsService.recordProtocolServerApplyDryRun(id, payload ?? {}, request.actor);
   }
 
   @Post('settings/secrets')

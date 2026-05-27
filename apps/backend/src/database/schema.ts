@@ -364,6 +364,35 @@ export const protocolSetups = pgTable(
   }),
 );
 
+export const protocolApplyEvents = pgTable(
+  'protocol_apply_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    protocolSetupId: uuid('protocol_setup_id')
+      .notNull()
+      .references(() => protocolSetups.id, { onDelete: 'cascade' }),
+    outboundId: uuid('outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    targetServerId: uuid('target_server_id').references(() => servers.id, { onDelete: 'set null' }),
+    applyMode: text('apply_mode').notNull().default('dryRun'),
+    applyStatus: text('apply_status').notNull().default('recorded'),
+    featureFlagEnabled: boolean('feature_flag_enabled').notNull().default(false),
+    adapterImplemented: boolean('adapter_implemented').notNull().default(false),
+    canExecute: boolean('can_execute').notNull().default(false),
+    commandCount: integer('command_count').notNull().default(0),
+    configChangeCount: integer('config_change_count').notNull().default(0),
+    secretSafe: boolean('secret_safe').notNull().default(true),
+    reasonCodes: jsonb('reason_codes').notNull().default(sql`'[]'::jsonb`),
+    dryRunSnapshot: jsonb('dry_run_snapshot').notNull().default(sql`'{}'::jsonb`),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    setupCreatedIdx: index('protocol_apply_events_setup_created_idx').on(table.protocolSetupId, table.createdAt),
+    targetCreatedIdx: index('protocol_apply_events_target_created_idx').on(table.targetServerId, table.createdAt),
+    outboundIdx: index('protocol_apply_events_outbound_idx').on(table.outboundId),
+  }),
+);
+
 export const routeSettings = pgTable(
   'route_settings',
   {

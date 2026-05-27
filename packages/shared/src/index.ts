@@ -491,6 +491,58 @@ export interface AdminProtocolServerApplyPlanSummary {
   configChanges: AdminProtocolServerApplyConfigChange[];
 }
 
+export type ProtocolServerApplyMode = 'dryRun';
+
+export interface AdminProtocolServerApplyDryRunSnapshot {
+  generatedAt: string;
+  protocolSetupId: string;
+  protocol: ProtocolKind | string;
+  profile: ProtocolProfile | string;
+  routeGroup: string;
+  outboundId?: string | null;
+  targetServerId?: string | null;
+  targetServerLabel?: string | null;
+  applyMode: ProtocolServerApplyMode | string;
+  applyStatus: string;
+  liveApply: boolean;
+  dataPlaneMutationExecuted: boolean;
+  featureFlagEnabled: boolean;
+  adapterImplemented: boolean;
+  dataPlaneReady: boolean;
+  canExecute: boolean;
+  requiresSecret: boolean;
+  hasSecretRef: boolean;
+  requiresServerAccess: boolean;
+  hasServerAccess: boolean;
+  commandCount: number;
+  configChangeCount: number;
+  secretSafe: boolean;
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+  steps: AdminProtocolServerApplyStep[];
+  commands: AdminProtocolServerApplyCommand[];
+  configChanges: AdminProtocolServerApplyConfigChange[];
+}
+
+export interface AdminProtocolServerApplyEventSummary {
+  id: string;
+  protocolSetupId: string;
+  outboundId?: string | null;
+  targetServerId?: string | null;
+  targetServerLabel?: string | null;
+  applyMode: ProtocolServerApplyMode | string;
+  applyStatus: string;
+  featureFlagEnabled: boolean;
+  adapterImplemented: boolean;
+  canExecute: boolean;
+  commandCount: number;
+  configChangeCount: number;
+  secretSafe: boolean;
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+  dryRunSnapshot?: AdminProtocolServerApplyDryRunSnapshot | null;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
 export interface AdminProtocolSetupSummary {
   id: string;
   name: string;
@@ -521,6 +573,10 @@ export interface CreateProtocolSetupRequest {
   config?: Record<string, unknown>;
   secretRef?: string | null;
   targetServerId?: string | null;
+}
+
+export interface RecordProtocolServerApplyRequest {
+  applyMode?: ProtocolServerApplyMode;
 }
 
 export interface AdminRouteSettingsSummary {
@@ -1488,6 +1544,12 @@ export interface AdminRouteDecisionEventDetailResponse {
 export interface ProvisionProtocolSetupResponse {
   protocolSetup: AdminProtocolSetupSummary;
   outbound: AdminOutboundSummary;
+  serverApplyPlan: AdminProtocolServerApplyPlanSummary;
+}
+
+export interface RecordProtocolServerApplyResponse {
+  event: AdminProtocolServerApplyEventSummary;
+  protocolSetup: AdminProtocolSetupSummary;
   serverApplyPlan: AdminProtocolServerApplyPlanSummary;
 }
 
