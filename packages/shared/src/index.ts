@@ -526,6 +526,10 @@ export interface AdminProtocolServerApplyDryRunSnapshot {
 export interface AdminProtocolServerApplyEventSummary {
   id: string;
   protocolSetupId: string;
+  protocolSetupName?: string | null;
+  protocol?: ProtocolKind | string | null;
+  profile?: ProtocolProfile | string | null;
+  routeGroup?: string | null;
   outboundId?: string | null;
   targetServerId?: string | null;
   targetServerLabel?: string | null;
@@ -541,6 +545,10 @@ export interface AdminProtocolServerApplyEventSummary {
   dryRunSnapshot?: AdminProtocolServerApplyDryRunSnapshot | null;
   createdBy?: string | null;
   createdAt: string;
+}
+
+export interface AdminProtocolServerApplyEventDetail extends AdminProtocolServerApplyEventSummary {
+  dryRunSnapshot: AdminProtocolServerApplyDryRunSnapshot | null;
 }
 
 export interface AdminProtocolSetupSummary {
@@ -1541,6 +1549,14 @@ export interface AdminRouteDecisionEventDetailResponse {
   event: AdminRouteDecisionEventDetail;
 }
 
+export interface AdminProtocolServerApplyEventsResponse {
+  events: AdminProtocolServerApplyEventSummary[];
+}
+
+export interface AdminProtocolServerApplyEventDetailResponse {
+  event: AdminProtocolServerApplyEventDetail;
+}
+
 export interface ProvisionProtocolSetupResponse {
   protocolSetup: AdminProtocolSetupSummary;
   outbound: AdminOutboundSummary;
@@ -1548,7 +1564,7 @@ export interface ProvisionProtocolSetupResponse {
 }
 
 export interface RecordProtocolServerApplyResponse {
-  event: AdminProtocolServerApplyEventSummary;
+  event: AdminProtocolServerApplyEventDetail;
   protocolSetup: AdminProtocolSetupSummary;
   serverApplyPlan: AdminProtocolServerApplyPlanSummary;
 }

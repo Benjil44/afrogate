@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.52.0 - 2026-05-27
+
+- Added read-role admin APIs for listing compact protocol server apply dry-run events and fetching stored snapshot detail on demand.
+- Surfaced a Settings protocol apply audit panel with recent event cards, per-setup last-event linkage, and secret-safe snapshot inspection in English and Persian.
+- Kept recent event payloads lightweight while preserving full dry-run command/config snapshots only in detail responses, with no SSH, shell, secret decrypt, service reload, OS route, or outbound enablement.
+
 ## 0.51.0 - 2026-05-27
 
 - Added `protocol_apply_events` storage and a guarded admin API for recording secret-safe protocol server apply dry-run snapshots.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type {
   AdminAlertSummary,
+  AdminProtocolServerApplyEventDetail,
   AdminProtocolServerApplyEventSummary,
   AdminProtocolSetupSummary,
   AdminProtocolServerApplyPlanSummary,
@@ -88,6 +89,8 @@ import {
   fetchAdminServers,
   fetchAdminSettings,
   fetchAdminUsers,
+  fetchProtocolServerApplyEvent,
+  fetchProtocolServerApplyEvents,
   fetchRouteAssignment,
   fetchRouteFailoverEvents,
   fetchRouteQualityAnalytics,
@@ -2096,7 +2099,9 @@ function SettingsPage({
   const [routeMessage, setRouteMessage] = useState<string | null>(null);
   const [settingsDataState, setSettingsDataState] = useState<DataState>('loading');
   const [persistedProtocolSetups, setPersistedProtocolSetups] = useState<AdminProtocolSetupSummary[]>([]);
+  const [protocolApplyEvents, setProtocolApplyEvents] = useState<AdminProtocolServerApplyEventSummary[]>([]);
   const [protocolApplyEventsBySetupId, setProtocolApplyEventsBySetupId] = useState<Record<string, AdminProtocolServerApplyEventSummary>>({});
+  const [protocolApplyEventDetail, setProtocolApplyEventDetail] = useState<AdminProtocolServerApplyEventDetail | null>(null);
   const [apiWireGuardCandidates, setApiWireGuardCandidates] = useState<AdminWireGuardCandidate[]>([]);
   const [routeQualityAnalytics, setRouteQualityAnalytics] = useState<AdminRouteQualityAnalyticsResponse | null>(null);
   const [routeDecisionPreview, setRouteDecisionPreview] = useState<AdminRouteDecisionPreviewResponse | null>(null);
@@ -2111,6 +2116,7 @@ function SettingsPage({
   const [isDecisionRecording, setIsDecisionRecording] = useState(false);
   const [isDecisionApplying, setIsDecisionApplying] = useState(false);
   const [isDecisionEventDetailLoading, setIsDecisionEventDetailLoading] = useState(false);
+  const [isProtocolApplyEventDetailLoading, setIsProtocolApplyEventDetailLoading] = useState(false);
   const canCreateProtocols = session.actor.role === 'superadmin' || Boolean(session.actor.isSuperAdmin);
   const sampleWireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
     () => [
@@ -2197,8 +2203,11 @@ function SettingsPage({
     setRouteDecisionPreview(null);
     setRouteDecisionEvents([]);
     setRouteDecisionEventDetail(null);
+    setProtocolApplyEvents([]);
+    setProtocolApplyEventDetail(null);
     setProtocolApplyEventsBySetupId({});
     setIsDecisionEventDetailLoading(false);
+    setIsProtocolApplyEventDetailLoading(false);
 
     fetchAdminSettings(sessionToken, 'main', controller.signal)
       .then((data: AdminSettingsResponse) => {
@@ -2280,6 +2289,20 @@ function SettingsPage({
         if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
 
         setRouteDecisionEvents([]);
+      });
+
+    fetchProtocolServerApplyEvents(sessionToken, undefined, 'main', 10, controller.signal)
+      .then((data) => {
+        if (!isActive) return;
+
+        setProtocolApplyEvents(data.events);
+        setProtocolApplyEventsBySetupId(latestProtocolApplyEventsBySetupId(data.events));
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setProtocolApplyEvents([]);
+        setProtocolApplyEventsBySetupId({});
       });
 
     return () => {
@@ -2505,11 +2528,31 @@ function SettingsPage({
         ...current,
         [setup.id]: response.event,
       }));
+      setProtocolApplyEvents((current) => [
+        response.event,
+        ...current.filter((event) => event.id !== response.event.id),
+      ].slice(0, 10));
+      setProtocolApplyEventDetail(response.event);
       setServerApplyMessage(t.settings.serverApplyDryRunRecorded);
     } catch (error) {
       setServerApplyMessage(t.settings.serverApplyDryRunFailed);
     } finally {
       setServerApplyingSetupId(null);
+    }
+  };
+
+  const inspectProtocolApplyEvent = async (eventId: string) => {
+    setIsProtocolApplyEventDetailLoading(true);
+    setServerApplyMessage(null);
+
+    try {
+      const response = await fetchProtocolServerApplyEvent(sessionToken, eventId);
+
+      setProtocolApplyEventDetail(response.event);
+    } catch (error) {
+      setServerApplyMessage(t.settings.protocolApplyEventDetailFailed);
+    } finally {
+      setIsProtocolApplyEventDetailLoading(false);
     }
   };
 
@@ -3004,6 +3047,14 @@ function SettingsPage({
                 </div>
               </div>
             ) : null}
+            <ProtocolApplyEventsPanel
+              eventDetail={protocolApplyEventDetail}
+              events={protocolApplyEvents}
+              format={format}
+              isDetailLoading={isProtocolApplyEventDetailLoading}
+              onInspectEvent={(eventId) => void inspectProtocolApplyEvent(eventId)}
+              t={t}
+            />
             {provisionMessage ? <p className="text-[13px] font-bold text-afro-teal">{provisionMessage}</p> : null}
             {serverApplyMessage ? <p className="text-[13px] font-bold text-afro-teal">{serverApplyMessage}</p> : null}
           </div>
@@ -6788,6 +6839,199 @@ function wireGuardCandidateSourceLabel(candidate: WireGuardHealthCandidate, t: D
   return t.settings.localSample;
 }
 
+function latestProtocolApplyEventsBySetupId(
+  events: AdminProtocolServerApplyEventSummary[],
+): Record<string, AdminProtocolServerApplyEventSummary> {
+  return events.reduce<Record<string, AdminProtocolServerApplyEventSummary>>((items, event) => {
+    if (!items[event.protocolSetupId]) items[event.protocolSetupId] = event;
+
+    return items;
+  }, {});
+}
+
+function ProtocolApplyEventsPanel({
+  eventDetail,
+  events,
+  format,
+  isDetailLoading,
+  onInspectEvent,
+  t,
+}: {
+  eventDetail: AdminProtocolServerApplyEventDetail | null;
+  events: AdminProtocolServerApplyEventSummary[];
+  format: DashboardFormatters;
+  isDetailLoading: boolean;
+  onInspectEvent: (eventId: string) => void;
+  t: DashboardStrings;
+}) {
+  return (
+    <div className="grid gap-2 border-t border-afro-line pt-3">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+        <strong className="text-[13px] text-afro-muted">{t.settings.protocolApplyAudit}</strong>
+        <StatusBadge tone="neutral">{t.settings.serverApplyNoMutation}</StatusBadge>
+      </div>
+
+      {events.length === 0 ? (
+        <p className={`${mutedTextClass} rounded-md border border-afro-line bg-white px-2.5 py-2`}>
+          {t.settings.noProtocolApplyEvents}
+        </p>
+      ) : (
+        <div className="grid gap-2 md:grid-cols-2">
+          {events.slice(0, 6).map((event) => {
+            const title = event.protocolSetupName ?? event.protocol ?? event.protocolSetupId;
+            const meta = [event.protocol, event.routeGroup, event.targetServerLabel].filter(Boolean).join(' / ');
+
+            return (
+              <div className="grid gap-1.5 rounded-md border border-afro-line bg-white px-2.5 py-2" key={event.id}>
+                <div className="flex min-h-8 items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <strong className="block truncate text-[13px]">{title}</strong>
+                    <span className={`${mutedTextClass} block truncate`}>{meta || t.settings.pending}</span>
+                  </div>
+                  <button
+                    className="inline-flex min-h-7 shrink-0 items-center justify-center gap-1 rounded-md border border-afro-line bg-white px-2 text-[11px] font-bold text-afro-ink hover:border-afro-teal disabled:cursor-wait disabled:opacity-60"
+                    disabled={isDetailLoading}
+                    onClick={() => onInspectEvent(event.id)}
+                    type="button"
+                  >
+                    <Eye size={13} />
+                    {isDetailLoading ? t.settings.loadingProtocolApplyEvent : t.settings.inspectProtocolApplyEvent}
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusBadge tone={event.secretSafe ? 'good' : 'warning'}>
+                    {event.secretSafe ? t.settings.secretSafe : t.settings.decisionEventSecretUnsafe}
+                  </StatusBadge>
+                  <StatusBadge tone={event.canExecute ? 'good' : 'neutral'}>
+                    {event.canExecute ? t.settings.serverApplyExecutable : t.settings.serverApplyNoMutation}
+                  </StatusBadge>
+                  <StatusBadge tone={protocolServerApplyTone(event.applyStatus)}>
+                    {protocolServerApplyEventStatusLabel(event.applyStatus, t)}
+                  </StatusBadge>
+                  <span className={`${mutedTextClass} min-w-0 truncate`}>{format.time(new Date(event.createdAt), false)}</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {event.reasonCodes.slice(0, 4).map((reason) => (
+                    <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`${event.id}-${reason}`}>
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {eventDetail ? <ProtocolApplyEventDetailCard detail={eventDetail} format={format} t={t} /> : null}
+    </div>
+  );
+}
+
+function ProtocolApplyEventDetailCard({
+  detail,
+  format,
+  t,
+}: {
+  detail: AdminProtocolServerApplyEventDetail;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  const snapshot = detail.dryRunSnapshot;
+
+  return (
+    <div className="grid gap-2 rounded-md border border-afro-line bg-[#f9fbfc] p-2.5">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block truncate text-[13px]">{t.settings.protocolApplyEventContext}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {detail.protocolSetupName ?? detail.protocolSetupId} / {format.time(new Date(detail.createdAt))}
+          </span>
+        </div>
+        <StatusBadge tone={detail.secretSafe ? 'good' : 'warning'}>
+          {detail.secretSafe ? t.settings.secretSafe : t.settings.decisionEventSecretUnsafe}
+        </StatusBadge>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricPill
+          icon={ShieldCheck}
+          label={t.settings.protocolApplySnapshot}
+          value={snapshot ? t.settings.dryRunSnapshot : t.settings.noDryRunSnapshot}
+        />
+        <MetricPill
+          icon={Route}
+          label={t.settings.protocolApplyMode}
+          value={String(detail.applyMode)}
+        />
+        <MetricPill
+          icon={SettingsIcon}
+          label={t.settings.routeApplyDryRunCommands}
+          value={t.settings.dryRunCommandsCount(format.integer(detail.commandCount))}
+        />
+        <MetricPill
+          icon={Network}
+          label={t.settings.routeApplyConfigChanges}
+          value={t.settings.dryRunConfigChangesCount(format.integer(detail.configChangeCount))}
+        />
+      </div>
+
+      {snapshot ? (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            <StatusBadge tone={snapshot.liveApply || snapshot.dataPlaneMutationExecuted ? 'warning' : 'neutral'}>
+              {snapshot.liveApply || snapshot.dataPlaneMutationExecuted ? t.settings.serverApplyExecutable : t.settings.protocolApplyLiveBlocked}
+            </StatusBadge>
+            <StatusBadge tone={snapshot.canExecute ? 'good' : 'neutral'}>
+              {snapshot.canExecute ? t.settings.serverApplyExecutable : t.settings.serverApplyNoMutation}
+            </StatusBadge>
+            {snapshot.steps.slice(0, 6).map((step) => (
+              <StatusBadge key={step.id} tone={protocolServerApplyStepTone(step.status)}>
+                {protocolServerApplyStepLabel(step.kind, t)}
+              </StatusBadge>
+            ))}
+          </div>
+
+          {snapshot.commands.length > 0 ? (
+            <div className="grid gap-1">
+              <strong className="text-[12px] text-afro-muted">{t.settings.protocolApplyCommandsPreview}</strong>
+              {snapshot.commands.slice(0, 5).map((item) => (
+                <div className="grid gap-1 rounded border border-afro-line bg-white px-2 py-1" key={item.id}>
+                  <code className="min-w-0 truncate text-[11px] font-bold text-afro-ink" dir="ltr">{item.command}</code>
+                  <span className="flex flex-wrap gap-1">
+                    <StatusBadge tone={item.dataPlaneMutation ? 'warning' : 'neutral'}>
+                      {item.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+                    </StatusBadge>
+                    <StatusBadge tone={item.requiresRoot ? 'warning' : 'neutral'}>
+                      {item.requiresRoot ? t.settings.routeApplyRootCommand : t.settings.routeApplyUserCommand}
+                    </StatusBadge>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {snapshot.configChanges.length > 0 ? (
+            <div className="grid gap-1">
+              <strong className="text-[12px] text-afro-muted">{t.settings.protocolApplyConfigPreview}</strong>
+              {snapshot.configChanges.slice(0, 4).map((item) => (
+                <div className="grid gap-0.5 rounded border border-afro-line bg-white px-2 py-1" key={item.id}>
+                  <code className="min-w-0 truncate text-[11px] font-bold text-afro-ink" dir="ltr">{item.filePath}</code>
+                  <span className={`${mutedTextClass} min-w-0 truncate`}>{item.action}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <p className={`${mutedTextClass} rounded-md border border-afro-line bg-white px-2.5 py-2`}>
+          {t.settings.noDryRunSnapshot}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ProtocolServerApplyPlanCard({
   format,
   plan,
@@ -6874,6 +7118,12 @@ function protocolServerApplyStatusLabel(status: string, t: DashboardStrings): st
     default:
       return t.settings.pending;
   }
+}
+
+function protocolServerApplyEventStatusLabel(status: string, t: DashboardStrings): string {
+  if (status === 'recorded') return t.settings.protocolApplyRecorded;
+
+  return protocolServerApplyStatusLabel(status, t);
 }
 
 function protocolServerApplyStepLabel(kind: string, t: DashboardStrings): string {

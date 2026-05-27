@@ -5,6 +5,7 @@ import type {
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
   AdminProtocolServerApplyDryRunSnapshot,
+  AdminProtocolServerApplyEventDetail,
   AdminProtocolServerApplyEventSummary,
   AdminProtocolSetupSummary,
   AdminProtocolServerApplyPlanSummary,
@@ -216,6 +217,10 @@ type ProtocolServerApplySource = Pick<
 interface ProtocolApplyEventRow {
   id: string;
   protocolSetupId: string;
+  protocolSetupName: string | null;
+  protocol: string | null;
+  profile: string | null;
+  routeGroup: string | null;
   outboundId: string | null;
   targetServerId: string | null;
   targetServerLabel: string | null;
@@ -228,7 +233,7 @@ interface ProtocolApplyEventRow {
   configChangeCount: number;
   secretSafe: boolean;
   reasonCodes: unknown;
-  dryRunSnapshot: unknown;
+  dryRunSnapshot?: unknown;
   createdBy: string | null;
   createdAt: Date;
 }
@@ -1868,7 +1873,7 @@ export class OperationsService {
     });
 
     const [event, protocolSetup] = await Promise.all([
-      this.getProtocolApplyEvent(eventId),
+      this.getProtocolApplyEventDetail(eventId),
       this.getProtocolSetup(id),
     ]);
 
@@ -1877,6 +1882,86 @@ export class OperationsService {
       protocolSetup,
       serverApplyPlan: protocolSetup.serverApplyPlan ?? this.buildProtocolServerApplyPlan(protocolSetup),
     };
+  }
+
+  async listProtocolApplyEvents(
+    filters: { protocolSetupId?: string; routeGroup?: string; limit?: number } = {},
+  ): Promise<AdminProtocolServerApplyEventSummary[]> {
+    const routeGroup = filters.routeGroup ? this.normalizeRouteGroup(filters.routeGroup) : undefined;
+    const result = await this.database.query<ProtocolApplyEventRow>(
+      `
+        SELECT
+          event.id,
+          event.protocol_setup_id AS "protocolSetupId",
+          ps.name AS "protocolSetupName",
+          ps.protocol,
+          ps.profile,
+          ps.route_group AS "routeGroup",
+          event.outbound_id AS "outboundId",
+          event.target_server_id AS "targetServerId",
+          COALESCE(target_server.hostname, target_server.external_id) AS "targetServerLabel",
+          event.apply_mode AS "applyMode",
+          event.apply_status AS "applyStatus",
+          event.feature_flag_enabled AS "featureFlagEnabled",
+          event.adapter_implemented AS "adapterImplemented",
+          event.can_execute AS "canExecute",
+          event.command_count AS "commandCount",
+          event.config_change_count AS "configChangeCount",
+          event.secret_safe AS "secretSafe",
+          event.reason_codes AS "reasonCodes",
+          event.created_by AS "createdBy",
+          event.created_at AS "createdAt"
+        FROM protocol_apply_events event
+        JOIN protocol_setups ps ON ps.id = event.protocol_setup_id
+        LEFT JOIN servers target_server ON target_server.id = event.target_server_id
+        WHERE ($1::uuid IS NULL OR event.protocol_setup_id = $1::uuid)
+          AND ($2::text IS NULL OR ps.route_group = $2)
+        ORDER BY event.created_at DESC
+        LIMIT $3
+      `,
+      [filters.protocolSetupId ?? null, routeGroup ?? null, filters.limit ?? 25],
+    );
+
+    return result.rows.map((row) => this.mapProtocolApplyEvent(row));
+  }
+
+  async getProtocolApplyEventDetail(id: string): Promise<AdminProtocolServerApplyEventDetail> {
+    const result = await this.database.query<ProtocolApplyEventRow>(
+      `
+        SELECT
+          event.id,
+          event.protocol_setup_id AS "protocolSetupId",
+          ps.name AS "protocolSetupName",
+          ps.protocol,
+          ps.profile,
+          ps.route_group AS "routeGroup",
+          event.outbound_id AS "outboundId",
+          event.target_server_id AS "targetServerId",
+          COALESCE(target_server.hostname, target_server.external_id) AS "targetServerLabel",
+          event.apply_mode AS "applyMode",
+          event.apply_status AS "applyStatus",
+          event.feature_flag_enabled AS "featureFlagEnabled",
+          event.adapter_implemented AS "adapterImplemented",
+          event.can_execute AS "canExecute",
+          event.command_count AS "commandCount",
+          event.config_change_count AS "configChangeCount",
+          event.secret_safe AS "secretSafe",
+          event.reason_codes AS "reasonCodes",
+          event.dry_run_snapshot AS "dryRunSnapshot",
+          event.created_by AS "createdBy",
+          event.created_at AS "createdAt"
+        FROM protocol_apply_events event
+        JOIN protocol_setups ps ON ps.id = event.protocol_setup_id
+        LEFT JOIN servers target_server ON target_server.id = event.target_server_id
+        WHERE event.id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Protocol apply event not found');
+
+    return this.mapProtocolApplyEventDetail(row);
   }
 
   async upsertRouteSettings(
@@ -2116,44 +2201,14 @@ export class OperationsService {
     };
   }
 
-  private async getProtocolApplyEvent(id: string): Promise<AdminProtocolServerApplyEventSummary> {
-    const result = await this.database.query<ProtocolApplyEventRow>(
-      `
-        SELECT
-          event.id,
-          event.protocol_setup_id AS "protocolSetupId",
-          event.outbound_id AS "outboundId",
-          event.target_server_id AS "targetServerId",
-          COALESCE(target_server.hostname, target_server.external_id) AS "targetServerLabel",
-          event.apply_mode AS "applyMode",
-          event.apply_status AS "applyStatus",
-          event.feature_flag_enabled AS "featureFlagEnabled",
-          event.adapter_implemented AS "adapterImplemented",
-          event.can_execute AS "canExecute",
-          event.command_count AS "commandCount",
-          event.config_change_count AS "configChangeCount",
-          event.secret_safe AS "secretSafe",
-          event.reason_codes AS "reasonCodes",
-          event.dry_run_snapshot AS "dryRunSnapshot",
-          event.created_by AS "createdBy",
-          event.created_at AS "createdAt"
-        FROM protocol_apply_events event
-        LEFT JOIN servers target_server ON target_server.id = event.target_server_id
-        WHERE event.id = $1
-      `,
-      [id],
-    );
-    const row = result.rows[0];
-
-    if (!row) throw new NotFoundException('Protocol apply event not found');
-
-    return this.mapProtocolApplyEvent(row);
-  }
-
   private mapProtocolApplyEvent(row: ProtocolApplyEventRow): AdminProtocolServerApplyEventSummary {
-    return {
+    const event: AdminProtocolServerApplyEventSummary = {
       id: row.id,
       protocolSetupId: row.protocolSetupId,
+      protocolSetupName: row.protocolSetupName,
+      protocol: row.protocol,
+      profile: row.profile,
+      routeGroup: row.routeGroup,
       outboundId: row.outboundId,
       targetServerId: row.targetServerId,
       targetServerLabel: row.targetServerLabel,
@@ -2166,9 +2221,21 @@ export class OperationsService {
       configChangeCount: row.configChangeCount,
       secretSafe: row.secretSafe,
       reasonCodes: this.stringArrayOrEmpty(row.reasonCodes),
-      dryRunSnapshot: this.mapProtocolServerApplyDryRunSnapshot(row.dryRunSnapshot),
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
+    };
+
+    if (row.dryRunSnapshot !== undefined) {
+      event.dryRunSnapshot = this.mapProtocolServerApplyDryRunSnapshot(row.dryRunSnapshot);
+    }
+
+    return event;
+  }
+
+  private mapProtocolApplyEventDetail(row: ProtocolApplyEventRow): AdminProtocolServerApplyEventDetail {
+    return {
+      ...this.mapProtocolApplyEvent(row),
+      dryRunSnapshot: this.mapProtocolServerApplyDryRunSnapshot(row.dryRunSnapshot),
     };
   }
 

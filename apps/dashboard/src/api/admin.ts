@@ -6,6 +6,8 @@ import type {
   AdminLoginResponse,
   AdminOutboundsResponse,
   AdminServersResponse,
+  AdminProtocolServerApplyEventDetailResponse,
+  AdminProtocolServerApplyEventsResponse,
   AdminSessionResponse,
   AdminProtocolSetupSummary,
   AdminRouteAssignmentSummary,
@@ -277,6 +279,43 @@ export async function provisionAdminProtocolSetup(
   );
 
   return response.json() as Promise<ProvisionProtocolSetupResponse>;
+}
+
+export async function fetchProtocolServerApplyEvents(
+  sessionToken: string,
+  protocolSetupId?: string,
+  routeGroup = 'main',
+  limit = 10,
+  signal?: AbortSignal,
+): Promise<AdminProtocolServerApplyEventsResponse> {
+  const params = new URLSearchParams({
+    routeGroup,
+    limit: String(limit),
+  });
+  if (protocolSetupId) params.set('protocolSetupId', protocolSetupId);
+
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/settings/protocol-apply-events?${params.toString()}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminProtocolServerApplyEventsResponse>;
+}
+
+export async function fetchProtocolServerApplyEvent(
+  sessionToken: string,
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<AdminProtocolServerApplyEventDetailResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/settings/protocol-apply-events/${encodeURIComponent(eventId)}`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      signal,
+    },
+  );
+
+  return response.json() as Promise<AdminProtocolServerApplyEventDetailResponse>;
 }
 
 export async function recordAdminProtocolServerApplyDryRun(

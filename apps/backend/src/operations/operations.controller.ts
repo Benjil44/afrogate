@@ -20,6 +20,8 @@ import type {
   AdminOutboundsResponse,
   AdminServerDetail,
   AdminServersResponse,
+  AdminProtocolServerApplyEventDetailResponse,
+  AdminProtocolServerApplyEventsResponse,
   AdminProtocolSetupSummary,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionEventDetailResponse,
@@ -296,6 +298,32 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminRouteAssignmentSummary> {
     return this.operationsService.upsertRouteAssignment(payload, request.actor);
+  }
+
+  @Get('settings/protocol-apply-events')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listProtocolApplyEvents(
+    @Query('protocolSetupId') protocolSetupId?: string,
+    @Query('routeGroup') routeGroup?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminProtocolServerApplyEventsResponse> {
+    return {
+      events: await this.operationsService.listProtocolApplyEvents({
+        protocolSetupId: this.operationsService.normalizeUuidQuery(protocolSetupId, 'protocolSetupId'),
+        routeGroup,
+        limit: this.operationsService.normalizeLimit(limit, 10, 50),
+      }),
+    };
+  }
+
+  @Get('settings/protocol-apply-events/:id')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async getProtocolApplyEvent(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminProtocolServerApplyEventDetailResponse> {
+    return {
+      event: await this.operationsService.getProtocolApplyEventDetail(id),
+    };
   }
 
   @Post('settings/protocol-setups')

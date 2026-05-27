@@ -248,7 +248,7 @@ Current Settings secret storage uses `secret_records` for write-only private-key
 
 Initial Settings protocol provisioning is control-plane-only. A saved protocol setup can be converted into a managed outbound row with the encrypted secret reference preserved, but the outbound is created disabled and in maintenance mode until a later server-side apply step installs or updates the real WireGuard/VLESS/L2TP/IKEv2 service and health checks confirm it is usable.
 
-Protocol server apply dry-runs are now auditable without server mutation. Recording a dry-run stores a secret-safe `protocol_apply_events` snapshot with target server, provisioned outbound, readiness flags, blocker reason codes, command/config counts, and preview artifacts. It does not open SSH, run shell commands, decrypt secrets, change OS routes, or enable the generated outbound.
+Protocol server apply dry-runs are now auditable without server mutation. Recording a dry-run stores a secret-safe `protocol_apply_events` snapshot with target server, provisioned outbound, readiness flags, blocker reason codes, command/config counts, and preview artifacts. Read-role admins can list compact recent events through `/api/admin/settings/protocol-apply-events` and inspect stored snapshots on demand through `/api/admin/settings/protocol-apply-events/:id`, while the Settings page keeps the recent list lightweight and fetches detail only when requested. These flows do not open SSH, run shell commands, decrypt secrets, change OS routes, or enable the generated outbound.
 
 ## Security References
 
