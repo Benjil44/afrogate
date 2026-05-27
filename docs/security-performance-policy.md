@@ -67,6 +67,7 @@ Routing must be fast, explainable, and stable.
 - Before any future data-plane movement, route decision previews must pass a switch-preflight checklist for feature flag, adapter implementation/support, dry-run safety, route guards, session safety, rollback, cooldown, audit, and health verification. Failing or future preflight gates must stay visible to admins and persisted in decision context.
 - Future data-plane movement must start with a rollout plan that pins existing sessions, canaries new sessions first, verifies packet loss/jitter/latency rollback thresholds, honors a route-consistency hold, and persists the planned steps for audit before any automatic expansion.
 - Rollout evaluation must remain advisory until the audited data-plane adapter exists. A failed packet-loss, jitter, latency, or score guard should recommend hold, manual review, or rollback instead of expanding traffic.
+- Switch orchestration must keep the full next-action state visible: route lock, manual mode, cooldown, preflight, sticky-session, canary, hold, verify, expand, rollback, and assignment-only boundaries must be explicit before any future live movement can be trusted.
 - Do not require GPU acceleration for MVP route intelligence. Packet-loss and jitter reduction depends on path measurement, bufferbloat control, policy routing, and stable switching rules; compact CPU-side time-series scoring is the right default for low-resource VPS machines.
 
 ## Buffering and Latency Policy

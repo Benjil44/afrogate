@@ -1092,6 +1092,102 @@ export interface AdminRouteDecisionSwitchRolloutEvaluationSummary {
   reasonCodes: Array<RouteDecisionSwitchRolloutEvaluationReason | string>;
 }
 
+export type RouteDecisionSwitchOrchestrationStatus =
+  | 'notRequired'
+  | 'blocked'
+  | 'assignmentOnly'
+  | 'planningOnly'
+  | 'holding'
+  | 'canaryReady'
+  | 'expandReady'
+  | 'rollbackRecommended'
+  | 'dataPlaneReady';
+
+export type RouteDecisionSwitchOrchestrationPhase =
+  | 'noChange'
+  | 'guard'
+  | 'assignment'
+  | 'pinExisting'
+  | 'canary'
+  | 'drain'
+  | 'verify'
+  | 'expand'
+  | 'rollback';
+
+export type RouteDecisionSwitchOrchestrationAction =
+  | 'none'
+  | 'recordDecision'
+  | 'hold'
+  | 'startCanary'
+  | 'expandCanary'
+  | 'rollback'
+  | 'manualReview';
+
+export type RouteDecisionSwitchOrchestrationStageStatus =
+  | 'ready'
+  | 'future'
+  | 'blocked'
+  | 'hold'
+  | 'notRequired';
+
+export type RouteDecisionSwitchOrchestrationReason =
+  | 'noSwitchNeeded'
+  | 'routeLock'
+  | 'manualMode'
+  | 'cooldownActive'
+  | 'assignmentOnly'
+  | 'dataPlaneDisabled'
+  | 'preflightBlocked'
+  | 'rolloutBlocked'
+  | 'guardPassed'
+  | 'healthUnknown'
+  | 'rollbackGuard'
+  | 'stickySessions'
+  | 'newSessionsOnly'
+  | 'drainSafe'
+  | 'canaryRequired'
+  | 'routeConsistencyHold'
+  | 'gamingSensitive'
+  | 'auditRequired'
+  | 'dataPlaneReady';
+
+export interface AdminRouteDecisionSwitchOrchestrationStage {
+  id: string;
+  phase: RouteDecisionSwitchOrchestrationPhase | string;
+  code: string;
+  status: RouteDecisionSwitchOrchestrationStageStatus | string;
+  trafficScope: RouteDecisionSwitchRolloutTrafficScope | string;
+  sessionImpact: RouteDecisionSwitchEngineSessionImpact | string;
+  targetPercent: number;
+  targetOutboundId?: string | null;
+  dataPlaneMutation: boolean;
+  estimatedSeconds?: number | null;
+  reasonCodes: Array<RouteDecisionSwitchOrchestrationReason | string>;
+}
+
+export interface AdminRouteDecisionSwitchOrchestrationSummary {
+  status: RouteDecisionSwitchOrchestrationStatus | string;
+  phase: RouteDecisionSwitchOrchestrationPhase | string;
+  recommendedAction: RouteDecisionSwitchOrchestrationAction | string;
+  generatedAt: string;
+  dataPlaneReady: boolean;
+  canExecuteDataPlane: boolean;
+  assignmentOnly: boolean;
+  routeLocked: boolean;
+  cooldownActive: boolean;
+  preserveExistingSessions: boolean;
+  switchNewSessionsOnly: boolean;
+  activeSessionsProtected: boolean;
+  activeSessionsMayMove: boolean;
+  canaryPercent: number;
+  nextPercent: number;
+  holdSecondsRemaining: number;
+  rollbackRequired: boolean;
+  stageCount: number;
+  reasonCodes: Array<RouteDecisionSwitchOrchestrationReason | string>;
+  stages: AdminRouteDecisionSwitchOrchestrationStage[];
+}
+
 export type RouteDecisionApplyPlanStatus =
   | 'notRequired'
   | 'assignmentOnlyReady'
@@ -1210,6 +1306,7 @@ export interface AdminRouteDecisionPreviewResponse {
   switchPreflight: AdminRouteDecisionSwitchPreflightSummary;
   switchRollout: AdminRouteDecisionSwitchRolloutSummary;
   switchRolloutEvaluation: AdminRouteDecisionSwitchRolloutEvaluationSummary;
+  switchOrchestration: AdminRouteDecisionSwitchOrchestrationSummary;
   applyPlan: AdminRouteDecisionApplyPlanSummary;
   scoreDelta?: number | null;
   action: RouteDecisionAction;
@@ -1250,6 +1347,7 @@ export interface AdminRouteDecisionEventDetail extends AdminRouteDecisionEventSu
   switchPreflight?: AdminRouteDecisionSwitchPreflightSummary | null;
   switchRollout?: AdminRouteDecisionSwitchRolloutSummary | null;
   switchRolloutEvaluation?: AdminRouteDecisionSwitchRolloutEvaluationSummary | null;
+  switchOrchestration?: AdminRouteDecisionSwitchOrchestrationSummary | null;
 }
 
 export interface RecordRouteDecisionPreviewRequest {

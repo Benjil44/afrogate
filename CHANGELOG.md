@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.48.0 - 2026-05-27
+
+- Added a session-safe switch orchestration summary to route decision previews, combining route locks, cooldown, preflight, rollout, canary guard, sticky sessions, and rollback state into one next-action model.
+- Persisted orchestration context in route decision event detail for audit.
+- Surfaced the switch orchestrator in Settings with English/Persian labels so admins can see whether the safe next step is assignment-only, hold, canary, expand, rollback, or manual review.
+
 ## 0.47.0 - 2026-05-27
 
 - Added advisory switch-rollout health evaluation to route decision previews, comparing canary candidates against packet-loss, jitter, latency, and score guards.

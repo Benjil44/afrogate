@@ -19,6 +19,7 @@ import type {
   AdminRouteDecisionSessionSafetySummary,
   AdminRouteDecisionSwitchExecutionSummary,
   AdminRouteDecisionSwitchEngineSummary,
+  AdminRouteDecisionSwitchOrchestrationSummary,
   AdminRouteDecisionSwitchPreflightSummary,
   AdminRouteDecisionSwitchRolloutEvaluationSummary,
   AdminRouteDecisionSwitchRolloutSummary,
@@ -944,6 +945,22 @@ export class OperationsService {
       switchPreflight,
       switchRollout,
     });
+    const switchOrchestration = this.buildRouteDecisionSwitchOrchestrationSummary({
+      action,
+      generatedAt: now,
+      currentCandidate,
+      recommendedCandidate,
+      routeLocked,
+      autoRouteEnabled,
+      routeMode: routeSettings.mode,
+      cooldownActive,
+      sessionSafety,
+      switchEngine,
+      switchPreflight,
+      switchRollout,
+      switchRolloutEvaluation,
+      applyPlan,
+    });
 
     return {
       routeGroup,
@@ -977,6 +994,7 @@ export class OperationsService {
       switchPreflight,
       switchRollout,
       switchRolloutEvaluation,
+      switchOrchestration,
       applyPlan,
       scoreDelta,
       action,
@@ -1115,6 +1133,7 @@ export class OperationsService {
       switchPreflight: preview.switchPreflight,
       switchRollout: preview.switchRollout,
       switchRolloutEvaluation: preview.switchRolloutEvaluation,
+      switchOrchestration: preview.switchOrchestration,
       applyPlan: preview.applyPlan,
       dryRunSnapshot: this.buildRouteDecisionDryRunSnapshot(preview),
     };
@@ -1270,6 +1289,7 @@ export class OperationsService {
       switchPreflight: preview.switchPreflight,
       switchRollout: preview.switchRollout,
       switchRolloutEvaluation: preview.switchRolloutEvaluation,
+      switchOrchestration: preview.switchOrchestration,
       switchExecution,
       applyPlan: preview.applyPlan,
       dryRunSnapshot: this.buildRouteDecisionDryRunSnapshot(preview),
@@ -2060,6 +2080,68 @@ export class OperationsService {
       switchPreflight: this.mapRouteDecisionSwitchPreflight(decisionContext.switchPreflight),
       switchRollout: this.mapRouteDecisionSwitchRollout(decisionContext.switchRollout),
       switchRolloutEvaluation: this.mapRouteDecisionSwitchRolloutEvaluation(decisionContext.switchRolloutEvaluation),
+      switchOrchestration: this.mapRouteDecisionSwitchOrchestration(decisionContext.switchOrchestration),
+    };
+  }
+
+  private mapRouteDecisionSwitchOrchestration(
+    value: unknown,
+  ): AdminRouteDecisionSwitchOrchestrationSummary | null {
+    const orchestration = this.asRecord(value);
+    if (Object.keys(orchestration).length === 0) return null;
+
+    const stages = Array.isArray(orchestration.stages)
+      ? orchestration.stages
+          .map((item, index) => this.mapRouteDecisionSwitchOrchestrationStage(item, index))
+          .filter((item): item is AdminRouteDecisionSwitchOrchestrationSummary['stages'][number] => Boolean(item))
+      : [];
+
+    return {
+      status: this.stringOrFallback(orchestration.status, 'blocked'),
+      phase: this.stringOrFallback(orchestration.phase, 'guard'),
+      recommendedAction: this.stringOrFallback(orchestration.recommendedAction, 'manualReview'),
+      generatedAt: this.stringOrFallback(orchestration.generatedAt, new Date(0).toISOString()),
+      dataPlaneReady: orchestration.dataPlaneReady === true,
+      canExecuteDataPlane: orchestration.canExecuteDataPlane === true,
+      assignmentOnly: orchestration.assignmentOnly === true,
+      routeLocked: orchestration.routeLocked === true,
+      cooldownActive: orchestration.cooldownActive === true,
+      preserveExistingSessions: orchestration.preserveExistingSessions === true,
+      switchNewSessionsOnly: orchestration.switchNewSessionsOnly === true,
+      activeSessionsProtected: orchestration.activeSessionsProtected === true,
+      activeSessionsMayMove: orchestration.activeSessionsMayMove === true,
+      canaryPercent: this.numberOrFallback(orchestration.canaryPercent, 0),
+      nextPercent: this.numberOrFallback(orchestration.nextPercent, 0),
+      holdSecondsRemaining: this.numberOrFallback(orchestration.holdSecondsRemaining, 0),
+      rollbackRequired: orchestration.rollbackRequired === true,
+      stageCount: this.numberOrFallback(orchestration.stageCount, stages.length),
+      reasonCodes: this.stringArrayOrEmpty(orchestration.reasonCodes),
+      stages,
+    };
+  }
+
+  private mapRouteDecisionSwitchOrchestrationStage(
+    value: unknown,
+    index: number,
+  ): AdminRouteDecisionSwitchOrchestrationSummary['stages'][number] | null {
+    const stage = this.asRecord(value);
+    const code = this.stringOrFallback(stage.code, '');
+    if (!code) return null;
+
+    return {
+      id: this.stringOrFallback(stage.id, `switch-orchestration-stage-${index + 1}`),
+      phase: this.stringOrFallback(stage.phase, 'guard'),
+      code,
+      status: this.stringOrFallback(stage.status, 'future'),
+      trafficScope: this.stringOrFallback(stage.trafficScope, 'none'),
+      sessionImpact: this.stringOrFallback(stage.sessionImpact, 'none'),
+      targetPercent: this.numberOrFallback(stage.targetPercent, 0),
+      targetOutboundId: this.stringOrNullable(stage.targetOutboundId),
+      dataPlaneMutation: stage.dataPlaneMutation === true,
+      estimatedSeconds: stage.estimatedSeconds === null || stage.estimatedSeconds === undefined
+        ? null
+        : this.numberOrFallback(stage.estimatedSeconds, 0),
+      reasonCodes: this.stringArrayOrEmpty(stage.reasonCodes),
     };
   }
 
@@ -4277,6 +4359,263 @@ export class OperationsService {
       observedLatencyMs,
       observedScore,
       reasonCodes: [...reasonCodes],
+    };
+  }
+
+  private buildRouteDecisionSwitchOrchestrationSummary(context: {
+    action: RouteDecisionAction;
+    generatedAt: Date;
+    currentCandidate: AdminWireGuardCandidate | null;
+    recommendedCandidate: AdminWireGuardCandidate | null;
+    routeLocked: boolean;
+    autoRouteEnabled: boolean;
+    routeMode: string;
+    cooldownActive: boolean;
+    sessionSafety: AdminRouteDecisionSessionSafetySummary;
+    switchEngine: AdminRouteDecisionSwitchEngineSummary;
+    switchPreflight: AdminRouteDecisionSwitchPreflightSummary;
+    switchRollout: AdminRouteDecisionSwitchRolloutSummary;
+    switchRolloutEvaluation: AdminRouteDecisionSwitchRolloutEvaluationSummary;
+    applyPlan: AdminRouteDecisionApplyPlanSummary;
+  }): AdminRouteDecisionSwitchOrchestrationSummary {
+    const fromOutboundId = context.currentCandidate?.source === 'outbound' ? context.currentCandidate.id : null;
+    const toOutboundId = context.recommendedCandidate?.source === 'outbound' ? context.recommendedCandidate.id : null;
+    const switchRequired = context.action === 'switchRecommended' && Boolean(toOutboundId);
+    const gateBlocked =
+      context.action === 'routeLocked' ||
+      context.action === 'manualMode' ||
+      context.action === 'cooldownActive' ||
+      context.action === 'insufficientCandidates' ||
+      context.action === 'noHealthyCandidate' ||
+      context.action === 'noManagedCandidate';
+    const preflightBlocked = context.switchPreflight.status === 'blocked';
+    const rolloutBlocked =
+      context.switchRollout.status === 'blocked' ||
+      context.switchRolloutEvaluation.status === 'blocked';
+    const blocked = gateBlocked || preflightBlocked || rolloutBlocked || context.applyPlan.status === 'blocked';
+    const canExecuteDataPlane = context.switchPreflight.canExecuteDataPlane && context.switchRollout.dataPlaneReady;
+    const assignmentOnly =
+      switchRequired &&
+      context.applyPlan.assignmentOnlyAvailable &&
+      (!canExecuteDataPlane || context.applyPlan.applyMode === 'assignmentOnly');
+    const rollbackRequired = context.switchRolloutEvaluation.status === 'rollbackRecommended';
+    const preserveExistingSessions = context.switchEngine.preserveExistingSessions;
+    const switchNewSessionsOnly = context.switchEngine.switchNewSessionsOnly;
+    const activeSessionsMayMove = context.sessionSafety.emergencySwitchAllowed && switchRequired;
+    const activeSessionsProtected =
+      !activeSessionsMayMove &&
+      (preserveExistingSessions || switchNewSessionsOnly || context.switchRollout.existingSessionsPinned);
+    const holdSecondsRemaining = context.switchRolloutEvaluation.holdSecondsRemaining;
+    const reasonCodes = new Set<string>();
+
+    if (!switchRequired && !gateBlocked) reasonCodes.add('noSwitchNeeded');
+    if (context.routeLocked || context.action === 'routeLocked') reasonCodes.add('routeLock');
+    if (!context.autoRouteEnabled || context.routeMode !== 'automatic' || context.action === 'manualMode') reasonCodes.add('manualMode');
+    if (context.cooldownActive || context.action === 'cooldownActive') reasonCodes.add('cooldownActive');
+    if (assignmentOnly) reasonCodes.add('assignmentOnly');
+    if (!canExecuteDataPlane) reasonCodes.add('dataPlaneDisabled');
+    if (preflightBlocked) reasonCodes.add('preflightBlocked');
+    if (rolloutBlocked) reasonCodes.add('rolloutBlocked');
+    if (context.switchRolloutEvaluation.guardPassed) reasonCodes.add('guardPassed');
+    if (context.switchRolloutEvaluation.reasonCodes.includes('healthUnknown')) reasonCodes.add('healthUnknown');
+    if (rollbackRequired) reasonCodes.add('rollbackGuard');
+    if (preserveExistingSessions) reasonCodes.add('stickySessions');
+    if (switchNewSessionsOnly) reasonCodes.add('newSessionsOnly');
+    if (context.switchEngine.drainRequired) reasonCodes.add('drainSafe');
+    if (context.switchRollout.newSessionsCanary) reasonCodes.add('canaryRequired');
+    if (context.switchRolloutEvaluation.routeConsistencyHoldActive) reasonCodes.add('routeConsistencyHold');
+    if (context.switchRolloutEvaluation.reasonCodes.includes('gamingSensitive')) reasonCodes.add('gamingSensitive');
+    if (switchRequired) reasonCodes.add('auditRequired');
+    if (canExecuteDataPlane) reasonCodes.add('dataPlaneReady');
+
+    const recommendedAction: AdminRouteDecisionSwitchOrchestrationSummary['recommendedAction'] = !switchRequired
+      ? gateBlocked
+        ? context.action === 'cooldownActive'
+          ? 'hold'
+          : 'manualReview'
+        : 'none'
+      : blocked
+        ? 'manualReview'
+        : rollbackRequired
+          ? 'rollback'
+          : context.switchRolloutEvaluation.recommendedAction === 'expandCanary'
+            ? canExecuteDataPlane ? 'expandCanary' : 'recordDecision'
+            : context.switchRolloutEvaluation.recommendedAction === 'startCanary'
+              ? canExecuteDataPlane ? 'startCanary' : 'recordDecision'
+              : context.switchRolloutEvaluation.recommendedAction === 'hold'
+                ? 'hold'
+                : context.switchRolloutEvaluation.recommendedAction === 'manualReview'
+                  ? 'manualReview'
+                  : assignmentOnly
+                    ? 'recordDecision'
+                    : 'hold';
+    const status: AdminRouteDecisionSwitchOrchestrationSummary['status'] = !switchRequired && !gateBlocked
+      ? 'notRequired'
+      : blocked
+        ? 'blocked'
+        : rollbackRequired
+          ? 'rollbackRecommended'
+          : recommendedAction === 'hold' || holdSecondsRemaining > 0
+            ? 'holding'
+            : recommendedAction === 'expandCanary'
+              ? 'expandReady'
+              : recommendedAction === 'startCanary'
+                ? 'canaryReady'
+                : assignmentOnly
+                  ? 'assignmentOnly'
+                  : canExecuteDataPlane
+                    ? 'dataPlaneReady'
+                    : 'planningOnly';
+    const phase: AdminRouteDecisionSwitchOrchestrationSummary['phase'] = status === 'notRequired'
+      ? 'noChange'
+      : blocked
+        ? 'guard'
+        : rollbackRequired
+          ? 'rollback'
+          : recommendedAction === 'expandCanary'
+            ? 'expand'
+            : recommendedAction === 'startCanary'
+              ? 'canary'
+              : assignmentOnly
+                ? 'assignment'
+                : preserveExistingSessions
+                  ? 'pinExisting'
+                  : 'verify';
+
+    const guardStatus = status === 'notRequired' ? 'notRequired' : blocked ? 'blocked' : 'ready';
+    const dataPlaneStageStatus = !switchRequired ? 'notRequired' : blocked ? 'blocked' : canExecuteDataPlane ? 'ready' : 'future';
+    const assignmentStatus = !switchRequired ? 'notRequired' : blocked ? 'blocked' : 'ready';
+    const holdStatus = holdSecondsRemaining > 0 ? 'hold' : 'notRequired';
+    const stages: AdminRouteDecisionSwitchOrchestrationSummary['stages'] = [
+      {
+        id: 'orchestrate-guard-route-gates',
+        phase: 'guard',
+        code: 'guard_route_locks_cooldown_and_health',
+        status: guardStatus,
+        trafficScope: 'none',
+        sessionImpact: 'none',
+        targetPercent: 0,
+        targetOutboundId: toOutboundId,
+        dataPlaneMutation: false,
+        estimatedSeconds: 1,
+        reasonCodes: [...reasonCodes].filter((reason) =>
+          ['routeLock', 'manualMode', 'cooldownActive', 'preflightBlocked', 'rolloutBlocked', 'guardPassed', 'healthUnknown'].includes(reason),
+        ),
+      },
+      {
+        id: 'orchestrate-record-assignment',
+        phase: 'assignment',
+        code: 'record_control_plane_assignment',
+        status: assignmentStatus,
+        trafficScope: 'controlPlane',
+        sessionImpact: 'none',
+        targetPercent: switchRequired ? 100 : 0,
+        targetOutboundId: toOutboundId,
+        dataPlaneMutation: false,
+        estimatedSeconds: 1,
+        reasonCodes: switchRequired ? ['assignmentOnly', 'auditRequired'] : ['noSwitchNeeded'],
+      },
+      {
+        id: 'orchestrate-pin-existing',
+        phase: 'pinExisting',
+        code: 'pin_existing_active_sessions',
+        status: switchRequired && preserveExistingSessions ? dataPlaneStageStatus : 'notRequired',
+        trafficScope: 'newSessions',
+        sessionImpact: 'existingSessions',
+        targetPercent: 0,
+        targetOutboundId: fromOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: 1,
+        reasonCodes: preserveExistingSessions ? ['stickySessions'] : [],
+      },
+      {
+        id: 'orchestrate-canary-new-sessions',
+        phase: 'canary',
+        code: 'canary_new_sessions_only',
+        status: switchRequired && context.switchRollout.newSessionsCanary ? dataPlaneStageStatus : 'notRequired',
+        trafficScope: 'canary',
+        sessionImpact: 'newSessionsOnly',
+        targetPercent: context.switchRolloutEvaluation.canaryPercent,
+        targetOutboundId: toOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: context.switchRollout.canaryDurationSeconds,
+        reasonCodes: context.switchRollout.newSessionsCanary ? ['canaryRequired', 'newSessionsOnly'] : [],
+      },
+      {
+        id: 'orchestrate-hold-consistency',
+        phase: 'drain',
+        code: 'hold_route_consistency_window',
+        status: switchRequired ? holdStatus : 'notRequired',
+        trafficScope: 'newSessions',
+        sessionImpact: 'existingSessions',
+        targetPercent: context.switchRolloutEvaluation.canaryPercent,
+        targetOutboundId: fromOutboundId,
+        dataPlaneMutation: false,
+        estimatedSeconds: holdSecondsRemaining,
+        reasonCodes: holdSecondsRemaining > 0 ? ['routeConsistencyHold', 'drainSafe'] : [],
+      },
+      {
+        id: 'orchestrate-verify-canary',
+        phase: 'verify',
+        code: 'verify_loss_jitter_latency_guards',
+        status: switchRequired && !blocked ? (rollbackRequired ? 'blocked' : dataPlaneStageStatus) : 'notRequired',
+        trafficScope: 'canary',
+        sessionImpact: 'none',
+        targetPercent: context.switchRolloutEvaluation.canaryPercent,
+        targetOutboundId: toOutboundId,
+        dataPlaneMutation: false,
+        estimatedSeconds: 60,
+        reasonCodes: rollbackRequired ? ['rollbackGuard'] : ['guardPassed'],
+      },
+      {
+        id: 'orchestrate-expand',
+        phase: 'expand',
+        code: 'expand_new_session_rollout',
+        status: recommendedAction === 'expandCanary' ? 'ready' : switchRequired && !blocked ? 'future' : 'notRequired',
+        trafficScope: 'allNewSessions',
+        sessionImpact: 'newSessionsOnly',
+        targetPercent: context.switchRolloutEvaluation.nextPercent,
+        targetOutboundId: toOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: context.switchRollout.canaryDurationSeconds,
+        reasonCodes: ['canaryRequired'],
+      },
+      {
+        id: 'orchestrate-rollback',
+        phase: 'rollback',
+        code: 'rollback_on_guard_regression',
+        status: rollbackRequired ? 'ready' : switchRequired && !blocked ? 'future' : 'notRequired',
+        trafficScope: 'allSessions',
+        sessionImpact: 'allSessions',
+        targetPercent: 0,
+        targetOutboundId: fromOutboundId,
+        dataPlaneMutation: true,
+        estimatedSeconds: 2,
+        reasonCodes: ['rollbackGuard'],
+      },
+    ];
+
+    return {
+      status,
+      phase,
+      recommendedAction,
+      generatedAt: context.generatedAt.toISOString(),
+      dataPlaneReady: context.switchRollout.dataPlaneReady,
+      canExecuteDataPlane,
+      assignmentOnly,
+      routeLocked: context.routeLocked,
+      cooldownActive: context.cooldownActive,
+      preserveExistingSessions,
+      switchNewSessionsOnly,
+      activeSessionsProtected,
+      activeSessionsMayMove,
+      canaryPercent: context.switchRolloutEvaluation.canaryPercent,
+      nextPercent: context.switchRolloutEvaluation.nextPercent,
+      holdSecondsRemaining,
+      rollbackRequired,
+      stageCount: stages.length,
+      reasonCodes: [...reasonCodes],
+      stages,
     };
   }
 

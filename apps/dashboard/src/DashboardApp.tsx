@@ -18,6 +18,7 @@ import type {
   AdminRouteDecisionSessionSafetySummary,
   AdminRouteDecisionSwitchExecutionSummary,
   AdminRouteDecisionSwitchEngineSummary,
+  AdminRouteDecisionSwitchOrchestrationSummary,
   AdminRouteDecisionSwitchPreflightSummary,
   AdminRouteDecisionSwitchRolloutEvaluationSummary,
   AdminRouteDecisionSwitchRolloutSummary,
@@ -3193,6 +3194,7 @@ function RouteDecisionPreviewPanel({
             format={format}
             t={t}
           />
+          <RouteDecisionSwitchOrchestrationCard orchestration={preview.switchOrchestration} format={format} t={t} />
           <RouteDecisionSwitchExecutionCard execution={switchExecution} format={format} t={t} />
           <RouteDecisionCandidateReviewList reviews={preview.candidateReviews ?? []} format={format} t={t} />
           <RouteDecisionApplyPlanCard plan={preview.applyPlan} t={t} />
@@ -3757,6 +3759,98 @@ function RouteDecisionSwitchRolloutCard({
   );
 }
 
+function RouteDecisionSwitchOrchestrationCard({
+  orchestration,
+  format,
+  t,
+}: {
+  orchestration?: AdminRouteDecisionSwitchOrchestrationSummary | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!orchestration) return null;
+
+  const visibleStages = orchestration.stages.slice(0, 8);
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.switchOrchestration}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {routeSwitchOrchestrationActionLabel(orchestration.recommendedAction, t)}
+          </span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={routeSwitchOrchestrationStatusTone(orchestration.status)}>
+            {routeSwitchOrchestrationStatusLabel(orchestration.status, t)}
+          </StatusBadge>
+          <StatusBadge tone={orchestration.activeSessionsProtected ? 'good' : orchestration.activeSessionsMayMove ? 'critical' : 'neutral'}>
+            {orchestration.activeSessionsProtected
+              ? t.settings.switchOrchestrationSessionsProtected
+              : orchestration.activeSessionsMayMove
+                ? t.settings.switchOrchestrationSessionsMayMove
+                : t.settings.switchOrchestrationNoSessionMove}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-4">
+        <MetricPill icon={ShieldCheck} label={t.settings.switchOrchestrationPhase} value={routeSwitchOrchestrationPhaseLabel(orchestration.phase, t)} />
+        <MetricPill icon={Network} label={t.settings.switchOrchestrationExecutable} value={orchestration.canExecuteDataPlane ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo} />
+        <MetricPill icon={Gauge} label={t.settings.switchOrchestrationCanary} value={format.percent(orchestration.canaryPercent)} />
+        <MetricPill icon={ArrowDownUp} label={t.settings.switchOrchestrationNext} value={format.percent(orchestration.nextPercent)} />
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-4">
+        <MetricPill icon={Clock} label={t.settings.switchOrchestrationHold} value={format.durationSeconds(orchestration.holdSecondsRemaining)} />
+        <MetricPill icon={LockKeyhole} label={t.settings.switchOrchestrationSticky} value={orchestration.preserveExistingSessions ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo} />
+        <MetricPill icon={Route} label={t.settings.switchOrchestrationNewOnly} value={orchestration.switchNewSessionsOnly ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo} />
+        <MetricPill icon={AlertTriangle} label={t.settings.switchOrchestrationRollback} value={orchestration.rollbackRequired ? t.settings.sessionSafetyYes : t.settings.sessionSafetyNo} />
+      </div>
+
+      <div className="grid gap-1.5 md:grid-cols-2">
+        {visibleStages.map((stage) => (
+          <div className="grid gap-1 rounded-md border border-afro-line px-2.5 py-2" key={stage.id}>
+            <div className="flex min-h-7 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px]">{routeSwitchOrchestrationStageLabel(stage.code, t)}</strong>
+                <span className={`${mutedTextClass} block truncate`}>
+                  {routeSwitchRolloutTrafficScopeLabel(stage.trafficScope, t)} / {routeSwitchEngineSessionImpactLabel(stage.sessionImpact, t)}
+                </span>
+              </div>
+              <StatusBadge tone={routeSwitchOrchestrationStageStatusTone(stage.status)}>
+                {routeSwitchOrchestrationStageStatusLabel(stage.status, t)}
+              </StatusBadge>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <StatusBadge tone={stage.dataPlaneMutation ? 'warning' : 'neutral'}>
+                {stage.dataPlaneMutation ? t.settings.routeApplyDataPlaneStep : t.settings.routeApplyControlPlaneStep}
+              </StatusBadge>
+              <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted">
+                {format.percent(stage.targetPercent)}
+              </span>
+              {stage.estimatedSeconds !== null && stage.estimatedSeconds !== undefined ? (
+                <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted">
+                  {format.durationSeconds(stage.estimatedSeconds)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {orchestration.reasonCodes.slice(0, 8).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`switch-orchestration-${reason}`}>
+            {routeSwitchOrchestrationReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RouteDecisionSwitchExecutionCard({
   execution,
   format,
@@ -4114,6 +4208,7 @@ function RouteDecisionEventDetailCard({
         format={format}
         t={t}
       />
+      <RouteDecisionSwitchOrchestrationCard orchestration={detail.switchOrchestration} format={format} t={t} />
       <RouteDecisionSwitchExecutionCard execution={detail.switchExecution} format={format} t={t} />
 
       {snapshot ? (
@@ -5279,6 +5374,194 @@ function routeSwitchRolloutEvaluationReasonLabel(reason: string, t: DashboardStr
       return t.settings.switchRolloutReasonGaming;
     case 'manualReviewRequired':
       return t.settings.switchRolloutEvalReasonManual;
+    default:
+      return reason;
+  }
+}
+
+function routeSwitchOrchestrationStatusTone(status: string): Tone {
+  switch (status) {
+    case 'canaryReady':
+    case 'expandReady':
+    case 'dataPlaneReady':
+      return 'good';
+    case 'assignmentOnly':
+    case 'planningOnly':
+    case 'holding':
+      return 'warning';
+    case 'blocked':
+    case 'rollbackRecommended':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchOrchestrationStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'notRequired':
+      return t.settings.switchOrchestrationStatusNotRequired;
+    case 'blocked':
+      return t.settings.switchOrchestrationStatusBlocked;
+    case 'assignmentOnly':
+      return t.settings.switchOrchestrationStatusAssignment;
+    case 'planningOnly':
+      return t.settings.switchOrchestrationStatusPlanning;
+    case 'holding':
+      return t.settings.switchOrchestrationStatusHolding;
+    case 'canaryReady':
+      return t.settings.switchOrchestrationStatusCanary;
+    case 'expandReady':
+      return t.settings.switchOrchestrationStatusExpand;
+    case 'rollbackRecommended':
+      return t.settings.switchOrchestrationStatusRollback;
+    case 'dataPlaneReady':
+      return t.settings.switchOrchestrationStatusDataPlane;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchOrchestrationPhaseLabel(phase: string, t: DashboardStrings): string {
+  switch (phase) {
+    case 'noChange':
+      return t.settings.switchOrchestrationPhaseNoChange;
+    case 'guard':
+      return t.settings.switchOrchestrationPhaseGuard;
+    case 'assignment':
+      return t.settings.switchOrchestrationPhaseAssignment;
+    case 'pinExisting':
+      return t.settings.switchOrchestrationPhasePin;
+    case 'canary':
+      return t.settings.switchOrchestrationPhaseCanary;
+    case 'drain':
+      return t.settings.switchOrchestrationPhaseDrain;
+    case 'verify':
+      return t.settings.switchOrchestrationPhaseVerify;
+    case 'expand':
+      return t.settings.switchOrchestrationPhaseExpand;
+    case 'rollback':
+      return t.settings.switchOrchestrationPhaseRollback;
+    default:
+      return phase;
+  }
+}
+
+function routeSwitchOrchestrationActionLabel(action: string, t: DashboardStrings): string {
+  switch (action) {
+    case 'none':
+      return t.settings.switchOrchestrationActionNone;
+    case 'recordDecision':
+      return t.settings.switchOrchestrationActionRecord;
+    case 'hold':
+      return t.settings.switchOrchestrationActionHold;
+    case 'startCanary':
+      return t.settings.switchOrchestrationActionStart;
+    case 'expandCanary':
+      return t.settings.switchOrchestrationActionExpand;
+    case 'rollback':
+      return t.settings.switchOrchestrationActionRollback;
+    case 'manualReview':
+      return t.settings.switchOrchestrationActionManual;
+    default:
+      return action;
+  }
+}
+
+function routeSwitchOrchestrationStageStatusTone(status: string): Tone {
+  switch (status) {
+    case 'ready':
+      return 'good';
+    case 'future':
+    case 'hold':
+      return 'warning';
+    case 'blocked':
+      return 'critical';
+    default:
+      return 'neutral';
+  }
+}
+
+function routeSwitchOrchestrationStageStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'ready':
+      return t.settings.switchEngineStepReady;
+    case 'future':
+      return t.settings.switchEngineStepFuture;
+    case 'blocked':
+      return t.settings.switchEngineStepBlocked;
+    case 'hold':
+      return t.settings.switchOrchestrationStageHold;
+    case 'notRequired':
+      return t.settings.switchEngineStepNotRequired;
+    default:
+      return status;
+  }
+}
+
+function routeSwitchOrchestrationStageLabel(code: string, t: DashboardStrings): string {
+  switch (code) {
+    case 'guard_route_locks_cooldown_and_health':
+      return t.settings.switchOrchestrationStageGuard;
+    case 'record_control_plane_assignment':
+      return t.settings.switchOrchestrationStageRecord;
+    case 'pin_existing_active_sessions':
+      return t.settings.switchOrchestrationStagePin;
+    case 'canary_new_sessions_only':
+      return t.settings.switchOrchestrationStageCanary;
+    case 'hold_route_consistency_window':
+      return t.settings.switchOrchestrationStageHoldWindow;
+    case 'verify_loss_jitter_latency_guards':
+      return t.settings.switchOrchestrationStageVerify;
+    case 'expand_new_session_rollout':
+      return t.settings.switchOrchestrationStageExpand;
+    case 'rollback_on_guard_regression':
+      return t.settings.switchOrchestrationStageRollback;
+    default:
+      return code;
+  }
+}
+
+function routeSwitchOrchestrationReasonLabel(reason: string, t: DashboardStrings): string {
+  switch (reason) {
+    case 'noSwitchNeeded':
+      return t.settings.switchPreflightReasonNoSwitch;
+    case 'routeLock':
+      return t.settings.switchEngineReasonRouteLock;
+    case 'manualMode':
+      return t.settings.switchEngineReasonManual;
+    case 'cooldownActive':
+      return t.settings.switchEngineReasonCooldown;
+    case 'assignmentOnly':
+      return t.settings.switchEngineReasonAssignmentOnly;
+    case 'dataPlaneDisabled':
+      return t.settings.switchEngineReasonDataPlaneOff;
+    case 'preflightBlocked':
+      return t.settings.switchRolloutReasonPreflightBlocked;
+    case 'rolloutBlocked':
+      return t.settings.switchRolloutEvalReasonBlocked;
+    case 'guardPassed':
+      return t.settings.switchRolloutEvalReasonGuardPassed;
+    case 'healthUnknown':
+      return t.settings.switchRolloutEvalReasonHealthUnknown;
+    case 'rollbackGuard':
+      return t.settings.switchRolloutReasonRollback;
+    case 'stickySessions':
+      return t.settings.switchEngineReasonSticky;
+    case 'newSessionsOnly':
+      return t.settings.switchEngineReasonNewOnly;
+    case 'drainSafe':
+      return t.settings.switchEngineReasonDrainSafe;
+    case 'canaryRequired':
+      return t.settings.switchRolloutReasonCanary;
+    case 'routeConsistencyHold':
+      return t.settings.switchRolloutReasonConsistency;
+    case 'gamingSensitive':
+      return t.settings.switchRolloutReasonGaming;
+    case 'auditRequired':
+      return t.settings.switchOrchestrationReasonAudit;
+    case 'dataPlaneReady':
+      return t.settings.switchPreflightReasonDataPlaneReady;
     default:
       return reason;
   }
