@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, t
 import type {
   AdminAlertSummary,
   AdminProtocolSetupSummary,
+  AdminProtocolServerApplyPlanSummary,
   AdminOutboundSummary,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionApplyAdapterSummary,
@@ -2888,32 +2889,36 @@ function SettingsPage({
                   {persistedProtocolSetups.slice(0, 4).map((setup) => {
                     const isProvisioned = Boolean(setup.provisionedOutboundId);
                     const isProvisioning = provisioningSetupId === setup.id;
+                    const serverApplyPlan = setup.serverApplyPlan;
 
                     return (
-                      <div className="flex min-h-12 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2.5 py-1.5" key={setup.id}>
-                        <div className="min-w-0">
-                          <strong className="block truncate text-[13px]">{setup.name}</strong>
-                          <span className="block truncate text-[12px] text-afro-muted">
-                            {setup.protocol} / {setup.routeGroup}
-                            {isProvisioned ? ` / ${t.settings.managedOutbound}` : ''}
-                          </span>
+                      <div className="grid gap-2 rounded-md border border-afro-line bg-white px-2.5 py-2" key={setup.id}>
+                        <div className="flex min-h-10 items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <strong className="block truncate text-[13px]">{setup.name}</strong>
+                            <span className="block truncate text-[12px] text-afro-muted">
+                              {setup.protocol} / {setup.routeGroup}
+                              {isProvisioned ? ` / ${t.settings.managedOutbound}` : ''}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <StatusBadge tone={isProvisioned || setup.hasSecretRef ? 'good' : 'neutral'}>
+                              {isProvisioned ? t.settings.provisioned : setup.status}
+                            </StatusBadge>
+                            {!isProvisioned ? (
+                              <button
+                                className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:cursor-wait disabled:opacity-55"
+                                disabled={!canCreateProtocols || Boolean(provisioningSetupId)}
+                                onClick={() => void provisionProtocolDraft(setup)}
+                                type="button"
+                              >
+                                <CheckCircle2 size={14} />
+                                {isProvisioning ? t.settings.provisioning : t.settings.provisionDraft}
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <StatusBadge tone={isProvisioned || setup.hasSecretRef ? 'good' : 'neutral'}>
-                            {isProvisioned ? t.settings.provisioned : setup.status}
-                          </StatusBadge>
-                          {!isProvisioned ? (
-                            <button
-                              className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:cursor-wait disabled:opacity-55"
-                              disabled={!canCreateProtocols || Boolean(provisioningSetupId)}
-                              onClick={() => void provisionProtocolDraft(setup)}
-                              type="button"
-                            >
-                              <CheckCircle2 size={14} />
-                              {isProvisioning ? t.settings.provisioning : t.settings.provisionDraft}
-                            </button>
-                          ) : null}
-                        </div>
+                        {serverApplyPlan ? <ProtocolServerApplyPlanCard format={format} plan={serverApplyPlan} t={t} /> : null}
                       </div>
                     );
                   })}
@@ -6664,6 +6669,117 @@ function wireGuardCandidateSourceLabel(candidate: WireGuardHealthCandidate, t: D
   if (candidate.source === 'outbound') return t.settings.outboundHealth;
 
   return t.settings.localSample;
+}
+
+function ProtocolServerApplyPlanCard({
+  format,
+  plan,
+  t,
+}: {
+  format: DashboardFormatters;
+  plan: AdminProtocolServerApplyPlanSummary;
+  t: DashboardStrings;
+}) {
+  const visibleSteps = plan.steps.slice(0, 4);
+
+  return (
+    <div className="grid gap-2 rounded-md border border-afro-line bg-[#f9fbfc] p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[12px] font-bold text-afro-muted">{t.settings.serverApplyPlan}</span>
+        <StatusBadge tone={protocolServerApplyTone(plan.status)}>{protocolServerApplyStatusLabel(plan.status, t)}</StatusBadge>
+      </div>
+      <div className="grid gap-1.5 text-[12px] sm:grid-cols-3">
+        <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2">
+          <span className="truncate text-afro-muted">{t.settings.serverApplyCommands}</span>
+          <strong>{format.integer(plan.commandCount)}</strong>
+        </div>
+        <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2">
+          <span className="truncate text-afro-muted">{t.settings.serverApplyChanges}</span>
+          <strong>{format.integer(plan.configChangeCount)}</strong>
+        </div>
+        <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2">
+          <span className="truncate text-afro-muted">{t.settings.serverApplyTarget}</span>
+          <strong className="truncate">{plan.targetServerLabel ?? (plan.targetServerId ? t.settings.configured : t.settings.pending)}</strong>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {visibleSteps.map((step) => (
+          <StatusBadge key={step.id} tone={protocolServerApplyStepTone(step.status)}>
+            {protocolServerApplyStepLabel(step.kind, t)}
+          </StatusBadge>
+        ))}
+        <StatusBadge tone={plan.canExecute ? 'good' : 'neutral'}>
+          {plan.canExecute ? t.settings.serverApplyExecutable : t.settings.serverApplyNoMutation}
+        </StatusBadge>
+      </div>
+    </div>
+  );
+}
+
+function protocolServerApplyTone(status: string): Tone {
+  switch (status) {
+    case 'applyReady':
+      return 'good';
+    case 'dryRunReady':
+      return 'neutral';
+    case 'blocked':
+      return 'warning';
+    case 'planningOnly':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
+function protocolServerApplyStepTone(status: string): Tone {
+  switch (status) {
+    case 'ready':
+      return 'good';
+    case 'blocked':
+      return 'warning';
+    case 'future':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
+function protocolServerApplyStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'applyReady':
+      return t.settings.serverApplyReady;
+    case 'dryRunReady':
+      return t.settings.serverApplyDryRun;
+    case 'blocked':
+      return t.settings.serverApplyBlocked;
+    case 'planningOnly':
+      return t.settings.serverApplyPlanning;
+    default:
+      return t.settings.pending;
+  }
+}
+
+function protocolServerApplyStepLabel(kind: string, t: DashboardStrings): string {
+  switch (kind) {
+    case 'preflight':
+      return t.settings.serverApplyPreflight;
+    case 'secret':
+      return t.settings.serverApplySecret;
+    case 'serverAccess':
+      return t.settings.serverApplyAccess;
+    case 'package':
+      return t.settings.serverApplyPackage;
+    case 'config':
+      return t.settings.serverApplyConfig;
+    case 'service':
+      return t.settings.serverApplyService;
+    case 'health':
+      return t.settings.serverApplyHealth;
+    case 'rollback':
+      return t.settings.serverApplyRollback;
+    default:
+      return kind;
+  }
 }
 
 function formatWireGuardCandidatePeers(

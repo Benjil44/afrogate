@@ -560,6 +560,10 @@ Repository remote is ready:
 - Persisted switch orchestration context in route decision event detail for audit.
 - Surfaced the switch orchestrator in Settings with typed English/Persian labels for assignment-only, hold, canary, expand, rollback, manual review, active-session protection, and stage state.
 - Bumped AfroGate to `0.48.0` for transparent switch orchestration.
+- Added secret-safe protocol server apply plan summaries for saved WireGuard, VLESS, L2TP, and IKEv2 setup drafts, including readiness status, future command previews, config-change counts, and blocker reason codes.
+- Returned protocol apply readiness from Settings provisioning responses while preserving disabled server OS/service mutation until an audited adapter and server access target exist.
+- Surfaced the protocol apply plan in Settings with typed English/Persian labels for planning, dry-run, blocked, apply-ready, target, command, and config-change state.
+- Bumped AfroGate to `0.49.0` for protocol server apply readiness planning.
 
 ### Verification
 
@@ -720,6 +724,11 @@ Repository remote is ready:
 - Verified switch-orchestration contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
 - Verified `0.48.0` with `npm run version:check`.
 - Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Verified protocol server apply plan contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
+- Verified `0.49.0` with `npm run version:check`.
 - Verified production build with `npm run build --workspaces --if-present`.
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

@@ -396,6 +396,101 @@ export interface CreateSettingsSecretRequest {
   protocol?: ProtocolKind;
 }
 
+export type ProtocolServerApplyStatus =
+  | 'notRequired'
+  | 'blocked'
+  | 'planningOnly'
+  | 'dryRunReady'
+  | 'applyReady';
+
+export type ProtocolServerApplyStepStatus =
+  | 'ready'
+  | 'blocked'
+  | 'future'
+  | 'notRequired';
+
+export type ProtocolServerApplyStepKind =
+  | 'preflight'
+  | 'secret'
+  | 'serverAccess'
+  | 'package'
+  | 'config'
+  | 'service'
+  | 'health'
+  | 'rollback';
+
+export type ProtocolServerApplyReason =
+  | 'featureFlagDisabled'
+  | 'serverMissing'
+  | 'serverAccessMissing'
+  | 'serverAccessReady'
+  | 'secretMissing'
+  | 'secretReady'
+  | 'adapterDryRunOnly'
+  | 'adapterMissing'
+  | 'protocolSupported'
+  | 'healthVerifyRequired'
+  | 'auditRequired'
+  | 'defaultInactive'
+  | 'maintenanceMode'
+  | 'outboundMissing'
+  | 'outboundReady'
+  | 'dataPlaneReady';
+
+export interface AdminProtocolServerApplyStep {
+  id: string;
+  kind: ProtocolServerApplyStepKind | string;
+  status: ProtocolServerApplyStepStatus | string;
+  commandPreviewCount: number;
+  dataPlaneMutation: boolean;
+  secretSafe: boolean;
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+}
+
+export interface AdminProtocolServerApplyCommand {
+  id: string;
+  kind: ProtocolServerApplyStepKind | string;
+  command: string;
+  requiresRoot: boolean;
+  dataPlaneMutation: boolean;
+  secretSafe: boolean;
+}
+
+export interface AdminProtocolServerApplyConfigChange {
+  id: string;
+  kind: ProtocolServerApplyStepKind | string;
+  filePath: string;
+  action: 'create' | 'update' | 'validate' | string;
+  dataPlaneMutation: boolean;
+  secretSafe: boolean;
+}
+
+export interface AdminProtocolServerApplyPlanSummary {
+  status: ProtocolServerApplyStatus | string;
+  generatedAt: string;
+  protocol: ProtocolKind | string;
+  profile: ProtocolProfile | string;
+  routeGroup: string;
+  outboundId?: string | null;
+  targetServerId?: string | null;
+  targetServerLabel?: string | null;
+  featureFlagEnabled: boolean;
+  adapterImplemented: boolean;
+  dataPlaneReady: boolean;
+  canExecute: boolean;
+  requiresSecret: boolean;
+  hasSecretRef: boolean;
+  requiresServerAccess: boolean;
+  hasServerAccess: boolean;
+  commandCount: number;
+  configChangeCount: number;
+  secretSafe: boolean;
+  reasonCodes: Array<ProtocolServerApplyReason | string>;
+  steps: AdminProtocolServerApplyStep[];
+  commands: AdminProtocolServerApplyCommand[];
+  configChanges: AdminProtocolServerApplyConfigChange[];
+}
+
 export interface AdminProtocolSetupSummary {
   id: string;
   name: string;
@@ -408,6 +503,7 @@ export interface AdminProtocolSetupSummary {
   hasSecretRef: boolean;
   provisionedOutboundId?: string | null;
   provisionedAt?: string | null;
+  serverApplyPlan?: AdminProtocolServerApplyPlanSummary | null;
   createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1388,6 +1484,7 @@ export interface AdminRouteDecisionEventDetailResponse {
 export interface ProvisionProtocolSetupResponse {
   protocolSetup: AdminProtocolSetupSummary;
   outbound: AdminOutboundSummary;
+  serverApplyPlan: AdminProtocolServerApplyPlanSummary;
 }
 
 export interface AdminServersResponse {

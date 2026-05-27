@@ -5,6 +5,7 @@ import type {
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
   AdminProtocolSetupSummary,
+  AdminProtocolServerApplyPlanSummary,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionApplyAdapterSummary,
   AdminRouteDecisionApplyDryRunCommand,
@@ -34,6 +35,7 @@ import type {
   AdminWireGuardCandidate,
   LoadBalanceStrategy,
   ProvisionProtocolSetupResponse,
+  ProtocolServerApplyReason,
   RecordRouteDecisionPreviewResponse,
   RouteFailoverEventSummary,
   RouteDecisionAction,
@@ -191,6 +193,15 @@ interface ProtocolSetupRow {
   createdAt: Date;
   updatedAt: Date;
 }
+
+type ProtocolServerApplySource = Pick<
+  ProtocolSetupRow,
+  'id' | 'name' | 'protocol' | 'profile' | 'routeGroup' | 'port' | 'status' | 'config'
+> & {
+  hasSecretRef?: boolean;
+  provisionedOutboundId?: string | null;
+  secretRef?: string | null;
+};
 
 interface RouteSettingsRow {
   routeGroup: string;
@@ -1723,9 +1734,13 @@ export class OperationsService {
       };
     });
 
+    const protocolSetup = await this.getProtocolSetup(provisioned.protocolSetupId);
+    const outbound = await this.getOutbound(provisioned.outboundId);
+
     return {
-      protocolSetup: await this.getProtocolSetup(provisioned.protocolSetupId),
-      outbound: await this.getOutbound(provisioned.outboundId),
+      protocolSetup,
+      outbound,
+      serverApplyPlan: protocolSetup.serverApplyPlan ?? this.buildProtocolServerApplyPlan(protocolSetup),
     };
   }
 
@@ -2718,6 +2733,7 @@ export class OperationsService {
       hasSecretRef: Boolean(row.secretRef),
       provisionedOutboundId: row.provisionedOutboundId,
       provisionedAt: row.provisionedAt?.toISOString() ?? null,
+      serverApplyPlan: this.buildProtocolServerApplyPlan(row),
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -5768,6 +5784,342 @@ export class OperationsService {
     return ['settings-secret', secretRef, kind, routeGroup, protocol ?? 'any'].join(':');
   }
 
+  private buildProtocolServerApplyPlan(setup: ProtocolServerApplySource): AdminProtocolServerApplyPlanSummary {
+    const config = this.asRecord(setup.config);
+    const featureFlagEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED', false);
+    const adapterImplemented = false;
+    const outboundId = setup.provisionedOutboundId ?? null;
+    const hasOutbound = Boolean(outboundId);
+    const requiresSecret = this.protocolRequiresServerSecret(setup.protocol);
+    const hasSecretRef = this.protocolSetupHasSecretRef(setup);
+    const requiresServerAccess = true;
+    const hasServerAccess = false;
+    const targetServerLabel =
+      this.stringFromConfig(config.serverName) ??
+      this.stringFromConfig(config.activeWireGuardServerExternalId) ??
+      null;
+    const unitName = this.safeProtocolUnitName(setup);
+    const commands = this.buildProtocolServerApplyCommands(setup, unitName);
+    const configChanges = this.buildProtocolServerApplyConfigChanges(setup, unitName);
+    const missingSecret = requiresSecret && !hasSecretRef;
+    const missingTargetAccess = hasOutbound && requiresServerAccess && !hasServerAccess;
+    const dataPlaneReady =
+      featureFlagEnabled &&
+      adapterImplemented &&
+      hasOutbound &&
+      !missingSecret &&
+      (!requiresServerAccess || hasServerAccess);
+    const canExecute = dataPlaneReady;
+    const reasonCodes = new Set<ProtocolServerApplyReason>([
+      'protocolSupported',
+      'auditRequired',
+      'defaultInactive',
+      'adapterDryRunOnly',
+      'healthVerifyRequired',
+    ]);
+
+    if (!featureFlagEnabled) reasonCodes.add('featureFlagDisabled');
+    if (!adapterImplemented) reasonCodes.add('adapterMissing');
+    if (hasOutbound) {
+      reasonCodes.add('outboundReady');
+      reasonCodes.add('maintenanceMode');
+    } else {
+      reasonCodes.add('outboundMissing');
+    }
+    if (requiresSecret) reasonCodes.add(hasSecretRef ? 'secretReady' : 'secretMissing');
+    if (requiresServerAccess) {
+      if (hasServerAccess) {
+        reasonCodes.add('serverAccessReady');
+      } else {
+        reasonCodes.add('serverMissing');
+        reasonCodes.add('serverAccessMissing');
+      }
+    }
+    if (dataPlaneReady) reasonCodes.add('dataPlaneReady');
+
+    const status = this.protocolServerApplyStatus({
+      dataPlaneReady,
+      hasOutbound,
+      missingSecret,
+      missingTargetAccess,
+    });
+
+    return {
+      status,
+      generatedAt: new Date().toISOString(),
+      protocol: setup.protocol,
+      profile: setup.profile,
+      routeGroup: setup.routeGroup,
+      outboundId,
+      targetServerId: null,
+      targetServerLabel,
+      featureFlagEnabled,
+      adapterImplemented,
+      dataPlaneReady,
+      canExecute,
+      requiresSecret,
+      hasSecretRef,
+      requiresServerAccess,
+      hasServerAccess,
+      commandCount: commands.length,
+      configChangeCount: configChanges.length,
+      secretSafe: commands.every((command) => command.secretSafe) && configChanges.every((change) => change.secretSafe),
+      reasonCodes: Array.from(reasonCodes),
+      steps: this.buildProtocolServerApplySteps({
+        setup,
+        commands,
+        featureFlagEnabled,
+        adapterImplemented,
+        dataPlaneReady,
+        hasOutbound,
+        requiresSecret,
+        hasSecretRef,
+        requiresServerAccess,
+        hasServerAccess,
+      }),
+      commands,
+      configChanges,
+    };
+  }
+
+  private protocolServerApplyStatus(input: {
+    dataPlaneReady: boolean;
+    hasOutbound: boolean;
+    missingSecret: boolean;
+    missingTargetAccess: boolean;
+  }): AdminProtocolServerApplyPlanSummary['status'] {
+    if (!input.hasOutbound) return 'planningOnly';
+    if (input.missingSecret || input.missingTargetAccess) return 'blocked';
+    if (input.dataPlaneReady) return 'applyReady';
+
+    return 'dryRunReady';
+  }
+
+  private buildProtocolServerApplySteps(input: {
+    setup: ProtocolServerApplySource;
+    commands: AdminProtocolServerApplyPlanSummary['commands'];
+    featureFlagEnabled: boolean;
+    adapterImplemented: boolean;
+    dataPlaneReady: boolean;
+    hasOutbound: boolean;
+    requiresSecret: boolean;
+    hasSecretRef: boolean;
+    requiresServerAccess: boolean;
+    hasServerAccess: boolean;
+  }): AdminProtocolServerApplyPlanSummary['steps'] {
+    const reason = (...items: Array<ProtocolServerApplyReason | false | null | undefined>) =>
+      items.filter((item): item is ProtocolServerApplyReason => Boolean(item));
+    const step = (
+      kind: AdminProtocolServerApplyPlanSummary['steps'][number]['kind'],
+      status: AdminProtocolServerApplyPlanSummary['steps'][number]['status'],
+      reasonCodes: ProtocolServerApplyReason[],
+      dataPlaneMutation = false,
+    ): AdminProtocolServerApplyPlanSummary['steps'][number] => ({
+      id: `${input.setup.id}:${kind}`,
+      kind,
+      status,
+      commandPreviewCount: input.commands.filter((command) => command.kind === kind).length,
+      dataPlaneMutation,
+      secretSafe: true,
+      reasonCodes,
+    });
+
+    const preflightStatus = input.featureFlagEnabled && input.adapterImplemented ? 'ready' : 'future';
+    const downstreamStatus = input.dataPlaneReady ? 'ready' : 'future';
+
+    return [
+      step(
+        'preflight',
+        preflightStatus,
+        reason(
+          'protocolSupported',
+          'auditRequired',
+          !input.featureFlagEnabled && 'featureFlagDisabled',
+          !input.adapterImplemented && 'adapterDryRunOnly',
+          !input.adapterImplemented && 'adapterMissing',
+        ),
+      ),
+      step(
+        'secret',
+        input.requiresSecret ? (input.hasSecretRef ? 'ready' : 'blocked') : 'notRequired',
+        reason(input.requiresSecret && (input.hasSecretRef ? 'secretReady' : 'secretMissing')),
+      ),
+      step(
+        'serverAccess',
+        input.requiresServerAccess
+          ? input.hasOutbound
+            ? input.hasServerAccess
+              ? 'ready'
+              : 'blocked'
+            : 'future'
+          : 'notRequired',
+        reason(
+          input.hasOutbound ? 'outboundReady' : 'outboundMissing',
+          input.requiresServerAccess && (input.hasServerAccess ? 'serverAccessReady' : 'serverAccessMissing'),
+        ),
+      ),
+      step('package', downstreamStatus, reason(input.hasOutbound ? 'outboundReady' : 'outboundMissing')),
+      step('config', downstreamStatus, reason('defaultInactive', input.hasOutbound && 'maintenanceMode'), true),
+      step('service', downstreamStatus, reason('defaultInactive', input.hasOutbound && 'maintenanceMode'), true),
+      step('health', downstreamStatus, reason('healthVerifyRequired')),
+      step('rollback', downstreamStatus, reason('auditRequired'), true),
+    ];
+  }
+
+  private buildProtocolServerApplyCommands(
+    setup: ProtocolServerApplySource,
+    unitName: string,
+  ): AdminProtocolServerApplyPlanSummary['commands'] {
+    const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
+    const command = (
+      idSuffix: string,
+      kind: AdminProtocolServerApplyPlanSummary['commands'][number]['kind'],
+      preview: string,
+      requiresRoot: boolean,
+      dataPlaneMutation: boolean,
+    ): AdminProtocolServerApplyPlanSummary['commands'][number] => ({
+      id: `${setup.id}:${idSuffix}`,
+      kind,
+      command: preview,
+      requiresRoot,
+      dataPlaneMutation,
+      secretSafe: true,
+    });
+    const base = [
+      command('preflight-user', 'preflight', 'id -u afrogate', false, false),
+      command('preflight-systemctl', 'preflight', 'command -v systemctl', false, false),
+    ];
+
+    switch (setup.protocol) {
+      case 'wireguard':
+        return [
+          ...base,
+          command('package-wireguard', 'package', 'command -v wg && command -v wg-quick', false, false),
+          command('config-wireguard-check', 'config', `wg-quick strip ${this.shellToken(configPath)}`, true, false),
+          command('service-wireguard-status', 'service', `systemctl status wg-quick@${this.shellToken(unitName)}`, false, false),
+          command('service-wireguard-reload', 'service', `systemctl reload-or-restart wg-quick@${this.shellToken(unitName)}`, true, true),
+          command('health-wireguard', 'health', `wg show ${this.shellToken(unitName)}`, true, false),
+          command('rollback-wireguard', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+        ];
+      case 'vless':
+        return [
+          ...base,
+          command('package-vless', 'package', 'command -v sing-box || command -v xray', false, false),
+          command('config-vless-check', 'config', `sing-box check -c ${this.shellToken(configPath)}`, true, false),
+          command('service-vless-status', 'service', 'systemctl status sing-box', false, false),
+          command('service-vless-reload', 'service', 'systemctl reload-or-restart sing-box', true, true),
+          command('health-vless', 'health', `test -S /run/afrogate/${this.safePathSegment(unitName)}.sock`, true, false),
+          command('rollback-vless', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+        ];
+      case 'l2tp':
+        return [
+          ...base,
+          command('package-l2tp', 'package', 'command -v ipsec && command -v xl2tpd', false, false),
+          command('config-l2tp-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
+          command('service-l2tp-status', 'service', 'systemctl status strongswan-starter xl2tpd', false, false),
+          command('service-l2tp-reload', 'service', 'systemctl reload-or-restart strongswan-starter xl2tpd', true, true),
+          command('health-l2tp', 'health', 'ipsec status && xl2tpd-control status', true, false),
+          command('rollback-l2tp', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+        ];
+      case 'ikev2':
+        return [
+          ...base,
+          command('package-ikev2', 'package', 'command -v ipsec || command -v swanctl', false, false),
+          command('config-ikev2-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
+          command('service-ikev2-status', 'service', 'systemctl status strongswan-starter', false, false),
+          command('service-ikev2-reload', 'service', 'systemctl reload-or-restart strongswan-starter', true, true),
+          command('health-ikev2', 'health', 'ipsec statusall || swanctl --list-sas', true, false),
+          command('rollback-ikev2', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+        ];
+      default:
+        return [
+          ...base,
+          command('package-custom', 'package', 'test -d /etc/afrogate', false, false),
+          command('config-custom-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
+          command('health-custom', 'health', 'true', false, false),
+        ];
+    }
+  }
+
+  private buildProtocolServerApplyConfigChanges(
+    setup: ProtocolServerApplySource,
+    unitName: string,
+  ): AdminProtocolServerApplyPlanSummary['configChanges'] {
+    const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
+    const stagedPath = `/var/lib/afrogate/protocols/${this.safePathSegment(unitName)}.rendered`;
+
+    return [
+      {
+        id: `${setup.id}:config-render`,
+        kind: 'config',
+        filePath: stagedPath,
+        action: 'create',
+        dataPlaneMutation: false,
+        secretSafe: true,
+      },
+      {
+        id: `${setup.id}:config-install`,
+        kind: 'config',
+        filePath: configPath,
+        action: 'update',
+        dataPlaneMutation: true,
+        secretSafe: true,
+      },
+      {
+        id: `${setup.id}:config-rollback`,
+        kind: 'rollback',
+        filePath: `${configPath}.afrogate.bak`,
+        action: 'create',
+        dataPlaneMutation: true,
+        secretSafe: true,
+      },
+    ];
+  }
+
+  private protocolServerApplyConfigPath(protocol: string, unitName: string): string {
+    const safeUnitName = this.safeConfigFileName(unitName);
+
+    switch (protocol) {
+      case 'wireguard':
+        return `/etc/wireguard/${safeUnitName}.conf`;
+      case 'vless':
+        return `/etc/sing-box/afrogate-${safeUnitName}.json`;
+      case 'l2tp':
+        return `/etc/ipsec.d/afrogate-${safeUnitName}.conf`;
+      case 'ikev2':
+        return `/etc/swanctl/conf.d/afrogate-${safeUnitName}.conf`;
+      default:
+        return `/etc/afrogate/protocols/${safeUnitName}.conf`;
+    }
+  }
+
+  private safeConfigFileName(value: string): string {
+    const normalized = value.trim().replace(/[^a-zA-Z0-9_.:-]+/g, '-').replace(/^-+|-+$/g, '');
+
+    return normalized || 'main';
+  }
+
+  private protocolRequiresServerSecret(protocol: string): boolean {
+    return protocol === 'wireguard' || protocol === 'vless' || protocol === 'l2tp' || protocol === 'ikev2';
+  }
+
+  private protocolSetupHasSecretRef(setup: ProtocolServerApplySource): boolean {
+    return typeof setup.hasSecretRef === 'boolean' ? setup.hasSecretRef : Boolean(setup.secretRef);
+  }
+
+  private safeProtocolUnitName(setup: ProtocolServerApplySource): string {
+    const config = this.asRecord(setup.config);
+
+    if (setup.protocol === 'wireguard') {
+      return this.safeWireGuardInterfaceName(this.stringFromConfig(config.interfaceName), setup.id);
+    }
+
+    const suffix = setup.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'route';
+    const prefix = this.safePathSegment(`${setup.protocol}-${setup.name}`).slice(0, 36).replace(/-+$/g, '');
+
+    return `${prefix || setup.protocol}-${suffix}`;
+  }
+
   private buildProvisionedOutboundConfig(setup: ProtocolSetupRow): Record<string, unknown> {
     const config = { ...this.asRecord(setup.config) };
     const healthTarget = this.stringFromConfig(config.healthTarget);
@@ -5789,7 +6141,10 @@ export class OperationsService {
       profile: setup.profile,
       port: setup.port,
       provisioningMode: 'control-plane-draft',
-      serverApplyState: 'pending',
+      serverApplyState: 'planning-only',
+      serverApplyPlanVersion: 1,
+      serverApplyFeatureFlag: 'AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED',
+      serverApplyDryRunOnly: true,
       provisionedFromProtocolSetupId: setup.id,
       provisionedRouteGroup: setup.routeGroup,
       materialRefAttached: Boolean(setup.secretRef),

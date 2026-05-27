@@ -83,6 +83,7 @@
 - [x] Shape real WireGuard route candidates from outbound health rows when available.
 - [x] Persist secret-safe WireGuard private-key/config workflow with encrypted backend credential storage.
 - [x] Initial backend protocol provisioning engine that converts saved WireGuard, VLESS, L2TP, and IKEv2 drafts into disabled managed outbound rows.
+- [x] Secret-safe protocol server apply plan and readiness preview for WireGuard, VLESS, L2TP, and IKEv2.
 - [ ] Production server-side protocol apply engine for WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols.
 - [x] Agent registration endpoint.
 - [x] Metrics ingest endpoint.

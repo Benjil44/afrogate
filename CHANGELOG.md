@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.49.0 - 2026-05-27
+
+- Added secret-safe protocol server apply plan summaries for saved WireGuard, VLESS, L2TP, and IKEv2 setup drafts, including readiness status, future command previews, config-change counts, and blocker reason codes.
+- Returned protocol apply readiness from Settings provisioning responses while keeping server OS/service mutation disabled until a real audited adapter and server access target exist.
+- Surfaced the protocol apply plan in Settings with English/Persian labels so admins can see planning, dry-run, blocked, and apply-ready state without exposing secrets.
+
 ## 0.48.0 - 2026-05-27
 
 - Added a session-safe switch orchestration summary to route decision previews, combining route locks, cooldown, preflight, rollout, canary guard, sticky sessions, and rollback state into one next-action model.
