@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.62.1 - 2026-05-28
+
+- Added a shared dashboard panel-state surface for empty, loading, stale, fallback, and error states.
+- Wired localized state messaging through dashboard, server, route, alert, user, and settings-adjacent panels so stale or sample data is clearly labeled.
+- Replaced one-off empty/error messages with typed English/Persian copy from the dashboard multilingual layer.
+
 ## 0.62.0 - 2026-05-28
 
 - Completed protocol-aware agent route-probe coverage for configured TCP, UDP, QUIC-labeled UDP, DNS, and derived WireGuard health signals.

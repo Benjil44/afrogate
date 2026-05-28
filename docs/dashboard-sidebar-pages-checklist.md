@@ -8,7 +8,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [ ] Keep the NOC/wall display as the default `Dashboard` page.
 - [ ] Preserve the second-LCD layout for passive monitoring.
 - [ ] Keep page transitions instant and static-first.
-- [ ] Add shared empty/loading/stale states.
+- [x] Add shared empty/loading/stale states.
 
 ## Dashboard Page
 

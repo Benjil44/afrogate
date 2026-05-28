@@ -67,8 +67,10 @@ import {
   EyeOff,
   Gauge,
   HardDrive,
+  Inbox,
   Languages,
   LockKeyhole,
+  Loader2,
   LogIn,
   LogOut,
   MemoryStick,
@@ -84,6 +86,7 @@ import {
   ShieldCheck,
   Upload,
   UserRound,
+  WifiOff,
 } from 'lucide-react';
 import rootPackage from '../../../package.json';
 import { useAdminSession } from './auth';
@@ -127,6 +130,7 @@ import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } f
 
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
+type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
 type ActiveView = 'dashboard' | 'servers' | 'users' | 'routes' | 'alerts' | 'settings';
 type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
 type AfroIcon = ComponentType<{ size?: number; className?: string }>;
@@ -734,8 +738,10 @@ function AuthenticatedDashboard({
 
         <ActivePage
           activeView={activeView}
+          alertDataState={alertDataState}
           alerts={alerts}
           chartSeries={chartSeries}
+          dataState={dataState}
           format={format}
           onServerUpdated={handleAdminServerUpdated}
           onRangeChange={setTimeRange}
@@ -960,8 +966,10 @@ function ResourceStat({
 
 function ActivePage({
   activeView,
+  alertDataState,
   alerts,
   chartSeries,
+  dataState,
   format,
   onServerUpdated,
   onRangeChange,
@@ -982,8 +990,10 @@ function ActivePage({
   trafficTotals,
 }: {
   activeView: ActiveView;
+  alertDataState: DataState;
   alerts: AlertRowData[];
   chartSeries: ServerMetricTimeseries[];
+  dataState: DataState;
   format: DashboardFormatters;
   onServerUpdated: (server: AdminServerDetail) => void;
   onRangeChange: (range: MetricsTimeRange) => void;
@@ -1034,20 +1044,25 @@ function ActivePage({
         />
       );
     case 'alerts':
-      return <AlertsPage alerts={alerts} format={format} t={t} />;
+      return <AlertsPage alerts={alerts} dataState={alertDataState} format={format} t={t} />;
     case 'settings':
       return <SettingsPage format={format} managementServers={managementServers} session={session} sessionToken={sessionToken} t={t} />;
     default:
       return (
         <DashboardPage
+          alertDataState={alertDataState}
           alerts={alerts}
           chartSeries={chartSeries}
+          dataState={dataState}
           format={format}
           onRangeChange={onRangeChange}
           outbounds={routeOutbounds.length > 0 ? routeOutbounds : outbounds}
+          routeDataState={routeDataState}
+          serverDataState={serverDataState}
           servers={servers}
           summary={summary}
           t={t}
+          tunnelDataState={tunnelDataState}
           tunnels={routeTunnels}
           timeRange={timeRange}
           trafficTotals={trafficTotals}
@@ -1057,26 +1072,36 @@ function ActivePage({
 }
 
 function DashboardPage({
+  alertDataState,
   alerts,
   chartSeries,
+  dataState,
   format,
   onRangeChange,
   outbounds,
+  routeDataState,
+  serverDataState,
   servers,
   summary,
   t,
+  tunnelDataState,
   tunnels,
   timeRange,
   trafficTotals,
 }: {
+  alertDataState: DataState;
   alerts: AlertRowData[];
   chartSeries: ServerMetricTimeseries[];
+  dataState: DataState;
   format: DashboardFormatters;
   onRangeChange: (range: MetricsTimeRange) => void;
   outbounds: OutboundRowData[];
+  routeDataState: DataState;
+  serverDataState: DataState;
   servers: ServerRowData[];
   summary: MetricCardData[];
   t: DashboardStrings;
+  tunnelDataState: DataState;
   tunnels: TunnelRowData[];
   timeRange: MetricsTimeRange;
   trafficTotals: TrafficTotals;
@@ -1091,6 +1116,7 @@ function DashboardPage({
         </section>
 
         <HealthChartPanel
+          dataState={dataState}
           format={format}
           range={timeRange}
           series={chartSeries}
@@ -1100,13 +1126,13 @@ function DashboardPage({
       </section>
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
-        <ServerPanel format={format} servers={servers} t={t} />
-        <TunnelPanel format={format} t={t} tunnels={tunnels} />
-        <AlertsPanel alerts={alerts} format={format} t={t} />
+        <ServerPanel dataState={serverDataState} format={format} servers={servers} t={t} />
+        <TunnelPanel dataState={tunnelDataState} format={format} t={t} tunnels={tunnels} />
+        <AlertsPanel alerts={alerts} dataState={alertDataState} format={format} t={t} />
       </section>
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-3">
-        <OutboundsPanel format={format} outbounds={outbounds} t={t} />
+        <OutboundsPanel dataState={routeDataState} format={format} outbounds={outbounds} t={t} />
         <CapacityPanel format={format} t={t} trafficTotals={trafficTotals} />
         <ControlPlanePanel format={format} t={t} />
       </section>
@@ -1115,12 +1141,14 @@ function DashboardPage({
 }
 
 function HealthChartPanel({
+  dataState,
   format,
   range,
   series,
   t,
   onRangeChange,
 }: {
+  dataState: DataState;
   format: DashboardFormatters;
   range: MetricsTimeRange;
   series: ServerMetricTimeseries[];
@@ -1128,6 +1156,7 @@ function HealthChartPanel({
   onRangeChange: (range: MetricsTimeRange) => void;
 }) {
   const option = useMemo(() => createHealthChartOption(series, t, format), [format, series, t]);
+  const hasChartPoints = series.some((item) => item.points.length > 0);
 
   return (
     <section className={panelClass}>
@@ -1151,21 +1180,30 @@ function HealthChartPanel({
           })}
         </div>
       </div>
-      <EChart
-        ariaLabel={t.aria.healthChart}
-        className="mt-2 h-[138px] w-full xl:h-[142px] 2xl:h-[136px]"
-        option={option}
-      />
+      <div className="mt-2 grid gap-2">
+        {hasChartPoints && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {hasChartPoints ? (
+          <EChart
+            ariaLabel={t.aria.healthChart}
+            className="h-[138px] w-full xl:h-[142px] 2xl:h-[136px]"
+            option={option}
+          />
+        ) : (
+          <DataStateEmpty emptyMessage={t.operationalData.noHealthSamples} state={dataState} t={t} />
+        )}
+      </div>
     </section>
   );
 }
 
 function OutboundsPanel({
+  dataState,
   emptyMessage,
   format,
   outbounds,
   t,
 }: {
+  dataState: DataState;
   emptyMessage?: string;
   format: DashboardFormatters;
   outbounds: OutboundRowData[];
@@ -1175,7 +1213,10 @@ function OutboundsPanel({
     <section className={panelClass}>
       <PanelHeading title={t.panels.outbounds} icon={ArrowDownUp} meta={t.panels.priorityFailover} />
       <div className="mt-2 grid gap-2">
-        {outbounds.length === 0 && emptyMessage ? <EmptyState message={emptyMessage} /> : null}
+        {outbounds.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {outbounds.length === 0 ? (
+          <DataStateEmpty emptyMessage={emptyMessage ?? t.operationalData.noOutbounds} state={dataState} t={t} />
+        ) : null}
         {outbounds.map((outbound) => (
           <div className="grid min-h-[46px] grid-cols-[24px_1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={outbound.id}>
             <span className="grid size-6 place-items-center rounded bg-[#eef3f5] text-[12px] font-bold text-afro-ink">{format.integer(outbound.priority)}</span>
@@ -1197,13 +1238,25 @@ function OutboundsPanel({
   );
 }
 
-function AlertsPanel({ alerts, format, t }: { alerts: AlertRowData[]; format: DashboardFormatters; t: DashboardStrings }) {
+function AlertsPanel({
+  alerts,
+  dataState,
+  format,
+  t,
+}: {
+  alerts: AlertRowData[];
+  dataState: DataState;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
   const activeAlertCount = countActiveAlertRows(alerts);
 
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.alerts} icon={AlertTriangle} meta={t.panels.visible(format.integer(activeAlertCount))} />
       <div className="mt-2 grid gap-2">
+        {alerts.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {alerts.length === 0 ? <DataStateEmpty emptyMessage={t.alerts.noOpenAlerts} state={dataState} t={t} /> : null}
         {alerts.map((alert) => (
           <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={alert.id}>
             <div className="min-w-0">
@@ -1303,9 +1356,8 @@ function ServersPage({
       <section className={panelClass}>
         <PanelHeading title={t.panels.serverInventory} icon={Server} meta={t.panels.managedNodes(format.integer(servers.length))} />
         <div className="mt-2 grid gap-2.5">
-          {servers.length === 0 ? (
-            <EmptyState message={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noServers} />
-          ) : null}
+          {servers.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+          {servers.length === 0 ? <DataStateEmpty emptyMessage={t.operationalData.noServers} state={dataState} t={t} /> : null}
           {servers.map((server, index) => (
             <ServerManagementCard
               format={format}
@@ -1477,6 +1529,9 @@ function ServerEditPanel({
     return (
       <section className={panelClass}>
         <PanelHeading title={t.panels.serverDetail} icon={ShieldCheck} meta={t.serverEdit.noServer} />
+        <div className="mt-2">
+          <EmptyState message={t.serverEdit.noServer} />
+        </div>
       </section>
     );
   }
@@ -1499,6 +1554,11 @@ function ServerEditPanel({
         icon={ShieldCheck}
         meta={detailDataState === 'loading' ? t.dataStatus.loading : format.label(activeServer.name)}
       />
+      {detailDataState !== 'live' ? (
+        <div className="mt-2">
+          <DataStateNotice state={detailDataState} t={t} />
+        </div>
+      ) : null}
       <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
         {tabs.map((tab) => {
           const activeClass = activeTab === tab.id
@@ -2193,12 +2253,107 @@ function DetailRow({ children, label }: { children: ReactNode; label: string }) 
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+function EmptyState({ detail, kind = 'empty', message }: { detail?: string; kind?: PanelStateKind; message: string }) {
+  return <PanelState detail={detail} kind={kind} title={message} />;
+}
+
+function PanelState({
+  detail,
+  kind,
+  title,
+}: {
+  detail?: string;
+  kind: PanelStateKind;
+  title: string;
+}) {
+  const Icon = panelStateIcon(kind);
+  const toneClass = panelStateClass(kind);
+  const iconClass = kind === 'loading' ? 'animate-spin' : '';
+
   return (
-    <div className="rounded-md border border-dashed border-afro-line bg-[#f8fafb] px-3 py-3 text-center text-[13px] font-bold text-afro-muted">
-      {message}
+    <div
+      className={`flex min-h-[58px] items-center gap-2 rounded-md border border-dashed px-3 py-2.5 ${toneClass}`}
+      role={kind === 'error' ? 'alert' : 'status'}
+    >
+      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-white/70">
+        <Icon className={iconClass} size={16} />
+      </span>
+      <span className="min-w-0">
+        <strong className="block truncate text-[13px] leading-tight">{title}</strong>
+        {detail ? <span className="mt-0.5 block text-[12px] leading-snug opacity-80">{detail}</span> : null}
+      </span>
     </div>
   );
+}
+
+function DataStateNotice({ state, t }: { state: DataState; t: DashboardStrings }) {
+  const kind = dataStatePanelKind(state);
+  if (!kind) return null;
+
+  return (
+    <PanelState
+      detail={dataStatePanelDetail(state, t)}
+      kind={kind}
+      title={dataStatePanelTitle(state, t)}
+    />
+  );
+}
+
+function DataStateEmpty({
+  emptyMessage,
+  state,
+  t,
+}: {
+  emptyMessage: string;
+  state: DataState;
+  t: DashboardStrings;
+}) {
+  const kind = dataStatePanelKind(state) ?? 'empty';
+  const detail = kind === 'empty' ? t.panelStates.emptyDetail : dataStatePanelDetail(state, t);
+  const title = kind === 'empty' ? emptyMessage : dataStatePanelTitle(state, t);
+
+  return <PanelState detail={detail} kind={kind} title={title} />;
+}
+
+function dataStatePanelKind(state: DataState): PanelStateKind | null {
+  if (state === 'loading') return 'loading';
+  if (state === 'stale') return 'stale';
+  if (state === 'fallback') return 'fallback';
+
+  return null;
+}
+
+function dataStatePanelTitle(state: DataState, t: DashboardStrings): string {
+  if (state === 'loading') return t.panelStates.loadingTitle;
+  if (state === 'stale') return t.panelStates.staleTitle;
+  if (state === 'fallback') return t.panelStates.fallbackTitle;
+
+  return t.panelStates.emptyTitle;
+}
+
+function dataStatePanelDetail(state: DataState, t: DashboardStrings): string {
+  if (state === 'loading') return t.panelStates.loadingDetail;
+  if (state === 'stale') return t.panelStates.staleDetail;
+  if (state === 'fallback') return t.panelStates.fallbackDetail;
+
+  return t.panelStates.emptyDetail;
+}
+
+function panelStateIcon(kind: PanelStateKind): AfroIcon {
+  if (kind === 'loading') return Loader2;
+  if (kind === 'stale') return WifiOff;
+  if (kind === 'empty') return Inbox;
+
+  return AlertTriangle;
+}
+
+function panelStateClass(kind: PanelStateKind): string {
+  if (kind === 'loading') return 'border-[#bfd1ea] bg-[#edf4ff] text-afro-blue';
+  if (kind === 'stale') return 'border-[#e6cf9c] bg-[#fff7e6] text-[#9a5b00]';
+  if (kind === 'fallback') return 'border-afro-line bg-[#f8fafb] text-afro-muted';
+  if (kind === 'error') return 'border-[#f0b7b7] bg-[#fff1f1] text-[#b91c1c]';
+
+  return 'border-afro-line bg-[#f8fafb] text-afro-muted';
 }
 
 function UsersPage({
@@ -2391,88 +2546,92 @@ function UsersPage({
             {t.actions.addUser}
           </button>
         </div>
-        {error ? (
-          <div className="mt-2 rounded-md border border-[#f0b7b7] bg-[#fff1f1] px-3 py-2 text-[13px] font-bold text-[#b91c1c]">
-            {error}
-          </div>
-        ) : null}
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse">
-            <thead>
-              <tr>
-                {[
-                  t.userManagement.username,
-                  t.userManagement.role,
-                  t.userManagement.status,
-                  t.userManagement.source,
-                  t.userManagement.protection,
-                  t.tables.actions,
-                ].map((heading) => (
-                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <TableCell>
-                    <strong className="block text-afro-ink">{user.username}</strong>
-                    <span className="text-[12px] text-afro-muted">{format.time(new Date(user.updatedAt), false)}</span>
-                  </TableCell>
-                  <TableCell>{user.role}</TableCell>
-                  <TableCell>
-                    <StatusBadge tone={user.status === 'active' ? 'good' : 'warning'}>
-                      {t.userManagement[user.status]}
-                    </StatusBadge>
-                  </TableCell>
-                  <TableCell>{t.userManagement[user.source]}</TableCell>
-                  <TableCell>
-                    <StatusBadge tone={user.isSuperAdmin ? 'critical' : user.canDelete ? 'neutral' : 'warning'}>
-                      {user.isSuperAdmin ? t.userManagement.protected : user.canDelete ? t.userManagement.managed : t.userManagement.protected}
-                    </StatusBadge>
-                  </TableCell>
-                  <td className="border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0">
-                    <div className="flex min-w-[260px] flex-wrap gap-1.5">
-                      <button
-                        className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-ink disabled:cursor-not-allowed disabled:opacity-45"
-                        disabled={!canManageUsers || !user.canDisable}
-                        onClick={() => void handleToggleStatus(user)}
-                        type="button"
-                      >
-                        {user.status === 'active' ? t.actions.disable : t.actions.enable}
-                      </button>
-                      <button
-                        className="min-h-8 rounded-md border border-[#f0b7b7] bg-white px-2 text-[12px] font-bold text-[#b91c1c] disabled:cursor-not-allowed disabled:opacity-45"
-                        disabled={!canManageUsers || !user.canDelete}
-                        onClick={() => void handleDeleteUser(user)}
-                        type="button"
-                      >
-                        {t.actions.delete}
-                      </button>
-                      <input
-                        className="min-h-8 w-28 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-2 disabled:opacity-45"
-                        disabled={!canManageUsers || !user.canChangePassword}
-                        onChange={(event) => setPasswordDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
-                        placeholder={t.userManagement.newPassword}
-                        type="password"
-                        value={passwordDrafts[user.id] ?? ''}
-                      />
-                      <button
-                        className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
-                        disabled={!canManageUsers || !user.canChangePassword || !passwordDrafts[user.id]}
-                        onClick={() => void handleChangePassword(user)}
-                        type="button"
-                      >
-                        {t.actions.savePassword}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-2 grid gap-2">
+          {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
+          {isLoading && users.length === 0 ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
+          {!isLoading && users.length === 0 && !error ? (
+            <PanelState detail={t.panelStates.emptyDetail} kind="empty" title={t.operationalData.noUsers} />
+          ) : null}
+          {users.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse">
+                <thead>
+                  <tr>
+                    {[
+                      t.userManagement.username,
+                      t.userManagement.role,
+                      t.userManagement.status,
+                      t.userManagement.source,
+                      t.userManagement.protection,
+                      t.tables.actions,
+                    ].map((heading) => (
+                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id}>
+                      <TableCell>
+                        <strong className="block text-afro-ink">{user.username}</strong>
+                        <span className="text-[12px] text-afro-muted">{format.time(new Date(user.updatedAt), false)}</span>
+                      </TableCell>
+                      <TableCell>{user.role}</TableCell>
+                      <TableCell>
+                        <StatusBadge tone={user.status === 'active' ? 'good' : 'warning'}>
+                          {t.userManagement[user.status]}
+                        </StatusBadge>
+                      </TableCell>
+                      <TableCell>{t.userManagement[user.source]}</TableCell>
+                      <TableCell>
+                        <StatusBadge tone={user.isSuperAdmin ? 'critical' : user.canDelete ? 'neutral' : 'warning'}>
+                          {user.isSuperAdmin ? t.userManagement.protected : user.canDelete ? t.userManagement.managed : t.userManagement.protected}
+                        </StatusBadge>
+                      </TableCell>
+                      <td className="border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0">
+                        <div className="flex min-w-[260px] flex-wrap gap-1.5">
+                          <button
+                            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-ink disabled:cursor-not-allowed disabled:opacity-45"
+                            disabled={!canManageUsers || !user.canDisable}
+                            onClick={() => void handleToggleStatus(user)}
+                            type="button"
+                          >
+                            {user.status === 'active' ? t.actions.disable : t.actions.enable}
+                          </button>
+                          <button
+                            className="min-h-8 rounded-md border border-[#f0b7b7] bg-white px-2 text-[12px] font-bold text-[#b91c1c] disabled:cursor-not-allowed disabled:opacity-45"
+                            disabled={!canManageUsers || !user.canDelete}
+                            onClick={() => void handleDeleteUser(user)}
+                            type="button"
+                          >
+                            {t.actions.delete}
+                          </button>
+                          <input
+                            className="min-h-8 w-28 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-2 disabled:opacity-45"
+                            disabled={!canManageUsers || !user.canChangePassword}
+                            onChange={(event) => setPasswordDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
+                            placeholder={t.userManagement.newPassword}
+                            type="password"
+                            value={passwordDrafts[user.id] ?? ''}
+                          />
+                          <button
+                            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+                            disabled={!canManageUsers || !user.canChangePassword || !passwordDrafts[user.id]}
+                            onClick={() => void handleChangePassword(user)}
+                            type="button"
+                          >
+                            {t.actions.savePassword}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       </section>
     </section>
@@ -2523,6 +2682,7 @@ function RoutesPage({
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <TunnelPanel
+        dataState={tunnelDataState}
         emptyMessage={tunnelDataState === 'loading' ? t.dataStatus.loading : t.operationalData.noTunnels}
         format={format}
         onSelectTunnel={setSelectedTunnelKey}
@@ -2539,6 +2699,7 @@ function RoutesPage({
         t={t}
       />
       <OutboundsPanel
+        dataState={dataState}
         emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noOutbounds}
         format={format}
         outbounds={outbounds}
@@ -2546,6 +2707,7 @@ function RoutesPage({
       />
       <RoutePolicyPanel format={format} outbounds={outbounds} session={session} sessionToken={sessionToken} t={t} />
       <FailoverPanel
+        dataState={dataState}
         emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noFailoverEvents}
         events={failoverRows}
         format={format}
@@ -2631,7 +2793,8 @@ function TunnelDetailPanel({
         meta={detailDataState === 'loading' ? t.dataStatus.loading : tunnelRow ? format.label(tunnelRow.name) : t.tunnelDetail.noTunnel}
       />
       <div className="mt-2 grid gap-2">
-        {!tunnelRow ? <EmptyState message={tunnelDataState === 'loading' ? t.dataStatus.loading : t.tunnelDetail.noTunnel} /> : null}
+        {!tunnelRow ? <DataStateEmpty emptyMessage={t.tunnelDetail.noTunnel} state={tunnelDataState} t={t} /> : null}
+        {tunnelRow && detailDataState !== 'live' ? <DataStateNotice state={detailDataState} t={t} /> : null}
         {tunnelRow ? (
           <>
             <DetailRow label={t.tunnelDetail.labels.status}>
@@ -2797,6 +2960,7 @@ function RoutePolicyPanel({
         meta={policyDataState === 'loading' ? t.dataStatus.loading : assignment?.assignmentLabel ?? t.settings.defaultAssignment}
       />
       <div className="mt-2 grid gap-2">
+        {policyDataState !== 'live' ? <DataStateNotice state={policyDataState} t={t} /> : null}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2.5 py-2">
           <span className={`${mutedTextClass} font-bold`}>{t.settings.routeAssignment}</span>
           <StatusBadge tone={statusTone}>
@@ -2899,7 +3063,7 @@ function RoutePolicyPanel({
             <StatusBadge tone={tone}>{value}</StatusBadge>
           </div>
         ))}
-        {outboundOptions.length === 0 ? <p className="text-[12px] font-bold text-afro-muted">{t.routePolicy.noManagedOutbounds}</p> : null}
+        {outboundOptions.length === 0 ? <EmptyState message={t.routePolicy.noManagedOutbounds} /> : null}
         {policyMessage ? <p className="text-[12px] font-bold text-afro-muted">{policyMessage}</p> : null}
         <button
           className={primaryButtonClass}
@@ -2915,11 +3079,13 @@ function RoutePolicyPanel({
 }
 
 function FailoverPanel({
+  dataState,
   emptyMessage,
   events,
   format,
   t,
 }: {
+  dataState: DataState;
   emptyMessage?: string;
   events: RouteFailoverRowData[];
   format: DashboardFormatters;
@@ -2929,7 +3095,10 @@ function FailoverPanel({
     <section className={panelClass}>
       <PanelHeading title={t.panels.failover} icon={ArrowDownUp} meta={t.panels.latestDecisions} />
       <div className="mt-2 grid gap-2">
-        {events.length === 0 && emptyMessage ? <EmptyState message={emptyMessage} /> : null}
+        {events.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {events.length === 0 ? (
+          <DataStateEmpty emptyMessage={emptyMessage ?? t.operationalData.noFailoverEvents} state={dataState} t={t} />
+        ) : null}
         {events.map((event) => (
           <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={event.id}>
             <div className="min-w-0">
@@ -2947,40 +3116,56 @@ function FailoverPanel({
   );
 }
 
-function AlertsPage({ alerts, format, t }: { alerts: AlertRowData[]; format: DashboardFormatters; t: DashboardStrings }) {
+function AlertsPage({
+  alerts,
+  dataState,
+  format,
+  t,
+}: {
+  alerts: AlertRowData[];
+  dataState: DataState;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
   const activeAlertCount = countActiveAlertRows(alerts);
 
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
       <section className={panelClass}>
         <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(format.integer(activeAlertCount))} />
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.channel].map((heading) => (
-                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map((alert) => (
-                <tr key={alert.id}>
-                  <TableCell>
-                    <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
-                  </TableCell>
-                  <TableCell>{format.label(alert.source)}</TableCell>
-                  <TableCell>
-                    <strong className="block truncate text-afro-ink">{alert.title}</strong>
-                    {alert.message ? <span className="block max-w-[420px] truncate text-[12px]">{alert.message}</span> : null}
-                  </TableCell>
-                  <TableCell>{t.alerts.dashboard}</TableCell>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-2 grid gap-2">
+          {alerts.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+          {alerts.length === 0 ? <DataStateEmpty emptyMessage={t.alerts.noOpenAlerts} state={dataState} t={t} /> : null}
+          {alerts.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.channel].map((heading) => (
+                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {alerts.map((alert) => (
+                    <tr key={alert.id}>
+                      <TableCell>
+                        <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
+                      </TableCell>
+                      <TableCell>{format.label(alert.source)}</TableCell>
+                      <TableCell>
+                        <strong className="block truncate text-afro-ink">{alert.title}</strong>
+                        {alert.message ? <span className="block max-w-[420px] truncate text-[12px]">{alert.message}</span> : null}
+                      </TableCell>
+                      <TableCell>{t.alerts.dashboard}</TableCell>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -7228,11 +7413,23 @@ function MetricCard({ item }: { item: MetricCardData }) {
   );
 }
 
-function ServerPanel({ format, servers, t }: { format: DashboardFormatters; servers: ServerRowData[]; t: DashboardStrings }) {
+function ServerPanel({
+  dataState,
+  format,
+  servers,
+  t,
+}: {
+  dataState: DataState;
+  format: DashboardFormatters;
+  servers: ServerRowData[];
+  t: DashboardStrings;
+}) {
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.servers} icon={Gauge} meta={t.panels.nodes(format.integer(servers.length))} />
       <div className="mt-2 grid gap-2">
+        {servers.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {servers.length === 0 ? <DataStateEmpty emptyMessage={t.operationalData.noServers} state={dataState} t={t} /> : null}
         {servers.map((server) => (
           <ServerRow format={format} server={server} key={server.id} t={t} />
         ))}
@@ -7311,6 +7508,7 @@ function MetricPill({ icon: Icon, label, value }: { icon: AfroIcon; label: strin
 }
 
 function TunnelPanel({
+  dataState,
   emptyMessage,
   format,
   onSelectTunnel,
@@ -7318,6 +7516,7 @@ function TunnelPanel({
   t,
   tunnels,
 }: {
+  dataState: DataState;
   emptyMessage?: string;
   format: DashboardFormatters;
   onSelectTunnel?: (key: string) => void;
@@ -7328,48 +7527,55 @@ function TunnelPanel({
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(format.integer(tunnels.length))} />
-      <div className="mt-2 overflow-x-auto">
-        {tunnels.length === 0 && emptyMessage ? <EmptyState message={emptyMessage} /> : null}
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              {[t.tables.tunnel, t.tables.operator, t.tables.ping, t.tables.jitter, t.tables.loss, t.tables.score].map((heading) => (
-                <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
-                  {heading}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {tunnels.map((tunnel) => {
-              const key = tunnelRowKey(tunnel);
-              const isSelected = key === selectedTunnelKey;
-
-              return (
-                <tr className={isSelected ? 'bg-[#edf4ff]' : undefined} key={key}>
-                  <TableCell>
-                    <button
-                      aria-pressed={isSelected}
-                      className={`max-w-[180px] truncate text-left font-bold ${isSelected ? 'text-afro-blue' : 'text-afro-ink hover:text-afro-blue'}`}
-                      onClick={() => onSelectTunnel?.(key)}
-                      title={tunnel.name}
-                      type="button"
-                    >
-                      {tunnel.name}
-                    </button>
-                  </TableCell>
-                  <TableCell>{format.label(tunnel.operator)}</TableCell>
-                  <TableCell>{format.latency(tunnel.ping)}</TableCell>
-                  <TableCell>{format.latency(tunnel.jitter)}</TableCell>
-                  <TableCell>{format.packetLoss(tunnel.loss)}</TableCell>
-                  <TableCell alignRight>
-                    <strong className={getScoreClass(tunnel.score)}>{format.integer(tunnel.score)}</strong>
-                  </TableCell>
+      <div className="mt-2 grid gap-2">
+        {tunnels.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {tunnels.length === 0 ? (
+          <DataStateEmpty emptyMessage={emptyMessage ?? t.operationalData.noTunnels} state={dataState} t={t} />
+        ) : null}
+        {tunnels.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  {[t.tables.tunnel, t.tables.operator, t.tables.ping, t.tables.jitter, t.tables.loss, t.tables.score].map((heading) => (
+                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {tunnels.map((tunnel) => {
+                  const key = tunnelRowKey(tunnel);
+                  const isSelected = key === selectedTunnelKey;
+
+                  return (
+                    <tr className={isSelected ? 'bg-[#edf4ff]' : undefined} key={key}>
+                      <TableCell>
+                        <button
+                          aria-pressed={isSelected}
+                          className={`max-w-[180px] truncate text-left font-bold ${isSelected ? 'text-afro-blue' : 'text-afro-ink hover:text-afro-blue'}`}
+                          onClick={() => onSelectTunnel?.(key)}
+                          title={tunnel.name}
+                          type="button"
+                        >
+                          {tunnel.name}
+                        </button>
+                      </TableCell>
+                      <TableCell>{format.label(tunnel.operator)}</TableCell>
+                      <TableCell>{format.latency(tunnel.ping)}</TableCell>
+                      <TableCell>{format.latency(tunnel.jitter)}</TableCell>
+                      <TableCell>{format.packetLoss(tunnel.loss)}</TableCell>
+                      <TableCell alignRight>
+                        <strong className={getScoreClass(tunnel.score)}>{format.integer(tunnel.score)}</strong>
+                      </TableCell>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -7961,9 +8167,7 @@ function ProtocolApplyEventsPanel({
       </div>
 
       {events.length === 0 ? (
-        <p className={`${mutedTextClass} rounded-md border border-afro-line bg-white px-2.5 py-2`}>
-          {t.settings.noProtocolApplyEvents}
-        </p>
+        <EmptyState message={t.settings.noProtocolApplyEvents} />
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
           {events.slice(0, 6).map((event) => {
@@ -8119,9 +8323,7 @@ function ProtocolApplyEventDetailCard({
           ) : null}
         </>
       ) : (
-        <p className={`${mutedTextClass} rounded-md border border-afro-line bg-white px-2.5 py-2`}>
-          {t.settings.noDryRunSnapshot}
-        </p>
+        <EmptyState message={t.settings.noDryRunSnapshot} />
       )}
     </div>
   );

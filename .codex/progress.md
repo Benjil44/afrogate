@@ -913,4 +913,16 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining high-priority work includes the production server-side protocol apply engine, shared empty/loading/stale states, and alert filters/history.
+- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, mobile/tablet resource strip density, and visual regression captures.
+- Added a shared dashboard panel-state primitive for empty, loading, stale, fallback, and error states with typed English/Persian copy.
+- Wired the shared states through the Dashboard, Servers, Routes, Alerts, Users, and Settings-adjacent operational panels so stale/fallback/sample data is visibly labeled instead of silently mixing with live rows.
+- Updated the user-management panel to use the same loading/error/empty state surface and kept all user-facing copy in the multilingual layer.
+- Updated checklist, dashboard sidebar page checklist, and memory to mark shared empty/loading/stale/error states complete.
+- Bumped AfroGate to `0.62.1` for the shared dashboard panel-state UI refinement.
+- Verified `0.62.1` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
