@@ -1013,6 +1013,23 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the Phase 2 billing catalog foundation with `billing_settings`, `volume_packages`, and `payment_methods`.
+- Added guarded admin APIs for billing settings, volume packages, payment methods, and the combined billing catalog.
+- Added shared TypeScript contracts for billing settings, volume package requests/responses, payment method requests/responses, and the billing catalog.
+- Added PayPal as a first-class payment provider key while keeping payment method support extensible for manual, card, crypto, bank transfer, and local gateway methods.
+- Documented that PayPal client secrets, webhook secrets, merchant credentials, and private gateway keys must not be stored in payment public config.
+- Updated checklist, memory, PRD, implementation plan, technical architecture, and security policy for billing catalog and provider-method support.
+- Bumped AfroGate to `0.67.0` for the billing package/payment-method API and schema contract.
+- Checklist completion after adding package/pricing/payment-method support and the new payment-order/provider follow-up tasks is `190 / 217` items, or `87.6%` complete with `12.4%` remaining.
+- Verified the billing catalog foundation with `npm --workspace @afrogate/backend run db:migrate`.
+- Confirmed authenticated local backend reads return `200` for `/api/admin/billing/settings`, `/api/admin/volume-packages`, `/api/admin/payment-methods`, and `/api/admin/billing/catalog`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Kept live protocol mutation blocked: protocol apply, live executor, protocol-secret decrypt, server-credential decrypt, installed access profile, active credential, and audited adapter implementation are all required before any future command runner can use decrypted material.
 - Remaining high-priority work includes the production server-side protocol apply engine.
 - Checklist completion before this slice was `181 / 209` items, or `86.6%` complete with `13.4%` remaining.

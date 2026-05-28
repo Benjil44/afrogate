@@ -58,6 +58,7 @@ Next.js برای dashboard و full-stack web عالی است، اما backend ا
 - subscriptions
 - usage ledger
 - payments/charges
+- payment method catalog: PayPal plus manual/card/crypto/bank/local provider keys, with provider secrets kept out of public config
 - servers
 - tunnels
 - route assignments

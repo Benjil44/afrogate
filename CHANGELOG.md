@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.67.0 - 2026-05-28
+
+- Added billing settings, volume packages, and guarded admin APIs for package/pricing management.
+- Added an extensible payment-method catalog with PayPal as a first-class provider plus manual/card/crypto/bank/local gateway support.
+- Added shared billing/payment contracts and documented that payment provider secrets must stay out of public payment config.
+
 ## 0.66.0 - 2026-05-28
 
 - Added the customer-account and client-config PostgreSQL foundation for Phase 2 billing.

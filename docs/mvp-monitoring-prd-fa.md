@@ -44,6 +44,8 @@
 - تحلیل داده پیشرفته با مدل‌های پیش‌بینی.
 - فروش enterprise با multi-tenant کامل.
 
+Billing note: the MVP can expose a provider catalog with PayPal and manual/other payment methods, but live capture, refunds, and webhook verification remain a separate payment-order/provider-adapter phase.
+
 ## ظرفیت اولیه
 
 - هدف اولیه: حدود 150 کاربر.

@@ -11,9 +11,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type {
+  AdminBillingCatalogResponse,
+  AdminBillingSettingsResponse,
   AdminClientConfigSummary,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
+  AdminPaymentMethodSummary,
+  AdminPaymentMethodsResponse,
+  AdminVolumePackageSummary,
+  AdminVolumePackagesResponse,
 } from '@afrogate/shared';
 import type { RequestWithAuth } from '../security/auth-request';
 import { AdminTokenGuard } from '../security/admin-token.guard';
@@ -26,11 +32,127 @@ import {
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
 } from './dto/customer-account.dto';
+import {
+  CreatePaymentMethodDto,
+  CreateVolumePackageDto,
+  UpdateBillingSettingsDto,
+  UpdatePaymentMethodDto,
+  UpdateVolumePackageDto,
+} from './dto/billing.dto';
 
 @Controller('admin')
 @UseGuards(AdminTokenGuard, RolesGuard)
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
+
+  @Get('billing/catalog')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getBillingCatalog(): Promise<AdminBillingCatalogResponse> {
+    return this.billingService.getBillingCatalog();
+  }
+
+  @Get('billing/settings')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async getBillingSettings(): Promise<AdminBillingSettingsResponse> {
+    return {
+      settings: await this.billingService.getBillingSettings(),
+    };
+  }
+
+  @Patch('billing/settings')
+  @Roles('admin')
+  async updateBillingSettings(
+    @Body() payload: UpdateBillingSettingsDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminBillingSettingsResponse> {
+    return {
+      settings: await this.billingService.updateBillingSettings(payload, request.actor),
+    };
+  }
+
+  @Get('volume-packages')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listVolumePackages(
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminVolumePackagesResponse> {
+    return {
+      packages: await this.billingService.listVolumePackages({
+        status,
+        limit: this.billingService.normalizeLimit(limit, 100, 500),
+      }),
+    };
+  }
+
+  @Get('volume-packages/:id')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getVolumePackage(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminVolumePackageSummary> {
+    return this.billingService.getVolumePackage(id);
+  }
+
+  @Post('volume-packages')
+  @Roles('admin')
+  createVolumePackage(
+    @Body() payload: CreateVolumePackageDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminVolumePackageSummary> {
+    return this.billingService.createVolumePackage(payload, request.actor);
+  }
+
+  @Patch('volume-packages/:id')
+  @Roles('admin')
+  updateVolumePackage(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpdateVolumePackageDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminVolumePackageSummary> {
+    return this.billingService.updateVolumePackage(id, payload, request.actor);
+  }
+
+  @Get('payment-methods')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listPaymentMethods(
+    @Query('status') status?: string,
+    @Query('provider') provider?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminPaymentMethodsResponse> {
+    return {
+      paymentMethods: await this.billingService.listPaymentMethods({
+        status,
+        provider,
+        limit: this.billingService.normalizeLimit(limit, 100, 500),
+      }),
+    };
+  }
+
+  @Get('payment-methods/:id')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getPaymentMethod(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminPaymentMethodSummary> {
+    return this.billingService.getPaymentMethod(id);
+  }
+
+  @Post('payment-methods')
+  @Roles('admin')
+  createPaymentMethod(
+    @Body() payload: CreatePaymentMethodDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminPaymentMethodSummary> {
+    return this.billingService.createPaymentMethod(payload, request.actor);
+  }
+
+  @Patch('payment-methods/:id')
+  @Roles('admin')
+  updatePaymentMethod(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpdatePaymentMethodDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminPaymentMethodSummary> {
+    return this.billingService.updatePaymentMethod(id, payload, request.actor);
+  }
 
   @Get('customer-accounts')
   @Roles('admin', 'supervisor', 'support', 'auditor')

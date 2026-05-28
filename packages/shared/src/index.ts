@@ -283,6 +283,119 @@ export interface UpdateClientConfigRequest {
   notes?: string | null;
 }
 
+export type VolumePackageStatus = 'active' | 'archived';
+
+export interface AdminBillingSettingsSummary {
+  settingKey: string;
+  currency: string;
+  pricePerGb: number;
+  updatedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminVolumePackageSummary {
+  id: string;
+  name: string;
+  slug: string;
+  volumeBytes: number;
+  volumeGb: number;
+  durationDays?: number | null;
+  pricePerGb: number;
+  totalPrice: number;
+  currency: string;
+  status: VolumePackageStatus | string;
+  sortOrder: number;
+  notes?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateBillingSettingsRequest {
+  currency?: string;
+  pricePerGb?: number;
+}
+
+export interface CreateVolumePackageRequest {
+  name: string;
+  slug?: string;
+  volumeGb: number;
+  durationDays?: number | null;
+  pricePerGb?: number;
+  totalPrice?: number;
+  currency?: string;
+  status?: VolumePackageStatus;
+  sortOrder?: number;
+  notes?: string | null;
+}
+
+export interface UpdateVolumePackageRequest {
+  name?: string;
+  slug?: string;
+  volumeGb?: number;
+  durationDays?: number | null;
+  pricePerGb?: number;
+  totalPrice?: number;
+  currency?: string;
+  status?: VolumePackageStatus;
+  sortOrder?: number;
+  notes?: string | null;
+}
+
+export type PaymentMethodStatus = 'active' | 'disabled';
+export type PaymentCheckoutMode = 'manual' | 'hosted_redirect' | 'external_link' | 'provider_sdk';
+export type PaymentProvider = 'paypal' | 'manual' | 'bank_transfer' | 'card' | 'crypto' | 'local_gateway';
+
+export interface AdminPaymentMethodSummary {
+  id: string;
+  name: string;
+  slug: string;
+  provider: PaymentProvider | string;
+  checkoutMode: PaymentCheckoutMode | string;
+  currency: string;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  status: PaymentMethodStatus | string;
+  sortOrder: number;
+  supportsAutoCapture: boolean;
+  publicConfig: Record<string, unknown>;
+  instructions?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePaymentMethodRequest {
+  name: string;
+  slug?: string;
+  provider?: PaymentProvider | string;
+  checkoutMode?: PaymentCheckoutMode;
+  currency?: string;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  status?: PaymentMethodStatus;
+  sortOrder?: number;
+  supportsAutoCapture?: boolean;
+  publicConfig?: Record<string, unknown> | null;
+  instructions?: string | null;
+}
+
+export interface UpdatePaymentMethodRequest {
+  name?: string;
+  slug?: string;
+  provider?: PaymentProvider | string;
+  checkoutMode?: PaymentCheckoutMode;
+  currency?: string;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  status?: PaymentMethodStatus;
+  sortOrder?: number;
+  supportsAutoCapture?: boolean;
+  publicConfig?: Record<string, unknown> | null;
+  instructions?: string | null;
+}
+
 export interface CreateAdminUserRequest {
   username: string;
   password: string;
@@ -1970,6 +2083,24 @@ export interface AdminServersResponse {
 
 export interface AdminCustomerAccountsResponse {
   accounts: AdminCustomerAccountSummary[];
+}
+
+export interface AdminBillingSettingsResponse {
+  settings: AdminBillingSettingsSummary;
+}
+
+export interface AdminVolumePackagesResponse {
+  packages: AdminVolumePackageSummary[];
+}
+
+export interface AdminPaymentMethodsResponse {
+  paymentMethods: AdminPaymentMethodSummary[];
+}
+
+export interface AdminBillingCatalogResponse {
+  settings: AdminBillingSettingsSummary;
+  packages: AdminVolumePackageSummary[];
+  paymentMethods: AdminPaymentMethodSummary[];
 }
 
 export interface AdminOutboundsResponse {

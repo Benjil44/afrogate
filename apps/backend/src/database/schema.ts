@@ -509,6 +509,67 @@ export const clientConfigs = pgTable(
   }),
 );
 
+export const billingSettings = pgTable('billing_settings', {
+  settingKey: text('setting_key').primaryKey(),
+  currency: text('currency').notNull().default('toman'),
+  pricePerGb: bigint('price_per_gb', { mode: 'number' }).notNull().default(0),
+  updatedBy: text('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const volumePackages = pgTable(
+  'volume_packages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    volumeBytes: bigint('volume_bytes', { mode: 'number' }).notNull(),
+    durationDays: integer('duration_days'),
+    pricePerGb: bigint('price_per_gb', { mode: 'number' }).notNull().default(0),
+    totalPrice: bigint('total_price', { mode: 'number' }).notNull().default(0),
+    currency: text('currency').notNull().default('toman'),
+    status: text('status').notNull().default('active'),
+    sortOrder: integer('sort_order').notNull().default(1000),
+    notes: text('notes'),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex('volume_packages_slug_unique').on(table.slug),
+    statusSortIdx: index('volume_packages_status_sort_idx').on(table.status, table.sortOrder, table.createdAt),
+    volumeIdx: index('volume_packages_volume_idx').on(table.volumeBytes),
+  }),
+);
+
+export const paymentMethods = pgTable(
+  'payment_methods',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    provider: text('provider').notNull().default('manual'),
+    checkoutMode: text('checkout_mode').notNull().default('manual'),
+    currency: text('currency').notNull().default('toman'),
+    minAmount: bigint('min_amount', { mode: 'number' }),
+    maxAmount: bigint('max_amount', { mode: 'number' }),
+    status: text('status').notNull().default('active'),
+    sortOrder: integer('sort_order').notNull().default(1000),
+    supportsAutoCapture: boolean('supports_auto_capture').notNull().default(false),
+    publicConfig: jsonb('public_config').notNull().default(sql`'{}'::jsonb`),
+    instructions: text('instructions'),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex('payment_methods_slug_unique').on(table.slug),
+    statusSortIdx: index('payment_methods_status_sort_idx').on(table.status, table.sortOrder, table.createdAt),
+    providerIdx: index('payment_methods_provider_idx').on(table.provider),
+  }),
+);
+
 export const routeSettings = pgTable(
   'route_settings',
   {

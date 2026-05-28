@@ -137,11 +137,44 @@ Current implementation starts Phase 2 with `customer_accounts` instead of a sing
 
 - id
 - name
-- volume_gb
+- slug
+- volume_bytes
 - price_per_gb
 - total_price
 - duration_days
-- is_active
+- currency
+- status: active or archived
+- sort_order
+
+### billing_settings
+
+- setting_key: default
+- currency
+- price_per_gb
+- updated_by
+- created_at
+- updated_at
+
+### payment_methods
+
+- id
+- name
+- slug
+- provider: paypal, manual, bank_transfer, card, crypto, local_gateway, or another configured provider key
+- checkout_mode: manual, hosted_redirect, external_link, or provider_sdk
+- currency
+- min_amount nullable
+- max_amount nullable
+- status: active or disabled
+- sort_order
+- supports_auto_capture
+- public_config jsonb
+- instructions
+- created_by
+- created_at
+- updated_at
+
+Payment provider secrets, including PayPal client secrets and webhook secrets, must not be stored in `public_config`. They should use the encrypted `secret_records` path or a future dedicated provider-secret reference.
 
 ### subscriptions
 

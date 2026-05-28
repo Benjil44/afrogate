@@ -162,9 +162,13 @@
 - [x] Telegram identity user model.
 - [x] Privacy-safe paid number storage.
 - [x] Customer account model that can own multiple client configs/devices.
-- [ ] Volume package model.
-- [ ] Price per GB setting.
+- [x] Volume package model.
+- [x] Price per GB setting.
 - [x] Shared account GB quota with optional per-client/device caps.
+- [x] Extensible payment method catalog with PayPal as a first-class provider.
+- [ ] Payment order lifecycle with pending/paid/failed/refunded states.
+- [ ] PayPal checkout capture adapter and webhook verification.
+- [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
 - [ ] Usage accounting.
 - [ ] Remaining volume display.
 - [ ] Telegram bot user commands.
