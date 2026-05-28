@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.60.0 - 2026-05-28
+
+- Added a selected Tunnel Detail surface on the Routes page with guarded tunnel detail loading.
+- Surfaced tunnel server, interface/operator, route group, lockability, endpoint, health score, and route-quality context with English/Persian labels.
+- Kept tunnel detail read-only and non-mutating, with no service reload, OS route mutation, credential decrypt, or traffic switching.
+
 ## 0.59.0 - 2026-05-28
 
 - Added an API-bound Server Detail surface that loads guarded server detail when a node is selected.

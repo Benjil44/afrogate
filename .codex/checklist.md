@@ -128,7 +128,7 @@
 - [x] Initial Routes page.
 - [x] Initial Alerts page.
 - [x] Server detail page.
-- [ ] Tunnel detail page.
+- [x] Tunnel detail page.
 - [x] Real server API-bound Servers page.
 - [x] Real route/outbound API-bound Routes page.
 - [x] Routes page default route assignment controls for auto-route, route lock, current/locked outbound, hysteresis, and cooldown.

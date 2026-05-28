@@ -42,6 +42,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Route lock and auto-route controls.
 - [x] Real route/outbound API binding after admin guards are enforced.
 - [x] Real tunnel inventory API binding after admin guards are enforced.
+- [x] Tunnel detail page with selected tunnel status, server/interface context, lockability, endpoint, route quality, and guarded API detail loading.
 
 ## Alerts Page
 

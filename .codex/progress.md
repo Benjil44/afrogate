@@ -845,3 +845,15 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added a selected Tunnel Detail surface on the Routes page that loads guarded `/api/admin/tunnels/:id` detail for API-backed tunnel rows and falls back to list/sample context when detail is unavailable.
+- Surfaced tunnel status, type, server, route group, local interface/operator, remote endpoint, lockability, route-quality metrics, health score, updated time, and detail source with localized English/Persian labels.
+- Kept the tunnel detail workflow read-only and non-mutating: no credential decrypt, SSH access, service reload, OS route mutation, or live traffic switching is performed.
+- Updated checklist, dashboard page coverage notes, memory, and changelog to mark the Tunnel detail page complete.
+- Bumped AfroGate to `0.60.0` for the Tunnel Detail workflow.
+- Verified `0.60.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, alert filters/history, Ubuntu deployment notes, Docker Compose, and basic CI checks.

@@ -20,6 +20,7 @@ import type {
   AdminSecretRefSummary,
   AdminSettingsResponse,
   AdminServerDetail,
+  AdminTunnelSummary,
   AdminTunnelsResponse,
   AdminUserSummary,
   AdminUsersResponse,
@@ -186,6 +187,19 @@ export async function fetchAdminTunnels(
   });
 
   return response.json() as Promise<AdminTunnelsResponse>;
+}
+
+export async function fetchAdminTunnel(
+  sessionToken: string,
+  tunnelId: string,
+  signal?: AbortSignal,
+): Promise<AdminTunnelSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/tunnels/${encodeURIComponent(tunnelId)}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminTunnelSummary>;
 }
 
 export async function fetchRouteFailoverEvents(

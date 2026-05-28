@@ -98,6 +98,7 @@ import {
   fetchAdminServerInterfaces,
   fetchAdminServers,
   fetchAdminSettings,
+  fetchAdminTunnel,
   fetchAdminTunnels,
   fetchAdminUsers,
   fetchProtocolServerApplyEvent,
@@ -173,12 +174,22 @@ interface ServerRowData {
 }
 
 interface TunnelRowData {
+  id?: string;
   name: string;
   operator: string;
   ping: number | null;
   jitter: number | null;
   loss: number | null;
   score: number;
+  type?: string;
+  serverLabel?: string | null;
+  routeGroup?: string;
+  status?: string;
+  lockable?: boolean;
+  localInterfaceName?: string | null;
+  interfaceName?: string | null;
+  remoteEndpoint?: string | null;
+  updatedAt?: string;
 }
 
 interface OutboundRowData {
@@ -731,6 +742,7 @@ function AuthenticatedDashboard({
           routeDataState={routeDataState}
           routeFailoverRows={failoverRows}
           routeOutbounds={routeOutbounds}
+          routeTunnelSummaries={tunnelDataState === 'live' || tunnelDataState === 'stale' ? adminTunnels : []}
           routeTunnels={routeTunnels}
           serverDataState={serverDataState}
           managementServers={managementServerRows}
@@ -956,6 +968,7 @@ function ActivePage({
   routeDataState,
   routeFailoverRows,
   routeOutbounds,
+  routeTunnelSummaries,
   routeTunnels,
   serverDataState,
   managementServers,
@@ -977,6 +990,7 @@ function ActivePage({
   routeDataState: DataState;
   routeFailoverRows: RouteFailoverRowData[];
   routeOutbounds: OutboundRowData[];
+  routeTunnelSummaries: AdminTunnelSummary[];
   routeTunnels: TunnelRowData[];
   serverDataState: DataState;
   managementServers: ServerRowData[];
@@ -1014,6 +1028,7 @@ function ActivePage({
           session={session}
           sessionToken={sessionToken}
           tunnelDataState={tunnelDataState}
+          tunnelSummaries={routeTunnelSummaries}
           tunnels={routeTunnels}
           t={t}
         />
@@ -2472,6 +2487,7 @@ function RoutesPage({
   session,
   sessionToken,
   tunnelDataState,
+  tunnelSummaries,
   tunnels,
   t,
 }: {
@@ -2482,16 +2498,45 @@ function RoutesPage({
   session: AdminSessionResponse;
   sessionToken: string;
   tunnelDataState: DataState;
+  tunnelSummaries: AdminTunnelSummary[];
   tunnels: TunnelRowData[];
   t: DashboardStrings;
 }) {
+  const [selectedTunnelKey, setSelectedTunnelKey] = useState<string | null>(() => tunnels[0] ? tunnelRowKey(tunnels[0]) : null);
+
+  useEffect(() => {
+    if (tunnels.length === 0) {
+      setSelectedTunnelKey(null);
+      return;
+    }
+
+    if (!selectedTunnelKey || !tunnels.some((tunnel) => tunnelRowKey(tunnel) === selectedTunnelKey)) {
+      setSelectedTunnelKey(tunnelRowKey(tunnels[0]));
+    }
+  }, [selectedTunnelKey, tunnels]);
+
+  const selectedTunnelRow = tunnels.find((tunnel) => tunnelRowKey(tunnel) === selectedTunnelKey) ?? tunnels[0] ?? null;
+  const selectedTunnelSummary = selectedTunnelRow?.id
+    ? tunnelSummaries.find((tunnel) => tunnel.id === selectedTunnelRow.id) ?? null
+    : null;
+
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <TunnelPanel
         emptyMessage={tunnelDataState === 'loading' ? t.dataStatus.loading : t.operationalData.noTunnels}
         format={format}
+        onSelectTunnel={setSelectedTunnelKey}
+        selectedTunnelKey={selectedTunnelKey}
         t={t}
         tunnels={tunnels}
+      />
+      <TunnelDetailPanel
+        format={format}
+        sessionToken={sessionToken}
+        tunnel={selectedTunnelSummary}
+        tunnelDataState={tunnelDataState}
+        tunnelRow={selectedTunnelRow}
+        t={t}
       />
       <OutboundsPanel
         emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noOutbounds}
@@ -2506,6 +2551,120 @@ function RoutesPage({
         format={format}
         t={t}
       />
+    </section>
+  );
+}
+
+function tunnelRowKey(tunnel: TunnelRowData): string {
+  return tunnel.id ?? tunnel.name;
+}
+
+function TunnelDetailPanel({
+  format,
+  sessionToken,
+  t,
+  tunnel,
+  tunnelDataState,
+  tunnelRow,
+}: {
+  format: DashboardFormatters;
+  sessionToken: string;
+  t: DashboardStrings;
+  tunnel: AdminTunnelSummary | null;
+  tunnelDataState: DataState;
+  tunnelRow: TunnelRowData | null;
+}) {
+  const [tunnelDetail, setTunnelDetail] = useState<AdminTunnelSummary | null>(tunnel);
+  const [detailDataState, setDetailDataState] = useState<DataState>(tunnel?.id ? 'loading' : tunnelDataState);
+
+  useEffect(() => {
+    let isActive = true;
+    const controller = new AbortController();
+
+    setTunnelDetail(tunnel);
+
+    if (!tunnel?.id) {
+      setDetailDataState(tunnelRow ? tunnelDataState : 'fallback');
+      return () => {
+        isActive = false;
+        controller.abort();
+      };
+    }
+
+    setDetailDataState('loading');
+
+    fetchAdminTunnel(sessionToken, tunnel.id, controller.signal)
+      .then((detail) => {
+        if (!isActive) return;
+
+        setTunnelDetail(detail);
+        setDetailDataState('live');
+      })
+      .catch((error) => {
+        if (!isActive || (error instanceof DOMException && error.name === 'AbortError')) return;
+
+        setDetailDataState('stale');
+      });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [sessionToken, tunnel?.id, tunnelDataState, tunnelRow]);
+
+  const activeTunnel = tunnelDetail ?? tunnel;
+  const status = activeTunnel?.status ?? tunnelRow?.status ?? 'unknown';
+  const type = activeTunnel?.type ?? tunnelRow?.type ?? 'wireguard';
+  const routeGroup = activeTunnel?.routeGroup ?? tunnelRow?.routeGroup ?? 'main';
+  const serverLabel = activeTunnel?.serverHostname || activeTunnel?.serverExternalId || tunnelRow?.serverLabel || '-';
+  const localInterface = activeTunnel?.localInterfaceName || activeTunnel?.interfaceName || tunnelRow?.localInterfaceName || tunnelRow?.interfaceName || '-';
+  const operator = activeTunnel?.interfaceOperator || tunnelRow?.operator || '-';
+  const remoteEndpoint = activeTunnel?.remoteEndpoint || tunnelRow?.remoteEndpoint || '-';
+  const lockable = activeTunnel?.lockable ?? tunnelRow?.lockable ?? false;
+  const updatedAt = activeTunnel?.updatedAt ?? tunnelRow?.updatedAt;
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading
+        title={t.panels.tunnelDetail}
+        icon={Route}
+        meta={detailDataState === 'loading' ? t.dataStatus.loading : tunnelRow ? format.label(tunnelRow.name) : t.tunnelDetail.noTunnel}
+      />
+      <div className="mt-2 grid gap-2">
+        {!tunnelRow ? <EmptyState message={tunnelDataState === 'loading' ? t.dataStatus.loading : t.tunnelDetail.noTunnel} /> : null}
+        {tunnelRow ? (
+          <>
+            <DetailRow label={t.tunnelDetail.labels.status}>
+              <StatusBadge tone={inventoryStatusTone(status)}>{inventoryStatusLabel(status, t)}</StatusBadge>
+            </DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.type}>{format.label(String(type))}</DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.server}>{format.label(serverLabel)}</DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.routeGroup}>{format.label(routeGroup)}</DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.localInterface}>{format.label(localInterface)}</DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.operator}>{format.label(operator)}</DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.remoteEndpoint}>{remoteEndpoint}</DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.lockable}>{lockable ? t.tunnelDetail.values.lockable : t.tunnelDetail.values.notLockable}</DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.routeQuality}>
+              {format.latency(tunnelRow.ping)} / {format.latency(tunnelRow.jitter)} / {format.packetLoss(tunnelRow.loss)}
+            </DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.healthScore}>
+              <span className={getScoreClass(tunnelRow.score)}>{format.integer(tunnelRow.score)}</span>
+            </DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.updatedAt}>
+              {updatedAt ? format.time(new Date(updatedAt), false) : t.serverEdit.values.localSample}
+            </DetailRow>
+            <DetailRow label={t.tunnelDetail.labels.detailSource}>
+              {detailDataState === 'live'
+                ? t.tunnelDetail.values.apiDetail
+                : detailDataState === 'loading'
+                  ? t.dataStatus.loading
+                  : activeTunnel
+                    ? t.tunnelDetail.values.listDetail
+                    : t.tunnelDetail.values.fallbackDetail}
+            </DetailRow>
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -7154,11 +7313,15 @@ function MetricPill({ icon: Icon, label, value }: { icon: AfroIcon; label: strin
 function TunnelPanel({
   emptyMessage,
   format,
+  onSelectTunnel,
+  selectedTunnelKey,
   t,
   tunnels,
 }: {
   emptyMessage?: string;
   format: DashboardFormatters;
+  onSelectTunnel?: (key: string) => void;
+  selectedTunnelKey?: string | null;
   t: DashboardStrings;
   tunnels: TunnelRowData[];
 }) {
@@ -7178,18 +7341,33 @@ function TunnelPanel({
             </tr>
           </thead>
           <tbody>
-            {tunnels.map((tunnel) => (
-              <tr key={tunnel.name}>
-                <TableCell>{tunnel.name}</TableCell>
-                <TableCell>{format.label(tunnel.operator)}</TableCell>
-                <TableCell>{format.latency(tunnel.ping)}</TableCell>
-                <TableCell>{format.latency(tunnel.jitter)}</TableCell>
-                <TableCell>{format.packetLoss(tunnel.loss)}</TableCell>
-                <TableCell alignRight>
-                  <strong className={getScoreClass(tunnel.score)}>{format.integer(tunnel.score)}</strong>
-                </TableCell>
-              </tr>
-            ))}
+            {tunnels.map((tunnel) => {
+              const key = tunnelRowKey(tunnel);
+              const isSelected = key === selectedTunnelKey;
+
+              return (
+                <tr className={isSelected ? 'bg-[#edf4ff]' : undefined} key={key}>
+                  <TableCell>
+                    <button
+                      aria-pressed={isSelected}
+                      className={`max-w-[180px] truncate text-left font-bold ${isSelected ? 'text-afro-blue' : 'text-afro-ink hover:text-afro-blue'}`}
+                      onClick={() => onSelectTunnel?.(key)}
+                      title={tunnel.name}
+                      type="button"
+                    >
+                      {tunnel.name}
+                    </button>
+                  </TableCell>
+                  <TableCell>{format.label(tunnel.operator)}</TableCell>
+                  <TableCell>{format.latency(tunnel.ping)}</TableCell>
+                  <TableCell>{format.latency(tunnel.jitter)}</TableCell>
+                  <TableCell>{format.packetLoss(tunnel.loss)}</TableCell>
+                  <TableCell alignRight>
+                    <strong className={getScoreClass(tunnel.score)}>{format.integer(tunnel.score)}</strong>
+                  </TableCell>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -7344,12 +7522,22 @@ function mapAdminOutboundToRow(outbound: AdminOutboundSummary): OutboundRowData 
 
 function mapAdminTunnelToRow(tunnel: AdminTunnelSummary): TunnelRowData {
   return {
+    id: tunnel.id,
     name: tunnel.name,
     operator: tunnel.interfaceOperator || tunnel.localInterfaceName || tunnel.interfaceName || tunnel.serverHostname || tunnel.serverExternalId || tunnel.type,
     ping: null,
     jitter: null,
     loss: null,
     score: scoreFromTunnelStatus(tunnel.status),
+    type: tunnel.type,
+    serverLabel: tunnel.serverHostname || tunnel.serverExternalId,
+    routeGroup: tunnel.routeGroup,
+    status: tunnel.status,
+    lockable: tunnel.lockable,
+    localInterfaceName: tunnel.localInterfaceName,
+    interfaceName: tunnel.interfaceName,
+    remoteEndpoint: tunnel.remoteEndpoint,
+    updatedAt: tunnel.updatedAt,
   };
 }
 
