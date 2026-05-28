@@ -17,11 +17,13 @@ import type {
   ClientRoutePreferenceSummary,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceSummary,
+  AdminClientUsageEventSummary,
   AdminCustomerAccountDetail,
   AdminCustomerAccountSummary,
   IssuedClientAccessTokenSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
+  AdminRecordClientUsageResponse,
   AdminVolumePackageSummary,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
@@ -31,6 +33,7 @@ import { hashClientToken } from '../security/client-token';
 import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
+  CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
   UpdateClientConfigDto,
@@ -48,6 +51,17 @@ import {
 } from './dto/billing.dto';
 
 const BYTES_PER_GB = 1024 ** 3;
+const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
+const CLIENT_USAGE_EVENT_SOURCES = new Set([
+  'admin',
+  'agent',
+  'panel_sync',
+  'payment_adjustment',
+  'manual_adjustment',
+  'client_report',
+  'unknown',
+]);
+const CLIENT_USAGE_DIRECTIONS = new Set(['rx', 'tx', 'combined']);
 
 interface CustomerAccountRow {
   id: string;
@@ -173,6 +187,41 @@ interface ClientPortalRow {
   clientStatus: string;
 }
 
+interface ClientUsageEventRow {
+  id: string;
+  customerAccountId: string;
+  clientConfigId: string;
+  source: string;
+  direction: string;
+  usedBytesDelta: string | number;
+  rxBytes: string | number | null;
+  txBytes: string | number | null;
+  observedAt: Date;
+  windowStart: Date | null;
+  windowEnd: Date | null;
+  idempotencyKey: string | null;
+  externalReference: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: Date;
+}
+
+interface NormalizedClientUsageEventInput {
+  source: string;
+  direction: string;
+  usedBytesDelta: number;
+  rxBytes: number | null;
+  txBytes: number | null;
+  observedAt: Date;
+  windowStart: Date | null;
+  windowEnd: Date | null;
+  idempotencyKey: string | null;
+  externalReference: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+}
+
 interface ClientRouteOptionOutboundRow {
   id: string;
   name: string;
@@ -291,6 +340,11 @@ interface PaymentOrderFilters {
   customerAccountId?: string;
   paymentMethodId?: string;
   provider?: string;
+  limit: number;
+}
+
+interface ClientUsageEventFilters {
+  source?: string;
   limit: number;
 }
 
@@ -1067,6 +1121,143 @@ export class BillingService {
       this.throwConflictIfUniqueViolation(error, 'Client config external identity already exists');
       throw error;
     }
+  }
+
+  async listClientUsageEvents(
+    clientConfigId: string,
+    filters: ClientUsageEventFilters,
+  ): Promise<AdminClientUsageEventSummary[]> {
+    await this.getClientConfigRow(clientConfigId);
+    const values: unknown[] = [clientConfigId];
+    const where = ['client_config_id = $1'];
+
+    if (filters.source?.trim()) {
+      values.push(this.normalizeClientUsageSource(filters.source));
+      where.push(`source = $${values.length}`);
+    }
+
+    values.push(filters.limit);
+    const result = await this.database.query<ClientUsageEventRow>(
+      `
+        ${this.clientUsageEventSelectSql()}
+        WHERE ${where.join(' AND ')}
+        ORDER BY observed_at DESC, created_at DESC
+        LIMIT $${values.length}
+      `,
+      values,
+    );
+
+    return result.rows.map((row) => this.mapClientUsageEvent(row));
+  }
+
+  async recordClientUsageEvent(
+    clientConfigId: string,
+    dto: CreateClientUsageEventDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminRecordClientUsageResponse> {
+    const input = this.normalizeClientUsageEventInput(dto);
+    const eventState = await this.database.transaction(async (executor) => {
+      const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
+      await this.lockCustomerAccount(executor, client.customerAccountId);
+
+      if (input.idempotencyKey) {
+        const existing = await this.getClientUsageEventByIdempotency(
+          executor,
+          input.source,
+          input.idempotencyKey,
+        );
+        if (existing) {
+          if (existing.clientConfigId !== clientConfigId) {
+            throw new ConflictException('Usage event idempotency key already belongs to another client config');
+          }
+
+          return {
+            row: existing,
+            customerAccountId: existing.customerAccountId,
+            duplicate: true,
+          };
+        }
+      }
+
+      const inserted = await this.insertClientUsageEvent(executor, client, input, actor);
+      if (!inserted) {
+        if (!input.idempotencyKey) throw new ConflictException('Usage event could not be recorded');
+
+        const existing = await this.getClientUsageEventByIdempotency(
+          executor,
+          input.source,
+          input.idempotencyKey,
+        );
+        if (!existing) throw new ConflictException('Usage event idempotency conflict could not be resolved');
+        if (existing.clientConfigId !== clientConfigId) {
+          throw new ConflictException('Usage event idempotency key already belongs to another client config');
+        }
+
+        return {
+          row: existing,
+          customerAccountId: existing.customerAccountId,
+          duplicate: true,
+        };
+      }
+
+      const row = inserted;
+
+      await executor.query(
+        `
+          UPDATE client_configs
+          SET used_bytes = used_bytes + $1,
+              updated_at = now()
+          WHERE id = $2
+        `,
+        [input.usedBytesDelta, client.id],
+      );
+
+      await executor.query(
+        `
+          UPDATE customer_accounts
+          SET used_bytes = used_bytes + $1,
+              updated_at = now()
+          WHERE id = $2
+        `,
+        [input.usedBytesDelta, client.customerAccountId],
+      );
+
+      await this.audit.record(
+        actor,
+        'client_usage_event.record',
+        'client_config',
+        client.id,
+        {
+          customerAccountId: client.customerAccountId,
+          usageEventId: row.id,
+          source: input.source,
+          direction: input.direction,
+          usedBytesDelta: input.usedBytesDelta,
+          hasIdempotencyKey: Boolean(input.idempotencyKey),
+          externalReference: input.externalReference,
+        },
+        executor,
+      );
+
+      return {
+        row,
+        customerAccountId: client.customerAccountId,
+        duplicate: false,
+      };
+    });
+
+    const [clientConfig, accountDetail] = await Promise.all([
+      this.getClientConfig(clientConfigId),
+      this.getCustomerAccount(eventState.customerAccountId),
+    ]);
+    const { clientConfigs: _clientConfigs, ...account } = accountDetail;
+
+    return {
+      usageEvent: this.mapClientUsageEvent(eventState.row),
+      clientConfig,
+      account,
+      duplicate: eventState.duplicate,
+    };
   }
 
   async listClientAccessTokens(clientConfigId: string): Promise<ClientAccessTokenSummary[]> {
@@ -1925,6 +2116,28 @@ export class BillingService {
     };
   }
 
+  private mapClientUsageEvent(row: ClientUsageEventRow): AdminClientUsageEventSummary {
+    return {
+      id: row.id,
+      customerAccountId: row.customerAccountId,
+      clientConfigId: row.clientConfigId,
+      source: row.source,
+      direction: row.direction,
+      usedBytesDelta: this.numberFromBigInt(row.usedBytesDelta) ?? 0,
+      rxBytes: this.numberFromBigInt(row.rxBytes),
+      txBytes: this.numberFromBigInt(row.txBytes),
+      observedAt: row.observedAt.toISOString(),
+      windowStart: row.windowStart?.toISOString() ?? null,
+      windowEnd: row.windowEnd?.toISOString() ?? null,
+      idempotencyKey: row.idempotencyKey,
+      externalReference: row.externalReference,
+      notes: row.notes,
+      metadata: row.metadata ?? {},
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
   private async getClientConfig(id: string): Promise<AdminClientConfigSummary> {
     const result = await this.database.query<ClientConfigRow>(
       `
@@ -2118,6 +2331,111 @@ export class BillingService {
 
     if (!row) throw new NotFoundException('Client config not found');
     return row;
+  }
+
+  private async lockCustomerAccount(executor: DatabaseQueryExecutor, id: string): Promise<void> {
+    const result = await executor.query('SELECT id FROM customer_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!result.rows.length) throw new NotFoundException('Customer account not found');
+  }
+
+  private async getClientUsageEventByIdempotency(
+    executor: DatabaseQueryExecutor,
+    source: string,
+    idempotencyKey: string,
+  ): Promise<ClientUsageEventRow | null> {
+    const result = await executor.query<ClientUsageEventRow>(
+      `
+        ${this.clientUsageEventSelectSql()}
+        WHERE source = $1 AND idempotency_key = $2
+        FOR UPDATE
+      `,
+      [source, idempotencyKey],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async insertClientUsageEvent(
+    executor: DatabaseQueryExecutor,
+    client: ClientConfigRow,
+    input: NormalizedClientUsageEventInput,
+    actor: AuditActor | undefined,
+  ): Promise<ClientUsageEventRow | null> {
+    const result = await executor.query<ClientUsageEventRow>(
+      `
+        INSERT INTO client_usage_events (
+          customer_account_id, client_config_id, source, direction,
+          used_bytes_delta, rx_bytes, tx_bytes, observed_at,
+          window_start, window_end, idempotency_key, external_reference,
+          notes, metadata, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15)
+        ON CONFLICT (source, idempotency_key)
+          WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''
+          DO NOTHING
+        RETURNING
+          id,
+          customer_account_id AS "customerAccountId",
+          client_config_id AS "clientConfigId",
+          source,
+          direction,
+          used_bytes_delta AS "usedBytesDelta",
+          rx_bytes AS "rxBytes",
+          tx_bytes AS "txBytes",
+          observed_at AS "observedAt",
+          window_start AS "windowStart",
+          window_end AS "windowEnd",
+          idempotency_key AS "idempotencyKey",
+          external_reference AS "externalReference",
+          notes,
+          metadata,
+          created_by AS "createdBy",
+          created_at AS "createdAt"
+      `,
+      [
+        client.customerAccountId,
+        client.id,
+        input.source,
+        input.direction,
+        input.usedBytesDelta,
+        input.rxBytes,
+        input.txBytes,
+        input.observedAt,
+        input.windowStart,
+        input.windowEnd,
+        input.idempotencyKey,
+        input.externalReference,
+        input.notes,
+        this.stringifyPublicRecord(input.metadata, 'Usage event metadata'),
+        actor?.id ?? null,
+      ],
+    );
+
+    return result.rows[0];
+  }
+
+  private clientUsageEventSelectSql(): string {
+    return `
+      SELECT
+        id,
+        customer_account_id AS "customerAccountId",
+        client_config_id AS "clientConfigId",
+        source,
+        direction,
+        used_bytes_delta AS "usedBytesDelta",
+        rx_bytes AS "rxBytes",
+        tx_bytes AS "txBytes",
+        observed_at AS "observedAt",
+        window_start AS "windowStart",
+        window_end AS "windowEnd",
+        idempotency_key AS "idempotencyKey",
+        external_reference AS "externalReference",
+        notes,
+        metadata,
+        created_by AS "createdBy",
+        created_at AS "createdAt"
+      FROM client_usage_events
+    `;
   }
 
   private async getClientRoutePreferenceRowForUpdate(
@@ -2656,6 +2974,66 @@ export class BillingService {
 
   private clientRouteAssignmentKey(clientConfigId: string): string {
     return `client_config:${clientConfigId}`;
+  }
+
+  private normalizeClientUsageEventInput(dto: CreateClientUsageEventDto): NormalizedClientUsageEventInput {
+    const source = this.normalizeClientUsageSource(dto.source);
+    const rxBytes = this.normalizeOptionalUsageBytes(dto.rxBytes, 'rxBytes');
+    const txBytes = this.normalizeOptionalUsageBytes(dto.txBytes, 'txBytes');
+    const explicitDelta = this.normalizeOptionalUsageBytes(dto.usedBytesDelta, 'usedBytesDelta');
+
+    if (explicitDelta === null && rxBytes === null && txBytes === null) {
+      throw new BadRequestException('usedBytesDelta, rxBytes, or txBytes is required');
+    }
+
+    const usedBytesDelta = explicitDelta ?? (rxBytes ?? 0) + (txBytes ?? 0);
+    const direction = this.normalizeClientUsageDirection(
+      dto.direction ?? (rxBytes !== null && txBytes === null ? 'rx' : txBytes !== null && rxBytes === null ? 'tx' : 'combined'),
+    );
+    const observedAt = this.parseOptionalDate(dto.observedAt, 'observedAt') ?? new Date();
+    const windowStart = this.parseOptionalDate(dto.windowStart, 'windowStart');
+    const windowEnd = this.parseOptionalDate(dto.windowEnd, 'windowEnd');
+    if (windowStart && windowEnd && windowEnd.getTime() < windowStart.getTime()) {
+      throw new BadRequestException('windowEnd must be greater than or equal to windowStart');
+    }
+
+    const metadata = dto.metadata ?? {};
+    this.assertNoSecretLikeKeys(metadata, 'Usage event metadata');
+
+    return {
+      source,
+      direction,
+      usedBytesDelta,
+      rxBytes,
+      txBytes,
+      observedAt,
+      windowStart,
+      windowEnd,
+      idempotencyKey: this.normalizeNullableString(dto.idempotencyKey),
+      externalReference: this.normalizeNullableString(dto.externalReference),
+      notes: this.normalizeNullableString(dto.notes),
+      metadata,
+    };
+  }
+
+  private normalizeClientUsageSource(value: string | undefined): string {
+    const normalized = this.normalizeNullableString(value)?.toLowerCase() ?? 'admin';
+    if (!CLIENT_USAGE_EVENT_SOURCES.has(normalized)) throw new BadRequestException('Invalid client usage source');
+    return normalized;
+  }
+
+  private normalizeClientUsageDirection(value: string | undefined): string {
+    const normalized = this.normalizeNullableString(value)?.toLowerCase() ?? 'combined';
+    if (!CLIENT_USAGE_DIRECTIONS.has(normalized)) throw new BadRequestException('Invalid client usage direction');
+    return normalized;
+  }
+
+  private normalizeOptionalUsageBytes(value: number | null | undefined, fieldName: string): number | null {
+    if (value === null || value === undefined) return null;
+    if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SAFE_BYTES) {
+      throw new BadRequestException(`${fieldName} must be a safe non-negative integer`);
+    }
+    return value;
   }
 
   private hashPaidNumberIfPresent(value: string | null | undefined): string | null {

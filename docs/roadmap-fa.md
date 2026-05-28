@@ -56,6 +56,7 @@
 - اتصال Telegram bot برای مشاهده حجم و شارژ.
 - ثبت paid number با privacy protection.
 - Separate seller/admin UX from VPN client UX; mobile/client APIs now start with scoped profile/quota, route options, and route-preference actions under `/api/client/*`, with package/usage purchase flows remaining future work.
+- Usage accounting now starts with idempotent `client_usage_events` rows that update account/client used-byte counters for remaining-volume reads.
 
 ## فاز 3: Auto Route
 

@@ -133,6 +133,30 @@ Current implementation starts Phase 2 with `customer_accounts` instead of a sing
 - created_at
 - updated_at
 
+### client_usage_events
+
+Usage accounting is append-only and idempotent at the API boundary. Admin/panel-sync/agent flows record compact usage events instead of writing per-packet logs:
+
+- id
+- customer_account_id
+- client_config_id
+- source: admin, agent, panel_sync, payment_adjustment, manual_adjustment, client_report, or unknown
+- direction: rx, tx, or combined
+- used_bytes_delta
+- rx_bytes nullable
+- tx_bytes nullable
+- observed_at
+- window_start nullable
+- window_end nullable
+- idempotency_key nullable, unique per source when present
+- external_reference nullable
+- notes nullable
+- metadata jsonb for non-secret context only
+- created_by
+- created_at
+
+Recording a new non-duplicate usage event atomically increments both `client_configs.used_bytes` and `customer_accounts.used_bytes`, so remaining-volume responses stay cheap to read on low-resource VPS machines. Duplicate `(source, idempotency_key)` reports return the existing event and do not double-count usage.
+
 ### client_route_preferences
 
 Client VPN routing preferences are separate from admin/seller operations. Each client config can have one preference row per route group:
@@ -238,7 +262,7 @@ Payment provider secrets, including PayPal client secrets and webhook secrets, m
 - created_at
 - updated_at
 
-Payment orders are the audit boundary between package selection and future quota allocation. A paid order does not directly mutate customer quota until the usage ledger/charge allocation layer is implemented.
+Payment orders are the audit boundary between package selection and future quota allocation. A paid order does not directly mutate customer quota yet; a future charge allocation path must consume paid orders idempotently before increasing customer/client quota limits.
 
 ### subscriptions
 

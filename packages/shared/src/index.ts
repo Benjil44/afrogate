@@ -189,6 +189,15 @@ export type CustomerQuotaScope = 'account_shared' | 'per_client';
 export type ClientConfigStatus = 'active' | 'limited' | 'disabled' | 'expired';
 export type ClientRoutePreferenceMode = 'auto' | 'country' | 'outbound';
 export type ClientRouteCountryDetectionSource = 'client_app' | 'edge_ip' | 'admin' | 'unknown';
+export type ClientUsageEventSource =
+  | 'admin'
+  | 'agent'
+  | 'panel_sync'
+  | 'payment_adjustment'
+  | 'manual_adjustment'
+  | 'client_report'
+  | 'unknown';
+export type ClientUsageDirection = 'rx' | 'tx' | 'combined';
 
 export interface AdminClientRoutePreferenceSummary {
   id?: string | null;
@@ -410,6 +419,41 @@ export interface UpsertClientRoutePreferenceRequest {
   allowClientOverride?: boolean;
   routeLocked?: boolean;
   stickySessionProtection?: boolean;
+}
+
+export interface AdminClientUsageEventSummary {
+  id: string;
+  customerAccountId: string;
+  clientConfigId: string;
+  source: ClientUsageEventSource | string;
+  direction: ClientUsageDirection | string;
+  usedBytesDelta: number;
+  rxBytes?: number | null;
+  txBytes?: number | null;
+  observedAt: string;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+  idempotencyKey?: string | null;
+  externalReference?: string | null;
+  notes?: string | null;
+  metadata: Record<string, unknown>;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface CreateClientUsageEventRequest {
+  source?: ClientUsageEventSource;
+  direction?: ClientUsageDirection;
+  usedBytesDelta?: number;
+  rxBytes?: number | null;
+  txBytes?: number | null;
+  observedAt?: string;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+  idempotencyKey?: string | null;
+  externalReference?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export type VolumePackageStatus = 'active' | 'archived';
@@ -2309,6 +2353,17 @@ export interface AdminClientAccessTokensResponse {
 
 export interface AdminIssueClientAccessTokenResponse {
   token: IssuedClientAccessTokenSummary;
+}
+
+export interface AdminClientUsageEventsResponse {
+  events: AdminClientUsageEventSummary[];
+}
+
+export interface AdminRecordClientUsageResponse {
+  usageEvent: AdminClientUsageEventSummary;
+  clientConfig: AdminClientConfigSummary;
+  account: AdminCustomerAccountSummary;
+  duplicate: boolean;
 }
 
 export interface ClientPortalProfileResponse {

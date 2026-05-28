@@ -170,8 +170,8 @@
 - [x] Separate seller/admin and VPN-client UX boundaries in the backend contract.
 - [ ] PayPal checkout capture adapter and webhook verification.
 - [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
-- [ ] Usage accounting.
-- [ ] Remaining volume display.
+- [x] Usage accounting.
+- [x] Remaining volume display.
 - [x] Client-scoped mobile API/auth for VPN users.
 - [ ] Telegram bot user commands.
 

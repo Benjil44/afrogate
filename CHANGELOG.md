@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.73.0 - 2026-05-28
+
+- Added `client_usage_events` as an idempotent usage ledger for client volume accounting.
+- Added guarded admin APIs to record and list client usage events without double-counting duplicate source keys.
+- Updated account/client used-byte counters atomically so remaining-volume reads stay cheap for the client app and admin APIs.
+
 ## 0.72.0 - 2026-05-28
 
 - Added the separate `@afrogate/client` mobile-first VPN client app on local port `4100`.

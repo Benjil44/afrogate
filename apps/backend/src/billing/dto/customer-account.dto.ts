@@ -1,8 +1,10 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsISO8601,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -27,6 +29,16 @@ export const CLIENT_ROUTE_SCORE_PROFILES = [
   'dns',
   'wireguard',
 ] as const;
+export const CLIENT_USAGE_EVENT_SOURCES = [
+  'admin',
+  'agent',
+  'panel_sync',
+  'payment_adjustment',
+  'manual_adjustment',
+  'client_report',
+  'unknown',
+] as const;
+export const CLIENT_USAGE_DIRECTIONS = ['rx', 'tx', 'combined'] as const;
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 
@@ -306,4 +318,66 @@ export class UpsertClientRoutePreferenceDto {
   @IsOptional()
   @IsBoolean()
   stickySessionProtection?: boolean;
+}
+
+export class CreateClientUsageEventDto {
+  @IsOptional()
+  @IsIn(CLIENT_USAGE_EVENT_SOURCES)
+  source?: string;
+
+  @IsOptional()
+  @IsIn(CLIENT_USAGE_DIRECTIONS)
+  direction?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_SAFE_BYTES)
+  usedBytesDelta?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_SAFE_BYTES)
+  rxBytes?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_SAFE_BYTES)
+  txBytes?: number | null;
+
+  @IsOptional()
+  @IsISO8601()
+  observedAt?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  windowStart?: string | null;
+
+  @IsOptional()
+  @IsISO8601()
+  windowEnd?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  externalReference?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
 }

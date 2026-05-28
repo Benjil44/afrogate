@@ -1058,6 +1058,23 @@ Repository remote is ready:
 - Checklist completion after this slice is `196 / 222` items, or `88.3%` complete with `11.7%` remaining.
 - Verified focused client typing and production build with `npm run typecheck --workspace @afrogate/client` and `npm run build --workspace @afrogate/client`.
 - Verified combined dashboard and client browser coverage with `npm run test:e2e`; the suite now includes the fixed-port client smoke test on `127.0.0.1:4100`.
+- Added idempotent client usage accounting with the `client_usage_events` PostgreSQL table.
+- Added guarded admin APIs to list and record client usage events under `/api/admin/client-configs/:id/usage-events`.
+- Recording a non-duplicate usage event now atomically increments both account and client `used_bytes`; repeated `(source, idempotencyKey)` reports return `duplicate = true` without double-counting.
+- Updated shared contracts, backend DTO validation, schema, architecture/security docs, checklist, and memory for the usage ledger.
+- Marked usage accounting and remaining volume display complete in the checklist.
+- Bumped AfroGate to `0.73.0` for the usage-accounting API and schema contract.
+- Checklist completion after this slice is `198 / 222` items, or `89.2%` complete with `10.8%` remaining.
+- Verified shared/backend typing with `npm run typecheck --workspace @afrogate/shared` and `npm run typecheck --workspace @afrogate/backend`.
+- Verified migration `0018_client_usage_events.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified authenticated local usage API smoke: first event added `3145728` bytes, duplicate idempotency key did not double-count, and remaining volume updated.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added the client route preference foundation for the future VPN mobile/client UX.
 - Added `client_route_preferences` with per-client auto/country/outbound mode, coarse detected country, preferred exit country, optional preferred outbound, score profile, route lock, and sticky-session protection.
 - Added guarded admin APIs to read and update a client config route preference under `/api/admin/client-configs/:id/route-preference`.

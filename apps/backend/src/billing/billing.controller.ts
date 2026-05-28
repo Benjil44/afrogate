@@ -16,6 +16,7 @@ import type {
   AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceResponse,
+  AdminClientUsageEventsResponse,
   AdminCustomerAccountDetail,
   AdminIssueClientAccessTokenResponse,
   AdminCustomerAccountsResponse,
@@ -23,6 +24,7 @@ import type {
   AdminPaymentMethodsResponse,
   AdminPaymentOrderSummary,
   AdminPaymentOrdersResponse,
+  AdminRecordClientUsageResponse,
   AdminVolumePackageSummary,
   AdminVolumePackagesResponse,
 } from '@afrogate/shared';
@@ -32,6 +34,7 @@ import { Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { BillingService } from './billing.service';
 import {
+  CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
   UpdateClientConfigDto,
@@ -271,6 +274,31 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminClientConfigSummary> {
     return this.billingService.updateClientConfig(id, payload, request.actor);
+  }
+
+  @Get('client-configs/:id/usage-events')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listClientUsageEvents(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Query('source') source?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminClientUsageEventsResponse> {
+    return {
+      events: await this.billingService.listClientUsageEvents(id, {
+        source,
+        limit: this.billingService.normalizeLimit(limit, 100, 500),
+      }),
+    };
+  }
+
+  @Post('client-configs/:id/usage-events')
+  @Roles('admin')
+  recordClientUsageEvent(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: CreateClientUsageEventDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminRecordClientUsageResponse> {
+    return this.billingService.recordClientUsageEvent(id, payload, request.actor);
   }
 
   @Get('client-configs/:id/access-tokens')

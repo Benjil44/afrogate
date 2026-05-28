@@ -509,6 +509,41 @@ export const clientConfigs = pgTable(
   }),
 );
 
+export const clientUsageEvents = pgTable(
+  'client_usage_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    source: text('source').notNull().default('admin'),
+    direction: text('direction').notNull().default('combined'),
+    usedBytesDelta: bigint('used_bytes_delta', { mode: 'number' }).notNull(),
+    rxBytes: bigint('rx_bytes', { mode: 'number' }),
+    txBytes: bigint('tx_bytes', { mode: 'number' }),
+    observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
+    windowStart: timestamp('window_start', { withTimezone: true }),
+    windowEnd: timestamp('window_end', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key'),
+    externalReference: text('external_reference'),
+    notes: text('notes'),
+    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceIdempotencyIdx: uniqueIndex('client_usage_events_source_idempotency_unique')
+      .on(table.source, table.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL AND idempotency_key <> ''`),
+    clientObservedIdx: index('client_usage_events_client_observed_idx').on(table.clientConfigId, table.observedAt),
+    accountObservedIdx: index('client_usage_events_account_observed_idx').on(table.customerAccountId, table.observedAt),
+    createdIdx: index('client_usage_events_created_idx').on(table.createdAt),
+  }),
+);
+
 export const clientRoutePreferences = pgTable(
   'client_route_preferences',
   {
@@ -842,6 +877,7 @@ export const outboundHealthChecksRelations = relations(outboundHealthChecks, ({ 
 
 export const customerAccountsRelations = relations(customerAccounts, ({ many }) => ({
   clientConfigs: many(clientConfigs),
+  usageEvents: many(clientUsageEvents),
   paymentOrders: many(paymentOrders),
 }));
 
@@ -850,8 +886,20 @@ export const clientConfigsRelations = relations(clientConfigs, ({ many, one }) =
     fields: [clientConfigs.customerAccountId],
     references: [customerAccounts.id],
   }),
+  usageEvents: many(clientUsageEvents),
   routePreferences: many(clientRoutePreferences),
   accessTokens: many(clientAccessTokens),
+}));
+
+export const clientUsageEventsRelations = relations(clientUsageEvents, ({ one }) => ({
+  customerAccount: one(customerAccounts, {
+    fields: [clientUsageEvents.customerAccountId],
+    references: [customerAccounts.id],
+  }),
+  clientConfig: one(clientConfigs, {
+    fields: [clientUsageEvents.clientConfigId],
+    references: [clientConfigs.id],
+  }),
 }));
 
 export const clientRoutePreferencesRelations = relations(clientRoutePreferences, ({ one }) => ({
