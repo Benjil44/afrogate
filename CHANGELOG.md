@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.75.0 - 2026-05-28
+
+- Added `payment_order_allocations` as the idempotent ledger that consumes each paid payment order at most once.
+- Added a guarded admin allocation API that credits purchased package volume to customer account quota and returns duplicate-safe repeat responses.
+- Exposed payment-order allocation status, allocation timestamp, allocated volume, and delay seconds so paid-but-unallocated orders can be monitored.
+
 ## 0.74.0 - 2026-05-28
 
 - Added a PayPal provider adapter for hosted checkout creation, approved-order capture, and verified webhooks.

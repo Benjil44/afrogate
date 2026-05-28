@@ -352,6 +352,17 @@ export class UpdatePaymentOrderStatusDto {
   notes?: string | null;
 }
 
+export class AllocatePaymentOrderDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+}
+
 export class CreatePayPalCheckoutDto {
   @IsOptional()
   @IsString()

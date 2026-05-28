@@ -44,7 +44,7 @@
 - تحلیل داده پیشرفته با مدل‌های پیش‌بینی.
 - فروش enterprise با multi-tenant کامل.
 
-Billing note: the backend now has a PayPal provider adapter for checkout creation, capture, and verified webhooks. Refund flows and quota allocation from paid orders remain separate phases.
+Billing note: the backend now has a PayPal provider adapter for checkout creation, capture, and verified webhooks. Paid orders can be allocated once to customer quota through an audited allocation ledger. Refund reversal flows remain a separate phase.
 
 ## ظرفیت اولیه
 

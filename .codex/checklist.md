@@ -169,6 +169,7 @@
 - [x] Payment order lifecycle with pending/paid/failed/refunded states.
 - [x] Separate seller/admin and VPN-client UX boundaries in the backend contract.
 - [x] PayPal checkout capture adapter and webhook verification.
+- [x] Paid payment order quota allocation.
 - [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
 - [x] Usage accounting.
 - [x] Remaining volume display.
@@ -236,7 +237,7 @@
 - [x] Operator and outbound time-window quality reports.
 - [x] Initial advisory route quality suggestions from historical synthetic probes.
 - [x] Predictive route quality suggestions.
-- [ ] Charge allocation delay tracking.
+- [x] Charge allocation delay tracking.
 - [ ] Backup status monitoring.
 - [ ] Route canary rollout.
 - [ ] Adapter-based migration from current panels.

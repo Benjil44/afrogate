@@ -262,9 +262,25 @@ Payment provider secrets, including PayPal client secrets and webhook IDs, must 
 - created_at
 - updated_at
 
-Payment orders are the audit boundary between package selection and future quota allocation. A paid order does not directly mutate customer quota yet; a future charge allocation path must consume paid orders idempotently before increasing customer/client quota limits.
+Payment orders are the audit boundary between package selection and quota allocation. A paid order can be consumed by one `payment_order_allocations` row, which is the only path that increases usable customer quota from a purchase.
 
 The PayPal adapter exposes guarded admin actions to create a hosted checkout order and capture an approved order, plus `/api/payments/paypal/webhook` for PayPal callbacks. Webhook events must be verified through PayPal before they can mark an order paid, failed, or refunded. PayPal orders should use a three-letter ISO currency such as USD or EUR; local currencies such as toman stay on manual/local gateway methods until a local provider adapter exists.
+
+### payment_order_allocations
+
+- id
+- payment_order_id, unique
+- customer_account_id
+- allocation_scope: account_quota
+- volume_bytes_delta
+- quota_limit_before_bytes nullable
+- quota_limit_after_bytes
+- idempotency_key nullable, unique when present
+- metadata jsonb for non-secret allocation context
+- created_by
+- created_at
+
+`payment_order_allocations` is the idempotent bridge from a paid order to usable customer quota. Creating the allocation locks the payment order and account, inserts one ledger row, then increases `customer_accounts.quota_limit_bytes` by the paid package volume. If the account quota limit is null, the allocator treats the current `used_bytes` value as the baseline before adding the purchased volume, so an account with prior usage receives the purchased remaining volume without becoming accidentally unlimited. Payment order reads expose allocation status and delay seconds so paid-but-unallocated orders are visible.
 
 ### subscriptions
 

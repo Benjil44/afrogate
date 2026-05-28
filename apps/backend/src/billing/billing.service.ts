@@ -18,9 +18,11 @@ import type {
   AdminClientConfigSummary,
   AdminClientRoutePreferenceSummary,
   AdminClientUsageEventSummary,
+  AdminAllocatePaymentOrderResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountSummary,
   AdminPayPalPaymentOrderResponse,
+  AdminPaymentOrderAllocationSummary,
   IssuedClientAccessTokenSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
@@ -43,6 +45,7 @@ import {
   UpsertClientRoutePreferenceDto,
 } from './dto/customer-account.dto';
 import {
+  AllocatePaymentOrderDto,
   CapturePayPalPaymentOrderDto,
   CreatePayPalCheckoutDto,
   CreatePaymentMethodDto,
@@ -316,11 +319,30 @@ interface PaymentOrderRow {
   failedAt: Date | null;
   refundedAt: Date | null;
   expiresAt: Date | null;
+  allocationStatus?: string | null;
+  allocationId?: string | null;
+  allocatedAt?: Date | null;
+  allocatedVolumeBytes?: string | number | null;
+  allocationDelaySeconds?: string | number | null;
   metadata: Record<string, unknown>;
   notes: string | null;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+interface PaymentOrderAllocationRow {
+  id: string;
+  paymentOrderId: string;
+  customerAccountId: string;
+  allocationScope: string;
+  volumeBytesDelta: string | number;
+  quotaLimitBeforeBytes: string | number | null;
+  quotaLimitAfterBytes: string | number;
+  idempotencyKey: string | null;
+  metadata: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: Date;
 }
 
 interface CustomerAccountFilters {
@@ -345,6 +367,7 @@ interface PaymentOrderFilters {
   customerAccountId?: string;
   paymentMethodId?: string;
   provider?: string;
+  allocationStatus?: string;
   limit: number;
 }
 
@@ -713,6 +736,10 @@ export class BillingService {
       where.push(`po.provider = $${values.length}`);
     }
 
+    if (filters.allocationStatus?.trim()) {
+      where.push(this.paymentOrderAllocationStatusWhere(filters.allocationStatus));
+    }
+
     values.push(filters.limit);
     const result = await this.database.query<PaymentOrderRow>(
       `
@@ -823,6 +850,116 @@ export class BillingService {
       return this.getPaymentOrder(orderId);
     } catch (error) {
       this.throwConflictIfUniqueViolation(error, 'Payment order idempotency or provider order already exists');
+      throw error;
+    }
+  }
+
+  async allocatePaymentOrder(
+    id: string,
+    dto: AllocatePaymentOrderDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminAllocatePaymentOrderResponse> {
+    try {
+      const allocationState = await this.database.transaction(async (executor) => {
+        const paymentOrder = await this.getPaymentOrderRowForUpdate(executor, id);
+        if (paymentOrder.status !== 'paid') {
+          throw new BadRequestException('Only paid payment orders can be allocated to quota');
+        }
+
+        const existingForOrder = await this.getPaymentOrderAllocationByOrderIdForUpdate(executor, id);
+        if (existingForOrder) {
+          return {
+            allocation: existingForOrder,
+            customerAccountId: existingForOrder.customerAccountId,
+            duplicate: true,
+          };
+        }
+
+        const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey) ?? `payment_order:${id}`;
+        const existingForKey = await this.getPaymentOrderAllocationByIdempotencyForUpdate(executor, idempotencyKey);
+        if (existingForKey) {
+          if (existingForKey.paymentOrderId !== id) {
+            throw new ConflictException('Payment order allocation idempotency key already belongs to another order');
+          }
+
+          return {
+            allocation: existingForKey,
+            customerAccountId: existingForKey.customerAccountId,
+            duplicate: true,
+          };
+        }
+
+        const account = await this.getCustomerAccountRowForUpdate(executor, paymentOrder.customerAccountId);
+        const volumeBytes = this.numberFromBigInt(paymentOrder.volumeBytes) ?? 0;
+        if (volumeBytes <= 0) throw new BadRequestException('Payment order volume must be positive before allocation');
+
+        const quotaLimitBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
+        const usedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+        const quotaLimitAfterBytes = (quotaLimitBeforeBytes ?? usedBytes) + volumeBytes;
+        if (!Number.isSafeInteger(quotaLimitAfterBytes) || quotaLimitAfterBytes > MAX_SAFE_BYTES) {
+          throw new BadRequestException('Allocated quota would exceed the safe byte limit');
+        }
+
+        const allocation = await this.insertPaymentOrderAllocation(
+          executor,
+          paymentOrder,
+          {
+            idempotencyKey,
+            volumeBytes,
+            quotaLimitBeforeBytes,
+            quotaLimitAfterBytes,
+            metadata: dto.metadata ?? {},
+          },
+          actor,
+        );
+
+        await executor.query(
+          `
+            UPDATE customer_accounts
+            SET quota_limit_bytes = $1,
+                updated_at = now()
+            WHERE id = $2
+          `,
+          [quotaLimitAfterBytes, paymentOrder.customerAccountId],
+        );
+
+        await this.audit.record(
+          actor,
+          'payment_order.allocate_quota',
+          'payment_order',
+          id,
+          {
+            customerAccountId: paymentOrder.customerAccountId,
+            allocationId: allocation.id,
+            volumeBytesDelta: volumeBytes,
+            quotaLimitBeforeBytes,
+            quotaLimitAfterBytes,
+            provider: paymentOrder.provider,
+          },
+          executor,
+        );
+
+        return {
+          allocation,
+          customerAccountId: paymentOrder.customerAccountId,
+          duplicate: false,
+        };
+      });
+
+      const [paymentOrder, accountDetail] = await Promise.all([
+        this.getPaymentOrder(id),
+        this.getCustomerAccount(allocationState.customerAccountId),
+      ]);
+      const { clientConfigs: _clientConfigs, ...account } = accountDetail;
+
+      return {
+        allocation: this.mapPaymentOrderAllocation(allocationState.allocation),
+        paymentOrder,
+        account,
+        duplicate: allocationState.duplicate,
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Payment order allocation already exists');
       throw error;
     }
   }
@@ -2297,11 +2434,33 @@ export class BillingService {
         po.notes,
         po.created_by AS "createdBy",
         po.created_at AS "createdAt",
-        po.updated_at AS "updatedAt"
+        po.updated_at AS "updatedAt",
+        CASE
+          WHEN poa.id IS NOT NULL THEN 'allocated'
+          WHEN po.status = 'paid' THEN 'pending'
+          ELSE 'not_applicable'
+        END AS "allocationStatus",
+        poa.id AS "allocationId",
+        poa.created_at AS "allocatedAt",
+        poa.volume_bytes_delta AS "allocatedVolumeBytes",
+        CASE
+          WHEN po.status = 'paid' AND poa.id IS NULL AND po.paid_at IS NOT NULL
+            THEN FLOOR(EXTRACT(EPOCH FROM (now() - po.paid_at)))::bigint
+          ELSE 0
+        END AS "allocationDelaySeconds"
       FROM payment_orders po
       JOIN customer_accounts ca ON ca.id = po.customer_account_id
       LEFT JOIN payment_methods pm ON pm.id = po.payment_method_id
+      LEFT JOIN payment_order_allocations poa ON poa.payment_order_id = po.id
     `;
+  }
+
+  private paymentOrderAllocationStatusWhere(value: string): string {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'allocated') return 'poa.id IS NOT NULL';
+    if (normalized === 'pending') return "po.status = 'paid' AND poa.id IS NULL";
+    if (normalized === 'not_applicable') return "po.status <> 'paid' AND poa.id IS NULL";
+    throw new BadRequestException('Invalid payment order allocation status');
   }
 
   private async getPaymentOrderRowForUpdate(
@@ -2329,6 +2488,130 @@ export class BillingService {
     );
 
     return result.rows[0] ?? null;
+  }
+
+  private async getCustomerAccountRowForUpdate(
+    executor: DatabaseQueryExecutor,
+    id: string,
+  ): Promise<CustomerAccountRow> {
+    const result = await executor.query<CustomerAccountRow>(
+      `
+        SELECT
+          id,
+          display_name AS "displayName",
+          telegram_id AS "telegramId",
+          telegram_username AS "telegramUsername",
+          paid_number_hash AS "paidNumberHash",
+          status,
+          quota_scope AS "quotaScope",
+          quota_limit_bytes AS "quotaLimitBytes",
+          per_client_limit_bytes AS "perClientLimitBytes",
+          used_bytes AS "usedBytes",
+          notes,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt",
+          0::int AS "clientCount",
+          0::int AS "activeClientCount"
+        FROM customer_accounts
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Customer account not found');
+    return row;
+  }
+
+  private async getPaymentOrderAllocationByOrderIdForUpdate(
+    executor: DatabaseQueryExecutor,
+    paymentOrderId: string,
+  ): Promise<PaymentOrderAllocationRow | null> {
+    const result = await executor.query<PaymentOrderAllocationRow>(
+      `${this.paymentOrderAllocationSelectSql()} WHERE payment_order_id = $1 FOR UPDATE`,
+      [paymentOrderId],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async getPaymentOrderAllocationByIdempotencyForUpdate(
+    executor: DatabaseQueryExecutor,
+    idempotencyKey: string,
+  ): Promise<PaymentOrderAllocationRow | null> {
+    const result = await executor.query<PaymentOrderAllocationRow>(
+      `${this.paymentOrderAllocationSelectSql()} WHERE idempotency_key = $1 FOR UPDATE`,
+      [idempotencyKey],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async insertPaymentOrderAllocation(
+    executor: DatabaseQueryExecutor,
+    paymentOrder: PaymentOrderRow,
+    input: {
+      idempotencyKey: string;
+      volumeBytes: number;
+      quotaLimitBeforeBytes: number | null;
+      quotaLimitAfterBytes: number;
+      metadata: Record<string, unknown>;
+    },
+    actor: AuditActor | undefined,
+  ): Promise<PaymentOrderAllocationRow> {
+    const result = await executor.query<PaymentOrderAllocationRow>(
+      `
+        INSERT INTO payment_order_allocations (
+          payment_order_id, customer_account_id, allocation_scope, volume_bytes_delta,
+          quota_limit_before_bytes, quota_limit_after_bytes, idempotency_key,
+          metadata, created_by
+        )
+        VALUES ($1, $2, 'account_quota', $3, $4, $5, $6, $7::jsonb, $8)
+        RETURNING
+          id,
+          payment_order_id AS "paymentOrderId",
+          customer_account_id AS "customerAccountId",
+          allocation_scope AS "allocationScope",
+          volume_bytes_delta AS "volumeBytesDelta",
+          quota_limit_before_bytes AS "quotaLimitBeforeBytes",
+          quota_limit_after_bytes AS "quotaLimitAfterBytes",
+          idempotency_key AS "idempotencyKey",
+          metadata,
+          created_by AS "createdBy",
+          created_at AS "createdAt"
+      `,
+      [
+        paymentOrder.id,
+        paymentOrder.customerAccountId,
+        input.volumeBytes,
+        input.quotaLimitBeforeBytes,
+        input.quotaLimitAfterBytes,
+        input.idempotencyKey,
+        this.stringifyPublicRecord(input.metadata, 'Payment order allocation metadata'),
+        actor?.id ?? null,
+      ],
+    );
+
+    return result.rows[0];
+  }
+
+  private paymentOrderAllocationSelectSql(): string {
+    return `
+      SELECT
+        id,
+        payment_order_id AS "paymentOrderId",
+        customer_account_id AS "customerAccountId",
+        allocation_scope AS "allocationScope",
+        volume_bytes_delta AS "volumeBytesDelta",
+        quota_limit_before_bytes AS "quotaLimitBeforeBytes",
+        quota_limit_after_bytes AS "quotaLimitAfterBytes",
+        idempotency_key AS "idempotencyKey",
+        metadata,
+        created_by AS "createdBy",
+        created_at AS "createdAt"
+      FROM payment_order_allocations
+    `;
   }
 
   private mapBillingSettings(row: BillingSettingsRow): AdminBillingSettingsSummary {
@@ -2416,11 +2699,32 @@ export class BillingService {
       failedAt: row.failedAt?.toISOString() ?? null,
       refundedAt: row.refundedAt?.toISOString() ?? null,
       expiresAt: row.expiresAt?.toISOString() ?? null,
+      allocationStatus: row.allocationStatus ?? 'not_applicable',
+      allocationId: row.allocationId ?? null,
+      allocatedAt: row.allocatedAt?.toISOString() ?? null,
+      allocatedVolumeBytes: this.numberFromBigInt(row.allocatedVolumeBytes),
+      allocationDelaySeconds: this.numberFromBigInt(row.allocationDelaySeconds) ?? 0,
       metadata: row.metadata ?? {},
       notes: row.notes,
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapPaymentOrderAllocation(row: PaymentOrderAllocationRow): AdminPaymentOrderAllocationSummary {
+    return {
+      id: row.id,
+      paymentOrderId: row.paymentOrderId,
+      customerAccountId: row.customerAccountId,
+      allocationScope: row.allocationScope,
+      volumeBytesDelta: this.numberFromBigInt(row.volumeBytesDelta) ?? 0,
+      quotaLimitBeforeBytes: this.numberFromBigInt(row.quotaLimitBeforeBytes),
+      quotaLimitAfterBytes: this.numberFromBigInt(row.quotaLimitAfterBytes) ?? 0,
+      idempotencyKey: row.idempotencyKey,
+      metadata: row.metadata ?? {},
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
     };
   }
 

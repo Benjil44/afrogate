@@ -18,6 +18,7 @@ import type {
   AdminClientRoutePreferenceResponse,
   AdminClientUsageEventsResponse,
   AdminCustomerAccountDetail,
+  AdminAllocatePaymentOrderResponse,
   AdminIssueClientAccessTokenResponse,
   AdminCustomerAccountsResponse,
   AdminPayPalPaymentOrderResponse,
@@ -44,6 +45,7 @@ import {
 } from './dto/customer-account.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
+  AllocatePaymentOrderDto,
   CapturePayPalPaymentOrderDto,
   CreatePayPalCheckoutDto,
   CreatePaymentMethodDto,
@@ -176,6 +178,7 @@ export class BillingController {
     @Query('customerAccountId') customerAccountId?: string,
     @Query('paymentMethodId') paymentMethodId?: string,
     @Query('provider') provider?: string,
+    @Query('allocationStatus') allocationStatus?: string,
     @Query('limit') limit?: string,
   ): Promise<AdminPaymentOrdersResponse> {
     return {
@@ -184,6 +187,7 @@ export class BillingController {
         customerAccountId,
         paymentMethodId,
         provider,
+        allocationStatus,
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
     };
@@ -204,6 +208,16 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminPaymentOrderSummary> {
     return this.billingService.createPaymentOrder(payload, request.actor);
+  }
+
+  @Post('payment-orders/:id/allocate')
+  @Roles('admin')
+  allocatePaymentOrder(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: AllocatePaymentOrderDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminAllocatePaymentOrderResponse> {
+    return this.billingService.allocatePaymentOrder(id, payload, request.actor);
   }
 
   @Post('payment-orders/:id/paypal/checkout')

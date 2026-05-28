@@ -710,6 +710,35 @@ export const paymentOrders = pgTable(
   }),
 );
 
+export const paymentOrderAllocations = pgTable(
+  'payment_order_allocations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    paymentOrderId: uuid('payment_order_id')
+      .notNull()
+      .references(() => paymentOrders.id, { onDelete: 'restrict' }),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'restrict' }),
+    allocationScope: text('allocation_scope').notNull().default('account_quota'),
+    volumeBytesDelta: bigint('volume_bytes_delta', { mode: 'number' }).notNull(),
+    quotaLimitBeforeBytes: bigint('quota_limit_before_bytes', { mode: 'number' }),
+    quotaLimitAfterBytes: bigint('quota_limit_after_bytes', { mode: 'number' }).notNull(),
+    idempotencyKey: text('idempotency_key'),
+    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orderIdx: uniqueIndex('payment_order_allocations_order_unique').on(table.paymentOrderId),
+    idempotencyIdx: uniqueIndex('payment_order_allocations_idempotency_unique')
+      .on(table.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL AND idempotency_key <> ''`),
+    customerCreatedIdx: index('payment_order_allocations_customer_created_idx').on(table.customerAccountId, table.createdAt),
+    createdIdx: index('payment_order_allocations_created_idx').on(table.createdAt),
+  }),
+);
+
 export const routeSettings = pgTable(
   'route_settings',
   {
@@ -879,6 +908,7 @@ export const customerAccountsRelations = relations(customerAccounts, ({ many }) 
   clientConfigs: many(clientConfigs),
   usageEvents: many(clientUsageEvents),
   paymentOrders: many(paymentOrders),
+  paymentOrderAllocations: many(paymentOrderAllocations),
 }));
 
 export const clientConfigsRelations = relations(clientConfigs, ({ many, one }) => ({
@@ -940,5 +970,20 @@ export const paymentOrdersRelations = relations(paymentOrders, ({ one }) => ({
   paymentMethod: one(paymentMethods, {
     fields: [paymentOrders.paymentMethodId],
     references: [paymentMethods.id],
+  }),
+  allocation: one(paymentOrderAllocations, {
+    fields: [paymentOrders.id],
+    references: [paymentOrderAllocations.paymentOrderId],
+  }),
+}));
+
+export const paymentOrderAllocationsRelations = relations(paymentOrderAllocations, ({ one }) => ({
+  paymentOrder: one(paymentOrders, {
+    fields: [paymentOrderAllocations.paymentOrderId],
+    references: [paymentOrders.id],
+  }),
+  customerAccount: one(customerAccounts, {
+    fields: [paymentOrderAllocations.customerAccountId],
+    references: [customerAccounts.id],
   }),
 }));

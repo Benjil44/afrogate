@@ -570,6 +570,7 @@ export interface UpdatePaymentMethodRequest {
 }
 
 export type PaymentOrderStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+export type PaymentOrderAllocationStatus = 'not_applicable' | 'pending' | 'allocated';
 
 export interface AdminPaymentOrderSummary {
   id: string;
@@ -598,6 +599,11 @@ export interface AdminPaymentOrderSummary {
   failedAt?: string | null;
   refundedAt?: string | null;
   expiresAt?: string | null;
+  allocationStatus?: PaymentOrderAllocationStatus | string;
+  allocationId?: string | null;
+  allocatedAt?: string | null;
+  allocatedVolumeBytes?: number | null;
+  allocationDelaySeconds?: number | null;
   metadata: Record<string, unknown>;
   notes?: string | null;
   createdBy?: string | null;
@@ -624,6 +630,32 @@ export interface UpdatePaymentOrderStatusRequest {
   checkoutUrl?: string | null;
   metadata?: Record<string, unknown> | null;
   notes?: string | null;
+}
+
+export interface AllocatePaymentOrderRequest {
+  idempotencyKey?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AdminPaymentOrderAllocationSummary {
+  id: string;
+  paymentOrderId: string;
+  customerAccountId: string;
+  allocationScope: 'account_quota' | string;
+  volumeBytesDelta: number;
+  quotaLimitBeforeBytes?: number | null;
+  quotaLimitAfterBytes: number;
+  idempotencyKey?: string | null;
+  metadata: Record<string, unknown>;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface AdminAllocatePaymentOrderResponse {
+  allocation: AdminPaymentOrderAllocationSummary;
+  paymentOrder: AdminPaymentOrderSummary;
+  account: AdminCustomerAccountSummary;
+  duplicate: boolean;
 }
 
 export interface CreatePayPalCheckoutRequest {

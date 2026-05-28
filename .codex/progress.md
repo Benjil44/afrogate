@@ -1014,8 +1014,6 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-
-
 - Added the PayPal checkout/capture provider adapter.
 - Added guarded admin APIs to create PayPal hosted checkout orders and capture approved PayPal orders from existing pending `payment_orders`.
 - Added a public PayPal webhook endpoint that verifies PayPal signature headers through PayPal before updating any local payment order.
@@ -1031,6 +1029,22 @@ Repository remote is ready:
 - Verified repository secret hygiene with `npm run secrets:check`.
 - Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
 - Verified dashboard contrast with `npm run contrast:check`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added paid payment-order quota allocation with the new `payment_order_allocations` ledger.
+- Added guarded admin allocation API `POST /api/admin/payment-orders/:id/allocate`, allocation-status filtering, and payment-order allocation delay fields.
+- Allocation now consumes a paid order exactly once, credits purchased volume to `customer_accounts.quota_limit_bytes`, and treats a null quota limit as the current used-byte baseline before adding purchased volume.
+- Updated shared contracts, backend DTOs, schema, migration, architecture/security/enhancement/roadmap docs, checklist, and memory for the purchase-allocation layer.
+- Marked paid payment order quota allocation and charge allocation delay tracking complete in the checklist.
+- Bumped AfroGate to `0.75.0` for the allocation schema/API contract.
+- Checklist completion after this slice is `201 / 223` items, or `90.1%` complete with `9.9%` remaining.
+- Verified migration `0019_payment_order_allocations.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified authenticated local allocation API smoke: a paid 1GB order created one allocation, increased account quota to `1073741824`, and a repeated allocation returned `duplicate = true`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
 - Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
