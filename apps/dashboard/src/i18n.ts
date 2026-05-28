@@ -36,6 +36,7 @@ export const dashboardTranslations = {
     operationalData: {
       noServers: 'No servers registered yet.',
       noOutbounds: 'No outbounds configured yet.',
+      noTunnels: 'No tunnels configured yet.',
       noFailoverEvents: 'No failover events recorded yet.',
     },
     auth: {
@@ -1002,6 +1003,7 @@ export const dashboardTranslations = {
     operationalData: {
       noServers: 'هنوز سروری ثبت نشده است.',
       noOutbounds: 'هنوز اوت‌باندی تنظیم نشده است.',
+      noTunnels: 'هنوز تونلی تنظیم نشده است.',
       noFailoverEvents: 'هنوز رویداد فیل‌اور ثبت نشده است.',
     },
     auth: {

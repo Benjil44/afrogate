@@ -16,6 +16,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Realtime health chart.
 - [x] Server, tunnel, alert, outbound, capacity, and control-plane panels.
 - [x] Real alert rows from backend.
+- [x] Real tunnel inventory rows from backend.
 - [ ] Real outbound rows from backend.
 - [ ] Fullscreen/kiosk display toggle.
 
@@ -39,6 +40,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Failover history.
 - [ ] Route lock and auto-route controls.
 - [x] Real route/outbound API binding after admin guards are enforced.
+- [x] Real tunnel inventory API binding after admin guards are enforced.
 
 ## Alerts Page
 

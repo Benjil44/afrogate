@@ -26,6 +26,14 @@ Each server card can have an `Edit` button. The edit screen should be split into
 
 WireGuard and system prerequisites should also have a guided Settings workflow so first-time setup is not hidden behind raw files. Any private key or tunnel secret entered there must be write-only: accept, validate, store by encrypted reference later, and never display the original secret back.
 
+Current inventory implementation:
+
+- Migration `0012_tunnels_interfaces.sql` adds `server_interfaces` and `tunnels` as control-plane inventory tables.
+- `/api/admin/server-interfaces` and `/api/admin/tunnels` provide guarded list/detail/create/update/delete APIs with read-role access for admins, supervisors, support, and auditors, and write access for admins.
+- Interface rows can track server ownership, physical/logical name, operator, kind, status, MAC/address metadata, notes, and a linked tunnel summary.
+- Tunnel rows can track server ownership, tunnel type, endpoint, interface name, local interface link, route group, status, lockability, and notes.
+- These APIs only manage inventory state and audit logs. They do not SSH into servers, decrypt credentials, reload services, change OS routes, or switch user traffic.
+
 ## Access Model
 
 ### Bootstrap Credential
@@ -225,11 +233,13 @@ The scheduler stores every sample in `outbound_health_checks`, updates `outbound
 
 ## Data Model Direction
 
-Future tables:
+Current and planned tables:
 
 - `secret_records`
 - `server_access_profiles`
 - `server_credentials`
+- `server_interfaces`
+- `tunnels`
 - `outbounds`
 - `outbound_health_checks`
 - `route_groups`

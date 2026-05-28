@@ -19,6 +19,8 @@ import type {
   AdminSessionResponse,
   AdminOutboundsResponse,
   AdminServerDetail,
+  AdminServerInterfaceSummary,
+  AdminServerInterfacesResponse,
   AdminServersResponse,
   AdminProtocolServerApplyEventDetailResponse,
   AdminProtocolServerApplyEventsResponse,
@@ -32,6 +34,8 @@ import type {
   StoreServerCredentialResponse,
   AdminSecretRefSummary,
   AdminSettingsResponse,
+  AdminTunnelSummary,
+  AdminTunnelsResponse,
   AdminUserSummary,
   AdminUsersResponse,
   ProvisionProtocolSetupResponse,
@@ -48,6 +52,12 @@ import { Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { CreateOutboundDto, MoveOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
 import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto } from './dto/server.dto';
+import {
+  CreateServerInterfaceDto,
+  CreateTunnelDto,
+  UpdateServerInterfaceDto,
+  UpdateTunnelDto,
+} from './dto/tunnel.dto';
 import {
   ApplyRouteDecisionPreviewDto,
   CreateProtocolSetupDto,
@@ -182,6 +192,114 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<StoreServerCredentialResponse> {
     return this.operationsService.storeServerCredential(id, payload, request.actor);
+  }
+
+  @Get('server-interfaces')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listServerInterfaces(
+    @Query('serverId') serverId?: string,
+    @Query('operator') operator?: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminServerInterfacesResponse> {
+    return {
+      interfaces: await this.operationsService.listServerInterfaces({
+        serverId: this.operationsService.normalizeUuidQuery(serverId, 'serverId'),
+        operator,
+        status,
+        limit: this.operationsService.normalizeLimit(limit, 200, 500),
+      }),
+    };
+  }
+
+  @Get('server-interfaces/:id')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getServerInterface(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminServerInterfaceSummary> {
+    return this.operationsService.getServerInterface(id);
+  }
+
+  @Post('server-interfaces')
+  @Roles('admin')
+  createServerInterface(
+    @Body() payload: CreateServerInterfaceDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminServerInterfaceSummary> {
+    return this.operationsService.createServerInterface(payload, request.actor);
+  }
+
+  @Patch('server-interfaces/:id')
+  @Roles('admin')
+  updateServerInterface(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpdateServerInterfaceDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminServerInterfaceSummary> {
+    return this.operationsService.updateServerInterface(id, payload, request.actor);
+  }
+
+  @Delete('server-interfaces/:id')
+  @Roles('admin')
+  @HttpCode(204)
+  deleteServerInterface(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<void> {
+    return this.operationsService.deleteServerInterface(id, request.actor);
+  }
+
+  @Get('tunnels')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listTunnels(
+    @Query('serverId') serverId?: string,
+    @Query('routeGroup') routeGroup?: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminTunnelsResponse> {
+    return {
+      tunnels: await this.operationsService.listTunnels({
+        serverId: this.operationsService.normalizeUuidQuery(serverId, 'serverId'),
+        routeGroup,
+        status,
+        limit: this.operationsService.normalizeLimit(limit, 200, 500),
+      }),
+    };
+  }
+
+  @Get('tunnels/:id')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getTunnel(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string): Promise<AdminTunnelSummary> {
+    return this.operationsService.getTunnel(id);
+  }
+
+  @Post('tunnels')
+  @Roles('admin')
+  createTunnel(
+    @Body() payload: CreateTunnelDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminTunnelSummary> {
+    return this.operationsService.createTunnel(payload, request.actor);
+  }
+
+  @Patch('tunnels/:id')
+  @Roles('admin')
+  updateTunnel(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpdateTunnelDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminTunnelSummary> {
+    return this.operationsService.updateTunnel(id, payload, request.actor);
+  }
+
+  @Delete('tunnels/:id')
+  @Roles('admin')
+  @HttpCode(204)
+  deleteTunnel(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<void> {
+    return this.operationsService.deleteTunnel(id, request.actor);
   }
 
   @Get('outbounds')

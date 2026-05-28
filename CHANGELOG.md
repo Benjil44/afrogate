@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.57.0 - 2026-05-28
+
+- Added PostgreSQL and Drizzle inventory tables for managed server interfaces and tunnels.
+- Added guarded admin CRUD APIs for server interfaces and tunnels with audit logging and server/interface ownership checks.
+- Bound the dashboard tunnel panel to guarded `/api/admin/tunnels` rows with localized empty states while keeping sample data as an API-unavailable fallback.
+
 ## 0.56.0 - 2026-05-27
 
 - Added guarded write-only server credential storage that encrypts submitted credentials, stores only metadata in API responses, links the active credential to the server access profile, and revokes the previously linked active credential.

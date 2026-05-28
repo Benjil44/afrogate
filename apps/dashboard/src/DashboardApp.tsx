@@ -30,6 +30,7 @@ import type {
   AdminServerSummary,
   AdminSettingsResponse,
   AdminSessionResponse,
+  AdminTunnelSummary,
   AdminWireGuardCandidate,
   LoadBalanceStrategy,
   AdminUserSummary,
@@ -94,6 +95,7 @@ import {
   fetchAdminOutbounds,
   fetchAdminServers,
   fetchAdminSettings,
+  fetchAdminTunnels,
   fetchAdminUsers,
   fetchProtocolServerApplyEvent,
   fetchProtocolServerApplyEvents,
@@ -170,9 +172,9 @@ interface ServerRowData {
 interface TunnelRowData {
   name: string;
   operator: string;
-  ping: number;
-  jitter: number;
-  loss: number;
+  ping: number | null;
+  jitter: number | null;
+  loss: number | null;
   score: number;
 }
 
@@ -478,8 +480,10 @@ function AuthenticatedDashboard({
   const [adminServers, setAdminServers] = useState<AdminServerSummary[]>([]);
   const [serverDataState, setServerDataState] = useState<DataState>('loading');
   const [adminOutbounds, setAdminOutbounds] = useState<AdminOutboundSummary[]>([]);
+  const [adminTunnels, setAdminTunnels] = useState<AdminTunnelSummary[]>([]);
   const [routeFailoverEvents, setRouteFailoverEvents] = useState<RouteFailoverEventSummary[]>([]);
   const [routeDataState, setRouteDataState] = useState<DataState>('loading');
+  const [tunnelDataState, setTunnelDataState] = useState<DataState>('loading');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const wallClock = useWallClock(format);
 
@@ -571,11 +575,25 @@ function AuthenticatedDashboard({
         setAdminOutbounds(outboundResponse.outbounds);
         setRouteFailoverEvents(failoverResponse.events);
         setRouteDataState('live');
+
+        try {
+          const tunnelResponse = await fetchAdminTunnels(sessionToken, undefined, undefined, 200, controller.signal);
+          if (!isActive) return;
+
+          setAdminTunnels(tunnelResponse.tunnels);
+          setTunnelDataState('live');
+        } catch (error) {
+          if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+          setAdminTunnels([]);
+          setTunnelDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+        }
       } catch (error) {
         if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
 
         setServerDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
         setRouteDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+        setTunnelDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
       }
     };
 
@@ -611,6 +629,12 @@ function AuthenticatedDashboard({
       ? adminOutbounds.map(mapAdminOutboundToRow)
       : outbounds),
     [adminOutbounds, routeDataState],
+  );
+  const routeTunnels = useMemo(
+    () => (tunnelDataState === 'live' || tunnelDataState === 'stale'
+      ? adminTunnels.map(mapAdminTunnelToRow)
+      : tunnels),
+    [adminTunnels, tunnelDataState],
   );
   const failoverRows = useMemo(
     () => (routeDataState === 'live' || routeDataState === 'stale'
@@ -704,6 +728,7 @@ function AuthenticatedDashboard({
           routeDataState={routeDataState}
           routeFailoverRows={failoverRows}
           routeOutbounds={routeOutbounds}
+          routeTunnels={routeTunnels}
           serverDataState={serverDataState}
           managementServers={managementServerRows}
           servers={serverRows}
@@ -711,6 +736,7 @@ function AuthenticatedDashboard({
           sessionToken={sessionToken}
           summary={summary}
           t={t}
+          tunnelDataState={tunnelDataState}
           timeRange={timeRange}
           trafficTotals={trafficTotals}
         />
@@ -927,6 +953,7 @@ function ActivePage({
   routeDataState,
   routeFailoverRows,
   routeOutbounds,
+  routeTunnels,
   serverDataState,
   managementServers,
   servers,
@@ -934,6 +961,7 @@ function ActivePage({
   sessionToken,
   summary,
   t,
+  tunnelDataState,
   timeRange,
   trafficTotals,
 }: {
@@ -946,6 +974,7 @@ function ActivePage({
   routeDataState: DataState;
   routeFailoverRows: RouteFailoverRowData[];
   routeOutbounds: OutboundRowData[];
+  routeTunnels: TunnelRowData[];
   serverDataState: DataState;
   managementServers: ServerRowData[];
   servers: ServerRowData[];
@@ -953,6 +982,7 @@ function ActivePage({
   sessionToken: string;
   summary: MetricCardData[];
   t: DashboardStrings;
+  tunnelDataState: DataState;
   timeRange: MetricsTimeRange;
   trafficTotals: TrafficTotals;
 }) {
@@ -978,6 +1008,8 @@ function ActivePage({
           failoverRows={routeFailoverRows}
           format={format}
           outbounds={routeOutbounds}
+          tunnelDataState={tunnelDataState}
+          tunnels={routeTunnels}
           t={t}
         />
       );
@@ -996,6 +1028,7 @@ function ActivePage({
           servers={servers}
           summary={summary}
           t={t}
+          tunnels={routeTunnels}
           timeRange={timeRange}
           trafficTotals={trafficTotals}
         />
@@ -1012,6 +1045,7 @@ function DashboardPage({
   servers,
   summary,
   t,
+  tunnels,
   timeRange,
   trafficTotals,
 }: {
@@ -1023,6 +1057,7 @@ function DashboardPage({
   servers: ServerRowData[];
   summary: MetricCardData[];
   t: DashboardStrings;
+  tunnels: TunnelRowData[];
   timeRange: MetricsTimeRange;
   trafficTotals: TrafficTotals;
 }) {
@@ -1046,7 +1081,7 @@ function DashboardPage({
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
         <ServerPanel format={format} servers={servers} t={t} />
-        <TunnelPanel format={format} t={t} />
+        <TunnelPanel format={format} t={t} tunnels={tunnels} />
         <AlertsPanel alerts={alerts} format={format} t={t} />
       </section>
 
@@ -2235,17 +2270,26 @@ function RoutesPage({
   failoverRows,
   format,
   outbounds,
+  tunnelDataState,
+  tunnels,
   t,
 }: {
   dataState: DataState;
   failoverRows: RouteFailoverRowData[];
   format: DashboardFormatters;
   outbounds: OutboundRowData[];
+  tunnelDataState: DataState;
+  tunnels: TunnelRowData[];
   t: DashboardStrings;
 }) {
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <TunnelPanel format={format} t={t} />
+      <TunnelPanel
+        emptyMessage={tunnelDataState === 'loading' ? t.dataStatus.loading : t.operationalData.noTunnels}
+        format={format}
+        t={t}
+        tunnels={tunnels}
+      />
       <OutboundsPanel
         emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noOutbounds}
         format={format}
@@ -6682,11 +6726,22 @@ function MetricPill({ icon: Icon, label, value }: { icon: AfroIcon; label: strin
   );
 }
 
-function TunnelPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
+function TunnelPanel({
+  emptyMessage,
+  format,
+  t,
+  tunnels,
+}: {
+  emptyMessage?: string;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+  tunnels: TunnelRowData[];
+}) {
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(format.integer(3))} />
+      <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(format.integer(tunnels.length))} />
       <div className="mt-2 overflow-x-auto">
+        {tunnels.length === 0 && emptyMessage ? <EmptyState message={emptyMessage} /> : null}
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -6860,6 +6915,24 @@ function mapAdminOutboundToRow(outbound: AdminOutboundSummary): OutboundRowData 
     mode: outbound.routeGroup,
     serverLabel: outbound.serverHostname || outbound.serverExternalId,
   };
+}
+
+function mapAdminTunnelToRow(tunnel: AdminTunnelSummary): TunnelRowData {
+  return {
+    name: tunnel.name,
+    operator: tunnel.interfaceOperator || tunnel.localInterfaceName || tunnel.interfaceName || tunnel.serverHostname || tunnel.serverExternalId || tunnel.type,
+    ping: null,
+    jitter: null,
+    loss: null,
+    score: scoreFromTunnelStatus(tunnel.status),
+  };
+}
+
+function scoreFromTunnelStatus(status: string): number {
+  if (status === 'up') return 90;
+  if (status === 'down') return 25;
+  if (status === 'degraded') return 60;
+  return scoreFromHealthState(status);
 }
 
 function mapOutboundStatusToTone(status: string): Tone {

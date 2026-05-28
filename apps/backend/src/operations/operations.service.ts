@@ -36,8 +36,10 @@ import type {
   AdminRouteQualityAnalyticsResponse,
   AdminServerCredentialSummary,
   AdminServerDetail,
+  AdminServerInterfaceSummary,
   AdminServerSummary,
   AdminSettingsResponse,
+  AdminTunnelSummary,
   AdminWireGuardCandidate,
   LoadBalanceStrategy,
   ProvisionProtocolSetupResponse,
@@ -66,6 +68,12 @@ import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
 import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto, UpsertServerAccessProfileDto } from './dto/server.dto';
+import {
+  CreateServerInterfaceDto,
+  CreateTunnelDto,
+  UpdateServerInterfaceDto,
+  UpdateTunnelDto,
+} from './dto/tunnel.dto';
 import {
   ApplyRouteDecisionPreviewDto,
   CreateProtocolSetupDto,
@@ -144,6 +152,44 @@ interface OutboundRow {
   maxUsers: number | null;
   lastCheckedAt: Date | null;
   lastHealthyAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ServerInterfaceRow {
+  id: string;
+  serverId: string;
+  serverExternalId: string | null;
+  serverHostname: string | null;
+  name: string;
+  operator: string | null;
+  kind: string;
+  status: string;
+  macAddress: string | null;
+  addressCidr: string | null;
+  linkedTunnelId: string | null;
+  linkedTunnelName: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface TunnelRow {
+  id: string;
+  serverId: string;
+  serverExternalId: string | null;
+  serverHostname: string | null;
+  name: string;
+  type: string;
+  remoteEndpoint: string | null;
+  interfaceName: string | null;
+  localInterfaceId: string | null;
+  localInterfaceName: string | null;
+  interfaceOperator: string | null;
+  routeGroup: string;
+  status: string;
+  lockable: boolean;
+  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -675,6 +721,396 @@ export class OperationsService {
       server,
       credential,
     };
+  }
+
+  async listServerInterfaces(
+    filters: { serverId?: string; operator?: string; status?: string; limit?: number } = {},
+  ): Promise<AdminServerInterfaceSummary[]> {
+    const result = await this.database.query<ServerInterfaceRow>(
+      `
+        SELECT
+          si.id,
+          si.server_id AS "serverId",
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          si.name,
+          si.operator,
+          si.kind,
+          si.status,
+          si.mac_address AS "macAddress",
+          si.address_cidr AS "addressCidr",
+          linked_tunnel.id AS "linkedTunnelId",
+          linked_tunnel.name AS "linkedTunnelName",
+          si.notes,
+          si.created_at AS "createdAt",
+          si.updated_at AS "updatedAt"
+        FROM server_interfaces si
+        JOIN servers s ON s.id = si.server_id
+        LEFT JOIN LATERAL (
+          SELECT id, name
+          FROM tunnels
+          WHERE local_interface_id = si.id
+          ORDER BY created_at DESC, name ASC
+          LIMIT 1
+        ) linked_tunnel ON true
+        WHERE ($1::uuid IS NULL OR si.server_id = $1)
+          AND ($2::text IS NULL OR si.operator = $2)
+          AND ($3::text IS NULL OR si.status = $3)
+        ORDER BY s.external_id ASC, si.name ASC
+        LIMIT $4
+      `,
+      [filters.serverId ?? null, filters.operator ?? null, filters.status ?? null, filters.limit ?? 200],
+    );
+
+    return result.rows.map((row) => this.mapServerInterface(row));
+  }
+
+  async getServerInterface(id: string): Promise<AdminServerInterfaceSummary> {
+    const result = await this.database.query<ServerInterfaceRow>(
+      `
+        SELECT
+          si.id,
+          si.server_id AS "serverId",
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          si.name,
+          si.operator,
+          si.kind,
+          si.status,
+          si.mac_address AS "macAddress",
+          si.address_cidr AS "addressCidr",
+          linked_tunnel.id AS "linkedTunnelId",
+          linked_tunnel.name AS "linkedTunnelName",
+          si.notes,
+          si.created_at AS "createdAt",
+          si.updated_at AS "updatedAt"
+        FROM server_interfaces si
+        JOIN servers s ON s.id = si.server_id
+        LEFT JOIN LATERAL (
+          SELECT id, name
+          FROM tunnels
+          WHERE local_interface_id = si.id
+          ORDER BY created_at DESC, name ASC
+          LIMIT 1
+        ) linked_tunnel ON true
+        WHERE si.id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Server interface not found');
+
+    return this.mapServerInterface(row);
+  }
+
+  async createServerInterface(
+    dto: CreateServerInterfaceDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminServerInterfaceSummary> {
+    try {
+      const interfaceId = await this.database.transaction(async (executor) => {
+        await this.ensureServerExists(executor, dto.serverId);
+
+        const result = await executor.query<{ id: string }>(
+          `
+            INSERT INTO server_interfaces (
+              server_id, name, operator, kind, status, mac_address, address_cidr, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+          `,
+          [
+            dto.serverId,
+            dto.name,
+            dto.operator ?? null,
+            dto.kind ?? 'ethernet',
+            dto.status ?? 'unknown',
+            dto.macAddress ?? null,
+            dto.addressCidr ?? null,
+            dto.notes ?? null,
+          ],
+        );
+
+        const id = result.rows[0].id;
+
+        await this.audit.record(
+          actor,
+          'server_interface.create',
+          'server_interface',
+          id,
+          {
+            serverId: dto.serverId,
+            name: dto.name,
+            operator: dto.operator ?? null,
+            status: dto.status ?? 'unknown',
+          },
+          executor,
+        );
+
+        return id;
+      });
+
+      return this.getServerInterface(interfaceId);
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Server interface name already exists for this server');
+      throw error;
+    }
+  }
+
+  async updateServerInterface(
+    id: string,
+    dto: UpdateServerInterfaceDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminServerInterfaceSummary> {
+    try {
+      await this.database.transaction(async (executor) => {
+        const current = await this.ensureServerInterfaceExists(executor, id);
+
+        if (dto.serverId) {
+          await this.ensureServerExists(executor, dto.serverId);
+          if (dto.serverId !== current.serverId) {
+            const linked = await executor.query<{ id: string }>(
+              'SELECT id FROM tunnels WHERE local_interface_id = $1 LIMIT 1',
+              [id],
+            );
+            if (linked.rows[0]) {
+              throw new BadRequestException('Linked server interfaces cannot move to another server');
+            }
+          }
+        }
+
+        const changedFields = await this.updateServerInterfaceFields(executor, id, dto);
+
+        await this.audit.record(
+          actor,
+          'server_interface.update',
+          'server_interface',
+          id,
+          {
+            changedFields,
+            serverId: dto.serverId ?? current.serverId,
+          },
+          executor,
+        );
+      });
+
+      return this.getServerInterface(id);
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Server interface name already exists for this server');
+      throw error;
+    }
+  }
+
+  async deleteServerInterface(id: string, actor: AuthActor | undefined): Promise<void> {
+    await this.database.transaction(async (executor) => {
+      const result = await executor.query<{ serverId: string; name: string }>(
+        'DELETE FROM server_interfaces WHERE id = $1 RETURNING server_id AS "serverId", name',
+        [id],
+      );
+      const row = result.rows[0];
+
+      if (!row) throw new NotFoundException('Server interface not found');
+
+      await this.audit.record(
+        actor,
+        'server_interface.delete',
+        'server_interface',
+        id,
+        {
+          serverId: row.serverId,
+          name: row.name,
+        },
+        executor,
+      );
+    });
+  }
+
+  async listTunnels(
+    filters: { serverId?: string; routeGroup?: string; status?: string; limit?: number } = {},
+  ): Promise<AdminTunnelSummary[]> {
+    const result = await this.database.query<TunnelRow>(
+      `
+        SELECT
+          t.id,
+          t.server_id AS "serverId",
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          t.name,
+          t.type,
+          t.remote_endpoint AS "remoteEndpoint",
+          t.interface_name AS "interfaceName",
+          t.local_interface_id AS "localInterfaceId",
+          si.name AS "localInterfaceName",
+          si.operator AS "interfaceOperator",
+          t.route_group AS "routeGroup",
+          t.status,
+          t.lockable,
+          t.notes,
+          t.created_at AS "createdAt",
+          t.updated_at AS "updatedAt"
+        FROM tunnels t
+        JOIN servers s ON s.id = t.server_id
+        LEFT JOIN server_interfaces si ON si.id = t.local_interface_id
+        WHERE ($1::uuid IS NULL OR t.server_id = $1)
+          AND ($2::text IS NULL OR t.route_group = $2)
+          AND ($3::text IS NULL OR t.status = $3)
+        ORDER BY t.route_group ASC, s.external_id ASC, t.name ASC
+        LIMIT $4
+      `,
+      [filters.serverId ?? null, filters.routeGroup ?? null, filters.status ?? null, filters.limit ?? 200],
+    );
+
+    return result.rows.map((row) => this.mapTunnel(row));
+  }
+
+  async getTunnel(id: string): Promise<AdminTunnelSummary> {
+    const result = await this.database.query<TunnelRow>(
+      `
+        SELECT
+          t.id,
+          t.server_id AS "serverId",
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          t.name,
+          t.type,
+          t.remote_endpoint AS "remoteEndpoint",
+          t.interface_name AS "interfaceName",
+          t.local_interface_id AS "localInterfaceId",
+          si.name AS "localInterfaceName",
+          si.operator AS "interfaceOperator",
+          t.route_group AS "routeGroup",
+          t.status,
+          t.lockable,
+          t.notes,
+          t.created_at AS "createdAt",
+          t.updated_at AS "updatedAt"
+        FROM tunnels t
+        JOIN servers s ON s.id = t.server_id
+        LEFT JOIN server_interfaces si ON si.id = t.local_interface_id
+        WHERE t.id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Tunnel not found');
+
+    return this.mapTunnel(row);
+  }
+
+  async createTunnel(dto: CreateTunnelDto, actor: AuthActor | undefined): Promise<AdminTunnelSummary> {
+    try {
+      const tunnelId = await this.database.transaction(async (executor) => {
+        await this.ensureServerExists(executor, dto.serverId);
+        if (dto.localInterfaceId) await this.ensureServerInterfaceExists(executor, dto.localInterfaceId, dto.serverId);
+
+        const result = await executor.query<{ id: string }>(
+          `
+            INSERT INTO tunnels (
+              server_id, name, type, remote_endpoint, interface_name,
+              local_interface_id, route_group, status, lockable, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id
+          `,
+          [
+            dto.serverId,
+            dto.name,
+            dto.type ?? 'wireguard',
+            dto.remoteEndpoint ?? null,
+            dto.interfaceName ?? null,
+            dto.localInterfaceId ?? null,
+            dto.routeGroup ?? 'main',
+            dto.status ?? 'unknown',
+            dto.lockable ?? true,
+            dto.notes ?? null,
+          ],
+        );
+
+        const id = result.rows[0].id;
+
+        await this.audit.record(
+          actor,
+          'tunnel.create',
+          'tunnel',
+          id,
+          {
+            serverId: dto.serverId,
+            routeGroup: dto.routeGroup ?? 'main',
+            type: dto.type ?? 'wireguard',
+            localInterfaceId: dto.localInterfaceId ?? null,
+          },
+          executor,
+        );
+
+        return id;
+      });
+
+      return this.getTunnel(tunnelId);
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Tunnel name already exists for this server');
+      throw error;
+    }
+  }
+
+  async updateTunnel(id: string, dto: UpdateTunnelDto, actor: AuthActor | undefined): Promise<AdminTunnelSummary> {
+    try {
+      await this.database.transaction(async (executor) => {
+        const current = await this.ensureTunnelExists(executor, id);
+        const nextServerId = dto.serverId ?? current.serverId;
+
+        if (dto.serverId) await this.ensureServerExists(executor, dto.serverId);
+        if (dto.localInterfaceId) await this.ensureServerInterfaceExists(executor, dto.localInterfaceId, nextServerId);
+        if (dto.serverId && dto.serverId !== current.serverId && dto.localInterfaceId === undefined && current.localInterfaceId) {
+          throw new BadRequestException('Moving a tunnel with a linked interface requires localInterfaceId to be updated or cleared');
+        }
+
+        const changedFields = await this.updateTunnelFields(executor, id, dto);
+
+        await this.audit.record(
+          actor,
+          'tunnel.update',
+          'tunnel',
+          id,
+          {
+            changedFields,
+            serverId: nextServerId,
+          },
+          executor,
+        );
+      });
+
+      return this.getTunnel(id);
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Tunnel name already exists for this server');
+      throw error;
+    }
+  }
+
+  async deleteTunnel(id: string, actor: AuthActor | undefined): Promise<void> {
+    await this.database.transaction(async (executor) => {
+      const result = await executor.query<{ serverId: string; routeGroup: string; type: string }>(
+        'DELETE FROM tunnels WHERE id = $1 RETURNING server_id AS "serverId", route_group AS "routeGroup", type',
+        [id],
+      );
+      const row = result.rows[0];
+
+      if (!row) throw new NotFoundException('Tunnel not found');
+
+      await this.audit.record(
+        actor,
+        'tunnel.delete',
+        'tunnel',
+        id,
+        {
+          serverId: row.serverId,
+          routeGroup: row.routeGroup,
+          type: row.type,
+        },
+        executor,
+      );
+    });
   }
 
   async listOutbounds(
@@ -3506,6 +3942,48 @@ export class OperationsService {
       maxUsers: row.maxUsers,
       lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
       lastHealthyAt: row.lastHealthyAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapServerInterface(row: ServerInterfaceRow): AdminServerInterfaceSummary {
+    return {
+      id: row.id,
+      serverId: row.serverId,
+      serverExternalId: row.serverExternalId,
+      serverHostname: row.serverHostname,
+      name: row.name,
+      operator: row.operator,
+      kind: row.kind,
+      status: row.status,
+      macAddress: row.macAddress,
+      addressCidr: row.addressCidr,
+      linkedTunnelId: row.linkedTunnelId,
+      linkedTunnelName: row.linkedTunnelName,
+      notes: row.notes,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapTunnel(row: TunnelRow): AdminTunnelSummary {
+    return {
+      id: row.id,
+      serverId: row.serverId,
+      serverExternalId: row.serverExternalId,
+      serverHostname: row.serverHostname,
+      name: row.name,
+      type: row.type,
+      remoteEndpoint: row.remoteEndpoint,
+      interfaceName: row.interfaceName,
+      localInterfaceId: row.localInterfaceId,
+      localInterfaceName: row.localInterfaceName,
+      interfaceOperator: row.interfaceOperator,
+      routeGroup: row.routeGroup,
+      status: row.status,
+      lockable: row.lockable,
+      notes: row.notes,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -6502,6 +6980,40 @@ export class OperationsService {
     if (!result.rows[0]) throw new NotFoundException('Server not found');
   }
 
+  private async ensureServerInterfaceExists(
+    executor: DatabaseQueryExecutor,
+    id: string,
+    serverId?: string,
+  ): Promise<{ id: string; serverId: string }> {
+    const result = await executor.query<{ id: string; serverId: string }>(
+      'SELECT id, server_id AS "serverId" FROM server_interfaces WHERE id = $1',
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Server interface not found');
+    if (serverId && row.serverId !== serverId) {
+      throw new BadRequestException('Server interface belongs to a different server');
+    }
+
+    return row;
+  }
+
+  private async ensureTunnelExists(
+    executor: DatabaseQueryExecutor,
+    id: string,
+  ): Promise<{ id: string; serverId: string; localInterfaceId: string | null }> {
+    const result = await executor.query<{ id: string; serverId: string; localInterfaceId: string | null }>(
+      'SELECT id, server_id AS "serverId", local_interface_id AS "localInterfaceId" FROM tunnels WHERE id = $1',
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Tunnel not found');
+
+    return row;
+  }
+
   private async ensureOutboundExists(executor: DatabaseQueryExecutor, id: string): Promise<void> {
     const result = await executor.query<{ id: string }>('SELECT id FROM outbounds WHERE id = $1', [id]);
     if (!result.rows[0]) throw new NotFoundException('Outbound not found');
@@ -7554,6 +8066,88 @@ export class OperationsService {
     );
 
     return result.rows[0]?.priority ?? 100;
+  }
+
+  private async updateServerInterfaceFields(
+    executor: DatabaseQueryExecutor,
+    id: string,
+    dto: UpdateServerInterfaceDto,
+  ): Promise<string[]> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    const setClauses: string[] = [];
+
+    const add = (field: string, column: string, value: unknown) => {
+      fields.push(field);
+      values.push(value);
+      setClauses.push(`${column} = $${values.length}`);
+    };
+
+    if (dto.serverId !== undefined) add('serverId', 'server_id', dto.serverId);
+    if (dto.name !== undefined) add('name', 'name', dto.name);
+    if (dto.operator !== undefined) add('operator', 'operator', dto.operator);
+    if (dto.kind !== undefined) add('kind', 'kind', dto.kind);
+    if (dto.status !== undefined) add('status', 'status', dto.status);
+    if (dto.macAddress !== undefined) add('macAddress', 'mac_address', dto.macAddress);
+    if (dto.addressCidr !== undefined) add('addressCidr', 'address_cidr', dto.addressCidr);
+    if (dto.notes !== undefined) add('notes', 'notes', dto.notes);
+
+    if (!setClauses.length) return fields;
+
+    values.push(id);
+    await executor.query(
+      `
+        UPDATE server_interfaces
+        SET ${setClauses.join(', ')},
+            updated_at = now()
+        WHERE id = $${values.length}
+      `,
+      values,
+    );
+
+    return fields;
+  }
+
+  private async updateTunnelFields(
+    executor: DatabaseQueryExecutor,
+    id: string,
+    dto: UpdateTunnelDto,
+  ): Promise<string[]> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    const setClauses: string[] = [];
+
+    const add = (field: string, column: string, value: unknown) => {
+      fields.push(field);
+      values.push(value);
+      setClauses.push(`${column} = $${values.length}`);
+    };
+
+    if (dto.serverId !== undefined) add('serverId', 'server_id', dto.serverId);
+    if (dto.name !== undefined) add('name', 'name', dto.name);
+    if (dto.type !== undefined) add('type', 'type', dto.type);
+    if (dto.remoteEndpoint !== undefined) add('remoteEndpoint', 'remote_endpoint', dto.remoteEndpoint);
+    if (dto.interfaceName !== undefined) add('interfaceName', 'interface_name', dto.interfaceName);
+    if (dto.localInterfaceId !== undefined) add('localInterfaceId', 'local_interface_id', dto.localInterfaceId);
+    if (dto.routeGroup !== undefined) add('routeGroup', 'route_group', dto.routeGroup);
+    if (dto.status !== undefined) add('status', 'status', dto.status);
+    if (dto.lockable !== undefined) add('lockable', 'lockable', dto.lockable);
+    if (dto.notes !== undefined) add('notes', 'notes', dto.notes);
+
+    if (!setClauses.length) return fields;
+
+    values.push(id);
+    await executor.query(
+      `
+        UPDATE tunnels
+        SET ${setClauses.join(', ')},
+            updated_at = now()
+        WHERE id = $${values.length}
+      `,
+      values,
+    );
+
+    return fields;
   }
 
   private async updateOutboundFields(

@@ -5,6 +5,7 @@ import type {
   AdminLoginRequest,
   AdminLoginResponse,
   AdminOutboundsResponse,
+  AdminServerInterfacesResponse,
   AdminServersResponse,
   AdminProtocolServerApplyEventDetailResponse,
   AdminProtocolServerApplyEventsResponse,
@@ -19,6 +20,7 @@ import type {
   AdminSecretRefSummary,
   AdminSettingsResponse,
   AdminServerDetail,
+  AdminTunnelsResponse,
   AdminUserSummary,
   AdminUsersResponse,
   CreateServerCredentialRequest,
@@ -136,6 +138,41 @@ export async function fetchAdminOutbounds(sessionToken: string, signal?: AbortSi
   });
 
   return response.json() as Promise<AdminOutboundsResponse>;
+}
+
+export async function fetchAdminServerInterfaces(
+  sessionToken: string,
+  serverId?: string,
+  signal?: AbortSignal,
+): Promise<AdminServerInterfacesResponse> {
+  const params = new URLSearchParams({ limit: '200' });
+  if (serverId) params.set('serverId', serverId);
+
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/server-interfaces?${params.toString()}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminServerInterfacesResponse>;
+}
+
+export async function fetchAdminTunnels(
+  sessionToken: string,
+  serverId?: string,
+  routeGroup?: string,
+  limit = 200,
+  signal?: AbortSignal,
+): Promise<AdminTunnelsResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (serverId) params.set('serverId', serverId);
+  if (routeGroup) params.set('routeGroup', routeGroup);
+
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/tunnels?${params.toString()}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminTunnelsResponse>;
 }
 
 export async function fetchRouteFailoverEvents(

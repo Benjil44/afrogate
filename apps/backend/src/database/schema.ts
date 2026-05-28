@@ -265,6 +265,58 @@ export const serverAccessProfiles = pgTable(
   }),
 );
 
+export const serverInterfaces = pgTable(
+  'server_interfaces',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    operator: text('operator'),
+    kind: text('kind').notNull().default('ethernet'),
+    status: text('status').notNull().default('unknown'),
+    macAddress: text('mac_address'),
+    addressCidr: text('address_cidr'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    serverNameIdx: uniqueIndex('server_interfaces_server_name_unique').on(table.serverId, table.name),
+    serverIdx: index('server_interfaces_server_idx').on(table.serverId),
+    operatorIdx: index('server_interfaces_operator_idx').on(table.operator),
+    statusIdx: index('server_interfaces_status_idx').on(table.status),
+  }),
+);
+
+export const tunnels = pgTable(
+  'tunnels',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: text('type').notNull().default('wireguard'),
+    remoteEndpoint: text('remote_endpoint'),
+    interfaceName: text('interface_name'),
+    localInterfaceId: uuid('local_interface_id').references(() => serverInterfaces.id, { onDelete: 'set null' }),
+    routeGroup: text('route_group').notNull().default('main'),
+    status: text('status').notNull().default('unknown'),
+    lockable: boolean('lockable').notNull().default(true),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    serverNameIdx: uniqueIndex('tunnels_server_name_unique').on(table.serverId, table.name),
+    serverIdx: index('tunnels_server_idx').on(table.serverId),
+    routeStatusIdx: index('tunnels_route_status_idx').on(table.routeGroup, table.status),
+    localInterfaceIdx: index('tunnels_local_interface_idx').on(table.localInterfaceId),
+  }),
+);
+
 export const outbounds = pgTable(
   'outbounds',
   {
@@ -484,6 +536,8 @@ export const serversRelations = relations(servers, ({ many }) => ({
   agentTokens: many(agentTokens),
   accessProfiles: many(serverAccessProfiles),
   credentials: many(serverCredentials),
+  interfaces: many(serverInterfaces),
+  tunnels: many(tunnels),
   outbounds: many(outbounds),
 }));
 
@@ -519,6 +573,25 @@ export const serverAccessProfilesRelations = relations(serverAccessProfiles, ({ 
   server: one(servers, {
     fields: [serverAccessProfiles.serverId],
     references: [servers.id],
+  }),
+}));
+
+export const serverInterfacesRelations = relations(serverInterfaces, ({ many, one }) => ({
+  server: one(servers, {
+    fields: [serverInterfaces.serverId],
+    references: [servers.id],
+  }),
+  tunnels: many(tunnels),
+}));
+
+export const tunnelsRelations = relations(tunnels, ({ one }) => ({
+  server: one(servers, {
+    fields: [tunnels.serverId],
+    references: [servers.id],
+  }),
+  localInterface: one(serverInterfaces, {
+    fields: [tunnels.localInterfaceId],
+    references: [serverInterfaces.id],
   }),
 }));
 

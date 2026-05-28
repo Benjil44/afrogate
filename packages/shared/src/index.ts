@@ -334,6 +334,96 @@ export interface AdminServerDetail extends AdminServerSummary {
   outbounds: AdminOutboundSummary[];
 }
 
+export type ServerInterfaceStatus = 'up' | 'down' | 'degraded' | 'unknown';
+export type TunnelStatus = 'up' | 'down' | 'degraded' | 'unknown';
+export type TunnelType = 'wireguard' | 'vless' | 'l2tp' | 'ikev2' | 'custom';
+
+export interface AdminServerInterfaceSummary {
+  id: string;
+  serverId: string;
+  serverExternalId?: string | null;
+  serverHostname?: string | null;
+  name: string;
+  operator?: string | null;
+  kind: string;
+  status: ServerInterfaceStatus | string;
+  macAddress?: string | null;
+  addressCidr?: string | null;
+  linkedTunnelId?: string | null;
+  linkedTunnelName?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateServerInterfaceRequest {
+  serverId: string;
+  name: string;
+  operator?: string | null;
+  kind?: string;
+  status?: ServerInterfaceStatus;
+  macAddress?: string | null;
+  addressCidr?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateServerInterfaceRequest {
+  serverId?: string;
+  name?: string;
+  operator?: string | null;
+  kind?: string;
+  status?: ServerInterfaceStatus;
+  macAddress?: string | null;
+  addressCidr?: string | null;
+  notes?: string | null;
+}
+
+export interface AdminTunnelSummary {
+  id: string;
+  serverId: string;
+  serverExternalId?: string | null;
+  serverHostname?: string | null;
+  name: string;
+  type: TunnelType | string;
+  remoteEndpoint?: string | null;
+  interfaceName?: string | null;
+  localInterfaceId?: string | null;
+  localInterfaceName?: string | null;
+  interfaceOperator?: string | null;
+  routeGroup: string;
+  status: TunnelStatus | string;
+  lockable: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTunnelRequest {
+  serverId: string;
+  name: string;
+  type?: TunnelType;
+  remoteEndpoint?: string | null;
+  interfaceName?: string | null;
+  localInterfaceId?: string | null;
+  routeGroup?: string;
+  status?: TunnelStatus;
+  lockable?: boolean;
+  notes?: string | null;
+}
+
+export interface UpdateTunnelRequest {
+  serverId?: string;
+  name?: string;
+  type?: TunnelType;
+  remoteEndpoint?: string | null;
+  interfaceName?: string | null;
+  localInterfaceId?: string | null;
+  routeGroup?: string;
+  status?: TunnelStatus;
+  lockable?: boolean;
+  notes?: string | null;
+}
+
 export interface StoreServerCredentialResponse {
   server: AdminServerDetail;
   credential: AdminServerCredentialSummary;
@@ -1760,6 +1850,14 @@ export interface AdminServersResponse {
 
 export interface AdminOutboundsResponse {
   outbounds: AdminOutboundSummary[];
+}
+
+export interface AdminServerInterfacesResponse {
+  interfaces: AdminServerInterfaceSummary[];
+}
+
+export interface AdminTunnelsResponse {
+  tunnels: AdminTunnelSummary[];
 }
 
 export interface RouteFailoverEventsResponse {

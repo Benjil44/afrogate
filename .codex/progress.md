@@ -809,3 +809,16 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added PostgreSQL migration `0012_tunnels_interfaces.sql` plus Drizzle schema for `server_interfaces` and `tunnels`.
+- Added guarded admin CRUD APIs for server interfaces and tunnels, including audit log entries and ownership checks so linked interfaces cannot silently cross servers.
+- Added shared TypeScript contracts for interface/tunnel summaries and list responses.
+- Bound the dashboard tunnel panel to `/api/admin/tunnels` rows with localized empty states and sample fallback when the tunnel API is unavailable.
+- Updated docs, checklist, memory, and dashboard coverage notes to mark tunnel/interface CRUD complete while keeping this slice inventory-only and non-mutating.
+- Bumped AfroGate to `0.57.0` for tunnel/interface inventory management.
+- Applied PostgreSQL migrations through `0012_tunnels_interfaces.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified `0.57.0` with `npm run version:check`.
+- Verified tunnel/interface contracts and dashboard rendering with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
