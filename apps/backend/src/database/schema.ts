@@ -509,6 +509,43 @@ export const clientConfigs = pgTable(
   }),
 );
 
+export const clientRoutePreferences = pgTable(
+  'client_route_preferences',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    routeGroup: text('route_group').notNull().default('main'),
+    mode: text('mode').notNull().default('auto'),
+    detectedCountryCode: text('detected_country_code'),
+    detectedCountrySource: text('detected_country_source'),
+    preferredExitCountryCode: text('preferred_exit_country_code'),
+    preferredOutboundId: uuid('preferred_outbound_id').references(() => outbounds.id, { onDelete: 'set null' }),
+    scoreProfile: text('score_profile').notNull().default('balanced'),
+    autoDetectCountry: boolean('auto_detect_country').notNull().default(true),
+    allowClientOverride: boolean('allow_client_override').notNull().default(true),
+    routeLocked: boolean('route_locked').notNull().default(false),
+    stickySessionProtection: boolean('sticky_session_protection').notNull().default(true),
+    lastDetectedAt: timestamp('last_detected_at', { withTimezone: true }),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clientRouteIdx: uniqueIndex('client_route_preferences_client_route_unique').on(table.clientConfigId, table.routeGroup),
+    preferredCountryIdx: index('client_route_preferences_preferred_country_idx').on(
+      table.routeGroup,
+      table.preferredExitCountryCode,
+    ),
+    detectedCountryIdx: index('client_route_preferences_detected_country_idx').on(
+      table.routeGroup,
+      table.detectedCountryCode,
+    ),
+    preferredOutboundIdx: index('client_route_preferences_preferred_outbound_idx').on(table.preferredOutboundId),
+  }),
+);
+
 export const billingSettings = pgTable('billing_settings', {
   settingKey: text('setting_key').primaryKey(),
   currency: text('currency').notNull().default('toman'),
@@ -786,10 +823,22 @@ export const customerAccountsRelations = relations(customerAccounts, ({ many }) 
   paymentOrders: many(paymentOrders),
 }));
 
-export const clientConfigsRelations = relations(clientConfigs, ({ one }) => ({
+export const clientConfigsRelations = relations(clientConfigs, ({ many, one }) => ({
   customerAccount: one(customerAccounts, {
     fields: [clientConfigs.customerAccountId],
     references: [customerAccounts.id],
+  }),
+  routePreferences: many(clientRoutePreferences),
+}));
+
+export const clientRoutePreferencesRelations = relations(clientRoutePreferences, ({ one }) => ({
+  clientConfig: one(clientConfigs, {
+    fields: [clientRoutePreferences.clientConfigId],
+    references: [clientConfigs.id],
+  }),
+  preferredOutbound: one(outbounds, {
+    fields: [clientRoutePreferences.preferredOutboundId],
+    references: [outbounds.id],
   }),
 }));
 

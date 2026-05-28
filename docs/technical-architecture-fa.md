@@ -133,6 +133,30 @@ Current implementation starts Phase 2 with `customer_accounts` instead of a sing
 - created_at
 - updated_at
 
+### client_route_preferences
+
+Client VPN routing preferences are separate from admin/seller operations. Each client config can have one preference row per route group:
+
+- id
+- client_config_id
+- route_group
+- mode: `auto`, `country`, or `outbound`
+- detected_country_code nullable, coarse ISO country only
+- detected_country_source nullable: `client_app`, `edge_ip`, `admin`, or `unknown`
+- preferred_exit_country_code nullable
+- preferred_outbound_id nullable
+- score_profile: balanced, stability, throughput, gaming, TCP, UDP, QUIC, DNS, or WireGuard
+- auto_detect_country
+- allow_client_override
+- route_locked
+- sticky_session_protection
+- last_detected_at
+- created_by
+- created_at
+- updated_at
+
+The client route preference row stores no client IP history and no traffic destinations. When a preference is saved, AfroGate also maintains a matching `route_assignments` key like `client_config:<id>` so the existing route decision engine can later evaluate the client separately from the global default assignment.
+
 ### packages
 
 - id

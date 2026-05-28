@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.69.0 - 2026-05-28
+
+- Added `client_route_preferences` for per-client automatic, country-preferred, or explicit outbound/server routing preferences.
+- Added guarded admin APIs to read and update a client config route preference, with audit logging and per-client route assignment keys.
+- Documented the separated seller/admin and VPN-client UX boundary, including coarse country-only detection without client IP history.
+
 ## 0.68.0 - 2026-05-28
 
 - Added payment orders with package/price/volume snapshots and pending, paid, failed, and refunded lifecycle states.

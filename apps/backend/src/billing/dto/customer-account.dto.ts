@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -13,6 +14,19 @@ import {
 export const CUSTOMER_ACCOUNT_STATUSES = ['active', 'suspended', 'disabled'] as const;
 export const CUSTOMER_QUOTA_SCOPES = ['account_shared', 'per_client'] as const;
 export const CLIENT_CONFIG_STATUSES = ['active', 'limited', 'disabled', 'expired'] as const;
+export const CLIENT_ROUTE_PREFERENCE_MODES = ['auto', 'country', 'outbound'] as const;
+export const CLIENT_ROUTE_DETECTION_SOURCES = ['client_app', 'edge_ip', 'admin', 'unknown'] as const;
+export const CLIENT_ROUTE_SCORE_PROFILES = [
+  'balanced',
+  'stability',
+  'throughput',
+  'gaming',
+  'tcp',
+  'udp',
+  'quic',
+  'dns',
+  'wireguard',
+] as const;
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 
@@ -243,4 +257,53 @@ export class UpdateClientConfigDto {
   @IsString()
   @MaxLength(500)
   notes?: string | null;
+}
+
+export class UpsertClientRoutePreferenceDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  routeGroup?: string;
+
+  @IsOptional()
+  @IsIn(CLIENT_ROUTE_PREFERENCE_MODES)
+  mode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  detectedCountryCode?: string | null;
+
+  @IsOptional()
+  @IsIn(CLIENT_ROUTE_DETECTION_SOURCES)
+  detectedCountrySource?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  preferredExitCountryCode?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  preferredOutboundId?: string | null;
+
+  @IsOptional()
+  @IsIn(CLIENT_ROUTE_SCORE_PROFILES)
+  scoreProfile?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  autoDetectCountry?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowClientOverride?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  routeLocked?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  stickySessionProtection?: boolean;
 }

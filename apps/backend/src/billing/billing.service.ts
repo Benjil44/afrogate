@@ -10,6 +10,7 @@ import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsSummary,
   AdminClientConfigSummary,
+  AdminClientRoutePreferenceSummary,
   AdminCustomerAccountDetail,
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
@@ -24,6 +25,7 @@ import {
   CreateCustomerAccountDto,
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
+  UpsertClientRoutePreferenceDto,
 } from './dto/customer-account.dto';
 import {
   CreatePaymentMethodDto,
@@ -70,6 +72,67 @@ interface ClientConfigRow {
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
+  routePreferenceId?: string | null;
+  routePreferenceRouteGroup?: string | null;
+  routePreferenceMode?: string | null;
+  routePreferenceDetectedCountryCode?: string | null;
+  routePreferenceDetectedCountrySource?: string | null;
+  routePreferencePreferredExitCountryCode?: string | null;
+  routePreferencePreferredOutboundId?: string | null;
+  routePreferencePreferredOutboundName?: string | null;
+  routePreferenceScoreProfile?: string | null;
+  routePreferenceAutoDetectCountry?: boolean | null;
+  routePreferenceAllowClientOverride?: boolean | null;
+  routePreferenceRouteLocked?: boolean | null;
+  routePreferenceStickySessionProtection?: boolean | null;
+  routePreferenceLastDetectedAt?: Date | null;
+  routePreferenceCreatedBy?: string | null;
+  routePreferenceCreatedAt?: Date | null;
+  routePreferenceUpdatedAt?: Date | null;
+}
+
+interface ClientRoutePreferenceRow {
+  id: string;
+  clientConfigId: string;
+  customerAccountId: string;
+  clientLabel: string;
+  routeGroup: string;
+  mode: string;
+  detectedCountryCode: string | null;
+  detectedCountrySource: string | null;
+  preferredExitCountryCode: string | null;
+  preferredOutboundId: string | null;
+  preferredOutboundName: string | null;
+  preferredOutboundRouteGroup: string | null;
+  scoreProfile: string;
+  autoDetectCountry: boolean;
+  allowClientOverride: boolean;
+  routeLocked: boolean;
+  stickySessionProtection: boolean;
+  lastDetectedAt: Date | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ClientRoutePreferencePatch {
+  mode: string;
+  detectedCountryCode: string | null;
+  detectedCountrySource: string | null;
+  preferredExitCountryCode: string | null;
+  preferredOutboundId: string | null;
+  scoreProfile: string;
+  autoDetectCountry: boolean;
+  allowClientOverride: boolean;
+  routeLocked: boolean;
+  stickySessionProtection: boolean;
+  lastDetectedAt: Date | null;
+}
+
+interface PreferredOutboundRow {
+  id: string;
+  name: string;
+  routeGroup: string;
 }
 
 interface BillingSettingsRow {
@@ -950,6 +1013,120 @@ export class BillingService {
     }
   }
 
+  async getClientRoutePreference(
+    clientConfigId: string,
+    routeGroupInput?: string,
+  ): Promise<AdminClientRoutePreferenceSummary> {
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const result = await this.database.query<ClientRoutePreferenceRow>(
+      this.clientRoutePreferenceSelectSql(true),
+      [clientConfigId, routeGroup],
+    );
+    const row = result.rows[0];
+
+    if (row) return this.mapClientRoutePreference(row);
+
+    const client = await this.getClientConfigRow(clientConfigId);
+    return this.defaultClientRoutePreference(client, routeGroup);
+  }
+
+  async upsertClientRoutePreference(
+    clientConfigId: string,
+    dto: UpsertClientRoutePreferenceDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminClientRoutePreferenceSummary> {
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+
+    await this.database.transaction(async (executor) => {
+      const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
+      const existing = await this.getClientRoutePreferenceRowForUpdate(executor, clientConfigId, routeGroup);
+      const patch = this.buildClientRoutePreferencePatch(dto, existing ?? null);
+
+      if (patch.preferredOutboundId) {
+        await this.ensurePreferredOutbound(executor, patch.preferredOutboundId, routeGroup);
+      }
+
+      if (patch.mode === 'country' && !patch.preferredExitCountryCode) {
+        throw new BadRequestException('preferredExitCountryCode is required for country route mode');
+      }
+
+      if (patch.mode === 'outbound' && !patch.preferredOutboundId) {
+        throw new BadRequestException('preferredOutboundId is required for outbound route mode');
+      }
+
+      if (patch.routeLocked && !patch.preferredOutboundId) {
+        throw new BadRequestException('routeLocked requires preferredOutboundId so the locked route is explicit');
+      }
+
+      const result = await executor.query<{ id: string }>(
+        `
+          INSERT INTO client_route_preferences (
+            client_config_id, route_group, mode, detected_country_code,
+            detected_country_source, preferred_exit_country_code, preferred_outbound_id,
+            score_profile, auto_detect_country, allow_client_override, route_locked,
+            sticky_session_protection, last_detected_at, created_by
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          ON CONFLICT (client_config_id, route_group) DO UPDATE
+          SET mode = EXCLUDED.mode,
+              detected_country_code = EXCLUDED.detected_country_code,
+              detected_country_source = EXCLUDED.detected_country_source,
+              preferred_exit_country_code = EXCLUDED.preferred_exit_country_code,
+              preferred_outbound_id = EXCLUDED.preferred_outbound_id,
+              score_profile = EXCLUDED.score_profile,
+              auto_detect_country = EXCLUDED.auto_detect_country,
+              allow_client_override = EXCLUDED.allow_client_override,
+              route_locked = EXCLUDED.route_locked,
+              sticky_session_protection = EXCLUDED.sticky_session_protection,
+              last_detected_at = EXCLUDED.last_detected_at,
+              updated_at = now()
+          RETURNING id
+        `,
+        [
+          clientConfigId,
+          routeGroup,
+          patch.mode,
+          patch.detectedCountryCode,
+          patch.detectedCountrySource,
+          patch.preferredExitCountryCode,
+          patch.preferredOutboundId,
+          patch.scoreProfile,
+          patch.autoDetectCountry,
+          patch.allowClientOverride,
+          patch.routeLocked,
+          patch.stickySessionProtection,
+          patch.lastDetectedAt,
+          actor?.id ?? null,
+        ],
+      );
+
+      await this.upsertClientRouteAssignment(executor, client, routeGroup, patch);
+
+      await this.audit.record(
+        actor,
+        existing ? 'client_route_preference.update' : 'client_route_preference.create',
+        'client_route_preference',
+        result.rows[0].id,
+        {
+          clientConfigId,
+          customerAccountId: client.customerAccountId,
+          routeGroup,
+          assignmentKey: this.clientRouteAssignmentKey(clientConfigId),
+          mode: patch.mode,
+          scoreProfile: patch.scoreProfile,
+          detectedCountryStored: Boolean(patch.detectedCountryCode),
+          preferredExitCountryCode: patch.preferredExitCountryCode,
+          preferredOutboundId: patch.preferredOutboundId,
+          routeLocked: patch.routeLocked,
+          stickySessionProtection: patch.stickySessionProtection,
+        },
+        executor,
+      );
+    });
+
+    return this.getClientRoutePreference(clientConfigId, routeGroup);
+  }
+
   normalizeLimit(input: string | undefined, fallback: number, max: number): number {
     const value = Number(input);
 
@@ -1324,22 +1501,41 @@ export class BillingService {
     const result = await this.database.query<ClientConfigRow>(
       `
         SELECT
-          id,
-          customer_account_id AS "customerAccountId",
-          label,
-          protocol,
-          external_panel AS "externalPanel",
-          external_panel_user_id AS "externalPanelUserId",
-          external_panel_config_id AS "externalPanelConfigId",
-          device_limit AS "deviceLimit",
-          quota_limit_bytes AS "quotaLimitBytes",
-          used_bytes AS "usedBytes",
-          status,
-          notes,
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM client_configs
-        WHERE id = $1
+          cc.id,
+          cc.customer_account_id AS "customerAccountId",
+          cc.label,
+          cc.protocol,
+          cc.external_panel AS "externalPanel",
+          cc.external_panel_user_id AS "externalPanelUserId",
+          cc.external_panel_config_id AS "externalPanelConfigId",
+          cc.device_limit AS "deviceLimit",
+          cc.quota_limit_bytes AS "quotaLimitBytes",
+          cc.used_bytes AS "usedBytes",
+          cc.status,
+          cc.notes,
+          cc.created_at AS "createdAt",
+          cc.updated_at AS "updatedAt",
+          crp.id AS "routePreferenceId",
+          crp.route_group AS "routePreferenceRouteGroup",
+          crp.mode AS "routePreferenceMode",
+          crp.detected_country_code AS "routePreferenceDetectedCountryCode",
+          crp.detected_country_source AS "routePreferenceDetectedCountrySource",
+          crp.preferred_exit_country_code AS "routePreferencePreferredExitCountryCode",
+          crp.preferred_outbound_id AS "routePreferencePreferredOutboundId",
+          po.name AS "routePreferencePreferredOutboundName",
+          crp.score_profile AS "routePreferenceScoreProfile",
+          crp.auto_detect_country AS "routePreferenceAutoDetectCountry",
+          crp.allow_client_override AS "routePreferenceAllowClientOverride",
+          crp.route_locked AS "routePreferenceRouteLocked",
+          crp.sticky_session_protection AS "routePreferenceStickySessionProtection",
+          crp.last_detected_at AS "routePreferenceLastDetectedAt",
+          crp.created_by AS "routePreferenceCreatedBy",
+          crp.created_at AS "routePreferenceCreatedAt",
+          crp.updated_at AS "routePreferenceUpdatedAt"
+        FROM client_configs cc
+        LEFT JOIN client_route_preferences crp ON crp.client_config_id = cc.id AND crp.route_group = 'main'
+        LEFT JOIN outbounds po ON po.id = crp.preferred_outbound_id
+        WHERE cc.id = $1
       `,
       [id],
     );
@@ -1366,23 +1562,42 @@ export class BillingService {
     const result = await this.database.query<ClientConfigRow>(
       `
         SELECT
-          id,
-          customer_account_id AS "customerAccountId",
-          label,
-          protocol,
-          external_panel AS "externalPanel",
-          external_panel_user_id AS "externalPanelUserId",
-          external_panel_config_id AS "externalPanelConfigId",
-          device_limit AS "deviceLimit",
-          quota_limit_bytes AS "quotaLimitBytes",
-          used_bytes AS "usedBytes",
-          status,
-          notes,
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM client_configs
-        WHERE customer_account_id = $1
-        ORDER BY created_at DESC
+          cc.id,
+          cc.customer_account_id AS "customerAccountId",
+          cc.label,
+          cc.protocol,
+          cc.external_panel AS "externalPanel",
+          cc.external_panel_user_id AS "externalPanelUserId",
+          cc.external_panel_config_id AS "externalPanelConfigId",
+          cc.device_limit AS "deviceLimit",
+          cc.quota_limit_bytes AS "quotaLimitBytes",
+          cc.used_bytes AS "usedBytes",
+          cc.status,
+          cc.notes,
+          cc.created_at AS "createdAt",
+          cc.updated_at AS "updatedAt",
+          crp.id AS "routePreferenceId",
+          crp.route_group AS "routePreferenceRouteGroup",
+          crp.mode AS "routePreferenceMode",
+          crp.detected_country_code AS "routePreferenceDetectedCountryCode",
+          crp.detected_country_source AS "routePreferenceDetectedCountrySource",
+          crp.preferred_exit_country_code AS "routePreferencePreferredExitCountryCode",
+          crp.preferred_outbound_id AS "routePreferencePreferredOutboundId",
+          po.name AS "routePreferencePreferredOutboundName",
+          crp.score_profile AS "routePreferenceScoreProfile",
+          crp.auto_detect_country AS "routePreferenceAutoDetectCountry",
+          crp.allow_client_override AS "routePreferenceAllowClientOverride",
+          crp.route_locked AS "routePreferenceRouteLocked",
+          crp.sticky_session_protection AS "routePreferenceStickySessionProtection",
+          crp.last_detected_at AS "routePreferenceLastDetectedAt",
+          crp.created_by AS "routePreferenceCreatedBy",
+          crp.created_at AS "routePreferenceCreatedAt",
+          crp.updated_at AS "routePreferenceUpdatedAt"
+        FROM client_configs cc
+        LEFT JOIN client_route_preferences crp ON crp.client_config_id = cc.id AND crp.route_group = 'main'
+        LEFT JOIN outbounds po ON po.id = crp.preferred_outbound_id
+        WHERE cc.customer_account_id = $1
+        ORDER BY cc.created_at DESC
       `,
       [customerAccountId],
     );
@@ -1418,6 +1633,35 @@ export class BillingService {
     if (!result.rows.length) throw new NotFoundException('Customer account not found');
   }
 
+  private async getClientConfigRow(id: string): Promise<ClientConfigRow> {
+    const result = await this.database.query<ClientConfigRow>(
+      `
+        SELECT
+          id,
+          customer_account_id AS "customerAccountId",
+          label,
+          protocol,
+          external_panel AS "externalPanel",
+          external_panel_user_id AS "externalPanelUserId",
+          external_panel_config_id AS "externalPanelConfigId",
+          device_limit AS "deviceLimit",
+          quota_limit_bytes AS "quotaLimitBytes",
+          used_bytes AS "usedBytes",
+          status,
+          notes,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM client_configs
+        WHERE id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Client config not found');
+    return row;
+  }
+
   private async getClientConfigRowForUpdate(executor: DatabaseQueryExecutor, id: string): Promise<ClientConfigRow> {
     const result = await executor.query<ClientConfigRow>(
       `
@@ -1445,6 +1689,74 @@ export class BillingService {
     const row = result.rows[0];
 
     if (!row) throw new NotFoundException('Client config not found');
+    return row;
+  }
+
+  private async getClientRoutePreferenceRowForUpdate(
+    executor: DatabaseQueryExecutor,
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientRoutePreferenceRow | null> {
+    const result = await executor.query<ClientRoutePreferenceRow>(
+      `${this.clientRoutePreferenceSelectSql(false)} FOR UPDATE OF crp`,
+      [clientConfigId, routeGroup],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private clientRoutePreferenceSelectSql(includeMissingClient = false): string {
+    const joinType = includeMissingClient ? 'LEFT JOIN' : 'JOIN';
+    return `
+      SELECT
+        crp.id,
+        cc.id AS "clientConfigId",
+        cc.customer_account_id AS "customerAccountId",
+        cc.label AS "clientLabel",
+        crp.route_group AS "routeGroup",
+        crp.mode,
+        crp.detected_country_code AS "detectedCountryCode",
+        crp.detected_country_source AS "detectedCountrySource",
+        crp.preferred_exit_country_code AS "preferredExitCountryCode",
+        crp.preferred_outbound_id AS "preferredOutboundId",
+        po.name AS "preferredOutboundName",
+        po.route_group AS "preferredOutboundRouteGroup",
+        crp.score_profile AS "scoreProfile",
+        crp.auto_detect_country AS "autoDetectCountry",
+        crp.allow_client_override AS "allowClientOverride",
+        crp.route_locked AS "routeLocked",
+        crp.sticky_session_protection AS "stickySessionProtection",
+        crp.last_detected_at AS "lastDetectedAt",
+        crp.created_by AS "createdBy",
+        crp.created_at AS "createdAt",
+        crp.updated_at AS "updatedAt"
+      FROM client_route_preferences crp
+      ${joinType} client_configs cc ON cc.id = crp.client_config_id
+      LEFT JOIN outbounds po ON po.id = crp.preferred_outbound_id
+      WHERE crp.client_config_id = $1 AND crp.route_group = $2
+    `;
+  }
+
+  private async ensurePreferredOutbound(
+    executor: DatabaseQueryExecutor,
+    outboundId: string,
+    routeGroup: string,
+  ): Promise<PreferredOutboundRow> {
+    const result = await executor.query<PreferredOutboundRow>(
+      `
+        SELECT id, name, route_group AS "routeGroup"
+        FROM outbounds
+        WHERE id = $1
+      `,
+      [outboundId],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Preferred outbound not found');
+    if (row.routeGroup !== routeGroup) {
+      throw new BadRequestException('Preferred outbound must belong to the same route group');
+    }
+
     return row;
   }
 
@@ -1589,9 +1901,217 @@ export class BillingService {
       remainingBytes: this.remainingBytes(effectiveQuotaLimitBytes, usedBytes),
       status: row.status,
       notes: row.notes,
+      routePreference: this.mapClientRoutePreferenceFromClientRow(row),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+  }
+
+  private mapClientRoutePreference(row: ClientRoutePreferenceRow): AdminClientRoutePreferenceSummary {
+    return {
+      id: row.id,
+      clientConfigId: row.clientConfigId,
+      customerAccountId: row.customerAccountId,
+      routeGroup: row.routeGroup,
+      assignmentKey: this.clientRouteAssignmentKey(row.clientConfigId),
+      mode: row.mode,
+      detectedCountryCode: row.detectedCountryCode,
+      detectedCountrySource: row.detectedCountrySource,
+      preferredExitCountryCode: row.preferredExitCountryCode,
+      preferredOutboundId: row.preferredOutboundId,
+      preferredOutboundName: row.preferredOutboundName,
+      scoreProfile: row.scoreProfile,
+      autoDetectCountry: row.autoDetectCountry,
+      allowClientOverride: row.allowClientOverride,
+      routeLocked: row.routeLocked,
+      stickySessionProtection: row.stickySessionProtection,
+      lastDetectedAt: row.lastDetectedAt?.toISOString() ?? null,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapClientRoutePreferenceFromClientRow(row: ClientConfigRow): AdminClientRoutePreferenceSummary | null {
+    if (!row.routePreferenceId || !row.routePreferenceRouteGroup || !row.routePreferenceMode) return null;
+
+    return {
+      id: row.routePreferenceId,
+      clientConfigId: row.id,
+      customerAccountId: row.customerAccountId,
+      routeGroup: row.routePreferenceRouteGroup,
+      assignmentKey: this.clientRouteAssignmentKey(row.id),
+      mode: row.routePreferenceMode,
+      detectedCountryCode: row.routePreferenceDetectedCountryCode ?? null,
+      detectedCountrySource: row.routePreferenceDetectedCountrySource ?? null,
+      preferredExitCountryCode: row.routePreferencePreferredExitCountryCode ?? null,
+      preferredOutboundId: row.routePreferencePreferredOutboundId ?? null,
+      preferredOutboundName: row.routePreferencePreferredOutboundName ?? null,
+      scoreProfile: row.routePreferenceScoreProfile ?? 'balanced',
+      autoDetectCountry: row.routePreferenceAutoDetectCountry ?? true,
+      allowClientOverride: row.routePreferenceAllowClientOverride ?? true,
+      routeLocked: row.routePreferenceRouteLocked ?? false,
+      stickySessionProtection: row.routePreferenceStickySessionProtection ?? true,
+      lastDetectedAt: row.routePreferenceLastDetectedAt?.toISOString() ?? null,
+      createdBy: row.routePreferenceCreatedBy ?? null,
+      createdAt: row.routePreferenceCreatedAt?.toISOString() ?? null,
+      updatedAt: row.routePreferenceUpdatedAt?.toISOString() ?? null,
+    };
+  }
+
+  private defaultClientRoutePreference(
+    row: ClientConfigRow,
+    routeGroup: string,
+  ): AdminClientRoutePreferenceSummary {
+    return {
+      id: null,
+      clientConfigId: row.id,
+      customerAccountId: row.customerAccountId,
+      routeGroup,
+      assignmentKey: this.clientRouteAssignmentKey(row.id),
+      mode: 'auto',
+      detectedCountryCode: null,
+      detectedCountrySource: null,
+      preferredExitCountryCode: null,
+      preferredOutboundId: null,
+      preferredOutboundName: null,
+      scoreProfile: 'balanced',
+      autoDetectCountry: true,
+      allowClientOverride: true,
+      routeLocked: false,
+      stickySessionProtection: true,
+      lastDetectedAt: null,
+      createdBy: null,
+      createdAt: null,
+      updatedAt: null,
+    };
+  }
+
+  private buildClientRoutePreferencePatch(
+    dto: UpsertClientRoutePreferenceDto,
+    existing: ClientRoutePreferenceRow | null,
+  ): ClientRoutePreferencePatch {
+    const mode = dto.mode ?? existing?.mode ?? 'auto';
+    const detectedCountryCode =
+      dto.detectedCountryCode !== undefined
+        ? this.normalizeCountryCode(dto.detectedCountryCode)
+        : existing?.detectedCountryCode ?? null;
+    const detectedCountrySource =
+      dto.detectedCountrySource !== undefined
+        ? this.normalizeDetectionSource(dto.detectedCountrySource)
+        : existing?.detectedCountrySource ?? null;
+    const preferredExitCountryCode =
+      dto.preferredExitCountryCode !== undefined
+        ? this.normalizeCountryCode(dto.preferredExitCountryCode)
+        : existing?.preferredExitCountryCode ?? null;
+    const preferredOutboundId =
+      dto.preferredOutboundId !== undefined
+        ? this.normalizeNullableString(dto.preferredOutboundId)
+        : existing?.preferredOutboundId ?? null;
+    const scoreProfile = dto.scoreProfile ?? existing?.scoreProfile ?? 'balanced';
+    const routeLocked = dto.routeLocked ?? (mode === 'outbound' ? true : dto.mode ? false : existing?.routeLocked ?? false);
+
+    return {
+      mode,
+      detectedCountryCode,
+      detectedCountrySource: detectedCountryCode ? detectedCountrySource ?? 'admin' : detectedCountrySource,
+      preferredExitCountryCode,
+      preferredOutboundId,
+      scoreProfile,
+      autoDetectCountry: dto.autoDetectCountry ?? existing?.autoDetectCountry ?? true,
+      allowClientOverride: dto.allowClientOverride ?? existing?.allowClientOverride ?? true,
+      routeLocked: mode === 'outbound' ? true : routeLocked,
+      stickySessionProtection: dto.stickySessionProtection ?? existing?.stickySessionProtection ?? true,
+      lastDetectedAt:
+        dto.detectedCountryCode !== undefined
+          ? detectedCountryCode
+            ? new Date()
+            : null
+          : existing?.lastDetectedAt ?? null,
+    };
+  }
+
+  private async upsertClientRouteAssignment(
+    executor: DatabaseQueryExecutor,
+    client: ClientConfigRow,
+    routeGroup: string,
+    preference: ClientRoutePreferencePatch,
+  ): Promise<void> {
+    const assignmentKey = this.clientRouteAssignmentKey(client.id);
+    const currentOutboundId = preference.mode === 'outbound' ? preference.preferredOutboundId : null;
+    const lockedOutboundId = preference.routeLocked ? preference.preferredOutboundId : null;
+    const protocolProfile = this.mapClientScoreProfileToProtocol(preference.scoreProfile);
+    const speedProfile = this.mapClientScoreProfileToSpeed(preference.scoreProfile);
+
+    await executor.query(
+      `
+        INSERT INTO route_assignments (
+          route_group, assignment_key, assignment_label, current_outbound_id,
+          locked_outbound_id, auto_route_enabled, route_locked,
+          protocol_profile, speed_profile, hysteresis_score_delta, cooldown_seconds
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 15, 180)
+        ON CONFLICT (route_group, assignment_key) DO UPDATE
+        SET assignment_label = EXCLUDED.assignment_label,
+            current_outbound_id = EXCLUDED.current_outbound_id,
+            locked_outbound_id = EXCLUDED.locked_outbound_id,
+            auto_route_enabled = EXCLUDED.auto_route_enabled,
+            route_locked = EXCLUDED.route_locked,
+            protocol_profile = EXCLUDED.protocol_profile,
+            speed_profile = EXCLUDED.speed_profile,
+            updated_at = now()
+      `,
+      [
+        routeGroup,
+        assignmentKey,
+        client.label,
+        currentOutboundId,
+        lockedOutboundId,
+        preference.mode !== 'outbound',
+        preference.routeLocked,
+        protocolProfile,
+        speedProfile,
+      ],
+    );
+  }
+
+  private normalizeRouteGroup(value: string | undefined): string {
+    const normalized = this.normalizeNullableString(value) ?? 'main';
+    if (normalized.length > 80) throw new BadRequestException('routeGroup is too long');
+    return normalized;
+  }
+
+  private normalizeCountryCode(value: string | null | undefined): string | null {
+    const normalized = this.normalizeNullableString(value)?.toUpperCase() ?? null;
+    if (!normalized) return null;
+    if (!/^[A-Z]{2}$/.test(normalized)) {
+      throw new BadRequestException('Country code must use two-letter ISO format, such as IR or DE');
+    }
+    return normalized;
+  }
+
+  private normalizeDetectionSource(value: string | null | undefined): string | null {
+    const normalized = this.normalizeNullableString(value);
+    if (!normalized) return null;
+    if (!['client_app', 'edge_ip', 'admin', 'unknown'].includes(normalized)) {
+      throw new BadRequestException('Invalid country detection source');
+    }
+    return normalized;
+  }
+
+  private mapClientScoreProfileToProtocol(scoreProfile: string): string {
+    if (['gaming', 'tcp', 'udp', 'quic', 'dns', 'wireguard'].includes(scoreProfile)) return scoreProfile;
+    return 'balanced';
+  }
+
+  private mapClientScoreProfileToSpeed(scoreProfile: string): string {
+    if (scoreProfile === 'throughput') return 'highSpeed';
+    if (scoreProfile === 'gaming') return 'gaming';
+    return 'balanced';
+  }
+
+  private clientRouteAssignmentKey(clientConfigId: string): string {
+    return `client_config:${clientConfigId}`;
   }
 
   private hashPaidNumberIfPresent(value: string | null | undefined): string | null {

@@ -14,6 +14,7 @@ import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsResponse,
   AdminClientConfigSummary,
+  AdminClientRoutePreferenceResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
   AdminPaymentMethodSummary,
@@ -33,6 +34,7 @@ import {
   CreateCustomerAccountDto,
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
+  UpsertClientRoutePreferenceDto,
 } from './dto/customer-account.dto';
 import {
   CreatePaymentMethodDto,
@@ -266,5 +268,28 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminClientConfigSummary> {
     return this.billingService.updateClientConfig(id, payload, request.actor);
+  }
+
+  @Get('client-configs/:id/route-preference')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async getClientRoutePreference(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Query('routeGroup') routeGroup?: string,
+  ): Promise<AdminClientRoutePreferenceResponse> {
+    return {
+      routePreference: await this.billingService.getClientRoutePreference(id, routeGroup),
+    };
+  }
+
+  @Patch('client-configs/:id/route-preference')
+  @Roles('admin')
+  async upsertClientRoutePreference(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpsertClientRoutePreferenceDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminClientRoutePreferenceResponse> {
+    return {
+      routePreference: await this.billingService.upsertClientRoutePreference(id, payload, request.actor),
+    };
   }
 }

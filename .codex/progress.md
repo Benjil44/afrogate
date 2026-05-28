@@ -1013,6 +1013,22 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the client route preference foundation for the future VPN mobile/client UX.
+- Added `client_route_preferences` with per-client auto/country/outbound mode, coarse detected country, preferred exit country, optional preferred outbound, score profile, route lock, and sticky-session protection.
+- Added guarded admin APIs to read and update a client config route preference under `/api/admin/client-configs/:id/route-preference`.
+- Saving a client route preference now maintains a per-client `route_assignments` key shaped as `client_config:<id>` so route decisions can later be evaluated per VPN client instead of only globally.
+- Documented that admin/seller UX and VPN-client UX are separate, and that client country detection must store only coarse country codes without client IP history or user destinations.
+- Bumped AfroGate to `0.69.0` for the client route preference schema/API contract.
+- Checklist completion after this slice is `193 / 222` items, or `86.9%` complete with `13.1%` remaining.
+- Verified the client route preference migration with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified authenticated local API smoke by creating a dev-only customer/client config, reading the default route preference, saving a country-mode preference from detected `IR` to preferred exit `DE`, and confirming the per-client route assignment uses the `gaming` profile.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added the Phase 2 payment-order lifecycle foundation with `payment_orders`.
 - Added guarded admin APIs to list, create, inspect, and update payment orders under `/api/admin/payment-orders`.
 - Payment orders now snapshot the customer account, volume package, payment method, provider, amount, currency, volume, duration, and price-per-GB at creation time.

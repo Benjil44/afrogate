@@ -55,6 +55,7 @@
 - نمایش remaining volume.
 - اتصال Telegram bot برای مشاهده حجم و شارژ.
 - ثبت paid number با privacy protection.
+- Separate seller/admin UX from VPN client UX; mobile/client APIs should manage only client-scoped profile, package, usage, and route preference actions.
 
 ## فاز 3: Auto Route
 
@@ -65,6 +66,7 @@
 - protocol-aware route decision for TCP-heavy, UDP-heavy, QUIC, DNS-sensitive, low-speed, and high-speed profiles.
 - cooldown/hysteresis برای جلوگیری از route flapping.
 - نمایش reason انتخاب مسیر.
+- Per-client route preferences for automatic country detection, preferred exit country, and explicit server/outbound choice without exposing admin controls.
 
 ## فاز 4: Integration با سیستم فعلی
 

@@ -60,6 +60,8 @@ Routing must be fast, explainable, and stable.
 - Score routes by protocol profile where useful: TCP, UDP, QUIC/HTTP3, DNS, and WireGuard/tunnel health can differ on the same server.
 - Keep smart-route profile recommendations advisory and synthetic-signal-based. Do not infer a user's actual destinations or traffic contents to choose TCP, UDP, QUIC, DNS, WireGuard, gaming, stability, or throughput policy.
 - Keep protocol probes privacy-safe: use synthetic configured targets, do not inspect user payloads, and do not store user destination history.
+- Keep client VPN route preferences separate from admin/seller workflows. Client country detection may store only coarse ISO country codes plus a detection source and timestamp; do not store client IP history or traffic destinations for this feature.
+- Let client apps request automatic country detection, a preferred exit country, or a specific server/outbound, but exact server/outbound choice must be explicit and lock-aware so games and active sessions are not silently moved.
 - Classify route use cases by speed profile. Low-speed paths should favor stability and low loss; high-speed paths should favor throughput headroom without accepting bad jitter/loss.
 - Keep the latency-sensitive/gaming profile available before production auto-routing. This advisory profile prioritizes stable latency, low jitter, low packet loss, route consistency, and fast congestion avoidance over raw bandwidth or speedtest throughput.
 - For gaming, UDP, QUIC, WireGuard, and stability-sensitive profiles, normal route improvements must prefer sticky sessions and new-session-only drains over mid-session route changes; emergency switching is reserved for failing current routes where staying put is worse than possible session reset.

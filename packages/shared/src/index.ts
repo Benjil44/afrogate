@@ -187,6 +187,31 @@ export interface AdminUsersResponse {
 export type CustomerAccountStatus = 'active' | 'suspended' | 'disabled';
 export type CustomerQuotaScope = 'account_shared' | 'per_client';
 export type ClientConfigStatus = 'active' | 'limited' | 'disabled' | 'expired';
+export type ClientRoutePreferenceMode = 'auto' | 'country' | 'outbound';
+export type ClientRouteCountryDetectionSource = 'client_app' | 'edge_ip' | 'admin' | 'unknown';
+
+export interface AdminClientRoutePreferenceSummary {
+  id?: string | null;
+  clientConfigId: string;
+  customerAccountId: string;
+  routeGroup: string;
+  assignmentKey: string;
+  mode: ClientRoutePreferenceMode | string;
+  detectedCountryCode?: string | null;
+  detectedCountrySource?: ClientRouteCountryDetectionSource | string | null;
+  preferredExitCountryCode?: string | null;
+  preferredOutboundId?: string | null;
+  preferredOutboundName?: string | null;
+  scoreProfile: RouteScoreProfile | string;
+  autoDetectCountry: boolean;
+  allowClientOverride: boolean;
+  routeLocked: boolean;
+  stickySessionProtection: boolean;
+  lastDetectedAt?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
 
 export interface AdminClientConfigSummary {
   id: string;
@@ -203,6 +228,7 @@ export interface AdminClientConfigSummary {
   remainingBytes?: number | null;
   status: ClientConfigStatus | string;
   notes?: string | null;
+  routePreference?: AdminClientRoutePreferenceSummary | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -281,6 +307,20 @@ export interface UpdateClientConfigRequest {
   usedBytes?: number;
   status?: ClientConfigStatus;
   notes?: string | null;
+}
+
+export interface UpsertClientRoutePreferenceRequest {
+  routeGroup?: string;
+  mode?: ClientRoutePreferenceMode;
+  detectedCountryCode?: string | null;
+  detectedCountrySource?: ClientRouteCountryDetectionSource | null;
+  preferredExitCountryCode?: string | null;
+  preferredOutboundId?: string | null;
+  scoreProfile?: RouteScoreProfile | string;
+  autoDetectCountry?: boolean;
+  allowClientOverride?: boolean;
+  routeLocked?: boolean;
+  stickySessionProtection?: boolean;
 }
 
 export type VolumePackageStatus = 'active' | 'archived';
@@ -2140,6 +2180,10 @@ export interface AdminServersResponse {
 
 export interface AdminCustomerAccountsResponse {
   accounts: AdminCustomerAccountSummary[];
+}
+
+export interface AdminClientRoutePreferenceResponse {
+  routePreference: AdminClientRoutePreferenceSummary;
 }
 
 export interface AdminBillingSettingsResponse {

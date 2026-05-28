@@ -167,10 +167,12 @@
 - [x] Shared account GB quota with optional per-client/device caps.
 - [x] Extensible payment method catalog with PayPal as a first-class provider.
 - [x] Payment order lifecycle with pending/paid/failed/refunded states.
+- [x] Separate seller/admin and VPN-client UX boundaries in the backend contract.
 - [ ] PayPal checkout capture adapter and webhook verification.
 - [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
 - [ ] Usage accounting.
 - [ ] Remaining volume display.
+- [ ] Client-scoped mobile API/auth for VPN users.
 - [ ] Telegram bot user commands.
 
 ## Phase 3: Auto Route
@@ -206,6 +208,9 @@
 - [x] Transparent route switch engine with sticky sessions, route locks, cooldown, and drain-safe apply behavior.
 - [x] Hysteresis and cooldown.
 - [x] Route decision audit reason.
+- [x] Per-client route preference model for auto country detection, preferred exit country, and explicit server/outbound choice.
+- [ ] Route decision filtering by per-client preferred exit country and available country/server candidates.
+- [ ] Mobile client UX for automatic route, country selection, and explicit server choice.
 
 ## Phase 4: Current Panel Integration
 
