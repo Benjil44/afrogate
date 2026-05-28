@@ -18,6 +18,8 @@ import type {
   AdminCustomerAccountsResponse,
   AdminPaymentMethodSummary,
   AdminPaymentMethodsResponse,
+  AdminPaymentOrderSummary,
+  AdminPaymentOrdersResponse,
   AdminVolumePackageSummary,
   AdminVolumePackagesResponse,
 } from '@afrogate/shared';
@@ -34,9 +36,11 @@ import {
 } from './dto/customer-account.dto';
 import {
   CreatePaymentMethodDto,
+  CreatePaymentOrderDto,
   CreateVolumePackageDto,
   UpdateBillingSettingsDto,
   UpdatePaymentMethodDto,
+  UpdatePaymentOrderStatusDto,
   UpdateVolumePackageDto,
 } from './dto/billing.dto';
 
@@ -152,6 +156,53 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminPaymentMethodSummary> {
     return this.billingService.updatePaymentMethod(id, payload, request.actor);
+  }
+
+  @Get('payment-orders')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listPaymentOrders(
+    @Query('status') status?: string,
+    @Query('customerAccountId') customerAccountId?: string,
+    @Query('paymentMethodId') paymentMethodId?: string,
+    @Query('provider') provider?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminPaymentOrdersResponse> {
+    return {
+      paymentOrders: await this.billingService.listPaymentOrders({
+        status,
+        customerAccountId,
+        paymentMethodId,
+        provider,
+        limit: this.billingService.normalizeLimit(limit, 100, 500),
+      }),
+    };
+  }
+
+  @Get('payment-orders/:id')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getPaymentOrder(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminPaymentOrderSummary> {
+    return this.billingService.getPaymentOrder(id);
+  }
+
+  @Post('payment-orders')
+  @Roles('admin')
+  createPaymentOrder(
+    @Body() payload: CreatePaymentOrderDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminPaymentOrderSummary> {
+    return this.billingService.createPaymentOrder(payload, request.actor);
+  }
+
+  @Patch('payment-orders/:id/status')
+  @Roles('admin')
+  updatePaymentOrderStatus(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpdatePaymentOrderStatusDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminPaymentOrderSummary> {
+    return this.billingService.updatePaymentOrderStatus(id, payload, request.actor);
   }
 
   @Get('customer-accounts')

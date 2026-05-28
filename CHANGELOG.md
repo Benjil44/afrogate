@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.68.0 - 2026-05-28
+
+- Added payment orders with package/price/volume snapshots and pending, paid, failed, and refunded lifecycle states.
+- Added guarded admin APIs to list, create, inspect, and update payment order status with audit logging and idempotency/provider-order uniqueness.
+- Kept payment-order metadata non-secret and separated paid-order tracking from future quota allocation.
+
 ## 0.67.0 - 2026-05-28
 
 - Added billing settings, volume packages, and guarded admin APIs for package/pricing management.

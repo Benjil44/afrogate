@@ -1013,6 +1013,24 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the Phase 2 payment-order lifecycle foundation with `payment_orders`.
+- Added guarded admin APIs to list, create, inspect, and update payment orders under `/api/admin/payment-orders`.
+- Payment orders now snapshot the customer account, volume package, payment method, provider, amount, currency, volume, duration, and price-per-GB at creation time.
+- Payment order status transitions are audited and constrained to pending, paid, failed, and refunded lifecycle states.
+- Payment order metadata and payment method public config now reject secret-like metadata keys so provider secrets stay out of non-secret JSON fields.
+- Kept paid-order tracking separate from future quota allocation; usage ledger and charge allocation remain the next billing layer before customer/client volume changes.
+- Updated checklist, memory, architecture docs, enhancement docs, and security policy for payment orders.
+- Bumped AfroGate to `0.68.0` for the payment-order lifecycle schema/API contract.
+- Checklist completion after this slice is `191 / 217` items, or `88.0%` complete with `12.0%` remaining.
+- Verified the payment-order migration with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified authenticated local API lifecycle smoke by creating a dev-only customer, package, payment method, payment order, and moving the order from `pending` to `paid`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added the Phase 2 billing catalog foundation with `billing_settings`, `volume_packages`, and `payment_methods`.
 - Added guarded admin APIs for billing settings, volume packages, payment methods, and the combined billing catalog.
 - Added shared TypeScript contracts for billing settings, volume package requests/responses, payment method requests/responses, and the billing catalog.

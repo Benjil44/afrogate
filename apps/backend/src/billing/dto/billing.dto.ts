@@ -1,9 +1,22 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export const VOLUME_PACKAGE_STATUSES = ['active', 'archived'] as const;
 export const PAYMENT_METHOD_STATUSES = ['active', 'disabled'] as const;
 export const PAYMENT_CHECKOUT_MODES = ['manual', 'hosted_redirect', 'external_link', 'provider_sdk'] as const;
+export const PAYMENT_ORDER_STATUSES = ['pending', 'paid', 'failed', 'refunded'] as const;
 
 const MAX_PRICE = 1_000_000_000_000;
 const MAX_VOLUME_GB = 1_000_000;
@@ -269,4 +282,72 @@ export class UpdatePaymentMethodDto {
   @IsString()
   @MaxLength(1000)
   instructions?: string | null;
+}
+
+export class CreatePaymentOrderDto {
+  @IsUUID('4')
+  customerAccountId!: string;
+
+  @IsUUID('4')
+  volumePackageId!: string;
+
+  @IsUUID('4')
+  paymentMethodId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  providerOrderId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  checkoutUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string | null;
+}
+
+export class UpdatePaymentOrderStatusDto {
+  @IsIn(PAYMENT_ORDER_STATUSES)
+  status!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  providerOrderId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  providerCaptureId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  checkoutUrl?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string | null;
 }

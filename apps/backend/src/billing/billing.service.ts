@@ -13,6 +13,7 @@ import type {
   AdminCustomerAccountDetail,
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
+  AdminPaymentOrderSummary,
   AdminVolumePackageSummary,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
@@ -26,9 +27,11 @@ import {
 } from './dto/customer-account.dto';
 import {
   CreatePaymentMethodDto,
+  CreatePaymentOrderDto,
   CreateVolumePackageDto,
   UpdateBillingSettingsDto,
   UpdatePaymentMethodDto,
+  UpdatePaymentOrderStatusDto,
   UpdateVolumePackageDto,
 } from './dto/billing.dto';
 
@@ -114,6 +117,39 @@ interface PaymentMethodRow {
   updatedAt: Date;
 }
 
+interface PaymentOrderRow {
+  id: string;
+  customerAccountId: string;
+  customerDisplayName: string | null;
+  customerTelegramUsername: string | null;
+  volumePackageId: string | null;
+  paymentMethodId: string | null;
+  paymentMethodName: string | null;
+  paymentMethodSlug: string | null;
+  packageName: string;
+  packageSlug: string;
+  volumeBytes: string | number;
+  durationDays: number | null;
+  pricePerGb: string | number;
+  amount: string | number;
+  currency: string;
+  status: string;
+  provider: string;
+  providerOrderId: string | null;
+  providerCaptureId: string | null;
+  checkoutUrl: string | null;
+  idempotencyKey: string | null;
+  paidAt: Date | null;
+  failedAt: Date | null;
+  refundedAt: Date | null;
+  expiresAt: Date | null;
+  metadata: Record<string, unknown>;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 interface CustomerAccountFilters {
   status?: string;
   search?: string;
@@ -127,6 +163,14 @@ interface VolumePackageFilters {
 
 interface PaymentMethodFilters {
   status?: string;
+  provider?: string;
+  limit: number;
+}
+
+interface PaymentOrderFilters {
+  status?: string;
+  customerAccountId?: string;
+  paymentMethodId?: string;
   provider?: string;
   limit: number;
 }
@@ -403,7 +447,7 @@ export class BillingService {
             dto.status ?? 'active',
             dto.sortOrder ?? 1000,
             dto.supportsAutoCapture ?? provider === 'paypal',
-            JSON.stringify(dto.publicConfig ?? {}),
+            this.stringifyPublicRecord(dto.publicConfig ?? {}, 'Payment method public config'),
             this.normalizeNullableString(dto.instructions),
             actor?.id ?? null,
           ],
@@ -462,6 +506,212 @@ export class BillingService {
       return this.getPaymentMethod(id);
     } catch (error) {
       this.throwConflictIfUniqueViolation(error, 'Payment method slug already exists');
+      throw error;
+    }
+  }
+
+  async listPaymentOrders(filters: PaymentOrderFilters): Promise<AdminPaymentOrderSummary[]> {
+    const values: unknown[] = [];
+    const where: string[] = [];
+
+    if (filters.status?.trim()) {
+      values.push(filters.status.trim());
+      where.push(`po.status = $${values.length}`);
+    }
+
+    if (filters.customerAccountId?.trim()) {
+      values.push(filters.customerAccountId.trim());
+      where.push(`po.customer_account_id = $${values.length}`);
+    }
+
+    if (filters.paymentMethodId?.trim()) {
+      values.push(filters.paymentMethodId.trim());
+      where.push(`po.payment_method_id = $${values.length}`);
+    }
+
+    if (filters.provider?.trim()) {
+      values.push(this.normalizeProvider(filters.provider));
+      where.push(`po.provider = $${values.length}`);
+    }
+
+    values.push(filters.limit);
+    const result = await this.database.query<PaymentOrderRow>(
+      `
+        ${this.paymentOrderSelectSql()}
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY po.created_at DESC
+        LIMIT $${values.length}
+      `,
+      values,
+    );
+
+    return result.rows.map((row) => this.mapPaymentOrder(row));
+  }
+
+  async getPaymentOrder(id: string): Promise<AdminPaymentOrderSummary> {
+    const result = await this.database.query<PaymentOrderRow>(
+      `${this.paymentOrderSelectSql()} WHERE po.id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Payment order not found');
+    return this.mapPaymentOrder(row);
+  }
+
+  async createPaymentOrder(
+    dto: CreatePaymentOrderDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminPaymentOrderSummary> {
+    try {
+      const orderId = await this.database.transaction(async (executor) => {
+        await this.ensureCustomerAccountExists(executor, dto.customerAccountId);
+        const volumePackage = await this.getVolumePackageRowForUpdate(executor, dto.volumePackageId);
+        const paymentMethod = await this.getPaymentMethodRowForUpdate(executor, dto.paymentMethodId);
+
+        if (volumePackage.status !== 'active') throw new BadRequestException('Volume package is not active');
+        this.assertPaymentMethodAccepts(paymentMethod, volumePackage.currency, this.numberFromBigInt(volumePackage.totalPrice) ?? 0);
+
+        const providerOrderId = this.normalizeNullableString(dto.providerOrderId);
+        const checkoutUrl = this.normalizeNullableString(dto.checkoutUrl);
+        const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+        const expiresAt = this.parseOptionalDate(dto.expiresAt, 'expiresAt');
+        const metadata = dto.metadata ?? {};
+        const amount = this.numberFromBigInt(volumePackage.totalPrice) ?? 0;
+        const volumeBytes = this.numberFromBigInt(volumePackage.volumeBytes) ?? 0;
+        const pricePerGb = this.numberFromBigInt(volumePackage.pricePerGb) ?? 0;
+
+        const result = await executor.query<{ id: string }>(
+          `
+            INSERT INTO payment_orders (
+              customer_account_id, volume_package_id, payment_method_id,
+              package_name, package_slug, volume_bytes, duration_days, price_per_gb,
+              amount, currency, status, provider, provider_order_id, checkout_url,
+              idempotency_key, expires_at, metadata, notes, created_by
+            )
+            VALUES (
+              $1, $2, $3,
+              $4, $5, $6, $7, $8,
+              $9, $10, 'pending', $11, $12, $13,
+              $14, $15, $16::jsonb, $17, $18
+            )
+            RETURNING id
+          `,
+          [
+            dto.customerAccountId,
+            volumePackage.id,
+            paymentMethod.id,
+            volumePackage.name,
+            volumePackage.slug,
+            volumeBytes,
+            volumePackage.durationDays,
+            pricePerGb,
+            amount,
+            volumePackage.currency,
+            paymentMethod.provider,
+            providerOrderId,
+            checkoutUrl,
+            idempotencyKey,
+            expiresAt,
+            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            this.normalizeNullableString(dto.notes),
+            actor?.id ?? null,
+          ],
+        );
+        const id = result.rows[0].id;
+
+        await this.audit.record(
+          actor,
+          'payment_order.create',
+          'payment_order',
+          id,
+          {
+            customerAccountId: dto.customerAccountId,
+            volumePackageId: volumePackage.id,
+            paymentMethodId: paymentMethod.id,
+            provider: paymentMethod.provider,
+            status: 'pending',
+            amount,
+            currency: volumePackage.currency,
+            idempotencyKey,
+          },
+          executor,
+        );
+
+        return id;
+      });
+
+      return this.getPaymentOrder(orderId);
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Payment order idempotency or provider order already exists');
+      throw error;
+    }
+  }
+
+  async updatePaymentOrderStatus(
+    id: string,
+    dto: UpdatePaymentOrderStatusDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminPaymentOrderSummary> {
+    try {
+      await this.database.transaction(async (executor) => {
+        const existing = await this.getPaymentOrderRowForUpdate(executor, id);
+        const status = dto.status;
+        this.assertPaymentOrderStatusTransition(existing.status, status);
+
+        const now = new Date();
+        const paidAt = status === 'paid' && existing.status !== 'paid' ? now : existing.paidAt;
+        const failedAt = status === 'failed' && existing.status !== 'failed' ? now : existing.failedAt;
+        const refundedAt = status === 'refunded' && existing.status !== 'refunded' ? now : existing.refundedAt;
+        const metadata = dto.metadata !== undefined ? dto.metadata ?? {} : existing.metadata ?? {};
+
+        await executor.query(
+          `
+            UPDATE payment_orders
+            SET status = $1,
+                provider_order_id = $2,
+                provider_capture_id = $3,
+                checkout_url = $4,
+                paid_at = $5,
+                failed_at = $6,
+                refunded_at = $7,
+                metadata = $8::jsonb,
+                notes = $9,
+                updated_at = now()
+            WHERE id = $10
+          `,
+          [
+            status,
+            dto.providerOrderId !== undefined ? this.normalizeNullableString(dto.providerOrderId) : existing.providerOrderId,
+            dto.providerCaptureId !== undefined ? this.normalizeNullableString(dto.providerCaptureId) : existing.providerCaptureId,
+            dto.checkoutUrl !== undefined ? this.normalizeNullableString(dto.checkoutUrl) : existing.checkoutUrl,
+            paidAt,
+            failedAt,
+            refundedAt,
+            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            dto.notes !== undefined ? this.normalizeNullableString(dto.notes) : existing.notes,
+            id,
+          ],
+        );
+
+        await this.audit.record(
+          actor,
+          'payment_order.status_update',
+          'payment_order',
+          id,
+          {
+            fromStatus: existing.status,
+            toStatus: status,
+            provider: existing.provider,
+            providerOrderId: dto.providerOrderId !== undefined ? this.normalizeNullableString(dto.providerOrderId) : existing.providerOrderId,
+          },
+          executor,
+        );
+      });
+
+      return this.getPaymentOrder(id);
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
       throw error;
     }
   }
@@ -915,13 +1165,66 @@ export class BillingService {
         dto.status ?? existing.status,
         dto.sortOrder ?? existing.sortOrder,
         supportsAutoCapture,
-        JSON.stringify(dto.publicConfig ?? existing.publicConfig ?? {}),
+        this.stringifyPublicRecord(dto.publicConfig ?? existing.publicConfig ?? {}, 'Payment method public config'),
         dto.instructions !== undefined ? this.normalizeNullableString(dto.instructions) : existing.instructions,
         id,
       ],
     );
 
     return fields;
+  }
+
+  private paymentOrderSelectSql(): string {
+    return `
+      SELECT
+        po.id,
+        po.customer_account_id AS "customerAccountId",
+        ca.display_name AS "customerDisplayName",
+        ca.telegram_username AS "customerTelegramUsername",
+        po.volume_package_id AS "volumePackageId",
+        po.payment_method_id AS "paymentMethodId",
+        pm.name AS "paymentMethodName",
+        pm.slug AS "paymentMethodSlug",
+        po.package_name AS "packageName",
+        po.package_slug AS "packageSlug",
+        po.volume_bytes AS "volumeBytes",
+        po.duration_days AS "durationDays",
+        po.price_per_gb AS "pricePerGb",
+        po.amount,
+        po.currency,
+        po.status,
+        po.provider,
+        po.provider_order_id AS "providerOrderId",
+        po.provider_capture_id AS "providerCaptureId",
+        po.checkout_url AS "checkoutUrl",
+        po.idempotency_key AS "idempotencyKey",
+        po.paid_at AS "paidAt",
+        po.failed_at AS "failedAt",
+        po.refunded_at AS "refundedAt",
+        po.expires_at AS "expiresAt",
+        po.metadata,
+        po.notes,
+        po.created_by AS "createdBy",
+        po.created_at AS "createdAt",
+        po.updated_at AS "updatedAt"
+      FROM payment_orders po
+      JOIN customer_accounts ca ON ca.id = po.customer_account_id
+      LEFT JOIN payment_methods pm ON pm.id = po.payment_method_id
+    `;
+  }
+
+  private async getPaymentOrderRowForUpdate(
+    executor: DatabaseQueryExecutor,
+    id: string,
+  ): Promise<PaymentOrderRow> {
+    const result = await executor.query<PaymentOrderRow>(
+      `${this.paymentOrderSelectSql()} WHERE po.id = $1 FOR UPDATE OF po`,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Payment order not found');
+    return row;
   }
 
   private mapBillingSettings(row: BillingSettingsRow): AdminBillingSettingsSummary {
@@ -973,6 +1276,44 @@ export class BillingService {
       supportsAutoCapture: row.supportsAutoCapture,
       publicConfig: row.publicConfig ?? {},
       instructions: row.instructions,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapPaymentOrder(row: PaymentOrderRow): AdminPaymentOrderSummary {
+    const volumeBytes = this.numberFromBigInt(row.volumeBytes) ?? 0;
+
+    return {
+      id: row.id,
+      customerAccountId: row.customerAccountId,
+      customerDisplayName: row.customerDisplayName,
+      customerTelegramUsername: row.customerTelegramUsername,
+      volumePackageId: row.volumePackageId,
+      paymentMethodId: row.paymentMethodId,
+      paymentMethodName: row.paymentMethodName,
+      paymentMethodSlug: row.paymentMethodSlug,
+      packageName: row.packageName,
+      packageSlug: row.packageSlug,
+      volumeBytes,
+      volumeGb: volumeBytes / BYTES_PER_GB,
+      durationDays: row.durationDays,
+      pricePerGb: this.numberFromBigInt(row.pricePerGb) ?? 0,
+      amount: this.numberFromBigInt(row.amount) ?? 0,
+      currency: row.currency,
+      status: row.status,
+      provider: row.provider,
+      providerOrderId: row.providerOrderId,
+      providerCaptureId: row.providerCaptureId,
+      checkoutUrl: row.checkoutUrl,
+      idempotencyKey: row.idempotencyKey,
+      paidAt: row.paidAt?.toISOString() ?? null,
+      failedAt: row.failedAt?.toISOString() ?? null,
+      refundedAt: row.refundedAt?.toISOString() ?? null,
+      expiresAt: row.expiresAt?.toISOString() ?? null,
+      metadata: row.metadata ?? {},
+      notes: row.notes,
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -1325,9 +1666,61 @@ export class BillingService {
     return provider === 'paypal' ? 'hosted_redirect' : 'manual';
   }
 
+  private assertPaymentMethodAccepts(method: PaymentMethodRow, currency: string, amount: number): void {
+    if (method.status !== 'active') throw new BadRequestException('Payment method is not active');
+    if (method.currency !== currency) {
+      throw new BadRequestException('Payment method currency does not match the package currency');
+    }
+
+    const minAmount = this.numberFromBigInt(method.minAmount);
+    const maxAmount = this.numberFromBigInt(method.maxAmount);
+    if (minAmount !== null && amount < minAmount) throw new BadRequestException('Payment order amount is below method minimum');
+    if (maxAmount !== null && amount > maxAmount) throw new BadRequestException('Payment order amount is above method maximum');
+  }
+
+  private assertPaymentOrderStatusTransition(currentStatus: string, nextStatus: string): void {
+    if (currentStatus === nextStatus) return;
+
+    const allowed: Record<string, string[]> = {
+      pending: ['paid', 'failed'],
+      paid: ['refunded'],
+      failed: [],
+      refunded: [],
+    };
+
+    if (!allowed[currentStatus]?.includes(nextStatus)) {
+      throw new BadRequestException(`Payment order cannot move from ${currentStatus} to ${nextStatus}`);
+    }
+  }
+
   private assertAmountRange(minAmount: number | null, maxAmount: number | null): void {
     if (minAmount !== null && maxAmount !== null && maxAmount < minAmount) {
       throw new BadRequestException('Payment method max amount must be greater than or equal to min amount');
+    }
+  }
+
+  private parseOptionalDate(value: string | null | undefined, fieldName: string): Date | null {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) throw new BadRequestException(`${fieldName} must be a valid date`);
+    return date;
+  }
+
+  private stringifyPublicRecord(value: Record<string, unknown>, context: string): string {
+    this.assertNoSecretLikeKeys(value, context);
+    return JSON.stringify(value);
+  }
+
+  private assertNoSecretLikeKeys(value: unknown, context: string, path = 'metadata'): void {
+    if (!value || typeof value !== 'object') return;
+
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (/(secret|token|password|private[_-]?key|client[_-]?secret|webhook[_-]?secret|credential)/i.test(key)) {
+        throw new BadRequestException(`${context} must not contain secret-like key "${path}.${key}"`);
+      }
+      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+        this.assertNoSecretLikeKeys(nested, context, `${path}.${key}`);
+      }
     }
   }
 

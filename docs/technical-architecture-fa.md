@@ -176,6 +176,28 @@ Current implementation starts Phase 2 with `customer_accounts` instead of a sing
 
 Payment provider secrets, including PayPal client secrets and webhook secrets, must not be stored in `public_config`. They should use the encrypted `secret_records` path or a future dedicated provider-secret reference.
 
+### payment_orders
+
+- id
+- customer_account_id
+- volume_package_id nullable after package archival/deletion
+- payment_method_id nullable after method archival/deletion
+- package_name, package_slug, volume_bytes, duration_days, price_per_gb, amount, and currency snapshot
+- status: pending, paid, failed, refunded
+- provider
+- provider_order_id nullable
+- provider_capture_id nullable
+- checkout_url nullable
+- idempotency_key nullable, unique when present
+- paid_at, failed_at, refunded_at, expires_at nullable
+- metadata jsonb for non-secret provider context
+- notes
+- created_by
+- created_at
+- updated_at
+
+Payment orders are the audit boundary between package selection and future quota allocation. A paid order does not directly mutate customer quota until the usage ledger/charge allocation layer is implemented.
+
 ### subscriptions
 
 - id

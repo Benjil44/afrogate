@@ -570,6 +570,52 @@ export const paymentMethods = pgTable(
   }),
 );
 
+export const paymentOrders = pgTable(
+  'payment_orders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'restrict' }),
+    volumePackageId: uuid('volume_package_id').references(() => volumePackages.id, { onDelete: 'set null' }),
+    paymentMethodId: uuid('payment_method_id').references(() => paymentMethods.id, { onDelete: 'set null' }),
+    packageName: text('package_name').notNull(),
+    packageSlug: text('package_slug').notNull(),
+    volumeBytes: bigint('volume_bytes', { mode: 'number' }).notNull(),
+    durationDays: integer('duration_days'),
+    pricePerGb: bigint('price_per_gb', { mode: 'number' }).notNull().default(0),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
+    currency: text('currency').notNull(),
+    status: text('status').notNull().default('pending'),
+    provider: text('provider').notNull().default('manual'),
+    providerOrderId: text('provider_order_id'),
+    providerCaptureId: text('provider_capture_id'),
+    checkoutUrl: text('checkout_url'),
+    idempotencyKey: text('idempotency_key'),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+    refundedAt: timestamp('refunded_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
+    notes: text('notes'),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    idempotencyIdx: uniqueIndex('payment_orders_idempotency_unique')
+      .on(table.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL AND idempotency_key <> ''`),
+    providerOrderIdx: uniqueIndex('payment_orders_provider_order_unique')
+      .on(table.provider, table.providerOrderId)
+      .where(sql`provider_order_id IS NOT NULL AND provider_order_id <> ''`),
+    statusCreatedIdx: index('payment_orders_status_created_idx').on(table.status, table.createdAt),
+    customerCreatedIdx: index('payment_orders_customer_created_idx').on(table.customerAccountId, table.createdAt),
+    methodCreatedIdx: index('payment_orders_method_created_idx').on(table.paymentMethodId, table.createdAt),
+    providerStatusIdx: index('payment_orders_provider_status_idx').on(table.provider, table.status, table.createdAt),
+  }),
+);
+
 export const routeSettings = pgTable(
   'route_settings',
   {
@@ -737,11 +783,35 @@ export const outboundHealthChecksRelations = relations(outboundHealthChecks, ({ 
 
 export const customerAccountsRelations = relations(customerAccounts, ({ many }) => ({
   clientConfigs: many(clientConfigs),
+  paymentOrders: many(paymentOrders),
 }));
 
 export const clientConfigsRelations = relations(clientConfigs, ({ one }) => ({
   customerAccount: one(customerAccounts, {
     fields: [clientConfigs.customerAccountId],
     references: [customerAccounts.id],
+  }),
+}));
+
+export const volumePackagesRelations = relations(volumePackages, ({ many }) => ({
+  paymentOrders: many(paymentOrders),
+}));
+
+export const paymentMethodsRelations = relations(paymentMethods, ({ many }) => ({
+  paymentOrders: many(paymentOrders),
+}));
+
+export const paymentOrdersRelations = relations(paymentOrders, ({ one }) => ({
+  customerAccount: one(customerAccounts, {
+    fields: [paymentOrders.customerAccountId],
+    references: [customerAccounts.id],
+  }),
+  volumePackage: one(volumePackages, {
+    fields: [paymentOrders.volumePackageId],
+    references: [volumePackages.id],
+  }),
+  paymentMethod: one(paymentMethods, {
+    fields: [paymentOrders.paymentMethodId],
+    references: [paymentMethods.id],
   }),
 }));

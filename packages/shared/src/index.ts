@@ -396,6 +396,63 @@ export interface UpdatePaymentMethodRequest {
   instructions?: string | null;
 }
 
+export type PaymentOrderStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+
+export interface AdminPaymentOrderSummary {
+  id: string;
+  customerAccountId: string;
+  customerDisplayName?: string | null;
+  customerTelegramUsername?: string | null;
+  volumePackageId?: string | null;
+  paymentMethodId?: string | null;
+  paymentMethodName?: string | null;
+  paymentMethodSlug?: string | null;
+  packageName: string;
+  packageSlug: string;
+  volumeBytes: number;
+  volumeGb: number;
+  durationDays?: number | null;
+  pricePerGb: number;
+  amount: number;
+  currency: string;
+  status: PaymentOrderStatus | string;
+  provider: PaymentProvider | string;
+  providerOrderId?: string | null;
+  providerCaptureId?: string | null;
+  checkoutUrl?: string | null;
+  idempotencyKey?: string | null;
+  paidAt?: string | null;
+  failedAt?: string | null;
+  refundedAt?: string | null;
+  expiresAt?: string | null;
+  metadata: Record<string, unknown>;
+  notes?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePaymentOrderRequest {
+  customerAccountId: string;
+  volumePackageId: string;
+  paymentMethodId: string;
+  providerOrderId?: string | null;
+  checkoutUrl?: string | null;
+  idempotencyKey?: string | null;
+  expiresAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+  notes?: string | null;
+}
+
+export interface UpdatePaymentOrderStatusRequest {
+  status: PaymentOrderStatus;
+  providerOrderId?: string | null;
+  providerCaptureId?: string | null;
+  checkoutUrl?: string | null;
+  metadata?: Record<string, unknown> | null;
+  notes?: string | null;
+}
+
 export interface CreateAdminUserRequest {
   username: string;
   password: string;
@@ -2095,6 +2152,10 @@ export interface AdminVolumePackagesResponse {
 
 export interface AdminPaymentMethodsResponse {
   paymentMethods: AdminPaymentMethodSummary[];
+}
+
+export interface AdminPaymentOrdersResponse {
+  paymentOrders: AdminPaymentOrderSummary[];
 }
 
 export interface AdminBillingCatalogResponse {

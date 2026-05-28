@@ -138,6 +138,7 @@ Required protections:
 - Secret rotation plan.
 - Paid numbers must be write-only in admin APIs and stored as HMAC hashes with `AFROGATE_IDENTITY_HASH_KEY` or the deployment secrets key; never return raw paid numbers to the dashboard.
 - Payment provider catalogs may expose non-secret public config only. PayPal client secrets, webhook secrets, merchant credentials, and private gateway keys must use encrypted secret storage or deployment secrets, never `payment_methods.public_config`.
+- Payment orders must be idempotent where provider/client keys exist, must store only non-secret provider metadata, and must use audited status transitions. Paid orders should not allocate volume until the separate usage ledger/charge allocation path can do so idempotently.
 - `AFROGATE_SECRETS_KEY` must be configured from a deployment secret source before storing Settings/server private keys; encrypted secret rows must expose only references to dashboard clients.
 - Server credential storage is write-only: the guarded server credential endpoint may encrypt and link SSH/API credential material to an access profile, but API responses must return only metadata and active/readiness flags, never decrypted credential payloads.
 - Protocol provisioning must stay secret-safe and default-inactive: control-plane draft provisioning may create disabled maintenance outbounds, while real server apply actions require audit logs and post-apply health validation.
