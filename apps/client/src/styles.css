@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --color-client-ink: #17201c;
+  --color-client-muted: #65716c;
+  --color-client-line: #d9e1dc;
+  --color-client-page: #f4f7f5;
+  --color-client-panel: #ffffff;
+  --color-client-deep: #18352c;
+  --color-client-teal: #0d8b7d;
+  --color-client-green: #27824a;
+  --color-client-amber: #a46305;
+  --color-client-red: #b42318;
+  --font-client-persian: "AfroGate YekanBakh", Tahoma, Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply m-0 bg-client-page font-sans text-client-ink;
+    letter-spacing: 0;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+
+  html[lang="fa"],
+  html[lang="fa"] body,
+  [lang="fa"] {
+    font-family: var(--font-client-persian);
+  }
+
+  html[lang="fa"] :where(button, input, select, textarea),
+  [lang="fa"] :where(button, input, select, textarea),
+  [lang="fa"] * {
+    font-family: inherit;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}

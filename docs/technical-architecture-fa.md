@@ -173,6 +173,8 @@ Mobile/client API auth is separate from admin/seller auth. Admins can issue one-
 
 Client-scoped endpoints live under `/api/client/*`. They can read only the authenticated client profile, quota summary, route preference, and selectable route options, and can update only that client's route preference when `allow_client_override` is true. These endpoints must not expose admin dashboard operations, server secrets, outbound config JSON, client IP history, or user traffic destinations.
 
+The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, automatic/country/server route mode selection, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
+
 ### packages
 
 - id

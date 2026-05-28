@@ -21,12 +21,20 @@ export default defineConfig({
       height: 900,
     },
   },
-  webServer: {
-    command: 'npm run dev:dashboard',
-    url: 'http://127.0.0.1:4000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm run dev:dashboard',
+      url: 'http://127.0.0.1:4000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'npm run dev:client',
+      url: 'http://127.0.0.1:4100',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
   projects: [
     isCi
       ? {

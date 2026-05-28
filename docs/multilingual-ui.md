@@ -1,19 +1,21 @@
 # Multilingual UI Policy
 
-AfroGate dashboard supports English and Persian from the first MVP stage.
+AfroGate dashboard and client surfaces support English and Persian from the first MVP stage.
 
 ## Current Approach
 
 - Dashboard strings live in `apps/dashboard/src/i18n.ts`.
+- Client app strings live in `apps/client/src/i18n.ts`.
 - Language choice is persisted in browser localStorage.
 - The selected language updates the page `lang` and `dir` attributes.
 - The sidebar footer contains the language icon toggle beside the version.
-- Current language support covers English and Persian dashboard operations copy.
+- Current language support covers English and Persian dashboard operations copy and the first VPN-client route/quota surface.
 - Persian typography uses local YekanBakh assets from `apps/dashboard/public/assets/fonts/YekanBakh/`; `index.html` loads `yekanbakh.css` directly and no CDN font source is used.
 
 ## Rules
 
 - Do not add new hardcoded user-facing dashboard labels directly inside React components when a translation key is appropriate.
+- Do not add new hardcoded user-facing client app labels directly inside React components when a translation key is appropriate.
 - Keep technical identifiers such as server IDs, tunnel names, interface names, and route names unchanged unless they become editable display names.
 - Prefer short operational Persian labels that fit dense monitoring panels.
 - Keep English and Persian keys in the same typed object so TypeScript catches missing translations.

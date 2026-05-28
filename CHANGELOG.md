@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.72.0 - 2026-05-28
+
+- Added the separate `@afrogate/client` mobile-first VPN client app on local port `4100`.
+- Added client token login, remaining-volume display, route mode controls, country/server selection, and score profile selection.
+- Kept client app labels bilingual and separate from the admin dashboard UX.
+
 ## 0.71.0 - 2026-05-28
 
 - Added client-scoped mobile API auth with admin-issued one-time access tokens stored only as hashes.

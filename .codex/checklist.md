@@ -210,7 +210,7 @@
 - [x] Route decision audit reason.
 - [x] Per-client route preference model for auto country detection, preferred exit country, and explicit server/outbound choice.
 - [x] Route decision filtering by per-client preferred exit country and available country/server candidates.
-- [ ] Mobile client UX for automatic route, country selection, and explicit server choice.
+- [x] Mobile client UX for automatic route, country selection, and explicit server choice.
 
 ## Phase 4: Current Panel Integration
 

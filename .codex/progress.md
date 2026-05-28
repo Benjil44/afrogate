@@ -1048,6 +1048,16 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke and dense visual capture coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the first separate VPN-client UX in `apps/client` using React/Vite/Tailwind on local port `4100`.
+- The client app uses a client token login, stores the token client-side, and calls only `/api/client/*` for profile/quota, route preference, route options, and preference updates.
+- Added mobile-first controls for automatic routing, preferred exit country, explicit server/outbound choice, route score profile, coarse device-locale country detection, and admin override-locked state.
+- Added typed English/Persian client app labels and formatting separate from the admin dashboard translation layer.
+- Updated workspace scripts, repository/multilingual/route docs, checklist, and memory for the separate client surface.
+- Marked mobile client UX for automatic route, country selection, and explicit server choice complete.
+- Bumped AfroGate to `0.72.0` for the separate mobile-first VPN client app.
+- Checklist completion after this slice is `196 / 222` items, or `88.3%` complete with `11.7%` remaining.
+- Verified focused client typing and production build with `npm run typecheck --workspace @afrogate/client` and `npm run build --workspace @afrogate/client`.
+- Verified combined dashboard and client browser coverage with `npm run test:e2e`; the suite now includes the fixed-port client smoke test on `127.0.0.1:4100`.
 - Added the client route preference foundation for the future VPN mobile/client UX.
 - Added `client_route_preferences` with per-client auto/country/outbound mode, coarse detected country, preferred exit country, optional preferred outbound, score profile, route lock, and sticky-session protection.
 - Added guarded admin APIs to read and update a client config route preference under `/api/admin/client-configs/:id/route-preference`.

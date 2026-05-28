@@ -1,20 +1,19 @@
 {
-  "name": "@afrogate/dashboard",
+  "name": "@afrogate/client",
   "version": "0.72.0",
   "private": true,
   "scripts": {
     "predev": "npm --workspace @afrogate/shared run build",
-    "dev": "vite --host 127.0.0.1 --port 4000 --strictPort",
+    "dev": "vite --host 127.0.0.1 --port 4100 --strictPort",
     "prebuild": "npm --workspace @afrogate/shared run build",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4000 --strictPort",
+    "preview": "vite preview --host 127.0.0.1 --port 4100 --strictPort",
     "pretypecheck": "npm --workspace @afrogate/shared run build",
     "typecheck": "tsc --noEmit",
-    "lint": "echo \"dashboard lint not configured yet\""
+    "lint": "echo \"client lint not configured yet\""
   },
   "dependencies": {
     "@afrogate/shared": "0.72.0",
-    "echarts": "^6.1.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

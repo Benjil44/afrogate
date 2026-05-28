@@ -66,7 +66,7 @@
 - protocol-aware route decision for TCP-heavy, UDP-heavy, QUIC, DNS-sensitive, low-speed, and high-speed profiles.
 - cooldown/hysteresis برای جلوگیری از route flapping.
 - نمایش reason انتخاب مسیر.
-- Per-client route preferences for automatic country detection, preferred exit country, and explicit server/outbound choice without exposing admin controls.
+- Per-client route preferences and a separate mobile-first client app for automatic country detection, preferred exit country, and explicit server/outbound choice without exposing admin controls.
 
 ## فاز 4: Integration با سیستم فعلی
 
