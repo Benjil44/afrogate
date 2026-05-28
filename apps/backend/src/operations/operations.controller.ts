@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import type {
   AdminAlertsResponse,
+  AdminAuditLogsResponse,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
   AdminSessionResponse,
@@ -44,6 +45,7 @@ import type {
   RequestProtocolServerApplyResponse,
   RouteFailoverEventsResponse,
 } from '@afrogate/shared';
+import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateAdminUserDto, UpdateAdminUserDto, UpdateAdminUserPasswordDto } from '../auth/dto/admin-user.dto';
 import { AdminTokenGuard } from '../security/admin-token.guard';
@@ -76,6 +78,7 @@ export class OperationsController {
   constructor(
     private readonly operationsService: OperationsService,
     private readonly authService: AuthService,
+    private readonly auditService: AuditService,
   ) {}
 
   @Get('session')
@@ -108,6 +111,28 @@ export class OperationsController {
   @Roles('admin')
   listUsers(@Req() request: RequestWithAuth): Promise<AdminUsersResponse> {
     return this.authService.listAdminUsers(request.actor);
+  }
+
+  @Get('audit-logs')
+  @Roles('admin', 'supervisor', 'auditor')
+  async listAuditLogs(
+    @Query('action') action?: string,
+    @Query('actorType') actorType?: string,
+    @Query('actorId') actorId?: string,
+    @Query('targetType') targetType?: string,
+    @Query('targetId') targetId?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminAuditLogsResponse> {
+    return {
+      auditLogs: await this.auditService.listAuditLogs({
+        action,
+        actorId,
+        actorType,
+        limit,
+        targetId,
+        targetType,
+      }),
+    };
   }
 
   @Post('users')

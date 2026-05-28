@@ -93,6 +93,16 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByRole('cell', { name: /VIP gamer/ })).toBeVisible();
 });
 
+test('audit logs page shows sanitized audit events', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="audit"]').click();
+
+  await expect(page.getByRole('heading', { name: 'Audit logs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Audit events' })).toBeVisible();
+  await expect(page.getByText('admin.login.succeeded')).toBeVisible();
+  await expect(page.getByText('[redacted]')).toBeVisible();
+});
+
 async function loadSignedInDashboard(page: Page, size: { width: number; height: number }): Promise<void> {
   await mockDashboardApi(page);
   await page.setViewportSize(size);
@@ -145,6 +155,11 @@ async function mockDashboardApi(page: Page): Promise<void> {
       case '/api/admin/alerts':
         await fulfillJson(route, {
           alerts: url.searchParams.get('status') === 'resolved' ? resolvedAlertRows() : openAlertRows(),
+        });
+        return;
+      case '/api/admin/audit-logs':
+        await fulfillJson(route, {
+          auditLogs: auditLogRows(),
         });
         return;
       case '/api/admin/servers':
@@ -511,6 +526,37 @@ function resolvedAlertRows() {
       sourceType: 'server',
       status: 'resolved',
       title: 'Resolved tunnel jitter',
+    },
+  ];
+}
+
+function auditLogRows() {
+  return [
+    {
+      action: 'admin.login.succeeded',
+      actorId: 'admin-visual',
+      actorType: 'admin',
+      createdAt: fixedNow,
+      id: 'audit-login',
+      metadata: {
+        ipAddress: '127.0.0.1',
+        sessionToken: '[redacted]',
+      },
+      targetId: 'admin-visual',
+      targetType: 'admin_session',
+    },
+    {
+      action: 'payment_order.created',
+      actorId: 'admin-visual',
+      actorType: 'admin',
+      createdAt: '2026-05-28T07:45:00.000Z',
+      id: 'audit-order',
+      metadata: {
+        amount: 25,
+        provider: 'paypal',
+      },
+      targetId: 'order-visual',
+      targetType: 'payment_order',
     },
   ];
 }

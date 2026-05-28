@@ -25,6 +25,7 @@ Repository-scoped threat models live in `docs/security-threat-model.md` and `doc
 - Put route scoring, alert thresholds, billing math, and role checks behind isolated services with tests.
 - Avoid hidden side effects in utility functions.
 - Every security-sensitive action needs an audit event.
+- Audit log review is available through guarded admin APIs and dashboard UI only; metadata returned to the dashboard must redact secret-like keys such as tokens, credentials, passwords, private keys, authorization headers, sessions, and webhook secrets.
 
 ## Low-Resource VPS Policy
 

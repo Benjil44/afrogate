@@ -1295,6 +1295,19 @@ Repository remote is ready:
 - Verified repository secret hygiene with `npm run secrets:check`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added guarded `GET /api/admin/audit-logs` with exact-match filters, bounded result limits, newest-first ordering, and dashboard-safe metadata redaction for secret-like keys.
+- Added the dashboard Audit Logs page with summary cards, action/target filters, compact event table, English/Persian labels, and role-aware sidebar visibility that excludes support-role sessions.
+- Added Playwright browser coverage for the Audit Logs page and sanitized metadata display.
+- Updated the dashboard sidebar checklist, main checklist, memory, security policy, architecture notes, changelog, and version for the audit-log review workflow.
+- Bumped AfroGate to `0.82.0` for the guarded audit log API and dashboard page.
+- Checklist completion after this slice is `210 / 229` items, or `91.7%` complete with `8.3%` remaining.
+- Verified version alignment with `npm run version:check`.
+- Verified workspace typecheck and production build with `npm run typecheck` and `npm run build`.
+- Verified dashboard/client browser coverage with `npm run test:e2e`; 9 tests passed including the new Audit Logs flow.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added `docs/security-threat-model.md` covering assets, trust boundaries, attacker-controlled inputs, existing mitigations, attacker stories, and severity calibration.
 - Added `docs/privacy-threat-model.md` covering data categories, no-traffic-inspection invariants, client/admin/provider boundaries, privacy failure stories, and required controls.
 - Linked the threat models from `SECURITY.md`, `docs/security-performance-policy.md`, and `docs/repository-structure.md`.

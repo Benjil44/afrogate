@@ -421,6 +421,8 @@ The PayPal adapter exposes guarded admin actions to create a hosted checkout ord
 - metadata
 - created_at
 
+Audit logs are reviewable through guarded admin APIs and the dashboard Audit Logs page. API responses must redact secret-like metadata keys before sending events to the browser, while the stored audit row remains append-only for compliance.
+
 ## الگوریتم انتخاب مسیر MVP
 
 ورودی‌ها:

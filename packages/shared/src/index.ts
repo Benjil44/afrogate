@@ -1089,6 +1089,17 @@ export interface AdminAlertSummary {
   resolvedAt?: string | null;
 }
 
+export interface AdminAuditLogSummary {
+  id: string;
+  actorType: string;
+  actorId?: string | null;
+  action: string;
+  targetType?: string | null;
+  targetId?: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 export type ProtocolKind = 'wireguard' | 'vless' | 'l2tp' | 'ikev2';
 export type ProtocolProfile = 'balanced' | 'highSpeed' | 'highSecurity' | 'gaming';
 export type RouteProtocolProfile =
@@ -2582,4 +2593,8 @@ export interface RouteFailoverEventsResponse {
 
 export interface AdminAlertsResponse {
   alerts: AdminAlertSummary[];
+}
+
+export interface AdminAuditLogsResponse {
+  auditLogs: AdminAuditLogSummary[];
 }

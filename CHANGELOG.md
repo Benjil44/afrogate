@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.82.0 - 2026-05-29
+
+- Added guarded `GET /api/admin/audit-logs` for compact recent audit event review by admin, supervisor, and auditor roles.
+- Added the dashboard Audit Logs page with filters, summary metrics, English/Persian labels, and browser coverage.
+- Redacted secret-like audit metadata keys before returning audit rows to the dashboard while keeping stored audit rows append-only.
+
 ## 0.81.1 - 2026-05-29
 
 - Added repository-scoped security and privacy threat models for AfroGate's backend, dashboard, client app, agent, provider integrations, and route/data-plane boundaries.

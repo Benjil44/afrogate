@@ -1,5 +1,6 @@
 import type {
   AdminAlertsResponse,
+  AdminAuditLogsResponse,
   AdminBillingCatalogResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
@@ -62,6 +63,15 @@ export interface AdminAlertFilters {
   status?: 'open' | 'resolved';
 }
 
+export interface AdminAuditLogFilters {
+  action?: string;
+  actorId?: string;
+  actorType?: string;
+  limit?: number;
+  targetId?: string;
+  targetType?: string;
+}
+
 export class AdminAuthError extends Error {
   constructor(readonly code: AdminAuthErrorCode) {
     super(code);
@@ -119,6 +129,26 @@ export async function fetchAdminAlerts(
   });
 
   return response.json() as Promise<AdminAlertsResponse>;
+}
+
+export async function fetchAdminAuditLogs(
+  sessionToken: string,
+  filters: AdminAuditLogFilters = {},
+  signal?: AbortSignal,
+): Promise<AdminAuditLogsResponse> {
+  const searchParams = new URLSearchParams({ limit: String(filters.limit ?? 100) });
+  if (filters.action) searchParams.set('action', filters.action);
+  if (filters.actorType) searchParams.set('actorType', filters.actorType);
+  if (filters.actorId) searchParams.set('actorId', filters.actorId);
+  if (filters.targetType) searchParams.set('targetType', filters.targetType);
+  if (filters.targetId) searchParams.set('targetId', filters.targetId);
+
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/audit-logs?${searchParams.toString()}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminAuditLogsResponse>;
 }
 
 export async function fetchAdminServers(sessionToken: string, signal?: AbortSignal): Promise<AdminServersResponse> {
