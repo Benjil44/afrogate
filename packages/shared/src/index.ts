@@ -594,6 +594,7 @@ export type ProtocolServerApplyReason =
   | 'serverCredentialRefMissing'
   | 'serverCredentialReady'
   | 'serverCredentialInactive'
+  | 'serverCredentialDecryptReady'
   | 'serverCredentialDecryptDisabled'
   | 'secretMissing'
   | 'secretReady'

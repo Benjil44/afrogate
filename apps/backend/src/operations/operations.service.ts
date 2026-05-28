@@ -7259,9 +7259,19 @@ export class OperationsService {
     const supportedProtocols = ['wireguard', 'vless', 'l2tp', 'ikev2'];
     const protocolSupported = supportedProtocols.includes(input.setup.protocol);
     const liveExecutionEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED', false);
+    const credentialDecryptEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED', false);
     const implemented = false;
     const credentialRefPresent = Boolean(input.setup.targetServerCredentialRef);
     const credentialRecordActive = Boolean(input.setup.targetServerCredentialReady);
+    const credentialDecryptAllowed = Boolean(
+      input.featureFlagEnabled &&
+        liveExecutionEnabled &&
+        credentialDecryptEnabled &&
+        input.hasTargetServer &&
+        input.hasServerAccess &&
+        credentialRefPresent &&
+        credentialRecordActive,
+    );
     const accessReasonCodes = new Set<ProtocolServerApplyReason | string>();
 
     if (!input.requiresServerAccess) {
@@ -7282,7 +7292,7 @@ export class OperationsService {
     } else {
       accessReasonCodes.add('serverCredentialInactive');
     }
-    accessReasonCodes.add('serverCredentialDecryptDisabled');
+    accessReasonCodes.add(credentialDecryptAllowed ? 'serverCredentialDecryptReady' : 'serverCredentialDecryptDisabled');
 
     const commandRunnerReasonCodes = new Set<ProtocolServerApplyReason | string>([
       'commandRunnerDryRunOnly',
@@ -7341,7 +7351,7 @@ export class OperationsService {
         accessProfileReady: input.hasServerAccess,
         credentialRefPresent,
         credentialRecordActive,
-        credentialDecryptAllowed: false,
+        credentialDecryptAllowed,
         reasonCodes: [...accessReasonCodes],
       },
     };
@@ -7536,9 +7546,11 @@ export class OperationsService {
         ? 'notRequired'
         : !input.hasTargetServer || !input.adapter.serverAccessBoundary.credentialRefPresent
           ? 'blocked'
-          : input.hasServerCredential
-            ? 'passed'
-            : 'blocked';
+          : !input.hasServerCredential
+            ? 'blocked'
+            : input.adapter.serverAccessBoundary.credentialDecryptAllowed
+              ? 'passed'
+              : 'future';
     const commandRunnerStatus = input.adapter.commandRunner.mode === 'live' && input.adapter.commandRunner.implemented
       ? 'passed'
       : 'future';
@@ -7607,6 +7619,11 @@ export class OperationsService {
                 ? input.hasServerCredential
                   ? 'serverCredentialReady'
                   : 'serverCredentialInactive'
+                : null,
+              input.hasServerCredential
+                ? input.adapter.serverAccessBoundary.credentialDecryptAllowed
+                  ? 'serverCredentialDecryptReady'
+                  : 'serverCredentialDecryptDisabled'
                 : null,
             ].filter((reason): reason is ProtocolServerApplyReason => Boolean(reason))
           : [],

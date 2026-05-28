@@ -986,3 +986,17 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Remaining high-priority work includes the production server-side protocol apply engine.
+- Added a disabled-by-default credential-decrypt readiness gate to protocol server apply planning so active server credentials and decrypt permission are evaluated separately.
+- Updated protocol apply preflight reason codes, env samples, deployment notes, memory, checklist, and server-access/security docs for `AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED=false`.
+- Kept live protocol mutation blocked: the protocol apply flag, live executor flag, credential decrypt flag, installed access profile, active credential, and audited adapter implementation are still all required before any future command runner can use decrypted material.
+- Verified protocol apply credential-decrypt typing with `npm run typecheck --workspaces --if-present`.
+- Bumped AfroGate to `0.63.1` for the protocol apply credential-decrypt readiness gate.
+- Verified `0.63.1` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, visual capture, and alert filter suite with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine.

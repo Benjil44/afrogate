@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.63.1 - 2026-05-28
+
+- Added a disabled-by-default credential-decrypt readiness gate for protocol server apply planning.
+- Documented protocol apply live executor and credential-decrypt flags in env samples, deployment notes, and security policy.
+- Kept live server mutation blocked until the audited production protocol apply executor exists.
+
 ## 0.63.0 - 2026-05-28
 
 - Added Alerts page status, severity, and source filters while keeping dashboard/sidebar open-alert counts unfiltered.
