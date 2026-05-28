@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.62.3 - 2026-05-28
+
+- Added hover title and accessible label coverage for dense dashboard monitoring metrics, badges, detail rows, chart range controls, and table cells.
+- Reused existing localized dashboard labels and formatted values so tooltip text stays multilingual.
+- Marked the dense monitoring tooltip UI audit item complete.
+
 ## 0.62.2 - 2026-05-28
 
 - Compacted the dashboard system resource strip for mobile and tablet layouts.

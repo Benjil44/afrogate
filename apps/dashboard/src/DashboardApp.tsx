@@ -425,6 +425,11 @@ const mutedTextClass = 'text-[13px] text-afro-muted';
 const fieldLabelClass = 'grid gap-1 text-[12px] font-bold text-afro-muted';
 const fieldInputClass = 'min-h-9 rounded-md border border-afro-line bg-white px-2 text-[13px] text-afro-ink outline-none focus:border-afro-blue disabled:bg-[#eef3f5] disabled:text-afro-muted';
 const primaryButtonClass = 'min-h-9 rounded-md bg-afro-blue px-3 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#9fb1bd]';
+
+function primitiveTooltip(value: ReactNode): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  return undefined;
+}
 const appVersion = rootPackage.version;
 const sidebarStorageKey = 'afrogate.dashboard.sidebar';
 
@@ -918,17 +923,28 @@ function SystemResourceHeader({
 
       <div className="mt-2 overflow-x-auto rounded-md border border-afro-line bg-afro-panel">
         <div className="grid auto-cols-[minmax(138px,1fr)] grid-flow-col gap-1.5 p-1.5 sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-2 xl:grid-cols-3">
-          {storages.map((storage) => (
-            <div className="min-w-0 rounded-md border border-afro-line px-2 py-1" key={`${storage.serverName}-${storage.path}`}>
-              <div className="flex items-center justify-between gap-2">
-                <strong className="min-w-0 truncate text-[13px]">{format.label(storage.serverName)}</strong>
-                <StatusBadge tone={getStorageTone(storage.freePercent ?? null)}>
-                  {format.percent(storage.freePercent ?? null)}
-                </StatusBadge>
+          {storages.map((storage) => {
+            const serverName = format.label(storage.serverName);
+            const freePercent = format.percent(storage.freePercent ?? null);
+            const storageTooltip = `${serverName} ${storage.path} ${freePercent}`;
+
+            return (
+              <div
+                aria-label={storageTooltip}
+                className="min-w-0 rounded-md border border-afro-line px-2 py-1"
+                key={`${storage.serverName}-${storage.path}`}
+                title={storageTooltip}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="min-w-0 truncate text-[13px]" title={serverName}>{serverName}</strong>
+                  <StatusBadge title={freePercent} tone={getStorageTone(storage.freePercent ?? null)}>
+                    {freePercent}
+                  </StatusBadge>
+                </div>
+                <div className={`${mutedTextClass} truncate`} title={storage.path}>{storage.path}</div>
               </div>
-              <div className={`${mutedTextClass} truncate`}>{storage.path}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -952,17 +968,19 @@ function ResourceStat({
     warning: 'border-t-[#c27a1a]',
     critical: 'border-t-[#b91c1c]',
   }[tone];
+  const tooltip = `${label} ${value}`;
 
   return (
     <div
+      aria-label={tooltip}
       className={`grid min-h-[50px] gap-0.5 rounded-md border border-t-[3px] border-afro-line bg-afro-panel px-2 py-1.5 sm:min-h-[54px] sm:gap-1 sm:border-t-4 sm:p-2 ${borderClass}`}
-      title={`${label} ${value}`}
+      title={tooltip}
     >
       <div className="flex min-w-0 items-center justify-between gap-1.5">
-        <span className="min-w-0 truncate text-[11px] text-afro-muted sm:text-[12px]">{label}</span>
+        <span className="min-w-0 truncate text-[11px] text-afro-muted sm:text-[12px]" title={label}>{label}</span>
         <Icon className="shrink-0" size={15} />
       </div>
-      <strong className="min-w-0 truncate text-[15px] leading-tight sm:text-[17px]">{value}</strong>
+      <strong className="min-w-0 truncate text-[15px] leading-tight sm:text-[17px]" title={value}>{value}</strong>
     </div>
   );
 }
@@ -1169,15 +1187,18 @@ function HealthChartPanel({
           {timeRanges.map((item) => {
             const isActive = item.value === range;
             const activeClass = isActive ? 'bg-white text-afro-ink shadow-sm' : 'text-afro-muted hover:text-afro-ink';
+            const rangeLabel = format.timeRange(item.value);
 
             return (
               <button
+                aria-label={rangeLabel}
                 className={`min-h-7 min-w-10 rounded px-2 text-[13px] font-bold ${activeClass}`}
                 key={item.value}
                 onClick={() => onRangeChange(item.value)}
+                title={rangeLabel}
                 type="button"
               >
-                {format.timeRange(item.value)}
+                {rangeLabel}
               </button>
             );
           })}
@@ -2248,10 +2269,13 @@ function ServerAuditTab({
 }
 
 function DetailRow({ children, label }: { children: ReactNode; label: string }) {
+  const valueTooltip = primitiveTooltip(children);
+  const rowTooltip = valueTooltip ? `${label} ${valueTooltip}` : label;
+
   return (
-    <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5">
-      <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
-      <strong className="min-w-0 shrink text-right text-sm">{children}</strong>
+    <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" title={rowTooltip}>
+      <span className={`${mutedTextClass} min-w-0 truncate`} title={label}>{label}</span>
+      <strong className="min-w-0 shrink text-right text-sm" title={valueTooltip}>{children}</strong>
     </div>
   );
 }
@@ -5602,10 +5626,13 @@ function RouteDecisionEventDetailCard({
 }
 
 function RouteDecisionMetric({ children, label }: { children: ReactNode; label: string }) {
+  const valueTooltip = primitiveTooltip(children);
+  const metricTooltip = valueTooltip ? `${label} ${valueTooltip}` : label;
+
   return (
-    <div className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2.5">
-      <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
-      <strong className="min-w-0 truncate text-[13px]">{children}</strong>
+    <div className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2.5" title={metricTooltip}>
+      <span className={`${mutedTextClass} min-w-0 truncate`} title={label}>{label}</span>
+      <strong className="min-w-0 truncate text-[13px]" title={valueTooltip}>{children}</strong>
     </div>
   );
 }
@@ -7385,16 +7412,31 @@ function LanguageButton({
   );
 }
 
-function StatusBadge({ children, tone }: { children: ReactNode; tone: Tone }) {
+function StatusBadge({
+  ariaLabel,
+  children,
+  title,
+  tone,
+}: {
+  ariaLabel?: string;
+  children: ReactNode;
+  title?: string;
+  tone: Tone;
+}) {
   const toneClass = {
     good: 'border-[#b8e1cf] bg-[#e7f6ef] text-afro-green',
     neutral: 'border-[#bfd1ea] bg-[#edf4ff] text-afro-blue',
     warning: 'border-[#e6cf9c] bg-[#fff7e6] text-[#9a5b00]',
     critical: 'border-[#f0b7b7] bg-[#fff1f1] text-[#b91c1c]',
   }[tone];
+  const tooltip = title ?? primitiveTooltip(children);
 
   return (
-    <span className={`inline-flex min-h-[22px] items-center rounded-full border px-1.5 text-[11px] font-bold ${toneClass}`}>
+    <span
+      aria-label={ariaLabel ?? tooltip}
+      className={`inline-flex min-h-[22px] items-center rounded-full border px-1.5 text-[11px] font-bold ${toneClass}`}
+      title={tooltip}
+    >
       {children}
     </span>
   );
@@ -7407,11 +7449,16 @@ function MetricCard({ item }: { item: MetricCardData }) {
     warning: 'border-t-[#c27a1a]',
     critical: 'border-t-[#b91c1c]',
   }[item.tone];
+  const tooltip = `${item.label} ${item.value}`;
 
   return (
-    <div className={`grid min-h-[62px] gap-1 rounded-md border border-t-4 border-afro-line bg-afro-panel p-2.5 ${toneClass}`}>
-      <span className="text-[12px] text-afro-muted">{item.label}</span>
-      <strong className="text-[19px] leading-tight">{item.value}</strong>
+    <div
+      aria-label={tooltip}
+      className={`grid min-h-[62px] gap-1 rounded-md border border-t-4 border-afro-line bg-afro-panel p-2.5 ${toneClass}`}
+      title={tooltip}
+    >
+      <span className="truncate text-[12px] text-afro-muted" title={item.label}>{item.label}</span>
+      <strong className="truncate text-[19px] leading-tight" title={item.value}>{item.value}</strong>
     </div>
   );
 }
@@ -7604,17 +7651,18 @@ function PanelHeading({
 function PanelHeadingContent({ title, meta }: { title: string; meta?: string }) {
   return (
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-      <h2 className="truncate text-[14px] font-bold">{title}</h2>
-      {meta ? <span className={`${mutedTextClass} min-w-0 truncate before:mx-1.5 before:text-afro-line before:content-['/']`}>{meta}</span> : null}
+      <h2 className="truncate text-[14px] font-bold" title={title}>{title}</h2>
+      {meta ? <span className={`${mutedTextClass} min-w-0 truncate before:mx-1.5 before:text-afro-line before:content-['/']`} title={meta}>{meta}</span> : null}
     </div>
   );
 }
 
 function TableCell({ children, alignRight = false }: { children: ReactNode; alignRight?: boolean }) {
   const alignmentClass = alignRight ? 'text-right' : 'text-left';
+  const tooltip = primitiveTooltip(children);
 
   return (
-    <td className={`border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`}>
+    <td className={`border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`} title={tooltip}>
       {children}
     </td>
   );

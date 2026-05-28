@@ -936,4 +936,14 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, dense monitoring tooltips, color-contrast review, and visual regression captures.
+- Added reusable hover tooltip/accessibility coverage for dense Dashboard monitoring UI: compact metric cards, resource/storage cards, status badges, detail rows, route decision metrics, chart range controls, panel headings, and primitive table cells now expose localized labels and formatted values without new hardcoded English copy.
+- Updated checklist and memory to mark the dense monitoring tooltip pass complete and preserve the localized-tooltip convention.
+- Bumped AfroGate to `0.62.3` for the dashboard tooltip refinement.
+- Verified `0.62.3` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, color-contrast review, and visual regression captures.

@@ -147,7 +147,7 @@
 - [x] Compact panel headers so metadata like node/link counts stays inline with the title.
 - [x] Improve mobile/tablet resource strip density.
 - [x] Add empty/loading/error states for every dashboard panel.
-- [ ] Add hover/tooltips for dense icon-only monitoring controls and metrics.
+- [x] Add hover/tooltips for dense icon-only monitoring controls and metrics.
 - [ ] Review color contrast for warning/critical states in light and dark sidebar contexts.
 - [x] Bind alert/sidebar severity to real alert API rows instead of fallback/computed rows.
 - [x] Add Playwright browser smoke test for fixed-port dashboard rendering.
