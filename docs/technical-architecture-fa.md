@@ -211,6 +211,8 @@ The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tai
 - created_at
 - updated_at
 
+Guarded admin endpoints `GET /api/admin/rewarded-ads/settings` and `PATCH /api/admin/rewarded-ads/settings` expose and update only non-secret reward policy: enabled state, reward bytes, UTC daily cap, provider key, and verification mode. Updates are admin-only, audited, and bounded so an accidental setting cannot create unlimited quota grants.
+
 ### rewarded_ad_grants
 
 - id
@@ -230,7 +232,7 @@ The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tai
 - metadata jsonb for non-secret claim context
 - created_at
 
-Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The client app can read the current reward status and submit an idempotent claim after an ad callback. The backend locks the client/account, enforces the UTC daily cap, records one grant per idempotency/session key, increases account quota, and also increases the specific client quota when per-client caps are active. The current `client_callback_mvp` verification mode is suitable for MVP flow wiring only; production rewards need a verified ad-network SDK/webhook adapter.
+Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The client app can read the current reward status and submit an idempotent claim after an ad callback. The backend locks the client/account, enforces the current admin-managed UTC daily cap, records one grant per idempotency/session key, increases account quota, and also increases the specific client quota when per-client caps are active. The current `client_callback_mvp` verification mode is suitable for MVP flow wiring only; production rewards need a verified ad-network SDK/webhook adapter.
 
 ### packages
 

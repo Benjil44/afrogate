@@ -1014,6 +1014,23 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added admin-managed rewarded-ad settings for the mobile rewarded-data flow.
+- Added shared contracts and guarded admin APIs at `GET /api/admin/rewarded-ads/settings` and `PATCH /api/admin/rewarded-ads/settings`.
+- Admins can now adjust enabled state, reward bytes, UTC daily cap, provider key, and verification mode with bounded validation and audit logging.
+- Documented rewarded-ad settings as non-secret policy; provider secrets and verified ad-network callback credentials remain out of these settings.
+- Marked admin-managed rewarded-ad reward and daily cap settings complete in the checklist.
+- Bumped AfroGate to `0.77.0` for the rewarded-ad admin settings API contract.
+- Checklist completion after this slice is `203 / 226` items, or `89.8%` complete with `10.2%` remaining.
+- Verified the migration stack with `npm --workspace @afrogate/backend run db:migrate`.
+- Confirmed the running backend returns `401` for unauthenticated `/api/admin/rewarded-ads/settings`, proving the guarded admin route is registered.
+- Verified focused shared/backend typing with `npm run typecheck --workspace @afrogate/shared` and `npm run typecheck --workspace @afrogate/backend`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added the PayPal checkout/capture provider adapter.
 - Added guarded admin APIs to create PayPal hosted checkout orders and capture approved PayPal orders from existing pending `payment_orders`.
 - Added a public PayPal webhook endpoint that verifies PayPal signature headers through PayPal before updating any local payment order.

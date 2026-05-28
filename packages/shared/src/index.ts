@@ -515,6 +515,19 @@ export interface AdminBillingSettingsSummary {
   updatedAt: string;
 }
 
+export interface AdminRewardedAdSettingsSummary {
+  settingKey: string;
+  enabled: boolean;
+  rewardBytes: number;
+  rewardMb: number;
+  dailyLimit: number;
+  provider: string;
+  verificationMode: string;
+  updatedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminVolumePackageSummary {
   id: string;
   name: string;
@@ -536,6 +549,14 @@ export interface AdminVolumePackageSummary {
 export interface UpdateBillingSettingsRequest {
   currency?: string;
   pricePerGb?: number;
+}
+
+export interface UpdateRewardedAdSettingsRequest {
+  enabled?: boolean;
+  rewardBytes?: number;
+  dailyLimit?: number;
+  provider?: string;
+  verificationMode?: string;
 }
 
 export interface CreateVolumePackageRequest {
@@ -2493,6 +2514,10 @@ export interface ClientRouteOptionsResponse {
 
 export interface AdminBillingSettingsResponse {
   settings: AdminBillingSettingsSummary;
+}
+
+export interface AdminRewardedAdSettingsResponse {
+  rewardedAds: AdminRewardedAdSettingsSummary;
 }
 
 export interface AdminVolumePackagesResponse {

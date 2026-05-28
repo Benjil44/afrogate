@@ -11,6 +11,7 @@ import { createHmac, randomBytes } from 'crypto';
 import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsSummary,
+  AdminRewardedAdSettingsSummary,
   ClientAccessTokenSummary,
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
@@ -56,6 +57,7 @@ import {
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
   UpdateBillingSettingsDto,
+  UpdateRewardedAdSettingsDto,
   UpdatePaymentMethodDto,
   UpdatePaymentOrderStatusDto,
   UpdateVolumePackageDto,
@@ -67,6 +69,8 @@ const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
 const DEFAULT_REWARDED_AD_REWARD_BYTES = 100 * 1024 ** 2;
 const DEFAULT_REWARDED_AD_DAILY_LIMIT = 20;
 const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
+const MAX_REWARDED_AD_REWARD_BYTES = 10 * BYTES_PER_GB;
+const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 const CLIENT_USAGE_EVENT_SOURCES = new Set([
   'admin',
@@ -480,6 +484,89 @@ export class BillingService {
     });
 
     return this.mapBillingSettings(settings);
+  }
+
+  async getAdminRewardedAdSettings(): Promise<AdminRewardedAdSettingsSummary> {
+    return this.mapAdminRewardedAdSettings(await this.getRewardedAdSettings());
+  }
+
+  async updateRewardedAdSettings(
+    dto: UpdateRewardedAdSettingsDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminRewardedAdSettingsSummary> {
+    const settings = await this.database.transaction(async (executor) => {
+      await this.ensureRewardedAdSettingsRow(executor);
+      const current = await this.getRewardedAdSettings(executor, true);
+      const changedFields = Object.entries(dto)
+        .filter(([, value]) => value !== undefined)
+        .map(([key]) => key);
+
+      if (!changedFields.length) return current;
+
+      const rewardBytes = dto.rewardBytes ?? this.numberFromBigInt(current.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+      const dailyLimit = dto.dailyLimit ?? current.dailyLimit;
+      const provider =
+        dto.provider !== undefined
+          ? this.normalizeRewardedAdSettingsToken(dto.provider, 'Rewarded ad provider')
+          : current.provider || DEFAULT_REWARDED_AD_PROVIDER;
+      const verificationMode =
+        dto.verificationMode !== undefined
+          ? this.normalizeRewardedAdSettingsToken(dto.verificationMode, 'Rewarded ad verification mode')
+          : current.verificationMode || DEFAULT_REWARDED_AD_VERIFICATION_MODE;
+      this.assertRewardedAdSettingsLimits(rewardBytes, dailyLimit);
+
+      const result = await executor.query<RewardedAdSettingsRow>(
+        `
+          UPDATE rewarded_ad_settings
+          SET enabled = $1,
+              reward_bytes = $2,
+              daily_limit = $3,
+              provider = $4,
+              verification_mode = $5,
+              updated_by = $6,
+              updated_at = now()
+          WHERE setting_key = 'default'
+          RETURNING
+            setting_key AS "settingKey",
+            enabled,
+            reward_bytes AS "rewardBytes",
+            daily_limit AS "dailyLimit",
+            provider,
+            verification_mode AS "verificationMode",
+            updated_by AS "updatedBy",
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+        `,
+        [
+          dto.enabled ?? current.enabled,
+          rewardBytes,
+          dailyLimit,
+          provider,
+          verificationMode,
+          actor?.id ?? null,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'rewarded_ad_settings.update',
+        'rewarded_ad_settings',
+        'default',
+        {
+          enabled: dto.enabled ?? current.enabled,
+          rewardBytes,
+          dailyLimit,
+          provider,
+          verificationMode,
+          changedFields,
+        },
+        executor,
+      );
+
+      return result.rows[0];
+    });
+
+    return this.mapAdminRewardedAdSettings(settings);
   }
 
   async listVolumePackages(filters: VolumePackageFilters): Promise<AdminVolumePackageSummary[]> {
@@ -2853,6 +2940,23 @@ export class BillingService {
     };
   }
 
+  private mapAdminRewardedAdSettings(row: RewardedAdSettingsRow): AdminRewardedAdSettingsSummary {
+    const rewardBytes = this.numberFromBigInt(row.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+
+    return {
+      settingKey: row.settingKey,
+      enabled: row.enabled,
+      rewardBytes,
+      rewardMb: rewardBytes / (1024 ** 2),
+      dailyLimit: Math.max(row.dailyLimit, 0),
+      provider: row.provider || DEFAULT_REWARDED_AD_PROVIDER,
+      verificationMode: row.verificationMode || DEFAULT_REWARDED_AD_VERIFICATION_MODE,
+      updatedBy: row.updatedBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
   private mapVolumePackage(row: VolumePackageRow): AdminVolumePackageSummary {
     const volumeBytes = this.numberFromBigInt(row.volumeBytes) ?? 0;
     const volumeGb = volumeBytes / BYTES_PER_GB;
@@ -3280,6 +3384,7 @@ export class BillingService {
 
   private async getRewardedAdSettings(
     executor: DatabaseQueryExecutor = this.database,
+    forUpdate = false,
   ): Promise<RewardedAdSettingsRow> {
     const result = await executor.query<RewardedAdSettingsRow>(
       `
@@ -3295,6 +3400,7 @@ export class BillingService {
           updated_at AS "updatedAt"
         FROM rewarded_ad_settings
         WHERE setting_key = 'default'
+        ${forUpdate ? 'FOR UPDATE' : ''}
       `,
     );
 
@@ -3309,6 +3415,16 @@ export class BillingService {
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
+  }
+
+  private async ensureRewardedAdSettingsRow(executor: DatabaseQueryExecutor): Promise<void> {
+    await executor.query(
+      `
+        INSERT INTO rewarded_ad_settings (setting_key)
+        VALUES ('default')
+        ON CONFLICT (setting_key) DO NOTHING
+      `,
+    );
   }
 
   private async countRewardedAdGrants(
@@ -3662,6 +3778,21 @@ export class BillingService {
     const provider = normalized || fallback || DEFAULT_REWARDED_AD_PROVIDER;
     if (!provider || provider.length > 80) throw new BadRequestException('Rewarded ad provider is invalid');
     return provider;
+  }
+
+  private normalizeRewardedAdSettingsToken(value: string | null | undefined, label: string): string {
+    const normalized = this.normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
+    if (!normalized || normalized.length > 80) throw new BadRequestException(`${label} is invalid`);
+    return normalized;
+  }
+
+  private assertRewardedAdSettingsLimits(rewardBytes: number, dailyLimit: number): void {
+    if (!Number.isSafeInteger(rewardBytes) || rewardBytes <= 0 || rewardBytes > MAX_REWARDED_AD_REWARD_BYTES) {
+      throw new BadRequestException('Rewarded ad reward amount is outside the allowed range');
+    }
+    if (!Number.isInteger(dailyLimit) || dailyLimit < 0 || dailyLimit > MAX_REWARDED_AD_DAILY_LIMIT) {
+      throw new BadRequestException('Rewarded ad daily limit is outside the allowed range');
+    }
   }
 
   private currentUtcDay(): string {

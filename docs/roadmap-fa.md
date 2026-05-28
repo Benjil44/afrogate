@@ -58,7 +58,7 @@
 - Separate seller/admin UX from VPN client UX; mobile/client APIs now start with scoped profile/quota, route options, and route-preference actions under `/api/client/*`, with package/usage purchase flows remaining future work.
 - Usage accounting now starts with idempotent `client_usage_events` rows that update account/client used-byte counters for remaining-volume reads.
 - Paid payment orders now allocate purchased volume through an idempotent `payment_order_allocations` ledger before customer quota changes.
-- Rewarded ads now start with a capped `rewarded_ad_grants` quota-credit ledger and mobile client claim surface; verified ad-network SDK/webhook validation remains future hardening.
+- Rewarded ads now start with admin-managed reward/cap settings, a capped `rewarded_ad_grants` quota-credit ledger, and a mobile client claim surface; verified ad-network SDK/webhook validation remains future hardening.
 
 ## فاز 3: Auto Route
 

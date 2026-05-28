@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.77.0 - 2026-05-28
+
+- Added guarded admin rewarded-ad settings APIs for reading and updating reward amount, daily cap, enabled state, provider key, and verification mode.
+- Added shared admin rewarded-ad settings contracts with bounded backend validation and audit logging.
+- Documented rewarded-ad settings as non-secret policy while keeping verified ad-network callbacks as future hardening.
+
 ## 0.76.0 - 2026-05-28
 
 - Added rewarded-ad settings and `rewarded_ad_grants` as a daily-capped, idempotent quota-credit ledger.

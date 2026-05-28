@@ -22,6 +22,8 @@ const MAX_PRICE = 1_000_000_000_000;
 const MAX_VOLUME_GB = 1_000_000;
 const MAX_DURATION_DAYS = 3650;
 const MAX_AMOUNT = Number.MAX_SAFE_INTEGER;
+const MAX_REWARDED_AD_REWARD_BYTES = 10 * 1024 ** 3;
+const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 
 export class UpdateBillingSettingsDto {
   @IsOptional()
@@ -35,6 +37,36 @@ export class UpdateBillingSettingsDto {
   @Min(0)
   @Max(MAX_PRICE)
   pricePerGb?: number;
+}
+
+export class UpdateRewardedAdSettingsDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_REWARDED_AD_REWARD_BYTES)
+  rewardBytes?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_REWARDED_AD_DAILY_LIMIT)
+  dailyLimit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  provider?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  verificationMode?: string;
 }
 
 export class CreateVolumePackageDto {

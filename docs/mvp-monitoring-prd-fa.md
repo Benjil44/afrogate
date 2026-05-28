@@ -44,7 +44,7 @@
 - تحلیل داده پیشرفته با مدل‌های پیش‌بینی.
 - فروش enterprise با multi-tenant کامل.
 
-Billing note: the backend now has a PayPal provider adapter for checkout creation, capture, and verified webhooks. Paid orders can be allocated once to customer quota through an audited allocation ledger. Rewarded ads can grant small capped quota credits through a separate client-scoped ledger; verified ad-network callbacks remain a separate hardening phase. Refund reversal flows remain a separate phase.
+Billing note: the backend now has a PayPal provider adapter for checkout creation, capture, and verified webhooks. Paid orders can be allocated once to customer quota through an audited allocation ledger. Rewarded ads can grant small capped quota credits through admin-managed reward/cap settings and a separate client-scoped ledger; verified ad-network callbacks remain a separate hardening phase. Refund reversal flows remain a separate phase.
 
 ## ظرفیت اولیه
 

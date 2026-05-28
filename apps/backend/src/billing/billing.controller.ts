@@ -13,6 +13,7 @@ import {
 import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsResponse,
+  AdminRewardedAdSettingsResponse,
   AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceResponse,
@@ -52,6 +53,7 @@ import {
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
   UpdateBillingSettingsDto,
+  UpdateRewardedAdSettingsDto,
   UpdatePaymentMethodDto,
   UpdatePaymentOrderStatusDto,
   UpdateVolumePackageDto,
@@ -84,6 +86,25 @@ export class BillingController {
   ): Promise<AdminBillingSettingsResponse> {
     return {
       settings: await this.billingService.updateBillingSettings(payload, request.actor),
+    };
+  }
+
+  @Get('rewarded-ads/settings')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async getRewardedAdSettings(): Promise<AdminRewardedAdSettingsResponse> {
+    return {
+      rewardedAds: await this.billingService.getAdminRewardedAdSettings(),
+    };
+  }
+
+  @Patch('rewarded-ads/settings')
+  @Roles('admin')
+  async updateRewardedAdSettings(
+    @Body() payload: UpdateRewardedAdSettingsDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminRewardedAdSettingsResponse> {
+    return {
+      rewardedAds: await this.billingService.updateRewardedAdSettings(payload, request.actor),
     };
   }
 
