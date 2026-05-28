@@ -1295,3 +1295,15 @@ Repository remote is ready:
 - Verified repository secret hygiene with `npm run secrets:check`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added a backend API rate-limit guard with bounded in-memory fixed-window counters and response headers for limit, remaining count, reset, and retry-after.
+- Applied default API rate limits to `POST /api/auth/login`, `POST /api/payments/paypal/webhook`, and `POST /api/telegram/webhook`.
+- Added deployment controls for `AFROGATE_RATE_LIMIT_ENABLED`, `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS`, and `AFROGATE_RATE_LIMIT_MAX_KEYS`.
+- Kept proxy header trust disabled by default so direct backend exposure cannot spoof rate-limit identities.
+- Updated `.env.example`, security policy, architecture docs, SECURITY.md, checklist, and memory for the API rate-limit boundary.
+- Bumped AfroGate to `0.81.0` for the API-layer rate-limiting foundation.
+- Checklist completion after this slice is `207 / 228` items, or `90.8%` complete with `9.2%` remaining.
+- Verified version alignment with `npm run version:check`.
+- Verified workspace typecheck and production build with `npm run typecheck` and `npm run build`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

@@ -476,6 +476,7 @@ Protocol-aware route scoring:
 - HTTPS/TLS اجباری.
 - JWT/session امن برای dashboard.
 - Telegram webhook secret: مسیر `POST /api/telegram/webhook` فقط با `AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED=true`، توکن bot، و header رسمی `x-telegram-bot-api-secret-token` فعال می‌شود و پاسخ‌های کاربر فقط وضعیت امن account/quota را نشان می‌دهند.
+- API rate limiting برای endpoint های حساس عمومی مثل login، PayPal webhook، و Telegram webhook.
 - agent token per server.
 - rotation برای token ها.
 - محدودسازی دسترسی به endpoint های agent.

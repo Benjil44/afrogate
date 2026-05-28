@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.81.0 - 2026-05-29
+
+- Added a backend API rate-limit guard for sensitive public endpoints with bounded in-memory counters.
+- Applied default rate limits to admin login, PayPal webhook, and Telegram webhook routes.
+- Added deployment settings for enabling/disabling API rate limiting, proxy-header trust, and maximum counter keys.
+
 ## 0.80.0 - 2026-05-29
 
 - Added a disabled-by-default Telegram user-command webhook for `/start`, `/help`, `/status`, and `/quota`.

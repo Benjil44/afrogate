@@ -248,7 +248,7 @@
 - [ ] Adapter-based migration from current panels.
 - [ ] Privacy threat model.
 - [ ] Security threat model.
-- [ ] Rate limiting at API layer.
+- [x] Rate limiting at API layer.
 - [x] Dependency audit in CI.
 - [x] Secret scan in CI.
 - [ ] Per-agent token rotation.

@@ -1,5 +1,7 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import type { AdminLoginResponse } from '@afrogate/shared';
+import { RateLimit } from '../security/rate-limit.decorator';
+import { RateLimitGuard } from '../security/rate-limit.guard';
 import { AuthService } from './auth.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
 
@@ -9,6 +11,8 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ key: 'auth-login', max: 12, windowMs: 60_000 })
   login(@Body() payload: AdminLoginDto): Promise<AdminLoginResponse> {
     return this.authService.login(payload.username, payload.password);
   }

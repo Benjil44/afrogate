@@ -132,6 +132,7 @@ Rules:
 Required protections:
 
 - Rate limiting at Nginx and API layer.
+- The backend API rate-limit guard is enabled by default for sensitive public endpoints first: `/api/auth/login`, `/api/payments/paypal/webhook`, and `/api/telegram/webhook`. It uses bounded in-memory fixed-window counters for low-resource VPS deployments, can be disabled with `AFROGATE_RATE_LIMIT_ENABLED=false`, and trusts `x-forwarded-for`/`x-real-ip` only when `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS=true` behind a trusted reverse proxy.
 - Request body size limits.
 - Strict CORS.
 - Helmet/security headers before production.

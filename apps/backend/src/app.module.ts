@@ -29,6 +29,8 @@ import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
 import { RolesGuard } from './security/roles.guard';
 import { ClientTokenGuard } from './security/client-token.guard';
+import { RateLimitGuard } from './security/rate-limit.guard';
+import { RateLimitService } from './security/rate-limit.service';
 import { SecretVaultService } from './security/secret-vault.service';
 import { TelegramBotController } from './telegram/telegram-bot.controller';
 import { TelegramBotService } from './telegram/telegram-bot.service';
@@ -69,6 +71,8 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AdminTokenGuard,
     AgentTokenGuard,
     ClientTokenGuard,
+    RateLimitGuard,
+    RateLimitService,
     RolesGuard,
     SecretVaultService,
     PostgresMetricsRepository,

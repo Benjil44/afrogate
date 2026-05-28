@@ -21,7 +21,7 @@ For now, report security issues privately to the project owner. Do not open publ
 - Admin authentication and role-based authorization.
 - Agent token rotation and per-agent credentials.
 - Firewall baseline applied on every VPS.
-- Nginx rate limiting and request size limits.
+- Nginx rate limiting, backend API rate limiting for sensitive public endpoints, and request size limits.
 - PostgreSQL bound to private/local interfaces only.
 - Encrypted backups and restore tests.
 - Dependency audit and secret scan in CI.

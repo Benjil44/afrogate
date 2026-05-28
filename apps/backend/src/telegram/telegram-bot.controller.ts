@@ -7,8 +7,11 @@ import {
   Post,
   ServiceUnavailableException,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import type { TelegramBotWebhookResponse } from '@afrogate/shared';
+import { RateLimit } from '../security/rate-limit.decorator';
+import { RateLimitGuard } from '../security/rate-limit.guard';
 import { TelegramBotService } from './telegram-bot.service';
 
 @Controller('telegram')
@@ -17,6 +20,8 @@ export class TelegramBotController {
 
   @Post('webhook')
   @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ key: 'telegram-webhook', max: 240, windowMs: 60_000 })
   async handleWebhook(
     @Body() payload: unknown,
     @Headers('x-telegram-bot-api-secret-token') telegramSecret?: string,
