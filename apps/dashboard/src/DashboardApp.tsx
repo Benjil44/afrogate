@@ -8459,6 +8459,12 @@ function ProtocolApplyEventDetailCard({
             secretDecryptAllowed={snapshot.secretDecryptAllowed}
             t={t}
           />
+          <ProtocolServerApplyConfigMaterialBadges
+            format={format}
+            missingFields={snapshot.configMaterialMissingFields}
+            ready={snapshot.configMaterialReady}
+            t={t}
+          />
           <ProtocolServerApplyPreflightCard format={format} preflight={snapshot.preflight} t={t} />
           <ProtocolServerApplyAdapterCard adapter={snapshot.adapter} t={t} />
 
@@ -8652,6 +8658,12 @@ function ProtocolServerApplyPlanCard({
         secretDecryptAllowed={plan.secretDecryptAllowed}
         t={t}
       />
+      <ProtocolServerApplyConfigMaterialBadges
+        format={format}
+        missingFields={plan.configMaterialMissingFields}
+        ready={plan.configMaterialReady}
+        t={t}
+      />
       <ProtocolServerApplyPreflightCard compact format={format} preflight={plan.preflight} t={t} />
       <ProtocolServerApplyAdapterCard adapter={plan.adapter} compact t={t} />
       <div className="flex flex-wrap gap-1.5">
@@ -8664,6 +8676,31 @@ function ProtocolServerApplyPlanCard({
           {plan.canExecute ? t.settings.serverApplyExecutable : t.settings.serverApplyNoMutation}
         </StatusBadge>
       </div>
+    </div>
+  );
+}
+
+function ProtocolServerApplyConfigMaterialBadges({
+  format,
+  missingFields,
+  ready,
+  t,
+}: {
+  format: DashboardFormatters;
+  missingFields: string[];
+  ready: boolean;
+  t: DashboardStrings;
+}) {
+  const missingCount = missingFields.length;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <StatusBadge tone={ready ? 'good' : 'warning'}>
+        {ready ? t.settings.protocolApplyConfigMaterialReady : t.settings.protocolApplyConfigMaterialBlocked}
+      </StatusBadge>
+      {!ready ? (
+        <StatusBadge tone="neutral">{t.settings.protocolApplyConfigMissingFields(format.integer(missingCount))}</StatusBadge>
+      ) : null}
     </div>
   );
 }
@@ -8839,6 +8876,8 @@ function protocolApplyGateKindLabel(kind: string, t: DashboardStrings): string {
       return t.settings.protocolApplyGateAdapter;
     case 'dryRunSafety':
       return t.settings.protocolApplyGateDryRunSafety;
+    case 'configMaterial':
+      return t.settings.protocolApplyGateConfigMaterial;
     case 'outbound':
       return t.settings.protocolApplyGateOutbound;
     case 'outboundHealth':

@@ -564,6 +564,7 @@ export type ProtocolServerApplyPreflightGateKind =
   | 'featureFlag'
   | 'adapter'
   | 'dryRunSafety'
+  | 'configMaterial'
   | 'outbound'
   | 'outboundHealth'
   | 'defaultInactive'
@@ -600,6 +601,8 @@ export type ProtocolServerApplyReason =
   | 'secretReady'
   | 'secretDecryptReady'
   | 'secretDecryptDisabled'
+  | 'configMaterialReady'
+  | 'configMaterialMissing'
   | 'adapterDryRunOnly'
   | 'adapterMissing'
   | 'adapterReady'
@@ -738,6 +741,8 @@ export interface AdminProtocolServerApplyPlanSummary {
   adapterImplemented: boolean;
   dataPlaneReady: boolean;
   canExecute: boolean;
+  configMaterialReady: boolean;
+  configMaterialMissingFields: string[];
   requiresSecret: boolean;
   hasSecretRef: boolean;
   secretDecryptAllowed: boolean;
@@ -773,6 +778,8 @@ export interface AdminProtocolServerApplyDryRunSnapshot {
   adapterImplemented: boolean;
   dataPlaneReady: boolean;
   canExecute: boolean;
+  configMaterialReady: boolean;
+  configMaterialMissingFields: string[];
   requiresSecret: boolean;
   hasSecretRef: boolean;
   secretDecryptAllowed: boolean;

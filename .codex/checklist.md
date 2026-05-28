@@ -92,6 +92,7 @@
 - [x] Protocol server apply adapter scaffold with dry-run-only command runner and active server-credential readiness boundary.
 - [x] Protocol server apply credential-decrypt readiness gate separated from active server-credential checks.
 - [x] Protocol server apply protocol-secret decrypt readiness gate separated from secret reference checks.
+- [x] Protocol server apply non-secret config-material readiness gate before production executor enablement.
 - [ ] Production server-side protocol apply engine for WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols.
 - [x] Agent registration endpoint.
 - [x] Metrics ingest endpoint.

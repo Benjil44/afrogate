@@ -1015,3 +1015,19 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Kept live protocol mutation blocked: protocol apply, live executor, protocol-secret decrypt, server-credential decrypt, installed access profile, active credential, and audited adapter implementation are all required before any future command runner can use decrypted material.
 - Remaining high-priority work includes the production server-side protocol apply engine.
+- Checklist completion before this slice was `181 / 209` items, or `86.6%` complete with `13.4%` remaining.
+- Added a protocol server apply config-material readiness gate so data-plane readiness is blocked when required non-secret setup fields are missing.
+- WireGuard plans now check interface name, address CIDR, listen port, endpoint, allowed IPs, and peer public-key presence; VLESS/L2TP/IKEv2 plans check endpoint and port material.
+- Stored protocol apply plan and audit snapshots now include config-material readiness and missing-field names without secret material.
+- Surfaced config-material readiness as separate translated Settings plan and audit snapshot badges, distinct from protocol-secret and server-credential readiness.
+- Updated checklist, memory, dashboard checklist, server-access docs, and security policy while keeping the production protocol executor open.
+- Verified protocol apply config-material typing with `npm run typecheck --workspaces --if-present`.
+- Bumped AfroGate to `0.64.0` for the protocol apply config-material readiness contract.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Checklist completion after this slice is `182 / 210` items, or `86.7%` complete with `13.3%` remaining.

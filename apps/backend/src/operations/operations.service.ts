@@ -3067,6 +3067,8 @@ export class OperationsService {
       adapterImplemented: snapshot.adapterImplemented === true,
       dataPlaneReady: snapshot.dataPlaneReady === true,
       canExecute: snapshot.canExecute === true,
+      configMaterialReady: snapshot.configMaterialReady !== false,
+      configMaterialMissingFields: this.stringArrayOrEmpty(snapshot.configMaterialMissingFields),
       requiresSecret: snapshot.requiresSecret === true,
       hasSecretRef: snapshot.hasSecretRef === true,
       secretDecryptAllowed: snapshot.secretDecryptAllowed === true,
@@ -7131,6 +7133,7 @@ export class OperationsService {
     const unitName = this.safeProtocolUnitName(setup);
     const commands = this.buildProtocolServerApplyCommands(setup, unitName);
     const configChanges = this.buildProtocolServerApplyConfigChanges(setup, unitName);
+    const configMaterial = this.protocolServerApplyConfigMaterial(setup);
     const missingSecret = requiresSecret && !hasSecretRef;
     const missingTargetAccess = hasOutbound && requiresServerAccess && (!hasTargetServer || !hasServerAccess || !hasServerCredential);
     const secretSafe = commands.every((command) => command.secretSafe) && configChanges.every((change) => change.secretSafe);
@@ -7139,6 +7142,7 @@ export class OperationsService {
       adapterImplemented,
       commands,
       configChanges,
+      configMaterial,
       featureFlagEnabled,
       hasOutbound,
       hasSecretRef,
@@ -7157,6 +7161,7 @@ export class OperationsService {
     const dataPlaneReady =
       featureFlagEnabled &&
       adapter.dataPlaneReady &&
+      configMaterial.ready &&
       hasOutbound &&
       !missingSecret &&
       (!requiresSecret || secretDecryptAllowed) &&
@@ -7177,6 +7182,7 @@ export class OperationsService {
     if (adapterImplemented) reasonCodes.add('adapterReady');
     else reasonCodes.add('adapterMissing');
     for (const reason of adapter.reasonCodes) reasonCodes.add(reason);
+    reasonCodes.add(configMaterial.ready ? 'configMaterialReady' : 'configMaterialMissing');
     if (hasOutbound) {
       reasonCodes.add('outboundReady');
       reasonCodes.add('maintenanceMode');
@@ -7237,6 +7243,8 @@ export class OperationsService {
       adapterImplemented,
       dataPlaneReady,
       canExecute,
+      configMaterialReady: configMaterial.ready,
+      configMaterialMissingFields: configMaterial.missingFields,
       requiresSecret,
       hasSecretRef,
       secretDecryptAllowed,
@@ -7253,6 +7261,7 @@ export class OperationsService {
         commands,
         featureFlagEnabled,
         adapterImplemented,
+        configMaterialReady: configMaterial.ready,
         dataPlaneReady,
         hasOutbound,
         requiresSecret,
@@ -7406,6 +7415,8 @@ export class OperationsService {
       adapterImplemented: plan.adapterImplemented,
       dataPlaneReady: plan.dataPlaneReady,
       canExecute: plan.canExecute,
+      configMaterialReady: plan.configMaterialReady,
+      configMaterialMissingFields: [...plan.configMaterialMissingFields],
       requiresSecret: plan.requiresSecret,
       hasSecretRef: plan.hasSecretRef,
       secretDecryptAllowed: plan.secretDecryptAllowed,
@@ -7507,6 +7518,7 @@ export class OperationsService {
     adapterImplemented: boolean;
     commands: AdminProtocolServerApplyPlanSummary['commands'];
     configChanges: AdminProtocolServerApplyPlanSummary['configChanges'];
+    configMaterial: { ready: boolean; missingFields: string[] };
     featureFlagEnabled: boolean;
     hasOutbound: boolean;
     hasSecretRef: boolean;
@@ -7603,6 +7615,15 @@ export class OperationsService {
       gate('dryRunSafety', input.secretSafe ? 'passed' : 'blocked', [input.secretSafe ? 'dryRunSafe' : 'dryRunUnsafe'], {
         blocksDryRun: !input.secretSafe,
       }),
+      gate(
+        'configMaterial',
+        input.configMaterial.ready ? 'passed' : 'blocked',
+        [input.configMaterial.ready ? 'configMaterialReady' : 'configMaterialMissing'],
+        {
+          blocksDryRun: false,
+          observedValue: input.configMaterial.missingFields.length > 0 ? input.configMaterial.missingFields.join(', ') : null,
+        },
+      ),
       gate('outbound', input.hasOutbound ? 'passed' : 'future', [input.hasOutbound ? 'outboundReady' : 'outboundMissing'], {
         blocksDryRun: !input.hasOutbound,
       }),
@@ -7720,6 +7741,7 @@ export class OperationsService {
     commands: AdminProtocolServerApplyPlanSummary['commands'];
     featureFlagEnabled: boolean;
     adapterImplemented: boolean;
+    configMaterialReady: boolean;
     dataPlaneReady: boolean;
     hasOutbound: boolean;
     requiresSecret: boolean;
@@ -7748,6 +7770,7 @@ export class OperationsService {
 
     const preflightStatus = input.featureFlagEnabled && input.adapterImplemented ? 'ready' : 'future';
     const downstreamStatus = input.dataPlaneReady ? 'ready' : 'future';
+    const configStatus = input.configMaterialReady ? downstreamStatus : 'blocked';
     const secretStepStatus =
       !input.requiresSecret
         ? 'notRequired'
@@ -7793,11 +7816,63 @@ export class OperationsService {
         ),
       ),
       step('package', downstreamStatus, reason(input.hasOutbound ? 'outboundReady' : 'outboundMissing')),
-      step('config', downstreamStatus, reason('defaultInactive', input.hasOutbound && 'maintenanceMode'), true),
+      step(
+        'config',
+        configStatus,
+        reason(input.configMaterialReady ? 'configMaterialReady' : 'configMaterialMissing', 'defaultInactive', input.hasOutbound && 'maintenanceMode'),
+        true,
+      ),
       step('service', downstreamStatus, reason('defaultInactive', input.hasOutbound && 'maintenanceMode'), true),
       step('health', downstreamStatus, reason('healthVerifyRequired')),
       step('rollback', downstreamStatus, reason('auditRequired'), true),
     ];
+  }
+
+  private protocolServerApplyConfigMaterial(setup: ProtocolServerApplySource): {
+    ready: boolean;
+    missingFields: string[];
+  } {
+    const config = this.asRecord(setup.config);
+    const missingFields = new Set<string>();
+    const requireString = (key: string, label = key) => {
+      if (!this.stringFromConfig(config[key])) missingFields.add(label);
+    };
+    const requireBooleanTrue = (key: string, label = key) => {
+      if (config[key] !== true) missingFields.add(label);
+    };
+    const requirePort = (label = 'port') => {
+      if (!Number.isInteger(setup.port) || setup.port < 1 || setup.port > 65535) missingFields.add(label);
+    };
+
+    switch (setup.protocol) {
+      case 'wireguard':
+        requireString('interfaceName');
+        requireString('addressCidr');
+        requirePort('listenPort');
+        requireString('endpoint');
+        requireString('allowedIps');
+        requireBooleanTrue('peerPublicKeyPresent', 'peerPublicKey');
+        break;
+      case 'vless':
+        requireString('endpoint');
+        requirePort();
+        break;
+      case 'l2tp':
+      case 'ikev2':
+        requireString('endpoint');
+        requirePort();
+        break;
+      default:
+        requirePort();
+        break;
+    }
+
+    const fields = Array.from(missingFields);
+
+    return {
+      ready: fields.length === 0,
+      missingFields: fields,
+    };
   }
 
   private buildProtocolServerApplyCommands(

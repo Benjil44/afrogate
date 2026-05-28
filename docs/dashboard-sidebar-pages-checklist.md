@@ -94,6 +94,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Show protocol server apply adapter, dry-run command-runner, and server-credential readiness boundaries.
 - [x] Show protocol server apply credential-decrypt readiness separately from active server-credential readiness.
 - [x] Show protocol server apply protocol-secret decrypt readiness separately from secret reference readiness.
+- [x] Show protocol server apply config-material readiness separately from secret and credential readiness.
 - [ ] Production server-side protocol apply engine with encrypted secret storage.
 
 ## Users Page

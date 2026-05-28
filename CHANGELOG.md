@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.64.0 - 2026-05-28
+
+- Added protocol server apply config-material readiness to plans, preflight gates, and stored audit snapshots.
+- Surfaced config completeness separately from secret and credential readiness in the Settings apply UI.
+- Kept the production protocol executor blocked until config material, decrypt gates, server access, credentials, and audited adapter readiness all pass.
+
 ## 0.63.2 - 2026-05-28
 
 - Added a disabled-by-default protocol-secret decrypt readiness gate for protocol server apply planning.
