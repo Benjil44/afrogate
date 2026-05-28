@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.81.1 - 2026-05-29
+
+- Added repository-scoped security and privacy threat models for AfroGate's backend, dashboard, client app, agent, provider integrations, and route/data-plane boundaries.
+- Documented privacy invariants around no traffic-content storage, no user destination history, write-only paid-number handling, and client/admin API separation.
+- Linked the threat models from the security policy and repository structure docs for future implementation review.
+
 ## 0.81.0 - 2026-05-29
 
 - Added a backend API rate-limit guard for sensitive public endpoints with bounded in-memory counters.

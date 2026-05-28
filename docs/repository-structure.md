@@ -14,7 +14,7 @@ infra/
   ubuntu/        Native Ubuntu deployment notes and samples
   postgres/      SQL migrations and database notes
   docker/        Optional Docker Compose deployment samples
-docs/            Product, architecture, roadmap, and implementation docs
+docs/            Product, architecture, roadmap, threat model, and implementation docs
 .codex/          Persistent project memory, checklist, and progress
 tests/e2e/       Playwright browser smoke and dense dashboard visual-capture tests
 ```

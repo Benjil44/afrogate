@@ -25,3 +25,8 @@ For now, report security issues privately to the project owner. Do not open publ
 - PostgreSQL bound to private/local interfaces only.
 - Encrypted backups and restore tests.
 - Dependency audit and secret scan in CI.
+
+## Threat Models
+
+- Security threat model: [`docs/security-threat-model.md`](docs/security-threat-model.md)
+- Privacy threat model: [`docs/privacy-threat-model.md`](docs/privacy-threat-model.md)

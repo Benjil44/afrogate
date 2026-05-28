@@ -1295,6 +1295,15 @@ Repository remote is ready:
 - Verified repository secret hygiene with `npm run secrets:check`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added `docs/security-threat-model.md` covering assets, trust boundaries, attacker-controlled inputs, existing mitigations, attacker stories, and severity calibration.
+- Added `docs/privacy-threat-model.md` covering data categories, no-traffic-inspection invariants, client/admin/provider boundaries, privacy failure stories, and required controls.
+- Linked the threat models from `SECURITY.md`, `docs/security-performance-policy.md`, and `docs/repository-structure.md`.
+- Marked privacy and security threat models complete in `.codex/checklist.md`.
+- Bumped AfroGate to `0.81.1` for the threat-model documentation slice.
+- Checklist completion after this slice is `209 / 228` items, or `91.7%` complete with `8.3%` remaining.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added a backend API rate-limit guard with bounded in-memory fixed-window counters and response headers for limit, remaining count, reset, and retry-after.
 - Applied default API rate limits to `POST /api/auth/login`, `POST /api/payments/paypal/webhook`, and `POST /api/telegram/webhook`.
 - Added deployment controls for `AFROGATE_RATE_LIMIT_ENABLED`, `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS`, and `AFROGATE_RATE_LIMIT_MAX_KEYS`.

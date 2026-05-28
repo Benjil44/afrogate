@@ -10,6 +10,8 @@ That means every feature must pass three checks:
 - Does it preserve safety and privacy?
 - Does it run efficiently on expensive, low-resource VPS machines?
 
+Repository-scoped threat models live in `docs/security-threat-model.md` and `docs/privacy-threat-model.md`. New features that touch auth, billing, provider webhooks, route decisions, server credentials, reports, backups, panel imports, or client/mobile data must be checked against those documents before implementation.
+
 ## Clean Code Rules
 
 - Do not duplicate business logic. Put shared contracts in `packages/shared`.

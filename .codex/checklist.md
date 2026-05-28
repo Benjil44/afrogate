@@ -246,8 +246,8 @@
 - [ ] Backup status monitoring.
 - [ ] Route canary rollout.
 - [ ] Adapter-based migration from current panels.
-- [ ] Privacy threat model.
-- [ ] Security threat model.
+- [x] Privacy threat model.
+- [x] Security threat model.
 - [x] Rate limiting at API layer.
 - [x] Dependency audit in CI.
 - [x] Secret scan in CI.
