@@ -108,7 +108,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 
 ## Later Pages
 
-- [ ] Usage and billing.
+- [x] Usage and billing.
 - [ ] Telegram bot operations.
 - [ ] Backups.
 - [ ] Audit logs.

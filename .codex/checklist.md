@@ -172,6 +172,7 @@
 - [x] Paid payment order quota allocation.
 - [x] Rewarded-ad quota credit ledger and mobile client claim surface.
 - [x] Admin-managed rewarded-ad reward and daily cap settings.
+- [x] Admin dashboard usage and billing page.
 - [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
 - [ ] Verified rewarded-ad provider SDK/webhook adapter.
 - [x] Usage accounting.

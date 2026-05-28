@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.78.0 - 2026-05-28
+
+- Added a dashboard Usage/Billing page for guarded admin billing catalog, customer quota, payment order, and allocation visibility.
+- Added admin UI controls for non-secret rewarded-ad reward size, enabled state, daily cap, provider key, and verification mode.
+- Added browser coverage for the billing page and bilingual dashboard labels for the new seller/admin billing surface.
+
 ## 0.77.0 - 2026-05-28
 
 - Added guarded admin rewarded-ad settings APIs for reading and updating reward amount, daily cap, enabled state, provider key, and verification mode.

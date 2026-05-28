@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type {
   AdminAlertSummary,
+  AdminBillingSettingsSummary,
+  AdminCustomerAccountSummary,
+  AdminPaymentMethodSummary,
+  AdminPaymentOrderSummary,
   AdminProtocolServerApplyAdapterSummary,
   AdminProtocolServerApplyEventDetail,
   AdminProtocolServerApplyEventSummary,
@@ -30,9 +34,11 @@ import type {
   AdminRouteDecisionSwitchRolloutSummary,
   AdminServerSummary,
   AdminServerInterfaceSummary,
+  AdminRewardedAdSettingsSummary,
   AdminSettingsResponse,
   AdminSessionResponse,
   AdminTunnelSummary,
+  AdminVolumePackageSummary,
   AdminWireGuardCandidate,
   LoadBalanceStrategy,
   AdminUserSummary,
@@ -62,6 +68,7 @@ import {
   Bell,
   CheckCircle2,
   Clock,
+  CreditCard,
   Cpu,
   Download,
   Eye,
@@ -87,6 +94,7 @@ import {
   ShieldCheck,
   Upload,
   UserRound,
+  Gift,
   WifiOff,
 } from 'lucide-react';
 import rootPackage from '../../../package.json';
@@ -97,7 +105,11 @@ import {
   createAdminUser,
   deleteAdminUser,
   fetchAdminAlerts,
+  fetchAdminBillingCatalog,
+  fetchAdminCustomerAccounts,
   fetchAdminOutbounds,
+  fetchAdminPaymentOrders,
+  fetchAdminRewardedAdSettings,
   fetchAdminServer,
   fetchAdminServerInterfaces,
   fetchAdminServers,
@@ -120,6 +132,7 @@ import {
   storeAdminServerCredential,
   updateAdminRouteAssignment,
   updateAdminRouteSettings,
+  updateAdminRewardedAdSettings,
   updateAdminServer,
   updateAdminUser,
   updateAdminUserPassword,
@@ -132,7 +145,7 @@ import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } f
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-type ActiveView = 'dashboard' | 'servers' | 'users' | 'routes' | 'alerts' | 'settings';
+type ActiveView = 'dashboard' | 'servers' | 'users' | 'billing' | 'routes' | 'alerts' | 'settings';
 type AlertStatusFilter = 'open' | 'resolved';
 type AlertSeverityFilter = 'all' | Tone;
 type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
@@ -412,6 +425,7 @@ const navItems: NavItemData[] = [
   { id: 'dashboard', labelKey: 'dashboard', icon: Activity },
   { id: 'servers', labelKey: 'servers', icon: Server },
   { id: 'users', labelKey: 'users', icon: UserRound },
+  { id: 'billing', labelKey: 'billing', icon: CreditCard },
   { id: 'routes', labelKey: 'routes', icon: Route },
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
   { id: 'settings', labelKey: 'settings', icon: SettingsIcon },
@@ -1053,6 +1067,8 @@ function ActivePage({
       );
     case 'users':
       return <UsersPage format={format} session={session} sessionToken={sessionToken} t={t} />;
+    case 'billing':
+      return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     case 'routes':
       return (
         <RoutesPage
@@ -2667,6 +2683,398 @@ function UsersPage({
       </section>
     </section>
   );
+}
+
+function BillingPage({
+  format,
+  session,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  session: AdminSessionResponse;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const [settings, setSettings] = useState<AdminBillingSettingsSummary | null>(null);
+  const [packages, setPackages] = useState<AdminVolumePackageSummary[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<AdminPaymentMethodSummary[]>([]);
+  const [paymentOrders, setPaymentOrders] = useState<AdminPaymentOrderSummary[]>([]);
+  const [accounts, setAccounts] = useState<AdminCustomerAccountSummary[]>([]);
+  const [rewardSettings, setRewardSettings] = useState<AdminRewardedAdSettingsSummary | null>(null);
+  const [dataState, setDataState] = useState<DataState>('loading');
+  const [error, setError] = useState<string | null>(null);
+  const [rewardEnabled, setRewardEnabled] = useState(true);
+  const [rewardMb, setRewardMb] = useState('100');
+  const [dailyLimit, setDailyLimit] = useState('20');
+  const [provider, setProvider] = useState('mvp_rewarded_ad');
+  const [verificationMode, setVerificationMode] = useState('client_callback_mvp');
+  const [rewardMessage, setRewardMessage] = useState<string | null>(null);
+  const [isSavingReward, setIsSavingReward] = useState(false);
+  const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
+
+  const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
+    setDataState('loading');
+    setError(null);
+
+    try {
+      const [catalogResponse, orderResponse, accountResponse, rewardResponse] = await Promise.all([
+        fetchAdminBillingCatalog(sessionToken, signal),
+        fetchAdminPaymentOrders(sessionToken, signal),
+        fetchAdminCustomerAccounts(sessionToken, signal),
+        fetchAdminRewardedAdSettings(sessionToken, signal),
+      ]);
+
+      setSettings(catalogResponse.settings);
+      setPackages(catalogResponse.packages);
+      setPaymentMethods(catalogResponse.paymentMethods);
+      setPaymentOrders(orderResponse.paymentOrders);
+      setAccounts(accountResponse.accounts);
+      setRewardSettings(rewardResponse.rewardedAds);
+      setDataState('live');
+    } catch (loadError) {
+      if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
+
+      setError(t.billing.errors.load);
+      setDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+    }
+  }, [sessionToken, t]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadBilling(controller.signal);
+
+    return () => controller.abort();
+  }, [loadBilling]);
+
+  useEffect(() => {
+    if (!rewardSettings) return;
+
+    setRewardEnabled(rewardSettings.enabled);
+    setRewardMb(String(Math.round(rewardSettings.rewardMb * 10) / 10));
+    setDailyLimit(String(rewardSettings.dailyLimit));
+    setProvider(rewardSettings.provider);
+    setVerificationMode(rewardSettings.verificationMode);
+  }, [rewardSettings]);
+
+  const totalUsedBytes = accounts.reduce((sum, account) => sum + account.usedBytes, 0);
+  const totalQuotaBytes = sumNullable(accounts.map((account) => account.quotaLimitBytes ?? null));
+  const pendingAllocationCount = paymentOrders.filter((order) => order.status === 'paid' && order.allocationStatus === 'pending').length;
+  const activePackageCount = packages.filter((item) => item.status === 'active').length;
+  const activeMethodCount = paymentMethods.filter((item) => item.status === 'active').length;
+  const summaryCards: MetricCardData[] = [
+    {
+      label: t.billing.customerAccounts,
+      value: format.integer(accounts.length),
+      tone: accounts.length > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.billing.usedQuota,
+      value: format.bytes(totalUsedBytes),
+      tone: 'neutral',
+    },
+    {
+      label: t.billing.totalQuota,
+      value: totalQuotaBytes === null ? t.billing.unlimited : format.bytes(totalQuotaBytes),
+      tone: totalQuotaBytes === null ? 'warning' : 'good',
+    },
+    {
+      label: t.billing.pendingAllocations,
+      value: format.integer(pendingAllocationCount),
+      tone: pendingAllocationCount > 0 ? 'warning' : 'good',
+    },
+  ];
+
+  const handleSaveRewardSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canManageBilling) return;
+
+    const rewardMbValue = Number(rewardMb);
+    const dailyLimitValue = Number(dailyLimit);
+    if (!Number.isFinite(rewardMbValue) || rewardMbValue <= 0 || !Number.isInteger(dailyLimitValue) || dailyLimitValue < 0) {
+      setRewardMessage(t.billing.rewardSettingsSaveFailed);
+      return;
+    }
+
+    setIsSavingReward(true);
+    setRewardMessage(null);
+
+    try {
+      const response = await updateAdminRewardedAdSettings(sessionToken, {
+        dailyLimit: dailyLimitValue,
+        enabled: rewardEnabled,
+        provider,
+        rewardBytes: Math.round(rewardMbValue * 1024 ** 2),
+        verificationMode,
+      });
+      setRewardSettings(response.rewardedAds);
+      setRewardMessage(t.billing.rewardSettingsSaved);
+    } catch {
+      setRewardMessage(t.billing.rewardSettingsSaveFailed);
+    } finally {
+      setIsSavingReward(false);
+    }
+  };
+
+  return (
+    <section className="mt-0 grid gap-3">
+      {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
+      {dataState === 'loading' ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
+      {dataState !== 'live' && dataState !== 'loading' ? <DataStateNotice state={dataState} t={t} /> : null}
+
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label={t.billing.summary}>
+        {summaryCards.map((item) => <MetricCard item={item} key={item.label} />)}
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)]">
+        <section className={panelClass}>
+          <PanelHeading
+            title={t.billing.rewardSettings}
+            icon={Gift}
+            meta={rewardSettings ? `${format.bytes(rewardSettings.rewardBytes)} / ${format.integer(rewardSettings.dailyLimit)}` : t.dataStatus.loading}
+          />
+          <form className="mt-2 grid gap-2" onSubmit={handleSaveRewardSettings}>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone={rewardEnabled ? 'good' : 'neutral'}>
+                {rewardEnabled ? t.billing.enabled : t.billing.disabled}
+              </StatusBadge>
+              <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3 text-[13px] font-bold text-afro-ink">
+                <input
+                  checked={rewardEnabled}
+                  disabled={!canManageBilling}
+                  onChange={(event) => setRewardEnabled(event.target.checked)}
+                  type="checkbox"
+                />
+                {t.billing.rewardsEnabled}
+              </label>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <SettingsInput inputMode="numeric" label={t.billing.rewardMb} onChange={setRewardMb} value={rewardMb} />
+              <SettingsInput inputMode="numeric" label={t.billing.dailyLimit} onChange={setDailyLimit} value={dailyLimit} />
+              <SettingsInput label={t.billing.provider} onChange={setProvider} value={provider} />
+              <SettingsInput label={t.billing.verificationMode} onChange={setVerificationMode} value={verificationMode} />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className={primaryButtonClass}
+                disabled={!canManageBilling || isSavingReward}
+                type="submit"
+              >
+                {isSavingReward ? t.billing.saving : t.billing.saveRewardSettings}
+              </button>
+              {rewardMessage ? <span className={mutedTextClass}>{rewardMessage}</span> : null}
+              {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
+            </div>
+          </form>
+        </section>
+
+        <BillingCatalogPanel
+          activeMethodCount={activeMethodCount}
+          activePackageCount={activePackageCount}
+          format={format}
+          paymentMethods={paymentMethods}
+          packages={packages}
+          settings={settings}
+          t={t}
+        />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
+        <CustomerAccountsPanel accounts={accounts} format={format} t={t} />
+      </section>
+    </section>
+  );
+}
+
+function BillingCatalogPanel({
+  activeMethodCount,
+  activePackageCount,
+  format,
+  paymentMethods,
+  packages,
+  settings,
+  t,
+}: {
+  activeMethodCount: number;
+  activePackageCount: number;
+  format: DashboardFormatters;
+  paymentMethods: AdminPaymentMethodSummary[];
+  packages: AdminVolumePackageSummary[];
+  settings: AdminBillingSettingsSummary | null;
+  t: DashboardStrings;
+}) {
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.billing.catalog} icon={CreditCard} meta={t.billing.packagesLoaded(format.integer(packages.length))} />
+      <div className="mt-2 grid gap-2">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <MetricPill
+            icon={CreditCard}
+            label={t.billing.pricePerGb}
+            value={settings ? `${format.integer(settings.pricePerGb)} ${format.label(settings.currency)}` : '--'}
+          />
+          <MetricPill icon={Inbox} label={t.billing.activePackages} value={format.integer(activePackageCount)} />
+          <MetricPill icon={ShieldCheck} label={t.billing.activeMethods} value={format.integer(activeMethodCount)} />
+        </div>
+        {packages.length === 0 ? <EmptyState message={t.billing.noPackages} /> : null}
+        {packages.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] border-collapse">
+              <thead>
+                <tr>
+                  {[t.billing.packageName, t.billing.volume, t.billing.price, t.billing.duration, t.billing.status].map((heading) => (
+                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {packages.slice(0, 8).map((item) => (
+                  <tr key={item.id}>
+                    <TableCell>
+                      <strong className="block text-afro-ink">{item.name}</strong>
+                      <span className="text-[12px] text-afro-muted">{item.slug}</span>
+                    </TableCell>
+                    <TableCell>{format.bytes(item.volumeBytes)}</TableCell>
+                    <TableCell>{`${format.integer(item.totalPrice)} ${format.label(item.currency)}`}</TableCell>
+                    <TableCell>{item.durationDays ? t.billing.days(format.integer(item.durationDays)) : t.billing.noExpiry}</TableCell>
+                    <TableCell>
+                      <StatusBadge tone={billingStatusTone(item.status)}>{format.label(item.status)}</StatusBadge>
+                    </TableCell>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap gap-1.5">
+          {paymentMethods.map((method) => (
+            <StatusBadge key={method.id} tone={billingStatusTone(method.status)}>
+              {`${format.label(method.provider)} / ${format.label(method.checkoutMode)}`}
+            </StatusBadge>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PaymentOrdersPanel({
+  format,
+  paymentOrders,
+  t,
+}: {
+  format: DashboardFormatters;
+  paymentOrders: AdminPaymentOrderSummary[];
+  t: DashboardStrings;
+}) {
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.billing.paymentOrders} icon={CreditCard} meta={t.billing.ordersLoaded(format.integer(paymentOrders.length))} />
+      <div className="mt-2 grid gap-2">
+        {paymentOrders.length === 0 ? <EmptyState message={t.billing.noPaymentOrders} /> : null}
+        {paymentOrders.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse">
+              <thead>
+                <tr>
+                  {[t.billing.customer, t.billing.packageName, t.billing.amount, t.billing.provider, t.billing.status, t.billing.allocation].map((heading) => (
+                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paymentOrders.slice(0, 10).map((order) => (
+                  <tr key={order.id}>
+                    <TableCell>
+                      <strong className="block text-afro-ink">{order.customerDisplayName || order.customerTelegramUsername || order.customerAccountId.slice(0, 8)}</strong>
+                      <span className="text-[12px] text-afro-muted">{format.time(new Date(order.createdAt), false)}</span>
+                    </TableCell>
+                    <TableCell>{order.packageName}</TableCell>
+                    <TableCell>{`${format.integer(order.amount)} ${format.label(order.currency)}`}</TableCell>
+                    <TableCell>{format.label(order.provider)}</TableCell>
+                    <TableCell>
+                      <StatusBadge tone={billingStatusTone(order.status)}>{format.label(order.status)}</StatusBadge>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge tone={billingStatusTone(order.allocationStatus ?? 'not_applicable')}>
+                        {format.label(order.allocationStatus ?? 'not_applicable')}
+                      </StatusBadge>
+                    </TableCell>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function CustomerAccountsPanel({
+  accounts,
+  format,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.billing.customerAccounts} icon={UserRound} meta={t.billing.accountsLoaded(format.integer(accounts.length))} />
+      <div className="mt-2 grid gap-2">
+        {accounts.length === 0 ? <EmptyState message={t.billing.noCustomerAccounts} /> : null}
+        {accounts.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse">
+              <thead>
+                <tr>
+                  {[t.billing.customer, t.billing.clients, t.billing.usedQuota, t.billing.remaining, t.billing.quotaScope, t.billing.status].map((heading) => (
+                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.slice(0, 10).map((account) => (
+                  <tr key={account.id}>
+                    <TableCell>
+                      <strong className="block text-afro-ink">
+                        {account.displayName || account.telegramUsername || account.telegramId || account.id.slice(0, 8)}
+                      </strong>
+                      <span className="text-[12px] text-afro-muted">{format.time(new Date(account.updatedAt), false)}</span>
+                    </TableCell>
+                    <TableCell>{`${format.integer(account.activeClientCount)} / ${format.integer(account.clientCount)}`}</TableCell>
+                    <TableCell>{format.bytes(account.usedBytes)}</TableCell>
+                    <TableCell>{account.remainingBytes === null || account.remainingBytes === undefined ? t.billing.unlimited : format.bytes(account.remainingBytes)}</TableCell>
+                    <TableCell>{format.label(account.quotaScope)}</TableCell>
+                    <TableCell>
+                      <StatusBadge tone={billingStatusTone(account.status)}>{format.label(account.status)}</StatusBadge>
+                    </TableCell>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function billingStatusTone(status: string): Tone {
+  if (status === 'active' || status === 'paid' || status === 'allocated') return 'good';
+  if (status === 'pending' || status === 'not_applicable' || status === 'archived' || status === 'disabled') return 'neutral';
+  if (status === 'refunded' || status === 'suspended') return 'warning';
+
+  return 'critical';
 }
 
 function RoutesPage({
@@ -9293,6 +9701,22 @@ function createDashboardFormatters(language: DashboardLanguage) {
       const units = isPersian
         ? ['بایت/ث', 'کیلوبایت/ث', 'مگابایت/ث', 'گیگابایت/ث']
         : ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+      let currentValue = value;
+      let unitIndex = 0;
+
+      while (currentValue >= 1024 && unitIndex < units.length - 1) {
+        currentValue /= 1024;
+        unitIndex += 1;
+      }
+
+      return `${formatCompactNumber(currentValue)} ${units[unitIndex]}`;
+    },
+    bytes(value: number | null): string {
+      if (value === null) return '--';
+
+      const units = isPersian
+        ? ['بایت', 'کیلوبایت', 'مگابایت', 'گیگابایت', 'ترابایت']
+        : ['B', 'KB', 'MB', 'GB', 'TB'];
       let currentValue = value;
       let unitIndex = 0;
 

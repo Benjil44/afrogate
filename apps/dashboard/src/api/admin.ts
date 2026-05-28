@@ -1,10 +1,14 @@
 import type {
   AdminAlertsResponse,
+  AdminBillingCatalogResponse,
+  AdminCustomerAccountsResponse,
   ApplyRouteDecisionPreviewRequest,
   ApplyRouteDecisionPreviewResponse,
   AdminLoginRequest,
   AdminLoginResponse,
   AdminOutboundsResponse,
+  AdminPaymentOrdersResponse,
+  AdminRewardedAdSettingsResponse,
   AdminServerInterfacesResponse,
   AdminServersResponse,
   AdminProtocolServerApplyEventDetailResponse,
@@ -39,6 +43,7 @@ import type {
   StoreServerCredentialResponse,
   UpsertRouteAssignmentRequest,
   UpsertRouteSettingsRequest,
+  UpdateRewardedAdSettingsRequest,
   UpdateServerRequest,
   UpdateAdminUserPasswordRequest,
   UpdateAdminUserRequest,
@@ -230,6 +235,67 @@ export async function fetchRouteFailoverEvents(
   });
 
   return response.json() as Promise<RouteFailoverEventsResponse>;
+}
+
+export async function fetchAdminBillingCatalog(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminBillingCatalogResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/billing/catalog`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminBillingCatalogResponse>;
+}
+
+export async function fetchAdminCustomerAccounts(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminCustomerAccountsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts?limit=100`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminCustomerAccountsResponse>;
+}
+
+export async function fetchAdminPaymentOrders(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminPaymentOrdersResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/payment-orders?limit=100`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminPaymentOrdersResponse>;
+}
+
+export async function fetchAdminRewardedAdSettings(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminRewardedAdSettingsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/rewarded-ads/settings`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminRewardedAdSettingsResponse>;
+}
+
+export async function updateAdminRewardedAdSettings(
+  sessionToken: string,
+  payload: UpdateRewardedAdSettingsRequest,
+): Promise<AdminRewardedAdSettingsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/rewarded-ads/settings`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminRewardedAdSettingsResponse>;
 }
 
 export async function fetchAdminSettings(

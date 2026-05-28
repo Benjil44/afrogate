@@ -9,7 +9,7 @@ AfroGate dashboard and client surfaces support English and Persian from the firs
 - Language choice is persisted in browser localStorage.
 - The selected language updates the page `lang` and `dir` attributes.
 - The sidebar footer contains the language icon toggle beside the version.
-- Current language support covers English and Persian dashboard operations copy and the first VPN-client route/quota/rewarded-data surface.
+- Current language support covers English and Persian dashboard operations copy, the admin usage/billing surface, and the first VPN-client route/quota/rewarded-data surface.
 - Persian typography uses local YekanBakh assets from `apps/dashboard/public/assets/fonts/YekanBakh/`; `index.html` loads `yekanbakh.css` directly and no CDN font source is used.
 
 ## Rules

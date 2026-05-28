@@ -70,6 +70,19 @@ test('alerts page filters open and resolved history rows', async ({ page }) => {
   await expect(page.getByText('Resolved storage guard')).toBeVisible();
 });
 
+test('billing page shows catalog and saves reward settings', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="billing"]').click();
+
+  await expect(page.getByRole('heading', { name: 'Usage and billing' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Reward Settings' })).toBeVisible();
+  await expect(page.getByText('starter-25gb')).toBeVisible();
+
+  await page.getByLabel('Reward MB').fill('150');
+  await page.getByRole('button', { name: 'Save reward settings' }).click();
+  await expect(page.getByText('Reward settings saved.')).toBeVisible();
+});
+
 async function loadSignedInDashboard(page: Page, size: { width: number; height: number }): Promise<void> {
   await mockDashboardApi(page);
   await page.setViewportSize(size);
@@ -178,6 +191,137 @@ async function mockDashboardApi(page: Page): Promise<void> {
             createTunnel('tunnel-dxb-wg', 'server-dxb', 'dxb-relay-02', 'Dubai WG0', 'degraded', 'gaming'),
             createTunnel('tunnel-teh-wg', 'server-teh', 'teh-gateway-03', 'Tehran WG0', 'down', 'control'),
           ],
+        });
+        return;
+      case '/api/admin/billing/catalog':
+        await fulfillJson(route, {
+          paymentMethods: [
+            {
+              checkoutMode: 'provider_sdk',
+              createdAt: fixedNow,
+              currency: 'USD',
+              id: 'method-paypal',
+              instructions: null,
+              maxAmount: null,
+              minAmount: 1,
+              name: 'PayPal',
+              provider: 'paypal',
+              publicConfig: {},
+              slug: 'paypal',
+              sortOrder: 1,
+              status: 'active',
+              supportsAutoCapture: true,
+              updatedAt: fixedNow,
+            },
+          ],
+          packages: [
+            {
+              createdAt: fixedNow,
+              currency: 'USD',
+              durationDays: 30,
+              id: 'package-starter',
+              name: 'Starter 25GB',
+              notes: null,
+              pricePerGb: 1,
+              slug: 'starter-25gb',
+              sortOrder: 1,
+              status: 'active',
+              totalPrice: 25,
+              updatedAt: fixedNow,
+              volumeBytes: 26_843_545_600,
+              volumeGb: 25,
+            },
+          ],
+          settings: {
+            createdAt: fixedNow,
+            currency: 'USD',
+            pricePerGb: 1,
+            settingKey: 'default',
+            updatedAt: fixedNow,
+            updatedBy: 'admin-visual',
+          },
+        });
+        return;
+      case '/api/admin/payment-orders':
+        await fulfillJson(route, {
+          paymentOrders: [
+            {
+              allocationDelaySeconds: 12,
+              allocationId: null,
+              allocationStatus: 'pending',
+              allocatedAt: null,
+              allocatedVolumeBytes: null,
+              amount: 25,
+              createdAt: fixedNow,
+              currency: 'USD',
+              customerAccountId: 'account-visual',
+              customerDisplayName: 'Gaming customer',
+              customerTelegramUsername: 'player_one',
+              durationDays: 30,
+              expiresAt: null,
+              failedAt: null,
+              id: 'order-visual',
+              idempotencyKey: 'visual-order',
+              metadata: {},
+              notes: null,
+              packageName: 'Starter 25GB',
+              packageSlug: 'starter-25gb',
+              paidAt: fixedNow,
+              paymentMethodId: 'method-paypal',
+              paymentMethodName: 'PayPal',
+              paymentMethodSlug: 'paypal',
+              pricePerGb: 1,
+              provider: 'paypal',
+              providerCaptureId: 'capture-visual',
+              providerOrderId: 'provider-order-visual',
+              refundedAt: null,
+              status: 'paid',
+              updatedAt: fixedNow,
+              volumeBytes: 26_843_545_600,
+              volumeGb: 25,
+              volumePackageId: 'package-starter',
+            },
+          ],
+        });
+        return;
+      case '/api/admin/customer-accounts':
+        await fulfillJson(route, {
+          accounts: [
+            {
+              activeClientCount: 1,
+              clientCount: 2,
+              createdAt: fixedNow,
+              displayName: 'Gaming customer',
+              hasPaidNumberHash: true,
+              id: 'account-visual',
+              notes: null,
+              perClientLimitBytes: null,
+              quotaLimitBytes: 53_687_091_200,
+              quotaScope: 'account_shared',
+              remainingBytes: 32_212_254_720,
+              status: 'active',
+              telegramId: null,
+              telegramUsername: 'player_one',
+              updatedAt: fixedNow,
+              usedBytes: 21_474_836_480,
+            },
+          ],
+        });
+        return;
+      case '/api/admin/rewarded-ads/settings':
+        await fulfillJson(route, {
+          rewardedAds: {
+            createdAt: fixedNow,
+            dailyLimit: 20,
+            enabled: true,
+            provider: 'mvp_rewarded_ad',
+            rewardBytes: route.request().method() === 'PATCH' ? 157_286_400 : 104_857_600,
+            rewardMb: route.request().method() === 'PATCH' ? 150 : 100,
+            settingKey: 'default',
+            updatedAt: fixedNow,
+            updatedBy: 'admin-visual',
+            verificationMode: 'client_callback_mvp',
+          },
         });
         return;
       default:

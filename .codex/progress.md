@@ -1248,3 +1248,20 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the dashboard Usage/Billing page for seller/admin operations.
+- The page reads guarded billing catalog, customer account, payment order, and rewarded-ad settings APIs.
+- It shows billing summary cards, volume packages, payment methods, recent payment orders, allocation state, customer quota usage, and rewarded-ad reward/cap policy.
+- Admin/owner/superadmin sessions can update non-secret rewarded-ad enabled state, reward MB, daily limit, provider key, and verification mode from the dashboard.
+- Added typed English/Persian labels for the billing page and a Playwright flow that opens Billing, verifies catalog data, edits reward MB, and confirms the saved state.
+- Marked admin dashboard usage and billing page complete in `.codex/checklist.md` and marked Usage and billing complete in the dashboard sidebar checklist.
+- Bumped AfroGate to `0.78.0` for the admin Usage/Billing dashboard workflow.
+- Checklist completion after this slice is `204 / 227` items, or `89.9%` complete with `10.1%` remaining.
+- Verified the migration stack with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified focused dashboard/shared typing with `npm run typecheck --workspace @afrogate/dashboard` and `npm run typecheck --workspace @afrogate/shared`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`; 8 tests passed including the new billing page flow.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
