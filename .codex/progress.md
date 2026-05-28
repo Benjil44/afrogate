@@ -958,4 +958,17 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, and visual regression captures.
+- Added signed-in dense dashboard visual capture coverage in Playwright for mobile, tablet, desktop, and second-LCD viewports using mocked admin, metrics, alert, outbound, tunnel, and failover APIs.
+- The visual capture tests attach PNG screenshots to the Playwright report and keep the horizontal-overflow guard active for each dense layout viewport.
+- Updated checklist, memory, and repository structure docs to mark dense dashboard screenshot capture coverage complete.
+- Bumped AfroGate to `0.62.5` for the dashboard visual capture tests.
+- Verified `0.62.5` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified the desktop visual capture path with `npm run test:e2e -- --grep "desktop dashboard capture"`.
+- Verified the full fixed-port dashboard smoke and visual capture suite with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine and alert filters/history.

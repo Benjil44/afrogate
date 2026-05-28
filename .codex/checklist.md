@@ -151,7 +151,7 @@
 - [x] Review color contrast for warning/critical states in light and dark sidebar contexts.
 - [x] Bind alert/sidebar severity to real alert API rows instead of fallback/computed rows.
 - [x] Add Playwright browser smoke test for fixed-port dashboard rendering.
-- [ ] Add screenshot-based visual regression captures for the dense dashboard layout.
+- [x] Add screenshot-based visual regression captures for the dense dashboard layout.
 
 ## Phase 2: Users, Usage, Billing
 

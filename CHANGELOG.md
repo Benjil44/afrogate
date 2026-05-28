@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.62.5 - 2026-05-28
+
+- Added signed-in dense dashboard visual capture tests for mobile, tablet, desktop, and second-LCD viewports.
+- Mocked admin and metrics APIs in Playwright so visual captures exercise the real dashboard layout instead of the login screen.
+- Kept horizontal-overflow checks active for the captured dense layouts and documented the test coverage.
+
 ## 0.62.4 - 2026-05-28
 
 - Added a dashboard contrast check for warning and critical alert states in dark sidebar and light status-badge contexts.

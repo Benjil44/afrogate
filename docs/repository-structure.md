@@ -15,7 +15,7 @@ infra/
   docker/        Optional Docker Compose deployment samples
 docs/            Product, architecture, roadmap, and implementation docs
 .codex/          Persistent project memory, checklist, and progress
-tests/e2e/       Playwright browser smoke tests for fixed-port dashboard checks
+tests/e2e/       Playwright browser smoke and dense dashboard visual-capture tests
 ```
 
 ## Development Flow
@@ -26,7 +26,7 @@ tests/e2e/       Playwright browser smoke tests for fixed-port dashboard checks
 4. Agent owns lightweight server-side metrics collection and synthetic route probes.
 5. Shared package owns stable contracts only; avoid putting app logic there.
 6. Local direct-run wiring stays fixed on dashboard `4000` and backend `7000`.
-7. Playwright tests verify browser-visible dashboard behavior without allowing Vite to drift to fallback ports.
+7. Playwright tests verify browser-visible dashboard behavior without allowing Vite to drift to fallback ports, and dense dashboard visual captures attach screenshots for mobile, tablet, desktop, and second-LCD viewports.
 
 ## Local Port Wiring
 
