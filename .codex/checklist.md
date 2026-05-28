@@ -33,7 +33,7 @@
 - [x] Define database schema migration tool.
 - [x] Add local PostgreSQL setup script.
 - [x] Install local PostgreSQL, create the AfroGate development database, and run migrations.
-- [ ] Add basic CI checks.
+- [x] Add basic CI checks.
 - [x] Scaffold `apps/backend`.
 - [x] Scaffold `apps/dashboard`.
 - [x] Scaffold `apps/agent`.
@@ -228,8 +228,8 @@
 - [ ] Privacy threat model.
 - [ ] Security threat model.
 - [ ] Rate limiting at API layer.
-- [ ] Dependency audit in CI.
-- [ ] Secret scan in CI.
+- [x] Dependency audit in CI.
+- [x] Secret scan in CI.
 - [ ] Per-agent token rotation.
 - [ ] Database least-privilege roles.
 - [x] Loaded latency and bufferbloat monitoring.

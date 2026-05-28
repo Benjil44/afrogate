@@ -1,6 +1,6 @@
 {
   "name": "afrogate",
-  "version": "0.60.0",
+  "version": "0.61.0",
   "private": true,
   "description": "AfroGate operations, monitoring, routing, and billing platform.",
   "workspaces": [
@@ -18,6 +18,7 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
+    "secrets:check": "node scripts/check-secrets.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "version:patch": "node scripts/bump-version.mjs patch",

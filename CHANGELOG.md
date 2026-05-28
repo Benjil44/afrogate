@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.61.0 - 2026-05-28
+
+- Added GitHub Actions CI for version consistency, repository-file secret scanning, workspace typecheck/build, dashboard Playwright smoke tests, and dependency audit.
+- Added a local `npm run secrets:check` script for high-confidence token/private-key and sensitive filename checks without relying on a third-party CI action.
+- Updated Playwright to use installed Edge locally and Chromium in CI after the workflow installs the browser.
+
 ## 0.60.0 - 2026-05-28
 
 - Added a selected Tunnel Detail surface on the Routes page with guarded tunnel detail loading.

@@ -1,5 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
+const isCi = Boolean(process.env.CI);
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
@@ -26,11 +28,18 @@ export default defineConfig({
     timeout: 120_000,
   },
   projects: [
-    {
-      name: 'msedge',
-      use: {
-        channel: 'msedge',
-      },
-    },
+    isCi
+      ? {
+          name: 'chromium',
+          use: {
+            browserName: 'chromium',
+          },
+        }
+      : {
+          name: 'msedge',
+          use: {
+            channel: 'msedge',
+          },
+        },
   ],
 });

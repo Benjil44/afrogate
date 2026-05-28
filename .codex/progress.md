@@ -857,3 +857,17 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, alert filters/history, Ubuntu deployment notes, Docker Compose, and basic CI checks.
+- Added GitHub Actions CI at `.github/workflows/ci.yml` for pushes to `main`, pull requests, and manual dispatch.
+- CI now runs `npm ci`, `npm run version:check`, `npm run secrets:check`, workspace typecheck/build, Playwright dashboard smoke tests with CI-installed Chromium, and `npm audit --audit-level=moderate`.
+- Added `scripts/check-secrets.mjs` and root `npm run secrets:check` to scan repository files for high-confidence private-key/token patterns and sensitive secret filenames, including untracked non-ignored files during local runs.
+- Updated Playwright config so local checks continue using installed Microsoft Edge while CI uses Chromium after installation.
+- Updated checklist and memory to mark basic CI, dependency audit in CI, and secret scan in CI complete.
+- Bumped AfroGate to `0.61.0` for the CI and secret-scan workflow.
+- Verified `0.61.0` with `npm run version:check`.
+- Verified secret scanning with `npm run secrets:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, alert filters/history, Ubuntu deployment notes, and Docker Compose.

@@ -86,6 +86,7 @@ npm run test:e2e:headed
 ```
 
 The current Playwright config targets the installed Microsoft Edge browser through the `msedge` channel, so it avoids downloading a bundled browser during normal local checks.
+In CI, the same config switches to Playwright Chromium after the workflow installs it, so GitHub Actions does not depend on Edge being preinstalled on the runner.
 
 ## Optional Telegram Alerts
 
