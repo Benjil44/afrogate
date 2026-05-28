@@ -148,7 +148,7 @@
 - [x] Improve mobile/tablet resource strip density.
 - [x] Add empty/loading/error states for every dashboard panel.
 - [x] Add hover/tooltips for dense icon-only monitoring controls and metrics.
-- [ ] Review color contrast for warning/critical states in light and dark sidebar contexts.
+- [x] Review color contrast for warning/critical states in light and dark sidebar contexts.
 - [x] Bind alert/sidebar severity to real alert API rows instead of fallback/computed rows.
 - [x] Add Playwright browser smoke test for fixed-port dashboard rendering.
 - [ ] Add screenshot-based visual regression captures for the dense dashboard layout.

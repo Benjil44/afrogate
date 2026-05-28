@@ -39,6 +39,9 @@ jobs:
       - name: Scan repository files for secrets
         run: npm run secrets:check
 
+      - name: Check dashboard contrast
+        run: npm run contrast:check
+
       - name: Typecheck workspaces
         run: npm run typecheck --workspaces --if-present
 

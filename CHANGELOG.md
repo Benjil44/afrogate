@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.62.4 - 2026-05-28
+
+- Added a dashboard contrast check for warning and critical alert states in dark sidebar and light status-badge contexts.
+- Wired the contrast check into root scripts and CI so future color changes keep AA text contrast for alert indicators.
+- Marked the warning/critical contrast UI audit item complete.
+
 ## 0.62.3 - 2026-05-28
 
 - Added hover title and accessible label coverage for dense dashboard monitoring metrics, badges, detail rows, chart range controls, and table cells.

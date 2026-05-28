@@ -946,4 +946,16 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, color-contrast review, and visual regression captures.
+- Added `npm run contrast:check` to validate dashboard warning/critical contrast for dark sidebar alert nav/count states and light status badges against AA text thresholds.
+- Wired the dashboard contrast check into CI after secret scanning so future alert color changes are reviewed automatically.
+- Updated checklist and memory to mark the warning/critical color-contrast review complete.
+- Bumped AfroGate to `0.62.4` for the dashboard contrast guard.
+- Verified `0.62.4` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified dashboard contrast locally with `npm run contrast:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, and visual regression captures.
