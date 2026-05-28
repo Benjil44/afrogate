@@ -17,7 +17,7 @@ Docker Compose can be added later for reproducible deployments. The native path 
 - Keep backend `7000/tcp`, dashboard dev `4000/tcp`, PostgreSQL `5432/tcp`, Redis `6379/tcp`, and any local egress proxy bound to localhost or private networks.
 - Store production secrets only in `/etc/afrogate/*.env` or a deployment secret store, never in git.
 - Use a dedicated `afrogate` service user for the backend.
-- Keep `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED=false`, and `AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED=false` until audited server-side route/protocol apply engines exist.
+- Keep `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED=false`, and `AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED=false` until audited server-side route/protocol apply engines exist.
 - Prefer database-issued agent tokens from `POST /api/agents/register`; use `AFROGATE_AGENT_TOKEN` only as a temporary legacy fallback.
 - Use Nginx rate limits for API/login paths and keep the backend behind Nginx.
 

@@ -57,7 +57,7 @@ The dashboard is available at `http://127.0.0.1:8080` unless you place a TLS rev
 - Keep `compose.env` private and outside git.
 - Keep PostgreSQL and backend private to the Compose network.
 - Do not publish `5432`, `7000`, or local control-plane proxy ports.
-- Keep `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED=false`, and `AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED=false` until the production route/protocol apply engines are implemented and audited.
+- Keep `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED=false`, `AFROGATE_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED=false`, and `AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED=false` until the production route/protocol apply engines are implemented and audited.
 - Prefer database-issued agent tokens from the admin registration API instead of a shared fallback token.
 - Back up the PostgreSQL volume before migrations once real data exists.
 - For public deployment, terminate HTTPS at a host reverse proxy and forward to `127.0.0.1:8080`, or replace the sample Nginx config with a TLS-ready one.

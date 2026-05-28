@@ -598,6 +598,8 @@ export type ProtocolServerApplyReason =
   | 'serverCredentialDecryptDisabled'
   | 'secretMissing'
   | 'secretReady'
+  | 'secretDecryptReady'
+  | 'secretDecryptDisabled'
   | 'adapterDryRunOnly'
   | 'adapterMissing'
   | 'adapterReady'
@@ -738,6 +740,7 @@ export interface AdminProtocolServerApplyPlanSummary {
   canExecute: boolean;
   requiresSecret: boolean;
   hasSecretRef: boolean;
+  secretDecryptAllowed: boolean;
   requiresServerAccess: boolean;
   hasServerAccess: boolean;
   commandCount: number;
@@ -772,6 +775,7 @@ export interface AdminProtocolServerApplyDryRunSnapshot {
   canExecute: boolean;
   requiresSecret: boolean;
   hasSecretRef: boolean;
+  secretDecryptAllowed: boolean;
   requiresServerAccess: boolean;
   hasServerAccess: boolean;
   commandCount: number;

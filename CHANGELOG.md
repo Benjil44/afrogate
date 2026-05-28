@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.63.2 - 2026-05-28
+
+- Added a disabled-by-default protocol-secret decrypt readiness gate for protocol server apply planning.
+- Required an implemented/audited adapter before protocol-secret or server-credential decrypt readiness can pass.
+- Surfaced protocol secret reference and decrypt readiness separately in the Settings apply plan and audit snapshot, and documented the new safety flag.
+
 ## 0.63.1 - 2026-05-28
 
 - Added a disabled-by-default credential-decrypt readiness gate for protocol server apply planning.

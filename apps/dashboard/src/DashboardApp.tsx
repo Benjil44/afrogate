@@ -8453,6 +8453,12 @@ function ProtocolApplyEventDetailCard({
             ))}
           </div>
 
+          <ProtocolServerApplySecretBadges
+            hasSecretRef={snapshot.hasSecretRef}
+            requiresSecret={snapshot.requiresSecret}
+            secretDecryptAllowed={snapshot.secretDecryptAllowed}
+            t={t}
+          />
           <ProtocolServerApplyPreflightCard format={format} preflight={snapshot.preflight} t={t} />
           <ProtocolServerApplyAdapterCard adapter={snapshot.adapter} t={t} />
 
@@ -8640,6 +8646,12 @@ function ProtocolServerApplyPlanCard({
           <strong className="truncate">{plan.targetServerLabel ?? (plan.targetServerId ? t.settings.configured : t.settings.pending)}</strong>
         </div>
       </div>
+      <ProtocolServerApplySecretBadges
+        hasSecretRef={plan.hasSecretRef}
+        requiresSecret={plan.requiresSecret}
+        secretDecryptAllowed={plan.secretDecryptAllowed}
+        t={t}
+      />
       <ProtocolServerApplyPreflightCard compact format={format} preflight={plan.preflight} t={t} />
       <ProtocolServerApplyAdapterCard adapter={plan.adapter} compact t={t} />
       <div className="flex flex-wrap gap-1.5">
@@ -8652,6 +8664,31 @@ function ProtocolServerApplyPlanCard({
           {plan.canExecute ? t.settings.serverApplyExecutable : t.settings.serverApplyNoMutation}
         </StatusBadge>
       </div>
+    </div>
+  );
+}
+
+function ProtocolServerApplySecretBadges({
+  hasSecretRef,
+  requiresSecret,
+  secretDecryptAllowed,
+  t,
+}: {
+  hasSecretRef: boolean;
+  requiresSecret: boolean;
+  secretDecryptAllowed: boolean;
+  t: DashboardStrings;
+}) {
+  if (!requiresSecret) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <StatusBadge tone={hasSecretRef ? 'good' : 'warning'}>
+        {hasSecretRef ? t.settings.protocolApplySecretReady : t.settings.protocolApplySecretBlocked}
+      </StatusBadge>
+      <StatusBadge tone={secretDecryptAllowed ? 'good' : 'neutral'}>
+        {secretDecryptAllowed ? t.settings.protocolApplySecretDecryptReady : t.settings.protocolApplySecretDecryptBlocked}
+      </StatusBadge>
     </div>
   );
 }

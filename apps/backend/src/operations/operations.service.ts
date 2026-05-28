@@ -3069,6 +3069,7 @@ export class OperationsService {
       canExecute: snapshot.canExecute === true,
       requiresSecret: snapshot.requiresSecret === true,
       hasSecretRef: snapshot.hasSecretRef === true,
+      secretDecryptAllowed: snapshot.secretDecryptAllowed === true,
       requiresServerAccess: snapshot.requiresServerAccess !== false,
       hasServerAccess: snapshot.hasServerAccess === true,
       commandCount: this.numberOrFallback(snapshot.commandCount, commands.length),
@@ -7097,6 +7098,7 @@ export class OperationsService {
     const hasOutbound = Boolean(outboundId);
     const requiresSecret = this.protocolRequiresServerSecret(setup.protocol);
     const hasSecretRef = this.protocolSetupHasSecretRef(setup);
+    const protocolSecretDecryptEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED', false);
     const requiresServerAccess = true;
     const targetServerId = setup.targetServerId ?? null;
     const hasTargetServer = Boolean(targetServerId);
@@ -7118,6 +7120,14 @@ export class OperationsService {
       targetServerLabel,
     });
     const adapterImplemented = adapter.implemented;
+    const secretDecryptAllowed = Boolean(
+      !requiresSecret ||
+        (featureFlagEnabled &&
+          adapter.commandRunner.liveExecutionEnabled &&
+          protocolSecretDecryptEnabled &&
+          adapterImplemented &&
+          hasSecretRef),
+    );
     const unitName = this.safeProtocolUnitName(setup);
     const commands = this.buildProtocolServerApplyCommands(setup, unitName);
     const configChanges = this.buildProtocolServerApplyConfigChanges(setup, unitName);
@@ -7140,6 +7150,7 @@ export class OperationsService {
       outboundMaintenanceMode: setup.provisionedOutboundMaintenanceMode ?? null,
       requiresSecret,
       requiresServerAccess,
+      secretDecryptAllowed,
       secretSafe,
       setup,
     });
@@ -7148,6 +7159,7 @@ export class OperationsService {
       adapter.dataPlaneReady &&
       hasOutbound &&
       !missingSecret &&
+      (!requiresSecret || secretDecryptAllowed) &&
       (!requiresServerAccess || (hasServerAccess && hasServerCredential)) &&
       preflightDraft.canExecuteDataPlane;
     const canExecute = dataPlaneReady;
@@ -7171,7 +7183,14 @@ export class OperationsService {
     } else {
       reasonCodes.add('outboundMissing');
     }
-    if (requiresSecret) reasonCodes.add(hasSecretRef ? 'secretReady' : 'secretMissing');
+    if (requiresSecret) {
+      if (hasSecretRef) {
+        reasonCodes.add('secretReady');
+        reasonCodes.add(secretDecryptAllowed ? 'secretDecryptReady' : 'secretDecryptDisabled');
+      } else {
+        reasonCodes.add('secretMissing');
+      }
+    }
     if (requiresServerAccess) {
       if (!hasTargetServer) {
         reasonCodes.add('serverMissing');
@@ -7220,6 +7239,7 @@ export class OperationsService {
       canExecute,
       requiresSecret,
       hasSecretRef,
+      secretDecryptAllowed,
       requiresServerAccess,
       hasServerAccess,
       commandCount: commands.length,
@@ -7237,6 +7257,7 @@ export class OperationsService {
         hasOutbound,
         requiresSecret,
         hasSecretRef,
+        secretDecryptAllowed,
         requiresServerAccess,
         hasTargetServer,
         hasServerAccess,
@@ -7267,6 +7288,7 @@ export class OperationsService {
       input.featureFlagEnabled &&
         liveExecutionEnabled &&
         credentialDecryptEnabled &&
+        implemented &&
         input.hasTargetServer &&
         input.hasServerAccess &&
         credentialRefPresent &&
@@ -7306,7 +7328,8 @@ export class OperationsService {
         liveExecutionEnabled &&
         implemented &&
         protocolSupported &&
-        accessReady,
+        accessReady &&
+        (!input.requiresServerAccess || credentialDecryptAllowed),
     );
     const reasonCodes = new Set<ProtocolServerApplyReason | string>([
       protocolSupported ? 'protocolSupported' : 'adapterMissing',
@@ -7385,6 +7408,7 @@ export class OperationsService {
       canExecute: plan.canExecute,
       requiresSecret: plan.requiresSecret,
       hasSecretRef: plan.hasSecretRef,
+      secretDecryptAllowed: plan.secretDecryptAllowed,
       requiresServerAccess: plan.requiresServerAccess,
       hasServerAccess: plan.hasServerAccess,
       commandCount: commands.length,
@@ -7494,6 +7518,7 @@ export class OperationsService {
     outboundMaintenanceMode: boolean | null;
     requiresSecret: boolean;
     requiresServerAccess: boolean;
+    secretDecryptAllowed: boolean;
     secretSafe: boolean;
     setup: ProtocolServerApplySource;
   }): AdminProtocolServerApplyPreflightSummary {
@@ -7541,6 +7566,14 @@ export class OperationsService {
       input.commands.some((command) => command.kind === 'rollback') &&
       input.configChanges.some((change) => change.kind === 'rollback');
     const hasHealthVerificationCommand = input.commands.some((command) => command.kind === 'health');
+    const secretStatus =
+      !input.requiresSecret
+        ? 'notRequired'
+        : !input.hasSecretRef
+          ? 'blocked'
+          : input.secretDecryptAllowed
+            ? 'passed'
+            : 'future';
     const serverCredentialStatus =
       !input.requiresServerAccess
         ? 'notRequired'
@@ -7592,8 +7625,16 @@ export class OperationsService {
       ),
       gate(
         'secret',
-        input.requiresSecret ? (input.hasSecretRef ? 'passed' : 'blocked') : 'notRequired',
-        input.requiresSecret ? [input.hasSecretRef ? 'secretReady' : 'secretMissing'] : [],
+        secretStatus,
+        input.requiresSecret
+          ? [
+              input.hasSecretRef ? 'secretReady' : 'secretMissing',
+              input.hasSecretRef ? (input.secretDecryptAllowed ? 'secretDecryptReady' : 'secretDecryptDisabled') : null,
+            ].filter((reason): reason is ProtocolServerApplyReason => Boolean(reason))
+          : [],
+        {
+          blocksDryRun: input.requiresSecret && !input.hasSecretRef,
+        },
       ),
       gate(
         'serverAccess',
@@ -7683,6 +7724,7 @@ export class OperationsService {
     hasOutbound: boolean;
     requiresSecret: boolean;
     hasSecretRef: boolean;
+    secretDecryptAllowed: boolean;
     requiresServerAccess: boolean;
     hasTargetServer: boolean;
     hasServerAccess: boolean;
@@ -7706,6 +7748,14 @@ export class OperationsService {
 
     const preflightStatus = input.featureFlagEnabled && input.adapterImplemented ? 'ready' : 'future';
     const downstreamStatus = input.dataPlaneReady ? 'ready' : 'future';
+    const secretStepStatus =
+      !input.requiresSecret
+        ? 'notRequired'
+        : !input.hasSecretRef
+          ? 'blocked'
+          : input.secretDecryptAllowed
+            ? 'ready'
+            : 'future';
 
     return [
       step(
@@ -7721,8 +7771,11 @@ export class OperationsService {
       ),
       step(
         'secret',
-        input.requiresSecret ? (input.hasSecretRef ? 'ready' : 'blocked') : 'notRequired',
-        reason(input.requiresSecret && (input.hasSecretRef ? 'secretReady' : 'secretMissing')),
+        secretStepStatus,
+        reason(
+          input.requiresSecret && (input.hasSecretRef ? 'secretReady' : 'secretMissing'),
+          input.requiresSecret && input.hasSecretRef && (input.secretDecryptAllowed ? 'secretDecryptReady' : 'secretDecryptDisabled'),
+        ),
       ),
       step(
         'serverAccess',

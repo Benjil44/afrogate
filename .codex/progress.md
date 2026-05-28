@@ -1000,3 +1000,18 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Remaining high-priority work includes the production server-side protocol apply engine.
+- Added a disabled-by-default protocol-secret decrypt readiness gate to protocol server apply planning so saved secret references and decrypt permission are evaluated separately.
+- Exposed protocol apply secret reference and secret-decrypt readiness as separate translated Settings plan and audit snapshot badges.
+- Tightened the server-credential decrypt readiness path so decrypt permission also requires an implemented/audited protocol apply adapter, not only feature flags and an active credential.
+- Updated protocol apply preflight reason codes, env samples, deployment notes, memory, checklist, and server-access/security docs for `AFROGATE_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED=false`.
+- Verified protocol apply secret-decrypt typing with `npm run typecheck --workspaces --if-present`.
+- Bumped AfroGate to `0.63.2` for the protocol apply secret-decrypt readiness gate.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Kept live protocol mutation blocked: protocol apply, live executor, protocol-secret decrypt, server-credential decrypt, installed access profile, active credential, and audited adapter implementation are all required before any future command runner can use decrypted material.
+- Remaining high-priority work includes the production server-side protocol apply engine.
