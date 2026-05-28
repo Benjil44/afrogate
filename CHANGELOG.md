@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.65.0 - 2026-05-28
+
+- Added a generated-command policy gate to protocol server apply plans and audit snapshots.
+- Surfaced command allowlist and timeout readiness in the Settings protocol apply UI.
+- Recorded the billing design requirement that one customer account may own multiple client configs/devices with shared GB quota and optional per-client caps.
+
 ## 0.64.0 - 2026-05-28
 
 - Added protocol server apply config-material readiness to plans, preflight gates, and stored audit snapshots.

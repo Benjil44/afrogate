@@ -565,6 +565,7 @@ export type ProtocolServerApplyPreflightGateKind =
   | 'adapter'
   | 'dryRunSafety'
   | 'configMaterial'
+  | 'commandPolicy'
   | 'outbound'
   | 'outboundHealth'
   | 'defaultInactive'
@@ -603,6 +604,8 @@ export type ProtocolServerApplyReason =
   | 'secretDecryptDisabled'
   | 'configMaterialReady'
   | 'configMaterialMissing'
+  | 'commandPolicyReady'
+  | 'commandPolicyViolation'
   | 'adapterDryRunOnly'
   | 'adapterMissing'
   | 'adapterReady'
@@ -717,6 +720,8 @@ export interface AdminProtocolServerApplyCommand {
   requiresRoot: boolean;
   dataPlaneMutation: boolean;
   secretSafe: boolean;
+  allowlisted: boolean;
+  timeoutSeconds: number;
 }
 
 export interface AdminProtocolServerApplyConfigChange {
@@ -743,6 +748,8 @@ export interface AdminProtocolServerApplyPlanSummary {
   canExecute: boolean;
   configMaterialReady: boolean;
   configMaterialMissingFields: string[];
+  commandPolicyReady: boolean;
+  commandPolicyViolations: string[];
   requiresSecret: boolean;
   hasSecretRef: boolean;
   secretDecryptAllowed: boolean;
@@ -780,6 +787,8 @@ export interface AdminProtocolServerApplyDryRunSnapshot {
   canExecute: boolean;
   configMaterialReady: boolean;
   configMaterialMissingFields: string[];
+  commandPolicyReady: boolean;
+  commandPolicyViolations: string[];
   requiresSecret: boolean;
   hasSecretRef: boolean;
   secretDecryptAllowed: boolean;

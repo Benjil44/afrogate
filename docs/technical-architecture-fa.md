@@ -98,6 +98,20 @@ Alert engine باید rule های ساده داشته باشد:
 - status
 - created_at
 
+### client_configs
+
+- id
+- user_id
+- label
+- protocol
+- external_panel_user_id
+- external_panel_config_id
+- device_limit
+- quota_limit_bytes nullable
+- used_bytes
+- status
+- created_at
+
 ### packages
 
 - id
@@ -113,8 +127,11 @@ Alert engine باید rule های ساده داشته باشد:
 - id
 - user_id
 - package_id
+- quota_scope: account_shared ÛŒØ§ per_client
 - remaining_bytes
 - used_bytes
+- quota_limit_bytes
+- per_client_limit_bytes nullable
 - starts_at
 - expires_at
 - status

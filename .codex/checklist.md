@@ -93,6 +93,7 @@
 - [x] Protocol server apply credential-decrypt readiness gate separated from active server-credential checks.
 - [x] Protocol server apply protocol-secret decrypt readiness gate separated from secret reference checks.
 - [x] Protocol server apply non-secret config-material readiness gate before production executor enablement.
+- [x] Protocol server apply generated-command allowlist and timeout policy gate before live executor enablement.
 - [ ] Production server-side protocol apply engine for WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols.
 - [x] Agent registration endpoint.
 - [x] Metrics ingest endpoint.
@@ -160,8 +161,10 @@
 
 - [ ] Telegram identity user model.
 - [ ] Privacy-safe paid number storage.
+- [ ] Customer account model that can own multiple client configs/devices.
 - [ ] Volume package model.
 - [ ] Price per GB setting.
+- [ ] Shared account GB quota with optional per-client/device caps.
 - [ ] Usage accounting.
 - [ ] Remaining volume display.
 - [ ] Telegram bot user commands.

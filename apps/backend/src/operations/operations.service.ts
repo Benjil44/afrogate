@@ -3069,6 +3069,8 @@ export class OperationsService {
       canExecute: snapshot.canExecute === true,
       configMaterialReady: snapshot.configMaterialReady !== false,
       configMaterialMissingFields: this.stringArrayOrEmpty(snapshot.configMaterialMissingFields),
+      commandPolicyReady: snapshot.commandPolicyReady !== false,
+      commandPolicyViolations: this.stringArrayOrEmpty(snapshot.commandPolicyViolations),
       requiresSecret: snapshot.requiresSecret === true,
       hasSecretRef: snapshot.hasSecretRef === true,
       secretDecryptAllowed: snapshot.secretDecryptAllowed === true,
@@ -3252,6 +3254,8 @@ export class OperationsService {
       requiresRoot: command.requiresRoot === true,
       dataPlaneMutation: command.dataPlaneMutation === true,
       secretSafe: command.secretSafe !== false,
+      allowlisted: command.allowlisted !== false,
+      timeoutSeconds: this.numberOrFallback(command.timeoutSeconds, 30),
     };
   }
 
@@ -7134,6 +7138,7 @@ export class OperationsService {
     const commands = this.buildProtocolServerApplyCommands(setup, unitName);
     const configChanges = this.buildProtocolServerApplyConfigChanges(setup, unitName);
     const configMaterial = this.protocolServerApplyConfigMaterial(setup);
+    const commandPolicy = this.protocolServerApplyCommandPolicy(commands);
     const missingSecret = requiresSecret && !hasSecretRef;
     const missingTargetAccess = hasOutbound && requiresServerAccess && (!hasTargetServer || !hasServerAccess || !hasServerCredential);
     const secretSafe = commands.every((command) => command.secretSafe) && configChanges.every((change) => change.secretSafe);
@@ -7141,6 +7146,7 @@ export class OperationsService {
       adapter,
       adapterImplemented,
       commands,
+      commandPolicy,
       configChanges,
       configMaterial,
       featureFlagEnabled,
@@ -7162,6 +7168,7 @@ export class OperationsService {
       featureFlagEnabled &&
       adapter.dataPlaneReady &&
       configMaterial.ready &&
+      commandPolicy.ready &&
       hasOutbound &&
       !missingSecret &&
       (!requiresSecret || secretDecryptAllowed) &&
@@ -7183,6 +7190,7 @@ export class OperationsService {
     else reasonCodes.add('adapterMissing');
     for (const reason of adapter.reasonCodes) reasonCodes.add(reason);
     reasonCodes.add(configMaterial.ready ? 'configMaterialReady' : 'configMaterialMissing');
+    reasonCodes.add(commandPolicy.ready ? 'commandPolicyReady' : 'commandPolicyViolation');
     if (hasOutbound) {
       reasonCodes.add('outboundReady');
       reasonCodes.add('maintenanceMode');
@@ -7245,6 +7253,8 @@ export class OperationsService {
       canExecute,
       configMaterialReady: configMaterial.ready,
       configMaterialMissingFields: configMaterial.missingFields,
+      commandPolicyReady: commandPolicy.ready,
+      commandPolicyViolations: commandPolicy.violations,
       requiresSecret,
       hasSecretRef,
       secretDecryptAllowed,
@@ -7262,6 +7272,7 @@ export class OperationsService {
         featureFlagEnabled,
         adapterImplemented,
         configMaterialReady: configMaterial.ready,
+        commandPolicyReady: commandPolicy.ready,
         dataPlaneReady,
         hasOutbound,
         requiresSecret,
@@ -7417,6 +7428,8 @@ export class OperationsService {
       canExecute: plan.canExecute,
       configMaterialReady: plan.configMaterialReady,
       configMaterialMissingFields: [...plan.configMaterialMissingFields],
+      commandPolicyReady: plan.commandPolicyReady,
+      commandPolicyViolations: [...plan.commandPolicyViolations],
       requiresSecret: plan.requiresSecret,
       hasSecretRef: plan.hasSecretRef,
       secretDecryptAllowed: plan.secretDecryptAllowed,
@@ -7517,6 +7530,7 @@ export class OperationsService {
     adapter: AdminProtocolServerApplyAdapterSummary;
     adapterImplemented: boolean;
     commands: AdminProtocolServerApplyPlanSummary['commands'];
+    commandPolicy: { ready: boolean; violations: string[] };
     configChanges: AdminProtocolServerApplyPlanSummary['configChanges'];
     configMaterial: { ready: boolean; missingFields: string[] };
     featureFlagEnabled: boolean;
@@ -7622,6 +7636,14 @@ export class OperationsService {
         {
           blocksDryRun: false,
           observedValue: input.configMaterial.missingFields.length > 0 ? input.configMaterial.missingFields.join(', ') : null,
+        },
+      ),
+      gate(
+        'commandPolicy',
+        input.commandPolicy.ready ? 'passed' : 'blocked',
+        [input.commandPolicy.ready ? 'commandPolicyReady' : 'commandPolicyViolation'],
+        {
+          observedValue: input.commandPolicy.violations.length > 0 ? input.commandPolicy.violations.slice(0, 3).join(', ') : null,
         },
       ),
       gate('outbound', input.hasOutbound ? 'passed' : 'future', [input.hasOutbound ? 'outboundReady' : 'outboundMissing'], {
@@ -7742,6 +7764,7 @@ export class OperationsService {
     featureFlagEnabled: boolean;
     adapterImplemented: boolean;
     configMaterialReady: boolean;
+    commandPolicyReady: boolean;
     dataPlaneReady: boolean;
     hasOutbound: boolean;
     requiresSecret: boolean;
@@ -7768,7 +7791,11 @@ export class OperationsService {
       reasonCodes,
     });
 
-    const preflightStatus = input.featureFlagEnabled && input.adapterImplemented ? 'ready' : 'future';
+    const preflightStatus = !input.commandPolicyReady
+      ? 'blocked'
+      : input.featureFlagEnabled && input.adapterImplemented
+        ? 'ready'
+        : 'future';
     const downstreamStatus = input.dataPlaneReady ? 'ready' : 'future';
     const configStatus = input.configMaterialReady ? downstreamStatus : 'blocked';
     const secretStepStatus =
@@ -7787,6 +7814,7 @@ export class OperationsService {
         reason(
           'protocolSupported',
           'auditRequired',
+          input.commandPolicyReady ? 'commandPolicyReady' : 'commandPolicyViolation',
           !input.featureFlagEnabled && 'featureFlagDisabled',
           !input.adapterImplemented && 'adapterDryRunOnly',
           !input.adapterImplemented && 'adapterMissing',
@@ -7875,6 +7903,78 @@ export class OperationsService {
     };
   }
 
+  private protocolServerApplyCommandPolicy(commands: AdminProtocolServerApplyPlanSummary['commands']): {
+    ready: boolean;
+    violations: string[];
+  } {
+    const violations = new Set<string>();
+    const hasRollbackCommand = commands.some((command) => command.kind === 'rollback' && command.secretSafe);
+
+    for (const command of commands) {
+      if (!command.allowlisted) violations.add(`${command.id}:not-allowlisted`);
+      if (!command.secretSafe) violations.add(`${command.id}:not-secret-safe`);
+      if (!Number.isFinite(command.timeoutSeconds) || command.timeoutSeconds < 5 || command.timeoutSeconds > 120) {
+        violations.add(`${command.id}:timeout-out-of-range`);
+      }
+      if (command.command.length > 240) violations.add(`${command.id}:command-too-long`);
+      if (
+        /[\r\n`;]/.test(command.command) ||
+        command.command.includes('$(') ||
+        command.command.includes('${') ||
+        command.command.includes('&&') ||
+        command.command.includes('||')
+      ) {
+        violations.add(`${command.id}:shell-control-blocked`);
+      }
+      if (command.dataPlaneMutation && !command.requiresRoot) violations.add(`${command.id}:mutation-requires-root`);
+      if (command.dataPlaneMutation && command.kind !== 'rollback' && !hasRollbackCommand) {
+        violations.add(`${command.id}:rollback-missing`);
+      }
+    }
+
+    const items = Array.from(violations);
+
+    return {
+      ready: items.length === 0,
+      violations: items,
+    };
+  }
+
+  private protocolServerApplyCommandTimeout(kind: AdminProtocolServerApplyPlanSummary['commands'][number]['kind']): number {
+    switch (kind) {
+      case 'service':
+        return 45;
+      case 'rollback':
+        return 30;
+      case 'package':
+      case 'config':
+      case 'health':
+        return 20;
+      default:
+        return 10;
+    }
+  }
+
+  private protocolServerApplyCommandAllowlisted(command: string): boolean {
+    const trimmed = command.trim();
+    const allowedPrefixes = [
+      'id ',
+      'command ',
+      'wg-quick ',
+      'systemctl ',
+      'wg ',
+      'cp ',
+      'sing-box ',
+      'test ',
+      'ipsec ',
+      'xl2tpd-control ',
+      'swanctl ',
+      'true',
+    ];
+
+    return allowedPrefixes.some((prefix) => trimmed === prefix.trim() || trimmed.startsWith(prefix));
+  }
+
   private buildProtocolServerApplyCommands(
     setup: ProtocolServerApplySource,
     unitName: string,
@@ -7893,6 +7993,8 @@ export class OperationsService {
       requiresRoot,
       dataPlaneMutation,
       secretSafe: true,
+      allowlisted: this.protocolServerApplyCommandAllowlisted(preview),
+      timeoutSeconds: this.protocolServerApplyCommandTimeout(kind),
     });
     const base = [
       command('preflight-user', 'preflight', 'id -u afrogate', false, false),
@@ -7903,7 +8005,8 @@ export class OperationsService {
       case 'wireguard':
         return [
           ...base,
-          command('package-wireguard', 'package', 'command -v wg && command -v wg-quick', false, false),
+          command('package-wireguard-wg', 'package', 'command -v wg', false, false),
+          command('package-wireguard-wg-quick', 'package', 'command -v wg-quick', false, false),
           command('config-wireguard-check', 'config', `wg-quick strip ${this.shellToken(configPath)}`, true, false),
           command('service-wireguard-status', 'service', `systemctl status wg-quick@${this.shellToken(unitName)}`, false, false),
           command('service-wireguard-reload', 'service', `systemctl reload-or-restart wg-quick@${this.shellToken(unitName)}`, true, true),
@@ -7913,7 +8016,8 @@ export class OperationsService {
       case 'vless':
         return [
           ...base,
-          command('package-vless', 'package', 'command -v sing-box || command -v xray', false, false),
+          command('package-vless-sing-box', 'package', 'command -v sing-box', false, false),
+          command('package-vless-xray', 'package', 'command -v xray', false, false),
           command('config-vless-check', 'config', `sing-box check -c ${this.shellToken(configPath)}`, true, false),
           command('service-vless-status', 'service', 'systemctl status sing-box', false, false),
           command('service-vless-reload', 'service', 'systemctl reload-or-restart sing-box', true, true),
@@ -7923,21 +8027,25 @@ export class OperationsService {
       case 'l2tp':
         return [
           ...base,
-          command('package-l2tp', 'package', 'command -v ipsec && command -v xl2tpd', false, false),
+          command('package-l2tp-ipsec', 'package', 'command -v ipsec', false, false),
+          command('package-l2tp-xl2tpd', 'package', 'command -v xl2tpd', false, false),
           command('config-l2tp-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
           command('service-l2tp-status', 'service', 'systemctl status strongswan-starter xl2tpd', false, false),
           command('service-l2tp-reload', 'service', 'systemctl reload-or-restart strongswan-starter xl2tpd', true, true),
-          command('health-l2tp', 'health', 'ipsec status && xl2tpd-control status', true, false),
+          command('health-l2tp-ipsec', 'health', 'ipsec status', true, false),
+          command('health-l2tp-control', 'health', 'xl2tpd-control status', true, false),
           command('rollback-l2tp', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
         ];
       case 'ikev2':
         return [
           ...base,
-          command('package-ikev2', 'package', 'command -v ipsec || command -v swanctl', false, false),
+          command('package-ikev2-ipsec', 'package', 'command -v ipsec', false, false),
+          command('package-ikev2-swanctl', 'package', 'command -v swanctl', false, false),
           command('config-ikev2-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
           command('service-ikev2-status', 'service', 'systemctl status strongswan-starter', false, false),
           command('service-ikev2-reload', 'service', 'systemctl reload-or-restart strongswan-starter', true, true),
-          command('health-ikev2', 'health', 'ipsec statusall || swanctl --list-sas', true, false),
+          command('health-ikev2-ipsec', 'health', 'ipsec statusall', true, false),
+          command('health-ikev2-swanctl', 'health', 'swanctl --list-sas', true, false),
           command('rollback-ikev2', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
         ];
       default:

@@ -1031,3 +1031,19 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Checklist completion after this slice is `182 / 210` items, or `86.7%` complete with `13.3%` remaining.
+- Added a protocol server apply generated-command policy gate so data-plane readiness is blocked if generated commands are not allowlisted, timeout-bounded, secret-safe, mutation-rooted, and rollback-backed.
+- Split protocol apply command previews that previously used shell chaining into single-purpose generated commands before the future executor boundary.
+- Stored command policy readiness, policy violations, allowlist state, and timeout metadata in protocol apply plans and audit snapshots.
+- Surfaced command policy readiness and per-command timeout/allowlist metadata in the Settings protocol apply UI.
+- Captured the billing product decision that customer accounts can own multiple client configs/devices, with shared account-level GB quota and optional per-client/device caps.
+- Updated checklist, memory, dashboard checklist, technical architecture, server-access docs, and security policy while keeping the production protocol executor and Phase 2 billing implementation open.
+- Verified protocol apply command-policy typing with `npm run typecheck --workspaces --if-present`.
+- Bumped AfroGate to `0.65.0` for the protocol apply command-policy readiness contract and account quota model decision.
+- Checklist completion after adding the command-policy gate and new billing quota tasks is `183 / 213` items, or `85.9%` complete with `14.1%` remaining.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

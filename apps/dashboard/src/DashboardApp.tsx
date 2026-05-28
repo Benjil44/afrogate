@@ -8465,6 +8465,12 @@ function ProtocolApplyEventDetailCard({
             ready={snapshot.configMaterialReady}
             t={t}
           />
+          <ProtocolServerApplyCommandPolicyBadges
+            format={format}
+            ready={snapshot.commandPolicyReady}
+            t={t}
+            violations={snapshot.commandPolicyViolations}
+          />
           <ProtocolServerApplyPreflightCard format={format} preflight={snapshot.preflight} t={t} />
           <ProtocolServerApplyAdapterCard adapter={snapshot.adapter} t={t} />
 
@@ -8480,6 +8486,12 @@ function ProtocolApplyEventDetailCard({
                     </StatusBadge>
                     <StatusBadge tone={item.requiresRoot ? 'warning' : 'neutral'}>
                       {item.requiresRoot ? t.settings.routeApplyRootCommand : t.settings.routeApplyUserCommand}
+                    </StatusBadge>
+                    <StatusBadge tone={item.allowlisted ? 'good' : 'warning'}>
+                      {item.allowlisted ? t.settings.protocolApplyCommandPolicyReady : t.settings.protocolApplyCommandPolicyBlocked}
+                    </StatusBadge>
+                    <StatusBadge tone="neutral">
+                      {t.settings.protocolApplyCommandTimeout(format.integer(item.timeoutSeconds))}
                     </StatusBadge>
                   </span>
                 </div>
@@ -8664,6 +8676,12 @@ function ProtocolServerApplyPlanCard({
         ready={plan.configMaterialReady}
         t={t}
       />
+      <ProtocolServerApplyCommandPolicyBadges
+        format={format}
+        ready={plan.commandPolicyReady}
+        t={t}
+        violations={plan.commandPolicyViolations}
+      />
       <ProtocolServerApplyPreflightCard compact format={format} preflight={plan.preflight} t={t} />
       <ProtocolServerApplyAdapterCard adapter={plan.adapter} compact t={t} />
       <div className="flex flex-wrap gap-1.5">
@@ -8676,6 +8694,29 @@ function ProtocolServerApplyPlanCard({
           {plan.canExecute ? t.settings.serverApplyExecutable : t.settings.serverApplyNoMutation}
         </StatusBadge>
       </div>
+    </div>
+  );
+}
+
+function ProtocolServerApplyCommandPolicyBadges({
+  format,
+  ready,
+  t,
+  violations,
+}: {
+  format: DashboardFormatters;
+  ready: boolean;
+  t: DashboardStrings;
+  violations: string[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <StatusBadge tone={ready ? 'good' : 'warning'}>
+        {ready ? t.settings.protocolApplyCommandPolicyReady : t.settings.protocolApplyCommandPolicyBlocked}
+      </StatusBadge>
+      {!ready ? (
+        <StatusBadge tone="neutral">{t.settings.protocolApplyCommandPolicyViolations(format.integer(violations.length))}</StatusBadge>
+      ) : null}
     </div>
   );
 }
@@ -8878,6 +8919,8 @@ function protocolApplyGateKindLabel(kind: string, t: DashboardStrings): string {
       return t.settings.protocolApplyGateDryRunSafety;
     case 'configMaterial':
       return t.settings.protocolApplyGateConfigMaterial;
+    case 'commandPolicy':
+      return t.settings.protocolApplyGateCommandPolicy;
     case 'outbound':
       return t.settings.protocolApplyGateOutbound;
     case 'outboundHealth':
