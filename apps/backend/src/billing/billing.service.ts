@@ -28,6 +28,9 @@ import type {
   AdminPaymentOrderSummary,
   AdminRecordClientUsageResponse,
   AdminVolumePackageSummary,
+  ClientRewardedAdClaimResponse,
+  ClientRewardedAdGrantSummary,
+  ClientRewardedAdStatus,
   PayPalWebhookHandlerResponse,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
@@ -35,6 +38,7 @@ import { DatabaseService, type DatabaseQueryExecutor } from '../database/databas
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { hashClientToken } from '../security/client-token';
 import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
+import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
   CreateClientUsageEventDto,
@@ -59,6 +63,10 @@ import {
 import { PayPalPaymentService, type PayPalWebhookSignatureHeaders } from './paypal-payment.service';
 
 const BYTES_PER_GB = 1024 ** 3;
+const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
+const DEFAULT_REWARDED_AD_REWARD_BYTES = 100 * 1024 ** 2;
+const DEFAULT_REWARDED_AD_DAILY_LIMIT = 20;
+const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 const CLIENT_USAGE_EVENT_SOURCES = new Set([
   'admin',
@@ -212,6 +220,37 @@ interface ClientUsageEventRow {
   notes: string | null;
   metadata: Record<string, unknown>;
   createdBy: string | null;
+  createdAt: Date;
+}
+
+interface RewardedAdSettingsRow {
+  settingKey: string;
+  enabled: boolean;
+  rewardBytes: string | number;
+  dailyLimit: number;
+  provider: string;
+  verificationMode: string;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface RewardedAdGrantRow {
+  id: string;
+  customerAccountId: string;
+  clientConfigId: string;
+  grantDay: string | Date;
+  dailyGrantNumber: number;
+  provider: string;
+  adSessionId: string | null;
+  idempotencyKey: string;
+  rewardBytes: string | number;
+  accountQuotaBeforeBytes: string | number | null;
+  accountQuotaAfterBytes: string | number;
+  clientQuotaBeforeBytes: string | number | null;
+  clientQuotaAfterBytes: string | number | null;
+  verificationMode: string;
+  metadata: Record<string, unknown>;
   createdAt: Date;
 }
 
@@ -1762,7 +1801,7 @@ export class BillingService {
           clientConfigId,
           tokenName,
           tokenHash,
-          JSON.stringify(['client:read', 'route:write']),
+          JSON.stringify(['client:read', 'route:write', 'reward:claim']),
           actor?.id ?? null,
         ],
       );
@@ -1928,6 +1967,195 @@ export class BillingService {
       },
       routePreference,
     };
+  }
+
+  async getClientRewardedAdStatus(actor: ClientAuthActor): Promise<ClientRewardedAdStatus> {
+    this.assertClientScope(actor, 'client:read');
+    const today = this.currentUtcDay();
+    const [settings, watchedToday] = await Promise.all([
+      this.getRewardedAdSettings(),
+      this.countRewardedAdGrants(actor.clientConfigId, today),
+    ]);
+
+    return this.mapClientRewardedAdStatus(settings, watchedToday);
+  }
+
+  async claimClientRewardedAd(
+    actor: ClientAuthActor,
+    dto: ClaimRewardedAdDto,
+  ): Promise<ClientRewardedAdClaimResponse> {
+    this.assertClientScope(actor, 'reward:claim');
+    if (!['active', 'limited'].includes(actor.clientStatus)) {
+      throw new ForbiddenException('Rewarded ad grants are not available for this client status');
+    }
+
+    const today = this.currentUtcDay();
+
+    try {
+      const claimState = await this.database.transaction(async (executor) => {
+        const settings = await this.getRewardedAdSettings(executor);
+        if (!settings.enabled) throw new ForbiddenException('Rewarded ad grants are disabled');
+        if (settings.dailyLimit <= 0) throw new ForbiddenException('Rewarded ad daily limit is zero');
+
+        const provider = this.normalizeRewardedAdProvider(dto.provider, settings.provider);
+        const adSessionId = this.normalizeNullableString(dto.adSessionId);
+        const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey) ?? adSessionId;
+        if (!idempotencyKey) {
+          throw new BadRequestException('Rewarded ad claim requires an idempotency key or ad session id');
+        }
+
+        const existingForKey = await this.getRewardedAdGrantByIdempotencyForUpdate(
+          executor,
+          actor.clientConfigId,
+          provider,
+          idempotencyKey,
+        );
+        if (existingForKey) {
+          return {
+            grant: existingForKey,
+            duplicate: true,
+          };
+        }
+
+        if (adSessionId) {
+          const existingForSession = await this.getRewardedAdGrantBySessionForUpdate(executor, provider, adSessionId);
+          if (existingForSession) {
+            if (existingForSession.clientConfigId !== actor.clientConfigId) {
+              throw new ConflictException('Rewarded ad session already belongs to another client');
+            }
+
+            return {
+              grant: existingForSession,
+              duplicate: true,
+            };
+          }
+        }
+
+        const client = await this.getClientConfigRowForUpdate(executor, actor.clientConfigId);
+        if (client.customerAccountId !== actor.customerAccountId) {
+          throw new ForbiddenException('Client token does not match this account');
+        }
+
+        const account = await this.getCustomerAccountRowForUpdate(executor, actor.customerAccountId);
+        if (account.status !== 'active') throw new ForbiddenException('Rewarded ad grants require an active account');
+        if (!['active', 'limited'].includes(client.status)) {
+          throw new ForbiddenException('Rewarded ad grants are not available for this client status');
+        }
+
+        const watchedToday = await this.countRewardedAdGrants(actor.clientConfigId, today, executor);
+        if (watchedToday >= settings.dailyLimit) {
+          throw new BadRequestException('Rewarded ad daily limit reached');
+        }
+
+        const rewardBytes = this.numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+        if (rewardBytes <= 0) throw new BadRequestException('Rewarded ad reward amount must be positive');
+
+        const accountQuotaBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
+        const accountUsedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+        const accountQuotaAfterBytes = (accountQuotaBeforeBytes ?? accountUsedBytes) + rewardBytes;
+        if (!Number.isSafeInteger(accountQuotaAfterBytes) || accountQuotaAfterBytes > MAX_SAFE_BYTES) {
+          throw new BadRequestException('Rewarded ad account quota would exceed the safe byte limit');
+        }
+
+        const clientQuotaBeforeBytes = this.numberFromBigInt(client.quotaLimitBytes);
+        const perClientLimitBytes = this.numberFromBigInt(account.perClientLimitBytes);
+        const clientUsedBytes = this.numberFromBigInt(client.usedBytes) ?? 0;
+        const shouldCreditClientQuota =
+          account.quotaScope === 'per_client' || clientQuotaBeforeBytes !== null || perClientLimitBytes !== null;
+        const clientQuotaAfterBytes = shouldCreditClientQuota
+          ? (clientQuotaBeforeBytes ?? perClientLimitBytes ?? clientUsedBytes) + rewardBytes
+          : null;
+        if (
+          clientQuotaAfterBytes !== null &&
+          (!Number.isSafeInteger(clientQuotaAfterBytes) || clientQuotaAfterBytes > MAX_SAFE_BYTES)
+        ) {
+          throw new BadRequestException('Rewarded ad client quota would exceed the safe byte limit');
+        }
+
+        const grant = await this.insertRewardedAdGrant(
+          executor,
+          {
+            customerAccountId: actor.customerAccountId,
+            clientConfigId: actor.clientConfigId,
+            grantDay: today,
+            dailyGrantNumber: watchedToday + 1,
+            provider,
+            adSessionId,
+            idempotencyKey,
+            rewardBytes,
+            accountQuotaBeforeBytes,
+            accountQuotaAfterBytes,
+            clientQuotaBeforeBytes,
+            clientQuotaAfterBytes,
+            verificationMode: settings.verificationMode,
+            metadata: dto.metadata ?? {},
+          },
+        );
+
+        await executor.query(
+          `
+            UPDATE customer_accounts
+            SET quota_limit_bytes = $1,
+                updated_at = now()
+            WHERE id = $2
+          `,
+          [accountQuotaAfterBytes, actor.customerAccountId],
+        );
+
+        if (clientQuotaAfterBytes !== null) {
+          await executor.query(
+            `
+              UPDATE client_configs
+              SET quota_limit_bytes = $1,
+                  updated_at = now()
+              WHERE id = $2
+            `,
+            [clientQuotaAfterBytes, actor.clientConfigId],
+          );
+        }
+
+        await this.audit.record(
+          actor,
+          'rewarded_ad.grant_quota',
+          'client_config',
+          actor.clientConfigId,
+          {
+            customerAccountId: actor.customerAccountId,
+            grantId: grant.id,
+            provider,
+            rewardBytes,
+            dailyGrantNumber: watchedToday + 1,
+            dailyLimit: settings.dailyLimit,
+            accountQuotaBeforeBytes,
+            accountQuotaAfterBytes,
+            clientQuotaBeforeBytes,
+            clientQuotaAfterBytes,
+            verificationMode: settings.verificationMode,
+          },
+          executor,
+        );
+
+        return {
+          grant,
+          duplicate: false,
+        };
+      });
+
+      const [rewardedAds, profile] = await Promise.all([
+        this.getClientRewardedAdStatus(actor),
+        this.getClientPortalProfile(actor),
+      ]);
+
+      return {
+        grant: this.mapRewardedAdGrant(claimState.grant),
+        rewardedAds,
+        profile,
+        duplicate: claimState.duplicate,
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Rewarded ad grant already exists');
+      throw error;
+    }
   }
 
   async getClientOwnedRoutePreference(
@@ -3050,6 +3278,175 @@ export class BillingService {
     `;
   }
 
+  private async getRewardedAdSettings(
+    executor: DatabaseQueryExecutor = this.database,
+  ): Promise<RewardedAdSettingsRow> {
+    const result = await executor.query<RewardedAdSettingsRow>(
+      `
+        SELECT
+          setting_key AS "settingKey",
+          enabled,
+          reward_bytes AS "rewardBytes",
+          daily_limit AS "dailyLimit",
+          provider,
+          verification_mode AS "verificationMode",
+          updated_by AS "updatedBy",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM rewarded_ad_settings
+        WHERE setting_key = 'default'
+      `,
+    );
+
+    return result.rows[0] ?? {
+      settingKey: 'default',
+      enabled: true,
+      rewardBytes: DEFAULT_REWARDED_AD_REWARD_BYTES,
+      dailyLimit: DEFAULT_REWARDED_AD_DAILY_LIMIT,
+      provider: DEFAULT_REWARDED_AD_PROVIDER,
+      verificationMode: DEFAULT_REWARDED_AD_VERIFICATION_MODE,
+      updatedBy: null,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    };
+  }
+
+  private async countRewardedAdGrants(
+    clientConfigId: string,
+    grantDay: string,
+    executor: DatabaseQueryExecutor = this.database,
+  ): Promise<number> {
+    const result = await executor.query<{ count: string }>(
+      `
+        SELECT COUNT(*)::text AS count
+        FROM rewarded_ad_grants
+        WHERE client_config_id = $1
+          AND grant_day = $2::date
+      `,
+      [clientConfigId, grantDay],
+    );
+
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  private async getRewardedAdGrantByIdempotencyForUpdate(
+    executor: DatabaseQueryExecutor,
+    clientConfigId: string,
+    provider: string,
+    idempotencyKey: string,
+  ): Promise<RewardedAdGrantRow | null> {
+    const result = await executor.query<RewardedAdGrantRow>(
+      `${this.rewardedAdGrantSelectSql()} WHERE client_config_id = $1 AND provider = $2 AND idempotency_key = $3 FOR UPDATE`,
+      [clientConfigId, provider, idempotencyKey],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async getRewardedAdGrantBySessionForUpdate(
+    executor: DatabaseQueryExecutor,
+    provider: string,
+    adSessionId: string,
+  ): Promise<RewardedAdGrantRow | null> {
+    const result = await executor.query<RewardedAdGrantRow>(
+      `${this.rewardedAdGrantSelectSql()} WHERE provider = $1 AND ad_session_id = $2 FOR UPDATE`,
+      [provider, adSessionId],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async insertRewardedAdGrant(
+    executor: DatabaseQueryExecutor,
+    input: {
+      customerAccountId: string;
+      clientConfigId: string;
+      grantDay: string;
+      dailyGrantNumber: number;
+      provider: string;
+      adSessionId: string | null;
+      idempotencyKey: string;
+      rewardBytes: number;
+      accountQuotaBeforeBytes: number | null;
+      accountQuotaAfterBytes: number;
+      clientQuotaBeforeBytes: number | null;
+      clientQuotaAfterBytes: number | null;
+      verificationMode: string;
+      metadata: Record<string, unknown>;
+    },
+  ): Promise<RewardedAdGrantRow> {
+    const result = await executor.query<RewardedAdGrantRow>(
+      `
+        INSERT INTO rewarded_ad_grants (
+          customer_account_id, client_config_id, grant_day, daily_grant_number,
+          provider, ad_session_id, idempotency_key, reward_bytes,
+          account_quota_before_bytes, account_quota_after_bytes,
+          client_quota_before_bytes, client_quota_after_bytes,
+          verification_mode, metadata
+        )
+        VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+        RETURNING
+          id,
+          customer_account_id AS "customerAccountId",
+          client_config_id AS "clientConfigId",
+          grant_day AS "grantDay",
+          daily_grant_number AS "dailyGrantNumber",
+          provider,
+          ad_session_id AS "adSessionId",
+          idempotency_key AS "idempotencyKey",
+          reward_bytes AS "rewardBytes",
+          account_quota_before_bytes AS "accountQuotaBeforeBytes",
+          account_quota_after_bytes AS "accountQuotaAfterBytes",
+          client_quota_before_bytes AS "clientQuotaBeforeBytes",
+          client_quota_after_bytes AS "clientQuotaAfterBytes",
+          verification_mode AS "verificationMode",
+          metadata,
+          created_at AS "createdAt"
+      `,
+      [
+        input.customerAccountId,
+        input.clientConfigId,
+        input.grantDay,
+        input.dailyGrantNumber,
+        input.provider,
+        input.adSessionId,
+        input.idempotencyKey,
+        input.rewardBytes,
+        input.accountQuotaBeforeBytes,
+        input.accountQuotaAfterBytes,
+        input.clientQuotaBeforeBytes,
+        input.clientQuotaAfterBytes,
+        input.verificationMode,
+        this.stringifyPublicRecord(input.metadata, 'Rewarded ad metadata'),
+      ],
+    );
+
+    return result.rows[0];
+  }
+
+  private rewardedAdGrantSelectSql(): string {
+    return `
+      SELECT
+        id,
+        customer_account_id AS "customerAccountId",
+        client_config_id AS "clientConfigId",
+        grant_day AS "grantDay",
+        daily_grant_number AS "dailyGrantNumber",
+        provider,
+        ad_session_id AS "adSessionId",
+        idempotency_key AS "idempotencyKey",
+        reward_bytes AS "rewardBytes",
+        account_quota_before_bytes AS "accountQuotaBeforeBytes",
+        account_quota_after_bytes AS "accountQuotaAfterBytes",
+        client_quota_before_bytes AS "clientQuotaBeforeBytes",
+        client_quota_after_bytes AS "clientQuotaAfterBytes",
+        verification_mode AS "verificationMode",
+        metadata,
+        created_at AS "createdAt"
+      FROM rewarded_ad_grants
+    `;
+  }
+
   private async getClientRoutePreferenceRowForUpdate(
     executor: DatabaseQueryExecutor,
     clientConfigId: string,
@@ -3176,6 +3573,43 @@ export class BillingService {
     }
   }
 
+  private mapClientRewardedAdStatus(settings: RewardedAdSettingsRow, watchedToday: number): ClientRewardedAdStatus {
+    const rewardBytes = this.numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+    const dailyLimit = Math.max(settings.dailyLimit, 0);
+
+    return {
+      enabled: settings.enabled,
+      rewardBytes,
+      dailyLimit,
+      watchedToday,
+      remainingToday: Math.max(dailyLimit - watchedToday, 0),
+      nextResetAt: this.nextUtcResetAt(),
+      provider: settings.provider || DEFAULT_REWARDED_AD_PROVIDER,
+      verificationMode: settings.verificationMode || DEFAULT_REWARDED_AD_VERIFICATION_MODE,
+    };
+  }
+
+  private mapRewardedAdGrant(row: RewardedAdGrantRow): ClientRewardedAdGrantSummary {
+    return {
+      id: row.id,
+      customerAccountId: row.customerAccountId,
+      clientConfigId: row.clientConfigId,
+      grantDay: this.formatGrantDay(row.grantDay),
+      dailyGrantNumber: row.dailyGrantNumber,
+      provider: row.provider,
+      adSessionId: row.adSessionId,
+      idempotencyKey: row.idempotencyKey,
+      rewardBytes: this.numberFromBigInt(row.rewardBytes) ?? 0,
+      accountQuotaBeforeBytes: this.numberFromBigInt(row.accountQuotaBeforeBytes),
+      accountQuotaAfterBytes: this.numberFromBigInt(row.accountQuotaAfterBytes) ?? 0,
+      clientQuotaBeforeBytes: this.numberFromBigInt(row.clientQuotaBeforeBytes),
+      clientQuotaAfterBytes: this.numberFromBigInt(row.clientQuotaAfterBytes),
+      verificationMode: row.verificationMode,
+      metadata: row.metadata ?? {},
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
   private mapClientAccessToken(row: ClientAccessTokenRow): ClientAccessTokenSummary {
     return {
       id: row.id,
@@ -3221,6 +3655,28 @@ export class BillingService {
   private normalizeScopes(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return [...new Set(value.filter((scope): scope is string => typeof scope === 'string' && scope.length > 0))];
+  }
+
+  private normalizeRewardedAdProvider(value: string | null | undefined, fallback: string): string {
+    const normalized = this.normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
+    const provider = normalized || fallback || DEFAULT_REWARDED_AD_PROVIDER;
+    if (!provider || provider.length > 80) throw new BadRequestException('Rewarded ad provider is invalid');
+    return provider;
+  }
+
+  private currentUtcDay(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  private nextUtcResetAt(): string {
+    const now = new Date();
+    const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    return reset.toISOString();
+  }
+
+  private formatGrantDay(value: string | Date): string {
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    return value.slice(0, 10);
   }
 
   private createClientAccessToken(): string {

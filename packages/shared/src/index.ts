@@ -282,6 +282,54 @@ export interface ClientRoutePreferenceSummary {
   updatedAt?: string | null;
 }
 
+export interface ClientRewardedAdStatus {
+  enabled: boolean;
+  rewardBytes: number;
+  dailyLimit: number;
+  watchedToday: number;
+  remainingToday: number;
+  nextResetAt: string;
+  provider: string;
+  verificationMode: string;
+}
+
+export interface ClientRewardedAdStatusResponse {
+  rewardedAds: ClientRewardedAdStatus;
+}
+
+export interface ClaimRewardedAdRequest {
+  provider?: string | null;
+  adSessionId?: string | null;
+  idempotencyKey?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ClientRewardedAdGrantSummary {
+  id: string;
+  customerAccountId: string;
+  clientConfigId: string;
+  grantDay: string;
+  dailyGrantNumber: number;
+  provider: string;
+  adSessionId?: string | null;
+  idempotencyKey: string;
+  rewardBytes: number;
+  accountQuotaBeforeBytes?: number | null;
+  accountQuotaAfterBytes: number;
+  clientQuotaBeforeBytes?: number | null;
+  clientQuotaAfterBytes?: number | null;
+  verificationMode: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ClientRewardedAdClaimResponse {
+  grant: ClientRewardedAdGrantSummary;
+  rewardedAds: ClientRewardedAdStatus;
+  profile: ClientPortalProfileResponse;
+  duplicate: boolean;
+}
+
 export interface ClientRouteCountryOption {
   countryCode: string;
   routeGroup: string;

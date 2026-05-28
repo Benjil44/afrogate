@@ -1,6 +1,7 @@
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  ClientRewardedAdStatus,
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceMode,
@@ -12,12 +13,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   Gamepad2,
-  Gauge,
+  Gift,
   Globe2,
   KeyRound,
   Languages,
   LocateFixed,
   LogOut,
+  PlayCircle,
   RefreshCw,
   Save,
   Server,
@@ -27,7 +29,9 @@ import {
 } from 'lucide-react';
 import {
   ClientApiError,
+  claimClientRewardedAd,
   getClientProfile,
+  getClientRewardedAdStatus,
   getClientRouteOptions,
   getClientRoutePreference,
   updateClientRoutePreference,
@@ -71,6 +75,7 @@ export function ClientApp() {
   const [tokenInput, setTokenInput] = useState('');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<ClientPortalProfileResponse | null>(null);
+  const [rewardedAds, setRewardedAds] = useState<ClientRewardedAdStatus | null>(null);
   const [routePreference, setRoutePreference] = useState<ClientRoutePreferenceSummary | null>(null);
   const [routeOptions, setRouteOptions] = useState<ClientRouteOptionsResponse | null>(null);
   const [mode, setMode] = useState<ClientRoutePreferenceMode>('auto');
@@ -81,8 +86,10 @@ export function ClientApp() {
   const [preferredOutboundId, setPreferredOutboundId] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [claimingReward, setClaimingReward] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [rewardClaimed, setRewardClaimed] = useState(false);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -107,23 +114,27 @@ export function ClientApp() {
     setLoading(true);
     setError(null);
     setSaved(false);
+    setRewardClaimed(false);
 
     try {
       const nextProfile = await getClientProfile(token);
       const selectedRouteGroup = routeGroup ?? nextProfile.routePreference.routeGroup;
-      const [preferenceResponse, optionsResponse] = await Promise.all([
+      const [preferenceResponse, optionsResponse, rewardResponse] = await Promise.all([
         getClientRoutePreference(token, selectedRouteGroup),
         getClientRouteOptions(token, selectedRouteGroup),
+        getClientRewardedAdStatus(token),
       ]);
 
       setProfile({
         ...nextProfile,
         routePreference: preferenceResponse.routePreference,
       });
+      setRewardedAds(rewardResponse.rewardedAds);
       setRouteOptions(optionsResponse);
       applyPreference(preferenceResponse.routePreference);
     } catch (requestError) {
       setProfile(null);
+      setRewardedAds(null);
       setRoutePreference(null);
       setRouteOptions(null);
       setError(errorText(requestError, messages));
@@ -150,6 +161,15 @@ export function ClientApp() {
   const quotaLimit = profile?.clientConfig.effectiveQuotaLimitBytes ?? null;
   const quotaUsed = profile?.clientConfig.usedBytes ?? 0;
   const quotaPercent = quotaLimit && quotaLimit > 0 ? Math.min(Math.round((quotaUsed / quotaLimit) * 100), 100) : null;
+  const rewardButtonText = !rewardedAds
+    ? messages.loading
+    : !rewardedAds.enabled
+      ? messages.rewardDisabled
+      : rewardedAds.remainingToday <= 0
+        ? messages.rewardLimitReached
+        : claimingReward
+          ? messages.claimingReward
+          : messages.watchAd;
 
   const selectedOutbound = useMemo(
     () => outboundOptions.find((outbound) => outbound.id === preferredOutboundId) ?? null,
@@ -174,10 +194,12 @@ export function ClientApp() {
     setSessionToken(null);
     setTokenInput('');
     setProfile(null);
+    setRewardedAds(null);
     setRoutePreference(null);
     setRouteOptions(null);
     setError(null);
     setSaved(false);
+    setRewardClaimed(false);
   }
 
   async function handleSave() {
@@ -216,6 +238,36 @@ export function ClientApp() {
       setError(errorText(requestError, messages));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleClaimReward() {
+    if (!sessionToken || !rewardedAds || !rewardedAds.enabled || rewardedAds.remainingToday <= 0) return;
+
+    const claimKey = createRewardClaimKey();
+    setClaimingReward(true);
+    setError(null);
+    setSaved(false);
+    setRewardClaimed(false);
+
+    try {
+      const response = await claimClientRewardedAd(sessionToken, {
+        provider: rewardedAds.provider,
+        adSessionId: claimKey,
+        idempotencyKey: claimKey,
+        metadata: {
+          source: 'client_app',
+          verificationMode: rewardedAds.verificationMode,
+        },
+      });
+      setRewardedAds(response.rewardedAds);
+      setProfile(response.profile);
+      applyPreference(response.profile.routePreference);
+      setRewardClaimed(true);
+    } catch (requestError) {
+      setError(errorText(requestError, messages));
+    } finally {
+      setClaimingReward(false);
     }
   }
 
@@ -301,6 +353,34 @@ export function ClientApp() {
               <span>{messages.quota}</span>
               <span>{quotaPercent === null ? messages.unlimited : `${formatCount(quotaPercent, language)}%`}</span>
             </div>
+          </section>
+
+          <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
+            <PanelTitle icon={<Gift className="h-5 w-5" aria-hidden="true" />} title={messages.rewardedData} />
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <CompactMetric
+                label={messages.rewardedData}
+                value={rewardedAds ? formatBytes(rewardedAds.rewardBytes, language, messages) : messages.loading}
+              />
+              <CompactMetric
+                label={messages.adsToday}
+                value={formatCount(rewardedAds?.watchedToday ?? 0, language)}
+              />
+              <CompactMetric
+                label={messages.adsRemaining}
+                value={formatCount(rewardedAds?.remainingToday ?? 0, language)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleClaimReward()}
+              disabled={!rewardedAds || !rewardedAds.enabled || rewardedAds.remainingToday <= 0 || claimingReward}
+              className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-client-teal px-4 text-sm font-semibold text-white disabled:bg-client-muted"
+            >
+              <PlayCircle className="h-4 w-4" aria-hidden="true" />
+              {rewardButtonText}
+            </button>
+            {rewardClaimed ? <StatusMessage tone="ok" text={messages.rewardAdded} /> : null}
           </section>
 
           <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
@@ -555,6 +635,15 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CompactMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-h-[64px] rounded-[8px] border border-client-line bg-client-page p-2">
+      <div className="truncate text-[11px] font-semibold text-client-muted">{label}</div>
+      <div className="mt-2 truncate text-sm font-bold">{value}</div>
+    </div>
+  );
+}
+
 function Badge({ tone, text }: { tone: 'ok' | 'warning' | 'neutral'; text: string }) {
   const toneClass = tone === 'ok'
     ? 'border-client-green/30 bg-client-green/10 text-client-green'
@@ -654,6 +743,14 @@ function detectLocaleCountry(): string | null {
   }
 
   return null;
+}
+
+function createRewardClaimKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `client-ad:${crypto.randomUUID()}`;
+  }
+
+  return `client-ad:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
 function isRouteMode(value: string): value is ClientRoutePreferenceMode {

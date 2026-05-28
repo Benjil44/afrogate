@@ -1048,6 +1048,24 @@ Repository remote is ready:
 - Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the rewarded-ad quota credit foundation for the mobile client app.
+- Added `rewarded_ad_settings` with a default 100 MB reward, 20-ad UTC daily cap, provider key, and verification mode.
+- Added `rewarded_ad_grants` as an idempotent per-client ledger that credits account quota, and credits explicit/effective client quota when per-client caps are active.
+- Added `/api/client/rewarded-ads` and `/api/client/rewarded-ads/claim` behind client tokens with the new `reward:claim` scope.
+- Added a mobile rewarded-data card in `apps/client` with English/Persian labels and daily remaining-ad counters.
+- Documented that `client_callback_mvp` is not fraud-resistant production ad verification; a verified ad-network SDK/webhook adapter remains a follow-up.
+- Updated shared contracts, backend DTOs, schema, migration, client API, client UI, architecture/security/roadmap/multilingual docs, checklist, and memory.
+- Bumped AfroGate to `0.76.0` for the rewarded-ad quota-credit schema/API/mobile UI contract.
+- Checklist completion after this slice is `202 / 225` items, or `89.8%` complete with `10.2%` remaining after adding the verified ad-provider adapter follow-up.
+- Verified focused shared/backend/client typing with `npm run typecheck --workspace @afrogate/shared`, `npm run typecheck --workspace @afrogate/backend`, and `npm run typecheck --workspace @afrogate/client`.
+- Verified migration `0020_rewarded_ad_grants.sql` with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added per-client preference-aware route decision previews for `client_config:<id>` assignments.
 - Route decision previews now include client route preference context, candidate server country/region metadata, preferred-country/exact-outbound availability, match/mismatch review reasons, and preference-aware recommendation selection.
 - Country-mode client preferences prefer healthy managed outbounds in the preferred exit country when available; exact-outbound mode prefers the requested healthy managed outbound when available; unavailable or unhealthy preferences fall back to the normal health/session-safe route ranking.

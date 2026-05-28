@@ -189,15 +189,48 @@ Mobile/client API auth is separate from admin/seller auth. Admins can issue one-
 - client_config_id
 - name
 - token_hash
-- scopes jsonb, currently `client:read` and `route:write`
+- scopes jsonb, currently `client:read`, `route:write`, and `reward:claim`
 - created_by
 - created_at
 - last_used_at
 - revoked_at
 
-Client-scoped endpoints live under `/api/client/*`. They can read only the authenticated client profile, quota summary, route preference, and selectable route options, and can update only that client's route preference when `allow_client_override` is true. These endpoints must not expose admin dashboard operations, server secrets, outbound config JSON, client IP history, or user traffic destinations.
+Client-scoped endpoints live under `/api/client/*`. They can read only the authenticated client profile, quota summary, route preference, selectable route options, and rewarded-ad status, and can update only that client's route preference when `allow_client_override` is true. These endpoints must not expose admin dashboard operations, server secrets, outbound config JSON, client IP history, or user traffic destinations.
 
-The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, automatic/country/server route mode selection, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
+The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, rewarded-data claims, automatic/country/server route mode selection, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
+
+### rewarded_ad_settings
+
+- setting_key
+- enabled
+- reward_bytes, default 100 MB
+- daily_limit, default 20 per UTC day
+- provider
+- verification_mode
+- updated_by
+- created_at
+- updated_at
+
+### rewarded_ad_grants
+
+- id
+- customer_account_id
+- client_config_id
+- grant_day
+- daily_grant_number
+- provider
+- ad_session_id nullable
+- idempotency_key
+- reward_bytes
+- account_quota_before_bytes nullable
+- account_quota_after_bytes
+- client_quota_before_bytes nullable
+- client_quota_after_bytes nullable
+- verification_mode
+- metadata jsonb for non-secret claim context
+- created_at
+
+Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The client app can read the current reward status and submit an idempotent claim after an ad callback. The backend locks the client/account, enforces the UTC daily cap, records one grant per idempotency/session key, increases account quota, and also increases the specific client quota when per-client caps are active. The current `client_callback_mvp` verification mode is suitable for MVP flow wiring only; production rewards need a verified ad-network SDK/webhook adapter.
 
 ### packages
 

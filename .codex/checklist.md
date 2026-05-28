@@ -170,7 +170,9 @@
 - [x] Separate seller/admin and VPN-client UX boundaries in the backend contract.
 - [x] PayPal checkout capture adapter and webhook verification.
 - [x] Paid payment order quota allocation.
+- [x] Rewarded-ad quota credit ledger and mobile client claim surface.
 - [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
+- [ ] Verified rewarded-ad provider SDK/webhook adapter.
 - [x] Usage accounting.
 - [x] Remaining volume display.
 - [x] Client-scoped mobile API/auth for VPN users.

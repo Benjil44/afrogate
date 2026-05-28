@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.76.0 - 2026-05-28
+
+- Added rewarded-ad settings and `rewarded_ad_grants` as a daily-capped, idempotent quota-credit ledger.
+- Added client-scoped rewarded-ad status and claim APIs that credit account quota and per-client quota when per-client caps apply.
+- Added a mobile client rewarded-data card with English/Persian labels for the 100 MB reward and 20-ads-per-day cap.
+
 ## 0.75.0 - 2026-05-28
 
 - Added `payment_order_allocations` as the idempotent ledger that consumes each paid payment order at most once.

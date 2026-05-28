@@ -1,4 +1,7 @@
 import type {
+  ClaimRewardedAdRequest,
+  ClientRewardedAdClaimResponse,
+  ClientRewardedAdStatusResponse,
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceResponse,
@@ -22,6 +25,20 @@ export function getApiBaseUrl(): string {
 
 export async function getClientProfile(token: string): Promise<ClientPortalProfileResponse> {
   return requestClientApi<ClientPortalProfileResponse>('/client/me', token);
+}
+
+export async function getClientRewardedAdStatus(token: string): Promise<ClientRewardedAdStatusResponse> {
+  return requestClientApi<ClientRewardedAdStatusResponse>('/client/rewarded-ads', token);
+}
+
+export async function claimClientRewardedAd(
+  token: string,
+  payload: ClaimRewardedAdRequest,
+): Promise<ClientRewardedAdClaimResponse> {
+  return requestClientApi<ClientRewardedAdClaimResponse>('/client/rewarded-ads/claim', token, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getClientRoutePreference(

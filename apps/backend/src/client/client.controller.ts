@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Patch, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type {
+  ClientRewardedAdClaimResponse,
+  ClientRewardedAdStatusResponse,
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceResponse,
@@ -8,6 +10,7 @@ import { BillingService } from '../billing/billing.service';
 import { ClientTokenGuard } from '../security/client-token.guard';
 import type { ClientAuthActor, RequestWithClientAuth } from '../security/auth-request';
 import { UpdateOwnClientRoutePreferenceDto } from './dto/client-route-preference.dto';
+import { ClaimRewardedAdDto } from './dto/rewarded-ad.dto';
 
 @Controller('client')
 @UseGuards(ClientTokenGuard)
@@ -17,6 +20,21 @@ export class ClientController {
   @Get('me')
   getProfile(@Req() request: RequestWithClientAuth): Promise<ClientPortalProfileResponse> {
     return this.billingService.getClientPortalProfile(this.requireClientActor(request));
+  }
+
+  @Get('rewarded-ads')
+  async getRewardedAdStatus(@Req() request: RequestWithClientAuth): Promise<ClientRewardedAdStatusResponse> {
+    return {
+      rewardedAds: await this.billingService.getClientRewardedAdStatus(this.requireClientActor(request)),
+    };
+  }
+
+  @Post('rewarded-ads/claim')
+  claimRewardedAd(
+    @Req() request: RequestWithClientAuth,
+    @Body() payload: ClaimRewardedAdDto,
+  ): Promise<ClientRewardedAdClaimResponse> {
+    return this.billingService.claimClientRewardedAd(this.requireClientActor(request), payload);
   }
 
   @Get('route-preference')

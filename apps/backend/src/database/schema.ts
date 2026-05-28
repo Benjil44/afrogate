@@ -3,6 +3,7 @@ import {
   bigserial,
   bigint,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -544,6 +545,57 @@ export const clientUsageEvents = pgTable(
   }),
 );
 
+export const rewardedAdSettings = pgTable('rewarded_ad_settings', {
+  settingKey: text('setting_key').primaryKey(),
+  enabled: boolean('enabled').notNull().default(true),
+  rewardBytes: bigint('reward_bytes', { mode: 'number' }).notNull().default(104_857_600),
+  dailyLimit: integer('daily_limit').notNull().default(20),
+  provider: text('provider').notNull().default('mvp_rewarded_ad'),
+  verificationMode: text('verification_mode').notNull().default('client_callback_mvp'),
+  updatedBy: text('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const rewardedAdGrants = pgTable(
+  'rewarded_ad_grants',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'restrict' }),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'restrict' }),
+    grantDay: date('grant_day').notNull(),
+    dailyGrantNumber: integer('daily_grant_number').notNull(),
+    provider: text('provider').notNull().default('mvp_rewarded_ad'),
+    adSessionId: text('ad_session_id'),
+    idempotencyKey: text('idempotency_key').notNull(),
+    rewardBytes: bigint('reward_bytes', { mode: 'number' }).notNull(),
+    accountQuotaBeforeBytes: bigint('account_quota_before_bytes', { mode: 'number' }),
+    accountQuotaAfterBytes: bigint('account_quota_after_bytes', { mode: 'number' }).notNull(),
+    clientQuotaBeforeBytes: bigint('client_quota_before_bytes', { mode: 'number' }),
+    clientQuotaAfterBytes: bigint('client_quota_after_bytes', { mode: 'number' }),
+    verificationMode: text('verification_mode').notNull(),
+    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clientProviderIdempotencyIdx: uniqueIndex('rewarded_ad_grants_client_provider_idempotency_unique')
+      .on(table.clientConfigId, table.provider, table.idempotencyKey),
+    providerSessionIdx: uniqueIndex('rewarded_ad_grants_provider_session_unique')
+      .on(table.provider, table.adSessionId)
+      .where(sql`ad_session_id IS NOT NULL AND ad_session_id <> ''`),
+    clientDayCreatedIdx: index('rewarded_ad_grants_client_day_created_idx').on(
+      table.clientConfigId,
+      table.grantDay,
+      table.createdAt,
+    ),
+    accountCreatedIdx: index('rewarded_ad_grants_account_created_idx').on(table.customerAccountId, table.createdAt),
+  }),
+);
+
 export const clientRoutePreferences = pgTable(
   'client_route_preferences',
   {
@@ -590,7 +642,7 @@ export const clientAccessTokens = pgTable(
       .references(() => clientConfigs.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     tokenHash: text('token_hash').notNull(),
-    scopes: jsonb('scopes').notNull().default(sql`'["client:read", "route:write"]'::jsonb`),
+    scopes: jsonb('scopes').notNull().default(sql`'["client:read", "route:write", "reward:claim"]'::jsonb`),
     createdBy: text('created_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
@@ -907,6 +959,7 @@ export const outboundHealthChecksRelations = relations(outboundHealthChecks, ({ 
 export const customerAccountsRelations = relations(customerAccounts, ({ many }) => ({
   clientConfigs: many(clientConfigs),
   usageEvents: many(clientUsageEvents),
+  rewardedAdGrants: many(rewardedAdGrants),
   paymentOrders: many(paymentOrders),
   paymentOrderAllocations: many(paymentOrderAllocations),
 }));
@@ -917,6 +970,7 @@ export const clientConfigsRelations = relations(clientConfigs, ({ many, one }) =
     references: [customerAccounts.id],
   }),
   usageEvents: many(clientUsageEvents),
+  rewardedAdGrants: many(rewardedAdGrants),
   routePreferences: many(clientRoutePreferences),
   accessTokens: many(clientAccessTokens),
 }));
@@ -928,6 +982,17 @@ export const clientUsageEventsRelations = relations(clientUsageEvents, ({ one })
   }),
   clientConfig: one(clientConfigs, {
     fields: [clientUsageEvents.clientConfigId],
+    references: [clientConfigs.id],
+  }),
+}));
+
+export const rewardedAdGrantsRelations = relations(rewardedAdGrants, ({ one }) => ({
+  customerAccount: one(customerAccounts, {
+    fields: [rewardedAdGrants.customerAccountId],
+    references: [customerAccounts.id],
+  }),
+  clientConfig: one(clientConfigs, {
+    fields: [rewardedAdGrants.clientConfigId],
     references: [clientConfigs.id],
   }),
 }));
