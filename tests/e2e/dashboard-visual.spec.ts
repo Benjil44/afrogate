@@ -22,22 +22,7 @@ test.describe('dashboard dense layout visual captures', () => {
       const runtimeErrors: string[] = [];
       page.on('pageerror', (error) => runtimeErrors.push(error.message));
 
-      await mockDashboardApi(page);
-      await page.setViewportSize(viewport.size);
-      await page.addInitScript((sessionToken) => {
-        window.localStorage.setItem('afrogate.dashboard.language', 'en');
-        window.sessionStorage.setItem('afrogate.dashboard.adminSessionToken', sessionToken);
-      }, visualSessionToken);
-
-      await page.goto('/');
-      await page.addStyleTag({
-        content: `
-          *, *::before, *::after {
-            animation-duration: 0s !important;
-            transition-duration: 0s !important;
-          }
-        `,
-      });
+      await loadSignedInDashboard(page, viewport.size);
 
       expect(runtimeErrors).toEqual([]);
       await expect(page.locator('[aria-label="Summary"]')).toBeVisible();
@@ -64,6 +49,45 @@ test.describe('dashboard dense layout visual captures', () => {
     });
   }
 });
+
+test('alerts page filters open and resolved history rows', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="alerts"]').click();
+
+  await expect(page.getByRole('heading', { name: 'Open Alerts' })).toBeVisible();
+  await expect(page.getByText('Storage below 10%')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Resolved' }).click();
+  await expect(page.getByRole('heading', { name: 'Alert History' })).toBeVisible();
+  await expect(page.getByText('Resolved storage guard')).toBeVisible();
+  await expect(page.getByText('Resolved tunnel jitter')).toBeVisible();
+
+  await page.getByLabel('Severity').selectOption('critical');
+  await expect(page.getByText('Resolved storage guard')).toBeVisible();
+  await expect(page.getByText('Resolved tunnel jitter')).toHaveCount(0);
+
+  await page.getByLabel('Source').selectOption('teh-gateway-03');
+  await expect(page.getByText('Resolved storage guard')).toBeVisible();
+});
+
+async function loadSignedInDashboard(page: Page, size: { width: number; height: number }): Promise<void> {
+  await mockDashboardApi(page);
+  await page.setViewportSize(size);
+  await page.addInitScript((sessionToken) => {
+    window.localStorage.setItem('afrogate.dashboard.language', 'en');
+    window.sessionStorage.setItem('afrogate.dashboard.adminSessionToken', sessionToken);
+  }, visualSessionToken);
+
+  await page.goto('/');
+  await page.addStyleTag({
+    content: `
+      *, *::before, *::after {
+        animation-duration: 0s !important;
+        transition-duration: 0s !important;
+      }
+    `,
+  });
+}
 
 async function mockDashboardApi(page: Page): Promise<void> {
   await page.route('http://127.0.0.1:7000/api/**', async (route) => {
@@ -97,32 +121,7 @@ async function mockDashboardApi(page: Page): Promise<void> {
         return;
       case '/api/admin/alerts':
         await fulfillJson(route, {
-          alerts: [
-            {
-              firstSeenAt: fixedNow,
-              id: 'alert-storage-critical',
-              lastSeenAt: fixedNow,
-              message: 'Storage is below the critical guard on teh-gateway-03.',
-              severity: 'critical',
-              sourceId: 'server-teh',
-              sourceLabel: 'teh-gateway-03',
-              sourceType: 'server',
-              status: 'open',
-              title: 'Storage below 10%',
-            },
-            {
-              firstSeenAt: fixedNow,
-              id: 'alert-health-warning',
-              lastSeenAt: fixedNow,
-              message: 'The Dubai relay has elevated jitter and should stay under watch.',
-              severity: 'warning',
-              sourceId: 'server-dxb',
-              sourceLabel: 'dxb-relay-02',
-              sourceType: 'server',
-              status: 'open',
-              title: 'Health score degraded',
-            },
-          ],
+          alerts: url.searchParams.get('status') === 'resolved' ? resolvedAlertRows() : openAlertRows(),
         });
         return;
       case '/api/admin/servers':
@@ -265,6 +264,66 @@ function createTimeseries(snapshot: ReturnType<typeof createMetricSnapshot>) {
     })),
     serverId: snapshot.serverId,
   };
+}
+
+function openAlertRows() {
+  return [
+    {
+      firstSeenAt: fixedNow,
+      id: 'alert-storage-critical',
+      lastSeenAt: fixedNow,
+      message: 'Storage is below the critical guard on teh-gateway-03.',
+      severity: 'critical',
+      sourceId: 'server-teh',
+      sourceLabel: 'teh-gateway-03',
+      sourceType: 'server',
+      status: 'open',
+      title: 'Storage below 10%',
+    },
+    {
+      firstSeenAt: fixedNow,
+      id: 'alert-health-warning',
+      lastSeenAt: fixedNow,
+      message: 'The Dubai relay has elevated jitter and should stay under watch.',
+      severity: 'warning',
+      sourceId: 'server-dxb',
+      sourceLabel: 'dxb-relay-02',
+      sourceType: 'server',
+      status: 'open',
+      title: 'Health score degraded',
+    },
+  ];
+}
+
+function resolvedAlertRows() {
+  return [
+    {
+      firstSeenAt: '2026-05-28T06:10:00.000Z',
+      id: 'alert-resolved-storage',
+      lastSeenAt: '2026-05-28T06:40:00.000Z',
+      message: 'The storage reserve recovered after cleanup.',
+      resolvedAt: '2026-05-28T06:45:00.000Z',
+      severity: 'critical',
+      sourceId: 'server-teh',
+      sourceLabel: 'teh-gateway-03',
+      sourceType: 'server',
+      status: 'resolved',
+      title: 'Resolved storage guard',
+    },
+    {
+      firstSeenAt: '2026-05-28T05:10:00.000Z',
+      id: 'alert-resolved-jitter',
+      lastSeenAt: '2026-05-28T05:35:00.000Z',
+      message: 'Jitter returned below the warning threshold.',
+      resolvedAt: '2026-05-28T05:38:00.000Z',
+      severity: 'warning',
+      sourceId: 'server-dxb',
+      sourceLabel: 'dxb-relay-02',
+      sourceType: 'server',
+      status: 'resolved',
+      title: 'Resolved tunnel jitter',
+    },
+  ];
 }
 
 function createOutbound(id: string, serverId: string, serverHostname: string, name: string, routeGroup: string, priority: number, healthStatus: string) {

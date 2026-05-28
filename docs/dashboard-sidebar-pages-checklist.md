@@ -47,9 +47,9 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 ## Alerts Page
 
 - [x] Open alert list.
-- [ ] Alert severity filters.
-- [ ] Alert source filters.
-- [ ] Resolved alert history.
+- [x] Alert severity filters.
+- [x] Alert source filters.
+- [x] Resolved alert history.
 - [x] Telegram alert delivery status.
 - [x] Real alert API binding.
 

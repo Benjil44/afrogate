@@ -132,6 +132,8 @@ type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
 type ActiveView = 'dashboard' | 'servers' | 'users' | 'routes' | 'alerts' | 'settings';
+type AlertStatusFilter = 'open' | 'resolved';
+type AlertSeverityFilter = 'all' | Tone;
 type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
 type AfroIcon = ComponentType<{ size?: number; className?: string }>;
 type AdminSessionHook = ReturnType<typeof useAdminSession>;
@@ -224,6 +226,7 @@ interface AlertRowData {
   message?: string;
   status?: string;
   lastSeenAt?: string;
+  resolvedAt?: string | null;
   isPlaceholder?: boolean;
 }
 
@@ -555,7 +558,7 @@ function AuthenticatedDashboard({
       controller = new AbortController();
 
       try {
-        const response = await fetchAdminAlerts(sessionToken, controller.signal);
+        const response = await fetchAdminAlerts(sessionToken, { limit: 100, status: 'open' }, controller.signal);
         if (!isActive) return;
 
         setApiAlerts(response.alerts);
@@ -1065,7 +1068,7 @@ function ActivePage({
         />
       );
     case 'alerts':
-      return <AlertsPage alerts={alerts} dataState={alertDataState} format={format} t={t} />;
+      return <AlertsPage alerts={alerts} dataState={alertDataState} format={format} sessionToken={sessionToken} t={t} />;
     case 'settings':
       return <SettingsPage format={format} managementServers={managementServers} session={session} sessionToken={sessionToken} t={t} />;
     default:
@@ -3147,28 +3150,133 @@ function AlertsPage({
   alerts,
   dataState,
   format,
+  sessionToken,
   t,
 }: {
   alerts: AlertRowData[];
   dataState: DataState;
   format: DashboardFormatters;
+  sessionToken: string;
   t: DashboardStrings;
 }) {
-  const activeAlertCount = countActiveAlertRows(alerts);
+  const [statusFilter, setStatusFilter] = useState<AlertStatusFilter>('open');
+  const [severityFilter, setSeverityFilter] = useState<AlertSeverityFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [resolvedAlerts, setResolvedAlerts] = useState<AlertRowData[]>([]);
+  const [resolvedDataState, setResolvedDataState] = useState<DataState>('loading');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setResolvedDataState('loading');
+
+    void fetchAdminAlerts(sessionToken, { limit: 100, status: 'resolved' }, controller.signal)
+      .then((response) => {
+        setResolvedAlerts(mapAdminAlertsToRows(response.alerts, t));
+        setResolvedDataState('live');
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setResolvedDataState('fallback');
+      });
+
+    return () => controller.abort();
+  }, [sessionToken, t]);
+
+  const currentAlerts = statusFilter === 'open' ? alerts : resolvedAlerts;
+  const currentDataState = statusFilter === 'open' ? dataState : resolvedDataState;
+  const sourceOptions = useMemo(
+    () => Array.from(new Set(currentAlerts.map((alert) => alert.source).filter(Boolean))).sort((left, right) => left.localeCompare(right)),
+    [currentAlerts],
+  );
+  const filteredAlerts = useMemo(
+    () => currentAlerts.filter((alert) => (
+      (severityFilter === 'all' || alert.severity === severityFilter)
+        && (sourceFilter === 'all' || alert.source === sourceFilter)
+    )),
+    [currentAlerts, severityFilter, sourceFilter],
+  );
+  const activeAlertCount = countActiveAlertRows(filteredAlerts);
+
+  useEffect(() => {
+    if (sourceFilter !== 'all' && !sourceOptions.includes(sourceFilter)) {
+      setSourceFilter('all');
+    }
+  }, [sourceFilter, sourceOptions]);
 
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
       <section className={panelClass}>
-        <PanelHeading title={t.panels.openAlerts} icon={AlertTriangle} meta={t.panels.activeRows(format.integer(activeAlertCount))} />
+        <PanelHeading
+          title={statusFilter === 'open' ? t.panels.openAlerts : t.panels.alertHistory}
+          icon={AlertTriangle}
+          meta={t.panels.visible(format.integer(activeAlertCount))}
+        />
+        <div className="mt-2 grid gap-2 rounded-md border border-afro-line bg-[#f9fbfc] p-2 sm:grid-cols-[minmax(180px,0.8fr)_minmax(150px,0.6fr)_minmax(170px,0.8fr)]">
+          <div className="grid gap-1">
+            <span className={mutedTextClass}>{t.alertFilters.status}</span>
+            <div className="inline-grid grid-cols-2 rounded-md border border-afro-line bg-white p-1">
+              {(['open', 'resolved'] as AlertStatusFilter[]).map((status) => {
+                const isActive = statusFilter === status;
+                const activeClass = isActive ? 'bg-afro-sidebar text-white shadow-sm' : 'text-afro-muted hover:text-afro-ink';
+
+                return (
+                  <button
+                    className={`min-h-8 rounded px-2 text-[12px] font-bold ${activeClass}`}
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    title={status === 'open' ? t.alertFilters.open : t.alertFilters.resolved}
+                    type="button"
+                  >
+                    {status === 'open' ? t.alertFilters.open : t.alertFilters.resolved}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <label className="grid gap-1">
+            <span className={mutedTextClass}>{t.alertFilters.severity}</span>
+            <select
+              className="min-h-10 rounded-md border border-afro-line bg-white px-2 text-[13px] font-bold text-afro-ink outline-none focus:border-afro-teal"
+              onChange={(event) => setSeverityFilter(event.target.value as AlertSeverityFilter)}
+              value={severityFilter}
+            >
+              <option value="all">{t.alertFilters.allSeverities}</option>
+              {(['critical', 'warning', 'neutral', 'good'] as Tone[]).map((severity) => (
+                <option key={severity} value={severity}>{t.status[severity]}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1">
+            <span className={mutedTextClass}>{t.alertFilters.source}</span>
+            <select
+              className="min-h-10 rounded-md border border-afro-line bg-white px-2 text-[13px] font-bold text-afro-ink outline-none focus:border-afro-teal"
+              onChange={(event) => setSourceFilter(event.target.value)}
+              value={sourceFilter}
+            >
+              <option value="all">{t.alertFilters.allSources}</option>
+              {sourceOptions.map((source) => (
+                <option key={source} value={source}>{format.label(source)}</option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="mt-2 grid gap-2">
-          {alerts.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
-          {alerts.length === 0 ? <DataStateEmpty emptyMessage={t.alerts.noOpenAlerts} state={dataState} t={t} /> : null}
-          {alerts.length > 0 ? (
+          {filteredAlerts.length > 0 && currentDataState !== 'live' ? <DataStateNotice state={currentDataState} t={t} /> : null}
+          {filteredAlerts.length === 0 ? (
+            <DataStateEmpty
+              emptyMessage={statusFilter === 'open' ? t.alerts.noOpenAlerts : t.alerts.noResolvedAlerts}
+              state={currentDataState}
+              t={t}
+            />
+          ) : null}
+          {filteredAlerts.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.channel].map((heading) => (
+                    {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.status, t.tables.lastSeen].map((heading) => (
                       <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
                         {heading}
                       </th>
@@ -3176,19 +3284,24 @@ function AlertsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {alerts.map((alert) => (
-                    <tr key={alert.id}>
-                      <TableCell>
-                        <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
-                      </TableCell>
-                      <TableCell>{format.label(alert.source)}</TableCell>
-                      <TableCell>
-                        <strong className="block truncate text-afro-ink">{alert.title}</strong>
-                        {alert.message ? <span className="block max-w-[420px] truncate text-[12px]">{alert.message}</span> : null}
-                      </TableCell>
-                      <TableCell>{t.alerts.dashboard}</TableCell>
-                    </tr>
-                  ))}
+                  {filteredAlerts.map((alert) => {
+                    const timestamp = alert.status === 'resolved' && alert.resolvedAt ? alert.resolvedAt : alert.lastSeenAt;
+
+                    return (
+                      <tr key={alert.id}>
+                        <TableCell>
+                          <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
+                        </TableCell>
+                        <TableCell>{format.label(alert.source)}</TableCell>
+                        <TableCell>
+                          <strong className="block truncate text-afro-ink" title={alert.title}>{alert.title}</strong>
+                          {alert.message ? <span className="block max-w-[420px] truncate text-[12px]" title={alert.message}>{alert.message}</span> : null}
+                        </TableCell>
+                        <TableCell>{format.label(alert.status ?? statusFilter)}</TableCell>
+                        <TableCell>{timestamp ? format.time(new Date(timestamp), false) : '-'}</TableCell>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -7895,6 +8008,7 @@ function mapAdminAlertsToRows(alerts: AdminAlertSummary[], t: DashboardStrings):
     message: alert.message,
     status: alert.status,
     lastSeenAt: alert.lastSeenAt,
+    resolvedAt: alert.resolvedAt,
   }));
 }
 

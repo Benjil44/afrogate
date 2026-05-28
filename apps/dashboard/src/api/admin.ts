@@ -47,6 +47,13 @@ import { getApiBaseUrl } from './base';
 
 export type AdminAuthErrorCode = 'invalid' | 'unavailable' | 'network';
 
+export interface AdminAlertFilters {
+  limit?: number;
+  severity?: string;
+  sourceType?: string;
+  status?: 'open' | 'resolved';
+}
+
 export class AdminAuthError extends Error {
   constructor(readonly code: AdminAuthErrorCode) {
     super(code);
@@ -86,8 +93,19 @@ export async function fetchAdminUsers(sessionToken: string, signal?: AbortSignal
   return response.json() as Promise<AdminUsersResponse>;
 }
 
-export async function fetchAdminAlerts(sessionToken: string, signal?: AbortSignal): Promise<AdminAlertsResponse> {
-  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/alerts?status=open&limit=100`, {
+export async function fetchAdminAlerts(
+  sessionToken: string,
+  filters: AdminAlertFilters = {},
+  signal?: AbortSignal,
+): Promise<AdminAlertsResponse> {
+  const searchParams = new URLSearchParams({
+    limit: String(filters.limit ?? 100),
+    status: filters.status ?? 'open',
+  });
+  if (filters.severity) searchParams.set('severity', filters.severity);
+  if (filters.sourceType) searchParams.set('sourceType', filters.sourceType);
+
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/alerts?${searchParams.toString()}`, {
     headers: createSessionHeaders(sessionToken),
     signal,
   });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.63.0 - 2026-05-28
+
+- Added Alerts page status, severity, and source filters while keeping dashboard/sidebar open-alert counts unfiltered.
+- Added resolved alert history loading from the guarded admin alerts API.
+- Added Playwright coverage for open/resolved alert filtering and updated sidebar page tracking.
+
 ## 0.62.5 - 2026-05-28
 
 - Added signed-in dense dashboard visual capture tests for mobile, tablet, desktop, and second-LCD viewports.

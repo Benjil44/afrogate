@@ -971,4 +971,18 @@ Repository remote is ready:
 - Verified the full fixed-port dashboard smoke and visual capture suite with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining high-priority work includes the production server-side protocol apply engine and alert filters/history.
+- Added Alerts page filtering for open/resolved status, severity, and alert source while leaving dashboard/sidebar open-alert counts sourced from the existing unfiltered open-alert fetch.
+- Added resolved alert history loading through the guarded admin alerts API and kept empty/loading/fallback states visible for history rows.
+- Updated dashboard sidebar page checklist and memory to mark alert severity filters, source filters, and resolved alert history complete.
+- Added Playwright coverage for switching the Alerts page to resolved history and filtering by severity/source.
+- Bumped AfroGate to `0.63.0` for the Alerts page filters/history capability.
+- Verified `0.63.0` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified the alert filter interaction path with `npm run test:e2e -- --grep "alerts page filters"`.
+- Verified the full fixed-port dashboard smoke, visual capture, and alert filter suite with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine.
