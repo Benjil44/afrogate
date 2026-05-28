@@ -1265,3 +1265,21 @@ Repository remote is ready:
 - Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`; 8 tests passed including the new billing page flow.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added a guarded customer account limit manager to the dashboard Usage/Billing page.
+- Admin/owner/superadmin sessions can now create or update customer display metadata, Telegram username, account status, quota scope, shared account GB quota, optional per-client GB caps, and notes from the seller/admin dashboard.
+- Added dashboard API helpers for `POST /api/admin/customer-accounts` and `PATCH /api/admin/customer-accounts/:id`.
+- Kept paid-number handling out of the dashboard limit-manager workflow so raw paid numbers remain write-only/backend-scoped.
+- Added typed English/Persian labels and Playwright browser coverage for creating a customer with per-client quota caps.
+- Updated architecture, repository, multilingual, security/performance, roadmap, dashboard checklist, checklist, and memory docs for the customer-limit workflow.
+- Bumped AfroGate to `0.79.0` for the admin customer account limit-management workflow.
+- Checklist completion after this slice is `205 / 228` items, or `89.9%` complete with `10.1%` remaining.
+- Verified the migration stack with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified focused dashboard typing with `npm run typecheck --workspace @afrogate/dashboard`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified the final dashboard production build with `npm run build --workspace @afrogate/dashboard`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`; 8 tests passed after tightening the new Billing form selector.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

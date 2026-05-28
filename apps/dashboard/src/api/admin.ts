@@ -1,6 +1,7 @@
 import type {
   AdminAlertsResponse,
   AdminBillingCatalogResponse,
+  AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
   ApplyRouteDecisionPreviewRequest,
   ApplyRouteDecisionPreviewResponse,
@@ -29,6 +30,7 @@ import type {
   AdminUserSummary,
   AdminUsersResponse,
   CreateServerCredentialRequest,
+  CreateCustomerAccountRequest,
   CreateProtocolSetupRequest,
   CreateSettingsSecretRequest,
   CreateAdminUserRequest,
@@ -44,6 +46,7 @@ import type {
   UpsertRouteAssignmentRequest,
   UpsertRouteSettingsRequest,
   UpdateRewardedAdSettingsRequest,
+  UpdateCustomerAccountRequest,
   UpdateServerRequest,
   UpdateAdminUserPasswordRequest,
   UpdateAdminUserRequest,
@@ -259,6 +262,33 @@ export async function fetchAdminCustomerAccounts(
   });
 
   return response.json() as Promise<AdminCustomerAccountsResponse>;
+}
+
+export async function createAdminCustomerAccount(
+  sessionToken: string,
+  payload: CreateCustomerAccountRequest,
+): Promise<AdminCustomerAccountDetail> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+export async function updateAdminCustomerAccount(
+  sessionToken: string,
+  accountId: string,
+  payload: UpdateCustomerAccountRequest,
+): Promise<AdminCustomerAccountDetail> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminCustomerAccountDetail>;
 }
 
 export async function fetchAdminPaymentOrders(

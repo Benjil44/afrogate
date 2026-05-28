@@ -40,6 +40,8 @@ import type {
   AdminTunnelSummary,
   AdminVolumePackageSummary,
   AdminWireGuardCandidate,
+  CustomerAccountStatus,
+  CustomerQuotaScope,
   LoadBalanceStrategy,
   AdminUserSummary,
   MetricsTimeRange,
@@ -100,6 +102,7 @@ import {
 import rootPackage from '../../../package.json';
 import { useAdminSession } from './auth';
 import {
+  createAdminCustomerAccount,
   createAdminProtocolSetup,
   createAdminSettingsSecret,
   createAdminUser,
@@ -132,6 +135,7 @@ import {
   storeAdminServerCredential,
   updateAdminRouteAssignment,
   updateAdminRouteSettings,
+  updateAdminCustomerAccount,
   updateAdminRewardedAdSettings,
   updateAdminServer,
   updateAdminUser,
@@ -2685,6 +2689,47 @@ function UsersPage({
   );
 }
 
+type CustomerAccountFormState = {
+  displayName: string;
+  telegramUsername: string;
+  quotaScope: CustomerQuotaScope;
+  quotaLimitGb: string;
+  perClientLimitGb: string;
+  status: CustomerAccountStatus;
+  notes: string;
+};
+
+const customerQuotaScopeOptions: CustomerQuotaScope[] = ['account_shared', 'per_client'];
+const customerAccountStatusOptions: CustomerAccountStatus[] = ['active', 'suspended', 'disabled'];
+
+function createEmptyCustomerAccountForm(): CustomerAccountFormState {
+  return {
+    displayName: '',
+    notes: '',
+    perClientLimitGb: '',
+    quotaLimitGb: '50',
+    quotaScope: 'account_shared',
+    status: 'active',
+    telegramUsername: '',
+  };
+}
+
+function mapCustomerAccountToForm(account: AdminCustomerAccountSummary): CustomerAccountFormState {
+  return {
+    displayName: account.displayName ?? '',
+    notes: account.notes ?? '',
+    perClientLimitGb: formatGbInput(account.perClientLimitBytes ?? null),
+    quotaLimitGb: formatGbInput(account.quotaLimitBytes ?? null),
+    quotaScope: customerQuotaScopeOptions.includes(account.quotaScope as CustomerQuotaScope)
+      ? account.quotaScope as CustomerQuotaScope
+      : 'account_shared',
+    status: customerAccountStatusOptions.includes(account.status as CustomerAccountStatus)
+      ? account.status as CustomerAccountStatus
+      : 'active',
+    telegramUsername: account.telegramUsername ?? '',
+  };
+}
+
 function BillingPage({
   format,
   session,
@@ -2711,6 +2756,10 @@ function BillingPage({
   const [verificationMode, setVerificationMode] = useState('client_callback_mvp');
   const [rewardMessage, setRewardMessage] = useState<string | null>(null);
   const [isSavingReward, setIsSavingReward] = useState(false);
+  const [selectedCustomerAccountId, setSelectedCustomerAccountId] = useState<string | null>(null);
+  const [customerForm, setCustomerForm] = useState<CustomerAccountFormState>(() => createEmptyCustomerAccountForm());
+  const [customerMessage, setCustomerMessage] = useState<string | null>(null);
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
 
   const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
@@ -2756,6 +2805,13 @@ function BillingPage({
     setProvider(rewardSettings.provider);
     setVerificationMode(rewardSettings.verificationMode);
   }, [rewardSettings]);
+
+  useEffect(() => {
+    if (!selectedCustomerAccountId) return;
+
+    const selectedAccount = accounts.find((account) => account.id === selectedCustomerAccountId);
+    if (selectedAccount) setCustomerForm(mapCustomerAccountToForm(selectedAccount));
+  }, [accounts, selectedCustomerAccountId]);
 
   const totalUsedBytes = accounts.reduce((sum, account) => sum + account.usedBytes, 0);
   const totalQuotaBytes = sumNullable(accounts.map((account) => account.quotaLimitBytes ?? null));
@@ -2813,6 +2869,62 @@ function BillingPage({
       setRewardMessage(t.billing.rewardSettingsSaveFailed);
     } finally {
       setIsSavingReward(false);
+    }
+  };
+
+  const handleStartNewCustomerAccount = () => {
+    setSelectedCustomerAccountId(null);
+    setCustomerForm(createEmptyCustomerAccountForm());
+    setCustomerMessage(null);
+  };
+
+  const handleSelectCustomerAccount = (accountId: string) => {
+    setSelectedCustomerAccountId(accountId || null);
+    setCustomerMessage(null);
+
+    const selectedAccount = accounts.find((account) => account.id === accountId);
+    setCustomerForm(selectedAccount ? mapCustomerAccountToForm(selectedAccount) : createEmptyCustomerAccountForm());
+  };
+
+  const handleSaveCustomerAccount = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canManageBilling) return;
+
+    const quotaLimitBytes = parseGbLimitInput(customerForm.quotaLimitGb);
+    const perClientLimitBytes = parseGbLimitInput(customerForm.perClientLimitGb);
+    if (quotaLimitBytes === undefined || perClientLimitBytes === undefined || !customerForm.displayName.trim()) {
+      setCustomerMessage(t.billing.customerAccountSaveFailed);
+      return;
+    }
+
+    setIsSavingCustomer(true);
+    setCustomerMessage(null);
+
+    try {
+      const payload = {
+        displayName: normalizeNullableText(customerForm.displayName),
+        notes: normalizeNullableText(customerForm.notes),
+        perClientLimitBytes,
+        quotaLimitBytes,
+        quotaScope: customerForm.quotaScope,
+        status: customerForm.status,
+        telegramUsername: normalizeNullableText(customerForm.telegramUsername),
+      };
+      const savedAccount = selectedCustomerAccountId
+        ? await updateAdminCustomerAccount(sessionToken, selectedCustomerAccountId, payload)
+        : await createAdminCustomerAccount(sessionToken, payload);
+
+      setAccounts((current) => [
+        savedAccount,
+        ...current.filter((account) => account.id !== savedAccount.id),
+      ]);
+      setSelectedCustomerAccountId(savedAccount.id);
+      setCustomerForm(mapCustomerAccountToForm(savedAccount));
+      setCustomerMessage(t.billing.customerAccountSaved);
+    } catch {
+      setCustomerMessage(t.billing.customerAccountSaveFailed);
+    } finally {
+      setIsSavingCustomer(false);
     }
   };
 
@@ -2879,10 +2991,196 @@ function BillingPage({
         />
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
+      <section className="grid gap-3 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)]">
+        <CustomerAccountEditorPanel
+          accounts={accounts}
+          canManageBilling={canManageBilling}
+          customerForm={customerForm}
+          customerMessage={customerMessage}
+          format={format}
+          isSavingCustomer={isSavingCustomer}
+          onFormChange={setCustomerForm}
+          onSaveCustomerAccount={handleSaveCustomerAccount}
+          onSelectCustomerAccount={handleSelectCustomerAccount}
+          onStartNewCustomerAccount={handleStartNewCustomerAccount}
+          selectedCustomerAccountId={selectedCustomerAccountId}
+          t={t}
+        />
         <CustomerAccountsPanel accounts={accounts} format={format} t={t} />
       </section>
+      <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
+    </section>
+  );
+}
+
+function CustomerAccountEditorPanel({
+  accounts,
+  canManageBilling,
+  customerForm,
+  customerMessage,
+  format,
+  isSavingCustomer,
+  onFormChange,
+  onSaveCustomerAccount,
+  onSelectCustomerAccount,
+  onStartNewCustomerAccount,
+  selectedCustomerAccountId,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  canManageBilling: boolean;
+  customerForm: CustomerAccountFormState;
+  customerMessage: string | null;
+  format: DashboardFormatters;
+  isSavingCustomer: boolean;
+  onFormChange: (form: CustomerAccountFormState) => void;
+  onSaveCustomerAccount: (event: FormEvent<HTMLFormElement>) => void;
+  onSelectCustomerAccount: (accountId: string) => void;
+  onStartNewCustomerAccount: () => void;
+  selectedCustomerAccountId: string | null;
+  t: DashboardStrings;
+}) {
+  const selectedAccount = accounts.find((account) => account.id === selectedCustomerAccountId) ?? null;
+  const updateForm = (patch: Partial<CustomerAccountFormState>) => onFormChange({ ...customerForm, ...patch });
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading
+        title={t.billing.customerLimitManager}
+        icon={UserRound}
+        meta={selectedAccount ? (selectedAccount.displayName ?? selectedAccount.telegramUsername ?? selectedAccount.id.slice(0, 8)) : t.billing.newCustomer}
+      />
+      <form className="mt-2 grid gap-2" onSubmit={onSaveCustomerAccount}>
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className="grid gap-1.5">
+            <span className={mutedTextClass}>{t.billing.selectCustomer}</span>
+            <select
+              className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+              disabled={!canManageBilling}
+              onChange={(event) => onSelectCustomerAccount(event.target.value)}
+              value={selectedCustomerAccountId ?? ''}
+            >
+              <option value="">{t.billing.newCustomer}</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.displayName ?? account.telegramUsername ?? account.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canManageBilling}
+            onClick={onStartNewCustomerAccount}
+            type="button"
+          >
+            <Plus size={15} />
+            {t.billing.newCustomer}
+          </button>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2">
+          <SettingsInput
+            disabled={!canManageBilling}
+            label={t.billing.displayName}
+            onChange={(displayName) => updateForm({ displayName })}
+            required
+            value={customerForm.displayName}
+          />
+          <SettingsInput
+            disabled={!canManageBilling}
+            label={t.billing.telegramUsername}
+            onChange={(telegramUsername) => updateForm({ telegramUsername })}
+            value={customerForm.telegramUsername}
+          />
+          <SettingsInput
+            disabled={!canManageBilling}
+            inputMode="numeric"
+            label={t.billing.accountQuotaGb}
+            onChange={(quotaLimitGb) => updateForm({ quotaLimitGb })}
+            value={customerForm.quotaLimitGb}
+          />
+          <SettingsInput
+            disabled={!canManageBilling}
+            inputMode="numeric"
+            label={t.billing.perClientLimitGb}
+            onChange={(perClientLimitGb) => updateForm({ perClientLimitGb })}
+            value={customerForm.perClientLimitGb}
+          />
+          <label className="grid gap-1.5">
+            <span className={mutedTextClass}>{t.billing.quotaScope}</span>
+            <select
+              aria-label={t.billing.quotaScope}
+              className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+              disabled={!canManageBilling}
+              onChange={(event) => updateForm({ quotaScope: event.target.value as CustomerQuotaScope })}
+              value={customerForm.quotaScope}
+            >
+              {customerQuotaScopeOptions.map((scope) => (
+                <option key={scope} value={scope}>
+                  {customerQuotaScopeLabel(scope, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className={mutedTextClass}>{t.billing.status}</span>
+            <select
+              className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+              disabled={!canManageBilling}
+              onChange={(event) => updateForm({ status: event.target.value as CustomerAccountStatus })}
+              value={customerForm.status}
+            >
+              {customerAccountStatusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {customerAccountStatusLabel(status, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <SettingsInput
+          disabled={!canManageBilling}
+          label={t.billing.notes}
+          onChange={(notes) => updateForm({ notes })}
+          value={customerForm.notes}
+        />
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <MetricPill
+            icon={ShieldCheck}
+            label={t.billing.accountLimit}
+            value={customerForm.quotaLimitGb.trim() ? format.bytes(parseGbLimitInput(customerForm.quotaLimitGb) ?? null) : t.billing.unlimited}
+          />
+          <MetricPill
+            icon={UserRound}
+            label={t.billing.clientLimit}
+            value={customerForm.perClientLimitGb.trim() ? format.bytes(parseGbLimitInput(customerForm.perClientLimitGb) ?? null) : t.billing.unlimited}
+          />
+          <MetricPill
+            icon={Inbox}
+            label={t.billing.quotaScope}
+            value={customerQuotaScopeLabel(customerForm.quotaScope, t)}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className={primaryButtonClass}
+            disabled={!canManageBilling || isSavingCustomer}
+            type="submit"
+          >
+            {isSavingCustomer
+              ? t.billing.saving
+              : selectedCustomerAccountId
+                ? t.billing.updateCustomerAccount
+                : t.billing.createCustomerAccount}
+          </button>
+          {customerMessage ? <span className={mutedTextClass}>{customerMessage}</span> : null}
+          {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
+        </div>
+      </form>
     </section>
   );
 }
@@ -3075,6 +3373,44 @@ function billingStatusTone(status: string): Tone {
   if (status === 'refunded' || status === 'suspended') return 'warning';
 
   return 'critical';
+}
+
+function customerQuotaScopeLabel(scope: CustomerQuotaScope | string, t: DashboardStrings): string {
+  if (scope === 'per_client') return t.billing.perClientQuota;
+
+  return t.billing.accountSharedQuota;
+}
+
+function customerAccountStatusLabel(status: CustomerAccountStatus | string, t: DashboardStrings): string {
+  if (status === 'suspended') return t.billing.suspended;
+  if (status === 'disabled') return t.billing.disabled;
+
+  return t.billing.enabled;
+}
+
+function parseGbLimitInput(value: string): number | null | undefined {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return null;
+
+  const numericValue = Number(trimmedValue);
+  if (!Number.isFinite(numericValue) || numericValue < 0) return undefined;
+
+  return Math.round(numericValue * 1024 ** 3);
+}
+
+function formatGbInput(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '';
+
+  const gigabytes = value / 1024 ** 3;
+  const rounded = Math.round(gigabytes * 100) / 100;
+
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function normalizeNullableText(value: string): string | null {
+  const trimmedValue = value.trim();
+
+  return trimmedValue ? trimmedValue : null;
 }
 
 function RoutesPage({
@@ -7675,6 +8011,7 @@ function routeDecisionCandidateSourceLabel(candidate: AdminRouteDecisionCandidat
 
 function SettingsInput({
   autoComplete,
+  disabled = false,
   inputMode,
   label,
   onChange,
@@ -7684,12 +8021,13 @@ function SettingsInput({
   value,
 }: {
   autoComplete?: string;
+  disabled?: boolean;
   inputMode?: 'numeric';
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
   required?: boolean;
-  type?: 'text' | 'password';
+  type?: 'text' | 'password' | 'number';
   value: string;
 }) {
   return (
@@ -7697,7 +8035,8 @@ function SettingsInput({
       <span className="text-[13px] font-bold text-afro-muted">{label}</span>
       <input
         autoComplete={autoComplete}
-        className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+        className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+        disabled={disabled}
         dir="ltr"
         inputMode={inputMode}
         onChange={(event) => onChange(event.target.value)}

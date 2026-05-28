@@ -59,6 +59,7 @@
 - Usage accounting now starts with idempotent `client_usage_events` rows that update account/client used-byte counters for remaining-volume reads.
 - Paid payment orders now allocate purchased volume through an idempotent `payment_order_allocations` ledger before customer quota changes.
 - Rewarded ads now start with admin-managed reward/cap settings, a capped `rewarded_ad_grants` quota-credit ledger, and a mobile client claim surface; verified ad-network SDK/webhook validation remains future hardening.
+- The admin Usage/Billing dashboard now includes a customer limit manager for creating/updating customer accounts, shared account GB quota, per-client GB caps, quota scope, and account status without collecting raw paid numbers in the dashboard.
 
 ## فاز 3: Auto Route
 

@@ -109,6 +109,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 ## Later Pages
 
 - [x] Usage and billing.
+- [x] Usage/Billing customer account limit manager for shared account and per-client GB caps.
 - [ ] Telegram bot operations.
 - [ ] Backups.
 - [ ] Audit logs.

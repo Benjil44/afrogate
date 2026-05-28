@@ -81,6 +81,16 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await page.getByLabel('Reward MB').fill('150');
   await page.getByRole('button', { name: 'Save reward settings' }).click();
   await expect(page.getByText('Reward settings saved.')).toBeVisible();
+
+  await expect(page.getByRole('heading', { name: 'Customer limit manager' })).toBeVisible();
+  await page.getByLabel('Display name').fill('VIP gamer');
+  await page.getByLabel('Telegram username').fill('vip_gamer');
+  await page.getByLabel('Account quota GB').fill('80');
+  await page.getByLabel('Per-client cap GB').fill('20');
+  await page.getByLabel('Quota scope', { exact: true }).selectOption('per_client');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText('Customer account saved.')).toBeVisible();
+  await expect(page.getByRole('cell', { name: /VIP gamer/ })).toBeVisible();
 });
 
 async function loadSignedInDashboard(page: Page, size: { width: number; height: number }): Promise<void> {
@@ -285,6 +295,41 @@ async function mockDashboardApi(page: Page): Promise<void> {
         });
         return;
       case '/api/admin/customer-accounts':
+        if (route.request().method() === 'POST') {
+          const payload = route.request().postDataJSON() as {
+            displayName?: string | null;
+            notes?: string | null;
+            perClientLimitBytes?: number | null;
+            quotaLimitBytes?: number | null;
+            quotaScope?: string;
+            status?: string;
+            telegramUsername?: string | null;
+          };
+          const quotaLimitBytes = payload.quotaLimitBytes ?? null;
+          const usedBytes = 0;
+
+          await fulfillJson(route, {
+            activeClientCount: 0,
+            clientConfigs: [],
+            clientCount: 0,
+            createdAt: fixedNow,
+            displayName: payload.displayName ?? null,
+            hasPaidNumberHash: false,
+            id: 'account-created',
+            notes: payload.notes ?? null,
+            perClientLimitBytes: payload.perClientLimitBytes ?? null,
+            quotaLimitBytes,
+            quotaScope: payload.quotaScope ?? 'account_shared',
+            remainingBytes: quotaLimitBytes === null ? null : quotaLimitBytes - usedBytes,
+            status: payload.status ?? 'active',
+            telegramId: null,
+            telegramUsername: payload.telegramUsername ?? null,
+            updatedAt: fixedNow,
+            usedBytes,
+          });
+          return;
+        }
+
         await fulfillJson(route, {
           accounts: [
             {

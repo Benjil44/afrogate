@@ -197,7 +197,7 @@ Mobile/client API auth is separate from admin/seller auth. Admins can issue one-
 
 Client-scoped endpoints live under `/api/client/*`. They can read only the authenticated client profile, quota summary, route preference, selectable route options, and rewarded-ad status, and can update only that client's route preference when `allow_client_override` is true. These endpoints must not expose admin dashboard operations, server secrets, outbound config JSON, client IP history, or user traffic destinations.
 
-The dashboard Usage/Billing page is the seller/admin surface for catalog, customer quota, recent payment orders, allocation status, and non-secret rewarded-ad reward/cap settings. It consumes guarded `/api/admin/*` billing APIs only and keeps user-facing labels in the typed dashboard translation layer.
+The dashboard Usage/Billing page is the seller/admin surface for catalog, customer quota, recent payment orders, allocation status, customer account limit management, and non-secret rewarded-ad reward/cap settings. It can create/update customer account display metadata, shared account GB quota, per-client GB caps, quota scope, and account status through guarded `/api/admin/*` billing APIs only; it does not collect raw paid numbers in the dashboard workflow and keeps user-facing labels in the typed dashboard translation layer.
 
 The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, rewarded-data claims, automatic/country/server route mode selection, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
 

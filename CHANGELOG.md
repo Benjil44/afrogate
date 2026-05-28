@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.79.0 - 2026-05-28
+
+- Added a guarded customer limit manager to the dashboard Usage/Billing page for creating and updating customer accounts.
+- Added admin controls for shared account GB quota, per-client GB caps, quota scope, account status, display name, Telegram username, and notes.
+- Added dashboard API helpers, bilingual labels, and browser coverage for the customer account creation flow while keeping paid-number handling out of the dashboard workflow.
+
 ## 0.78.0 - 2026-05-28
 
 - Added a dashboard Usage/Billing page for guarded admin billing catalog, customer quota, payment order, and allocation visibility.
