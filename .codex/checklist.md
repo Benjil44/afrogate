@@ -102,7 +102,7 @@
 - [x] Real WireGuard health checks per tunnel for admin route selection.
 - [x] Ping/jitter/packet loss probes.
 - [x] Initial protocol-aware route probe contract and opt-in agent TCP/UDP/QUIC-reachability/DNS probes.
-- [ ] Protocol-aware route probes for TCP, UDP, QUIC/HTTP3, DNS, and WireGuard.
+- [x] Protocol-aware route probes for TCP, UDP, QUIC/HTTP3, DNS, and WireGuard.
 - [x] Health score calculation.
 - [x] Backend protocol-aware route scoring for low-speed/high-speed and traffic-profile decisions.
 - [x] Alert engine.

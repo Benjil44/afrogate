@@ -103,7 +103,7 @@ Settings route selection can use these agent-sourced WireGuard tunnel rows as re
 
 Ping/jitter/packet-loss collection is opt-in through configured synthetic targets such as `AFROGATE_PING_TARGETS`. Do not use user destinations or traffic-derived hosts as probe targets.
 
-Initial protocol-aware route probes are opt-in through `AFROGATE_TCP_PROBE_TARGETS`, `AFROGATE_UDP_PROBE_TARGETS`, `AFROGATE_QUIC_PROBE_TARGETS`, and `AFROGATE_DNS_PROBE_TARGETS`. TCP probes measure connect latency/failure rate. DNS probes measure lookup latency/failure rate. UDP and QUIC-labeled probes require a configured responder that replies to the small probe payload; they are reachability signals, not continuous speed tests.
+Protocol-aware route probes are opt-in through `AFROGATE_TCP_PROBE_TARGETS`, `AFROGATE_UDP_PROBE_TARGETS`, `AFROGATE_QUIC_PROBE_TARGETS`, and `AFROGATE_DNS_PROBE_TARGETS`. TCP probes measure connect latency/failure rate. DNS probes measure lookup latency/failure rate. UDP and QUIC-labeled probes require a configured responder that replies to the small probe payload; they are reachability signals, not continuous speed tests. When `wg` telemetry is available, the agent also emits `wireguard` route-probe rows derived from interface status, active peer count, and handshake freshness without sending raw keys.
 
 SSH can still be used for:
 

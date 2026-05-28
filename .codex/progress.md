@@ -898,3 +898,19 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Docker Compose config/build was not run because the Docker CLI is not installed in this workspace.
 - Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, and alert filters/history.
+- Extended the Python agent protocol-aware route probes so TCP, UDP, QUIC-labeled UDP, and DNS samples use protocol-specific degraded/critical thresholds.
+- Added derived `wireguard` route-probe rows from local WireGuard telemetry, using interface status, active peer count, and handshake freshness without exposing raw keys.
+- Updated agent environment docs, local development notes, repository structure, checklist, and memory for the complete TCP/UDP/QUIC/DNS/WireGuard route-probe coverage.
+- Bumped AfroGate to `0.62.0` for the completed protocol-aware agent route-probe capability.
+- Verified `0.62.0` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified Python agent compilation with `python -m compileall apps\agent`.
+- Verified no-config agent collection with `python apps\agent\run.py --once`.
+- Verified configured TCP/DNS route-probe payload shape with a local agent dry run.
+- Verified derived WireGuard route-probe payload shape with fake non-secret interface telemetry.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine, shared empty/loading/stale states, and alert filters/history.

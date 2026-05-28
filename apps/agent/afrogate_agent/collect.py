@@ -81,6 +81,7 @@ def collect_metrics(
         udp_probe_targets or (),
         quic_probe_targets or (),
         dns_probe_targets or (),
+        wireguard_interfaces,
         route_probe_count,
         route_probe_timeout_seconds,
         route_probe_metadata,
@@ -634,6 +635,7 @@ def _collect_route_probes(
     udp_targets: tuple[str, ...] | list[str],
     quic_targets: tuple[str, ...] | list[str],
     dns_targets: tuple[str, ...] | list[str],
+    wireguard_interfaces: list[dict[str, object]],
     count: int,
     timeout_seconds: int,
     metadata: dict[str, str | None] | None = None,
@@ -655,11 +657,24 @@ def _collect_route_probes(
     for target in quic_targets[:4]:
         parsed = _parse_route_host_port(target)
         if parsed:
-            probes.append(_run_udp_route_probe("quic", target, parsed[0], parsed[1], count, timeout_seconds))
+            probes.append(_run_udp_route_probe(
+                "quic",
+                target,
+                parsed[0],
+                parsed[1],
+                count,
+                timeout_seconds,
+                "quic_udp_response",
+            ))
 
     for target in dns_targets[:4]:
         if _is_safe_route_host(target):
             probes.append(_run_dns_route_probe(target, count, timeout_seconds))
+
+    for interface in wireguard_interfaces[:8]:
+        probe = _run_wireguard_route_probe(interface)
+        if probe:
+            probes.append(probe)
 
     return [_with_route_probe_metadata(probe, metadata) for probe in probes]
 
@@ -708,6 +723,7 @@ def _run_udp_route_probe(
     port: int,
     count: int,
     timeout_seconds: int,
+    mode: str = "udp_response",
 ) -> dict[str, object]:
     samples: list[float] = []
 
@@ -727,7 +743,7 @@ def _run_udp_route_probe(
         except OSError:
             continue
 
-    return _route_probe_result(protocol, target, "udp_response", samples, count)
+    return _route_probe_result(protocol, target, mode, samples, count)
 
 
 def _run_dns_route_probe(target: str, count: int, timeout_seconds: int) -> dict[str, object]:
@@ -748,6 +764,34 @@ def _run_dns_route_probe(target: str, count: int, timeout_seconds: int) -> dict[
     return _route_probe_result("dns", target, "dns_lookup", samples, count)
 
 
+def _run_wireguard_route_probe(interface: dict[str, object]) -> dict[str, object] | None:
+    interface_name = str(interface.get("name") or "").strip()
+    if not interface_name:
+        return None
+
+    peer_count = _number_or_none(interface.get("peerCount"))
+    active_peer_count = _number_or_none(interface.get("activePeerCount"))
+    latest_handshake_age = _number_or_none(interface.get("latestHandshakeAgeSeconds"))
+    status = _wireguard_route_probe_status(
+        str(interface.get("status") or "unknown"),
+        peer_count,
+        active_peer_count,
+        latest_handshake_age,
+    )
+    packet_loss_percent = _wireguard_route_probe_loss(status)
+
+    return {
+        "protocol": "wireguard",
+        "target": f"interface:{interface_name}",
+        "mode": "wireguard_handshake",
+        "status": status,
+        "latencyMs": None,
+        "jitterMs": None,
+        "packetLossPercent": packet_loss_percent,
+        "checkedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
 def _route_probe_result(
     protocol: str,
     target: str,
@@ -761,7 +805,7 @@ def _route_probe_result(
         "protocol": protocol,
         "target": target,
         "mode": mode,
-        "status": _route_probe_status(packet_loss_percent, samples),
+        "status": _route_probe_status(protocol, packet_loss_percent, samples),
         "latencyMs": round(sum(samples) / len(samples), 2) if samples else None,
         "jitterMs": _calculate_jitter(samples),
         "packetLossPercent": packet_loss_percent,
@@ -769,14 +813,82 @@ def _route_probe_result(
     }
 
 
-def _route_probe_status(packet_loss_percent: float, samples: list[float]) -> str:
+def _route_probe_status(protocol: str, packet_loss_percent: float, samples: list[float]) -> str:
     if not samples or packet_loss_percent >= 100:
+        return "critical"
+
+    protocol_name = protocol.lower()
+    critical_loss = 75 if protocol_name in {"tcp", "dns"} else 50
+    degraded_latency = {
+        "tcp": 150,
+        "udp": 100,
+        "quic": 100,
+        "dns": 80,
+    }.get(protocol_name, 120)
+    critical_latency = {
+        "tcp": 1000,
+        "udp": 750,
+        "quic": 750,
+        "dns": 500,
+    }.get(protocol_name, 900)
+    average_latency = sum(samples) / len(samples)
+    jitter = _calculate_jitter(samples) or 0.0
+
+    if packet_loss_percent >= critical_loss or average_latency >= critical_latency:
         return "critical"
     if packet_loss_percent > 0:
         return "degraded"
 
-    average_latency = sum(samples) / len(samples)
-    return "degraded" if average_latency > 500 else "healthy"
+    if average_latency > degraded_latency:
+        return "degraded"
+    if protocol_name in {"udp", "quic"} and jitter > 20:
+        return "degraded"
+    if protocol_name in {"tcp", "dns"} and jitter > 50:
+        return "degraded"
+
+    return "healthy"
+
+
+def _wireguard_route_probe_status(
+    interface_status: str,
+    peer_count: float | None,
+    active_peer_count: float | None,
+    latest_handshake_age: float | None,
+) -> str:
+    normalized_status = interface_status.lower()
+
+    if normalized_status == "unknown" or not peer_count:
+        return "unknown"
+    if normalized_status == "down" or active_peer_count == 0:
+        return "critical"
+    if normalized_status == "degraded":
+        return "degraded"
+    if latest_handshake_age is not None and latest_handshake_age > 600:
+        return "critical"
+    if latest_handshake_age is not None and latest_handshake_age > 180:
+        return "degraded"
+
+    return "healthy"
+
+
+def _wireguard_route_probe_loss(status: str) -> float | None:
+    if status == "healthy":
+        return 0.0
+    if status == "degraded":
+        return 10.0
+    if status == "critical":
+        return 100.0
+
+    return None
+
+
+def _number_or_none(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    return None
 
 
 def _parse_route_host_port(target: str) -> tuple[str, int] | None:

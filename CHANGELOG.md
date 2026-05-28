@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.62.0 - 2026-05-28
+
+- Completed protocol-aware agent route-probe coverage for configured TCP, UDP, QUIC-labeled UDP, DNS, and derived WireGuard health signals.
+- Added protocol-specific degraded/critical probe thresholds so latency, jitter, and loss affect route scoring more accurately by traffic profile.
+- Added privacy-safe WireGuard route-probe rows from interface status, active peers, and handshake freshness without exposing raw keys or user destinations.
+
 ## 0.61.2 - 2026-05-28
 
 - Added optional Docker Compose deployment samples for private PostgreSQL, private backend, and a static dashboard/Nginx web edge.

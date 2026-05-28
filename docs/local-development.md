@@ -66,7 +66,7 @@ $env:AFROGATE_PING_TIMEOUT_SECONDS='2'
 python apps/agent/run.py --once
 ```
 
-Protocol-aware route probes are also opt-in. They report compact TCP connect, UDP response, QUIC-labeled UDP response, and DNS lookup signals without inspecting user traffic:
+Protocol-aware route probes are also opt-in. They report compact TCP connect, UDP response, QUIC-labeled UDP response, and DNS lookup signals without inspecting user traffic. When the local `wg` command is available, the agent also turns existing WireGuard interface telemetry into `wireguard` route-probe rows so backend scoring can compare tunnel health with TCP/UDP/QUIC/DNS signals:
 
 ```powershell
 $env:AFROGATE_TCP_PROBE_TARGETS='127.0.0.1:7000'
