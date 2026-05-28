@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.58.0 - 2026-05-28
+
+- Added Routes page controls for the default route assignment: auto-route, route lock, current/locked managed outbound, hysteresis, and cooldown.
+- Bound the Routes page policy panel to guarded route-assignment APIs with admin-only writes and read-role visibility.
+- Kept route policy changes control-plane-only, with no server OS route mutation, tunnel service reload, or live user traffic switching.
+
 ## 0.57.0 - 2026-05-28
 
 - Added PostgreSQL and Drizzle inventory tables for managed server interfaces and tunnels.

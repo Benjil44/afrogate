@@ -822,3 +822,14 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added Routes page default route assignment controls for auto-route, route lock, current/locked managed outbound, hysteresis delta, and cooldown seconds.
+- Bound the Routes page route policy panel to guarded route-assignment APIs with read visibility for signed-in route readers and write controls limited to admin/owner/superadmin roles.
+- Added localized English/Persian empty-state copy for missing managed outbounds and updated the dashboard sidebar checklist for the completed Routes page controls.
+- Kept this slice control-plane-only: no server OS route changes, tunnel service reloads, credential decrypts, or live user traffic switching are performed.
+- Bumped AfroGate to `0.58.0` for Routes page route assignment controls.
+- Verified `0.58.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

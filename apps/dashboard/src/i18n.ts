@@ -922,6 +922,7 @@ export const dashboardTranslations = {
       enabled: 'enabled',
       available: 'available',
       score: '+15 score',
+      noManagedOutbounds: 'No managed outbound is available yet.',
     },
     failover: {
       primaryRouteHealthy: 'primary route healthy',
@@ -1889,6 +1890,7 @@ export const dashboardTranslations = {
       enabled: 'فعال',
       available: 'در دسترس',
       score: '+15 امتیاز',
+      noManagedOutbounds: 'هنوز اوت‌باند مدیریت‌شده‌ای در دسترس نیست.',
     },
     failover: {
       primaryRouteHealthy: 'مسیر اصلی سالم است',

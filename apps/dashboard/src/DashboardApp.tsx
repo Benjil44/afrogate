@@ -1008,6 +1008,8 @@ function ActivePage({
           failoverRows={routeFailoverRows}
           format={format}
           outbounds={routeOutbounds}
+          session={session}
+          sessionToken={sessionToken}
           tunnelDataState={tunnelDataState}
           tunnels={routeTunnels}
           t={t}
@@ -2270,6 +2272,8 @@ function RoutesPage({
   failoverRows,
   format,
   outbounds,
+  session,
+  sessionToken,
   tunnelDataState,
   tunnels,
   t,
@@ -2278,6 +2282,8 @@ function RoutesPage({
   failoverRows: RouteFailoverRowData[];
   format: DashboardFormatters;
   outbounds: OutboundRowData[];
+  session: AdminSessionResponse;
+  sessionToken: string;
   tunnelDataState: DataState;
   tunnels: TunnelRowData[];
   t: DashboardStrings;
@@ -2296,7 +2302,7 @@ function RoutesPage({
         outbounds={outbounds}
         t={t}
       />
-      <RoutePolicyPanel format={format} t={t} />
+      <RoutePolicyPanel format={format} outbounds={outbounds} session={session} sessionToken={sessionToken} t={t} />
       <FailoverPanel
         emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noFailoverEvents}
         events={failoverRows}
@@ -2307,24 +2313,246 @@ function RoutesPage({
   );
 }
 
-function RoutePolicyPanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
+function RoutePolicyPanel({
+  format,
+  outbounds,
+  session,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  outbounds: OutboundRowData[];
+  session: AdminSessionResponse;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const [assignment, setAssignment] = useState<AdminRouteAssignmentSummary | null>(null);
+  const [autoRouteEnabled, setAutoRouteEnabled] = useState(true);
+  const [routeLocked, setRouteLocked] = useState(false);
+  const [currentOutboundId, setCurrentOutboundId] = useState('');
+  const [lockedOutboundId, setLockedOutboundId] = useState('');
+  const [hysteresisScoreDelta, setHysteresisScoreDelta] = useState('15');
+  const [cooldownSeconds, setCooldownSeconds] = useState('180');
+  const [policyDataState, setPolicyDataState] = useState<DataState>('loading');
+  const [isSavingPolicy, setIsSavingPolicy] = useState(false);
+  const [policyMessage, setPolicyMessage] = useState<string | null>(null);
+  const canManageRoutePolicy = ['superadmin', 'owner', 'admin'].includes(session.actor.role);
+  const outboundOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+
+    outbounds.forEach((outbound) => {
+      byId.set(outbound.id, { id: outbound.id, name: outbound.name });
+    });
+
+    if (assignment?.currentOutboundId && !byId.has(assignment.currentOutboundId)) {
+      byId.set(assignment.currentOutboundId, {
+        id: assignment.currentOutboundId,
+        name: assignment.currentOutboundName ?? assignment.currentOutboundId,
+      });
+    }
+    if (assignment?.lockedOutboundId && !byId.has(assignment.lockedOutboundId)) {
+      byId.set(assignment.lockedOutboundId, {
+        id: assignment.lockedOutboundId,
+        name: assignment.lockedOutboundName ?? assignment.lockedOutboundId,
+      });
+    }
+
+    return [...byId.values()];
+  }, [assignment, outbounds]);
+  const normalizedHysteresisScoreDelta = clamp(Math.round(Number(hysteresisScoreDelta) || 15), 1, 100);
+  const normalizedCooldownSeconds = clamp(Math.round(Number(cooldownSeconds) || 180), 30, 3600);
+  const statusTone: Tone = policyDataState === 'fallback' ? 'warning' : routeLocked ? 'warning' : autoRouteEnabled ? 'good' : 'neutral';
   const policies: Array<[string, string, Tone]> = [
-    [t.routePolicy.autoRoute, t.routePolicy.enabled, 'good'],
-    [t.routePolicy.routeLock, t.routePolicy.available, 'neutral'],
-    [t.routePolicy.cooldown, format.durationSeconds(120), 'neutral'],
-    [t.routePolicy.hysteresis, format.scoreDelta(15), 'neutral'],
+    [t.routePolicy.autoRoute, autoRouteEnabled ? t.routePolicy.enabled : t.settings.manual, autoRouteEnabled ? 'good' : 'neutral'],
+    [t.routePolicy.routeLock, routeLocked ? t.routePolicy.enabled : t.routePolicy.available, routeLocked ? 'warning' : 'neutral'],
+    [t.routePolicy.cooldown, format.durationSeconds(normalizedCooldownSeconds), 'neutral'],
+    [t.routePolicy.hysteresis, format.scoreDelta(normalizedHysteresisScoreDelta), 'neutral'],
   ];
+  const applyRoutePolicy = (nextAssignment: AdminRouteAssignmentSummary) => {
+    setAssignment(nextAssignment);
+    setAutoRouteEnabled(nextAssignment.autoRouteEnabled);
+    setRouteLocked(nextAssignment.routeLocked);
+    setCurrentOutboundId(nextAssignment.currentOutboundId ?? '');
+    setLockedOutboundId(nextAssignment.lockedOutboundId ?? nextAssignment.currentOutboundId ?? '');
+    setHysteresisScoreDelta(String(nextAssignment.hysteresisScoreDelta));
+    setCooldownSeconds(String(nextAssignment.cooldownSeconds));
+  };
+
+  useEffect(() => {
+    let isActive = true;
+    const controller = new AbortController();
+
+    setPolicyDataState('loading');
+    setPolicyMessage(null);
+
+    fetchRouteAssignment(sessionToken, 'main', 'default', controller.signal)
+      .then((nextAssignment) => {
+        if (!isActive) return;
+
+        applyRoutePolicy(nextAssignment);
+        setPolicyDataState('live');
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setPolicyDataState('fallback');
+      });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [sessionToken]);
+
+  const saveRoutePolicy = async () => {
+    if (!canManageRoutePolicy) return;
+
+    setIsSavingPolicy(true);
+    setPolicyMessage(null);
+
+    try {
+      const savedAssignment = await updateAdminRouteAssignment(sessionToken, {
+        routeGroup: 'main',
+        assignmentKey: 'default',
+        assignmentLabel: assignment?.assignmentLabel ?? t.settings.defaultAssignment,
+        currentOutboundId: currentOutboundId || null,
+        lockedOutboundId: routeLocked ? lockedOutboundId || currentOutboundId || null : null,
+        autoRouteEnabled,
+        routeLocked,
+        hysteresisScoreDelta: normalizedHysteresisScoreDelta,
+        cooldownSeconds: normalizedCooldownSeconds,
+      });
+
+      applyRoutePolicy(savedAssignment);
+      setPolicyDataState('live');
+      setPolicyMessage(t.settings.routeSettingsSaved);
+    } catch (error) {
+      setPolicyMessage(t.settings.saveFailed);
+    } finally {
+      setIsSavingPolicy(false);
+    }
+  };
 
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.panels.routePolicy} icon={Route} meta={t.panels.stabilityRules} />
+      <PanelHeading
+        title={t.panels.routePolicy}
+        icon={Route}
+        meta={policyDataState === 'loading' ? t.dataStatus.loading : assignment?.assignmentLabel ?? t.settings.defaultAssignment}
+      />
       <div className="mt-2 grid gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-2.5 py-2">
+          <span className={`${mutedTextClass} font-bold`}>{t.settings.routeAssignment}</span>
+          <StatusBadge tone={statusTone}>
+            {policyDataState === 'loading' ? t.dataStatus.loading : routeLocked ? t.routePolicy.routeLock : autoRouteEnabled ? t.routePolicy.autoRoute : t.settings.manual}
+          </StatusBadge>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line bg-white px-3 py-2">
+            <span className="min-w-0 text-[13px] font-bold text-afro-muted">{t.settings.autoRouteToggle}</span>
+            <input
+              checked={autoRouteEnabled}
+              className="size-4 shrink-0 accent-afro-teal disabled:opacity-50"
+              disabled={!canManageRoutePolicy || isSavingPolicy}
+              onChange={(event) => setAutoRouteEnabled(event.target.checked)}
+              type="checkbox"
+            />
+          </label>
+          <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line bg-white px-3 py-2">
+            <span className="min-w-0 text-[13px] font-bold text-afro-muted">{t.settings.routeLockToggle}</span>
+            <input
+              checked={routeLocked}
+              className="size-4 shrink-0 accent-afro-teal disabled:opacity-50"
+              disabled={!canManageRoutePolicy || isSavingPolicy}
+              onChange={(event) => {
+                const isLocked = event.target.checked;
+
+                setRouteLocked(isLocked);
+                if (isLocked && !lockedOutboundId) {
+                  setLockedOutboundId(currentOutboundId || outboundOptions[0]?.id || '');
+                }
+              }}
+              type="checkbox"
+            />
+          </label>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className={fieldLabelClass}>
+            {t.settings.currentManagedRoute}
+            <select
+              className={fieldInputClass}
+              disabled={!canManageRoutePolicy || isSavingPolicy}
+              onChange={(event) => {
+                setCurrentOutboundId(event.target.value);
+                if (!lockedOutboundId) setLockedOutboundId(event.target.value);
+              }}
+              value={currentOutboundId}
+            >
+              <option value="">{t.settings.noManagedRouteSelected}</option>
+              {outboundOptions.map((outbound) => (
+                <option key={outbound.id} value={outbound.id}>
+                  {format.label(outbound.name)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={fieldLabelClass}>
+            {t.settings.lockedManagedRoute}
+            <select
+              className={fieldInputClass}
+              disabled={!canManageRoutePolicy || isSavingPolicy || !routeLocked}
+              onChange={(event) => setLockedOutboundId(event.target.value)}
+              value={lockedOutboundId}
+            >
+              <option value="">{t.settings.noManagedRouteSelected}</option>
+              {outboundOptions.map((outbound) => (
+                <option key={outbound.id} value={outbound.id}>
+                  {format.label(outbound.name)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className={fieldLabelClass}>
+            {t.settings.hysteresisScoreDelta}
+            <input
+              className={fieldInputClass}
+              disabled={!canManageRoutePolicy || isSavingPolicy}
+              inputMode="numeric"
+              onChange={(event) => setHysteresisScoreDelta(event.target.value)}
+              type="number"
+              value={hysteresisScoreDelta}
+            />
+          </label>
+          <label className={fieldLabelClass}>
+            {t.settings.cooldownSeconds}
+            <input
+              className={fieldInputClass}
+              disabled={!canManageRoutePolicy || isSavingPolicy}
+              inputMode="numeric"
+              onChange={(event) => setCooldownSeconds(event.target.value)}
+              type="number"
+              value={cooldownSeconds}
+            />
+          </label>
+        </div>
         {policies.map(([label, value, tone]) => (
           <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
             <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
             <StatusBadge tone={tone}>{value}</StatusBadge>
           </div>
         ))}
+        {outboundOptions.length === 0 ? <p className="text-[12px] font-bold text-afro-muted">{t.routePolicy.noManagedOutbounds}</p> : null}
+        {policyMessage ? <p className="text-[12px] font-bold text-afro-muted">{policyMessage}</p> : null}
+        <button
+          className={primaryButtonClass}
+          disabled={!canManageRoutePolicy || isSavingPolicy || policyDataState === 'loading'}
+          onClick={() => void saveRoutePolicy()}
+          type="button"
+        >
+          {isSavingPolicy ? t.settings.saving : t.settings.saveRouteSettings}
+        </button>
       </div>
     </section>
   );

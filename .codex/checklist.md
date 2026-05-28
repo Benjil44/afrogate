@@ -131,6 +131,7 @@
 - [ ] Tunnel detail page.
 - [x] Real server API-bound Servers page.
 - [x] Real route/outbound API-bound Routes page.
+- [x] Routes page default route assignment controls for auto-route, route lock, current/locked outbound, hysteresis, and cooldown.
 - [x] Real alert API-bound Alerts page.
 
 ## UI/UX Audit Backlog
