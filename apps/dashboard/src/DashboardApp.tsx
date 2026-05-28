@@ -28,6 +28,7 @@ import type {
   AdminRouteDecisionSwitchRolloutEvaluationSummary,
   AdminRouteDecisionSwitchRolloutSummary,
   AdminServerSummary,
+  AdminServerInterfaceSummary,
   AdminSettingsResponse,
   AdminSessionResponse,
   AdminTunnelSummary,
@@ -93,6 +94,8 @@ import {
   deleteAdminUser,
   fetchAdminAlerts,
   fetchAdminOutbounds,
+  fetchAdminServer,
+  fetchAdminServerInterfaces,
   fetchAdminServers,
   fetchAdminSettings,
   fetchAdminTunnels,
@@ -1398,15 +1401,73 @@ function ServerEditPanel({
   t: DashboardStrings;
 }) {
   const [activeTab, setActiveTab] = useState<ServerEditTab>('overview');
+  const [serverDetail, setServerDetail] = useState<AdminServerDetail | null>(null);
+  const [inventoryInterfaces, setInventoryInterfaces] = useState<AdminServerInterfaceSummary[]>([]);
+  const [inventoryTunnels, setInventoryTunnels] = useState<AdminTunnelSummary[]>([]);
+  const [detailDataState, setDetailDataState] = useState<DataState>('loading');
+
+  useEffect(() => {
+    let isActive = true;
+    const controller = new AbortController();
+
+    setServerDetail(null);
+    setInventoryInterfaces([]);
+    setInventoryTunnels([]);
+
+    if (!server) {
+      setDetailDataState('fallback');
+      return () => {
+        isActive = false;
+        controller.abort();
+      };
+    }
+
+    if (server.source !== 'admin') {
+      setDetailDataState('fallback');
+      return () => {
+        isActive = false;
+        controller.abort();
+      };
+    }
+
+    setDetailDataState('loading');
+
+    Promise.all([
+      fetchAdminServer(sessionToken, server.id, controller.signal),
+      fetchAdminServerInterfaces(sessionToken, server.id, controller.signal).catch(() => ({ interfaces: [] })),
+      fetchAdminTunnels(sessionToken, server.id, undefined, 100, controller.signal).catch(() => ({ tunnels: [] })),
+    ])
+      .then(([detail, interfaceResponse, tunnelResponse]) => {
+        if (!isActive) return;
+
+        setServerDetail(detail);
+        setInventoryInterfaces(interfaceResponse.interfaces);
+        setInventoryTunnels(tunnelResponse.tunnels);
+        setDetailDataState('live');
+        onServerUpdated(detail);
+      })
+      .catch((error) => {
+        if (!isActive || (error instanceof DOMException && error.name === 'AbortError')) return;
+
+        setDetailDataState('fallback');
+      });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [server?.id, server?.source, sessionToken]);
 
   if (!server) {
     return (
       <section className={panelClass}>
-        <PanelHeading title={t.panels.serverEdit} icon={ShieldCheck} meta={t.serverEdit.noServer} />
+        <PanelHeading title={t.panels.serverDetail} icon={ShieldCheck} meta={t.serverEdit.noServer} />
       </section>
     );
   }
 
+  const detailedServer = serverDetail ? mapAdminServerToServerRow(serverDetail) : null;
+  const activeServer = detailedServer ?? server;
   const interfaces = getServerInterfaces(serverIndex);
   const tabs: Array<{ id: ServerEditTab; label: string }> = [
     { id: 'overview', label: t.serverEdit.tabs.overview },
@@ -1418,7 +1479,11 @@ function ServerEditPanel({
 
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.panels.serverEdit} icon={ShieldCheck} meta={format.label(server.name)} />
+      <PanelHeading
+        title={t.panels.serverDetail}
+        icon={ShieldCheck}
+        meta={detailDataState === 'loading' ? t.dataStatus.loading : format.label(activeServer.name)}
+      />
       <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
         {tabs.map((tab) => {
           const activeClass = activeTab === tab.id
@@ -1439,28 +1504,73 @@ function ServerEditPanel({
       </div>
 
       <div className="mt-2">
-        {activeTab === 'overview' ? <ServerOverviewTab format={format} server={server} t={t} /> : null}
+        {activeTab === 'overview' ? (
+          <ServerOverviewTab
+            detailDataState={detailDataState}
+            format={format}
+            inventoryInterfaces={inventoryInterfaces}
+            inventoryTunnels={inventoryTunnels}
+            server={activeServer}
+            serverDetail={serverDetail}
+            t={t}
+          />
+        ) : null}
         {activeTab === 'access' ? (
           <ServerAccessTab
             onServerUpdated={onServerUpdated}
-            server={server}
+            server={activeServer}
             session={session}
             sessionToken={sessionToken}
             t={t}
           />
         ) : null}
-        {activeTab === 'monitoring' ? <ServerMonitoringTab format={format} server={server} t={t} /> : null}
-        {activeTab === 'interfaces' ? <ServerInterfacesTab format={format} interfaces={interfaces} server={server} t={t} /> : null}
-        {activeTab === 'audit' ? <ServerAuditTab format={format} server={server} t={t} /> : null}
+        {activeTab === 'monitoring' ? <ServerMonitoringTab format={format} server={activeServer} t={t} /> : null}
+        {activeTab === 'interfaces' ? (
+          <ServerInterfacesTab
+            detailDataState={detailDataState}
+            format={format}
+            interfaces={interfaces}
+            inventoryInterfaces={inventoryInterfaces}
+            inventoryTunnels={inventoryTunnels}
+            server={activeServer}
+            t={t}
+          />
+        ) : null}
+        {activeTab === 'audit' ? <ServerAuditTab detailDataState={detailDataState} format={format} server={activeServer} t={t} /> : null}
       </div>
     </section>
   );
 }
 
-function ServerOverviewTab({ format, server, t }: { format: DashboardFormatters; server: ServerRowData; t: DashboardStrings }) {
+function ServerOverviewTab({
+  detailDataState,
+  format,
+  inventoryInterfaces,
+  inventoryTunnels,
+  server,
+  serverDetail,
+  t,
+}: {
+  detailDataState: DataState;
+  format: DashboardFormatters;
+  inventoryInterfaces: AdminServerInterfaceSummary[];
+  inventoryTunnels: AdminTunnelSummary[];
+  server: ServerRowData;
+  serverDetail: AdminServerDetail | null;
+  t: DashboardStrings;
+}) {
+  const outboundsCount = serverDetail?.outbounds.length ?? server.outboundCount ?? 0;
+  const openAlertCount = server.openAlertCount ?? 0;
+  const inventorySummary = t.serverEdit.values.interfaceTunnelSummary(
+    format.integer(inventoryInterfaces.length),
+    format.integer(inventoryTunnels.length),
+  );
+  const accessReady = serverAccessReady(server);
+
   return (
     <div className="grid gap-2">
       <DetailRow label={t.serverEdit.labels.country}>{format.label(server.meta)}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.externalId}>{server.externalId ?? server.id}</DetailRow>
       <DetailRow label={t.serverEdit.labels.status}>
         <StatusBadge tone={server.score >= 70 ? 'good' : server.score >= 50 ? 'warning' : 'critical'}>
           {server.score >= 70 ? t.status.healthy : server.score >= 50 ? t.status.warning : t.status.critical}
@@ -1474,6 +1584,18 @@ function ServerOverviewTab({ format, server, t }: { format: DashboardFormatters;
         {server.observedAt ? format.time(new Date(server.observedAt), false) : t.serverEdit.values.localSample}
       </DetailRow>
       <DetailRow label={t.serverEdit.labels.healthScore}>{format.integer(server.score)}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.outbounds}>{format.integer(outboundsCount)}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.openAlerts}>{format.integer(openAlertCount)}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.inventory}>{inventorySummary}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.accessReadiness}>
+        <StatusBadge tone={accessReady ? 'good' : 'warning'}>
+          {accessReady ? t.settings.accessReady : t.settings.accessPending}
+        </StatusBadge>
+      </DetailRow>
+      <DetailRow label={t.serverEdit.labels.tags}>{server.tags?.length ? server.tags.map(format.label).join(', ') : t.serverEdit.values.none}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.detailSource}>
+        {detailDataState === 'live' ? t.serverEdit.values.apiDetail : detailDataState === 'loading' ? t.dataStatus.loading : t.serverEdit.values.fallbackDetail}
+      </DetailRow>
     </div>
   );
 }
@@ -1805,13 +1927,19 @@ function ServerMonitoringTab({ format, server, t }: { format: DashboardFormatter
 }
 
 function ServerInterfacesTab({
+  detailDataState,
   format,
   interfaces,
+  inventoryInterfaces,
+  inventoryTunnels,
   server,
   t,
 }: {
+  detailDataState: DataState;
   format: DashboardFormatters;
   interfaces: string[];
+  inventoryInterfaces: AdminServerInterfaceSummary[];
+  inventoryTunnels: AdminTunnelSummary[];
   server: ServerRowData;
   t: DashboardStrings;
 }) {
@@ -1832,6 +1960,46 @@ function ServerInterfacesTab({
 
   return (
     <div className="grid gap-2">
+      {inventoryInterfaces.length > 0 ? (
+        <>
+          <DetailRow label={t.serverEdit.labels.inventoryInterfaces}>
+            {t.panels.visible(format.integer(inventoryInterfaces.length))}
+          </DetailRow>
+          {inventoryInterfaces.map((item) => (
+            <DetailRow key={`inventory-interface-${item.id}`} label={format.label(item.name)}>
+              <span className="inline-flex min-w-0 items-center justify-end gap-1.5">
+                <StatusBadge tone={inventoryStatusTone(item.status)}>{inventoryStatusLabel(item.status, t)}</StatusBadge>
+                <span className="truncate">
+                  {[item.operator, item.kind, item.linkedTunnelName].filter(Boolean).map(String).map(format.label).join(' / ') || t.serverEdit.values.none}
+                </span>
+              </span>
+            </DetailRow>
+          ))}
+        </>
+      ) : null}
+      {inventoryTunnels.length > 0 ? (
+        <>
+          <DetailRow label={t.serverEdit.labels.inventoryTunnels}>
+            {t.panels.links(format.integer(inventoryTunnels.length))}
+          </DetailRow>
+          {inventoryTunnels.map((item) => (
+            <DetailRow key={`inventory-tunnel-${item.id}`} label={format.label(item.name)}>
+              <span className="inline-flex min-w-0 items-center justify-end gap-1.5">
+                <StatusBadge tone={inventoryStatusTone(item.status)}>{inventoryStatusLabel(item.status, t)}</StatusBadge>
+                <span className="truncate">
+                  {[item.type, item.localInterfaceName ?? item.interfaceName, item.routeGroup].filter(Boolean).map(String).map(format.label).join(' / ')}
+                </span>
+              </span>
+            </DetailRow>
+          ))}
+        </>
+      ) : null}
+      {detailDataState === 'live' && inventoryInterfaces.length === 0 ? (
+        <DetailRow label={t.serverEdit.labels.inventoryInterfaces}>{t.serverEdit.values.noInventoryInterfaces}</DetailRow>
+      ) : null}
+      {detailDataState === 'live' && inventoryTunnels.length === 0 ? (
+        <DetailRow label={t.serverEdit.labels.inventoryTunnels}>{t.serverEdit.values.noInventoryTunnels}</DetailRow>
+      ) : null}
       {metricRows.map((item) => (
         <DetailRow key={item.name} label={item.name}>{item.value}</DetailRow>
       ))}
@@ -1936,6 +2104,22 @@ function wireGuardStatusLabel(status: string, t: DashboardStrings): string {
   return t.serverEdit.values.wireGuardStatusUnknown;
 }
 
+function inventoryStatusTone(status: string): Tone {
+  if (status === 'up' || status === 'healthy') return 'good';
+  if (status === 'degraded') return 'warning';
+  if (status === 'down' || status === 'critical') return 'critical';
+
+  return 'neutral';
+}
+
+function inventoryStatusLabel(status: string, t: DashboardStrings): string {
+  if (status === 'up' || status === 'healthy') return t.serverEdit.values.statusUp;
+  if (status === 'degraded') return t.serverEdit.values.statusDegraded;
+  if (status === 'down' || status === 'critical') return t.serverEdit.values.statusDown;
+
+  return t.serverEdit.values.statusUnknown;
+}
+
 function formatWireGuardPeerSummary(
   item: WireGuardInterfaceMetric,
   format: DashboardFormatters,
@@ -1956,9 +2140,22 @@ function formatWireGuardHandshake(
     : t.serverEdit.values.noHandshake;
 }
 
-function ServerAuditTab({ format, server, t }: { format: DashboardFormatters; server: ServerRowData; t: DashboardStrings }) {
+function ServerAuditTab({
+  detailDataState,
+  format,
+  server,
+  t,
+}: {
+  detailDataState: DataState;
+  format: DashboardFormatters;
+  server: ServerRowData;
+  t: DashboardStrings;
+}) {
   return (
     <div className="grid gap-2">
+      <DetailRow label={t.serverEdit.labels.detailSource}>
+        {detailDataState === 'live' ? t.serverEdit.values.apiDetail : detailDataState === 'loading' ? t.dataStatus.loading : t.serverEdit.values.fallbackDetail}
+      </DetailRow>
       <DetailRow label={t.accessRows.auditMode}>
         <StatusBadge tone="warning">{t.accessRows.required}</StatusBadge>
       </DetailRow>
@@ -1976,7 +2173,7 @@ function DetailRow({ children, label }: { children: ReactNode; label: string }) 
   return (
     <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5">
       <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
-      <strong className="shrink-0 text-right text-sm">{children}</strong>
+      <strong className="min-w-0 shrink text-right text-sm">{children}</strong>
     </div>
   );
 }

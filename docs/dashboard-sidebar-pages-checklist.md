@@ -23,6 +23,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 ## Servers Page
 
 - [x] Server inventory table/cards.
+- [x] Server detail page with API-bound overview, monitoring, access, interface/tunnel inventory, and audit context.
 - [x] Server edit action.
 - [x] Safe access/bootstrap tab.
 - [x] Access-profile edit form with write-only encrypted server credential storage.

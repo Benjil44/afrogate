@@ -103,6 +103,19 @@ export async function fetchAdminServers(sessionToken: string, signal?: AbortSign
   return response.json() as Promise<AdminServersResponse>;
 }
 
+export async function fetchAdminServer(
+  sessionToken: string,
+  serverId: string,
+  signal?: AbortSignal,
+): Promise<AdminServerDetail> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/servers/${encodeURIComponent(serverId)}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminServerDetail>;
+}
+
 export async function updateAdminServer(
   sessionToken: string,
   serverId: string,

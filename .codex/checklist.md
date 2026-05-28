@@ -127,7 +127,7 @@
 - [x] Initial Servers page.
 - [x] Initial Routes page.
 - [x] Initial Alerts page.
-- [ ] Server detail page.
+- [x] Server detail page.
 - [ ] Tunnel detail page.
 - [x] Real server API-bound Servers page.
 - [x] Real route/outbound API-bound Routes page.

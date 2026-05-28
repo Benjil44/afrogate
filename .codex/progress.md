@@ -833,3 +833,15 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added an API-bound Server Detail surface that fetches `/api/admin/servers/:id` when an admin selects a managed node.
+- Bound the Server Detail Interfaces tab to server-scoped `/api/admin/server-interfaces` and `/api/admin/tunnels` rows while keeping metric/WireGuard telemetry visible as live monitoring context.
+- Added overview rows for access readiness, open alerts, managed outbounds, inventory counts, tags, and detail source with localized English/Persian labels.
+- Kept this slice non-mutating: no credential decrypt, SSH connection, command execution, service reload, OS route mutation, or live traffic switching is performed.
+- Updated checklist, dashboard page coverage notes, and memory to mark the Server detail page complete.
+- Bumped AfroGate to `0.59.0` for the Server Detail workflow.
+- Verified `0.59.0` with `npm run version:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

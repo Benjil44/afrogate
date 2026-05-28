@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.59.0 - 2026-05-28
+
+- Added an API-bound Server Detail surface that loads guarded server detail when a node is selected.
+- Bound the detail view to server-scoped interface and tunnel inventory alongside access readiness, monitoring telemetry, and audit context.
+- Kept the server detail workflow non-mutating: no credential decrypt, SSH connection, command execution, service reload, or OS route change.
+
 ## 0.58.0 - 2026-05-28
 
 - Added Routes page controls for the default route assignment: auto-route, route lock, current/locked managed outbound, hysteresis, and cooldown.
