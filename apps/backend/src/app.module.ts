@@ -9,6 +9,7 @@ import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { BillingController } from './billing/billing.controller';
 import { BillingService } from './billing/billing.service';
+import { ClientController } from './client/client.controller';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
@@ -25,6 +26,7 @@ import { OutboundHttpService } from './outbound/outbound-http.service';
 import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
 import { RolesGuard } from './security/roles.guard';
+import { ClientTokenGuard } from './security/client-token.guard';
 import { SecretVaultService } from './security/secret-vault.service';
 
 @Module({
@@ -40,6 +42,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     AgentsController,
     AuthController,
     BillingController,
+    ClientController,
     HealthController,
     MetricsController,
     OperationsController,
@@ -58,6 +61,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     OutboundHttpService,
     AdminTokenGuard,
     AgentTokenGuard,
+    ClientTokenGuard,
     RolesGuard,
     SecretVaultService,
     PostgresMetricsRepository,

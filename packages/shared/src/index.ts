@@ -213,6 +213,95 @@ export interface AdminClientRoutePreferenceSummary {
   updatedAt?: string | null;
 }
 
+export interface ClientAccessTokenSummary {
+  id: string;
+  clientConfigId: string;
+  name: string;
+  scopes: string[];
+  status: 'active' | 'revoked' | string;
+  createdBy?: string | null;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+}
+
+export interface IssuedClientAccessTokenSummary extends ClientAccessTokenSummary {
+  token: string;
+}
+
+export interface IssueClientAccessTokenRequest {
+  name?: string | null;
+  revokeExistingTokens?: boolean;
+}
+
+export interface ClientPortalAccountSummary {
+  id: string;
+  displayName?: string | null;
+  status: CustomerAccountStatus | string;
+  quotaScope: CustomerQuotaScope | string;
+  quotaLimitBytes?: number | null;
+  usedBytes: number;
+  remainingBytes?: number | null;
+}
+
+export interface ClientPortalConfigSummary {
+  id: string;
+  label: string;
+  protocol: string;
+  deviceLimit?: number | null;
+  effectiveQuotaLimitBytes?: number | null;
+  usedBytes: number;
+  remainingBytes?: number | null;
+  status: ClientConfigStatus | string;
+}
+
+export interface ClientRoutePreferenceSummary {
+  routeGroup: string;
+  assignmentKey: string;
+  mode: ClientRoutePreferenceMode | string;
+  detectedCountryCode?: string | null;
+  detectedCountrySource?: ClientRouteCountryDetectionSource | string | null;
+  preferredExitCountryCode?: string | null;
+  preferredOutboundId?: string | null;
+  preferredOutboundName?: string | null;
+  scoreProfile: RouteScoreProfile | string;
+  autoDetectCountry: boolean;
+  allowClientOverride: boolean;
+  routeLocked: boolean;
+  stickySessionProtection: boolean;
+  lastDetectedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ClientRouteCountryOption {
+  countryCode: string;
+  routeGroup: string;
+  availableOutboundCount: number;
+  healthyOutboundCount: number;
+  bestHealthStatus: OutboundHealthStatus | string;
+}
+
+export interface ClientRouteOutboundOption {
+  id: string;
+  name: string;
+  type: OutboundType | string;
+  routeGroup: string;
+  countryCode?: string | null;
+  region?: string | null;
+  healthStatus: OutboundHealthStatus | string;
+  available: boolean;
+}
+
+export interface UpdateClientRoutePreferenceRequest {
+  routeGroup?: string;
+  mode?: ClientRoutePreferenceMode;
+  detectedCountryCode?: string | null;
+  preferredExitCountryCode?: string | null;
+  preferredOutboundId?: string | null;
+  scoreProfile?: RouteScoreProfile | string;
+  autoDetectCountry?: boolean;
+}
+
 export interface AdminClientConfigSummary {
   id: string;
   customerAccountId: string;
@@ -2212,6 +2301,30 @@ export interface AdminCustomerAccountsResponse {
 
 export interface AdminClientRoutePreferenceResponse {
   routePreference: AdminClientRoutePreferenceSummary;
+}
+
+export interface AdminClientAccessTokensResponse {
+  tokens: ClientAccessTokenSummary[];
+}
+
+export interface AdminIssueClientAccessTokenResponse {
+  token: IssuedClientAccessTokenSummary;
+}
+
+export interface ClientPortalProfileResponse {
+  account: ClientPortalAccountSummary;
+  clientConfig: ClientPortalConfigSummary;
+  routePreference: ClientRoutePreferenceSummary;
+}
+
+export interface ClientRoutePreferenceResponse {
+  routePreference: ClientRoutePreferenceSummary;
+}
+
+export interface ClientRouteOptionsResponse {
+  routeGroup: string;
+  countries: ClientRouteCountryOption[];
+  outbounds: ClientRouteOutboundOption[];
 }
 
 export interface AdminBillingSettingsResponse {

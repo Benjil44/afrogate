@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { AuthActor } from '../security/auth-request';
+import type { AuditActor } from '../security/auth-request';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 
 @Injectable()
@@ -7,7 +7,7 @@ export class AuditService {
   constructor(private readonly database: DatabaseService) {}
 
   async record(
-    actor: AuthActor | undefined,
+    actor: AuditActor | undefined,
     action: string,
     targetType: string,
     targetId: string | null,
@@ -31,7 +31,7 @@ export class AuditService {
   }
 
   async recordBestEffort(
-    actor: AuthActor | undefined,
+    actor: AuditActor | undefined,
     action: string,
     targetType: string,
     targetId: string | null,

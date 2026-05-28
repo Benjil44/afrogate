@@ -546,6 +546,28 @@ export const clientRoutePreferences = pgTable(
   }),
 );
 
+export const clientAccessTokens = pgTable(
+  'client_access_tokens',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    scopes: jsonb('scopes').notNull().default(sql`'["client:read", "route:write"]'::jsonb`),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (table) => ({
+    hashIdx: uniqueIndex('client_access_tokens_hash_unique').on(table.tokenHash),
+    clientIdx: index('client_access_tokens_client_idx').on(table.clientConfigId, table.createdAt),
+    activeIdx: index('client_access_tokens_active_idx').on(table.clientConfigId).where(sql`revoked_at IS NULL`),
+  }),
+);
+
 export const billingSettings = pgTable('billing_settings', {
   settingKey: text('setting_key').primaryKey(),
   currency: text('currency').notNull().default('toman'),
@@ -829,6 +851,7 @@ export const clientConfigsRelations = relations(clientConfigs, ({ many, one }) =
     references: [customerAccounts.id],
   }),
   routePreferences: many(clientRoutePreferences),
+  accessTokens: many(clientAccessTokens),
 }));
 
 export const clientRoutePreferencesRelations = relations(clientRoutePreferences, ({ one }) => ({
@@ -839,6 +862,13 @@ export const clientRoutePreferencesRelations = relations(clientRoutePreferences,
   preferredOutbound: one(outbounds, {
     fields: [clientRoutePreferences.preferredOutboundId],
     references: [outbounds.id],
+  }),
+}));
+
+export const clientAccessTokensRelations = relations(clientAccessTokens, ({ one }) => ({
+  clientConfig: one(clientConfigs, {
+    fields: [clientAccessTokens.clientConfigId],
+    references: [clientConfigs.id],
   }),
 }));
 

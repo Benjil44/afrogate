@@ -1,25 +1,35 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { createHmac } from 'crypto';
+import { createHmac, randomBytes } from 'crypto';
 import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsSummary,
+  ClientAccessTokenSummary,
+  ClientPortalProfileResponse,
+  ClientRouteOptionsResponse,
+  ClientRoutePreferenceSummary,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceSummary,
   AdminCustomerAccountDetail,
   AdminCustomerAccountSummary,
+  IssuedClientAccessTokenSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
   AdminVolumePackageSummary,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
-import type { AuthActor } from '../security/auth-request';
+import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
+import { hashClientToken } from '../security/client-token';
+import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
+import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
   CreateClientConfigDto,
   CreateCustomerAccountDto,
@@ -127,6 +137,52 @@ interface ClientRoutePreferencePatch {
   routeLocked: boolean;
   stickySessionProtection: boolean;
   lastDetectedAt: Date | null;
+}
+
+interface ClientAccessTokenRow {
+  id: string;
+  clientConfigId: string;
+  name: string;
+  scopes: unknown;
+  createdBy: string | null;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
+}
+
+interface ClientAccessTokenAuthRow extends ClientAccessTokenRow {
+  customerAccountId: string;
+  clientStatus: string;
+  accountStatus: string;
+}
+
+interface ClientPortalRow {
+  customerAccountId: string;
+  accountDisplayName: string | null;
+  accountStatus: string;
+  quotaScope: string;
+  accountQuotaLimitBytes: string | number | null;
+  accountUsedBytes: string | number;
+  perClientLimitBytes: string | number | null;
+  clientConfigId: string;
+  clientLabel: string;
+  protocol: string;
+  deviceLimit: number | null;
+  clientQuotaLimitBytes: string | number | null;
+  clientUsedBytes: string | number;
+  clientStatus: string;
+}
+
+interface ClientRouteOptionOutboundRow {
+  id: string;
+  name: string;
+  type: string;
+  routeGroup: string;
+  countryCode: string | null;
+  region: string | null;
+  healthStatus: string;
+  enabled: boolean;
+  maintenanceMode: boolean;
 }
 
 interface PreferredOutboundRow {
@@ -1013,6 +1069,378 @@ export class BillingService {
     }
   }
 
+  async listClientAccessTokens(clientConfigId: string): Promise<ClientAccessTokenSummary[]> {
+    await this.getClientConfigRow(clientConfigId);
+    const result = await this.database.query<ClientAccessTokenRow>(
+      `
+        SELECT
+          id,
+          client_config_id AS "clientConfigId",
+          name,
+          scopes,
+          created_by AS "createdBy",
+          created_at AS "createdAt",
+          last_used_at AS "lastUsedAt",
+          revoked_at AS "revokedAt"
+        FROM client_access_tokens
+        WHERE client_config_id = $1
+        ORDER BY created_at DESC
+      `,
+      [clientConfigId],
+    );
+
+    return result.rows.map((row) => this.mapClientAccessToken(row));
+  }
+
+  async issueClientAccessToken(
+    clientConfigId: string,
+    dto: IssueClientAccessTokenDto,
+    actor: AuthActor | undefined,
+  ): Promise<IssuedClientAccessTokenSummary> {
+    const token = this.createClientAccessToken();
+    const tokenHash = hashClientToken(token);
+    const nameInput = this.normalizeNullableString(dto.name);
+
+    const created = await this.database.transaction(async (executor) => {
+      const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
+      if (client.status === 'disabled') {
+        throw new BadRequestException('Client config is disabled');
+      }
+
+      const tokenName = nameInput ?? `${client.label} mobile`;
+
+      if (dto.revokeExistingTokens) {
+        await executor.query(
+          `
+            UPDATE client_access_tokens
+            SET revoked_at = COALESCE(revoked_at, now())
+            WHERE client_config_id = $1
+              AND revoked_at IS NULL
+          `,
+          [clientConfigId],
+        );
+      }
+
+      const result = await executor.query<ClientAccessTokenRow>(
+        `
+          INSERT INTO client_access_tokens (client_config_id, name, token_hash, scopes, created_by)
+          VALUES ($1, $2, $3, $4::jsonb, $5)
+          RETURNING
+            id,
+            client_config_id AS "clientConfigId",
+            name,
+            scopes,
+            created_by AS "createdBy",
+            created_at AS "createdAt",
+            last_used_at AS "lastUsedAt",
+            revoked_at AS "revokedAt"
+        `,
+        [
+          clientConfigId,
+          tokenName,
+          tokenHash,
+          JSON.stringify(['client:read', 'route:write']),
+          actor?.id ?? null,
+        ],
+      );
+      const row = result.rows[0];
+
+      await this.audit.record(
+        actor,
+        'client_access_token.issue',
+        'client_config',
+        clientConfigId,
+        {
+          tokenId: row.id,
+          tokenName: row.name,
+          revokedExistingTokens: Boolean(dto.revokeExistingTokens),
+        },
+        executor,
+      );
+
+      return row;
+    });
+
+    return {
+      ...this.mapClientAccessToken(created),
+      token,
+    };
+  }
+
+  async revokeClientAccessToken(
+    tokenId: string,
+    actor: AuthActor | undefined,
+  ): Promise<{ tokens: ClientAccessTokenSummary[] }> {
+    const clientConfigId = await this.database.transaction(async (executor) => {
+      const existing = await executor.query<ClientAccessTokenRow>(
+        `
+          SELECT
+            id,
+            client_config_id AS "clientConfigId",
+            name,
+            scopes,
+            created_by AS "createdBy",
+            created_at AS "createdAt",
+            last_used_at AS "lastUsedAt",
+            revoked_at AS "revokedAt"
+          FROM client_access_tokens
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [tokenId],
+      );
+      const row = existing.rows[0];
+      if (!row) throw new NotFoundException('Client access token not found');
+
+      await executor.query(
+        `
+          UPDATE client_access_tokens
+          SET revoked_at = COALESCE(revoked_at, now())
+          WHERE id = $1
+        `,
+        [tokenId],
+      );
+
+      await this.audit.record(
+        actor,
+        'client_access_token.revoke',
+        'client_access_token',
+        tokenId,
+        {
+          clientConfigId: row.clientConfigId,
+          tokenName: row.name,
+          alreadyRevoked: Boolean(row.revokedAt),
+        },
+        executor,
+      );
+
+      return row.clientConfigId;
+    });
+
+    return {
+      tokens: await this.listClientAccessTokens(clientConfigId),
+    };
+  }
+
+  async authenticateClientAccessToken(token: string): Promise<ClientAuthActor> {
+    try {
+      const result = await this.database.query<ClientAccessTokenAuthRow>(
+        `
+          UPDATE client_access_tokens cat
+          SET last_used_at = now()
+          FROM client_configs cc
+          JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+          WHERE cat.client_config_id = cc.id
+            AND cat.token_hash = $1
+            AND cat.revoked_at IS NULL
+            AND cat.scopes ? 'client:read'
+            AND ca.status = 'active'
+            AND cc.status <> 'disabled'
+          RETURNING
+            cat.id,
+            cat.client_config_id AS "clientConfigId",
+            cat.name,
+            cat.scopes,
+            cat.created_by AS "createdBy",
+            cat.created_at AS "createdAt",
+            cat.last_used_at AS "lastUsedAt",
+            cat.revoked_at AS "revokedAt",
+            cc.customer_account_id AS "customerAccountId",
+            cc.status AS "clientStatus",
+            ca.status AS "accountStatus"
+        `,
+        [hashClientToken(token)],
+      );
+      const row = result.rows[0];
+
+      if (!row) throw new UnauthorizedException('Invalid client token');
+
+      return {
+        id: row.clientConfigId,
+        type: 'client',
+        clientConfigId: row.clientConfigId,
+        customerAccountId: row.customerAccountId,
+        tokenId: row.id,
+        scopes: this.normalizeScopes(row.scopes),
+        clientStatus: row.clientStatus,
+        accountStatus: row.accountStatus,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new ServiceUnavailableException('Client token lookup is unavailable');
+    }
+  }
+
+  async getClientPortalProfile(actor: ClientAuthActor): Promise<ClientPortalProfileResponse> {
+    const [profile, routePreference] = await Promise.all([
+      this.getClientPortalRow(actor),
+      this.getClientOwnedRoutePreference(actor),
+    ]);
+    const accountQuotaLimitBytes = this.numberFromBigInt(profile.accountQuotaLimitBytes);
+    const accountUsedBytes = this.numberFromBigInt(profile.accountUsedBytes) ?? 0;
+    const perClientLimitBytes = this.numberFromBigInt(profile.perClientLimitBytes);
+    const clientQuotaLimitBytes = this.numberFromBigInt(profile.clientQuotaLimitBytes);
+    const clientUsedBytes = this.numberFromBigInt(profile.clientUsedBytes) ?? 0;
+    const effectiveQuotaLimitBytes = clientQuotaLimitBytes ?? perClientLimitBytes;
+
+    return {
+      account: {
+        id: profile.customerAccountId,
+        displayName: profile.accountDisplayName,
+        status: profile.accountStatus,
+        quotaScope: profile.quotaScope,
+        quotaLimitBytes: accountQuotaLimitBytes,
+        usedBytes: accountUsedBytes,
+        remainingBytes: this.remainingBytes(accountQuotaLimitBytes, accountUsedBytes),
+      },
+      clientConfig: {
+        id: profile.clientConfigId,
+        label: profile.clientLabel,
+        protocol: profile.protocol,
+        deviceLimit: profile.deviceLimit,
+        effectiveQuotaLimitBytes,
+        usedBytes: clientUsedBytes,
+        remainingBytes: this.remainingBytes(effectiveQuotaLimitBytes, clientUsedBytes),
+        status: profile.clientStatus,
+      },
+      routePreference,
+    };
+  }
+
+  async getClientOwnedRoutePreference(
+    actor: ClientAuthActor,
+    routeGroupInput?: string,
+  ): Promise<ClientRoutePreferenceSummary> {
+    this.assertClientScope(actor, 'client:read');
+    const preference = await this.getClientRoutePreference(actor.clientConfigId, routeGroupInput);
+    return this.mapClientRoutePreferenceForClient(preference);
+  }
+
+  async upsertClientOwnedRoutePreference(
+    actor: ClientAuthActor,
+    dto: UpdateOwnClientRoutePreferenceDto,
+  ): Promise<ClientRoutePreferenceSummary> {
+    this.assertClientScope(actor, 'route:write');
+    if (!['active', 'limited'].includes(actor.clientStatus)) {
+      throw new ForbiddenException('Client route preference cannot be changed for this client status');
+    }
+
+    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const existing = await this.getClientRoutePreference(actor.clientConfigId, routeGroup);
+    if (!existing.allowClientOverride) {
+      throw new ForbiddenException('Client route override is disabled for this config');
+    }
+
+    const mode = dto.mode ?? existing.mode;
+    const payload: UpsertClientRoutePreferenceDto = {
+      routeGroup,
+      mode,
+      detectedCountryCode: dto.detectedCountryCode,
+      detectedCountrySource: dto.detectedCountryCode !== undefined ? (dto.detectedCountryCode ? 'client_app' : null) : undefined,
+      preferredExitCountryCode: mode === 'country' ? dto.preferredExitCountryCode : null,
+      preferredOutboundId: mode === 'outbound' ? dto.preferredOutboundId : null,
+      scoreProfile: dto.scoreProfile ?? existing.scoreProfile,
+      autoDetectCountry: dto.autoDetectCountry ?? existing.autoDetectCountry,
+      allowClientOverride: true,
+      routeLocked: mode === 'outbound',
+      stickySessionProtection: true,
+    };
+
+    if (mode === 'country' && !payload.preferredExitCountryCode) {
+      throw new BadRequestException('preferredExitCountryCode is required for country route mode');
+    }
+
+    if (mode === 'outbound' && !payload.preferredOutboundId) {
+      throw new BadRequestException('preferredOutboundId is required for outbound route mode');
+    }
+
+    if (payload.preferredOutboundId) {
+      await this.ensureClientSelectableOutbound(payload.preferredOutboundId, routeGroup);
+    }
+
+    const saved = await this.upsertClientRoutePreference(actor.clientConfigId, payload, actor);
+    return this.mapClientRoutePreferenceForClient(saved);
+  }
+
+  async listClientRouteOptions(
+    actor: ClientAuthActor,
+    routeGroupInput?: string,
+  ): Promise<ClientRouteOptionsResponse> {
+    this.assertClientScope(actor, 'client:read');
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const result = await this.database.query<ClientRouteOptionOutboundRow>(
+      `
+        SELECT
+          o.id,
+          o.name,
+          o.type,
+          o.route_group AS "routeGroup",
+          UPPER(NULLIF(TRIM(s.country), '')) AS "countryCode",
+          NULLIF(TRIM(s.region), '') AS "region",
+          o.health_status AS "healthStatus",
+          o.enabled,
+          o.maintenance_mode AS "maintenanceMode"
+        FROM outbounds o
+        LEFT JOIN servers s ON s.id = o.server_id
+        WHERE o.route_group = $1
+          AND o.enabled = true
+          AND o.maintenance_mode = false
+          AND o.health_status <> 'critical'
+        ORDER BY
+          CASE o.health_status
+            WHEN 'healthy' THEN 0
+            WHEN 'degraded' THEN 1
+            ELSE 2
+          END,
+          o.priority ASC,
+          o.name ASC
+      `,
+      [routeGroup],
+    );
+
+    const countryMap = new Map<string, { total: number; healthy: number; bestRank: number; bestHealthStatus: string }>();
+    for (const row of result.rows) {
+      if (!row.countryCode) continue;
+      const current = countryMap.get(row.countryCode) ?? {
+        total: 0,
+        healthy: 0,
+        bestRank: Number.POSITIVE_INFINITY,
+        bestHealthStatus: 'unknown',
+      };
+      const rank = this.clientRouteHealthRank(row.healthStatus);
+      current.total += 1;
+      current.healthy += row.healthStatus === 'healthy' ? 1 : 0;
+      if (rank < current.bestRank) {
+        current.bestRank = rank;
+        current.bestHealthStatus = row.healthStatus;
+      }
+      countryMap.set(row.countryCode, current);
+    }
+
+    return {
+      routeGroup,
+      countries: [...countryMap.entries()]
+        .map(([countryCode, summary]) => ({
+          countryCode,
+          routeGroup,
+          availableOutboundCount: summary.total,
+          healthyOutboundCount: summary.healthy,
+          bestHealthStatus: summary.bestHealthStatus,
+        }))
+        .sort((left, right) => left.countryCode.localeCompare(right.countryCode)),
+      outbounds: result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        routeGroup: row.routeGroup,
+        countryCode: row.countryCode,
+        region: row.region,
+        healthStatus: row.healthStatus,
+        available: row.enabled && !row.maintenanceMode && row.healthStatus !== 'critical',
+      })),
+    };
+  }
+
   async getClientRoutePreference(
     clientConfigId: string,
     routeGroupInput?: string,
@@ -1033,7 +1461,7 @@ export class BillingService {
   async upsertClientRoutePreference(
     clientConfigId: string,
     dto: UpsertClientRoutePreferenceDto,
-    actor: AuthActor | undefined,
+    actor: AuditActor | undefined,
   ): Promise<AdminClientRoutePreferenceSummary> {
     const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
 
@@ -1758,6 +2186,122 @@ export class BillingService {
     }
 
     return row;
+  }
+
+  private async getClientPortalRow(actor: ClientAuthActor): Promise<ClientPortalRow> {
+    const result = await this.database.query<ClientPortalRow>(
+      `
+        SELECT
+          ca.id AS "customerAccountId",
+          ca.display_name AS "accountDisplayName",
+          ca.status AS "accountStatus",
+          ca.quota_scope AS "quotaScope",
+          ca.quota_limit_bytes AS "accountQuotaLimitBytes",
+          ca.used_bytes AS "accountUsedBytes",
+          ca.per_client_limit_bytes AS "perClientLimitBytes",
+          cc.id AS "clientConfigId",
+          cc.label AS "clientLabel",
+          cc.protocol,
+          cc.device_limit AS "deviceLimit",
+          cc.quota_limit_bytes AS "clientQuotaLimitBytes",
+          cc.used_bytes AS "clientUsedBytes",
+          cc.status AS "clientStatus"
+        FROM client_configs cc
+        JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+        WHERE cc.id = $1
+          AND cc.customer_account_id = $2
+      `,
+      [actor.clientConfigId, actor.customerAccountId],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Client profile not found');
+    return row;
+  }
+
+  private async ensureClientSelectableOutbound(outboundId: string, routeGroup: string): Promise<void> {
+    const result = await this.database.query<ClientRouteOptionOutboundRow>(
+      `
+        SELECT
+          id,
+          name,
+          type,
+          route_group AS "routeGroup",
+          NULL::text AS "countryCode",
+          NULL::text AS "region",
+          health_status AS "healthStatus",
+          enabled,
+          maintenance_mode AS "maintenanceMode"
+        FROM outbounds
+        WHERE id = $1
+      `,
+      [outboundId],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Preferred outbound not found');
+    if (row.routeGroup !== routeGroup) throw new BadRequestException('Preferred outbound must belong to the same route group');
+    if (!row.enabled || row.maintenanceMode || row.healthStatus === 'critical') {
+      throw new BadRequestException('Preferred outbound is not available for client selection');
+    }
+  }
+
+  private mapClientAccessToken(row: ClientAccessTokenRow): ClientAccessTokenSummary {
+    return {
+      id: row.id,
+      clientConfigId: row.clientConfigId,
+      name: row.name,
+      scopes: this.normalizeScopes(row.scopes),
+      status: row.revokedAt ? 'revoked' : 'active',
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+      lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+    };
+  }
+
+  private mapClientRoutePreferenceForClient(
+    row: AdminClientRoutePreferenceSummary,
+  ): ClientRoutePreferenceSummary {
+    return {
+      routeGroup: row.routeGroup,
+      assignmentKey: row.assignmentKey,
+      mode: row.mode,
+      detectedCountryCode: row.detectedCountryCode ?? null,
+      detectedCountrySource: row.detectedCountrySource ?? null,
+      preferredExitCountryCode: row.preferredExitCountryCode ?? null,
+      preferredOutboundId: row.preferredOutboundId ?? null,
+      preferredOutboundName: row.preferredOutboundName ?? null,
+      scoreProfile: row.scoreProfile,
+      autoDetectCountry: row.autoDetectCountry,
+      allowClientOverride: row.allowClientOverride,
+      routeLocked: row.routeLocked,
+      stickySessionProtection: row.stickySessionProtection,
+      lastDetectedAt: row.lastDetectedAt ?? null,
+      updatedAt: row.updatedAt ?? null,
+    };
+  }
+
+  private assertClientScope(actor: ClientAuthActor, scope: string): void {
+    if (!actor.scopes.includes(scope)) {
+      throw new ForbiddenException('Client token does not allow this action');
+    }
+  }
+
+  private normalizeScopes(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter((scope): scope is string => typeof scope === 'string' && scope.length > 0))];
+  }
+
+  private createClientAccessToken(): string {
+    return `afg_client_${randomBytes(32).toString('base64url')}`;
+  }
+
+  private clientRouteHealthRank(status: string): number {
+    if (status === 'healthy') return 0;
+    if (status === 'degraded') return 1;
+    if (status === 'unknown') return 2;
+    return 3;
   }
 
   private async updateCustomerAccountFields(

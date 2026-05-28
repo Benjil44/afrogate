@@ -55,7 +55,7 @@
 - نمایش remaining volume.
 - اتصال Telegram bot برای مشاهده حجم و شارژ.
 - ثبت paid number با privacy protection.
-- Separate seller/admin UX from VPN client UX; mobile/client APIs should manage only client-scoped profile, package, usage, and route preference actions.
+- Separate seller/admin UX from VPN client UX; mobile/client APIs now start with scoped profile/quota, route options, and route-preference actions under `/api/client/*`, with package/usage purchase flows remaining future work.
 
 ## فاز 3: Auto Route
 

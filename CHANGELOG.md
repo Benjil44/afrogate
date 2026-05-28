@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.71.0 - 2026-05-28
+
+- Added client-scoped mobile API auth with admin-issued one-time access tokens stored only as hashes.
+- Added `/api/client/me`, `/api/client/route-preference`, and `/api/client/route-options` for the authenticated VPN client only.
+- Kept admin/seller and VPN-client UX separate while allowing safe client-owned route preference updates.
+
 ## 0.70.0 - 2026-05-28
 
 - Applied per-client route preferences inside the read-only route decision preview for preferred exit-country and exact outbound/server contexts.

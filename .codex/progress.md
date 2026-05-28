@@ -1029,6 +1029,25 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the first client-scoped mobile API/auth boundary for VPN users.
+- Added `client_access_tokens` with admin-issued one-time plaintext tokens stored only as SHA-256 hashes, revocation metadata, scopes, and last-used timestamps.
+- Added guarded admin APIs to list, issue, and revoke client access tokens under `/api/admin/client-configs/:id/access-tokens` and `/api/admin/client-access-tokens/:id/revoke`.
+- Added `/api/client/me`, `/api/client/route-preference`, and `/api/client/route-options` behind a separate client token guard so mobile apps can see only their own profile/quota, route preference, and selectable non-critical route options.
+- Added client-owned route-preference updates that preserve sticky-session protection, force exact outbound choice to be explicit/locked, store country detection as `client_app`, and reject updates when admin override is disabled.
+- Updated shared API contracts, schema, route/security docs, roadmap, checklist, and memory for the separate VPN-client surface.
+- Marked client-scoped mobile API/auth for VPN users complete.
+- Bumped AfroGate to `0.71.0` for the client-scoped mobile API/auth contract.
+- Checklist completion after this slice is `195 / 222` items, or `87.8%` complete with `12.2%` remaining.
+- Verified the client access token migration with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified authenticated local API smoke by creating a dev-only customer/client config, issuing a client mobile token, reading `/api/client/me`, reading `/api/client/route-options`, and saving an `auto`/`gaming` route preference with detected country `IR` stored as `client_app`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified the focused shared/backend typing with `npm run typecheck --workspace @afrogate/shared` and `npm run typecheck --workspace @afrogate/backend`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke and dense visual capture coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added the client route preference foundation for the future VPN mobile/client UX.
 - Added `client_route_preferences` with per-client auto/country/outbound mode, coarse detected country, preferred exit country, optional preferred outbound, score profile, route lock, and sticky-session protection.
 - Added guarded admin APIs to read and update a client config route preference under `/api/admin/client-configs/:id/route-preference`.

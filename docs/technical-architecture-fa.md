@@ -157,6 +157,22 @@ Client VPN routing preferences are separate from admin/seller operations. Each c
 
 The client route preference row stores no client IP history and no traffic destinations. When a preference is saved, AfroGate also maintains a matching `route_assignments` key like `client_config:<id>` so the route decision engine can evaluate the client separately from the global default assignment. Decision previews read this preference context and expose whether the preferred country or explicit outbound had a healthy managed candidate; if not, the preview falls back to the normal health and session-safety ranking with auditable reason codes instead of forcing an unstable route.
 
+### client_access_tokens
+
+Mobile/client API auth is separate from admin/seller auth. Admins can issue one-time plaintext tokens for a client config; AfroGate stores only a SHA-256 token hash:
+
+- id
+- client_config_id
+- name
+- token_hash
+- scopes jsonb, currently `client:read` and `route:write`
+- created_by
+- created_at
+- last_used_at
+- revoked_at
+
+Client-scoped endpoints live under `/api/client/*`. They can read only the authenticated client profile, quota summary, route preference, and selectable route options, and can update only that client's route preference when `allow_client_override` is true. These endpoints must not expose admin dashboard operations, server secrets, outbound config JSON, client IP history, or user traffic destinations.
+
 ### packages
 
 - id

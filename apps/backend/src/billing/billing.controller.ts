@@ -13,9 +13,11 @@ import {
 import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsResponse,
+  AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceResponse,
   AdminCustomerAccountDetail,
+  AdminIssueClientAccessTokenResponse,
   AdminCustomerAccountsResponse,
   AdminPaymentMethodSummary,
   AdminPaymentMethodsResponse,
@@ -36,6 +38,7 @@ import {
   UpdateCustomerAccountDto,
   UpsertClientRoutePreferenceDto,
 } from './dto/customer-account.dto';
+import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
   CreatePaymentMethodDto,
   CreatePaymentOrderDto,
@@ -268,6 +271,37 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminClientConfigSummary> {
     return this.billingService.updateClientConfig(id, payload, request.actor);
+  }
+
+  @Get('client-configs/:id/access-tokens')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listClientAccessTokens(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminClientAccessTokensResponse> {
+    return {
+      tokens: await this.billingService.listClientAccessTokens(id),
+    };
+  }
+
+  @Post('client-configs/:id/access-tokens')
+  @Roles('admin')
+  async issueClientAccessToken(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: IssueClientAccessTokenDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminIssueClientAccessTokenResponse> {
+    return {
+      token: await this.billingService.issueClientAccessToken(id, payload, request.actor),
+    };
+  }
+
+  @Patch('client-access-tokens/:id/revoke')
+  @Roles('admin')
+  revokeClientAccessToken(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminClientAccessTokensResponse> {
+    return this.billingService.revokeClientAccessToken(id, request.actor);
   }
 
   @Get('client-configs/:id/route-preference')

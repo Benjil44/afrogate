@@ -172,7 +172,7 @@
 - [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
 - [ ] Usage accounting.
 - [ ] Remaining volume display.
-- [ ] Client-scoped mobile API/auth for VPN users.
+- [x] Client-scoped mobile API/auth for VPN users.
 - [ ] Telegram bot user commands.
 
 ## Phase 3: Auto Route
