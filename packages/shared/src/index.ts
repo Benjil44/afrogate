@@ -1339,6 +1339,8 @@ export interface AdminWireGuardCandidate {
   loadPercent?: number | null;
   serverExternalId?: string | null;
   serverHostname?: string | null;
+  serverCountry?: string | null;
+  serverRegion?: string | null;
   interfaceName?: string | null;
   peerCount?: number | null;
   activePeerCount?: number | null;
@@ -1393,6 +1395,8 @@ export interface AdminRouteDecisionCandidateSummary {
   bufferbloatSeverity?: RouteBufferbloatSeverity | string | null;
   bufferbloatRecommendation?: RouteBufferbloatRecommendation | string | null;
   loadPercent?: number | null;
+  serverCountry?: string | null;
+  serverRegion?: string | null;
 }
 
 export type RouteDecisionCandidateDisposition =
@@ -1404,6 +1408,7 @@ export type RouteDecisionCandidateDisposition =
   | 'manualMode'
   | 'diagnosticOnly'
   | 'unhealthy'
+  | 'preferenceMismatch'
   | 'belowHysteresis';
 
 export interface AdminRouteDecisionCandidateReviewSummary extends AdminRouteDecisionCandidateSummary {
@@ -1411,6 +1416,28 @@ export interface AdminRouteDecisionCandidateReviewSummary extends AdminRouteDeci
   scoreDeltaFromCurrent?: number | null;
   reviewReasonCodes: string[];
   scoreReasons?: RouteScoreReason[];
+}
+
+export interface AdminRouteDecisionClientPreferenceSummary {
+  source: 'clientRoutePreference';
+  clientConfigId: string;
+  routeGroup: string;
+  assignmentKey: string;
+  mode: ClientRoutePreferenceMode | string;
+  detectedCountryCode?: string | null;
+  detectedCountrySource?: ClientRouteCountryDetectionSource | string | null;
+  preferredExitCountryCode?: string | null;
+  preferredOutboundId?: string | null;
+  preferredOutboundName?: string | null;
+  scoreProfile?: RouteScoreProfile | string | null;
+  autoDetectCountry: boolean;
+  allowClientOverride: boolean;
+  routeLocked: boolean;
+  stickySessionProtection: boolean;
+  preferredCountryCandidateCount: number;
+  preferredCountryAvailable: boolean;
+  preferredOutboundAvailable: boolean;
+  reasonCodes: string[];
 }
 
 export type RouteDecisionProfileRecommendationReason =
@@ -2055,6 +2082,7 @@ export interface AdminRouteDecisionPreviewResponse {
   hysteresisScoreDelta: number;
   cooldownSeconds: number;
   cooldownUntil?: string | null;
+  clientRoutePreference?: AdminRouteDecisionClientPreferenceSummary | null;
   currentCandidate?: AdminRouteDecisionCandidateSummary | null;
   recommendedCandidate?: AdminRouteDecisionCandidateSummary | null;
   candidateReviews: AdminRouteDecisionCandidateReviewSummary[];

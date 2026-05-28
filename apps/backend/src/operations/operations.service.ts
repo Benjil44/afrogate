@@ -20,6 +20,7 @@ import type {
   AdminRouteDecisionEventDetail,
   AdminRouteDecisionEventSummary,
   AdminRouteDecisionCandidateReviewSummary,
+  AdminRouteDecisionClientPreferenceSummary,
   AdminRouteDecisionLoadBalancingSummary,
   AdminRouteDecisionProfileRecommendation,
   AdminRouteDecisionSessionSafetySummary,
@@ -374,6 +375,8 @@ interface WireGuardCandidateRow {
   name: string;
   serverExternalId: string | null;
   serverHostname: string | null;
+  serverCountry: string | null;
+  serverRegion: string | null;
   routeGroup: string;
   config: Record<string, unknown> | null;
   healthStatus: string;
@@ -391,9 +394,28 @@ interface WireGuardCandidateRow {
 interface WireGuardTelemetryRow {
   serverExternalId: string;
   serverHostname: string | null;
+  serverCountry: string | null;
+  serverRegion: string | null;
   observedAt: Date;
   healthScore: number | null;
   metricRaw: Partial<ServerMetricSnapshot> | null;
+}
+
+interface ClientRouteDecisionPreferenceRow {
+  id: string;
+  clientConfigId: string;
+  routeGroup: string;
+  mode: string;
+  detectedCountryCode: string | null;
+  detectedCountrySource: string | null;
+  preferredExitCountryCode: string | null;
+  preferredOutboundId: string | null;
+  preferredOutboundName: string | null;
+  scoreProfile: string | null;
+  autoDetectCountry: boolean;
+  allowClientOverride: boolean;
+  routeLocked: boolean;
+  stickySessionProtection: boolean;
 }
 
 interface SecretRecordRow {
@@ -1444,20 +1466,30 @@ export class OperationsService {
   ): Promise<AdminRouteDecisionPreviewResponse> {
     const routeGroup = this.normalizeRouteGroup(routeGroupInput);
     const assignmentKey = this.normalizeAssignmentKey(assignmentKeyInput);
-    const routeSettings = await this.getRouteSettings(routeGroup);
-    const assignment = await this.getRouteAssignment(routeGroup, assignmentKey);
-    const scoringContext = {
+    const [routeSettings, assignment, clientPreferenceRow] = await Promise.all([
+      this.getRouteSettings(routeGroup),
+      this.getRouteAssignment(routeGroup, assignmentKey),
+      this.getRouteDecisionClientPreference(routeGroup, assignmentKey),
+    ]);
+    const scoringContext = this.applyClientRoutePreferenceScoring({
       loadBalanceStrategy: routeSettings.loadBalanceStrategy,
       protocolProfile: assignment?.protocolProfile ?? routeSettings.protocolProfile,
       speedProfile: assignment?.speedProfile ?? routeSettings.speedProfile,
-    };
+    }, clientPreferenceRow);
     const candidates = await this.listWireGuardCandidates(routeGroup, scoringContext);
     const now = new Date();
     const selectedScoreProfile = this.selectRouteScoreProfile(scoringContext);
-    const currentOutboundId = assignment?.currentOutboundId ?? routeSettings.selectedOutboundId ?? null;
-    const lockedOutboundId = assignment?.lockedOutboundId ?? (routeSettings.mode === 'manual' ? routeSettings.selectedOutboundId : null);
-    const routeLocked = assignment?.routeLocked ?? Boolean(routeSettings.mode === 'manual' && lockedOutboundId);
-    const autoRouteEnabled = assignment?.autoRouteEnabled ?? routeSettings.mode === 'automatic';
+    const currentOutboundId =
+      assignment?.currentOutboundId ??
+      (clientPreferenceRow?.mode === 'outbound' ? clientPreferenceRow.preferredOutboundId : null) ??
+      routeSettings.selectedOutboundId ??
+      null;
+    const lockedOutboundId =
+      assignment?.lockedOutboundId ??
+      (clientPreferenceRow?.routeLocked ? clientPreferenceRow.preferredOutboundId : null) ??
+      (routeSettings.mode === 'manual' ? routeSettings.selectedOutboundId : null);
+    const routeLocked = assignment?.routeLocked ?? clientPreferenceRow?.routeLocked ?? Boolean(routeSettings.mode === 'manual' && lockedOutboundId);
+    const autoRouteEnabled = assignment?.autoRouteEnabled ?? (clientPreferenceRow ? clientPreferenceRow.mode !== 'outbound' : routeSettings.mode === 'automatic');
     const hysteresisScoreDelta = assignment?.hysteresisScoreDelta ?? 15;
     const cooldownSeconds = assignment?.cooldownSeconds ?? 180;
     const cooldownUntil = assignment?.cooldownUntil ?? null;
@@ -1465,11 +1497,27 @@ export class OperationsService {
     const sortedCandidates = [...candidates].sort((left, right) => right.score - left.score);
     const healthyCandidates = sortedCandidates.filter((candidate) => this.isRouteDecisionCandidateHealthy(candidate));
     const managedHealthyCandidates = healthyCandidates.filter((candidate) => candidate.source === 'outbound');
-    const recommendedCandidate = managedHealthyCandidates[0] ?? healthyCandidates[0] ?? sortedCandidates[0] ?? null;
+    const preferenceSelection = this.selectClientPreferredRouteDecisionCandidate(clientPreferenceRow, {
+      managedHealthyCandidates,
+    });
+    const recommendedCandidate =
+      preferenceSelection.recommendedCandidate ??
+      managedHealthyCandidates[0] ??
+      healthyCandidates[0] ??
+      sortedCandidates[0] ??
+      null;
     const currentCandidate =
       (routeLocked && lockedOutboundId ? candidates.find((candidate) => candidate.id === lockedOutboundId) : null) ??
       (currentOutboundId ? candidates.find((candidate) => candidate.id === currentOutboundId) : null) ??
       null;
+    const clientRoutePreference = clientPreferenceRow
+      ? this.buildRouteDecisionClientPreferenceSummary(clientPreferenceRow, assignmentKey, {
+          preferredCountryCandidateCount: preferenceSelection.preferredCountryCandidateCount,
+          preferredCountryAvailable: preferenceSelection.preferredCountryAvailable,
+          preferredOutboundAvailable: preferenceSelection.preferredOutboundAvailable,
+          reasonCodes: preferenceSelection.reasonCodes,
+        })
+      : null;
     const scoreDelta = recommendedCandidate && currentCandidate
       ? Math.round(recommendedCandidate.score - currentCandidate.score)
       : recommendedCandidate ? Math.round(recommendedCandidate.score) : null;
@@ -1482,7 +1530,7 @@ export class OperationsService {
         recommendedCandidate.id !== currentCandidate.id &&
         this.isRouteDecisionCandidateHealthy(recommendedCandidate),
     );
-    const reasonCodes: string[] = [];
+    const reasonCodes: string[] = [...preferenceSelection.reasonCodes];
     let action: RouteDecisionAction = 'keepCurrent';
 
     if (candidates.length === 0) {
@@ -1609,11 +1657,13 @@ export class OperationsService {
       hysteresisScoreDelta,
       cooldownSeconds,
       cooldownUntil: cooldownUntil?.toISOString() ?? null,
+      clientRoutePreference,
       currentCandidate: this.toRouteDecisionCandidateSummary(currentCandidate),
       recommendedCandidate: this.toRouteDecisionCandidateSummary(recommendedCandidate),
       candidateReviews: this.buildRouteDecisionCandidateReviews(sortedCandidates, {
         currentCandidate,
         recommendedCandidate,
+        clientRoutePreference,
         routeLocked,
         autoRouteEnabled,
         routeMode: routeSettings.mode,
@@ -1639,6 +1689,232 @@ export class OperationsService {
       healthyCandidateCount: healthyCandidates.length,
       managedCandidateCount: sortedCandidates.filter((candidate) => candidate.source === 'outbound').length,
     };
+  }
+
+  private async getRouteDecisionClientPreference(
+    routeGroup: string,
+    assignmentKey: string,
+  ): Promise<ClientRouteDecisionPreferenceRow | null> {
+    const clientConfigId = this.clientConfigIdFromRouteAssignmentKey(assignmentKey);
+    if (!clientConfigId) return null;
+
+    const result = await this.database.query<ClientRouteDecisionPreferenceRow>(
+      `
+        SELECT
+          preference.id,
+          preference.client_config_id AS "clientConfigId",
+          preference.route_group AS "routeGroup",
+          preference.mode,
+          preference.detected_country_code AS "detectedCountryCode",
+          preference.detected_country_source AS "detectedCountrySource",
+          preference.preferred_exit_country_code AS "preferredExitCountryCode",
+          preference.preferred_outbound_id AS "preferredOutboundId",
+          preferred_outbound.name AS "preferredOutboundName",
+          preference.score_profile AS "scoreProfile",
+          preference.auto_detect_country AS "autoDetectCountry",
+          preference.allow_client_override AS "allowClientOverride",
+          preference.route_locked AS "routeLocked",
+          preference.sticky_session_protection AS "stickySessionProtection"
+        FROM client_route_preferences preference
+        LEFT JOIN outbounds preferred_outbound ON preferred_outbound.id = preference.preferred_outbound_id
+        WHERE preference.client_config_id = $1
+          AND preference.route_group = $2
+        LIMIT 1
+      `,
+      [clientConfigId, routeGroup],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private applyClientRoutePreferenceScoring(
+    scoringContext: RouteScoringContext,
+    preference: ClientRouteDecisionPreferenceRow | null,
+  ): RouteScoringContext {
+    const scoreProfile = this.normalizeRouteScoreProfile(preference?.scoreProfile);
+    if (!scoreProfile) return scoringContext;
+
+    if (scoreProfile === 'throughput') {
+      return {
+        loadBalanceStrategy: 'throughput',
+        protocolProfile: 'highSpeed',
+        speedProfile: 'highSpeed',
+      };
+    }
+    if (scoreProfile === 'stability') {
+      return {
+        loadBalanceStrategy: 'stability',
+        protocolProfile: 'balanced',
+        speedProfile: 'balanced',
+      };
+    }
+    if (scoreProfile === 'gaming') {
+      return {
+        ...scoringContext,
+        protocolProfile: 'gaming',
+        speedProfile: 'gaming',
+      };
+    }
+    if (this.isProtocolSpecificScoreProfile(scoreProfile)) {
+      return {
+        ...scoringContext,
+        protocolProfile: scoreProfile,
+        speedProfile: 'balanced',
+      };
+    }
+
+    return scoringContext;
+  }
+
+  private selectClientPreferredRouteDecisionCandidate(
+    preference: ClientRouteDecisionPreferenceRow | null,
+    candidates: {
+      managedHealthyCandidates: AdminWireGuardCandidate[];
+    },
+  ): {
+    recommendedCandidate: AdminWireGuardCandidate | null;
+    preferredCountryCandidateCount: number;
+    preferredCountryAvailable: boolean;
+    preferredOutboundAvailable: boolean;
+    reasonCodes: string[];
+  } {
+    if (!preference) {
+      return {
+        recommendedCandidate: null,
+        preferredCountryCandidateCount: 0,
+        preferredCountryAvailable: false,
+        preferredOutboundAvailable: false,
+        reasonCodes: [],
+      };
+    }
+
+    const reasonCodes = new Set<string>(['client_route_preference']);
+    const preferredCountry = this.normalizeRouteDecisionCountryCode(preference.preferredExitCountryCode);
+    const detectedCountry = this.normalizeRouteDecisionCountryCode(preference.detectedCountryCode);
+    const preferredCountryCandidates = preferredCountry
+      ? candidates.managedHealthyCandidates.filter((candidate) => this.routeDecisionCandidateCountry(candidate) === preferredCountry)
+      : [];
+    const preferredOutboundCandidate = preference.preferredOutboundId
+      ? candidates.managedHealthyCandidates.find((candidate) => candidate.id === preference.preferredOutboundId) ?? null
+      : null;
+
+    if (detectedCountry) reasonCodes.add('detected_country_context');
+    if (this.normalizeRouteScoreProfile(preference.scoreProfile)) reasonCodes.add('client_score_profile_context');
+
+    if (preference.mode === 'outbound' && preference.preferredOutboundId) {
+      if (preferredOutboundCandidate) {
+        reasonCodes.add('preferred_outbound_applied');
+
+        return {
+          recommendedCandidate: preferredOutboundCandidate,
+          preferredCountryCandidateCount: preferredCountryCandidates.length,
+          preferredCountryAvailable: preferredCountryCandidates.length > 0,
+          preferredOutboundAvailable: true,
+          reasonCodes: [...reasonCodes],
+        };
+      }
+
+      reasonCodes.add('preferred_outbound_unavailable');
+    }
+
+    if (preference.mode === 'country' && preferredCountry) {
+      if (preferredCountryCandidates.length > 0) {
+        reasonCodes.add('preferred_country_applied');
+
+        return {
+          recommendedCandidate: preferredCountryCandidates[0],
+          preferredCountryCandidateCount: preferredCountryCandidates.length,
+          preferredCountryAvailable: true,
+          preferredOutboundAvailable: Boolean(preferredOutboundCandidate),
+          reasonCodes: [...reasonCodes],
+        };
+      }
+
+      reasonCodes.add('preferred_country_unavailable');
+    }
+
+    return {
+      recommendedCandidate: null,
+      preferredCountryCandidateCount: preferredCountryCandidates.length,
+      preferredCountryAvailable: preferredCountryCandidates.length > 0,
+      preferredOutboundAvailable: Boolean(preferredOutboundCandidate),
+      reasonCodes: [...reasonCodes],
+    };
+  }
+
+  private buildRouteDecisionClientPreferenceSummary(
+    preference: ClientRouteDecisionPreferenceRow,
+    assignmentKey: string,
+    availability: {
+      preferredCountryCandidateCount: number;
+      preferredCountryAvailable: boolean;
+      preferredOutboundAvailable: boolean;
+      reasonCodes: string[];
+    },
+  ): AdminRouteDecisionClientPreferenceSummary {
+    return {
+      source: 'clientRoutePreference',
+      clientConfigId: preference.clientConfigId,
+      routeGroup: preference.routeGroup,
+      assignmentKey,
+      mode: preference.mode,
+      detectedCountryCode: this.normalizeRouteDecisionCountryCode(preference.detectedCountryCode),
+      detectedCountrySource: preference.detectedCountrySource,
+      preferredExitCountryCode: this.normalizeRouteDecisionCountryCode(preference.preferredExitCountryCode),
+      preferredOutboundId: preference.preferredOutboundId,
+      preferredOutboundName: preference.preferredOutboundName,
+      scoreProfile: this.normalizeRouteScoreProfile(preference.scoreProfile) ?? 'balanced',
+      autoDetectCountry: preference.autoDetectCountry,
+      allowClientOverride: preference.allowClientOverride,
+      routeLocked: preference.routeLocked,
+      stickySessionProtection: preference.stickySessionProtection,
+      preferredCountryCandidateCount: availability.preferredCountryCandidateCount,
+      preferredCountryAvailable: availability.preferredCountryAvailable,
+      preferredOutboundAvailable: availability.preferredOutboundAvailable,
+      reasonCodes: availability.reasonCodes,
+    };
+  }
+
+  private routeDecisionPreferenceReasonCodes(
+    candidate: AdminWireGuardCandidate,
+    preference: AdminRouteDecisionClientPreferenceSummary | null,
+  ): string[] {
+    if (!preference) return [];
+
+    const reasonCodes = new Set<string>();
+
+    if (preference.mode === 'country' && preference.preferredExitCountryCode && candidate.source === 'outbound') {
+      reasonCodes.add(
+        this.routeDecisionCandidateCountry(candidate) === preference.preferredExitCountryCode
+          ? 'preferred_country_match'
+          : 'preferred_country_mismatch',
+      );
+    }
+    if (preference.mode === 'outbound' && preference.preferredOutboundId && candidate.source === 'outbound') {
+      reasonCodes.add(
+        candidate.id === preference.preferredOutboundId
+          ? 'preferred_outbound_match'
+          : 'preferred_outbound_mismatch',
+      );
+    }
+
+    return [...reasonCodes];
+  }
+
+  private isRouteDecisionPreferenceMismatch(
+    candidate: AdminWireGuardCandidate,
+    preference: AdminRouteDecisionClientPreferenceSummary | null,
+  ): boolean {
+    if (!preference || candidate.source !== 'outbound') return false;
+
+    if (preference.mode === 'country' && preference.preferredExitCountryCode && preference.preferredCountryAvailable) {
+      return this.routeDecisionCandidateCountry(candidate) !== preference.preferredExitCountryCode;
+    }
+    if (preference.mode === 'outbound' && preference.preferredOutboundId && preference.preferredOutboundAvailable) {
+      return candidate.id !== preference.preferredOutboundId;
+    }
+
+    return false;
   }
 
   async getRouteAssignmentSummary(
@@ -1759,6 +2035,7 @@ export class OperationsService {
       candidateCount: preview.candidateCount,
       healthyCandidateCount: preview.healthyCandidateCount,
       managedCandidateCount: preview.managedCandidateCount,
+      clientRoutePreference: preview.clientRoutePreference,
       currentCandidate: preview.currentCandidate,
       recommendedCandidate: preview.recommendedCandidate,
       candidateReviews: preview.candidateReviews,
@@ -1915,6 +2192,7 @@ export class OperationsService {
       candidateCount: preview.candidateCount,
       healthyCandidateCount: preview.healthyCandidateCount,
       managedCandidateCount: preview.managedCandidateCount,
+      clientRoutePreference: preview.clientRoutePreference,
       currentCandidate: preview.currentCandidate,
       recommendedCandidate: preview.recommendedCandidate,
       candidateReviews: preview.candidateReviews,
@@ -3574,6 +3852,8 @@ export class OperationsService {
           o.name,
           s.external_id AS "serverExternalId",
           s.hostname AS "serverHostname",
+          s.country AS "serverCountry",
+          s.region AS "serverRegion",
           o.route_group AS "routeGroup",
           o.config,
           o.health_status AS "healthStatus",
@@ -3626,6 +3906,8 @@ export class OperationsService {
         SELECT
           s.external_id AS "serverExternalId",
           s.hostname AS "serverHostname",
+          s.country AS "serverCountry",
+          s.region AS "serverRegion",
           m.observed_at AS "observedAt",
           m.health_score AS "healthScore",
           m.raw AS "metricRaw"
@@ -4496,6 +4778,8 @@ export class OperationsService {
       loadPercent: null,
       serverExternalId: row.serverExternalId,
       serverHostname: row.serverHostname,
+      serverCountry: this.normalizeRouteDecisionCountryCode(row.serverCountry),
+      serverRegion: row.serverRegion,
       interfaceName: item.name,
       peerCount: item.peerCount,
       activePeerCount: item.activePeerCount,
@@ -4557,6 +4841,8 @@ export class OperationsService {
       loadPercent,
       serverExternalId: row.serverExternalId,
       serverHostname: row.serverHostname,
+      serverCountry: this.normalizeRouteDecisionCountryCode(row.serverCountry),
+      serverRegion: row.serverRegion,
       interfaceName: this.stringFromConfig(config.interfaceName),
       peerCount: null,
       activePeerCount: null,
@@ -4589,6 +4875,8 @@ export class OperationsService {
       bufferbloatSeverity: candidate.bufferbloatSeverity ?? null,
       bufferbloatRecommendation: candidate.bufferbloatRecommendation ?? null,
       loadPercent: candidate.loadPercent ?? null,
+      serverCountry: candidate.serverCountry ?? null,
+      serverRegion: candidate.serverRegion ?? null,
     };
   }
 
@@ -4597,6 +4885,7 @@ export class OperationsService {
     context: {
       currentCandidate: AdminWireGuardCandidate | null;
       recommendedCandidate: AdminWireGuardCandidate | null;
+      clientRoutePreference: AdminRouteDecisionClientPreferenceSummary | null;
       routeLocked: boolean;
       autoRouteEnabled: boolean;
       routeMode: string;
@@ -4613,6 +4902,7 @@ export class OperationsService {
       const isRecommended = context.recommendedCandidate?.id === candidate.id;
       const isCurrent = context.currentCandidate?.id === candidate.id;
       const isHealthy = this.isRouteDecisionCandidateHealthy(candidate);
+      const preferenceMismatch = this.isRouteDecisionPreferenceMismatch(candidate, context.clientRoutePreference);
       let disposition: AdminRouteDecisionCandidateReviewSummary['disposition'] = 'eligible';
 
       if (isRecommended) reviewReasonCodes.add('recommended_candidate');
@@ -4629,6 +4919,8 @@ export class OperationsService {
         reviewReasonCodes.add('loaded_latency_high');
       }
       if (candidate.source !== 'outbound') reviewReasonCodes.add('agent_candidate_not_applicable');
+      this.routeDecisionPreferenceReasonCodes(candidate, context.clientRoutePreference)
+        .forEach((reasonCode) => reviewReasonCodes.add(reasonCode));
       if (!isRecommended && !isCurrent && scoreDeltaFromCurrent !== null && scoreDeltaFromCurrent < context.hysteresisScoreDelta) {
         reviewReasonCodes.add('score_delta_below_hysteresis');
       }
@@ -4641,6 +4933,8 @@ export class OperationsService {
         disposition = 'unhealthy';
       } else if (candidate.source !== 'outbound') {
         disposition = 'diagnosticOnly';
+      } else if (preferenceMismatch) {
+        disposition = 'preferenceMismatch';
       } else if (context.routeLocked) {
         disposition = 'routeLocked';
         reviewReasonCodes.add('route_locked');
@@ -6903,6 +7197,36 @@ export class OperationsService {
     }
 
     return null;
+  }
+
+  private routeDecisionCandidateCountry(candidate: AdminWireGuardCandidate): string | null {
+    return this.normalizeRouteDecisionCountryCode(candidate.serverCountry);
+  }
+
+  private normalizeRouteDecisionCountryCode(value: string | null | undefined): string | null {
+    const normalized = value?.trim().toUpperCase();
+    if (!normalized) return null;
+
+    return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+  }
+
+  private normalizeRouteScoreProfile(value: string | null | undefined): RouteScoreProfile | null {
+    const normalized = value?.trim();
+    if (!normalized) return null;
+
+    return this.routeDecisionScoreProfiles().includes(normalized as RouteScoreProfile)
+      ? (normalized as RouteScoreProfile)
+      : null;
+  }
+
+  private clientConfigIdFromRouteAssignmentKey(assignmentKey: string): string | null {
+    const prefix = 'client_config:';
+    if (!assignmentKey.startsWith(prefix)) return null;
+
+    const clientConfigId = assignmentKey.slice(prefix.length);
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientConfigId)
+      ? clientConfigId
+      : null;
   }
 
   private normalizeRouteGroup(input: string | undefined): string {

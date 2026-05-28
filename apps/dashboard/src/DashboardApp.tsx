@@ -17,6 +17,7 @@ import type {
   AdminRouteQualityAnalyticsResponse,
   AdminRouteDecisionCandidateSummary,
   AdminRouteDecisionCandidateReviewSummary,
+  AdminRouteDecisionClientPreferenceSummary,
   AdminRouteDecisionLoadBalancingSummary,
   AdminRouteDecisionProfileRecommendation,
   AdminRouteDecisionPreviewResponse,
@@ -4642,6 +4643,7 @@ function RouteDecisionPreviewPanel({
             <RouteDecisionCandidateCard candidate={preview.recommendedCandidate ?? null} format={format} label={t.settings.routeDecisionRecommended} t={t} />
           </div>
 
+          <RouteDecisionClientPreferenceCard preference={preview.clientRoutePreference ?? null} format={format} t={t} />
           <RouteDecisionProfileRecommendationList
             format={format}
             recommendations={preview.profileRecommendations ?? []}
@@ -4706,6 +4708,65 @@ function RouteDecisionPreviewPanel({
         t={t}
       />
     </section>
+  );
+}
+
+function RouteDecisionClientPreferenceCard({
+  preference,
+  format,
+  t,
+}: {
+  preference: AdminRouteDecisionClientPreferenceSummary | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  if (!preference) return null;
+
+  const preferredOutbound = preference.preferredOutboundName ?? preference.preferredOutboundId ?? '-';
+  const preferredCountry = preference.preferredExitCountryCode ?? '-';
+  const detectedCountry = preference.detectedCountryCode ?? '-';
+  const targetAvailable =
+    preference.mode === 'outbound'
+      ? preference.preferredOutboundAvailable
+      : preference.mode === 'country'
+        ? preference.preferredCountryAvailable
+        : true;
+
+  return (
+    <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block text-[13px]">{t.settings.routeClientPreference}</strong>
+          <span className={`${mutedTextClass} block truncate`}>
+            {preference.assignmentKey}
+          </span>
+        </div>
+        <span className="inline-flex flex-wrap justify-end gap-1">
+          <StatusBadge tone={targetAvailable ? 'good' : 'warning'}>
+            {targetAvailable ? t.settings.routeClientPreferenceAvailable : t.settings.routeClientPreferenceUnavailable}
+          </StatusBadge>
+          <StatusBadge tone={preference.stickySessionProtection ? 'good' : 'neutral'}>
+            {preference.stickySessionProtection ? t.settings.routeClientPreferenceSticky : t.settings.routeClientPreferenceNoSticky}
+          </StatusBadge>
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricPill icon={Route} label={t.settings.routeClientPreferenceMode} value={routeClientPreferenceModeLabel(preference.mode, t)} />
+        <MetricPill icon={Network} label={t.settings.routeClientDetectedCountry} value={detectedCountry} />
+        <MetricPill icon={Network} label={t.settings.routeClientPreferredCountry} value={preferredCountry} />
+        <MetricPill icon={Route} label={t.settings.routeClientPreferredOutbound} value={preferredOutbound} />
+        <MetricPill icon={Gauge} label={t.settings.routeClientPreferredMatches} value={format.integer(preference.preferredCountryCandidateCount)} />
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {preference.reasonCodes.slice(0, 6).map((reason) => (
+          <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`client-route-pref-${reason}`}>
+            {routeDecisionReasonLabel(reason, t)}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -5538,6 +5599,7 @@ function RouteDecisionCandidateReviewRow({
           <strong className="block truncate text-[13px]">{format.label(review.name)}</strong>
           <span className={`${mutedTextClass} block truncate`}>
             {routeDecisionCandidateSourceLabel(review, t)} / {String(review.selectedScoreProfile ?? '-').toUpperCase()}
+            {review.serverCountry ? ` / ${review.serverCountry}` : ''}
           </span>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1">
@@ -5778,6 +5840,7 @@ function RouteDecisionCandidateCard({
           <strong className="block truncate text-[13px]">{format.label(candidate.name)}</strong>
           <span className={`${mutedTextClass} block truncate`}>
             {routeDecisionCandidateSourceLabel(candidate, t)} / {String(candidate.selectedScoreProfile ?? '-').toUpperCase()}
+            {candidate.serverCountry ? ` / ${candidate.serverCountry}` : ''}
           </span>
         </div>
         <StatusBadge tone={getWireGuardScoreTone(candidate.score)}>{format.integer(candidate.score)}</StatusBadge>
@@ -5831,6 +5894,7 @@ function routeDecisionDispositionTone(disposition: string): Tone {
     case 'unhealthy':
       return 'critical';
     case 'cooldownBlocked':
+    case 'preferenceMismatch':
     case 'belowHysteresis':
       return 'warning';
     default:
@@ -5856,6 +5920,8 @@ function routeDecisionDispositionLabel(disposition: string, t: DashboardStrings)
       return t.settings.decisionDispositionDiagnostic;
     case 'unhealthy':
       return t.settings.decisionDispositionUnhealthy;
+    case 'preferenceMismatch':
+      return t.settings.decisionDispositionPreferenceMismatch;
     case 'belowHysteresis':
       return t.settings.decisionDispositionBelowHysteresis;
     default:
@@ -5979,6 +6045,17 @@ function routeDecisionStateLabel(state: string, t: DashboardStrings): string {
   }
 }
 
+function routeClientPreferenceModeLabel(mode: string, t: DashboardStrings): string {
+  switch (mode) {
+    case 'country':
+      return t.settings.routeClientPreferenceModeCountry;
+    case 'outbound':
+      return t.settings.routeClientPreferenceModeOutbound;
+    default:
+      return t.settings.routeClientPreferenceModeAuto;
+  }
+}
+
 function routeDecisionReasonLabel(reason: string, t: DashboardStrings): string {
   switch (reason) {
     case 'no_candidates':
@@ -6035,6 +6112,29 @@ function routeDecisionReasonLabel(reason: string, t: DashboardStrings): string {
       return t.settings.decisionReasonDryRunOnly;
     case 'loaded_latency_high':
       return t.settings.decisionReasonLoadedLatency;
+    case 'client_route_preference':
+      return t.settings.decisionReasonClientPreference;
+    case 'detected_country_context':
+      return t.settings.decisionReasonDetectedCountry;
+    case 'client_score_profile_context':
+    case 'client_score_profile_applied':
+      return t.settings.decisionReasonClientScoreProfile;
+    case 'preferred_country_applied':
+      return t.settings.decisionReasonPreferredCountryApplied;
+    case 'preferred_country_unavailable':
+      return t.settings.decisionReasonPreferredCountryUnavailable;
+    case 'preferred_country_match':
+      return t.settings.decisionReasonPreferredCountryMatch;
+    case 'preferred_country_mismatch':
+      return t.settings.decisionReasonPreferredCountryMismatch;
+    case 'preferred_outbound_applied':
+      return t.settings.decisionReasonPreferredOutboundApplied;
+    case 'preferred_outbound_unavailable':
+      return t.settings.decisionReasonPreferredOutboundUnavailable;
+    case 'preferred_outbound_match':
+      return t.settings.decisionReasonPreferredOutboundMatch;
+    case 'preferred_outbound_mismatch':
+      return t.settings.decisionReasonPreferredOutboundMismatch;
     default:
       return reason;
   }

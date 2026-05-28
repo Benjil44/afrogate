@@ -155,7 +155,7 @@ Client VPN routing preferences are separate from admin/seller operations. Each c
 - created_at
 - updated_at
 
-The client route preference row stores no client IP history and no traffic destinations. When a preference is saved, AfroGate also maintains a matching `route_assignments` key like `client_config:<id>` so the existing route decision engine can later evaluate the client separately from the global default assignment.
+The client route preference row stores no client IP history and no traffic destinations. When a preference is saved, AfroGate also maintains a matching `route_assignments` key like `client_config:<id>` so the route decision engine can evaluate the client separately from the global default assignment. Decision previews read this preference context and expose whether the preferred country or explicit outbound had a healthy managed candidate; if not, the preview falls back to the normal health and session-safety ranking with auditable reason codes instead of forcing an unstable route.
 
 ### packages
 

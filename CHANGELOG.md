@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.70.0 - 2026-05-28
+
+- Applied per-client route preferences inside the read-only route decision preview for preferred exit-country and exact outbound/server contexts.
+- Added candidate country/region metadata plus preference availability, match, mismatch, and reason-code details to route decision API contracts.
+- Surfaced client route preference context in the Settings decision preview without inspecting client traffic or changing data-plane routes.
+
 ## 0.69.0 - 2026-05-28
 
 - Added `client_route_preferences` for per-client automatic, country-preferred, or explicit outbound/server routing preferences.

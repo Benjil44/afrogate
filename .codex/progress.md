@@ -1013,6 +1013,22 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added per-client preference-aware route decision previews for `client_config:<id>` assignments.
+- Route decision previews now include client route preference context, candidate server country/region metadata, preferred-country/exact-outbound availability, match/mismatch review reasons, and preference-aware recommendation selection.
+- Country-mode client preferences prefer healthy managed outbounds in the preferred exit country when available; exact-outbound mode prefers the requested healthy managed outbound when available; unavailable or unhealthy preferences fall back to the normal health/session-safe route ranking.
+- Surfaced client route preference context and candidate country hints in the Settings Decision Preview panel with English/Persian labels.
+- Updated route/security/repository docs and memory to keep the privacy boundary explicit: no client IP history, no destination inspection, and no live data-plane mutation.
+- Marked route decision filtering by per-client preferred exit country and available country/server candidates complete.
+- Bumped AfroGate to `0.70.0` for the client preference-aware route decision preview API/UI contract.
+- Checklist completion after this slice is `194 / 222` items, or `87.4%` complete with `12.6%` remaining.
+- Verified authenticated local API smoke by creating dev-only servers/outbounds in `DE` and `US`, saving a client country-mode preference for preferred exit `DE`, and confirming `/api/admin/route-decisions/preview` recommended a `DE` managed outbound with `preferred_country_applied`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added the client route preference foundation for the future VPN mobile/client UX.
 - Added `client_route_preferences` with per-client auto/country/outbound mode, coarse detected country, preferred exit country, optional preferred outbound, score profile, route lock, and sticky-session protection.
 - Added guarded admin APIs to read and update a client config route preference under `/api/admin/client-configs/:id/route-preference`.
