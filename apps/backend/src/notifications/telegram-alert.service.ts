@@ -8,9 +8,18 @@ export type TelegramAlertSendResult =
   | { status: 'skipped'; reason: 'disabled' | 'missing_config' }
   | { status: 'failed'; statusCode?: number; reason: string; durationMs?: number };
 
+export type TelegramMessageSendResult =
+  | { status: 'sent'; statusCode: number; durationMs: number }
+  | { status: 'skipped'; reason: 'missing_config' }
+  | { status: 'failed'; statusCode?: number; reason: string; durationMs?: number };
+
 interface TelegramApiResponse {
   ok?: boolean;
   description?: string;
+}
+
+interface TelegramSendMessageOptions {
+  disableWebPagePreview?: boolean;
 }
 
 @Injectable()
@@ -28,14 +37,31 @@ export class TelegramAlertService {
     return Boolean(this.botToken() && this.chatId());
   }
 
+  isBotConfigured(): boolean {
+    return Boolean(this.botToken());
+  }
+
   async sendAlert(alert: AdminAlertSummary): Promise<TelegramAlertSendResult> {
     if (!this.isEnabled()) {
       return { status: 'skipped', reason: 'disabled' };
     }
 
-    const token = this.botToken();
     const chatId = this.chatId();
-    if (!token || !chatId) {
+    if (!chatId) {
+      return { status: 'skipped', reason: 'missing_config' };
+    }
+
+    return this.sendMessage(chatId, this.formatAlert(alert), { disableWebPagePreview: true });
+  }
+
+  async sendMessage(
+    chatId: string | number,
+    text: string,
+    options: TelegramSendMessageOptions = {},
+  ): Promise<TelegramMessageSendResult> {
+    const token = this.botToken();
+    const normalizedChatId = String(chatId).trim();
+    if (!token || !normalizedChatId) {
       return { status: 'skipped', reason: 'missing_config' };
     }
 
@@ -43,9 +69,9 @@ export class TelegramAlertService {
       const response = await this.outboundHttp.postJson(
         `${this.apiBaseUrl()}/bot${token}/sendMessage`,
         {
-          chat_id: chatId,
-          text: this.formatAlert(alert),
-          disable_web_page_preview: true,
+          chat_id: normalizedChatId,
+          text: this.truncate(text, 3900),
+          disable_web_page_preview: options.disableWebPagePreview ?? true,
         },
         {
           timeoutMs: this.timeoutMs(),

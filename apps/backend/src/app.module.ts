@@ -30,6 +30,8 @@ import { AgentTokenGuard } from './security/agent-token.guard';
 import { RolesGuard } from './security/roles.guard';
 import { ClientTokenGuard } from './security/client-token.guard';
 import { SecretVaultService } from './security/secret-vault.service';
+import { TelegramBotController } from './telegram/telegram-bot.controller';
+import { TelegramBotService } from './telegram/telegram-bot.service';
 
 @Module({
   imports: [
@@ -49,6 +51,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     MetricsController,
     OperationsController,
     PayPalWebhookController,
+    TelegramBotController,
   ],
   providers: [
     AgentsService,
@@ -70,6 +73,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     SecretVaultService,
     PostgresMetricsRepository,
     TelegramAlertService,
+    TelegramBotService,
     {
       provide: METRICS_REPOSITORY,
       useExisting: PostgresMetricsRepository,

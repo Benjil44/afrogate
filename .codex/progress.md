@@ -1283,3 +1283,15 @@ Repository remote is ready:
 - Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`; 8 tests passed after tightening the new Billing form selector.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the backend Telegram user-command webhook at `POST /api/telegram/webhook` for `/start`, `/help`, `/status`, and `/quota`.
+- The webhook is disabled by default, requires `AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED=true`, a configured bot token, and a matching Telegram secret-token header before it processes updates.
+- Added safe linked-account lookup by Telegram id with username fallback; replies expose only account status, remaining quota, used quota, and client counts, not paid numbers, tokens, traffic destinations, or server secrets.
+- Extended the existing Telegram alert sender with a reusable `sendMessage` method so bot replies honor the shared outbound HTTP proxy path.
+- Updated `.env.example`, control-plane egress docs, architecture, security docs, dashboard checklist, checklist, and memory for the Telegram command boundary.
+- Bumped AfroGate to `0.80.0` for the Telegram user-command workflow.
+- Checklist completion after this slice is `206 / 228` items, or `90.4%` complete with `9.6%` remaining.
+- Verified version alignment with `npm run version:check`.
+- Verified workspace typecheck and production build with `npm run typecheck` and `npm run build`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

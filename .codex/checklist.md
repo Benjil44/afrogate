@@ -179,7 +179,7 @@
 - [x] Usage accounting.
 - [x] Remaining volume display.
 - [x] Client-scoped mobile API/auth for VPN users.
-- [ ] Telegram bot user commands.
+- [x] Telegram bot user commands.
 
 ## Phase 3: Auto Route
 

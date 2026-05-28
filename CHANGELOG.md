@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.80.0 - 2026-05-29
+
+- Added a disabled-by-default Telegram user-command webhook for `/start`, `/help`, `/status`, and `/quota`.
+- Added secret-header verification and safe linked-account lookup by Telegram id or username before sending quota/status replies.
+- Reused the shared outbound HTTP client for Telegram bot messages so restricted servers can keep using the configured control-plane proxy.
+
 ## 0.79.0 - 2026-05-28
 
 - Added a guarded customer limit manager to the dashboard Usage/Billing page for creating and updating customer accounts.

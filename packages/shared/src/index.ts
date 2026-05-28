@@ -264,6 +264,32 @@ export interface ClientPortalConfigSummary {
   status: ClientConfigStatus | string;
 }
 
+export interface TelegramBotAccountSummary {
+  id: string;
+  displayName?: string | null;
+  status: CustomerAccountStatus | string;
+  quotaScope: CustomerQuotaScope | string;
+  quotaLimitBytes?: number | null;
+  usedBytes: number;
+  remainingBytes?: number | null;
+  clientCount: number;
+  activeClientCount: number;
+}
+
+export type TelegramBotAccountLookup =
+  | { status: 'found'; account: TelegramBotAccountSummary }
+  | { status: 'not_found' }
+  | { status: 'ambiguous' };
+
+export type TelegramBotCommandName = 'start' | 'help' | 'status' | 'quota' | 'unknown';
+
+export interface TelegramBotWebhookResponse {
+  ok: boolean;
+  status: 'ignored' | 'sent' | 'failed';
+  command?: TelegramBotCommandName;
+  reason?: string;
+}
+
 export interface ClientRoutePreferenceSummary {
   routeGroup: string;
   assignmentKey: string;

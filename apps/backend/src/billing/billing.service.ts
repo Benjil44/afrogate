@@ -16,6 +16,8 @@ import type {
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceSummary,
+  TelegramBotAccountLookup,
+  TelegramBotAccountSummary,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceSummary,
   AdminClientUsageEventSummary,
@@ -2056,6 +2058,49 @@ export class BillingService {
     };
   }
 
+  async getTelegramBotAccountStatus(input: {
+    telegramId?: string | null;
+    telegramUsername?: string | null;
+  }): Promise<TelegramBotAccountLookup> {
+    const telegramId = this.normalizeNullableString(input.telegramId);
+    const telegramUsername = this.normalizeTelegramUsername(input.telegramUsername);
+
+    if (telegramId) {
+      const result = await this.database.query<CustomerAccountRow>(
+        `
+          ${this.customerAccountSelectSql()}
+          WHERE ca.telegram_id = $1
+          GROUP BY ca.id
+          ORDER BY ca.created_at DESC
+          LIMIT 1
+        `,
+        [telegramId],
+      );
+
+      if (result.rows[0]) {
+        return { status: 'found', account: this.mapTelegramBotAccount(result.rows[0]) };
+      }
+    }
+
+    if (!telegramUsername) return { status: 'not_found' };
+
+    const result = await this.database.query<CustomerAccountRow>(
+      `
+        ${this.customerAccountSelectSql()}
+        WHERE lower(ca.telegram_username) = lower($1)
+        GROUP BY ca.id
+        ORDER BY ca.created_at DESC
+        LIMIT 2
+      `,
+      [telegramUsername],
+    );
+
+    if (result.rows.length > 1) return { status: 'ambiguous' };
+    if (!result.rows[0]) return { status: 'not_found' };
+
+    return { status: 'found', account: this.mapTelegramBotAccount(result.rows[0]) };
+  }
+
   async getClientRewardedAdStatus(actor: ClientAuthActor): Promise<ClientRewardedAdStatus> {
     this.assertClientScope(actor, 'client:read');
     const today = this.currentUtcDay();
@@ -3936,6 +3981,23 @@ export class BillingService {
       notes: row.notes,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapTelegramBotAccount(row: CustomerAccountRow): TelegramBotAccountSummary {
+    const quotaLimitBytes = this.numberFromBigInt(row.quotaLimitBytes);
+    const usedBytes = this.numberFromBigInt(row.usedBytes) ?? 0;
+
+    return {
+      id: row.id,
+      displayName: row.displayName,
+      status: row.status,
+      quotaScope: row.quotaScope,
+      quotaLimitBytes,
+      usedBytes,
+      remainingBytes: this.remainingBytes(quotaLimitBytes, usedBytes),
+      clientCount: Number(row.clientCount ?? 0),
+      activeClientCount: Number(row.activeClientCount ?? 0),
     };
   }
 
