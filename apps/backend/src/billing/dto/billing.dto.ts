@@ -351,3 +351,32 @@ export class UpdatePaymentOrderStatusDto {
   @MaxLength(1000)
   notes?: string | null;
 }
+
+export class CreatePayPalCheckoutDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  returnUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  cancelUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+}
+
+export class CapturePayPalPaymentOrderDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  providerOrderId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+}

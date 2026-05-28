@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.74.0 - 2026-05-28
+
+- Added a PayPal provider adapter for hosted checkout creation, approved-order capture, and verified webhooks.
+- Added guarded admin PayPal checkout/capture APIs plus a public webhook endpoint that verifies PayPal signature headers before payment state changes.
+- Kept PayPal credentials in `AFROGATE_PAYPAL_*` deployment settings and routed PayPal API calls through the shared outbound HTTP client.
+
 ## 0.73.0 - 2026-05-28
 
 - Added `client_usage_events` as an idempotent usage ledger for client volume accounting.

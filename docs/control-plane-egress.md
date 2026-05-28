@@ -69,7 +69,7 @@ Security rules:
 ## Implementation Notes
 
 - The Python agent already supports `AFROGATE_OUTBOUND_PROXY_URL` for HTTP/HTTPS API pushes.
-- The backend has a shared outbound HTTP client for Telegram/API calls. It uses direct HTTP/HTTPS by default and can route through `AFROGATE_OUTBOUND_PROXY_URL` when that value points to a localhost HTTP proxy.
+- The backend has a shared outbound HTTP client for Telegram, PayPal, and other external API calls. It uses direct HTTP/HTTPS by default and can route through `AFROGATE_OUTBOUND_PROXY_URL` when that value points to a localhost HTTP proxy.
 - Telegram critical-alert delivery is controlled by `AFROGATE_TELEGRAM_ALERTS_ENABLED`, `AFROGATE_TELEGRAM_BOT_TOKEN`, and `AFROGATE_TELEGRAM_ALERT_CHAT_ID`. Leave it disabled until real bot settings are installed through environment or systemd config.
 - SOCKS/VLESS should be handled by a local client that exposes an HTTP proxy. This avoids adding protocol-specific code to AfroGate.
 

@@ -240,7 +240,7 @@ The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tai
 - created_at
 - updated_at
 
-Payment provider secrets, including PayPal client secrets and webhook secrets, must not be stored in `public_config`. They should use the encrypted `secret_records` path or a future dedicated provider-secret reference.
+Payment provider secrets, including PayPal client secrets and webhook IDs, must not be stored in `public_config`. PayPal execution uses `AFROGATE_PAYPAL_*` deployment secrets and the backend outbound HTTP client; future providers should use encrypted `secret_records` or a dedicated provider-secret reference.
 
 ### payment_orders
 
@@ -263,6 +263,8 @@ Payment provider secrets, including PayPal client secrets and webhook secrets, m
 - updated_at
 
 Payment orders are the audit boundary between package selection and future quota allocation. A paid order does not directly mutate customer quota yet; a future charge allocation path must consume paid orders idempotently before increasing customer/client quota limits.
+
+The PayPal adapter exposes guarded admin actions to create a hosted checkout order and capture an approved order, plus `/api/payments/paypal/webhook` for PayPal callbacks. Webhook events must be verified through PayPal before they can mark an order paid, failed, or refunded. PayPal orders should use a three-letter ISO currency such as USD or EUR; local currencies such as toman stay on manual/local gateway methods until a local provider adapter exists.
 
 ### subscriptions
 

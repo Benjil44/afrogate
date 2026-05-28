@@ -44,7 +44,7 @@
 - تحلیل داده پیشرفته با مدل‌های پیش‌بینی.
 - فروش enterprise با multi-tenant کامل.
 
-Billing note: the MVP can expose a provider catalog with PayPal and manual/other payment methods, but live capture, refunds, and webhook verification remain a separate payment-order/provider-adapter phase.
+Billing note: the backend now has a PayPal provider adapter for checkout creation, capture, and verified webhooks. Refund flows and quota allocation from paid orders remain separate phases.
 
 ## ظرفیت اولیه
 

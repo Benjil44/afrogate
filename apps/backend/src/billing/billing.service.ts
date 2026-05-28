@@ -20,11 +20,13 @@ import type {
   AdminClientUsageEventSummary,
   AdminCustomerAccountDetail,
   AdminCustomerAccountSummary,
+  AdminPayPalPaymentOrderResponse,
   IssuedClientAccessTokenSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
   AdminRecordClientUsageResponse,
   AdminVolumePackageSummary,
+  PayPalWebhookHandlerResponse,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
@@ -41,6 +43,8 @@ import {
   UpsertClientRoutePreferenceDto,
 } from './dto/customer-account.dto';
 import {
+  CapturePayPalPaymentOrderDto,
+  CreatePayPalCheckoutDto,
   CreatePaymentMethodDto,
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
@@ -49,6 +53,7 @@ import {
   UpdatePaymentOrderStatusDto,
   UpdateVolumePackageDto,
 } from './dto/billing.dto';
+import { PayPalPaymentService, type PayPalWebhookSignatureHeaders } from './paypal-payment.service';
 
 const BYTES_PER_GB = 1024 ** 3;
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
@@ -353,6 +358,7 @@ export class BillingService {
   constructor(
     private readonly database: DatabaseService,
     private readonly audit: AuditService,
+    private readonly paypal: PayPalPaymentService,
   ) {}
 
   async getBillingCatalog(): Promise<AdminBillingCatalogResponse> {
@@ -819,6 +825,295 @@ export class BillingService {
       this.throwConflictIfUniqueViolation(error, 'Payment order idempotency or provider order already exists');
       throw error;
     }
+  }
+
+  async createPayPalCheckout(
+    id: string,
+    dto: CreatePayPalCheckoutDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminPayPalPaymentOrderResponse> {
+    try {
+      let action = 'checkout_created';
+
+      await this.database.transaction(async (executor) => {
+        const existing = await this.getPaymentOrderRowForUpdate(executor, id);
+        this.assertPayPalPaymentOrder(existing);
+        if (existing.status !== 'pending') {
+          throw new BadRequestException('PayPal checkout can only be created for pending payment orders');
+        }
+
+        if (existing.providerOrderId) {
+          if (!existing.checkoutUrl) {
+            throw new BadRequestException('Payment order already has a PayPal provider order without a checkout URL');
+          }
+          action = 'checkout_already_exists';
+          return;
+        }
+
+        const checkout = await this.paypal.createCheckout({
+          paymentOrderId: id,
+          packageName: existing.packageName,
+          amount: this.numberFromBigInt(existing.amount) ?? 0,
+          currency: existing.currency,
+          returnUrl: dto.returnUrl,
+          cancelUrl: dto.cancelUrl,
+          idempotencyKey: dto.idempotencyKey ?? existing.idempotencyKey,
+        });
+        const metadata = this.mergePayPalMetadata(existing.metadata, {
+          providerOrderStatus: checkout.providerStatus,
+          checkoutCreatedAt: new Date().toISOString(),
+        });
+
+        await executor.query(
+          `
+            UPDATE payment_orders
+            SET provider_order_id = $1,
+                checkout_url = $2,
+                metadata = $3::jsonb,
+                updated_at = now()
+            WHERE id = $4
+          `,
+          [
+            checkout.providerOrderId,
+            checkout.checkoutUrl,
+            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            id,
+          ],
+        );
+
+        await this.audit.record(
+          actor,
+          'payment_order.paypal_checkout_create',
+          'payment_order',
+          id,
+          {
+            provider: 'paypal',
+            providerOrderId: checkout.providerOrderId,
+            providerOrderStatus: checkout.providerStatus,
+          },
+          executor,
+        );
+      });
+
+      const paymentOrder = await this.getPaymentOrder(id);
+      return {
+        paymentOrder,
+        providerOrderId: paymentOrder.providerOrderId,
+        checkoutUrl: paymentOrder.checkoutUrl,
+        action,
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
+      throw error;
+    }
+  }
+
+  async capturePayPalPaymentOrder(
+    id: string,
+    dto: CapturePayPalPaymentOrderDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminPayPalPaymentOrderResponse> {
+    try {
+      let action = 'captured';
+
+      await this.database.transaction(async (executor) => {
+        const existing = await this.getPaymentOrderRowForUpdate(executor, id);
+        this.assertPayPalPaymentOrder(existing);
+
+        if (existing.status === 'paid') {
+          action = 'already_paid';
+          return;
+        }
+        if (existing.status !== 'pending') {
+          throw new BadRequestException('PayPal capture can only be run for pending payment orders');
+        }
+
+        const providerOrderId = this.normalizeNullableString(dto.providerOrderId) ?? existing.providerOrderId;
+        if (!providerOrderId) throw new BadRequestException('PayPal provider order id is required before capture');
+        if (existing.providerOrderId && existing.providerOrderId !== providerOrderId) {
+          throw new BadRequestException('PayPal provider order id does not match the payment order');
+        }
+
+        const capture = await this.paypal.captureOrder({
+          paymentOrderId: id,
+          providerOrderId,
+          idempotencyKey: dto.idempotencyKey ?? existing.idempotencyKey,
+        });
+        const now = new Date();
+        const metadata = this.mergePayPalMetadata(existing.metadata, {
+          providerOrderStatus: capture.providerStatus,
+          providerCaptureStatus: capture.providerCaptureStatus,
+          capturedAt: now.toISOString(),
+        });
+
+        await executor.query(
+          `
+            UPDATE payment_orders
+            SET status = 'paid',
+                provider_order_id = $1,
+                provider_capture_id = $2,
+                paid_at = $3,
+                metadata = $4::jsonb,
+                updated_at = now()
+            WHERE id = $5
+          `,
+          [
+            capture.providerOrderId,
+            capture.providerCaptureId,
+            now,
+            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            id,
+          ],
+        );
+
+        await this.audit.record(
+          actor,
+          'payment_order.paypal_capture',
+          'payment_order',
+          id,
+          {
+            provider: 'paypal',
+            fromStatus: existing.status,
+            toStatus: 'paid',
+            providerOrderId: capture.providerOrderId,
+            providerCaptureId: capture.providerCaptureId,
+          },
+          executor,
+        );
+      });
+
+      const paymentOrder = await this.getPaymentOrder(id);
+      return {
+        paymentOrder,
+        providerOrderId: paymentOrder.providerOrderId,
+        providerCaptureId: paymentOrder.providerCaptureId,
+        checkoutUrl: paymentOrder.checkoutUrl,
+        action,
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
+      throw error;
+    }
+  }
+
+  async handlePayPalWebhook(
+    headers: PayPalWebhookSignatureHeaders,
+    payload: Record<string, unknown>,
+  ): Promise<PayPalWebhookHandlerResponse> {
+    const webhookPayload = this.asRecord(payload);
+    if (!webhookPayload) throw new BadRequestException('PayPal webhook body must be an object');
+
+    const verified = await this.paypal.verifyWebhook(headers, webhookPayload);
+    const eventType = verified.eventType;
+    const resource = this.asRecord(webhookPayload.resource);
+    const providerOrderId = this.extractPayPalWebhookOrderId(eventType, resource);
+    const providerCaptureId = this.extractPayPalWebhookCaptureId(eventType, resource);
+    const providerResourceStatus = this.stringFromRecord(resource, 'status');
+
+    if (!providerOrderId) {
+      await this.audit.record(undefined, 'payment_order.paypal_webhook_ignored', 'payment_order', null, {
+        eventId: verified.eventId,
+        eventType,
+        reason: 'missing_provider_order_id',
+      });
+      return {
+        ok: true,
+        action: 'ignored',
+        eventId: verified.eventId,
+        eventType,
+      };
+    }
+
+    const result = await this.database.transaction(async (executor): Promise<PayPalWebhookHandlerResponse> => {
+      const existing = await this.getPaymentOrderRowForUpdateByProviderOrderId(executor, 'paypal', providerOrderId);
+      if (!existing) {
+        await this.audit.record(undefined, 'payment_order.paypal_webhook_unmatched', 'payment_order', null, {
+          eventId: verified.eventId,
+          eventType,
+          providerOrderId,
+          providerCaptureId,
+        });
+
+        return {
+          ok: true,
+          action: 'unmatched',
+          eventId: verified.eventId,
+          eventType,
+          providerOrderId,
+          providerCaptureId,
+        };
+      }
+
+      const now = new Date();
+      const paymentUpdate = this.payPalWebhookPaymentUpdate(existing, eventType);
+      const nextProviderCaptureId = providerCaptureId ?? existing.providerCaptureId;
+      const metadata = this.mergePayPalMetadata(existing.metadata, {
+        lastWebhookEventId: verified.eventId,
+        lastWebhookEventType: eventType,
+        lastWebhookReceivedAt: now.toISOString(),
+        providerOrderStatus: eventType?.startsWith('CHECKOUT.ORDER.') ? providerResourceStatus : undefined,
+        providerCaptureStatus: eventType?.startsWith('PAYMENT.CAPTURE.') ? providerResourceStatus : undefined,
+      });
+
+      const providerCaptureChanged = nextProviderCaptureId !== existing.providerCaptureId;
+      if (paymentUpdate.nextStatus !== existing.status) {
+        this.assertPaymentOrderStatusTransition(existing.status, paymentUpdate.nextStatus);
+      }
+
+      if (paymentUpdate.shouldUpdate || providerCaptureChanged) {
+        await executor.query(
+          `
+            UPDATE payment_orders
+            SET status = $1,
+                provider_capture_id = $2,
+                paid_at = $3,
+                failed_at = $4,
+                refunded_at = $5,
+                metadata = $6::jsonb,
+                updated_at = now()
+            WHERE id = $7
+          `,
+          [
+            paymentUpdate.nextStatus,
+            nextProviderCaptureId,
+            paymentUpdate.nextStatus === 'paid' && existing.status !== 'paid' ? now : existing.paidAt,
+            paymentUpdate.nextStatus === 'failed' && existing.status !== 'failed' ? now : existing.failedAt,
+            paymentUpdate.nextStatus === 'refunded' && existing.status !== 'refunded' ? now : existing.refundedAt,
+            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            existing.id,
+          ],
+        );
+      }
+
+      await this.audit.record(
+        undefined,
+        'payment_order.paypal_webhook',
+        'payment_order',
+        existing.id,
+        {
+          eventId: verified.eventId,
+          eventType,
+          action: paymentUpdate.action,
+          fromStatus: existing.status,
+          toStatus: paymentUpdate.nextStatus,
+          providerOrderId,
+          providerCaptureId: nextProviderCaptureId,
+        },
+        executor,
+      );
+
+      return {
+        ok: true,
+        action: paymentUpdate.action,
+        eventId: verified.eventId,
+        eventType,
+        paymentOrderId: existing.id,
+        providerOrderId,
+        providerCaptureId: nextProviderCaptureId,
+      };
+    });
+
+    return result;
   }
 
   async updatePaymentOrderStatus(
@@ -2023,6 +2318,19 @@ export class BillingService {
     return row;
   }
 
+  private async getPaymentOrderRowForUpdateByProviderOrderId(
+    executor: DatabaseQueryExecutor,
+    provider: string,
+    providerOrderId: string,
+  ): Promise<PaymentOrderRow | null> {
+    const result = await executor.query<PaymentOrderRow>(
+      `${this.paymentOrderSelectSql()} WHERE po.provider = $1 AND po.provider_order_id = $2 FOR UPDATE OF po`,
+      [provider, providerOrderId],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   private mapBillingSettings(row: BillingSettingsRow): AdminBillingSettingsSummary {
     return {
       settingKey: row.settingKey,
@@ -3118,6 +3426,104 @@ export class BillingService {
     const maxAmount = this.numberFromBigInt(method.maxAmount);
     if (minAmount !== null && amount < minAmount) throw new BadRequestException('Payment order amount is below method minimum');
     if (maxAmount !== null && amount > maxAmount) throw new BadRequestException('Payment order amount is above method maximum');
+  }
+
+  private assertPayPalPaymentOrder(order: PaymentOrderRow): void {
+    if (order.provider !== 'paypal') {
+      throw new BadRequestException('Payment order provider must be paypal');
+    }
+  }
+
+  private mergePayPalMetadata(
+    existing: Record<string, unknown> | null | undefined,
+    patch: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const current = existing ?? {};
+    const currentPayPal = this.asRecord(current.paypal) ?? {};
+    const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+
+    return {
+      ...current,
+      paypal: {
+        ...currentPayPal,
+        ...cleanPatch,
+      },
+    };
+  }
+
+  private payPalWebhookPaymentUpdate(
+    existing: PaymentOrderRow,
+    eventType: string | null,
+  ): { nextStatus: string; action: string; shouldUpdate: boolean } {
+    if (eventType === 'CHECKOUT.ORDER.APPROVED') {
+      return { nextStatus: existing.status, action: 'approval_recorded', shouldUpdate: true };
+    }
+
+    if (eventType === 'PAYMENT.CAPTURE.PENDING') {
+      return { nextStatus: existing.status, action: 'capture_pending_recorded', shouldUpdate: true };
+    }
+
+    if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+      if (existing.status === 'paid') return { nextStatus: existing.status, action: 'already_paid', shouldUpdate: true };
+      if (existing.status !== 'pending') {
+        return { nextStatus: existing.status, action: `ignored_${existing.status}`, shouldUpdate: false };
+      }
+      return { nextStatus: 'paid', action: 'marked_paid', shouldUpdate: true };
+    }
+
+    if (
+      eventType === 'PAYMENT.CAPTURE.DENIED' ||
+      eventType === 'PAYMENT.CAPTURE.DECLINED' ||
+      eventType === 'PAYMENT.CAPTURE.FAILED'
+    ) {
+      if (existing.status !== 'pending') {
+        return { nextStatus: existing.status, action: `ignored_${existing.status}`, shouldUpdate: false };
+      }
+      return { nextStatus: 'failed', action: 'marked_failed', shouldUpdate: true };
+    }
+
+    if (eventType === 'PAYMENT.CAPTURE.REFUNDED' || eventType === 'PAYMENT.CAPTURE.REVERSED') {
+      if (existing.status !== 'paid') {
+        return { nextStatus: existing.status, action: `ignored_${existing.status}`, shouldUpdate: false };
+      }
+      return { nextStatus: 'refunded', action: 'marked_refunded', shouldUpdate: true };
+    }
+
+    return { nextStatus: existing.status, action: 'ignored', shouldUpdate: false };
+  }
+
+  private extractPayPalWebhookOrderId(
+    eventType: string | null,
+    resource: Record<string, unknown> | null,
+  ): string | null {
+    const supplementary = this.asRecord(resource?.supplementary_data);
+    const relatedIds = this.asRecord(supplementary?.related_ids);
+    const relatedOrderId = this.stringFromRecord(relatedIds, 'order_id');
+    if (relatedOrderId) return relatedOrderId;
+
+    if (eventType?.startsWith('CHECKOUT.ORDER.')) {
+      return this.stringFromRecord(resource, 'id');
+    }
+
+    return null;
+  }
+
+  private extractPayPalWebhookCaptureId(
+    eventType: string | null,
+    resource: Record<string, unknown> | null,
+  ): string | null {
+    if (!eventType?.startsWith('PAYMENT.CAPTURE.')) return null;
+    return this.stringFromRecord(resource, 'id');
+  }
+
+  private stringFromRecord(record: Record<string, unknown> | null | undefined, key: string): string | null {
+    const value = record?.[key];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
   }
 
   private assertPaymentOrderStatusTransition(currentStatus: string, nextStatus: string): void {

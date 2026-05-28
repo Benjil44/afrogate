@@ -626,6 +626,35 @@ export interface UpdatePaymentOrderStatusRequest {
   notes?: string | null;
 }
 
+export interface CreatePayPalCheckoutRequest {
+  returnUrl?: string | null;
+  cancelUrl?: string | null;
+  idempotencyKey?: string | null;
+}
+
+export interface CapturePayPalPaymentOrderRequest {
+  providerOrderId?: string | null;
+  idempotencyKey?: string | null;
+}
+
+export interface AdminPayPalPaymentOrderResponse {
+  paymentOrder: AdminPaymentOrderSummary;
+  providerOrderId?: string | null;
+  providerCaptureId?: string | null;
+  checkoutUrl?: string | null;
+  action: string;
+}
+
+export interface PayPalWebhookHandlerResponse {
+  ok: true;
+  action: string;
+  eventId?: string | null;
+  eventType?: string | null;
+  paymentOrderId?: string | null;
+  providerOrderId?: string | null;
+  providerCaptureId?: string | null;
+}
+
 export interface CreateAdminUserRequest {
   username: string;
   password: string;

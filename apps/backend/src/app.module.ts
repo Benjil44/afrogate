@@ -9,6 +9,8 @@ import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { BillingController } from './billing/billing.controller';
 import { BillingService } from './billing/billing.service';
+import { PayPalPaymentService } from './billing/paypal-payment.service';
+import { PayPalWebhookController } from './billing/paypal-webhook.controller';
 import { ClientController } from './client/client.controller';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
@@ -46,6 +48,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     HealthController,
     MetricsController,
     OperationsController,
+    PayPalWebhookController,
   ],
   providers: [
     AgentsService,
@@ -54,6 +57,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     AuditService,
     AuthService,
     BillingService,
+    PayPalPaymentService,
     MetricsService,
     OperationsService,
     RouteQualityAggregationService,

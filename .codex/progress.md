@@ -751,6 +751,7 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+
 - Verified protocol server apply dry-run event contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
 - Applied PostgreSQL migrations through `0011_protocol_apply_events.sql` with `npm --workspace @afrogate/backend run db:migrate`.
 - Verified `0.51.0` with `npm run version:check`.
@@ -1011,6 +1012,26 @@ Repository remote is ready:
 - Verified dashboard contrast with `npm run contrast:check`.
 - Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+
+
+- Added the PayPal checkout/capture provider adapter.
+- Added guarded admin APIs to create PayPal hosted checkout orders and capture approved PayPal orders from existing pending `payment_orders`.
+- Added a public PayPal webhook endpoint that verifies PayPal signature headers through PayPal before updating any local payment order.
+- PayPal events can now mark matching orders paid, failed, or refunded, while repeated capture-completed events stay idempotent for already-paid orders.
+- PayPal credentials, webhook ID, API base URL, return/cancel URLs, and timeout are configured through `AFROGATE_PAYPAL_*` deployment environment values; provider secrets remain out of `payment_methods.public_config`.
+- PayPal outbound calls use the shared proxy-aware backend outbound HTTP client so restricted deployments can reuse `AFROGATE_OUTBOUND_PROXY_URL`.
+- Updated shared contracts, backend DTOs, architecture/security docs, checklist, and memory for the PayPal adapter.
+- Marked PayPal checkout capture adapter and webhook verification complete in the checklist.
+- Bumped AfroGate to `0.74.0` for the PayPal adapter API contract.
+- Checklist completion after this slice is `199 / 222` items, or `89.6%` complete with `10.4%` remaining.
+- Verified shared/backend typing with `npm run typecheck --workspace @afrogate/shared` and `npm run typecheck --workspace @afrogate/backend`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added per-client preference-aware route decision previews for `client_config:<id>` assignments.

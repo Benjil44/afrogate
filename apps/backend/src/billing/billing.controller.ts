@@ -20,6 +20,7 @@ import type {
   AdminCustomerAccountDetail,
   AdminIssueClientAccessTokenResponse,
   AdminCustomerAccountsResponse,
+  AdminPayPalPaymentOrderResponse,
   AdminPaymentMethodSummary,
   AdminPaymentMethodsResponse,
   AdminPaymentOrderSummary,
@@ -43,6 +44,8 @@ import {
 } from './dto/customer-account.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
+  CapturePayPalPaymentOrderDto,
+  CreatePayPalCheckoutDto,
   CreatePaymentMethodDto,
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
@@ -201,6 +204,26 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminPaymentOrderSummary> {
     return this.billingService.createPaymentOrder(payload, request.actor);
+  }
+
+  @Post('payment-orders/:id/paypal/checkout')
+  @Roles('admin')
+  createPayPalCheckout(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: CreatePayPalCheckoutDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminPayPalPaymentOrderResponse> {
+    return this.billingService.createPayPalCheckout(id, payload, request.actor);
+  }
+
+  @Post('payment-orders/:id/paypal/capture')
+  @Roles('admin')
+  capturePayPalPaymentOrder(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: CapturePayPalPaymentOrderDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminPayPalPaymentOrderResponse> {
+    return this.billingService.capturePayPalPaymentOrder(id, payload, request.actor);
   }
 
   @Patch('payment-orders/:id/status')
