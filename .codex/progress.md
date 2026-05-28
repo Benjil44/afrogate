@@ -913,7 +913,7 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, mobile/tablet resource strip density, and visual regression captures.
+- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, dense monitoring tooltips, color-contrast review, and visual regression captures.
 - Added a shared dashboard panel-state primitive for empty, loading, stale, fallback, and error states with typed English/Persian copy.
 - Wired the shared states through the Dashboard, Servers, Routes, Alerts, Users, and Settings-adjacent operational panels so stale/fallback/sample data is visibly labeled instead of silently mixing with live rows.
 - Updated the user-management panel to use the same loading/error/empty state surface and kept all user-facing copy in the multilingual layer.
@@ -926,3 +926,14 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Improved the Dashboard system resource strip density for mobile and tablet layouts with two-column compact resource cards, earlier tablet columns, truncated metric labels/values, hover titles, and a one-row internal storage scroller.
+- Updated checklist and memory to mark the mobile/tablet resource strip density pass complete.
+- Bumped AfroGate to `0.62.2` for the mobile/tablet resource strip density refinement.
+- Verified `0.62.2` with `npm run version:check`.
+- Verified placeholder/env safety with `npm run secrets:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, dense monitoring tooltips, color-contrast review, and visual regression captures.

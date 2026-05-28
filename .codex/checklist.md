@@ -145,7 +145,7 @@
 - [x] Reduce dashboard vertical scroll at 1440x900 without making the 1920x1080 NOC display feel sparse.
 - [x] Add a desktop sidebar collapse/expand control with persisted state and accessible labels.
 - [x] Compact panel headers so metadata like node/link counts stays inline with the title.
-- [ ] Improve mobile/tablet resource strip density.
+- [x] Improve mobile/tablet resource strip density.
 - [x] Add empty/loading/error states for every dashboard panel.
 - [ ] Add hover/tooltips for dense icon-only monitoring controls and metrics.
 - [ ] Review color contrast for warning/critical states in light and dark sidebar contexts.

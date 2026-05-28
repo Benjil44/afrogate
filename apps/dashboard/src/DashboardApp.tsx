@@ -908,7 +908,7 @@ function SystemResourceHeader({
 
   return (
     <section className="mt-2.5" aria-label={t.aria.systemResources}>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5 xl:gap-2">
         <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={format.percent(cpuAverage)} />
         <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={format.percent(ramAverage)} />
         <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={format.percent(lowestStorage)} />
@@ -917,7 +917,7 @@ function SystemResourceHeader({
       </div>
 
       <div className="mt-2 overflow-x-auto rounded-md border border-afro-line bg-afro-panel">
-        <div className="grid min-w-[220px] gap-1.5 p-1.5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid auto-cols-[minmax(138px,1fr)] grid-flow-col gap-1.5 p-1.5 sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-2 xl:grid-cols-3">
           {storages.map((storage) => (
             <div className="min-w-0 rounded-md border border-afro-line px-2 py-1" key={`${storage.serverName}-${storage.path}`}>
               <div className="flex items-center justify-between gap-2">
@@ -954,12 +954,15 @@ function ResourceStat({
   }[tone];
 
   return (
-    <div className={`grid min-h-[58px] gap-1 rounded-md border border-t-4 border-afro-line bg-afro-panel p-2 ${borderClass}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[12px] text-afro-muted">{label}</span>
-        <Icon size={16} />
+    <div
+      className={`grid min-h-[50px] gap-0.5 rounded-md border border-t-[3px] border-afro-line bg-afro-panel px-2 py-1.5 sm:min-h-[54px] sm:gap-1 sm:border-t-4 sm:p-2 ${borderClass}`}
+      title={`${label} ${value}`}
+    >
+      <div className="flex min-w-0 items-center justify-between gap-1.5">
+        <span className="min-w-0 truncate text-[11px] text-afro-muted sm:text-[12px]">{label}</span>
+        <Icon className="shrink-0" size={15} />
       </div>
-      <strong className="text-[17px] leading-tight">{value}</strong>
+      <strong className="min-w-0 truncate text-[15px] leading-tight sm:text-[17px]">{value}</strong>
     </div>
   );
 }

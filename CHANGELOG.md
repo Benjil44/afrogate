@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.62.2 - 2026-05-28
+
+- Compacted the dashboard system resource strip for mobile and tablet layouts.
+- Added earlier responsive columns, tighter resource cards, truncation, and hover titles for dense metric values.
+- Changed the storage volume strip to an internal one-row scroller on small screens to reduce dashboard vertical pressure.
+
 ## 0.62.1 - 2026-05-28
 
 - Added a shared dashboard panel-state surface for empty, loading, stale, fallback, and error states.
