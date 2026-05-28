@@ -28,7 +28,7 @@
 - [x] Choose ORM: Drizzle.
 - [x] Choose metrics storage approach: PostgreSQL tables first, TimescaleDB/partitioning later if needed.
 - [x] Add Ubuntu deployment notes with systemd and Nginx.
-- [ ] Define optional Docker Compose for later reproducible deployment.
+- [x] Define optional Docker Compose for later reproducible deployment.
 - [x] Add `.env.example`.
 - [x] Define database schema migration tool.
 - [x] Add local PostgreSQL setup script.

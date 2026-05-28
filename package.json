@@ -1,6 +1,6 @@
 {
   "name": "afrogate",
-  "version": "0.61.1",
+  "version": "0.61.2",
   "private": true,
   "description": "AfroGate operations, monitoring, routing, and billing platform.",
   "workspaces": [

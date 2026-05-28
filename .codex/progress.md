@@ -884,4 +884,17 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, alert filters/history, and optional Docker Compose.
+- Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, and alert filters/history.
+- Added optional Docker Compose deployment samples for private PostgreSQL, private backend, and a static dashboard/Nginx web edge.
+- Added backend and dashboard Dockerfiles, a container Nginx proxy config, a local Compose env template, and `.dockerignore` rules so reproducible builds avoid local secrets and build artifacts.
+- Updated checklist, memory, and repository-structure docs to mark Docker Compose as optional and complete while keeping the native Ubuntu path primary.
+- Bumped AfroGate to `0.61.2` for the optional Docker Compose deployment samples.
+- Verified `0.61.2` with `npm run version:check`.
+- Verified placeholder env safety with `npm run secrets:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Docker Compose config/build was not run because the Docker CLI is not installed in this workspace.
+- Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, and alert filters/history.

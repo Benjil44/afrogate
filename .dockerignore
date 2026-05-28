@@ -1,0 +1,45 @@
+# Git and local metadata
+.git
+.github
+.codex
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+infra/docker/compose.env
+infra/docker/backend.env
+
+# Dependency and build output
+node_modules
+**/node_modules
+dist
+build
+.next
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+
+# Runtime and local cache files
+*.log
+logs/
+tmp/
+temp/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.61.2 - 2026-05-28
+
+- Added optional Docker Compose deployment samples for private PostgreSQL, private backend, and a static dashboard/Nginx web edge.
+- Added Docker build files, a container Nginx proxy config, a local Compose env template, and `.dockerignore` rules for reproducible builds without local secrets.
+- Kept Docker secondary to the native Ubuntu path, with backend and database ports private and the sample web port bound to localhost by default.
+
 ## 0.61.1 - 2026-05-28
 
 - Expanded native Ubuntu deployment notes for systemd, Nginx, local/private PostgreSQL, firewall posture, update flow, and rollback.
