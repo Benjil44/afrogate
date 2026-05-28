@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.66.0 - 2026-05-28
+
+- Added the customer-account and client-config PostgreSQL foundation for Phase 2 billing.
+- Added guarded admin APIs to manage customer accounts, multi-client configs, shared GB quota, and optional per-client caps.
+- Added write-only paid-number HMAC storage with deployment guidance for `AFROGATE_IDENTITY_HASH_KEY`.
+
 ## 0.65.0 - 2026-05-28
 
 - Added a generated-command policy gate to protocol server apply plans and audit snapshots.

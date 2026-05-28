@@ -159,12 +159,12 @@
 
 ## Phase 2: Users, Usage, Billing
 
-- [ ] Telegram identity user model.
-- [ ] Privacy-safe paid number storage.
-- [ ] Customer account model that can own multiple client configs/devices.
+- [x] Telegram identity user model.
+- [x] Privacy-safe paid number storage.
+- [x] Customer account model that can own multiple client configs/devices.
 - [ ] Volume package model.
 - [ ] Price per GB setting.
-- [ ] Shared account GB quota with optional per-client/device caps.
+- [x] Shared account GB quota with optional per-client/device caps.
 - [ ] Usage accounting.
 - [ ] Remaining volume display.
 - [ ] Telegram bot user commands.

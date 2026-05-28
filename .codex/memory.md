@@ -22,6 +22,8 @@
 - If the server is quiet, users should be able to use maximum available speed.
 - Billing/usage model is volume-based: each GB costs configurable `X` toman.
 - Billing users should be modeled as customer accounts that may own one or many client configs/devices. Admins must be able to enforce a shared account-level GB quota and, when needed, optional per-client/device caps under the same account.
+- Phase 2 customer/account foundation now uses PostgreSQL tables `customer_accounts` and `client_configs`, with guarded admin APIs under `/api/admin/customer-accounts` and `/api/admin/client-configs/:id`.
+- Paid numbers are write-only in the admin API. The backend stores only HMAC hashes, using `AFROGATE_IDENTITY_HASH_KEY` when set or `AFROGATE_SECRETS_KEY` as fallback.
 
 ## Infrastructure Facts
 

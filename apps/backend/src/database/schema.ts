@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   bigserial,
+  bigint,
   boolean,
   index,
   integer,
@@ -445,6 +446,69 @@ export const protocolApplyEvents = pgTable(
   }),
 );
 
+export const customerAccounts = pgTable(
+  'customer_accounts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    displayName: text('display_name'),
+    telegramId: text('telegram_id'),
+    telegramUsername: text('telegram_username'),
+    paidNumberHash: text('paid_number_hash'),
+    status: text('status').notNull().default('active'),
+    quotaScope: text('quota_scope').notNull().default('account_shared'),
+    quotaLimitBytes: bigint('quota_limit_bytes', { mode: 'number' }),
+    perClientLimitBytes: bigint('per_client_limit_bytes', { mode: 'number' }),
+    usedBytes: bigint('used_bytes', { mode: 'number' }).notNull().default(0),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    telegramIdIdx: uniqueIndex('customer_accounts_telegram_id_unique')
+      .on(table.telegramId)
+      .where(sql`telegram_id IS NOT NULL AND telegram_id <> ''`),
+    paidNumberHashIdx: uniqueIndex('customer_accounts_paid_number_hash_unique')
+      .on(table.paidNumberHash)
+      .where(sql`paid_number_hash IS NOT NULL AND paid_number_hash <> ''`),
+    statusIdx: index('customer_accounts_status_idx').on(table.status),
+    quotaScopeIdx: index('customer_accounts_quota_scope_idx').on(table.quotaScope),
+  }),
+);
+
+export const clientConfigs = pgTable(
+  'client_configs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    protocol: text('protocol').notNull().default('custom'),
+    externalPanel: text('external_panel'),
+    externalPanelUserId: text('external_panel_user_id'),
+    externalPanelConfigId: text('external_panel_config_id'),
+    deviceLimit: integer('device_limit'),
+    quotaLimitBytes: bigint('quota_limit_bytes', { mode: 'number' }),
+    usedBytes: bigint('used_bytes', { mode: 'number' }).notNull().default(0),
+    status: text('status').notNull().default('active'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountIdx: index('client_configs_customer_account_idx').on(table.customerAccountId),
+    statusIdx: index('client_configs_status_idx').on(table.status),
+    protocolIdx: index('client_configs_protocol_idx').on(table.protocol),
+    externalPanelIdx: index('client_configs_external_panel_idx').on(table.externalPanel, table.externalPanelUserId),
+    externalConfigIdx: uniqueIndex('client_configs_external_config_unique')
+      .on(table.externalPanel, table.externalPanelConfigId)
+      .where(sql`external_panel IS NOT NULL
+        AND external_panel <> ''
+        AND external_panel_config_id IS NOT NULL
+        AND external_panel_config_id <> ''`),
+  }),
+);
+
 export const routeSettings = pgTable(
   'route_settings',
   {
@@ -607,5 +671,16 @@ export const outboundHealthChecksRelations = relations(outboundHealthChecks, ({ 
   outbound: one(outbounds, {
     fields: [outboundHealthChecks.outboundId],
     references: [outbounds.id],
+  }),
+}));
+
+export const customerAccountsRelations = relations(customerAccounts, ({ many }) => ({
+  clientConfigs: many(clientConfigs),
+}));
+
+export const clientConfigsRelations = relations(clientConfigs, ({ one }) => ({
+  customerAccount: one(customerAccounts, {
+    fields: [clientConfigs.customerAccountId],
+    references: [customerAccounts.id],
   }),
 }));

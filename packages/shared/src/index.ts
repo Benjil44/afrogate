@@ -184,6 +184,105 @@ export interface AdminUsersResponse {
   users: AdminUserSummary[];
 }
 
+export type CustomerAccountStatus = 'active' | 'suspended' | 'disabled';
+export type CustomerQuotaScope = 'account_shared' | 'per_client';
+export type ClientConfigStatus = 'active' | 'limited' | 'disabled' | 'expired';
+
+export interface AdminClientConfigSummary {
+  id: string;
+  customerAccountId: string;
+  label: string;
+  protocol: string;
+  externalPanel?: string | null;
+  externalPanelUserId?: string | null;
+  externalPanelConfigId?: string | null;
+  deviceLimit?: number | null;
+  quotaLimitBytes?: number | null;
+  effectiveQuotaLimitBytes?: number | null;
+  usedBytes: number;
+  remainingBytes?: number | null;
+  status: ClientConfigStatus | string;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCustomerAccountSummary {
+  id: string;
+  displayName?: string | null;
+  telegramId?: string | null;
+  telegramUsername?: string | null;
+  hasPaidNumberHash: boolean;
+  status: CustomerAccountStatus | string;
+  quotaScope: CustomerQuotaScope | string;
+  quotaLimitBytes?: number | null;
+  perClientLimitBytes?: number | null;
+  usedBytes: number;
+  remainingBytes?: number | null;
+  clientCount: number;
+  activeClientCount: number;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary {
+  clientConfigs: AdminClientConfigSummary[];
+}
+
+export interface CreateCustomerAccountRequest {
+  displayName?: string | null;
+  telegramId?: string | null;
+  telegramUsername?: string | null;
+  paidNumber?: string | null;
+  status?: CustomerAccountStatus;
+  quotaScope?: CustomerQuotaScope;
+  quotaLimitBytes?: number | null;
+  perClientLimitBytes?: number | null;
+  usedBytes?: number;
+  notes?: string | null;
+}
+
+export interface UpdateCustomerAccountRequest {
+  displayName?: string | null;
+  telegramId?: string | null;
+  telegramUsername?: string | null;
+  paidNumber?: string | null;
+  clearPaidNumber?: boolean;
+  status?: CustomerAccountStatus;
+  quotaScope?: CustomerQuotaScope;
+  quotaLimitBytes?: number | null;
+  perClientLimitBytes?: number | null;
+  usedBytes?: number;
+  notes?: string | null;
+}
+
+export interface CreateClientConfigRequest {
+  label: string;
+  protocol?: string;
+  externalPanel?: string | null;
+  externalPanelUserId?: string | null;
+  externalPanelConfigId?: string | null;
+  deviceLimit?: number | null;
+  quotaLimitBytes?: number | null;
+  usedBytes?: number;
+  status?: ClientConfigStatus;
+  notes?: string | null;
+}
+
+export interface UpdateClientConfigRequest {
+  label?: string;
+  protocol?: string;
+  externalPanel?: string | null;
+  externalPanelUserId?: string | null;
+  externalPanelConfigId?: string | null;
+  deviceLimit?: number | null;
+  quotaLimitBytes?: number | null;
+  usedBytes?: number;
+  status?: ClientConfigStatus;
+  notes?: string | null;
+}
+
 export interface CreateAdminUserRequest {
   username: string;
   password: string;
@@ -1867,6 +1966,10 @@ export interface RequestProtocolServerApplyResponse {
 
 export interface AdminServersResponse {
   servers: AdminServerSummary[];
+}
+
+export interface AdminCustomerAccountsResponse {
+  accounts: AdminCustomerAccountSummary[];
 }
 
 export interface AdminOutboundsResponse {

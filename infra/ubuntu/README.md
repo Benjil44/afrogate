@@ -105,6 +105,7 @@ Important production values:
 - `ADMIN_SESSION_SECRET` must be long and random.
 - `AFROGATE_SUPERADMIN_PASSWORD_HASH` is preferred over plaintext password.
 - `AFROGATE_SECRETS_KEY` must decode to exactly 32 bytes and must be backed up securely.
+- `AFROGATE_IDENTITY_HASH_KEY` should be set for paid-number HMAC hashes; if it is unset, the backend falls back to `AFROGATE_SECRETS_KEY`.
 - `AFROGATE_ADMIN_USERS_FILE=/var/lib/afrogate/admin-users.json`
 - `AFROGATE_OUTBOUND_PROXY_URL=http://127.0.0.1:10809` only when a local control-plane egress proxy exists.
 

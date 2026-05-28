@@ -1047,3 +1047,21 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added the Phase 2 customer-account database foundation with `customer_accounts` and `client_configs`.
+- Added guarded admin APIs for listing, creating, and updating customer accounts, plus creating/updating account-owned client configs.
+- Added account-level shared quota fields, optional default per-client quota caps, and client-specific quota overrides with remaining-byte summaries.
+- Added write-only paid-number handling that stores only HMAC hashes using `AFROGATE_IDENTITY_HASH_KEY` or the deployment secrets key fallback.
+- Added shared TypeScript contracts, backend DTO validation, env/deployment notes, and architecture/security docs for the customer-account quota foundation.
+- Marked Telegram identity, privacy-safe paid-number storage, multi-client customer accounts, and shared/per-client quota modeling complete in the checklist.
+- Bumped AfroGate to `0.66.0` for the customer-account quota-management foundation.
+- Checklist completion after this slice is `187 / 213` items, or `87.8%` complete with `12.2%` remaining.
+- Verified the customer-account foundation with `npm --workspace @afrogate/backend run db:migrate`.
+- Confirmed the running backend returns `401` for unauthenticated `/api/admin/customer-accounts`, which proves the guarded route is registered.
+- Confirmed authenticated `GET /api/admin/customer-accounts` returns an empty account list on the local database without SQL errors.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck --workspaces --if-present` and `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke, dense visual capture, and alert filter coverage with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.

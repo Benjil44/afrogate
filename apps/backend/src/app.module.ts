@@ -7,6 +7,8 @@ import { AgentsService } from './agents/agents.service';
 import { AlertEngineService } from './alerts/alert-engine.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
+import { BillingController } from './billing/billing.controller';
+import { BillingService } from './billing/billing.service';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
@@ -37,6 +39,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     AgentHeartbeatController,
     AgentsController,
     AuthController,
+    BillingController,
     HealthController,
     MetricsController,
     OperationsController,
@@ -47,6 +50,7 @@ import { SecretVaultService } from './security/secret-vault.service';
     AlertNotificationService,
     AuditService,
     AuthService,
+    BillingService,
     MetricsService,
     OperationsService,
     RouteQualityAggregationService,

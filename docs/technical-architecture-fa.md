@@ -98,19 +98,40 @@ Alert engine باید rule های ساده داشته باشد:
 - status
 - created_at
 
+### customer_accounts
+
+Current implementation starts Phase 2 with `customer_accounts` instead of a single flat user row:
+
+- id
+- display_name nullable
+- telegram_id nullable unique
+- telegram_username nullable
+- paid_number_hash nullable, HMAC only
+- status
+- quota_scope: `account_shared` or `per_client`
+- quota_limit_bytes nullable
+- per_client_limit_bytes nullable
+- used_bytes
+- notes
+- created_at
+- updated_at
+
 ### client_configs
 
 - id
-- user_id
+- customer_account_id
 - label
 - protocol
+- external_panel
 - external_panel_user_id
 - external_panel_config_id
 - device_limit
 - quota_limit_bytes nullable
 - used_bytes
 - status
+- notes
 - created_at
+- updated_at
 
 ### packages
 
@@ -125,7 +146,7 @@ Alert engine باید rule های ساده داشته باشد:
 ### subscriptions
 
 - id
-- user_id
+- customer_account_id
 - package_id
 - quota_scope: account_shared ÛŒØ§ per_client
 - remaining_bytes

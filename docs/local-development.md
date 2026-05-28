@@ -31,6 +31,8 @@ Database-backed endpoints such as agent registration, heartbeat persistence, ser
 
 Settings private-key storage also requires `AFROGATE_SECRETS_KEY`. Use a unique 32-byte base64/base64url or 64-character hex value per environment and keep it in the git-ignored `.env` or a deployment secret store. If this key is lost, encrypted secret records cannot be decrypted later by the provisioning engine.
 
+Customer paid-number storage is write-only. When a paid number is submitted through the admin API, the backend stores an HMAC hash only; set `AFROGATE_IDENTITY_HASH_KEY` for a dedicated identity-hash key, or the backend falls back to `AFROGATE_SECRETS_KEY`.
+
 ## Local PostgreSQL
 
 Use PostgreSQL for development instead of SQLite. AfroGate already depends on PostgreSQL behavior such as `jsonb`, UUIDs, and PostgreSQL migrations; using SQLite would create a second database path and hide production bugs.
