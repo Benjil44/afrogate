@@ -871,3 +871,17 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, alert filters/history, Ubuntu deployment notes, and Docker Compose.
+- Expanded `infra/ubuntu/README.md` into a native deployment runbook covering host layout, local/private PostgreSQL, secret-safe env files, build commands, migrations, backend systemd, Nginx, firewall, optional agent service, update flow, rollback, and production gaps.
+- Hardened the backend systemd sample around `/etc/afrogate/afrogate.env`, dedicated service state/log directories, localhost binding, and low-privilege runtime settings.
+- Updated the Nginx sample for HTTP-to-HTTPS redirect, TLS placeholders, static dashboard hosting, `/api` proxying to `127.0.0.1:7000`, login/API rate limits, security headers, and static asset caching.
+- Added backend and agent environment samples plus an optional agent systemd sample without committing real secrets.
+- Updated checklist and memory to mark Ubuntu deployment notes with systemd and Nginx complete.
+- Bumped AfroGate to `0.61.1` for the Ubuntu deployment documentation and samples.
+- Verified `0.61.1` with `npm run version:check`.
+- Verified placeholder env safety with `npm run secrets:check`.
+- Verified workspace TypeScript checks with `npm run typecheck --workspaces --if-present`.
+- Verified production build with `npm run build --workspaces --if-present`.
+- Verified fixed-port dashboard smoke test with `npm run test:e2e`.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining high-priority work includes the production server-side protocol apply engine, protocol-aware route probes, shared empty/loading/stale states, alert filters/history, and optional Docker Compose.

@@ -1,0 +1,26 @@
+[Unit]
+Description=AfroGate Monitoring Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/afrogate
+EnvironmentFile=/etc/afrogate/agent.env
+ExecStart=/usr/bin/python3 apps/agent/run.py
+Restart=on-failure
+RestartSec=5
+User=afrogate-agent
+Group=afrogate-agent
+StateDirectory=afrogate-agent
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/afrogate-agent
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

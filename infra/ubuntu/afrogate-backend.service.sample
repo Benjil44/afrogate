@@ -1,16 +1,21 @@
 [Unit]
 Description=AfroGate Backend API
-After=network.target
+After=network-online.target postgresql.service
+Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/afrogate/apps/backend
-EnvironmentFile=/opt/afrogate/.env
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/afrogate/afrogate.env
 ExecStart=/usr/bin/node dist/main.js
-Restart=always
+Restart=on-failure
 RestartSec=5
 User=afrogate
 Group=afrogate
+StateDirectory=afrogate
+LogsDirectory=afrogate
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -18,6 +23,10 @@ ProtectSystem=strict
 ReadWritePaths=/var/lib/afrogate /var/log/afrogate
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
 SystemCallFilter=@system-service
 
 [Install]

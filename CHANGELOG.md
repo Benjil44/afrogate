@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.61.1 - 2026-05-28
+
+- Expanded native Ubuntu deployment notes for systemd, Nginx, local/private PostgreSQL, firewall posture, update flow, and rollback.
+- Added production-oriented backend and optional agent environment samples without real secrets.
+- Hardened the Nginx and systemd samples while keeping backend, database, and local control-plane egress ports private.
+
 ## 0.61.0 - 2026-05-28
 
 - Added GitHub Actions CI for version consistency, repository-file secret scanning, workspace typecheck/build, dashboard Playwright smoke tests, and dependency audit.
