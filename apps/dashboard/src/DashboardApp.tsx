@@ -15,6 +15,7 @@ import type {
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
+  AdminPaymentProviderAdapterSummary,
   AdminPermissionId,
   AdminPermissionsResponse,
   AdminProtocolServerApplyAdapterSummary,
@@ -3834,6 +3835,7 @@ function BillingPage({
   const [packages, setPackages] = useState<AdminVolumePackageSummary[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<AdminPaymentMethodSummary[]>([]);
   const [paymentOrders, setPaymentOrders] = useState<AdminPaymentOrderSummary[]>([]);
+  const [paymentProviderAdapters, setPaymentProviderAdapters] = useState<AdminPaymentProviderAdapterSummary[]>([]);
   const [accounts, setAccounts] = useState<AdminCustomerAccountSummary[]>([]);
   const [rewardSettings, setRewardSettings] = useState<AdminRewardedAdSettingsSummary | null>(null);
   const [dataState, setDataState] = useState<DataState>('loading');
@@ -3875,6 +3877,7 @@ function BillingPage({
       setSettings(catalogResponse.settings);
       setPackages(catalogResponse.packages);
       setPaymentMethods(catalogResponse.paymentMethods);
+      setPaymentProviderAdapters(catalogResponse.paymentProviderAdapters ?? []);
       setPaymentOrders(orderResponse.paymentOrders);
       setAccounts(accountResponse.accounts);
       setRewardSettings(rewardResponse.rewardedAds);
@@ -4249,6 +4252,7 @@ function BillingPage({
           activePackageCount={activePackageCount}
           format={format}
           paymentMethods={paymentMethods}
+          paymentProviderAdapters={paymentProviderAdapters}
           packages={packages}
           settings={settings}
           t={t}
@@ -4785,6 +4789,7 @@ function BillingCatalogPanel({
   activePackageCount,
   format,
   paymentMethods,
+  paymentProviderAdapters,
   packages,
   settings,
   t,
@@ -4793,6 +4798,7 @@ function BillingCatalogPanel({
   activePackageCount: number;
   format: DashboardFormatters;
   paymentMethods: AdminPaymentMethodSummary[];
+  paymentProviderAdapters: AdminPaymentProviderAdapterSummary[];
   packages: AdminVolumePackageSummary[];
   settings: AdminBillingSettingsSummary | null;
   t: DashboardStrings;
@@ -4849,6 +4855,42 @@ function BillingCatalogPanel({
             </StatusBadge>
           ))}
         </div>
+        {paymentProviderAdapters.length > 0 ? (
+          <div className="grid gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-afro-ink">{t.billing.paymentProviderAdapters}</h3>
+              <span className={mutedTextClass}>{t.billing.adaptersLoaded(format.integer(paymentProviderAdapters.length))}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse">
+                <thead>
+                  <tr>
+                    {[t.billing.provider, t.billing.checkoutMode, t.billing.settlement, t.billing.verification, t.billing.status].map((heading) => (
+                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentProviderAdapters.map((adapter) => (
+                    <tr key={adapter.provider}>
+                      <TableCell>{paymentProviderLabel(adapter.provider, t)}</TableCell>
+                      <TableCell>{paymentCheckoutModeLabel(adapter.checkoutMode, t)}</TableCell>
+                      <TableCell>{paymentSettlementLabel(adapter.settlementMode, t)}</TableCell>
+                      <TableCell>{paymentVerificationLabel(adapter.supportsWebhookVerification, t)}</TableCell>
+                      <TableCell>
+                        <StatusBadge tone={paymentAdapterStatusTone(adapter.status)}>
+                          {paymentAdapterStatusLabel(adapter.status, t)}
+                        </StatusBadge>
+                      </TableCell>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -4968,6 +5010,53 @@ function billingStatusTone(status: string): Tone {
   if (status === 'refunded' || status === 'suspended') return 'warning';
 
   return 'critical';
+}
+
+function paymentAdapterStatusTone(status: string): Tone {
+  if (status === 'implemented') return 'good';
+  if (status === 'manual_settlement' || status === 'verification_adapter_required') return 'warning';
+
+  return 'neutral';
+}
+
+function paymentProviderLabel(provider: string, t: DashboardStrings): string {
+  if (provider === 'paypal') return t.billing.providerPaypal;
+  if (provider === 'card') return t.billing.providerCard;
+  if (provider === 'crypto') return t.billing.providerCrypto;
+  if (provider === 'bank_transfer') return t.billing.providerBankTransfer;
+  if (provider === 'local_gateway') return t.billing.providerLocalGateway;
+  if (provider === 'manual') return t.billing.providerManual;
+
+  return provider;
+}
+
+function paymentCheckoutModeLabel(mode: string, t: DashboardStrings): string {
+  if (mode === 'manual') return t.billing.checkoutManual;
+  if (mode === 'hosted_redirect') return t.billing.checkoutHostedRedirect;
+  if (mode === 'external_link') return t.billing.checkoutExternalLink;
+  if (mode === 'provider_sdk') return t.billing.checkoutProviderSdk;
+
+  return mode;
+}
+
+function paymentSettlementLabel(mode: string, t: DashboardStrings): string {
+  if (mode === 'auto_capture') return t.billing.settlementAutoCapture;
+  if (mode === 'manual_verification') return t.billing.settlementManualVerification;
+  if (mode === 'hosted_gateway') return t.billing.settlementHostedGateway;
+
+  return mode;
+}
+
+function paymentVerificationLabel(verified: boolean, t: DashboardStrings): string {
+  return verified ? t.billing.webhookVerified : t.billing.manualOrProviderVerification;
+}
+
+function paymentAdapterStatusLabel(status: string, t: DashboardStrings): string {
+  if (status === 'implemented') return t.billing.adapterImplemented;
+  if (status === 'manual_settlement') return t.billing.adapterManualSettlement;
+  if (status === 'verification_adapter_required') return t.billing.adapterVerificationRequired;
+
+  return status;
 }
 
 function customerQuotaScopeLabel(scope: CustomerQuotaScope | string, t: DashboardStrings): string {

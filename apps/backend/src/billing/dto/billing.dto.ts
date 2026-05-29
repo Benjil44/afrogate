@@ -412,6 +412,23 @@ export class CreatePayPalCheckoutDto {
   idempotencyKey?: string | null;
 }
 
+export class CreatePaymentProviderCheckoutDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  returnUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  cancelUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+}
+
 export class CapturePayPalPaymentOrderDto {
   @IsOptional()
   @IsString()

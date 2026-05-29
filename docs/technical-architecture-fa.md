@@ -310,7 +310,7 @@ Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The cl
 - created_at
 - updated_at
 
-Payment provider secrets, including PayPal client secrets and webhook IDs, must not be stored in `public_config`. PayPal execution uses `AFROGATE_PAYPAL_*` deployment secrets and the backend outbound HTTP client; future providers should use encrypted `secret_records` or a dedicated provider-secret reference.
+Payment provider secrets, including PayPal client secrets, webhook IDs, card gateway signing keys, crypto exchange API keys, and local gateway private keys, must not be stored in `public_config`. PayPal execution uses `AFROGATE_PAYPAL_*` deployment secrets and the backend outbound HTTP client. The generic card/local-gateway adapter reads only a non-secret hosted `checkoutUrl` from `public_config` and appends non-sensitive order/reference parameters. Bank-transfer and crypto adapters generate a payment reference and manual instructions from public merchant metadata. Any provider that needs signed requests, card-tokenization credentials, or automatic settlement callbacks must use deployment/encrypted secret storage before it can mark orders paid automatically.
 
 ### payment_orders
 
@@ -334,7 +334,7 @@ Payment provider secrets, including PayPal client secrets and webhook IDs, must 
 
 Payment orders are the audit boundary between package selection and quota allocation. A paid order can be consumed by one `payment_order_allocations` row, which is the only path that increases usable customer quota from a purchase.
 
-The PayPal adapter exposes guarded admin actions to create a hosted checkout order and capture an approved order, plus `/api/payments/paypal/webhook` for PayPal callbacks. Webhook events must be verified through PayPal before they can mark an order paid, failed, or refunded. PayPal orders should use a three-letter ISO currency such as USD or EUR; local currencies such as toman stay on manual/local gateway methods until a local provider adapter exists.
+`GET /api/admin/billing/catalog` includes a payment-provider adapter registry for PayPal, card, crypto, bank transfer, and local gateways. The generic non-PayPal boundary is `POST /api/admin/payment-orders/:id/provider/checkout`: it prepares hosted checkout URLs for card/local gateway methods or payment references/instructions for bank-transfer and crypto methods, stores only non-secret adapter metadata, and keeps the order pending. PayPal still uses dedicated checkout/capture/webhook endpoints because PayPal has verified capture semantics. Non-PayPal generic adapters do not allocate quota automatically; admins must verify payment externally and move the order through the audited status/allocation path, or a future provider-specific verified webhook adapter must do so.
 
 ### payment_order_allocations
 

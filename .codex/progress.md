@@ -1811,7 +1811,7 @@ Repository remote is ready:
 
 - Added `docs/enterprise-deployment-guide.md` as the production control-plane deployment runbook.
 - Covered native Ubuntu/Nginx/systemd/PostgreSQL topology, public-port boundaries, host provisioning, environment secrets, least-privilege database roles, migrations, service setup, firewall, agent rules, backups, monitoring, update flow, rollback, privacy rules, and go/no-go checks.
-- Explicitly kept live route/protocol data-plane apply, native per-app VPN split tunneling, additional payment provider adapters, and verified rewarded-ad provider callbacks behind future implementation gates.
+- Explicitly kept live route/protocol data-plane apply, native per-app VPN split tunneling, additional production payment provider hardening, and verified rewarded-ad provider callbacks behind future implementation gates.
 - Linked the guide from `README.md`, `SECURITY.md`, repository structure docs, and dashboard/sidebar checklist.
 - Updated memory and main checklist; checklist completion is now `233 / 237` items, or `98.3%` complete with `1.7%` remaining.
 - Bumped AfroGate to `0.101.1` and updated `CHANGELOG.md`.
@@ -1824,4 +1824,32 @@ Repository remote is ready:
 
 ### Remaining
 
-- Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.
+- Production protocol apply, additional production payment provider hardening, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Payment Provider Adapter Slice
+
+### Completed
+
+- Added shared payment-provider adapter contracts and extended the billing catalog with adapter readiness for PayPal, card, local gateway, bank transfer, and crypto.
+- Added guarded `POST /api/admin/payment-orders/:id/provider/checkout` for non-PayPal provider preparation.
+- Card and local-gateway methods can now prepare hosted checkout URLs from non-secret public config, while bank-transfer and crypto methods can prepare payment references and manual instructions.
+- Kept non-PayPal generic providers honest: they do not mark orders paid, verify settlement, allocate quota, or store provider secrets. Admin verification or a future provider-specific verified callback is required before paid status and quota allocation.
+- Added Billing page adapter readiness visibility with bilingual labels.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `234 / 237` items, or `98.7%` complete with `1.3%` remaining.
+- Bumped AfroGate to `0.102.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 14 tests passed, including the Billing provider-adapter readiness check.
+- Ran `npm run contrast:check`.
+- Ran a built Node smoke test for card checkout URL preparation.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.

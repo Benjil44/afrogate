@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.102.0 - 2026-05-29
+
+- Added payment-provider adapter readiness to the billing catalog for PayPal, card, local gateway, bank transfer, and crypto.
+- Added guarded non-PayPal checkout preparation for hosted card/local gateway URLs and bank-transfer/crypto payment references.
+- Kept generic non-PayPal adapters settlement-safe: they leave orders pending until audited admin verification or a future provider-specific verified callback marks payment complete.
+
 ## 0.101.1 - 2026-05-29
 
 - Added the enterprise deployment guide for native Ubuntu/Nginx/systemd/PostgreSQL production control-plane rollout.

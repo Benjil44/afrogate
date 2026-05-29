@@ -35,6 +35,8 @@ import type {
   AdminCustomerAccountDetail,
   AdminCustomerAccountSummary,
   AdminPayPalPaymentOrderResponse,
+  AdminPaymentProviderAdapterSummary,
+  AdminPaymentProviderCheckoutResponse,
   AdminPaymentOrderAllocationSummary,
   IssuedClientAccessTokenSummary,
   AdminPaymentMethodSummary,
@@ -77,6 +79,7 @@ import {
   AllocatePaymentOrderDto,
   CapturePayPalPaymentOrderDto,
   CreatePayPalCheckoutDto,
+  CreatePaymentProviderCheckoutDto,
   CreatePaymentMethodDto,
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
@@ -88,6 +91,11 @@ import {
 } from './dto/billing.dto';
 import { PayPalPaymentService, type PayPalWebhookSignatureHeaders } from './paypal-payment.service';
 import { buildCurrentPanelImportPreview } from './current-panel-import.adapters';
+import {
+  listPaymentProviderAdapters,
+  prepareAdditionalPaymentProviderCheckout,
+  type PreparedPaymentProviderCheckout,
+} from './payment-provider-adapters';
 
 const BYTES_PER_GB = 1024 ** 3;
 const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
@@ -563,7 +571,12 @@ export class BillingService {
       settings: await this.getBillingSettings(),
       packages: await this.listVolumePackages({ limit: 100 }),
       paymentMethods: await this.listPaymentMethods({ limit: 100 }),
+      paymentProviderAdapters: this.listPaymentProviderAdapters(),
     };
+  }
+
+  listPaymentProviderAdapters(): AdminPaymentProviderAdapterSummary[] {
+    return listPaymentProviderAdapters();
   }
 
   async getBillingSettings(): Promise<AdminBillingSettingsSummary> {
@@ -1217,6 +1230,97 @@ export class BillingService {
       };
     } catch (error) {
       this.throwConflictIfUniqueViolation(error, 'Payment order allocation already exists');
+      throw error;
+    }
+  }
+
+  async createPaymentProviderCheckout(
+    id: string,
+    dto: CreatePaymentProviderCheckoutDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminPaymentProviderCheckoutResponse> {
+    try {
+      const prepared = await this.database.transaction(async (executor) => {
+        const existing = await this.getPaymentOrderRowForUpdate(executor, id);
+        if (existing.status !== 'pending') {
+          throw new BadRequestException('Provider checkout can only be prepared for pending payment orders');
+        }
+        if (!existing.paymentMethodId) {
+          throw new BadRequestException('Payment order no longer has a payment method');
+        }
+
+        const method = await this.getPaymentMethodRowForUpdate(executor, existing.paymentMethodId);
+        const providerCheckout = prepareAdditionalPaymentProviderCheckout({
+          order: {
+            id: existing.id,
+            packageName: existing.packageName,
+            packageSlug: existing.packageSlug,
+            amount: this.numberFromBigInt(existing.amount) ?? 0,
+            currency: existing.currency,
+            provider: existing.provider,
+            providerOrderId: existing.providerOrderId,
+          },
+          method: {
+            id: method.id,
+            name: method.name,
+            slug: method.slug,
+            provider: method.provider,
+            checkoutMode: method.checkoutMode,
+            publicConfig: method.publicConfig ?? {},
+            instructions: method.instructions,
+          },
+          returnUrl: dto.returnUrl,
+          cancelUrl: dto.cancelUrl,
+          idempotencyKey: dto.idempotencyKey,
+        });
+        const metadata = this.mergePaymentProviderAdapterMetadata(existing.metadata, providerCheckout);
+
+        await executor.query(
+          `
+            UPDATE payment_orders
+            SET provider_order_id = $1,
+                checkout_url = $2,
+                metadata = $3::jsonb,
+                updated_at = now()
+            WHERE id = $4
+          `,
+          [
+            providerCheckout.paymentReference,
+            providerCheckout.checkoutUrl,
+            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            id,
+          ],
+        );
+
+        await this.audit.record(
+          actor,
+          'payment_order.provider_checkout_prepare',
+          'payment_order',
+          id,
+          {
+            provider: providerCheckout.provider,
+            paymentReference: providerCheckout.paymentReference,
+            adapterStatus: providerCheckout.adapterStatus,
+            settlementMode: providerCheckout.settlementMode,
+            hostedCheckout: Boolean(providerCheckout.checkoutUrl),
+          },
+          executor,
+        );
+
+        return providerCheckout;
+      });
+
+      return {
+        paymentOrder: await this.getPaymentOrder(id),
+        provider: prepared.provider,
+        paymentReference: prepared.paymentReference,
+        checkoutUrl: prepared.checkoutUrl,
+        instructions: prepared.instructions,
+        adapterStatus: prepared.adapterStatus,
+        action: 'provider_checkout_prepared',
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
       throw error;
     }
   }
@@ -6473,6 +6577,31 @@ export class BillingService {
       paypal: {
         ...currentPayPal,
         ...cleanPatch,
+      },
+    };
+  }
+
+  private mergePaymentProviderAdapterMetadata(
+    existing: Record<string, unknown> | null | undefined,
+    prepared: PreparedPaymentProviderCheckout,
+  ): Record<string, unknown> {
+    const current = existing ?? {};
+    const currentAdapters = this.asRecord(current.paymentProviderAdapters) ?? {};
+    const currentProvider = this.asRecord(currentAdapters[prepared.provider]) ?? {};
+
+    return {
+      ...current,
+      paymentProviderAdapters: {
+        ...currentAdapters,
+        [prepared.provider]: {
+          ...currentProvider,
+          adapterVersion: prepared.adapterVersion,
+          adapterStatus: prepared.adapterStatus,
+          checkoutPreparedAt: new Date().toISOString(),
+          hostedCheckout: Boolean(prepared.checkoutUrl),
+          paymentReference: prepared.paymentReference,
+          settlementMode: prepared.settlementMode,
+        },
       },
     };
   }

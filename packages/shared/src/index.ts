@@ -1095,6 +1095,21 @@ export interface UpdateVolumePackageRequest {
 export type PaymentMethodStatus = 'active' | 'disabled';
 export type PaymentCheckoutMode = 'manual' | 'hosted_redirect' | 'external_link' | 'provider_sdk';
 export type PaymentProvider = 'paypal' | 'manual' | 'bank_transfer' | 'card' | 'crypto' | 'local_gateway';
+export type PaymentProviderAdapterStatus = 'implemented' | 'manual_settlement' | 'verification_adapter_required';
+export type PaymentProviderSettlementMode = 'auto_capture' | 'manual_verification' | 'hosted_gateway';
+
+export interface AdminPaymentProviderAdapterSummary {
+  provider: PaymentProvider | string;
+  checkoutMode: PaymentCheckoutMode | string;
+  settlementMode: PaymentProviderSettlementMode | string;
+  status: PaymentProviderAdapterStatus | string;
+  supportsHostedCheckout: boolean;
+  supportsPaymentReference: boolean;
+  supportsWebhookVerification: boolean;
+  requiresSecretRef: boolean;
+  publicConfigKeys: string[];
+  safetyNotes: string[];
+}
 
 export interface AdminPaymentMethodSummary {
   id: string;
@@ -1250,6 +1265,22 @@ export interface AdminPayPalPaymentOrderResponse {
   providerOrderId?: string | null;
   providerCaptureId?: string | null;
   checkoutUrl?: string | null;
+  action: string;
+}
+
+export interface CreatePaymentProviderCheckoutRequest {
+  returnUrl?: string | null;
+  cancelUrl?: string | null;
+  idempotencyKey?: string | null;
+}
+
+export interface AdminPaymentProviderCheckoutResponse {
+  paymentOrder: AdminPaymentOrderSummary;
+  provider: PaymentProvider | string;
+  paymentReference: string;
+  checkoutUrl?: string | null;
+  instructions?: string | null;
+  adapterStatus: PaymentProviderAdapterStatus | string;
   action: string;
 }
 
@@ -3325,6 +3356,7 @@ export interface AdminBillingCatalogResponse {
   settings: AdminBillingSettingsSummary;
   packages: AdminVolumePackageSummary[];
   paymentMethods: AdminPaymentMethodSummary[];
+  paymentProviderAdapters: AdminPaymentProviderAdapterSummary[];
 }
 
 export interface AdminOutboundsResponse {

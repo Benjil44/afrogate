@@ -34,6 +34,8 @@ import type {
   AdminPaymentMethodsResponse,
   AdminPaymentOrderSummary,
   AdminPaymentOrdersResponse,
+  AdminPaymentProviderAdapterSummary,
+  AdminPaymentProviderCheckoutResponse,
   AdminRecordClientUsageResponse,
   AdminVolumePackageSummary,
   AdminVolumePackagesResponse,
@@ -61,6 +63,7 @@ import {
   AllocatePaymentOrderDto,
   CapturePayPalPaymentOrderDto,
   CreatePayPalCheckoutDto,
+  CreatePaymentProviderCheckoutDto,
   CreatePaymentMethodDto,
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
@@ -185,6 +188,12 @@ export class BillingController {
     return this.billingService.getPaymentMethod(id);
   }
 
+  @Get('payment-provider-adapters')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  listPaymentProviderAdapters(): AdminPaymentProviderAdapterSummary[] {
+    return this.billingService.listPaymentProviderAdapters();
+  }
+
   @Post('payment-methods')
   @Roles('admin')
   createPaymentMethod(
@@ -251,6 +260,16 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminAllocatePaymentOrderResponse> {
     return this.billingService.allocatePaymentOrder(id, payload, request.actor);
+  }
+
+  @Post('payment-orders/:id/provider/checkout')
+  @Roles('admin')
+  createPaymentProviderCheckout(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: CreatePaymentProviderCheckoutDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminPaymentProviderCheckoutResponse> {
+    return this.billingService.createPaymentProviderCheckout(id, payload, request.actor);
   }
 
   @Post('payment-orders/:id/paypal/checkout')

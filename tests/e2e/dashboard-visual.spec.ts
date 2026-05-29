@@ -103,6 +103,9 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByRole('heading', { name: 'Usage and billing' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Reward Settings' })).toBeVisible();
   await expect(page.getByText('starter-25gb')).toBeVisible();
+  await expect(page.getByText('Payment provider adapters')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Card' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Bank transfer' })).toBeVisible();
 
   await page.getByLabel('Reward MB').fill('150');
   await page.getByRole('button', { name: 'Save reward settings' }).click();
@@ -496,6 +499,13 @@ async function mockDashboardApi(page: Page): Promise<void> {
               supportsAutoCapture: true,
               updatedAt: fixedNow,
             },
+          ],
+          paymentProviderAdapters: [
+            createPaymentProviderAdapter('paypal', 'hosted_redirect', 'auto_capture', 'implemented', true),
+            createPaymentProviderAdapter('card', 'hosted_redirect', 'hosted_gateway', 'verification_adapter_required', false),
+            createPaymentProviderAdapter('local_gateway', 'hosted_redirect', 'hosted_gateway', 'verification_adapter_required', false),
+            createPaymentProviderAdapter('bank_transfer', 'manual', 'manual_verification', 'manual_settlement', false),
+            createPaymentProviderAdapter('crypto', 'manual', 'manual_verification', 'manual_settlement', false),
           ],
           packages: [
             {
@@ -1225,6 +1235,27 @@ function reportsSummaryRow() {
       total: 3,
       unknown: 0,
     },
+  };
+}
+
+function createPaymentProviderAdapter(
+  provider: string,
+  checkoutMode: string,
+  settlementMode: string,
+  status: string,
+  supportsWebhookVerification: boolean,
+) {
+  return {
+    checkoutMode,
+    provider,
+    publicConfigKeys: [],
+    requiresSecretRef: provider === 'paypal' || provider === 'card' || provider === 'local_gateway',
+    safetyNotes: [],
+    settlementMode,
+    status,
+    supportsHostedCheckout: checkoutMode !== 'manual',
+    supportsPaymentReference: true,
+    supportsWebhookVerification,
   };
 }
 

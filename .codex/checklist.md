@@ -175,7 +175,7 @@
 - [x] Admin-managed rewarded-ad reward and daily cap settings.
 - [x] Admin dashboard usage and billing page.
 - [x] Admin dashboard customer account limit manager for shared account and per-client GB caps.
-- [ ] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
+- [x] Additional payment provider adapters for card, crypto, bank transfer, and local gateways.
 - [ ] Verified rewarded-ad provider SDK/webhook adapter.
 - [x] Usage accounting.
 - [x] Remaining volume display.
