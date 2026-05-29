@@ -14,7 +14,7 @@ infra/
   ubuntu/        Native Ubuntu deployment notes and samples
   postgres/      SQL migrations and database notes
   docker/        Optional Docker Compose deployment samples
-docs/            Product, architecture, roadmap, threat model, and implementation docs
+docs/            Product, architecture, roadmap, threat model, deployment, and implementation docs
 .codex/          Persistent project memory, checklist, and progress
 tests/e2e/       Playwright browser smoke and dense dashboard visual-capture tests
 ```
@@ -120,3 +120,5 @@ The guarded incident timeline API, `GET /api/admin/incidents/timeline`, merges e
 The guarded reports API, `GET /api/admin/reports/summary`, aggregates operational counts for servers, outbounds, open alerts, backup readiness, and synthetic route-quality recommendations into a dashboard Reports page. It is read-only, requires `reports:read`, and avoids customer identity, traffic contents, user destinations, client IP history, raw backups, secrets, and export data.
 
 Tenant branding lives in `apps/backend/src/branding` with guarded `GET/PATCH /api/admin/tenant-branding` and PostgreSQL migration `0026_tenant_brand_settings.sql`. The dashboard Settings page edits the default tenant's public brand/support metadata and preview, while shared contracts live in `packages/shared`.
+
+The enterprise deployment guide is `docs/enterprise-deployment-guide.md`. It consolidates native Ubuntu, Nginx, systemd, private PostgreSQL, least-privilege roles, backups, rollout/rollback, monitoring, and go/no-go checks for production control-plane deployments.

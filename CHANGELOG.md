@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.101.1 - 2026-05-29
+
+- Added the enterprise deployment guide for native Ubuntu/Nginx/systemd/PostgreSQL production control-plane rollout.
+- Documented deployment preflight, secret handling, least-privilege database roles, backup/restore expectations, update/rollback flow, monitoring, and go/no-go checks.
+- Linked the guide from README, repository structure, security policy, and the implementation checklist.
+
 ## 0.101.0 - 2026-05-29
 
 - Added default-tenant branding settings backed by `tenant_brand_settings` and guarded `GET/PATCH /api/admin/tenant-branding`.

@@ -19,6 +19,7 @@ For now, report security issues privately to the project owner. Do not open publ
 ## Required Before Production
 
 - Admin authentication, role-based authorization, and a visible permission matrix for production RBAC review.
+- Review and apply the enterprise deployment guide in `docs/enterprise-deployment-guide.md`.
 - Per-agent credentials and the guarded agent token rotation endpoint.
 - Firewall baseline applied on every VPS.
 - Nginx rate limiting, backend API rate limiting for sensitive public endpoints, and request size limits.

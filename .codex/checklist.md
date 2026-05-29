@@ -241,7 +241,7 @@
 - [x] Backup and restore UI.
 - [x] Reports and data analysis.
 - [x] Tenant/brand settings.
-- [ ] Enterprise deployment guide.
+- [x] Enterprise deployment guide.
 
 ## Enhancement Tracks
 

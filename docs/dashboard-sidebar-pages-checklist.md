@@ -126,5 +126,6 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Backups status page with guarded read-only monitoring.
 - [x] Backups restore-readiness UI with guarded read-only runbook/checklist and no restore execution controls.
 - [x] Reports page with guarded read-only operational risk, backup, alert, server, outbound, and synthetic route-quality analysis.
+- [x] Enterprise deployment guide for native Ubuntu/Nginx/systemd/PostgreSQL production control-plane rollout.
 - [x] Audit logs.
 - [x] Settings with guided WireGuard/system setup, tenant branding, and write-only secret inputs.

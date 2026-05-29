@@ -19,6 +19,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Iran/Germa
 - [Versioning policy](docs/versioning-policy.md)
 - [Repository structure](docs/repository-structure.md)
 - [Security and performance policy](docs/security-performance-policy.md)
+- [Enterprise deployment guide](docs/enterprise-deployment-guide.md)
 - [Security policy](SECURITY.md)
 - [Agent instructions](AGENTS.md)
 - [Codex project memory](.codex/memory.md)

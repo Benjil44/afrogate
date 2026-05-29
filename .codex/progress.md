@@ -1804,3 +1804,24 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Enterprise Deployment Guide Slice
+
+### Completed
+
+- Added `docs/enterprise-deployment-guide.md` as the production control-plane deployment runbook.
+- Covered native Ubuntu/Nginx/systemd/PostgreSQL topology, public-port boundaries, host provisioning, environment secrets, least-privilege database roles, migrations, service setup, firewall, agent rules, backups, monitoring, update flow, rollback, privacy rules, and go/no-go checks.
+- Explicitly kept live route/protocol data-plane apply, native per-app VPN split tunneling, additional payment provider adapters, and verified rewarded-ad provider callbacks behind future implementation gates.
+- Linked the guide from `README.md`, `SECURITY.md`, repository structure docs, and dashboard/sidebar checklist.
+- Updated memory and main checklist; checklist completion is now `233 / 237` items, or `98.3%` complete with `1.7%` remaining.
+- Bumped AfroGate to `0.101.1` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.
