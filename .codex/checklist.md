@@ -244,7 +244,7 @@
 
 ## Enhancement Tracks
 
-- [ ] Incident timeline.
+- [x] Incident timeline.
 - [x] Telegram critical alert flow.
 - [x] Route health score history.
 - [x] Operator and outbound time-window quality reports.

@@ -53,6 +53,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Resolved alert history.
 - [x] Telegram alert delivery status.
 - [x] Real alert API binding.
+- [x] Incident timeline from alert and route-decision events.
 
 ## Settings Page
 

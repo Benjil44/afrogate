@@ -55,7 +55,12 @@ test('alerts page filters open and resolved history rows', async ({ page }) => {
   await page.locator('[data-view="alerts"]').click();
 
   await expect(page.getByRole('heading', { name: 'Open Alerts' })).toBeVisible();
-  await expect(page.getByText('Storage below 10%')).toBeVisible();
+  await expect(page.getByText('Storage below 10%', { exact: true })).toBeVisible();
+  const timelinePanel = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Incident Timeline' }),
+  }).last();
+  await expect(timelinePanel).toBeVisible();
+  await expect(timelinePanel.getByText('Frankfurt WG gaming -> Dubai WG standby')).toBeVisible();
 
   await page.getByRole('button', { name: 'Resolved' }).click();
   await expect(page.getByRole('heading', { name: 'Alert History' })).toBeVisible();
@@ -66,7 +71,7 @@ test('alerts page filters open and resolved history rows', async ({ page }) => {
   await expect(page.getByText('Resolved storage guard')).toBeVisible();
   await expect(page.getByText('Resolved tunnel jitter')).toHaveCount(0);
 
-  await page.getByLabel('Source').selectOption('teh-gateway-03');
+  await page.getByLabel('Source', { exact: true }).selectOption('teh-gateway-03');
   await expect(page.getByText('Resolved storage guard')).toBeVisible();
 });
 
@@ -278,6 +283,9 @@ async function mockDashboardApi(page: Page): Promise<void> {
         await fulfillJson(route, {
           alerts: url.searchParams.get('status') === 'resolved' ? resolvedAlertRows() : openAlertRows(),
         });
+        return;
+      case '/api/admin/incidents/timeline':
+        await fulfillJson(route, incidentTimelineResponse());
         return;
       case '/api/admin/audit-logs':
         await fulfillJson(route, {
@@ -679,6 +687,51 @@ function resolvedAlertRows() {
       title: 'Resolved tunnel jitter',
     },
   ];
+}
+
+function incidentTimelineResponse() {
+  return {
+    events: [
+      {
+        actorId: 'admin-visual',
+        detail: 'Frankfurt WG gaming -> Dubai WG standby / packetLossHigh',
+        id: 'route-decision:visual-assignment',
+        kind: 'route_assignment',
+        metadata: {
+          assignmentKey: 'default',
+          decisionKind: 'assignment_apply',
+          reasonCodes: 'packetLossHigh, stickySessionProtected',
+        },
+        occurredAt: '2026-05-28T07:58:00.000Z',
+        outboundName: 'Dubai WG standby',
+        routeGroup: 'main',
+        severity: 'warning',
+        sourceId: 'default',
+        sourceLabel: 'main',
+        sourceType: 'route_decision',
+        status: 'switchRecommended',
+        title: 'Route assignment applied',
+      },
+      {
+        detail: 'Storage is below the critical guard on teh-gateway-03.',
+        id: 'alert-storage-critical:opened',
+        kind: 'alert_opened',
+        metadata: {
+          alertId: 'alert-storage-critical',
+          sourceType: 'server',
+        },
+        occurredAt: '2026-05-28T07:50:00.000Z',
+        severity: 'critical',
+        sourceId: 'server-teh',
+        sourceLabel: 'teh-gateway-03',
+        sourceType: 'server',
+        status: 'open',
+        title: 'Storage below 10%',
+      },
+    ],
+    generatedAt: fixedNow,
+    rangeHours: 24,
+  };
 }
 
 function auditLogRows() {

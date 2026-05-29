@@ -33,6 +33,8 @@ import type {
   AdminRouteSettingsSummary,
   AdminRouteDecisionCandidateSummary,
   AdminRouteDecisionPreviewResponse,
+  AdminIncidentTimelineEvent,
+  AdminIncidentTimelineResponse,
   AdminSecretRefSummary,
   AdminRouteHealthHistoryResponse,
   AdminRouteQualityAnalyticsResponse,
@@ -1442,6 +1444,85 @@ export class OperationsService {
       lastSeenAt: row.lastSeenAt.toISOString(),
       resolvedAt: row.resolvedAt?.toISOString() ?? null,
     }));
+  }
+
+  async getIncidentTimeline(rangeHours = 24, limit = 100): Promise<AdminIncidentTimelineResponse> {
+    const boundedLimit = Math.max(1, Math.min(limit, 200));
+    const queryLimit = Math.min(boundedLimit * 2, 500);
+    const rangeStart = new Date(Date.now() - rangeHours * 60 * 60 * 1000);
+    const [alertResult, routeDecisionResult] = await Promise.all([
+      this.database.query<AlertRow>(
+        `
+          SELECT
+            a.id,
+            a.severity,
+            a.status,
+            a.source_type AS "sourceType",
+            a.source_id AS "sourceId",
+            COALESCE(s.hostname, s.external_id) AS "sourceLabel",
+            a.title,
+            a.message,
+            a.first_seen_at AS "firstSeenAt",
+            a.last_seen_at AS "lastSeenAt",
+            a.resolved_at AS "resolvedAt"
+          FROM alerts a
+          LEFT JOIN servers s
+            ON a.source_type = 'server'
+            AND (s.external_id = a.source_id OR s.id::text = a.source_id)
+          WHERE a.first_seen_at >= now() - ($1::int * interval '1 hour')
+            OR a.resolved_at >= now() - ($1::int * interval '1 hour')
+          ORDER BY GREATEST(a.first_seen_at, a.last_seen_at, COALESCE(a.resolved_at, a.last_seen_at)) DESC
+          LIMIT $2
+        `,
+        [rangeHours, queryLimit],
+      ),
+      this.database.query<RouteDecisionEventRow>(
+        `
+          SELECT
+            event.id,
+            event.route_group AS "routeGroup",
+            event.assignment_key AS "assignmentKey",
+            event.decision_kind AS "decisionKind",
+            event.decision_state AS "decisionState",
+            event.score_profile AS "scoreProfile",
+            event.from_outbound_id AS "fromOutboundId",
+            from_outbound.name AS "fromOutboundName",
+            event.to_outbound_id AS "toOutboundId",
+            to_outbound.name AS "toOutboundName",
+            event.from_score AS "fromScore",
+            event.to_score AS "toScore",
+            event.score_delta AS "scoreDelta",
+            event.hysteresis_score_delta AS "hysteresisScoreDelta",
+            event.cooldown_until AS "cooldownUntil",
+            event.route_locked AS "routeLocked",
+            event.auto_route_enabled AS "autoRouteEnabled",
+            event.reason_codes AS "reasonCodes",
+            event.applied_at AS "appliedAt",
+            event.created_by AS "createdBy",
+            event.created_at AS "createdAt"
+          FROM route_decision_events event
+          LEFT JOIN outbounds from_outbound ON from_outbound.id = event.from_outbound_id
+          LEFT JOIN outbounds to_outbound ON to_outbound.id = event.to_outbound_id
+          WHERE event.created_at >= now() - ($1::int * interval '1 hour')
+          ORDER BY event.created_at DESC
+          LIMIT $2
+        `,
+        [rangeHours, queryLimit],
+      ),
+    ]);
+
+    const events = [
+      ...alertResult.rows.flatMap((row) => this.mapAlertTimelineEvents(row, rangeStart)),
+      ...routeDecisionResult.rows.map((row) => this.mapRouteDecisionTimelineEvent(row)),
+    ]
+      .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt) || left.id.localeCompare(right.id))
+      .slice(0, boundedLimit);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      rangeHours,
+      events,
+    };
   }
 
   async getSettings(routeGroupInput?: string): Promise<AdminSettingsResponse> {
@@ -3266,6 +3347,123 @@ export class OperationsService {
     };
   }
 
+  private mapAlertTimelineEvents(row: AlertRow, rangeStart: Date): AdminIncidentTimelineEvent[] {
+    const events: AdminIncidentTimelineEvent[] = [];
+    const baseMetadata = {
+      alertId: row.id,
+      firstSeenAt: row.firstSeenAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      resolvedAt: row.resolvedAt?.toISOString() ?? null,
+      sourceType: row.sourceType,
+    };
+
+    if (row.firstSeenAt.getTime() >= rangeStart.getTime()) {
+      events.push({
+        id: `${row.id}:opened`,
+        kind: 'alert_opened',
+        severity: this.incidentSeverityFromAlert(row.severity),
+        title: row.title,
+        detail: row.message,
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+        sourceLabel: row.sourceLabel,
+        occurredAt: row.firstSeenAt.toISOString(),
+        status: row.status,
+        metadata: baseMetadata,
+      });
+    }
+
+    if (row.resolvedAt && row.resolvedAt.getTime() >= rangeStart.getTime()) {
+      events.push({
+        id: `${row.id}:resolved`,
+        kind: 'alert_resolved',
+        severity: 'info',
+        title: row.title,
+        detail: row.message,
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+        sourceLabel: row.sourceLabel,
+        occurredAt: row.resolvedAt.toISOString(),
+        status: 'resolved',
+        metadata: baseMetadata,
+      });
+    }
+
+    return events;
+  }
+
+  private mapRouteDecisionTimelineEvent(row: RouteDecisionEventRow): AdminIncidentTimelineEvent {
+    const reasonCodes = this.stringArrayOrEmpty(row.reasonCodes);
+    const kind = row.decisionKind === 'assignment_apply' ? 'route_assignment' : 'route_decision';
+    const outboundName = row.toOutboundName ?? row.fromOutboundName ?? null;
+
+    return {
+      id: `route-decision:${row.id}`,
+      kind,
+      severity: this.routeDecisionTimelineSeverity(row, reasonCodes),
+      title: kind === 'route_assignment' ? 'Route assignment applied' : 'Route decision recorded',
+      detail: this.describeRouteDecisionTimelineDetail(row, reasonCodes),
+      sourceType: 'route_decision',
+      sourceId: row.assignmentKey,
+      sourceLabel: row.routeGroup,
+      routeGroup: row.routeGroup,
+      outboundName,
+      actorId: row.createdBy,
+      occurredAt: row.createdAt.toISOString(),
+      status: row.decisionState,
+      metadata: {
+        eventId: row.id,
+        assignmentKey: row.assignmentKey,
+        decisionKind: row.decisionKind,
+        decisionState: row.decisionState,
+        scoreProfile: row.scoreProfile ?? null,
+        reasonCodes: reasonCodes.length > 0 ? reasonCodes.slice(0, 8).join(', ') : null,
+        fromOutboundId: row.fromOutboundId,
+        toOutboundId: row.toOutboundId,
+        fromScore: row.fromScore,
+        toScore: row.toScore,
+        scoreDelta: row.scoreDelta,
+        routeLocked: row.routeLocked,
+        autoRouteEnabled: row.autoRouteEnabled,
+        applied: Boolean(row.appliedAt),
+      },
+    };
+  }
+
+  private incidentSeverityFromAlert(severity: string): AdminIncidentTimelineEvent['severity'] {
+    if (severity === 'critical') return 'critical';
+    if (severity === 'warning') return 'warning';
+
+    return 'info';
+  }
+
+  private routeDecisionTimelineSeverity(
+    row: RouteDecisionEventRow,
+    reasonCodes: string[],
+  ): AdminIncidentTimelineEvent['severity'] {
+    const changedRoute = Boolean(row.fromOutboundId && row.toOutboundId && row.fromOutboundId !== row.toOutboundId);
+    const healthConcern = reasonCodes.some((reason) =>
+      ['unhealthy', 'packetLoss', 'jitter', 'latency', 'critical', 'emergency'].some((fragment) =>
+        reason.toLowerCase().includes(fragment.toLowerCase()),
+      ),
+    );
+
+    return changedRoute || healthConcern || row.decisionState === 'switchRecommended' ? 'warning' : 'info';
+  }
+
+  private describeRouteDecisionTimelineDetail(row: RouteDecisionEventRow, reasonCodes: string[]): string {
+    const fromOutbound = row.fromOutboundName ?? row.fromOutboundId ?? 'none';
+    const toOutbound = row.toOutboundName ?? row.toOutboundId ?? null;
+    const routeChange = toOutbound && fromOutbound !== toOutbound ? `${fromOutbound} -> ${toOutbound}` : toOutbound;
+    const reasons = reasonCodes.slice(0, 3).join(', ');
+
+    if (routeChange && reasons) return `${routeChange} / ${reasons}`;
+    if (routeChange) return routeChange;
+    if (reasons) return reasons;
+
+    return row.decisionState;
+  }
+
   private async getRouteDecisionEvent(id: string): Promise<AdminRouteDecisionEventSummary> {
     const result = await this.database.query<RouteDecisionEventRow>(
       `
@@ -4016,6 +4214,17 @@ export class OperationsService {
 
   normalizeRouteAnalyticsRangeHours(input: string | undefined): number {
     if (!input) return 168;
+
+    const value = Number(input);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new BadRequestException('rangeHours must be a positive integer');
+    }
+
+    return Math.min(value, 2160);
+  }
+
+  normalizeIncidentTimelineRangeHours(input: string | undefined): number {
+    if (!input) return 24;
 
     const value = Number(input);
     if (!Number.isInteger(value) || value < 1) {

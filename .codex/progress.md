@@ -1533,3 +1533,32 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, incident timeline, route canary rollout, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Incident Timeline Slice
+
+### Completed
+
+- Added guarded `GET /api/admin/incidents/timeline` for read-role admins with `alerts:read` plus `routes:read` permission enforcement.
+- The endpoint derives compact timeline events from existing alert open/resolve timestamps and route decision/assignment records, then returns a sorted read-only operational timeline.
+- Added shared incident-timeline contracts for backend and dashboard use.
+- Added an Alerts-page Incident Timeline panel with bilingual labels, localized formatting, loading/fallback/empty states, route group/source context, and route-decision detail.
+- Added Playwright coverage for the Alerts page timeline panel and fixed the alert filter selects with explicit accessible labels.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `222 / 236` items, or `94.1%` complete with `5.9%` remaining.
+- Bumped AfroGate to `0.92.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran focused workspace typecheck during implementation.
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run contrast:check`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Alerts incident-timeline flow.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, route canary rollout, adapter-based migration, and native per-app VPN split tunneling remain future work.

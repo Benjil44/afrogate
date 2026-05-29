@@ -431,6 +431,8 @@ The PayPal adapter exposes guarded admin actions to create a hosted checkout ord
 - last_seen_at
 - resolved_at
 
+The incident timeline API derives read-only events from alert open/resolve timestamps plus existing route decision records. It is an operational view, not a separate traffic log, and must keep user destinations, client IP history, credentials, and traffic contents out of responses.
+
 ### audit_logs
 
 - id

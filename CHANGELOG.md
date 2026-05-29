@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.92.0 - 2026-05-29
+
+- Added guarded `GET /api/admin/incidents/timeline` for compact incident events from alert open/resolve rows and route decision/assignment records.
+- Added the Alerts page Incident Timeline panel with bilingual labels, loading/empty states, and route-decision context.
+- Kept the timeline read-only and privacy-safe: no secrets, user destinations, traffic contents, client IP history, or hidden route mutation.
+
 ## 0.91.0 - 2026-05-29
 
 - Added guarded `GET /api/admin/route-health/history` for compact hourly route score, latency, jitter, loss, outbound, operator, protocol, and profile history.

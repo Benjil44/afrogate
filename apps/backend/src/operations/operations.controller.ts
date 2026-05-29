@@ -28,6 +28,7 @@ import type {
   AdminProtocolServerApplyEventDetailResponse,
   AdminProtocolServerApplyEventsResponse,
   AdminProtocolSetupSummary,
+  AdminIncidentTimelineResponse,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionEventDetailResponse,
   AdminRouteDecisionEventsResponse,
@@ -395,6 +396,19 @@ export class OperationsController {
         limit: this.operationsService.normalizeLimit(limit, 100, 500),
       }),
     };
+  }
+
+  @Get('incidents/timeline')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  @Permissions('alerts:read', 'routes:read')
+  getIncidentTimeline(
+    @Query('rangeHours') rangeHours?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminIncidentTimelineResponse> {
+    return this.operationsService.getIncidentTimeline(
+      this.operationsService.normalizeIncidentTimelineRangeHours(rangeHours),
+      this.operationsService.normalizeLimit(limit, 100, 200),
+    );
   }
 
   @Get('settings')

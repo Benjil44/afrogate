@@ -13,6 +13,7 @@ import type {
   AdminPaymentOrdersResponse,
   AdminPermissionsResponse,
   AdminRewardedAdSettingsResponse,
+  AdminIncidentTimelineResponse,
   AdminServerInterfacesResponse,
   AdminServersResponse,
   AdminProtocolServerApplyEventDetailResponse,
@@ -147,6 +148,23 @@ export async function fetchAdminAlerts(
   });
 
   return response.json() as Promise<AdminAlertsResponse>;
+}
+
+export async function fetchIncidentTimeline(
+  sessionToken: string,
+  rangeHours = 24,
+  limit = 100,
+  signal?: AbortSignal,
+): Promise<AdminIncidentTimelineResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/incidents/timeline?rangeHours=${encodeURIComponent(String(rangeHours))}&limit=${encodeURIComponent(String(limit))}`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      signal,
+    },
+  );
+
+  return response.json() as Promise<AdminIncidentTimelineResponse>;
 }
 
 export async function fetchAdminAuditLogs(

@@ -43,6 +43,7 @@
 - صفحه servers.
 - صفحه tunnels.
 - صفحه alerts.
+- Incident timeline on the Alerts page from alert and route-decision events.
 - صفحه settings.
 - نمایش health score.
 - نمایش storage زیر 10%.

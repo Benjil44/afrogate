@@ -16,6 +16,8 @@ import type {
   AdminProtocolServerApplyPlanSummary,
   AdminProtocolServerApplyPreflightSummary,
   AdminOutboundSummary,
+  AdminIncidentTimelineEvent,
+  AdminIncidentTimelineResponse,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionApplyAdapterSummary,
   AdminRouteDecisionApplyPlanSummary,
@@ -134,6 +136,7 @@ import {
   fetchAdminTunnel,
   fetchAdminTunnels,
   fetchAdminUsers,
+  fetchIncidentTimeline,
   fetchProtocolServerApplyEvent,
   fetchProtocolServerApplyEvents,
   fetchRouteAssignment,
@@ -4669,6 +4672,59 @@ function FailoverPanel({
   );
 }
 
+function IncidentTimelinePanel({
+  dataState,
+  format,
+  timeline,
+  t,
+}: {
+  dataState: DataState;
+  format: DashboardFormatters;
+  timeline: AdminIncidentTimelineResponse | null;
+  t: DashboardStrings;
+}) {
+  const events = timeline?.events ?? [];
+  const meta = timeline ? t.incidentTimeline.events(format.integer(events.length)) : t.incidentTimeline.learning;
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.panels.incidentTimeline} icon={ScrollText} meta={meta} />
+      <div className="mt-2 grid gap-2">
+        {events.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {events.length === 0 ? (
+          <DataStateEmpty emptyMessage={t.incidentTimeline.noEvents} state={dataState} t={t} />
+        ) : null}
+        {events.slice(0, 8).map((event) => (
+          <div className="grid min-h-[58px] gap-2 rounded-md border border-afro-line p-2" key={event.id}>
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px]" title={incidentTimelineEventTitle(event, t)}>
+                  {incidentTimelineEventTitle(event, t)}
+                </strong>
+                <span className={`${mutedTextClass} block truncate`} title={incidentTimelineEventDetail(event, format, t)}>
+                  {incidentTimelineEventDetail(event, format, t)}
+                </span>
+              </div>
+              <StatusBadge tone={incidentTimelineSeverityTone(event.severity)}>
+                {incidentTimelineKindLabel(event.kind, t)}
+              </StatusBadge>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <MetricPill icon={Clock} label={t.incidentTimeline.occurredAt} value={format.time(new Date(event.occurredAt), false)} />
+              {event.routeGroup ? (
+                <MetricPill icon={Route} label={t.incidentTimeline.routeGroup} value={format.label(event.routeGroup)} />
+              ) : null}
+              {event.sourceLabel ? (
+                <MetricPill icon={Server} label={t.tables.source} value={format.label(event.sourceLabel)} />
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function AlertsPage({
   alerts,
   dataState,
@@ -4687,6 +4743,8 @@ function AlertsPage({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [resolvedAlerts, setResolvedAlerts] = useState<AlertRowData[]>([]);
   const [resolvedDataState, setResolvedDataState] = useState<DataState>('loading');
+  const [incidentTimeline, setIncidentTimeline] = useState<AdminIncidentTimelineResponse | null>(null);
+  const [incidentTimelineState, setIncidentTimelineState] = useState<DataState>('loading');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -4704,6 +4762,23 @@ function AlertsPage({
 
     return () => controller.abort();
   }, [sessionToken, t]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setIncidentTimelineState('loading');
+
+    void fetchIncidentTimeline(sessionToken, 24, 100, controller.signal)
+      .then((response) => {
+        setIncidentTimeline(response);
+        setIncidentTimelineState('live');
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setIncidentTimelineState((current) => (current === 'live' ? 'stale' : 'fallback'));
+      });
+
+    return () => controller.abort();
+  }, [sessionToken]);
 
   const currentAlerts = statusFilter === 'open' ? alerts : resolvedAlerts;
   const currentDataState = statusFilter === 'open' ? dataState : resolvedDataState;
@@ -4760,6 +4835,7 @@ function AlertsPage({
           <label className="grid gap-1">
             <span className={mutedTextClass}>{t.alertFilters.severity}</span>
             <select
+              aria-label={t.alertFilters.severity}
               className="min-h-10 rounded-md border border-afro-line bg-white px-2 text-[13px] font-bold text-afro-ink outline-none focus:border-afro-teal"
               onChange={(event) => setSeverityFilter(event.target.value as AlertSeverityFilter)}
               value={severityFilter}
@@ -4774,6 +4850,7 @@ function AlertsPage({
           <label className="grid gap-1">
             <span className={mutedTextClass}>{t.alertFilters.source}</span>
             <select
+              aria-label={t.alertFilters.source}
               className="min-h-10 rounded-md border border-afro-line bg-white px-2 text-[13px] font-bold text-afro-ink outline-none focus:border-afro-teal"
               onChange={(event) => setSourceFilter(event.target.value)}
               value={sourceFilter}
@@ -4832,22 +4909,26 @@ function AlertsPage({
         </div>
       </section>
 
-      <section className={panelClass}>
-        <PanelHeading title={t.panels.alertRules} icon={Bell} meta={t.panels.mvpThresholds} />
-        <div className="mt-2 grid gap-2">
-          {([
-            [t.alertRules.storage, format.percentThreshold('<', 10), 'critical'],
-            [t.alertRules.healthScore, format.numberThreshold('<', 60), 'warning'],
-            [t.alertRules.ping, format.latencyThreshold('>', 150), 'warning'],
-            [t.alertRules.packetLoss, format.percentThreshold('>', 1), 'critical'],
-          ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
-            <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
-              <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
-              <StatusBadge tone={tone}>{value}</StatusBadge>
-            </div>
-          ))}
-        </div>
-      </section>
+      <div className="grid gap-3">
+        <IncidentTimelinePanel dataState={incidentTimelineState} format={format} timeline={incidentTimeline} t={t} />
+
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.alertRules} icon={Bell} meta={t.panels.mvpThresholds} />
+          <div className="mt-2 grid gap-2">
+            {([
+              [t.alertRules.storage, format.percentThreshold('<', 10), 'critical'],
+              [t.alertRules.healthScore, format.numberThreshold('<', 60), 'warning'],
+              [t.alertRules.ping, format.latencyThreshold('>', 150), 'warning'],
+              [t.alertRules.packetLoss, format.percentThreshold('>', 1), 'critical'],
+            ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
+              <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+                <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
+                <StatusBadge tone={tone}>{value}</StatusBadge>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
     </section>
   );
 }
@@ -9949,6 +10030,52 @@ function localizeAlertTitle(title: string, t: DashboardStrings): string {
   if (normalizedTitle === 'health score degraded') return t.alerts.healthScoreDegraded;
 
   return title;
+}
+
+function incidentTimelineEventTitle(event: AdminIncidentTimelineEvent, t: DashboardStrings): string {
+  const kind = incidentTimelineKindLabel(event.kind, t);
+
+  if (event.kind === 'alert_opened' || event.kind === 'alert_resolved') {
+    return `${kind}: ${localizeAlertTitle(event.title, t)}`;
+  }
+
+  return kind;
+}
+
+function incidentTimelineEventDetail(
+  event: AdminIncidentTimelineEvent,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  const details = [
+    event.detail,
+    event.outboundName ? `${t.incidentTimeline.outbound}: ${format.label(event.outboundName)}` : null,
+    event.status ? `${t.tables.status}: ${format.label(event.status)}` : null,
+  ].filter((item): item is string => Boolean(item));
+
+  return details.join(' / ') || format.label(event.kind);
+}
+
+function incidentTimelineKindLabel(kind: string, t: DashboardStrings): string {
+  switch (kind) {
+    case 'alert_opened':
+      return t.incidentTimeline.kinds.alertOpened;
+    case 'alert_resolved':
+      return t.incidentTimeline.kinds.alertResolved;
+    case 'route_assignment':
+      return t.incidentTimeline.kinds.routeAssignment;
+    case 'route_decision':
+      return t.incidentTimeline.kinds.routeDecision;
+    default:
+      return t.incidentTimeline.kinds.event;
+  }
+}
+
+function incidentTimelineSeverityTone(severity: string): Tone {
+  if (severity === 'critical') return 'critical';
+  if (severity === 'warning') return 'warning';
+
+  return 'neutral';
 }
 
 function mapAlertSeverityToTone(severity: string): Tone {

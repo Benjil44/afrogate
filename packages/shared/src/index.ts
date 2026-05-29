@@ -2032,6 +2032,37 @@ export interface AdminRouteHealthHistoryResponse {
   points: RouteHealthHistoryPoint[];
 }
 
+export type AdminIncidentTimelineEventKind =
+  | 'alert_opened'
+  | 'alert_resolved'
+  | 'route_decision'
+  | 'route_assignment';
+
+export type AdminIncidentTimelineSeverity = 'critical' | 'warning' | 'info';
+
+export interface AdminIncidentTimelineEvent {
+  id: string;
+  kind: AdminIncidentTimelineEventKind | string;
+  severity: AdminIncidentTimelineSeverity | string;
+  title: string;
+  detail: string;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  sourceLabel?: string | null;
+  routeGroup?: string | null;
+  outboundName?: string | null;
+  actorId?: string | null;
+  occurredAt: string;
+  status?: string | null;
+  metadata: Record<string, string | number | boolean | null>;
+}
+
+export interface AdminIncidentTimelineResponse {
+  generatedAt: string;
+  rangeHours: number;
+  events: AdminIncidentTimelineEvent[];
+}
+
 export type RouteDecisionAction =
   | 'keepCurrent'
   | 'switchRecommended'
