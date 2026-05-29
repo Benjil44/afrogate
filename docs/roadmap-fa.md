@@ -77,6 +77,7 @@
 - Per-client route preferences and a separate mobile-first client app for automatic country detection, preferred exit country, explicit server/outbound choice, subscription refresh metadata, and secret-safe protocol config readiness without exposing admin controls.
 - Future native client per-app VPN split tunneling so selected apps such as Instagram, Telegram, and WhatsApp can use AfroGate while other apps keep normal internet unless the client explicitly includes them.
 - Route health score history now appears on the Routes page from compact hourly synthetic-probe summaries, so admins can review recent score, latency, jitter, and packet-loss history without inspecting user traffic or applying route changes.
+- Route canary rollout status now appears on the Routes page through guarded `GET /api/admin/route-canary/status`, showing new-session canary readiness, rollback thresholds, session protection, and assignment-only/data-plane-disabled boundaries without moving traffic.
 
 ## فاز 4: Integration با سیستم فعلی
 

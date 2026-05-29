@@ -2797,6 +2797,31 @@ export interface AdminRouteDecisionPreviewResponse {
   managedCandidateCount: number;
 }
 
+export interface AdminRouteCanaryStatusResponse {
+  routeGroup: string;
+  assignmentKey: string;
+  generatedAt: string;
+  mode: RouteSelectionMode | string;
+  autoRouteEnabled: boolean;
+  routeLocked: boolean;
+  cooldownActive: boolean;
+  cooldownUntil?: string | null;
+  selectedScoreProfile?: RouteScoreProfile | string;
+  action: RouteDecisionAction;
+  recommendedAction: RouteDecisionSwitchOrchestrationAction | string;
+  dataPlaneReady: boolean;
+  canExecuteDataPlane: boolean;
+  assignmentOnly: boolean;
+  guardReady: boolean;
+  canaryReady: boolean;
+  currentCandidate?: AdminRouteDecisionCandidateSummary | null;
+  recommendedCandidate?: AdminRouteDecisionCandidateSummary | null;
+  switchRollout: AdminRouteDecisionSwitchRolloutSummary;
+  switchRolloutEvaluation: AdminRouteDecisionSwitchRolloutEvaluationSummary;
+  switchOrchestration: AdminRouteDecisionSwitchOrchestrationSummary;
+  reasonCodes: string[];
+}
+
 export interface AdminRouteDecisionEventSummary {
   id: string;
   routeGroup: string;

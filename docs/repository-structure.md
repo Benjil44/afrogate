@@ -103,6 +103,8 @@ Route decision previews and event detail also include `switchRolloutEvaluation`.
 
 Route decision previews and event detail also include `switchOrchestration`. This state-machine-style summary combines route locks, manual mode, cooldown, preflight, rollout plan, canary guard, sticky-session policy, route-consistency hold, and rollback readiness into one audited next-action model. It can recommend assignment-only control-plane recording, hold, canary, expand, rollback, or manual review while keeping server OS/data-plane mutation disabled until an audited adapter exists.
 
+Route canary rollout status is now visible through guarded `GET /api/admin/route-canary/status` and the Routes page. The endpoint reuses the route decision preview, switch-rollout, rollout-evaluation, and switch-orchestration summaries so admins can see whether a new-session canary would be guarded, assignment-only, held, or data-plane-ready without creating a separate routing engine or mutating server OS routes.
+
 Backup status monitoring lives in the backend as a read-only control-plane API under `/api/admin/backups/status`. External backup jobs own backup execution and may publish a compact JSON status file; AfroGate returns only sanitized readiness evidence for the dashboard and does not expose local file paths, decrypted data, object-store credentials, raw dumps, or restore controls.
 
 Route-quality analytics currently live in the backend operations service and dashboard Settings page. The first endpoint, `/api/admin/route-quality/analytics`, derives hourly recommendations from historical synthetic route probes already stored in `server_metrics.raw`, so it adds no extra agent payload and no new traffic-derived user data.

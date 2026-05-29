@@ -1562,3 +1562,31 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, route canary rollout, adapter-based migration, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Route Canary Rollout Status Slice
+
+### Completed
+
+- Added shared `AdminRouteCanaryStatusResponse` for a standalone canary rollout status surface.
+- Added guarded `GET /api/admin/route-canary/status` with `routes:read` permission enforcement. The endpoint reuses the existing route decision preview, rollout plan, rollout evaluation, and orchestration summaries instead of creating a separate switching engine.
+- Added a Routes-page Route Canary Rollout panel with bilingual labels, loading/stale/empty states, current and recommended candidate cards, guard readiness, data-plane readiness, canary readiness, rollout thresholds, orchestration next action, and session-safety state.
+- Added Playwright coverage for the Routes page canary rollout panel.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `223 / 236` items, or `94.5%` complete with `5.5%` remaining.
+- Bumped AfroGate to `0.93.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran focused workspace typecheck during implementation.
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run contrast:check`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Routes route-canary-rollout flow. An initial e2e run found an ambiguous strict-mode locator in the new assertion; the assertion was tightened and the suite passed.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, adapter-based migration, and native per-app VPN split tunneling remain future work.

@@ -252,7 +252,7 @@
 - [x] Predictive route quality suggestions.
 - [x] Charge allocation delay tracking.
 - [x] Backup status monitoring.
-- [ ] Route canary rollout.
+- [x] Route canary rollout.
 - [ ] Adapter-based migration from current panels.
 - [x] Privacy threat model.
 - [x] Security threat model.

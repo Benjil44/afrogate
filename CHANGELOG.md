@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.93.0 - 2026-05-29
+
+- Added guarded `GET /api/admin/route-canary/status` for read-only route canary rollout visibility from the existing route decision preview engine.
+- Added the Routes page Route Canary Rollout panel with bilingual labels, current/recommended candidate context, guard status, rollout thresholds, orchestration next action, and session-safety state.
+- Kept canary rollout advisory and assignment-only while the data-plane adapter is disabled or missing, with no hidden OS route mutation or active-session movement.
+
 ## 0.92.0 - 2026-05-29
 
 - Added guarded `GET /api/admin/incidents/timeline` for compact incident events from alert open/resolve rows and route decision/assignment records.

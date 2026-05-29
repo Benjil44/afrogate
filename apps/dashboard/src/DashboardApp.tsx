@@ -19,6 +19,7 @@ import type {
   AdminIncidentTimelineEvent,
   AdminIncidentTimelineResponse,
   AdminRouteAssignmentSummary,
+  AdminRouteCanaryStatusResponse,
   AdminRouteDecisionApplyAdapterSummary,
   AdminRouteDecisionApplyPlanSummary,
   AdminRouteDecisionApplyPlanStep,
@@ -140,6 +141,7 @@ import {
   fetchProtocolServerApplyEvent,
   fetchProtocolServerApplyEvents,
   fetchRouteAssignment,
+  fetchRouteCanaryStatus,
   fetchRouteFailoverEvents,
   fetchRouteHealthHistory,
   fetchRouteQualityAnalytics,
@@ -4145,6 +4147,8 @@ function RoutesPage({
   t: DashboardStrings;
 }) {
   const [selectedTunnelKey, setSelectedTunnelKey] = useState<string | null>(() => tunnels[0] ? tunnelRowKey(tunnels[0]) : null);
+  const [routeCanaryStatus, setRouteCanaryStatus] = useState<AdminRouteCanaryStatusResponse | null>(null);
+  const [routeCanaryState, setRouteCanaryState] = useState<DataState>('loading');
   const [routeHealthHistory, setRouteHealthHistory] = useState<AdminRouteHealthHistoryResponse | null>(null);
   const [routeHealthHistoryState, setRouteHealthHistoryState] = useState<DataState>('loading');
 
@@ -4172,6 +4176,24 @@ function RoutesPage({
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setRouteHealthHistory(null);
         setRouteHealthHistoryState('stale');
+      });
+
+    return () => controller.abort();
+  }, [sessionToken]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setRouteCanaryState('loading');
+
+    fetchRouteCanaryStatus(sessionToken, 'main', 'default', controller.signal)
+      .then((response) => {
+        setRouteCanaryStatus(response);
+        setRouteCanaryState('live');
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setRouteCanaryStatus(null);
+        setRouteCanaryState('stale');
       });
 
     return () => controller.abort();
@@ -4209,6 +4231,12 @@ function RoutesPage({
         t={t}
       />
       <RoutePolicyPanel format={format} outbounds={outbounds} session={session} sessionToken={sessionToken} t={t} />
+      <RouteCanaryPanel
+        dataState={routeCanaryState}
+        format={format}
+        status={routeCanaryStatus}
+        t={t}
+      />
       <RouteHealthHistoryPanel
         dataState={routeHealthHistoryState}
         format={format}
@@ -4581,6 +4609,94 @@ function RoutePolicyPanel({
         >
           {isSavingPolicy ? t.settings.saving : t.settings.saveRouteSettings}
         </button>
+      </div>
+    </section>
+  );
+}
+
+function RouteCanaryPanel({
+  dataState,
+  format,
+  status,
+  t,
+}: {
+  dataState: DataState;
+  format: DashboardFormatters;
+  status: AdminRouteCanaryStatusResponse | null;
+  t: DashboardStrings;
+}) {
+  const meta = status
+    ? t.routeCanary.meta(routeSwitchOrchestrationActionLabel(status.recommendedAction, t))
+    : t.routeCanary.learning;
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.panels.routeCanary} icon={ShieldCheck} meta={meta} />
+      <div className="mt-2 grid gap-2">
+        {status && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {!status ? (
+          <DataStateEmpty emptyMessage={t.routeCanary.noStatus} state={dataState} t={t} />
+        ) : (
+          <>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <RouteDecisionMetric label={t.routeCanary.recommendedAction}>
+                <StatusBadge tone={routeSwitchOrchestrationStatusTone(status.switchOrchestration.status)}>
+                  {routeSwitchOrchestrationActionLabel(status.recommendedAction, t)}
+                </StatusBadge>
+              </RouteDecisionMetric>
+              <RouteDecisionMetric label={t.routeCanary.guard}>
+                <StatusBadge tone={status.guardReady ? 'good' : 'neutral'}>
+                  {status.guardReady ? t.routeCanary.guardReady : t.routeCanary.guardHold}
+                </StatusBadge>
+              </RouteDecisionMetric>
+              <RouteDecisionMetric label={t.routeCanary.dataPlane}>
+                <StatusBadge tone={status.canExecuteDataPlane ? 'good' : 'neutral'}>
+                  {status.canExecuteDataPlane ? t.routeCanary.dataPlaneReady : t.routeCanary.dataPlaneOff}
+                </StatusBadge>
+              </RouteDecisionMetric>
+              <RouteDecisionMetric label={t.routeCanary.sessionSafety}>
+                <StatusBadge tone={status.switchOrchestration.activeSessionsProtected ? 'good' : status.switchOrchestration.activeSessionsMayMove ? 'critical' : 'neutral'}>
+                  {status.switchOrchestration.activeSessionsProtected
+                    ? t.routeCanary.sessionsProtected
+                    : status.switchOrchestration.activeSessionsMayMove
+                      ? t.routeCanary.sessionsMayMove
+                      : t.settings.switchOrchestrationNoSessionMove}
+                </StatusBadge>
+              </RouteDecisionMetric>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <MetricPill icon={Route} label={t.routeCanary.routeGroup} value={status.routeGroup} />
+              <MetricPill icon={Gauge} label={t.routeCanary.profile} value={status.selectedScoreProfile ? routeScoreProfileLabel(status.selectedScoreProfile, t) : t.settings.unknownProfile} />
+              <MetricPill
+                icon={Activity}
+                label={t.routeCanary.canary}
+                value={status.canaryReady ? t.routeCanary.canaryReady : t.routeCanary.canaryPlanning}
+              />
+            </div>
+
+            <div className="grid gap-2 xl:grid-cols-2">
+              <RouteDecisionCandidateCard candidate={status.currentCandidate ?? null} format={format} label={t.settings.routeDecisionCurrent} t={t} />
+              <RouteDecisionCandidateCard candidate={status.recommendedCandidate ?? null} format={format} label={t.settings.routeDecisionRecommended} t={t} />
+            </div>
+
+            <RouteDecisionSwitchRolloutCard
+              evaluation={status.switchRolloutEvaluation}
+              rollout={status.switchRollout}
+              format={format}
+              t={t}
+            />
+            <RouteDecisionSwitchOrchestrationCard orchestration={status.switchOrchestration} format={format} t={t} />
+
+            <div className="flex flex-wrap gap-1">
+              {status.reasonCodes.slice(0, 10).map((reason) => (
+                <span className="rounded border border-afro-line px-1.5 py-0.5 text-[11px] font-bold text-afro-muted" key={`route-canary-${reason}`}>
+                  {routeDecisionReasonLabel(reason, t)}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

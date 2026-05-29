@@ -44,6 +44,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Real tunnel inventory API binding after admin guards are enforced.
 - [x] Tunnel detail page with selected tunnel status, server/interface context, lockability, endpoint, route quality, and guarded API detail loading.
 - [x] Route health score history from compact hourly synthetic-probe summaries.
+- [x] Route canary rollout status with guarded read-only canary guard, rollout, orchestration, and session-safety visibility.
 
 ## Alerts Page
 

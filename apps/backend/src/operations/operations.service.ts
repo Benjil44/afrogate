@@ -12,6 +12,7 @@ import type {
   AdminProtocolServerApplyPlanSummary,
   AdminProtocolServerApplyPreflightSummary,
   AdminRouteAssignmentSummary,
+  AdminRouteCanaryStatusResponse,
   AdminRouteDecisionApplyAdapterSummary,
   AdminRouteDecisionApplyDryRunCommand,
   AdminRouteDecisionApplyDryRunConfigChange,
@@ -1807,6 +1808,46 @@ export class OperationsService {
       candidateCount: candidates.length,
       healthyCandidateCount: healthyCandidates.length,
       managedCandidateCount: sortedCandidates.filter((candidate) => candidate.source === 'outbound').length,
+    };
+  }
+
+  async getRouteCanaryStatus(
+    routeGroupInput?: string,
+    assignmentKeyInput?: string,
+  ): Promise<AdminRouteCanaryStatusResponse> {
+    const preview = await this.getRouteDecisionPreview(routeGroupInput, assignmentKeyInput);
+    const canaryReady =
+      preview.switchOrchestration.recommendedAction === 'startCanary' ||
+      preview.switchOrchestration.recommendedAction === 'expandCanary';
+
+    return {
+      routeGroup: preview.routeGroup,
+      assignmentKey: preview.assignmentKey,
+      generatedAt: preview.generatedAt,
+      mode: preview.mode,
+      autoRouteEnabled: preview.autoRouteEnabled,
+      routeLocked: preview.routeLocked,
+      cooldownActive: preview.switchOrchestration.cooldownActive,
+      cooldownUntil: preview.cooldownUntil ?? null,
+      selectedScoreProfile: preview.selectedScoreProfile,
+      action: preview.action,
+      recommendedAction: preview.switchOrchestration.recommendedAction,
+      dataPlaneReady: preview.switchOrchestration.dataPlaneReady,
+      canExecuteDataPlane: preview.switchOrchestration.canExecuteDataPlane,
+      assignmentOnly: preview.switchOrchestration.assignmentOnly,
+      guardReady: preview.switchRolloutEvaluation.guardPassed,
+      canaryReady,
+      currentCandidate: preview.currentCandidate ?? null,
+      recommendedCandidate: preview.recommendedCandidate ?? null,
+      switchRollout: preview.switchRollout,
+      switchRolloutEvaluation: preview.switchRolloutEvaluation,
+      switchOrchestration: preview.switchOrchestration,
+      reasonCodes: [...new Set([
+        ...preview.reasonCodes,
+        ...preview.switchRollout.reasonCodes,
+        ...preview.switchRolloutEvaluation.reasonCodes,
+        ...preview.switchOrchestration.reasonCodes,
+      ])],
     };
   }
 

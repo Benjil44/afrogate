@@ -86,6 +86,14 @@ test('routes page shows route health score history', async ({ page }) => {
   await expect(historyPanel).toBeVisible();
   await expect(historyPanel.getByText('Frankfurt WG gaming')).toBeVisible();
   await expect(historyPanel.getByText(/synthetic probes only/)).toBeVisible();
+
+  const canaryPanel = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Route Canary Rollout' }),
+  }).last();
+  await expect(canaryPanel).toBeVisible();
+  await expect(canaryPanel.getByLabel('Record assignment')).toBeVisible();
+  await expect(canaryPanel.getByText('Dubai WG standby')).toBeVisible();
+  await expect(canaryPanel.getByLabel('Sessions protected').first()).toBeVisible();
 });
 
 test('billing page shows catalog and saves reward settings', async ({ page }) => {
@@ -367,6 +375,9 @@ async function mockDashboardApi(page: Page): Promise<void> {
         return;
       case '/api/admin/route-health/history':
         await fulfillJson(route, routeHealthHistoryResponse());
+        return;
+      case '/api/admin/route-canary/status':
+        await fulfillJson(route, routeCanaryStatusResponse());
         return;
       case '/api/admin/tunnels':
         await fulfillJson(route, {
@@ -895,5 +906,204 @@ function routeHealthHistoryResponse() {
     ],
     rangeHours: 168,
     routeGroup: 'main',
+  };
+}
+
+function routeCanaryStatusResponse() {
+  return {
+    action: 'switchRecommended',
+    assignmentKey: 'default',
+    assignmentOnly: true,
+    autoRouteEnabled: true,
+    canExecuteDataPlane: false,
+    canaryReady: false,
+    cooldownActive: false,
+    cooldownUntil: null,
+    currentCandidate: {
+      healthStatus: 'healthy',
+      id: 'outbound-fra-wg',
+      jitterMs: 5,
+      latencyMs: 42,
+      loadedLatencyDeltaMs: 8,
+      loadedLatencyMs: 50,
+      loadPercent: 38,
+      name: 'Frankfurt WG gaming',
+      packetLossPercent: 0.08,
+      routeGroup: 'main',
+      score: 81,
+      selectedScoreProfile: 'gaming',
+      serverCountry: 'DE',
+      serverRegion: 'Frankfurt',
+      source: 'outbound',
+    },
+    dataPlaneReady: false,
+    generatedAt: fixedNow,
+    guardReady: true,
+    mode: 'automatic',
+    reasonCodes: ['score_delta_meets_hysteresis', 'dataPlaneDisabled', 'guardPassed', 'assignmentOnly', 'newSessionsOnly'],
+    recommendedAction: 'recordDecision',
+    recommendedCandidate: {
+      healthStatus: 'healthy',
+      id: 'outbound-dxb-wg',
+      jitterMs: 7,
+      latencyMs: 48,
+      loadedLatencyDeltaMs: 9,
+      loadedLatencyMs: 57,
+      loadPercent: 31,
+      name: 'Dubai WG standby',
+      packetLossPercent: 0.05,
+      routeGroup: 'main',
+      score: 96,
+      selectedScoreProfile: 'gaming',
+      serverCountry: 'AE',
+      serverRegion: 'Dubai',
+      source: 'outbound',
+    },
+    routeGroup: 'main',
+    routeLocked: false,
+    selectedScoreProfile: 'gaming',
+    switchOrchestration: {
+      activeSessionsMayMove: false,
+      activeSessionsProtected: true,
+      assignmentOnly: true,
+      canExecuteDataPlane: false,
+      canaryPercent: 5,
+      cooldownActive: false,
+      dataPlaneReady: false,
+      generatedAt: fixedNow,
+      holdSecondsRemaining: 600,
+      nextPercent: 0,
+      phase: 'assignment',
+      preserveExistingSessions: true,
+      reasonCodes: ['assignmentOnly', 'dataPlaneDisabled', 'guardPassed', 'stickySessions', 'newSessionsOnly', 'canaryRequired', 'gamingSensitive', 'auditRequired'],
+      recommendedAction: 'recordDecision',
+      rollbackRequired: false,
+      routeLocked: false,
+      stageCount: 4,
+      stages: [
+        {
+          code: 'guard_route_locks_cooldown_and_health',
+          dataPlaneMutation: false,
+          estimatedSeconds: 1,
+          id: 'orchestrate-guard-route-gates',
+          phase: 'guard',
+          reasonCodes: ['guardPassed'],
+          sessionImpact: 'none',
+          status: 'ready',
+          targetOutboundId: 'outbound-dxb-wg',
+          targetPercent: 0,
+          trafficScope: 'none',
+        },
+        {
+          code: 'record_control_plane_assignment',
+          dataPlaneMutation: false,
+          estimatedSeconds: 1,
+          id: 'orchestrate-record-assignment',
+          phase: 'assignment',
+          reasonCodes: ['assignmentOnly', 'auditRequired'],
+          sessionImpact: 'none',
+          status: 'ready',
+          targetOutboundId: 'outbound-dxb-wg',
+          targetPercent: 100,
+          trafficScope: 'controlPlane',
+        },
+        {
+          code: 'pin_existing_active_sessions',
+          dataPlaneMutation: true,
+          estimatedSeconds: 1,
+          id: 'orchestrate-pin-existing',
+          phase: 'pinExisting',
+          reasonCodes: ['stickySessions'],
+          sessionImpact: 'existingSessions',
+          status: 'future',
+          targetOutboundId: 'outbound-fra-wg',
+          targetPercent: 0,
+          trafficScope: 'newSessions',
+        },
+        {
+          code: 'canary_new_sessions_only',
+          dataPlaneMutation: true,
+          estimatedSeconds: 600,
+          id: 'orchestrate-canary-new-sessions',
+          phase: 'canary',
+          reasonCodes: ['canaryRequired', 'newSessionsOnly'],
+          sessionImpact: 'newSessionsOnly',
+          status: 'future',
+          targetOutboundId: 'outbound-dxb-wg',
+          targetPercent: 5,
+          trafficScope: 'canary',
+        },
+      ],
+      status: 'assignmentOnly',
+      switchNewSessionsOnly: true,
+    },
+    switchRollout: {
+      automaticExpansion: false,
+      canaryDurationSeconds: 600,
+      dataPlaneReady: false,
+      existingSessionsPinned: true,
+      initialPercent: 5,
+      maxPercent: 100,
+      newSessionsCanary: true,
+      reasonCodes: ['dataPlaneDisabled', 'stickySessions', 'newSessionsOnly', 'canaryRequired', 'gamingSensitive', 'assignmentOnly', 'rollbackGuard', 'healthVerifyRequired'],
+      rollbackOnJitterMs: 15,
+      rollbackOnLatencyMs: 80,
+      rollbackOnLossPercent: 1,
+      routeConsistencyHoldSeconds: 600,
+      status: 'planningOnly',
+      steps: [
+        {
+          code: 'persist_control_plane_assignment',
+          dataPlaneMutation: false,
+          durationSeconds: 1,
+          id: 'persist-control-plane-assignment',
+          phase: 'assignment',
+          reasonCodes: ['assignmentOnly'],
+          status: 'ready',
+          targetPercent: 100,
+          trafficScope: 'controlPlane',
+        },
+        {
+          code: 'pin_existing_sessions_for_rollout',
+          dataPlaneMutation: true,
+          durationSeconds: 600,
+          id: 'pin-existing-sessions-for-rollout',
+          phase: 'pinExisting',
+          reasonCodes: ['stickySessions', 'routeConsistencyHold'],
+          status: 'future',
+          targetPercent: 0,
+          trafficScope: 'newSessions',
+        },
+        {
+          code: 'canary_new_sessions',
+          dataPlaneMutation: true,
+          durationSeconds: 600,
+          id: 'canary-new-sessions',
+          phase: 'canary',
+          reasonCodes: ['canaryRequired', 'newSessionsOnly'],
+          status: 'future',
+          targetPercent: 5,
+          trafficScope: 'canary',
+        },
+      ],
+      strategy: 'assignmentOnly',
+    },
+    switchRolloutEvaluation: {
+      canaryPercent: 5,
+      dataPlaneReady: false,
+      evaluatedAt: fixedNow,
+      guardPassed: true,
+      holdSecondsRemaining: 600,
+      maxPercent: 100,
+      nextPercent: 0,
+      observedJitterMs: 7,
+      observedLatencyMs: 48,
+      observedLossPercent: 0.05,
+      observedScore: 96,
+      reasonCodes: ['dataPlaneDisabled', 'routeConsistencyHold', 'gamingSensitive', 'guardPassed'],
+      recommendedAction: 'hold',
+      routeConsistencyHoldActive: true,
+      status: 'planningOnly',
+    },
   };
 }

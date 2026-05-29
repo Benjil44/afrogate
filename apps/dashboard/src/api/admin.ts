@@ -21,6 +21,7 @@ import type {
   AdminSessionResponse,
   AdminProtocolSetupSummary,
   AdminRouteAssignmentSummary,
+  AdminRouteCanaryStatusResponse,
   AdminRouteDecisionEventDetailResponse,
   AdminRouteDecisionEventsResponse,
   AdminRouteDecisionPreviewResponse,
@@ -488,6 +489,23 @@ export async function fetchRouteHealthHistory(
   );
 
   return response.json() as Promise<AdminRouteHealthHistoryResponse>;
+}
+
+export async function fetchRouteCanaryStatus(
+  sessionToken: string,
+  routeGroup = 'main',
+  assignmentKey = 'default',
+  signal?: AbortSignal,
+): Promise<AdminRouteCanaryStatusResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/route-canary/status?routeGroup=${encodeURIComponent(routeGroup)}&assignmentKey=${encodeURIComponent(assignmentKey)}`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      signal,
+    },
+  );
+
+  return response.json() as Promise<AdminRouteCanaryStatusResponse>;
 }
 
 export async function fetchRouteDecisionPreview(

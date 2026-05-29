@@ -29,6 +29,7 @@ import type {
   AdminProtocolServerApplyEventsResponse,
   AdminProtocolSetupSummary,
   AdminIncidentTimelineResponse,
+  AdminRouteCanaryStatusResponse,
   AdminRouteAssignmentSummary,
   AdminRouteDecisionEventDetailResponse,
   AdminRouteDecisionEventsResponse,
@@ -468,6 +469,16 @@ export class OperationsController {
       this.operationsService.normalizeRouteAnalyticsRangeHours(rangeHours),
       this.operationsService.normalizeLimit(limit, 48, 500),
     );
+  }
+
+  @Get('route-canary/status')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  @Permissions('routes:read')
+  getRouteCanaryStatus(
+    @Query('routeGroup') routeGroup?: string,
+    @Query('assignmentKey') assignmentKey?: string,
+  ): Promise<AdminRouteCanaryStatusResponse> {
+    return this.operationsService.getRouteCanaryStatus(routeGroup, assignmentKey);
   }
 
   @Get('route-decisions/preview')
