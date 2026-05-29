@@ -1,7 +1,7 @@
 import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import type { AdminUserStatus, Role } from '@afrogate/shared';
 
-const MANAGED_ADMIN_ROLES: Role[] = ['owner', 'admin', 'supervisor', 'support', 'auditor'];
+const MANAGED_ADMIN_ROLES: Role[] = ['owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller'];
 const ADMIN_USER_STATUSES: AdminUserStatus[] = ['active', 'disabled'];
 
 export class CreateAdminUserDto {

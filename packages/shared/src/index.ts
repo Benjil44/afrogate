@@ -1,9 +1,9 @@
 export type HealthState = 'healthy' | 'degraded' | 'critical' | 'unknown';
 
-export type Role = 'superadmin' | 'owner' | 'admin' | 'supervisor' | 'support' | 'auditor' | 'agent';
+export type Role = 'superadmin' | 'owner' | 'admin' | 'supervisor' | 'support' | 'auditor' | 'reseller' | 'agent';
 
-export const ADMIN_ROLE_ORDER = ['superadmin', 'owner', 'admin', 'supervisor', 'support', 'auditor'] as const;
-export const MANAGED_ADMIN_ROLES = ['owner', 'admin', 'supervisor', 'support', 'auditor'] as const;
+export const ADMIN_ROLE_ORDER = ['superadmin', 'owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller'] as const;
+export const MANAGED_ADMIN_ROLES = ['owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller'] as const;
 
 export const ADMIN_PERMISSION_DEFINITIONS = [
   { id: 'dashboard:read', category: 'operations', risk: 'low' },
@@ -21,6 +21,10 @@ export const ADMIN_PERMISSION_DEFINITIONS = [
   { id: 'billing:write', category: 'billing', risk: 'high' },
   { id: 'customers:read', category: 'billing', risk: 'medium' },
   { id: 'customers:write', category: 'billing', risk: 'high' },
+  { id: 'resellers:read', category: 'billing', risk: 'medium' },
+  { id: 'resellers:write', category: 'billing', risk: 'high' },
+  { id: 'resellerWallet:read', category: 'billing', risk: 'medium' },
+  { id: 'resellerWallet:write', category: 'billing', risk: 'high' },
   { id: 'settings:read', category: 'settings', risk: 'medium' },
   { id: 'tenantBranding:read', category: 'settings', risk: 'low' },
   { id: 'tenantBranding:write', category: 'settings', risk: 'high' },
@@ -83,6 +87,10 @@ export const ROLE_PERMISSIONS = {
     'billing:write',
     'customers:read',
     'customers:write',
+    'resellers:read',
+    'resellers:write',
+    'resellerWallet:read',
+    'resellerWallet:write',
     'settings:read',
     'tenantBranding:read',
     'tenantBranding:write',
@@ -101,6 +109,8 @@ export const ROLE_PERMISSIONS = {
     'alerts:read',
     'billing:read',
     'customers:read',
+    'resellers:read',
+    'resellerWallet:read',
     'settings:read',
     'tenantBranding:read',
     'audit:read',
@@ -115,6 +125,7 @@ export const ROLE_PERMISSIONS = {
     'alerts:read',
     'billing:read',
     'customers:read',
+    'resellers:read',
     'tenantBranding:read',
   ],
   auditor: [
@@ -127,6 +138,13 @@ export const ROLE_PERMISSIONS = {
     'backups:read',
     'reports:read',
     'tenantBranding:read',
+  ],
+  reseller: [
+    'dashboard:read',
+    'billing:read',
+    'customers:read',
+    'customers:write',
+    'resellerWallet:read',
   ],
   agent: ['metrics:write'],
 } as const satisfies Record<Role, readonly RolePermissionGrant[]>;
@@ -750,6 +768,8 @@ export interface AdminClientConfigSummary {
 
 export interface AdminCustomerAccountSummary {
   id: string;
+  resellerAccountId?: string | null;
+  resellerDisplayName?: string | null;
   displayName?: string | null;
   telegramId?: string | null;
   telegramUsername?: string | null;
@@ -769,6 +789,115 @@ export interface AdminCustomerAccountSummary {
 
 export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary {
   clientConfigs: AdminClientConfigSummary[];
+}
+
+export type ResellerAccountStatus = 'active' | 'suspended' | 'disabled';
+export type ResellerWalletEntryType = 'topup' | 'sale_debit' | 'adjustment' | 'refund';
+export type ResellerWalletEntrySource = 'manual_topup' | 'client_sale' | 'manual_adjustment' | 'refund';
+
+export interface AdminResellerAccountSummary {
+  id: string;
+  adminUserId: string;
+  displayName: string;
+  contactName?: string | null;
+  telegramUsername?: string | null;
+  status: ResellerAccountStatus | string;
+  sellerMarginBps: number;
+  sellerMarginPercent: number;
+  afroGateShareBps: number;
+  afroGateSharePercent: number;
+  currency: string;
+  balanceAmount: number;
+  creditLimitAmount: number;
+  availableBalanceAmount: number;
+  customerAccountCount: number;
+  activeCustomerAccountCount: number;
+  ledgerEntryCount: number;
+  notes?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminResellerWalletLedgerEntry {
+  id: string;
+  resellerAccountId: string;
+  entryType: ResellerWalletEntryType | string;
+  amount: number;
+  balanceBeforeAmount: number;
+  balanceAfterAmount: number;
+  currency: string;
+  source: ResellerWalletEntrySource | string;
+  sourceId?: string | null;
+  volumePackageId?: string | null;
+  volumePackageName?: string | null;
+  customerAccountId?: string | null;
+  customerDisplayName?: string | null;
+  clientConfigId?: string | null;
+  clientConfigLabel?: string | null;
+  idempotencyKey?: string | null;
+  notes?: string | null;
+  metadata: Record<string, unknown>;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface AdminResellerPackageQuote {
+  resellerAccountId: string;
+  volumePackageId: string;
+  packageName: string;
+  currency: string;
+  customerPriceAmount: number;
+  sellerMarginBps: number;
+  sellerMarginAmount: number;
+  walletDebitAmount: number;
+  balanceBeforeAmount: number;
+  balanceAfterAmount: number;
+  creditLimitAmount: number;
+  canDebit: boolean;
+  blockedReason?: string | null;
+}
+
+export interface CreateResellerAccountRequest {
+  adminUserId: string;
+  displayName: string;
+  contactName?: string | null;
+  telegramUsername?: string | null;
+  status?: ResellerAccountStatus;
+  sellerMarginBps?: number;
+  currency?: string;
+  creditLimitAmount?: number;
+  notes?: string | null;
+}
+
+export interface UpdateResellerAccountRequest {
+  displayName?: string;
+  contactName?: string | null;
+  telegramUsername?: string | null;
+  status?: ResellerAccountStatus;
+  sellerMarginBps?: number;
+  currency?: string;
+  creditLimitAmount?: number;
+  notes?: string | null;
+}
+
+export interface TopUpResellerWalletRequest {
+  amount: number;
+  idempotencyKey?: string | null;
+  sourceId?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface DebitResellerWalletForPackageRequest {
+  volumePackageId: string;
+  customerAccountId?: string | null;
+  clientConfigId?: string | null;
+  idempotencyKey?: string | null;
+  sourceId?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface AdminClientConfigsExportResponse {
@@ -927,6 +1056,7 @@ export interface AdminCurrentPanelVolumeChargeResponse {
 }
 
 export interface CreateCustomerAccountRequest {
+  resellerAccountId?: string | null;
   displayName?: string | null;
   telegramId?: string | null;
   telegramUsername?: string | null;
@@ -940,6 +1070,7 @@ export interface CreateCustomerAccountRequest {
 }
 
 export interface UpdateCustomerAccountRequest {
+  resellerAccountId?: string | null;
   displayName?: string | null;
   telegramId?: string | null;
   telegramUsername?: string | null;
@@ -3369,6 +3500,23 @@ export interface AdminServersResponse {
 
 export interface AdminCustomerAccountsResponse {
   accounts: AdminCustomerAccountSummary[];
+}
+
+export interface AdminResellerAccountsResponse {
+  resellers: AdminResellerAccountSummary[];
+}
+
+export interface AdminResellerWalletLedgerResponse {
+  entries: AdminResellerWalletLedgerEntry[];
+}
+
+export interface AdminResellerWalletActionResponse {
+  reseller: AdminResellerAccountSummary;
+  ledgerEntry: AdminResellerWalletLedgerEntry;
+}
+
+export interface AdminResellerPackageQuoteResponse {
+  quote: AdminResellerPackageQuote;
 }
 
 export interface AdminClientRoutePreferenceResponse {

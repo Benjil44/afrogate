@@ -470,6 +470,32 @@ export const routeFailoverEvents = pgTable(
   }),
 );
 
+export const resellerAccounts = pgTable(
+  'reseller_accounts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    adminUserId: text('admin_user_id').notNull(),
+    displayName: text('display_name').notNull(),
+    contactName: text('contact_name'),
+    telegramUsername: text('telegram_username'),
+    status: text('status').notNull().default('active'),
+    sellerMarginBps: integer('seller_margin_bps').notNull().default(2500),
+    currency: text('currency').notNull().default('toman'),
+    balanceAmount: bigint('balance_amount', { mode: 'number' }).notNull().default(0),
+    creditLimitAmount: bigint('credit_limit_amount', { mode: 'number' }).notNull().default(0),
+    notes: text('notes'),
+    createdBy: text('created_by'),
+    updatedBy: text('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    adminUserIdx: uniqueIndex('reseller_accounts_admin_user_unique').on(table.adminUserId),
+    statusIdx: index('reseller_accounts_status_idx').on(table.status),
+    createdAtIdx: index('reseller_accounts_created_at_idx').on(table.createdAt),
+  }),
+);
+
 export const protocolSetups = pgTable(
   'protocol_setups',
   {
@@ -531,6 +557,7 @@ export const customerAccounts = pgTable(
   'customer_accounts',
   {
     id: uuid('id').defaultRandom().primaryKey(),
+    resellerAccountId: uuid('reseller_account_id').references(() => resellerAccounts.id, { onDelete: 'set null' }),
     displayName: text('display_name'),
     telegramId: text('telegram_id'),
     telegramUsername: text('telegram_username'),
@@ -553,6 +580,7 @@ export const customerAccounts = pgTable(
       .where(sql`paid_number_hash IS NOT NULL AND paid_number_hash <> ''`),
     statusIdx: index('customer_accounts_status_idx').on(table.status),
     quotaScopeIdx: index('customer_accounts_quota_scope_idx').on(table.quotaScope),
+    resellerAccountIdx: index('customer_accounts_reseller_account_idx').on(table.resellerAccountId, table.createdAt),
   }),
 );
 
@@ -937,6 +965,38 @@ export const quotaChargeEvents = pgTable(
   }),
 );
 
+export const resellerWalletLedger = pgTable(
+  'reseller_wallet_ledger',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    resellerAccountId: uuid('reseller_account_id')
+      .notNull()
+      .references(() => resellerAccounts.id, { onDelete: 'restrict' }),
+    entryType: text('entry_type').notNull(),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
+    balanceBeforeAmount: bigint('balance_before_amount', { mode: 'number' }).notNull(),
+    balanceAfterAmount: bigint('balance_after_amount', { mode: 'number' }).notNull(),
+    currency: text('currency').notNull(),
+    source: text('source').notNull(),
+    sourceId: text('source_id'),
+    volumePackageId: uuid('volume_package_id').references(() => volumePackages.id, { onDelete: 'set null' }),
+    customerAccountId: uuid('customer_account_id').references(() => customerAccounts.id, { onDelete: 'set null' }),
+    clientConfigId: uuid('client_config_id').references(() => clientConfigs.id, { onDelete: 'set null' }),
+    idempotencyKey: text('idempotency_key'),
+    notes: text('notes'),
+    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    idempotencyIdx: uniqueIndex('reseller_wallet_ledger_idempotency_unique')
+      .on(table.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL AND idempotency_key <> ''`),
+    resellerCreatedIdx: index('reseller_wallet_ledger_reseller_created_idx').on(table.resellerAccountId, table.createdAt),
+    customerIdx: index('reseller_wallet_ledger_customer_idx').on(table.customerAccountId, table.createdAt),
+  }),
+);
+
 export const routeSettings = pgTable(
   'route_settings',
   {
@@ -1102,7 +1162,16 @@ export const outboundHealthChecksRelations = relations(outboundHealthChecks, ({ 
   }),
 }));
 
-export const customerAccountsRelations = relations(customerAccounts, ({ many }) => ({
+export const resellerAccountsRelations = relations(resellerAccounts, ({ many }) => ({
+  customerAccounts: many(customerAccounts),
+  walletLedger: many(resellerWalletLedger),
+}));
+
+export const customerAccountsRelations = relations(customerAccounts, ({ many, one }) => ({
+  resellerAccount: one(resellerAccounts, {
+    fields: [customerAccounts.resellerAccountId],
+    references: [resellerAccounts.id],
+  }),
   clientConfigs: many(clientConfigs),
   usageEvents: many(clientUsageEvents),
   rewardedAdGrants: many(rewardedAdGrants),
@@ -1216,5 +1285,24 @@ export const quotaChargeEventsRelations = relations(quotaChargeEvents, ({ one })
   customerAccount: one(customerAccounts, {
     fields: [quotaChargeEvents.customerAccountId],
     references: [customerAccounts.id],
+  }),
+}));
+
+export const resellerWalletLedgerRelations = relations(resellerWalletLedger, ({ one }) => ({
+  resellerAccount: one(resellerAccounts, {
+    fields: [resellerWalletLedger.resellerAccountId],
+    references: [resellerAccounts.id],
+  }),
+  volumePackage: one(volumePackages, {
+    fields: [resellerWalletLedger.volumePackageId],
+    references: [volumePackages.id],
+  }),
+  customerAccount: one(customerAccounts, {
+    fields: [resellerWalletLedger.customerAccountId],
+    references: [customerAccounts.id],
+  }),
+  clientConfig: one(clientConfigs, {
+    fields: [resellerWalletLedger.clientConfigId],
+    references: [clientConfigs.id],
   }),
 }));

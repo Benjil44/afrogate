@@ -512,7 +512,7 @@ const navItems: NavItemData[] = [
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
   { id: 'settings', labelKey: 'settings', icon: SettingsIcon },
 ];
-const managedAdminRoles: Role[] = ['owner', 'admin', 'supervisor', 'support', 'auditor'];
+const managedAdminRoles: Role[] = ['owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller'];
 const protocolDefaultPorts: Record<ProtocolKind, string> = {
   wireguard: '51820',
   vless: '443',

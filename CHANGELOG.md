@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.109.0 - 2026-05-30
+
+- Added the reseller/representative foundation for mobile-shop sellers, including the managed `reseller` role, RBAC permissions, PostgreSQL reseller accounts, customer ownership links, and signed wallet ledger rows.
+- Added guarded admin APIs to list/create/update reseller accounts, quote package wallet debits, top up reseller wallets, and record idempotent package sale debits with audit logging.
+- Documented reseller wallet security rules and added future backlog items for reseller-scoped panels, automatic wallet-gated sales, and adaptive MTU/fragmentation diagnostics.
+
 ## 0.108.1 - 2026-05-30
 
 - Added local SVG favicons for the dashboard and client apps.

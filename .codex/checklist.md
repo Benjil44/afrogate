@@ -169,6 +169,11 @@
 - [x] Extensible payment method catalog with PayPal as a first-class provider.
 - [x] Payment order lifecycle with pending/paid/failed/refunded states.
 - [x] Separate seller/admin and VPN-client UX boundaries in the backend contract.
+- [x] Reseller/representative role foundation for mobile-shop sellers.
+- [x] Reseller account and wallet ledger schema.
+- [x] Guarded admin reseller wallet APIs for account listing, package quote, top-up, and package debit.
+- [ ] Reseller-scoped dashboard/panel so each representative can manage only their own customers, orders, and wallet.
+- [ ] Wallet-gated reseller client creation/renewal that automatically debits AfroGate share at sale time.
 - [x] PayPal checkout capture adapter and webhook verification.
 - [x] Paid payment order quota allocation.
 - [x] Rewarded-ad quota credit ledger and mobile client claim surface.
@@ -223,6 +228,7 @@
 - [x] Route decision filtering by per-client preferred exit country and available country/server candidates.
 - [x] Mobile client UX for automatic route, country selection, and explicit server choice.
 - [x] Native client per-app VPN split tunneling profile with local app selection, Android include-only `VpnService` enforcement reference, and iOS managed-profile boundary so selected apps can use AfroGate where native enforcement is available while other apps stay on normal internet.
+- [ ] Adaptive MTU/fragmentation diagnostics and safe MTU recommendations for mobile/VPN routes, with no automatic mid-session change unless session-safety gates allow it.
 
 ## Phase 4: Current Panel Integration
 

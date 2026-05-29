@@ -41,8 +41,8 @@ const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 
-const SUPPORTED_ADMIN_ROLES = new Set<Role>(['superadmin', 'owner', 'admin', 'supervisor', 'support', 'auditor']);
-const NON_SUPERADMIN_ROLES = new Set<Role>(['owner', 'admin', 'supervisor', 'support', 'auditor']);
+const SUPPORTED_ADMIN_ROLES = new Set<Role>(['superadmin', 'owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller']);
+const NON_SUPERADMIN_ROLES = new Set<Role>(['owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller']);
 const ADMIN_USERS_STORE_DATABASE_VALUES = new Set(['database', 'postgres', 'postgresql']);
 const ADMIN_USERS_STORE_FILE_VALUES = new Set(['file', 'local', 'json']);
 
@@ -480,7 +480,7 @@ export class AuthService {
 
   private resolveManagedUserRole(role: Role | undefined): Role {
     if (!role || !NON_SUPERADMIN_ROLES.has(role)) {
-      throw new BadRequestException('Managed users must use owner, admin, supervisor, support, or auditor role');
+      throw new BadRequestException('Managed users must use owner, admin, supervisor, support, auditor, or reseller role');
     }
 
     return role;

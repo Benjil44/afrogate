@@ -43,6 +43,10 @@ import type {
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
   AdminRecordClientUsageResponse,
+  AdminResellerAccountSummary,
+  AdminResellerPackageQuote,
+  AdminResellerWalletActionResponse,
+  AdminResellerWalletLedgerEntry,
   AdminVolumePackageSummary,
   CurrentPanelImportCandidate,
   CurrentPanelImportConfigsRequest,
@@ -94,6 +98,12 @@ import {
   UpdatePaymentOrderStatusDto,
   UpdateVolumePackageDto,
 } from './dto/billing.dto';
+import {
+  CreateResellerAccountDto,
+  DebitResellerWalletForPackageDto,
+  TopUpResellerWalletDto,
+  UpdateResellerAccountDto,
+} from './dto/reseller.dto';
 import { PayPalPaymentService, type PayPalWebhookSignatureHeaders } from './paypal-payment.service';
 import { buildCurrentPanelImportPreview } from './current-panel-import.adapters';
 import {
@@ -111,6 +121,9 @@ const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
 const MAX_REWARDED_AD_REWARD_BYTES = 10 * BYTES_PER_GB;
 const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
+const DEFAULT_RESELLER_MARGIN_BPS = 2500;
+const MAX_RESELLER_MARGIN_BPS = 8000;
+const BASIS_POINTS = 10000;
 const CURRENT_PANEL_IMPORTABLE_STATUSES = new Set(['active', 'limited', 'disabled', 'expired']);
 const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = new Set<CurrentPanelVolumeChargeScope>([
   'account_quota',
@@ -161,6 +174,8 @@ const CLIENT_SUBSCRIPTION_PUBLIC_METADATA_KEYS = new Set([
 
 interface CustomerAccountRow {
   id: string;
+  resellerAccountId: string | null;
+  resellerDisplayName: string | null;
   displayName: string | null;
   telegramId: string | null;
   telegramUsername: string | null;
@@ -447,6 +462,50 @@ interface VolumePackageRow {
   updatedAt: Date;
 }
 
+interface ResellerAccountRow {
+  id: string;
+  adminUserId: string;
+  displayName: string;
+  contactName: string | null;
+  telegramUsername: string | null;
+  status: string;
+  sellerMarginBps: number;
+  currency: string;
+  balanceAmount: string | number;
+  creditLimitAmount: string | number;
+  notes: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  customerAccountCount: number;
+  activeCustomerAccountCount: number;
+  ledgerEntryCount: number;
+}
+
+interface ResellerWalletLedgerRow {
+  id: string;
+  resellerAccountId: string;
+  entryType: string;
+  amount: string | number;
+  balanceBeforeAmount: string | number;
+  balanceAfterAmount: string | number;
+  currency: string;
+  source: string;
+  sourceId: string | null;
+  volumePackageId: string | null;
+  volumePackageName: string | null;
+  customerAccountId: string | null;
+  customerDisplayName: string | null;
+  clientConfigId: string | null;
+  clientConfigLabel: string | null;
+  idempotencyKey: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: Date;
+}
+
 interface PaymentMethodRow {
   id: string;
   name: string;
@@ -542,6 +601,12 @@ interface CurrentPanelVolumeChargeClientQuotaChange {
 }
 
 interface CustomerAccountFilters {
+  status?: string;
+  search?: string;
+  limit: number;
+}
+
+interface ResellerAccountFilters {
   status?: string;
   search?: string;
   limit: number;
@@ -1717,6 +1782,302 @@ export class BillingService {
     }
   }
 
+  async listResellerAccounts(filters: ResellerAccountFilters): Promise<AdminResellerAccountSummary[]> {
+    const values: unknown[] = [];
+    const where: string[] = [];
+
+    if (filters.status?.trim()) {
+      values.push(this.normalizeResellerStatus(filters.status));
+      where.push(`ra.status = $${values.length}`);
+    }
+
+    if (filters.search?.trim()) {
+      values.push(`%${filters.search.trim()}%`);
+      where.push(`(
+        ra.display_name ILIKE $${values.length}
+        OR ra.contact_name ILIKE $${values.length}
+        OR ra.telegram_username ILIKE $${values.length}
+        OR ra.admin_user_id ILIKE $${values.length}
+      )`);
+    }
+
+    values.push(filters.limit);
+    const result = await this.database.query<ResellerAccountRow>(
+      `
+        ${this.resellerAccountSelectSql()}
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        GROUP BY ra.id
+        ORDER BY ra.created_at DESC
+        LIMIT $${values.length}
+      `,
+      values,
+    );
+
+    return result.rows.map((row) => this.mapResellerAccount(row));
+  }
+
+  async getResellerAccount(id: string): Promise<AdminResellerAccountSummary> {
+    return this.mapResellerAccount(await this.getResellerAccountRow(id));
+  }
+
+  async createResellerAccount(
+    dto: CreateResellerAccountDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerAccountSummary> {
+    try {
+      const resellerId = await this.database.transaction(async (executor) => {
+        const settings = await this.getBillingSettingsRow(executor);
+        const adminUserId = this.normalizeNullableString(dto.adminUserId);
+        const displayName = this.normalizeNullableString(dto.displayName);
+        if (!adminUserId) throw new BadRequestException('Reseller admin user is required');
+        if (!displayName) throw new BadRequestException('Reseller display name is required');
+
+        const result = await executor.query<{ id: string }>(
+          `
+            INSERT INTO reseller_accounts (
+              admin_user_id, display_name, contact_name, telegram_username,
+              status, seller_margin_bps, currency, credit_limit_amount,
+              notes, created_by, updated_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+            RETURNING id
+          `,
+          [
+            adminUserId,
+            displayName,
+            this.normalizeNullableString(dto.contactName),
+            this.normalizeTelegramUsername(dto.telegramUsername),
+            dto.status !== undefined ? this.normalizeResellerStatus(dto.status) : 'active',
+            this.normalizeResellerMarginBps(dto.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS),
+            dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : settings.currency,
+            this.normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0),
+            this.normalizeNullableString(dto.notes),
+            actor?.id ?? null,
+          ],
+        );
+
+        const id = result.rows[0].id;
+        await this.audit.record(
+          actor,
+          'reseller_account.create',
+          'reseller_account',
+          id,
+          {
+            adminUserId,
+            sellerMarginBps: dto.sellerMarginBps ?? DEFAULT_RESELLER_MARGIN_BPS,
+            creditLimitAmount: dto.creditLimitAmount ?? 0,
+            currency: dto.currency ?? settings.currency,
+          },
+          executor,
+        );
+
+        return id;
+      });
+
+      return this.getResellerAccount(resellerId);
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Reseller account already exists for this admin user');
+      throw error;
+    }
+  }
+
+  async updateResellerAccount(
+    id: string,
+    dto: UpdateResellerAccountDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerAccountSummary> {
+    await this.database.transaction(async (executor) => {
+      const existing = await this.getResellerAccountRowForUpdate(executor, id);
+      const changedFields = await this.updateResellerAccountFields(executor, id, existing, dto, actor);
+
+      await this.audit.record(
+        actor,
+        'reseller_account.update',
+        'reseller_account',
+        id,
+        { changedFields },
+        executor,
+      );
+    });
+
+    return this.getResellerAccount(id);
+  }
+
+  async listResellerWalletLedger(resellerAccountId: string, limit: number): Promise<AdminResellerWalletLedgerEntry[]> {
+    await this.ensureResellerAccountExists(this.database, resellerAccountId);
+    const result = await this.database.query<ResellerWalletLedgerRow>(
+      `
+        ${this.resellerWalletLedgerSelectSql()}
+        WHERE rwl.reseller_account_id = $1
+        ORDER BY rwl.created_at DESC
+        LIMIT $2
+      `,
+      [resellerAccountId, limit],
+    );
+
+    return result.rows.map((row) => this.mapResellerWalletLedger(row));
+  }
+
+  async quoteResellerPackage(resellerAccountId: string, volumePackageId: string): Promise<AdminResellerPackageQuote> {
+    const [reseller, volumePackage] = await Promise.all([
+      this.getResellerAccountRow(resellerAccountId),
+      this.getVolumePackageRow(volumePackageId),
+    ]);
+
+    return this.calculateResellerPackageQuote(reseller, volumePackage);
+  }
+
+  async topUpResellerWallet(
+    resellerAccountId: string,
+    dto: TopUpResellerWalletDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerWalletActionResponse> {
+    const amount = this.normalizeMoneyAmount(dto.amount, 'amount');
+    if (amount <= 0) throw new BadRequestException('Reseller wallet top-up amount must be positive');
+    const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+    const sourceId = this.normalizeNullableString(dto.sourceId);
+
+    const ledgerEntry = await this.database.transaction(async (executor) => {
+      if (idempotencyKey) {
+        const existing = await this.getResellerWalletLedgerByIdempotencyForUpdate(executor, idempotencyKey);
+        if (existing) {
+          this.assertResellerWalletDuplicateMatches(existing, {
+            resellerAccountId,
+            entryType: 'topup',
+            amount,
+            source: 'manual_topup',
+            sourceId,
+            volumePackageId: null,
+            customerAccountId: null,
+            clientConfigId: null,
+          });
+          return existing;
+        }
+      }
+
+      const reseller = await this.getResellerAccountRowForUpdate(executor, resellerAccountId);
+      const entry = await this.insertResellerWalletLedgerEntry(executor, reseller, {
+        amount,
+        entryType: 'topup',
+        source: 'manual_topup',
+        sourceId,
+        idempotencyKey,
+        volumePackageId: null,
+        customerAccountId: null,
+        clientConfigId: null,
+        notes: this.normalizeNullableString(dto.notes),
+        metadata: dto.metadata ?? {},
+        actor,
+      });
+
+      await this.audit.record(
+        actor,
+        'reseller_wallet.topup',
+        'reseller_account',
+        resellerAccountId,
+        {
+          ledgerEntryId: entry.id,
+          amount,
+          balanceAfterAmount: this.numberFromBigInt(entry.balanceAfterAmount) ?? 0,
+        },
+        executor,
+      );
+
+      return entry;
+    });
+
+    return {
+      reseller: await this.getResellerAccount(resellerAccountId),
+      ledgerEntry: this.mapResellerWalletLedger(ledgerEntry),
+    };
+  }
+
+  async debitResellerWalletForPackage(
+    resellerAccountId: string,
+    dto: DebitResellerWalletForPackageDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerWalletActionResponse> {
+    const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+    const sourceId = this.normalizeNullableString(dto.sourceId);
+    const customerAccountId = this.normalizeNullableString(dto.customerAccountId);
+    const clientConfigId = this.normalizeNullableString(dto.clientConfigId);
+
+    const ledgerEntry = await this.database.transaction(async (executor) => {
+      if (idempotencyKey) {
+        const existing = await this.getResellerWalletLedgerByIdempotencyForUpdate(executor, idempotencyKey);
+        if (existing) {
+          this.assertResellerWalletDuplicateMatches(existing, {
+            resellerAccountId,
+            entryType: 'sale_debit',
+            amount: this.numberFromBigInt(existing.amount) ?? 0,
+            source: 'client_sale',
+            sourceId,
+            volumePackageId: dto.volumePackageId,
+            customerAccountId,
+            clientConfigId,
+          });
+          return existing;
+        }
+      }
+
+      const reseller = await this.getResellerAccountRowForUpdate(executor, resellerAccountId);
+      if (reseller.status !== 'active') throw new BadRequestException('Reseller account is not active');
+
+      const volumePackage = await this.getVolumePackageRowForUpdate(executor, dto.volumePackageId);
+      if (volumePackage.status !== 'active') throw new BadRequestException('Volume package is not active');
+
+      if (customerAccountId) await this.ensureCustomerAccountBelongsToReseller(executor, customerAccountId, resellerAccountId);
+      if (clientConfigId) await this.ensureClientConfigBelongsToReseller(executor, clientConfigId, resellerAccountId, customerAccountId);
+
+      const quote = this.calculateResellerPackageQuote(reseller, volumePackage);
+      if (volumePackage.currency !== reseller.currency) {
+        throw new BadRequestException('Package currency does not match reseller wallet currency');
+      }
+      if (!quote.canDebit) {
+        throw new BadRequestException(quote.blockedReason ?? 'Reseller wallet balance is not enough for this package');
+      }
+      if (quote.walletDebitAmount <= 0) throw new BadRequestException('Package wallet debit amount must be positive');
+
+      const entry = await this.insertResellerWalletLedgerEntry(executor, reseller, {
+        amount: -quote.walletDebitAmount,
+        entryType: 'sale_debit',
+        source: 'client_sale',
+        sourceId,
+        idempotencyKey,
+        volumePackageId: dto.volumePackageId,
+        customerAccountId,
+        clientConfigId,
+        notes: this.normalizeNullableString(dto.notes),
+        metadata: dto.metadata ?? {},
+        actor,
+      });
+
+      await this.audit.record(
+        actor,
+        'reseller_wallet.package_debit',
+        'reseller_account',
+        resellerAccountId,
+        {
+          ledgerEntryId: entry.id,
+          volumePackageId: dto.volumePackageId,
+          customerAccountId,
+          clientConfigId,
+          walletDebitAmount: quote.walletDebitAmount,
+          sellerMarginBps: quote.sellerMarginBps,
+          balanceAfterAmount: this.numberFromBigInt(entry.balanceAfterAmount) ?? 0,
+        },
+        executor,
+      );
+
+      return entry;
+    });
+
+    return {
+      reseller: await this.getResellerAccount(resellerAccountId),
+      ledgerEntry: this.mapResellerWalletLedger(ledgerEntry),
+    };
+  }
+
   async listCustomerAccounts(filters: CustomerAccountFilters): Promise<AdminCustomerAccountSummary[]> {
     const values: unknown[] = [];
     const where: string[] = [];
@@ -1740,7 +2101,7 @@ export class BillingService {
       `
         ${this.customerAccountSelectSql()}
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-        GROUP BY ca.id
+        GROUP BY ca.id, ra.id
         ORDER BY ca.created_at DESC
         LIMIT $${values.length}
       `,
@@ -2191,7 +2552,7 @@ export class BillingService {
       `
         ${this.customerAccountSelectSql()}
         WHERE ca.id = $1
-        GROUP BY ca.id
+        GROUP BY ca.id, ra.id
       `,
       [id],
     );
@@ -2239,17 +2600,21 @@ export class BillingService {
     try {
       const paidNumberHash = this.hashPaidNumberIfPresent(dto.paidNumber);
       const result = await this.database.transaction(async (executor) => {
+        const resellerAccountId = this.normalizeNullableString(dto.resellerAccountId);
+        if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
+
         const insertResult = await executor.query<{ id: string }>(
           `
             INSERT INTO customer_accounts (
-              display_name, telegram_id, telegram_username, paid_number_hash,
+              reseller_account_id, display_name, telegram_id, telegram_username, paid_number_hash,
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
               used_bytes, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id
           `,
           [
+            resellerAccountId,
             this.normalizeNullableString(dto.displayName),
             this.normalizeNullableString(dto.telegramId),
             this.normalizeTelegramUsername(dto.telegramUsername),
@@ -2275,6 +2640,7 @@ export class BillingService {
             quotaScope: dto.quotaScope ?? 'account_shared',
             quotaLimitBytes: dto.quotaLimitBytes ?? null,
             perClientLimitBytes: dto.perClientLimitBytes ?? null,
+            resellerAccountId,
           },
           executor,
         );
@@ -2953,7 +3319,7 @@ export class BillingService {
         `
           ${this.customerAccountSelectSql()}
           WHERE ca.telegram_id = $1
-          GROUP BY ca.id
+          GROUP BY ca.id, ra.id
           ORDER BY ca.created_at DESC
           LIMIT 1
         `,
@@ -2971,7 +3337,7 @@ export class BillingService {
       `
         ${this.customerAccountSelectSql()}
         WHERE lower(ca.telegram_username) = lower($1)
-        GROUP BY ca.id
+        GROUP BY ca.id, ra.id
         ORDER BY ca.created_at DESC
         LIMIT 2
       `,
@@ -3733,6 +4099,17 @@ export class BillingService {
     `;
   }
 
+  private async getVolumePackageRow(id: string): Promise<VolumePackageRow> {
+    const result = await this.database.query<VolumePackageRow>(
+      `${this.volumePackageSelectSql()} WHERE id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Volume package not found');
+    return row;
+  }
+
   private async getVolumePackageRowForUpdate(
     executor: DatabaseQueryExecutor,
     id: string,
@@ -3745,6 +4122,321 @@ export class BillingService {
 
     if (!row) throw new NotFoundException('Volume package not found');
     return row;
+  }
+
+  private resellerAccountSelectSql(): string {
+    return `
+      SELECT
+        ra.id,
+        ra.admin_user_id AS "adminUserId",
+        ra.display_name AS "displayName",
+        ra.contact_name AS "contactName",
+        ra.telegram_username AS "telegramUsername",
+        ra.status,
+        ra.seller_margin_bps AS "sellerMarginBps",
+        ra.currency,
+        ra.balance_amount AS "balanceAmount",
+        ra.credit_limit_amount AS "creditLimitAmount",
+        ra.notes,
+        ra.created_by AS "createdBy",
+        ra.updated_by AS "updatedBy",
+        ra.created_at AS "createdAt",
+        ra.updated_at AS "updatedAt",
+        COUNT(DISTINCT ca.id)::int AS "customerAccountCount",
+        COUNT(DISTINCT ca.id) FILTER (WHERE ca.status = 'active')::int AS "activeCustomerAccountCount",
+        COUNT(DISTINCT rwl.id)::int AS "ledgerEntryCount"
+      FROM reseller_accounts ra
+      LEFT JOIN customer_accounts ca ON ca.reseller_account_id = ra.id
+      LEFT JOIN reseller_wallet_ledger rwl ON rwl.reseller_account_id = ra.id
+    `;
+  }
+
+  private async getResellerAccountRow(id: string): Promise<ResellerAccountRow> {
+    const result = await this.database.query<ResellerAccountRow>(
+      `
+        ${this.resellerAccountSelectSql()}
+        WHERE ra.id = $1
+        GROUP BY ra.id
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Reseller account not found');
+    return row;
+  }
+
+  private async getResellerAccountRowForUpdate(
+    executor: DatabaseQueryExecutor,
+    id: string,
+  ): Promise<ResellerAccountRow> {
+    const result = await executor.query<ResellerAccountRow>(
+      `
+        SELECT
+          id,
+          admin_user_id AS "adminUserId",
+          display_name AS "displayName",
+          contact_name AS "contactName",
+          telegram_username AS "telegramUsername",
+          status,
+          seller_margin_bps AS "sellerMarginBps",
+          currency,
+          balance_amount AS "balanceAmount",
+          credit_limit_amount AS "creditLimitAmount",
+          notes,
+          created_by AS "createdBy",
+          updated_by AS "updatedBy",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt",
+          0::int AS "customerAccountCount",
+          0::int AS "activeCustomerAccountCount",
+          0::int AS "ledgerEntryCount"
+        FROM reseller_accounts
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Reseller account not found');
+    return row;
+  }
+
+  private async ensureResellerAccountExists(executor: DatabaseQueryExecutor, id: string): Promise<void> {
+    const result = await executor.query('SELECT id FROM reseller_accounts WHERE id = $1', [id]);
+    if (!result.rows[0]) throw new NotFoundException('Reseller account not found');
+  }
+
+  private async updateResellerAccountFields(
+    executor: DatabaseQueryExecutor,
+    id: string,
+    existing: ResellerAccountRow,
+    dto: UpdateResellerAccountDto,
+    actor: AuthActor | undefined,
+  ): Promise<string[]> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    const setClauses: string[] = [];
+
+    const add = (field: string, column: string, value: unknown) => {
+      fields.push(field);
+      values.push(value);
+      setClauses.push(`${column} = $${values.length}`);
+    };
+
+    if (dto.displayName !== undefined) {
+      const displayName = this.normalizeNullableString(dto.displayName);
+      if (!displayName) throw new BadRequestException('Reseller display name is required');
+      add('displayName', 'display_name', displayName);
+    }
+    if (dto.contactName !== undefined) add('contactName', 'contact_name', this.normalizeNullableString(dto.contactName));
+    if (dto.telegramUsername !== undefined) {
+      add('telegramUsername', 'telegram_username', this.normalizeTelegramUsername(dto.telegramUsername));
+    }
+    if (dto.status !== undefined) add('status', 'status', this.normalizeResellerStatus(dto.status));
+    if (dto.sellerMarginBps !== undefined) {
+      add('sellerMarginBps', 'seller_margin_bps', this.normalizeResellerMarginBps(dto.sellerMarginBps, existing.sellerMarginBps));
+    }
+    if (dto.currency !== undefined) {
+      const currency = this.normalizeCurrency(dto.currency);
+      if (currency !== existing.currency) {
+        const ledgerCount = await executor.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM reseller_wallet_ledger WHERE reseller_account_id = $1',
+          [id],
+        );
+        if (Number(ledgerCount.rows[0]?.count ?? 0) > 0) {
+          throw new BadRequestException('Reseller wallet currency cannot change after ledger entries exist');
+        }
+      }
+      add('currency', 'currency', currency);
+    }
+    if (dto.creditLimitAmount !== undefined) {
+      add('creditLimitAmount', 'credit_limit_amount', this.normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0));
+    }
+    if (dto.notes !== undefined) add('notes', 'notes', this.normalizeNullableString(dto.notes));
+
+    if (!setClauses.length) return fields;
+
+    values.push(actor?.id ?? null);
+    values.push(id);
+    await executor.query(
+      `
+        UPDATE reseller_accounts
+        SET ${setClauses.join(', ')},
+            updated_by = $${values.length - 1},
+            updated_at = now()
+        WHERE id = $${values.length}
+      `,
+      values,
+    );
+
+    return fields;
+  }
+
+  private resellerWalletLedgerSelectSql(): string {
+    return `
+      SELECT
+        rwl.id,
+        rwl.reseller_account_id AS "resellerAccountId",
+        rwl.entry_type AS "entryType",
+        rwl.amount,
+        rwl.balance_before_amount AS "balanceBeforeAmount",
+        rwl.balance_after_amount AS "balanceAfterAmount",
+        rwl.currency,
+        rwl.source,
+        rwl.source_id AS "sourceId",
+        rwl.volume_package_id AS "volumePackageId",
+        vp.name AS "volumePackageName",
+        rwl.customer_account_id AS "customerAccountId",
+        ca.display_name AS "customerDisplayName",
+        rwl.client_config_id AS "clientConfigId",
+        cc.label AS "clientConfigLabel",
+        rwl.idempotency_key AS "idempotencyKey",
+        rwl.notes,
+        rwl.metadata,
+        rwl.created_by AS "createdBy",
+        rwl.created_at AS "createdAt"
+      FROM reseller_wallet_ledger rwl
+      LEFT JOIN volume_packages vp ON vp.id = rwl.volume_package_id
+      LEFT JOIN customer_accounts ca ON ca.id = rwl.customer_account_id
+      LEFT JOIN client_configs cc ON cc.id = rwl.client_config_id
+    `;
+  }
+
+  private async getResellerWalletLedgerByIdempotencyForUpdate(
+    executor: DatabaseQueryExecutor,
+    idempotencyKey: string,
+  ): Promise<ResellerWalletLedgerRow | null> {
+    const result = await executor.query<ResellerWalletLedgerRow>(
+      `${this.resellerWalletLedgerSelectSql()} WHERE rwl.idempotency_key = $1 FOR UPDATE OF rwl`,
+      [idempotencyKey],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async insertResellerWalletLedgerEntry(
+    executor: DatabaseQueryExecutor,
+    reseller: ResellerAccountRow,
+    input: {
+      entryType: string;
+      amount: number;
+      source: string;
+      sourceId: string | null;
+      volumePackageId: string | null;
+      customerAccountId: string | null;
+      clientConfigId: string | null;
+      idempotencyKey: string | null;
+      notes: string | null;
+      metadata: Record<string, unknown>;
+      actor: AuditActor | undefined;
+    },
+  ): Promise<ResellerWalletLedgerRow> {
+    if (!Number.isSafeInteger(input.amount) || input.amount === 0) {
+      throw new BadRequestException('Reseller wallet amount must be a non-zero safe integer');
+    }
+
+    const balanceBeforeAmount = this.numberFromBigInt(reseller.balanceAmount) ?? 0;
+    const creditLimitAmount = this.numberFromBigInt(reseller.creditLimitAmount) ?? 0;
+    const balanceAfterAmount = balanceBeforeAmount + input.amount;
+    if (!Number.isSafeInteger(balanceAfterAmount)) {
+      throw new BadRequestException('Reseller wallet balance would exceed the safe money range');
+    }
+    if (balanceAfterAmount + creditLimitAmount < 0) {
+      throw new BadRequestException('Reseller wallet balance is not enough for this package');
+    }
+
+    await executor.query(
+      `
+        UPDATE reseller_accounts
+        SET balance_amount = $1,
+            updated_by = $2,
+            updated_at = now()
+        WHERE id = $3
+      `,
+      [balanceAfterAmount, input.actor?.id ?? null, reseller.id],
+    );
+
+    const insertResult = await executor.query<{ id: string }>(
+      `
+        INSERT INTO reseller_wallet_ledger (
+          reseller_account_id, entry_type, amount, balance_before_amount,
+          balance_after_amount, currency, source, source_id, volume_package_id,
+          customer_account_id, client_config_id, idempotency_key, notes, metadata, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15)
+        RETURNING id
+      `,
+      [
+        reseller.id,
+        input.entryType,
+        input.amount,
+        balanceBeforeAmount,
+        balanceAfterAmount,
+        reseller.currency,
+        input.source,
+        input.sourceId,
+        input.volumePackageId,
+        input.customerAccountId,
+        input.clientConfigId,
+        input.idempotencyKey,
+        input.notes,
+        this.stringifyPublicRecord(input.metadata, 'Reseller wallet metadata'),
+        input.actor?.id ?? null,
+      ],
+    );
+
+    const result = await executor.query<ResellerWalletLedgerRow>(
+      `${this.resellerWalletLedgerSelectSql()} WHERE rwl.id = $1`,
+      [insertResult.rows[0].id],
+    );
+
+    return result.rows[0];
+  }
+
+  private async ensureCustomerAccountBelongsToReseller(
+    executor: DatabaseQueryExecutor,
+    customerAccountId: string,
+    resellerAccountId: string,
+  ): Promise<void> {
+    const result = await executor.query<{ resellerAccountId: string | null }>(
+      'SELECT reseller_account_id AS "resellerAccountId" FROM customer_accounts WHERE id = $1 FOR SHARE',
+      [customerAccountId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Customer account not found');
+    if (row.resellerAccountId !== resellerAccountId) {
+      throw new BadRequestException('Customer account does not belong to this reseller');
+    }
+  }
+
+  private async ensureClientConfigBelongsToReseller(
+    executor: DatabaseQueryExecutor,
+    clientConfigId: string,
+    resellerAccountId: string,
+    customerAccountId: string | null,
+  ): Promise<void> {
+    const result = await executor.query<{ customerAccountId: string; resellerAccountId: string | null }>(
+      `
+        SELECT
+          cc.customer_account_id AS "customerAccountId",
+          ca.reseller_account_id AS "resellerAccountId"
+        FROM client_configs cc
+        JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+        WHERE cc.id = $1
+        FOR SHARE OF cc, ca
+      `,
+      [clientConfigId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Client config not found');
+    if (customerAccountId && row.customerAccountId !== customerAccountId) {
+      throw new BadRequestException('Client config does not belong to the selected customer account');
+    }
+    if (row.resellerAccountId !== resellerAccountId) {
+      throw new BadRequestException('Client config does not belong to this reseller');
+    }
   }
 
   private async updateVolumePackageFields(
@@ -3993,6 +4685,8 @@ export class BillingService {
       `
         SELECT
           id,
+          reseller_account_id AS "resellerAccountId",
+          NULL::text AS "resellerDisplayName",
           display_name AS "displayName",
           telegram_id AS "telegramId",
           telegram_username AS "telegramUsername",
@@ -4249,6 +4943,63 @@ export class BillingService {
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapResellerAccount(row: ResellerAccountRow): AdminResellerAccountSummary {
+    const sellerMarginBps = Number(row.sellerMarginBps ?? DEFAULT_RESELLER_MARGIN_BPS);
+    const afroGateShareBps = Math.max(BASIS_POINTS - sellerMarginBps, 0);
+    const balanceAmount = this.numberFromBigInt(row.balanceAmount) ?? 0;
+    const creditLimitAmount = this.numberFromBigInt(row.creditLimitAmount) ?? 0;
+
+    return {
+      id: row.id,
+      adminUserId: row.adminUserId,
+      displayName: row.displayName,
+      contactName: row.contactName,
+      telegramUsername: row.telegramUsername,
+      status: row.status,
+      sellerMarginBps,
+      sellerMarginPercent: sellerMarginBps / 100,
+      afroGateShareBps,
+      afroGateSharePercent: afroGateShareBps / 100,
+      currency: row.currency,
+      balanceAmount,
+      creditLimitAmount,
+      availableBalanceAmount: balanceAmount + creditLimitAmount,
+      customerAccountCount: Number(row.customerAccountCount ?? 0),
+      activeCustomerAccountCount: Number(row.activeCustomerAccountCount ?? 0),
+      ledgerEntryCount: Number(row.ledgerEntryCount ?? 0),
+      notes: row.notes,
+      createdBy: row.createdBy,
+      updatedBy: row.updatedBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapResellerWalletLedger(row: ResellerWalletLedgerRow): AdminResellerWalletLedgerEntry {
+    return {
+      id: row.id,
+      resellerAccountId: row.resellerAccountId,
+      entryType: row.entryType,
+      amount: this.numberFromBigInt(row.amount) ?? 0,
+      balanceBeforeAmount: this.numberFromBigInt(row.balanceBeforeAmount) ?? 0,
+      balanceAfterAmount: this.numberFromBigInt(row.balanceAfterAmount) ?? 0,
+      currency: row.currency,
+      source: row.source,
+      sourceId: row.sourceId,
+      volumePackageId: row.volumePackageId,
+      volumePackageName: row.volumePackageName,
+      customerAccountId: row.customerAccountId,
+      customerDisplayName: row.customerDisplayName,
+      clientConfigId: row.clientConfigId,
+      clientConfigLabel: row.clientConfigLabel,
+      idempotencyKey: row.idempotencyKey,
+      notes: row.notes,
+      metadata: row.metadata ?? {},
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
     };
   }
 
@@ -4584,6 +5335,8 @@ export class BillingService {
     return `
       SELECT
         ca.id,
+        ca.reseller_account_id AS "resellerAccountId",
+        ra.display_name AS "resellerDisplayName",
         ca.display_name AS "displayName",
         ca.telegram_id AS "telegramId",
         ca.telegram_username AS "telegramUsername",
@@ -4599,6 +5352,7 @@ export class BillingService {
         COUNT(cc.id)::int AS "clientCount",
         COUNT(cc.id) FILTER (WHERE cc.status = 'active')::int AS "activeClientCount"
       FROM customer_accounts ca
+      LEFT JOIN reseller_accounts ra ON ra.id = ca.reseller_account_id
       LEFT JOIN client_configs cc ON cc.customer_account_id = ca.id
     `;
   }
@@ -6332,6 +7086,11 @@ export class BillingService {
       setClauses.push(`${column} = $${values.length}`);
     };
 
+    if (dto.resellerAccountId !== undefined) {
+      const resellerAccountId = this.normalizeNullableString(dto.resellerAccountId);
+      if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
+      add('resellerAccountId', 'reseller_account_id', resellerAccountId);
+    }
     if (dto.displayName !== undefined) add('displayName', 'display_name', this.normalizeNullableString(dto.displayName));
     if (dto.telegramId !== undefined) add('telegramId', 'telegram_id', this.normalizeNullableString(dto.telegramId));
     if (dto.telegramUsername !== undefined) {
@@ -6417,6 +7176,8 @@ export class BillingService {
 
     return {
       id: row.id,
+      resellerAccountId: row.resellerAccountId,
+      resellerDisplayName: row.resellerDisplayName,
       displayName: row.displayName,
       telegramId: row.telegramId,
       telegramUsername: row.telegramUsername,
@@ -6781,6 +7542,75 @@ export class BillingService {
     };
   }
 
+  private calculateResellerPackageQuote(
+    reseller: ResellerAccountRow,
+    volumePackage: VolumePackageRow,
+  ): AdminResellerPackageQuote {
+    const customerPriceAmount = this.numberFromBigInt(volumePackage.totalPrice) ?? 0;
+    const sellerMarginBps = this.normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
+    const sellerMarginAmount = Math.round((customerPriceAmount * sellerMarginBps) / BASIS_POINTS);
+    const walletDebitAmount = Math.max(customerPriceAmount - sellerMarginAmount, 0);
+    const balanceBeforeAmount = this.numberFromBigInt(reseller.balanceAmount) ?? 0;
+    const creditLimitAmount = this.numberFromBigInt(reseller.creditLimitAmount) ?? 0;
+    const balanceAfterAmount = balanceBeforeAmount - walletDebitAmount;
+    const currencyMatches = reseller.currency === volumePackage.currency;
+    const canDebit = currencyMatches && reseller.status === 'active' && volumePackage.status === 'active'
+      && balanceAfterAmount + creditLimitAmount >= 0;
+    const blockedReason = canDebit
+      ? null
+      : !currencyMatches
+        ? 'currency_mismatch'
+        : reseller.status !== 'active'
+          ? 'reseller_inactive'
+          : volumePackage.status !== 'active'
+            ? 'package_inactive'
+            : 'insufficient_reseller_wallet_balance';
+
+    return {
+      resellerAccountId: reseller.id,
+      volumePackageId: volumePackage.id,
+      packageName: volumePackage.name,
+      currency: volumePackage.currency,
+      customerPriceAmount,
+      sellerMarginBps,
+      sellerMarginAmount,
+      walletDebitAmount,
+      balanceBeforeAmount,
+      balanceAfterAmount,
+      creditLimitAmount,
+      canDebit,
+      blockedReason,
+    };
+  }
+
+  private assertResellerWalletDuplicateMatches(
+    row: ResellerWalletLedgerRow,
+    expected: {
+      resellerAccountId: string;
+      entryType: string;
+      amount: number;
+      source: string;
+      sourceId: string | null;
+      volumePackageId: string | null;
+      customerAccountId: string | null;
+      clientConfigId: string | null;
+    },
+  ): void {
+    const amount = this.numberFromBigInt(row.amount) ?? 0;
+    if (
+      row.resellerAccountId !== expected.resellerAccountId ||
+      row.entryType !== expected.entryType ||
+      amount !== expected.amount ||
+      row.source !== expected.source ||
+      row.sourceId !== expected.sourceId ||
+      row.volumePackageId !== expected.volumePackageId ||
+      row.customerAccountId !== expected.customerAccountId ||
+      row.clientConfigId !== expected.clientConfigId
+    ) {
+      throw new ConflictException('Reseller wallet idempotency key already belongs to another request');
+    }
+  }
+
   private normalizeClientUsageSource(value: string | undefined): string {
     const normalized = this.normalizeNullableString(value)?.toLowerCase() ?? 'admin';
     if (!CLIENT_USAGE_EVENT_SOURCES.has(normalized)) throw new BadRequestException('Invalid client usage source');
@@ -6928,6 +7758,30 @@ export class BillingService {
     const normalized = value.trim().toLowerCase();
     if (!/^[a-z][a-z0-9_-]{0,15}$/.test(normalized)) {
       throw new BadRequestException('Currency must use letters, numbers, underscore, or dash');
+    }
+    return normalized;
+  }
+
+  private normalizeResellerStatus(value: string): string {
+    const normalized = value.trim().toLowerCase();
+    if (!['active', 'suspended', 'disabled'].includes(normalized)) {
+      throw new BadRequestException('Invalid reseller account status');
+    }
+    return normalized;
+  }
+
+  private normalizeResellerMarginBps(value: number | null | undefined, fallback: number): number {
+    const normalized = value ?? fallback;
+    if (!Number.isInteger(normalized) || normalized < 0 || normalized > MAX_RESELLER_MARGIN_BPS) {
+      throw new BadRequestException('Reseller seller margin must be an integer between 0 and 8000 basis points');
+    }
+    return normalized;
+  }
+
+  private normalizeMoneyAmount(value: number | null | undefined, fieldName: string, fallback?: number): number {
+    const normalized = value ?? fallback;
+    if (normalized === undefined || !Number.isSafeInteger(normalized) || normalized < 0) {
+      throw new BadRequestException(`${fieldName} must be a safe non-negative integer`);
     }
     return normalized;
   }

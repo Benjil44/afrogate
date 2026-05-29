@@ -2129,3 +2129,35 @@ Repository remote is ready:
 
 - Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.
 - Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.
+
+## 2026-05-30 Reseller Wallet Foundation
+
+### Completed
+
+- Added the managed `reseller` role to shared RBAC contracts, backend auth validation, dashboard user creation options, and bilingual permission labels.
+- Added PostgreSQL migration `0028_reseller_wallets.sql` plus Drizzle schema metadata for `reseller_accounts`, `reseller_wallet_ledger`, and customer-to-reseller ownership links.
+- Added guarded admin reseller APIs for account list/detail/create/update, wallet ledger reads, package quote, wallet top-up, and idempotent package sale debit.
+- Linked customer account DTOs and account summaries to optional reseller ownership.
+- Recorded the product decision that reseller/mobile-shop sellers need own-customer/own-wallet scoping before a representative-facing panel is exposed.
+- Added future backlog items for reseller-scoped panels, automatic wallet-gated client creation/renewal, and adaptive MTU/fragmentation diagnostics.
+- Main checklist is now `241 / 244` complete, or `98.8%` complete with `3` future items remaining.
+- Bumped AfroGate to `0.109.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm --workspace @afrogate/backend run db:migrate`; all migrations through `0028_reseller_wallets.sql` applied successfully.
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran full `npm run test:e2e`; 17 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Build the reseller-scoped dashboard/mobile-shop panel and enforce own-customer/own-wallet access before exposing the `reseller` role as a real seller workspace.
+- Add wallet-gated reseller client creation/renewal so sale debits happen automatically at the quota/config creation boundary.
+- Design adaptive MTU diagnostics and recommendations as a route/session-safety feature before any automatic MTU changes.
+- Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.

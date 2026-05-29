@@ -50,6 +50,10 @@ const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 
 export class CreateCustomerAccountDto {
   @IsOptional()
+  @IsUUID('4')
+  resellerAccountId?: string | null;
+
+  @IsOptional()
   @IsString()
   @MaxLength(120)
   displayName?: string | null;
@@ -105,6 +109,10 @@ export class CreateCustomerAccountDto {
 }
 
 export class UpdateCustomerAccountDto {
+  @IsOptional()
+  @IsUUID('4')
+  resellerAccountId?: string | null;
+
   @IsOptional()
   @IsString()
   @MaxLength(120)

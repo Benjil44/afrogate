@@ -37,6 +37,11 @@ import type {
   AdminPaymentProviderAdapterSummary,
   AdminPaymentProviderCheckoutResponse,
   AdminRecordClientUsageResponse,
+  AdminResellerAccountSummary,
+  AdminResellerAccountsResponse,
+  AdminResellerPackageQuoteResponse,
+  AdminResellerWalletActionResponse,
+  AdminResellerWalletLedgerResponse,
   AdminVolumePackageSummary,
   AdminVolumePackagesResponse,
 } from '@afrogate/shared';
@@ -73,6 +78,12 @@ import {
   UpdatePaymentOrderStatusDto,
   UpdateVolumePackageDto,
 } from './dto/billing.dto';
+import {
+  CreateResellerAccountDto,
+  DebitResellerWalletForPackageDto,
+  TopUpResellerWalletDto,
+  UpdateResellerAccountDto,
+} from './dto/reseller.dto';
 
 @Controller('admin')
 @UseGuards(AdminTokenGuard, RolesGuard)
@@ -300,6 +311,94 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminPaymentOrderSummary> {
     return this.billingService.updatePaymentOrderStatus(id, payload, request.actor);
+  }
+
+  @Get('resellers')
+  @Roles('admin', 'supervisor', 'support')
+  async listResellers(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminResellerAccountsResponse> {
+    return {
+      resellers: await this.billingService.listResellerAccounts({
+        status,
+        search,
+        limit: this.billingService.normalizeLimit(limit, 100, 500),
+      }),
+    };
+  }
+
+  @Get('resellers/:id')
+  @Roles('admin', 'supervisor', 'support')
+  getReseller(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminResellerAccountSummary> {
+    return this.billingService.getResellerAccount(id);
+  }
+
+  @Post('resellers')
+  @Roles('admin')
+  createReseller(
+    @Body() payload: CreateResellerAccountDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    return this.billingService.createResellerAccount(payload, request.actor);
+  }
+
+  @Patch('resellers/:id')
+  @Roles('admin')
+  updateReseller(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpdateResellerAccountDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    return this.billingService.updateResellerAccount(id, payload, request.actor);
+  }
+
+  @Get('resellers/:id/wallet-ledger')
+  @Roles('admin', 'supervisor')
+  async listResellerWalletLedger(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminResellerWalletLedgerResponse> {
+    return {
+      entries: await this.billingService.listResellerWalletLedger(
+        id,
+        this.billingService.normalizeLimit(limit, 100, 500),
+      ),
+    };
+  }
+
+  @Get('resellers/:id/package-quote')
+  @Roles('admin', 'supervisor', 'support')
+  async quoteResellerPackage(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Query('volumePackageId', new ParseUUIDPipe({ version: '4' })) volumePackageId: string,
+  ): Promise<AdminResellerPackageQuoteResponse> {
+    return {
+      quote: await this.billingService.quoteResellerPackage(id, volumePackageId),
+    };
+  }
+
+  @Post('resellers/:id/wallet/topups')
+  @Roles('admin')
+  topUpResellerWallet(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: TopUpResellerWalletDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerWalletActionResponse> {
+    return this.billingService.topUpResellerWallet(id, payload, request.actor);
+  }
+
+  @Post('resellers/:id/wallet/package-debits')
+  @Roles('admin')
+  debitResellerWalletForPackage(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: DebitResellerWalletForPackageDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerWalletActionResponse> {
+    return this.billingService.debitResellerWalletForPackage(id, payload, request.actor);
   }
 
   @Get('customer-accounts')
