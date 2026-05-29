@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.100.0 - 2026-05-29
+
+- Added guarded `GET /api/admin/reports/summary` for read-only operational reports across server/outbound health, open alerts, backup readiness, and synthetic route-quality recommendations.
+- Added a Reports dashboard page with bilingual labels, operational risk score, risk reasons, health mix summaries, and route-quality analysis.
+- Kept reports privacy-safe and aggregate-only: no customer identities, user destinations, traffic contents, client IP history, raw backups, exports, or secrets are returned.
+
 ## 0.99.0 - 2026-05-29
 
 - Added guarded `GET /api/admin/backups/restore-plan` for read-only restore readiness derived from sanitized backup status.

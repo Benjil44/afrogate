@@ -51,6 +51,7 @@ import type {
   AdminServerSummary,
   AdminServerInterfaceSummary,
   AdminRewardedAdSettingsSummary,
+  AdminReportsSummaryResponse,
   AdminSettingsResponse,
   AdminSessionResponse,
   AdminTelegramBotSettingsSummary,
@@ -140,6 +141,7 @@ import {
   fetchAdminOutbounds,
   fetchAdminPermissions,
   fetchAdminPaymentOrders,
+  fetchAdminReportsSummary,
   fetchAdminRewardedAdSettings,
   fetchAdminServer,
   fetchAdminServerInterfaces,
@@ -186,7 +188,7 @@ import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } f
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-type ActiveView = 'dashboard' | 'servers' | 'users' | 'audit' | 'backups' | 'billing' | 'routes' | 'alerts' | 'settings';
+type ActiveView = 'dashboard' | 'servers' | 'users' | 'audit' | 'backups' | 'billing' | 'reports' | 'routes' | 'alerts' | 'settings';
 type AlertStatusFilter = 'open' | 'resolved';
 type AlertSeverityFilter = 'all' | Tone;
 type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
@@ -482,6 +484,7 @@ const navItems: NavItemData[] = [
   { id: 'audit', labelKey: 'audit', icon: ScrollText },
   { id: 'backups', labelKey: 'backups', icon: Archive },
   { id: 'billing', labelKey: 'billing', icon: CreditCard },
+  { id: 'reports', labelKey: 'reports', icon: Gauge },
   { id: 'routes', labelKey: 'routes', icon: Route },
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
   { id: 'settings', labelKey: 'settings', icon: SettingsIcon },
@@ -1174,6 +1177,8 @@ function ActivePage({
       return <BackupsPage format={format} initialBackupStatus={backupStatus} sessionToken={sessionToken} t={t} />;
     case 'billing':
       return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
+    case 'reports':
+      return <ReportsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'routes':
       return (
         <RoutesPage
@@ -3148,6 +3153,146 @@ function formatAuditMetadata(metadata: Record<string, unknown>, emptyLabel: stri
   return `${serialized.slice(0, 240)}...`;
 }
 
+function ReportsPage({
+  format,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const [summary, setSummary] = useState<AdminReportsSummaryResponse | null>(null);
+  const [dataState, setDataState] = useState<DataState>('loading');
+  const [error, setError] = useState<string | null>(null);
+
+  const loadReports = useMemo(() => async (signal?: AbortSignal) => {
+    setDataState('loading');
+    setError(null);
+
+    try {
+      const response = await fetchAdminReportsSummary(sessionToken, 168, signal);
+      setSummary(response);
+      setDataState('live');
+    } catch (loadError) {
+      if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
+
+      setError(t.reports.errors.load);
+      setDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+    }
+  }, [sessionToken, t]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadReports(controller.signal);
+
+    return () => controller.abort();
+  }, [loadReports]);
+
+  const reportCards = summary ? [
+    { label: t.reports.riskScore, value: format.percent(summary.riskScore), tone: reportRiskTone(summary.riskLevel) },
+    { label: t.reports.openAlerts, value: format.integer(summary.alerts.open), tone: summary.alerts.critical > 0 ? 'critical' : summary.alerts.warning > 0 ? 'warning' : 'good' },
+    { label: t.reports.serversAtRisk, value: format.integer(summary.servers.critical + summary.servers.degraded), tone: summary.servers.critical > 0 ? 'critical' : summary.servers.degraded > 0 ? 'warning' : 'good' },
+    { label: t.reports.routeWindows, value: format.integer(summary.routeQuality.recommendationCount), tone: summary.routeQuality.upcomingDegradedWindowCount > 0 ? 'warning' : 'good' },
+  ] : [];
+
+  return (
+    <section className="mt-0 grid gap-3">
+      <section className="grid gap-2 md:grid-cols-4">
+        {summary ? reportCards.map((card) => (
+          <BackupMetricCard key={card.label} label={card.label} tone={card.tone as Tone} value={card.value} />
+        )) : (
+          <BackupMetricCard label={t.reports.riskScore} tone="warning" value={t.dataStatus.loading} />
+        )}
+      </section>
+
+      <section className={panelClass}>
+        <div className="flex min-h-9 flex-col gap-2 border-b border-afro-line pb-2 sm:flex-row sm:items-center sm:justify-between">
+          <PanelHeadingContent
+            title={t.reports.title}
+            meta={summary ? t.reports.generated(format.dateTime(new Date(summary.generatedAt))) : t.dataStatus.loading}
+          />
+          <button
+            className="inline-flex min-h-9 w-fit items-center justify-center rounded-md bg-afro-sidebar px-3 text-[13px] font-bold text-white hover:bg-[#1f3138]"
+            onClick={() => void loadReports()}
+            type="button"
+          >
+            {t.reports.refresh}
+          </button>
+        </div>
+        <div className="mt-2 grid gap-2">
+          {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
+          {dataState === 'loading' && !summary ? (
+            <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} />
+          ) : null}
+          {summary ? (
+            <div className="grid gap-2 lg:grid-cols-2">
+              <DetailRow label={t.reports.riskLevel}>
+                <StatusBadge tone={reportRiskTone(summary.riskLevel)}>{reportRiskLabel(summary.riskLevel, t)}</StatusBadge>
+              </DetailRow>
+              <DetailRow label={t.reports.range}>{t.reports.hours(format.integer(summary.rangeHours))}</DetailRow>
+              <DetailRow label={t.reports.backupReadiness}>
+                <StatusBadge tone={backupStatusTone(summary.backups.status as AdminBackupStatusSummary['status'])}>
+                  {backupStatusLabel(summary.backups.status as AdminBackupStatusSummary['status'], t)}
+                </StatusBadge>
+              </DetailRow>
+              <DetailRow label={t.reports.routeData}>
+                {summary.routeQuality.insufficientData ? t.reports.insufficientData : t.reports.routeWindowsLoaded(format.integer(summary.routeQuality.windowCount))}
+              </DetailRow>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {summary ? (
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <section className={panelClass}>
+            <PanelHeading title={t.reports.operationalSummary} icon={Gauge} meta={reportRiskLabel(summary.riskLevel, t)} />
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <MetricPill icon={Server} label={t.reports.servers} value={t.reports.healthMix(format.integer(summary.servers.healthy), format.integer(summary.servers.degraded), format.integer(summary.servers.critical))} />
+              <MetricPill icon={Route} label={t.reports.outbounds} value={t.reports.healthMix(format.integer(summary.outbounds.healthy), format.integer(summary.outbounds.degraded), format.integer(summary.outbounds.critical))} />
+              <MetricPill icon={AlertTriangle} label={t.reports.alerts} value={t.reports.alertMix(format.integer(summary.alerts.critical), format.integer(summary.alerts.warning))} />
+              <MetricPill icon={Archive} label={t.reports.backups} value={t.reports.issueMix(format.integer(summary.backups.criticalIssueCount), format.integer(summary.backups.warningIssueCount))} />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {summary.reasonCodes.map((reason) => (
+                <span className="rounded-full border border-afro-line bg-afro-soft px-2 py-1 text-[11px] font-bold text-afro-muted" key={reason}>
+                  {reportReasonLabel(reason, t)}
+                </span>
+              ))}
+            </div>
+          </section>
+
+          <section className={panelClass}>
+            <PanelHeading title={t.reports.routeQuality} icon={Activity} meta={t.reports.recommendations(format.integer(summary.routeQuality.recommendationCount))} />
+            <div className="mt-2 grid gap-2">
+              {summary.routeQuality.topRecommendations.length === 0 ? (
+                <PanelState detail={t.reports.insufficientDataDetail} kind="empty" title={t.reports.insufficientData} />
+              ) : (
+                summary.routeQuality.topRecommendations.map((recommendation) => (
+                  <div className="grid gap-1.5 rounded-md border border-afro-line px-2.5 py-2" key={routeRecommendationKey(recommendation)}>
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <strong className="block truncate text-[13px]">{routeRecommendationTitle(recommendation, t)}</strong>
+                        <span className="block truncate text-[12px] text-afro-muted">
+                          {routeRecommendationDetail(recommendation, format, t)}
+                        </span>
+                      </div>
+                      <StatusBadge tone={recommendation.kind === 'bestWindow' ? 'good' : 'warning'}>
+                        {routeRecommendationConfidence(recommendation, t)}
+                      </StatusBadge>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
 function BackupsPage({
   format,
   initialBackupStatus,
@@ -3500,6 +3645,26 @@ function backupRestoreReasonLabel(code: string, t: DashboardStrings): string {
 
 function backupRestoreSafetyNoteLabel(code: string, t: DashboardStrings): string {
   const labels = t.backupStatus.restoreSafetyLabels as Record<string, string>;
+
+  return labels[code] ?? code;
+}
+
+function reportRiskTone(level: string): Tone {
+  if (level === 'good') return 'good';
+  if (level === 'critical') return 'critical';
+  if (level === 'risk') return 'warning';
+
+  return 'neutral';
+}
+
+function reportRiskLabel(level: string, t: DashboardStrings): string {
+  const labels = t.reports.riskLabels as Record<string, string>;
+
+  return labels[level] ?? level;
+}
+
+function reportReasonLabel(code: string, t: DashboardStrings): string {
+  const labels = t.reports.reasonLabels as Record<string, string>;
 
   return labels[code] ?? code;
 }
@@ -10150,6 +10315,7 @@ function Sidebar({
     if (item.id === 'users') return canViewAdminUsers(session);
     if (item.id === 'audit') return canViewAuditLogs(session);
     if (item.id === 'backups') return canViewBackupStatus(session);
+    if (item.id === 'reports') return canViewReports(session);
 
     return true;
   });
@@ -10241,6 +10407,10 @@ function canViewAuditLogs(session: AdminSessionResponse): boolean {
 }
 
 function canViewBackupStatus(session: AdminSessionResponse): boolean {
+  return ['superadmin', 'owner', 'admin', 'supervisor', 'auditor'].includes(session.actor.role);
+}
+
+function canViewReports(session: AdminSessionResponse): boolean {
   return ['superadmin', 'owner', 'admin', 'supervisor', 'auditor'].includes(session.actor.role);
 }
 

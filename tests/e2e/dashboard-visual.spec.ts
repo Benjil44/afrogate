@@ -186,6 +186,17 @@ test('backups page shows monitored backup readiness', async ({ page }) => {
   await expect(page.getByText('No backup issues')).toBeVisible();
 });
 
+test('reports page shows operational analysis summary', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="reports"]').click();
+
+  await expect(page.getByRole('heading', { name: 'Reports and analysis' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Operations report' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Operational summary' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Route quality analysis' })).toBeVisible();
+  await expect(page.getByText('A degraded route window is upcoming.')).toBeVisible();
+});
+
 test('users page shows RBAC permission matrix', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="users"]').click();
@@ -355,6 +366,9 @@ async function mockDashboardApi(page: Page): Promise<void> {
         await fulfillJson(route, {
           restorePlan: backupRestorePlanRow(),
         });
+        return;
+      case '/api/admin/reports/summary':
+        await fulfillJson(route, reportsSummaryRow());
         return;
       case '/api/admin/servers':
         await fulfillJson(route, {
@@ -1075,6 +1089,83 @@ function backupRestorePlanRow() {
     ],
     targetArtifacts: ['postgres', 'config', 'secrets'],
     warningReasonCodes: [],
+  };
+}
+
+function reportsSummaryRow() {
+  return {
+    alerts: {
+      critical: 0,
+      open: 2,
+      warning: 2,
+    },
+    backups: {
+      criticalIssueCount: 0,
+      issueCount: 0,
+      latestSuccessfulBackupAt: fixedNow,
+      restoreTestedAt: '2026-05-24T08:00:00.000Z',
+      status: 'healthy',
+      warningIssueCount: 0,
+    },
+    generatedAt: fixedNow,
+    outbounds: {
+      critical: 0,
+      degraded: 1,
+      disabled: 0,
+      healthy: 2,
+      maintenance: 0,
+      total: 3,
+    },
+    rangeHours: 168,
+    reasonCodes: ['warning_alerts_open', 'upcoming_degraded_route_windows'],
+    riskLevel: 'watch',
+    riskScore: 22,
+    routeQuality: {
+      bestWindowCount: 1,
+      degradedWindowCount: 0,
+      insufficientData: false,
+      rangeHours: 168,
+      recommendationCount: 2,
+      routeGroup: 'main',
+      topRecommendations: [
+        {
+          averageScore: 91,
+          confidence: 'high',
+          hourOfDay: 6,
+          kind: 'bestWindow',
+          operator: 'Irancell',
+          outboundName: 'Frankfurt WG gaming',
+          protocol: 'udp',
+          reason: 'Best synthetic route window.',
+          routeGroup: 'main',
+          sampleCount: 18,
+          scoreProfile: 'gaming',
+        },
+        {
+          averageScore: 61,
+          confidence: 'medium',
+          hourOfDay: 18,
+          kind: 'upcomingDegradedWindow',
+          operator: 'Irancell',
+          outboundName: 'Dubai WG standby',
+          protocol: 'udp',
+          reason: 'Upcoming degraded synthetic route window.',
+          routeGroup: 'main',
+          sampleCount: 14,
+          scoreProfile: 'gaming',
+          startsInMinutes: 45,
+        },
+      ],
+      upcomingDegradedWindowCount: 1,
+      windowCount: 12,
+    },
+    servers: {
+      critical: 0,
+      degraded: 1,
+      healthy: 2,
+      total: 3,
+      unknown: 0,
+    },
   };
 }
 

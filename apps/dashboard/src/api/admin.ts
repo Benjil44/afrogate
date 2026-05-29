@@ -19,6 +19,7 @@ import type {
   AdminPaymentOrdersResponse,
   AdminPermissionsResponse,
   AdminRewardedAdSettingsResponse,
+  AdminReportsSummaryResponse,
   AdminIncidentTimelineResponse,
   AdminServerInterfacesResponse,
   AdminServersResponse,
@@ -220,6 +221,19 @@ export async function fetchAdminBackupRestorePlan(
   });
 
   return response.json() as Promise<AdminBackupRestorePlanResponse>;
+}
+
+export async function fetchAdminReportsSummary(
+  sessionToken: string,
+  rangeHours = 168,
+  signal?: AbortSignal,
+): Promise<AdminReportsSummaryResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reports/summary?rangeHours=${encodeURIComponent(String(rangeHours))}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminReportsSummaryResponse>;
 }
 
 export async function fetchAdminServers(sessionToken: string, signal?: AbortSignal): Promise<AdminServersResponse> {

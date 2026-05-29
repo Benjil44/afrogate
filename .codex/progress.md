@@ -1749,3 +1749,29 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Reports and Data Analysis Slice
+
+### Completed
+
+- Added shared reports summary contracts for operational risk, server/outbound health counts, open alert counts, backup readiness, and synthetic route-quality recommendations.
+- Added `AdminReportsService` and guarded `GET /api/admin/reports/summary` with `reports:read` permission.
+- Added a Reports dashboard sidebar page with bilingual labels, risk score/level, operational health mix, risk reasons, and route-quality analysis.
+- Kept reports aggregate and privacy-safe: no customer identities, user destinations, traffic contents, client IP history, raw backups, exports, or secrets are returned.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `231 / 237` items, or `97.5%` complete with `2.5%` remaining.
+- Bumped AfroGate to `0.100.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 13 tests passed, including the Reports page.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

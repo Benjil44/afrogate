@@ -18,6 +18,7 @@ import type {
   AdminBackupRestorePlanResponse,
   AdminBackupStatusResponse,
   AdminPermissionsResponse,
+  AdminReportsSummaryResponse,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
   AdminSessionResponse,
@@ -81,6 +82,7 @@ import {
   UpsertRouteSettingsDto,
 } from './dto/settings.dto';
 import { OperationsService } from './operations.service';
+import { AdminReportsService } from '../reports/admin-reports.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
 
 @Controller('admin')
@@ -91,6 +93,7 @@ export class OperationsController {
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
     private readonly backupStatusService: BackupStatusService,
+    private readonly adminReportsService: AdminReportsService,
     private readonly telegramBotConfigService: TelegramBotConfigService,
   ) {}
 
@@ -172,6 +175,13 @@ export class OperationsController {
     return {
       restorePlan: await this.backupStatusService.getRestorePlan(),
     };
+  }
+
+  @Get('reports/summary')
+  @Roles('admin', 'supervisor', 'auditor')
+  @Permissions('reports:read')
+  getReportsSummary(@Query('rangeHours') rangeHours?: string): Promise<AdminReportsSummaryResponse> {
+    return this.adminReportsService.getSummary(this.operationsService.normalizeRouteAnalyticsRangeHours(rangeHours));
   }
 
   @Post('users')

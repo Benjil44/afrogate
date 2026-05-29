@@ -2209,6 +2209,65 @@ export interface AdminRouteQualityAnalyticsResponse {
   recommendations: RouteQualityRecommendation[];
 }
 
+export type AdminReportRiskLevel = 'good' | 'watch' | 'risk' | 'critical';
+
+export interface AdminReportServerSummary {
+  total: number;
+  healthy: number;
+  degraded: number;
+  critical: number;
+  unknown: number;
+}
+
+export interface AdminReportOutboundSummary {
+  total: number;
+  healthy: number;
+  degraded: number;
+  critical: number;
+  maintenance: number;
+  disabled: number;
+}
+
+export interface AdminReportAlertSummary {
+  open: number;
+  critical: number;
+  warning: number;
+}
+
+export interface AdminReportBackupSummary {
+  status: BackupStatusKind | string;
+  issueCount: number;
+  criticalIssueCount: number;
+  warningIssueCount: number;
+  latestSuccessfulBackupAt?: string | null;
+  restoreTestedAt?: string | null;
+}
+
+export interface AdminReportRouteQualitySummary {
+  routeGroup: string;
+  rangeHours: number;
+  windowCount: number;
+  recommendationCount: number;
+  bestWindowCount: number;
+  degradedWindowCount: number;
+  upcomingDegradedWindowCount: number;
+  insufficientData: boolean;
+  topRecommendations: RouteQualityRecommendation[];
+}
+
+export interface AdminReportsSummaryResponse {
+  generatedAt: string;
+  rangeHours: number;
+  riskLevel: AdminReportRiskLevel | string;
+  riskScore: number;
+  reasonCodes: string[];
+  servers: AdminReportServerSummary;
+  outbounds: AdminReportOutboundSummary;
+  alerts: AdminReportAlertSummary;
+  backups: AdminReportBackupSummary;
+  routeQuality: AdminReportRouteQualitySummary;
+}
+
 export interface RouteHealthHistoryPoint {
   routeGroup: string;
   bucketStart: string;

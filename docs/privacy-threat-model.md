@@ -114,5 +114,6 @@ Low:
 - Keep provider secrets and webhook credentials in deployment/encrypted secret storage.
 - Keep audit snapshots secret-safe and compact.
 - Keep backup restore readiness derived from sanitized backup status only; do not expose raw dumps, object-store credentials, decrypted secrets, local backup paths, or broad backup/export data through the dashboard.
+- Keep reports aggregate and operational: route-quality recommendations may use synthetic probes, but reports must not include customer identities, small-group customer behavior, user destinations, client IP history, traffic contents, or raw exports/backups.
 - Add retention policies before enterprise reporting/export features.
 - Add privacy review before expanding current controlled panel import/sync into live external-panel API sync/export, ad-network SDK, backup/restore UI, reports, or live data-plane route apply features.

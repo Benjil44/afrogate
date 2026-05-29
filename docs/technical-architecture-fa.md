@@ -454,6 +454,8 @@ The PayPal adapter exposes guarded admin actions to create a hosted checkout ord
 
 The incident timeline API derives read-only events from alert open/resolve timestamps plus existing route decision records. It is an operational view, not a separate traffic log, and must keep user destinations, client IP history, credentials, and traffic contents out of responses.
 
+The reports summary API derives read-only operational analysis from existing server, outbound, alert, backup, and synthetic route-quality records. `GET /api/admin/reports/summary` returns compact risk level/score, counts, backup issue counts, and top route-quality recommendations for the Reports page. It must not include customer identity data, traffic contents, user destinations, client IP history, raw backup data, secrets, or export payloads.
+
 ### audit_logs
 
 - id
