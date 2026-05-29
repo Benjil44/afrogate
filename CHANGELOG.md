@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.91.0 - 2026-05-29
+
+- Added guarded `GET /api/admin/route-health/history` for compact hourly route score, latency, jitter, loss, outbound, operator, protocol, and profile history.
+- Added the Routes page Route Health History panel with bilingual labels, localized formatting, and synthetic-probe-only metadata.
+- Kept route health history read-only and privacy-safe: no user destinations, traffic contents, client IP history, secrets, or data-plane route changes.
+
 ## 0.90.0 - 2026-05-29
 
 - Added a shared fine-grained admin permission catalog and permission-aware backend guard metadata.

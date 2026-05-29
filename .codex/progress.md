@@ -1505,3 +1505,31 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Route Health Score History Slice
+
+### Completed
+
+- Added guarded `GET /api/admin/route-health/history` for read-role admins with `routes:read` permission enforcement.
+- The endpoint reads compact `route_quality_hourly` summaries, groups recent hourly points by route group, server, outbound, operator, protocol, and score profile, and derives healthy/degraded/critical status from score, loss, degraded sample share, and critical sample share.
+- Added shared route-health-history contracts for backend and dashboard use.
+- Added a Routes-page Route Health History panel with bilingual labels, localized formatting, loading/stale/empty states, and synthetic-probe-only metadata.
+- Added Playwright coverage for the Routes page history panel.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `221 / 236` items, or `93.6%` complete with `6.4%` remaining.
+
+### Verification
+
+- Ran focused typechecks for shared, backend, and dashboard during implementation.
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run contrast:check`.
+- Ran `npm run test:e2e`; 12 tests passed, including the new Routes route-health-history flow.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, incident timeline, route canary rollout, and native per-app VPN split tunneling remain future work.

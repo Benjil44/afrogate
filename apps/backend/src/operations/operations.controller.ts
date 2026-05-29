@@ -33,6 +33,7 @@ import type {
   AdminRouteDecisionEventsResponse,
   AdminRouteDecisionPreviewResponse,
   AdminRouteSettingsSummary,
+  AdminRouteHealthHistoryResponse,
   AdminRouteQualityAnalyticsResponse,
   StoreServerCredentialResponse,
   AdminSecretRefSummary,
@@ -429,6 +430,7 @@ export class OperationsController {
 
   @Get('route-quality/analytics')
   @Roles('admin', 'supervisor', 'support', 'auditor')
+  @Permissions('routes:read')
   getRouteQualityAnalytics(
     @Query('routeGroup') routeGroup?: string,
     @Query('rangeHours') rangeHours?: string,
@@ -436,6 +438,21 @@ export class OperationsController {
     return this.operationsService.getRouteQualityAnalytics(
       routeGroup,
       this.operationsService.normalizeRouteAnalyticsRangeHours(rangeHours),
+    );
+  }
+
+  @Get('route-health/history')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  @Permissions('routes:read')
+  getRouteHealthHistory(
+    @Query('routeGroup') routeGroup?: string,
+    @Query('rangeHours') rangeHours?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminRouteHealthHistoryResponse> {
+    return this.operationsService.getRouteHealthHistory(
+      routeGroup,
+      this.operationsService.normalizeRouteAnalyticsRangeHours(rangeHours),
+      this.operationsService.normalizeLimit(limit, 48, 500),
     );
   }
 

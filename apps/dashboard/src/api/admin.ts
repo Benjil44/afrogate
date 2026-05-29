@@ -24,6 +24,7 @@ import type {
   AdminRouteDecisionEventsResponse,
   AdminRouteDecisionPreviewResponse,
   AdminRouteSettingsSummary,
+  AdminRouteHealthHistoryResponse,
   AdminRouteQualityAnalyticsResponse,
   AdminSecretRefSummary,
   AdminSettingsResponse,
@@ -451,6 +452,24 @@ export async function fetchRouteQualityAnalytics(
   );
 
   return response.json() as Promise<AdminRouteQualityAnalyticsResponse>;
+}
+
+export async function fetchRouteHealthHistory(
+  sessionToken: string,
+  routeGroup = 'main',
+  rangeHours = 168,
+  limit = 48,
+  signal?: AbortSignal,
+): Promise<AdminRouteHealthHistoryResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/route-health/history?routeGroup=${encodeURIComponent(routeGroup)}&rangeHours=${encodeURIComponent(String(rangeHours))}&limit=${encodeURIComponent(String(limit))}`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      signal,
+    },
+  );
+
+  return response.json() as Promise<AdminRouteHealthHistoryResponse>;
 }
 
 export async function fetchRouteDecisionPreview(

@@ -70,6 +70,19 @@ test('alerts page filters open and resolved history rows', async ({ page }) => {
   await expect(page.getByText('Resolved storage guard')).toBeVisible();
 });
 
+test('routes page shows route health score history', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="routes"]').click();
+
+  const historyPanel = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Route Health History' }),
+  }).last();
+
+  await expect(historyPanel).toBeVisible();
+  await expect(historyPanel.getByText('Frankfurt WG gaming')).toBeVisible();
+  await expect(historyPanel.getByText(/synthetic probes only/)).toBeVisible();
+});
+
 test('billing page shows catalog and saves reward settings', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="billing"]').click();
@@ -322,6 +335,30 @@ async function mockDashboardApi(page: Page): Promise<void> {
             },
           ],
         });
+        return;
+      case '/api/admin/route-assignments/current':
+        await fulfillJson(route, {
+          assignmentKey: 'default',
+          autoRouteEnabled: true,
+          cooldownSeconds: 180,
+          cooldownUntil: null,
+          currentOutboundId: 'outbound-fra-wg',
+          currentOutboundName: 'Frankfurt WG gaming',
+          hysteresisScoreDelta: 15,
+          lastDecisionAt: null,
+          lastDecisionReason: null,
+          lockedOutboundId: null,
+          lockedOutboundName: null,
+          protocolProfile: 'udp',
+          routeGroup: 'main',
+          routeLocked: false,
+          speedProfile: 'gaming',
+          updatedAt: fixedNow,
+          updatedBy: 'admin-visual',
+        });
+        return;
+      case '/api/admin/route-health/history':
+        await fulfillJson(route, routeHealthHistoryResponse());
         return;
       case '/api/admin/tunnels':
         await fulfillJson(route, {
@@ -755,5 +792,55 @@ function createTunnel(id: string, serverId: string, serverHostname: string, name
     status,
     type: 'wireguard',
     updatedAt: fixedNow,
+  };
+}
+
+function routeHealthHistoryResponse() {
+  return {
+    generatedAt: fixedNow,
+    points: [
+      {
+        averageJitterMs: 5,
+        averageLatencyMs: 42,
+        averagePacketLossPercent: 0.08,
+        averageScore: 94,
+        bucketStart: '2026-05-28T07:00:00.000Z',
+        criticalSamplePercent: 0,
+        degradedSamplePercent: 0,
+        healthStatus: 'healthy',
+        operator: 'irancell',
+        outboundId: 'outbound-fra-wg',
+        outboundKey: 'outbound-fra-wg',
+        outboundName: 'Frankfurt WG gaming',
+        protocol: 'udp',
+        routeGroup: 'main',
+        sampleCount: 18,
+        scoreProfile: 'gaming',
+        serverExternalId: 'server-fra',
+        serverHostname: 'fra-edge-01',
+      },
+      {
+        averageJitterMs: 28,
+        averageLatencyMs: 89,
+        averagePacketLossPercent: 1.4,
+        averageScore: 58,
+        bucketStart: '2026-05-28T06:00:00.000Z',
+        criticalSamplePercent: 12,
+        degradedSamplePercent: 48,
+        healthStatus: 'degraded',
+        operator: 'irancell',
+        outboundId: 'outbound-dxb-wg',
+        outboundKey: 'outbound-dxb-wg',
+        outboundName: 'Dubai WG standby',
+        protocol: 'udp',
+        routeGroup: 'main',
+        sampleCount: 16,
+        scoreProfile: 'gaming',
+        serverExternalId: 'server-dxb',
+        serverHostname: 'dxb-relay-02',
+      },
+    ],
+    rangeHours: 168,
+    routeGroup: 'main',
   };
 }

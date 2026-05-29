@@ -34,6 +34,7 @@ import type {
   AdminRouteDecisionCandidateSummary,
   AdminRouteDecisionPreviewResponse,
   AdminSecretRefSummary,
+  AdminRouteHealthHistoryResponse,
   AdminRouteQualityAnalyticsResponse,
   AdminServerCredentialSummary,
   AdminServerDetail,
@@ -53,6 +54,7 @@ import type {
   RouteDecisionAction,
   RouteBufferbloatRecommendation,
   RouteBufferbloatSeverity,
+  RouteHealthHistoryPoint,
   RouteQualityRecommendation,
   RouteQualityWindowSummary,
   RouteProbeMetric,
@@ -62,6 +64,7 @@ import type {
   ServerMetricSnapshot,
   StoreServerCredentialResponse,
   WireGuardInterfaceMetric,
+  HealthState,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
@@ -224,6 +227,11 @@ interface RouteQualityWindowRow {
   averagePacketLossPercent: number | null;
   degradedSamplePercent: number;
   criticalSamplePercent: number;
+}
+
+interface RouteHealthHistoryRow extends RouteQualityWindowRow {
+  routeGroup: string;
+  bucketStart: Date;
 }
 
 interface AlertRow {
@@ -1462,6 +1470,31 @@ export class OperationsService {
       minimumSamples,
       windows,
       recommendations: this.buildRouteQualityRecommendations(routeGroup, windows, minimumSamples, rangeHours),
+    };
+  }
+
+  async getRouteHealthHistory(
+    routeGroupInput?: string,
+    rangeHours = 168,
+    limit = 48,
+  ): Promise<AdminRouteHealthHistoryResponse> {
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    let points: RouteHealthHistoryPoint[] = [];
+
+    try {
+      await this.routeQualityAggregation.aggregateRecent(routeGroup, Math.min(rangeHours, 168));
+      points = (await this.queryRouteHealthHistoryPoints(routeGroup, rangeHours, limit)).map((row) =>
+        this.mapRouteHealthHistoryPoint(row),
+      );
+    } catch (error) {
+      if (!this.isUndefinedTableError(error)) throw error;
+    }
+
+    return {
+      routeGroup,
+      rangeHours,
+      generatedAt: new Date().toISOString(),
+      points,
     };
   }
 
@@ -4405,6 +4438,57 @@ export class OperationsService {
     return result.rows;
   }
 
+  private async queryRouteHealthHistoryPoints(
+    routeGroup: string,
+    rangeHours: number,
+    limit: number,
+  ): Promise<RouteHealthHistoryRow[]> {
+    const result = await this.database.query<RouteHealthHistoryRow>(
+      `
+        SELECT
+          q.route_group AS "routeGroup",
+          q.bucket_start AS "bucketStart",
+          s.external_id AS "serverExternalId",
+          s.hostname AS "serverHostname",
+          q.outbound_id AS "outboundId",
+          q.outbound_key AS "outboundKey",
+          q.outbound_name AS "outboundName",
+          q.operator,
+          q.protocol,
+          q.score_profile AS "scoreProfile",
+          EXTRACT(HOUR FROM q.bucket_start)::int AS "hourOfDay",
+          EXTRACT(DOW FROM q.bucket_start)::int AS "dayOfWeek",
+          SUM(q.sample_count)::int AS "sampleCount",
+          ROUND((SUM(q.average_score * q.sample_count) / NULLIF(SUM(q.sample_count), 0))::numeric, 1)::float AS "averageScore",
+          ROUND((SUM(q.average_latency_ms * q.sample_count) FILTER (WHERE q.average_latency_ms IS NOT NULL) / NULLIF(SUM(q.sample_count) FILTER (WHERE q.average_latency_ms IS NOT NULL), 0))::numeric, 1)::float AS "averageLatencyMs",
+          ROUND((SUM(q.average_jitter_ms * q.sample_count) FILTER (WHERE q.average_jitter_ms IS NOT NULL) / NULLIF(SUM(q.sample_count) FILTER (WHERE q.average_jitter_ms IS NOT NULL), 0))::numeric, 1)::float AS "averageJitterMs",
+          ROUND((SUM(q.average_packet_loss_percent * q.sample_count) FILTER (WHERE q.average_packet_loss_percent IS NOT NULL) / NULLIF(SUM(q.sample_count) FILTER (WHERE q.average_packet_loss_percent IS NOT NULL), 0))::numeric, 2)::float AS "averagePacketLossPercent",
+          ROUND((SUM(q.degraded_sample_percent * q.sample_count) / NULLIF(SUM(q.sample_count), 0))::numeric, 1)::float AS "degradedSamplePercent",
+          ROUND((SUM(q.critical_sample_percent * q.sample_count) / NULLIF(SUM(q.sample_count), 0))::numeric, 1)::float AS "criticalSamplePercent"
+        FROM route_quality_hourly q
+        JOIN servers s ON s.id = q.server_id
+        WHERE q.route_group = $1
+          AND q.bucket_start >= now() - ($2::int * interval '1 hour')
+        GROUP BY
+          q.route_group,
+          q.bucket_start,
+          s.external_id,
+          s.hostname,
+          q.outbound_id,
+          q.outbound_key,
+          q.outbound_name,
+          q.operator,
+          q.protocol,
+          q.score_profile
+        ORDER BY q.bucket_start DESC, "averageScore" ASC, "sampleCount" DESC
+        LIMIT $3
+      `,
+      [routeGroup, rangeHours, limit],
+    );
+
+    return result.rows;
+  }
+
   private async queryRawRouteQualityWindows(routeGroup: string, rangeHours: number): Promise<RouteQualityWindowRow[]> {
     const result = await this.database.query<RouteQualityWindowRow>(
       `
@@ -4571,6 +4655,43 @@ export class OperationsService {
       degradedSamplePercent: this.roundMetric(row.degradedSamplePercent, 1) ?? 0,
       criticalSamplePercent: this.roundMetric(row.criticalSamplePercent, 1) ?? 0,
     };
+  }
+
+  private mapRouteHealthHistoryPoint(row: RouteHealthHistoryRow): RouteHealthHistoryPoint {
+    return {
+      routeGroup: row.routeGroup,
+      bucketStart: row.bucketStart.toISOString(),
+      serverExternalId: row.serverExternalId,
+      serverHostname: row.serverHostname,
+      outboundId: row.outboundId,
+      outboundKey: row.outboundKey,
+      outboundName: row.outboundName,
+      operator: row.operator,
+      protocol: row.protocol,
+      scoreProfile: row.scoreProfile,
+      sampleCount: Number(row.sampleCount),
+      averageScore: this.roundMetric(row.averageScore, 1) ?? 0,
+      averageLatencyMs: this.roundMetric(row.averageLatencyMs, 1),
+      averageJitterMs: this.roundMetric(row.averageJitterMs, 1),
+      averagePacketLossPercent: this.roundMetric(row.averagePacketLossPercent, 2),
+      degradedSamplePercent: this.roundMetric(row.degradedSamplePercent, 1) ?? 0,
+      criticalSamplePercent: this.roundMetric(row.criticalSamplePercent, 1) ?? 0,
+      healthStatus: this.routeHealthHistoryStatus(row),
+    };
+  }
+
+  private routeHealthHistoryStatus(row: RouteHealthHistoryRow): HealthState {
+    const sampleCount = Number(row.sampleCount);
+    const score = Number(row.averageScore);
+    const loss = row.averagePacketLossPercent === null ? null : Number(row.averagePacketLossPercent);
+    const degradedPercent = Number(row.degradedSamplePercent);
+    const criticalPercent = Number(row.criticalSamplePercent);
+
+    if (!Number.isFinite(sampleCount) || sampleCount <= 0 || !Number.isFinite(score)) return 'unknown';
+    if (score < 50 || criticalPercent >= 20 || (loss !== null && Number.isFinite(loss) && loss >= 2)) return 'critical';
+    if (score < 70 || degradedPercent >= 35 || (loss !== null && Number.isFinite(loss) && loss >= 1)) return 'degraded';
+
+    return 'healthy';
   }
 
   private buildRouteQualityRecommendations(

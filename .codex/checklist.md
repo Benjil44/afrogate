@@ -246,7 +246,7 @@
 
 - [ ] Incident timeline.
 - [x] Telegram critical alert flow.
-- [ ] Route health score history.
+- [x] Route health score history.
 - [x] Operator and outbound time-window quality reports.
 - [x] Initial advisory route quality suggestions from historical synthetic probes.
 - [x] Predictive route quality suggestions.

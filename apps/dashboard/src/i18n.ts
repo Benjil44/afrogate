@@ -123,6 +123,7 @@ export const dashboardTranslations = {
       safeOperations: 'safe operations',
       routePolicy: 'Route Policy',
       stabilityRules: 'stability rules',
+      routeHealthHistory: 'Route Health History',
       failover: 'Failover',
       latestDecisions: 'latest decisions',
       openAlerts: 'Open Alerts',
@@ -1262,6 +1263,14 @@ export const dashboardTranslations = {
       score: '+15 score',
       noManagedOutbounds: 'No managed outbound is available yet.',
     },
+    routeHealthHistory: {
+      learning: 'learning hourly history',
+      points: (count: string) => `${count} points / synthetic probes only`,
+      noPoints: 'No route health history yet',
+      score: 'Score',
+      samples: 'Samples',
+      latency: 'Latency',
+    },
     tunnelDetail: {
       noTunnel: 'select a tunnel',
       labels: {
@@ -1465,6 +1474,7 @@ export const dashboardTranslations = {
       safeOperations: 'عملیات امن',
       routePolicy: 'سیاست مسیر',
       stabilityRules: 'قوانین پایداری',
+      routeHealthHistory: 'تاریخچه سلامت مسیر',
       failover: 'فیل‌اور',
       latestDecisions: 'آخرین تصمیم‌ها',
       openAlerts: 'هشدارهای باز',
@@ -2603,6 +2613,14 @@ export const dashboardTranslations = {
       available: 'در دسترس',
       score: '+15 امتیاز',
       noManagedOutbounds: 'هنوز اوت‌باند مدیریت‌شده‌ای در دسترس نیست.',
+    },
+    routeHealthHistory: {
+      learning: 'در حال یادگیری تاریخچه ساعتی',
+      points: (count: string) => `${count} نقطه / فقط پروب مصنوعی`,
+      noPoints: 'هنوز تاریخچه سلامت مسیر وجود ندارد',
+      score: 'امتیاز',
+      samples: 'نمونه‌ها',
+      latency: 'تاخیر',
     },
     tunnelDetail: {
       noTunnel: 'یک تونل انتخاب کنید',

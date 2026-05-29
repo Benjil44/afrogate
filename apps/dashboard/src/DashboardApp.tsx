@@ -22,6 +22,7 @@ import type {
   AdminRouteDecisionApplyPlanStep,
   AdminRouteDecisionEventDetail,
   AdminRouteDecisionEventSummary,
+  AdminRouteHealthHistoryResponse,
   AdminRouteQualityAnalyticsResponse,
   AdminRouteDecisionCandidateSummary,
   AdminRouteDecisionCandidateReviewSummary,
@@ -67,6 +68,7 @@ import type {
   ServerMetricTimeseries,
   StorageVolumeMetric,
   WireGuardInterfaceMetric,
+  RouteHealthHistoryPoint,
 } from '@afrogate/shared';
 import {
   Activity,
@@ -136,6 +138,7 @@ import {
   fetchProtocolServerApplyEvents,
   fetchRouteAssignment,
   fetchRouteFailoverEvents,
+  fetchRouteHealthHistory,
   fetchRouteQualityAnalytics,
   fetchRouteDecisionEvent,
   fetchRouteDecisionEvents,
@@ -4139,6 +4142,8 @@ function RoutesPage({
   t: DashboardStrings;
 }) {
   const [selectedTunnelKey, setSelectedTunnelKey] = useState<string | null>(() => tunnels[0] ? tunnelRowKey(tunnels[0]) : null);
+  const [routeHealthHistory, setRouteHealthHistory] = useState<AdminRouteHealthHistoryResponse | null>(null);
+  const [routeHealthHistoryState, setRouteHealthHistoryState] = useState<DataState>('loading');
 
   useEffect(() => {
     if (tunnels.length === 0) {
@@ -4150,6 +4155,24 @@ function RoutesPage({
       setSelectedTunnelKey(tunnelRowKey(tunnels[0]));
     }
   }, [selectedTunnelKey, tunnels]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setRouteHealthHistoryState('loading');
+
+    fetchRouteHealthHistory(sessionToken, 'main', 168, 24, controller.signal)
+      .then((response) => {
+        setRouteHealthHistory(response);
+        setRouteHealthHistoryState('live');
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setRouteHealthHistory(null);
+        setRouteHealthHistoryState('stale');
+      });
+
+    return () => controller.abort();
+  }, [sessionToken]);
 
   const selectedTunnelRow = tunnels.find((tunnel) => tunnelRowKey(tunnel) === selectedTunnelKey) ?? tunnels[0] ?? null;
   const selectedTunnelSummary = selectedTunnelRow?.id
@@ -4183,6 +4206,12 @@ function RoutesPage({
         t={t}
       />
       <RoutePolicyPanel format={format} outbounds={outbounds} session={session} sessionToken={sessionToken} t={t} />
+      <RouteHealthHistoryPanel
+        dataState={routeHealthHistoryState}
+        format={format}
+        history={routeHealthHistory}
+        t={t}
+      />
       <FailoverPanel
         dataState={dataState}
         emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noFailoverEvents}
@@ -4549,6 +4578,54 @@ function RoutePolicyPanel({
         >
           {isSavingPolicy ? t.settings.saving : t.settings.saveRouteSettings}
         </button>
+      </div>
+    </section>
+  );
+}
+
+function RouteHealthHistoryPanel({
+  dataState,
+  format,
+  history,
+  t,
+}: {
+  dataState: DataState;
+  format: DashboardFormatters;
+  history: AdminRouteHealthHistoryResponse | null;
+  t: DashboardStrings;
+}) {
+  const points = history?.points ?? [];
+  const meta = history ? t.routeHealthHistory.points(format.integer(points.length)) : t.routeHealthHistory.learning;
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.panels.routeHealthHistory} icon={Activity} meta={meta} />
+      <div className="mt-2 grid gap-2">
+        {points.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
+        {points.length === 0 ? (
+          <DataStateEmpty emptyMessage={t.routeHealthHistory.noPoints} state={dataState} t={t} />
+        ) : null}
+        {points.slice(0, 8).map((point) => (
+          <div className="grid min-h-[62px] gap-2 rounded-md border border-afro-line p-2 sm:grid-cols-[minmax(0,1fr)_auto]" key={routeHealthHistoryKey(point)}>
+            <div className="min-w-0">
+              <strong className="block truncate text-[13px]" title={routeHealthPointRoute(point, format, t)}>
+                {routeHealthPointRoute(point, format, t)}
+              </strong>
+              <span className={`${mutedTextClass} block truncate`} title={routeHealthPointMeta(point, format, t)}>
+                {routeHealthPointMeta(point, format, t)}
+              </span>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:justify-end">
+              <MetricPill icon={Gauge} label={t.routeHealthHistory.score} value={format.integer(point.averageScore)} />
+              <MetricPill icon={Clock} label={t.routeHealthHistory.samples} value={format.integer(point.sampleCount)} />
+              <MetricPill icon={Network} label={t.tables.loss} value={format.packetLoss(point.averagePacketLossPercent ?? null)} />
+              <MetricPill icon={Activity} label={t.routeHealthHistory.latency} value={format.latency(point.averageLatencyMs ?? null)} />
+              <StatusBadge tone={inventoryStatusTone(point.healthStatus)}>
+                {inventoryStatusLabel(point.healthStatus, t)}
+              </StatusBadge>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -10908,6 +10985,38 @@ function routeRecommendationProfile(
   if (!profile) return t.settings.unknownProfile;
 
   return format.label(String(profile));
+}
+
+function routeHealthHistoryKey(point: RouteHealthHistoryPoint): string {
+  return [
+    point.bucketStart,
+    point.serverExternalId,
+    point.outboundKey ?? point.outboundId ?? 'unassigned',
+    point.operator ?? 'unknown',
+    point.protocol,
+    point.scoreProfile ?? 'any',
+  ].join(':');
+}
+
+function routeHealthPointRoute(
+  point: RouteHealthHistoryPoint,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  return format.label(point.outboundName || point.serverHostname || point.serverExternalId || t.settings.anyRoute);
+}
+
+function routeHealthPointMeta(
+  point: RouteHealthHistoryPoint,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  const bucket = point.bucketStart ? format.time(new Date(point.bucketStart), false) : '--';
+  const operator = point.operator && point.operator !== 'unknown' ? format.label(point.operator) : t.settings.unknownOperator;
+  const protocol = point.protocol ? String(point.protocol).toUpperCase() : t.settings.anyProtocol;
+  const profile = point.scoreProfile ? format.label(String(point.scoreProfile)) : t.settings.unknownProfile;
+
+  return `${bucket} / ${operator} / ${protocol} / ${profile}`;
 }
 
 function formatRouteHourWindow(hourOfDay: number | null, format: DashboardFormatters): string {

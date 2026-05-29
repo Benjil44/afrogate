@@ -2004,6 +2004,34 @@ export interface AdminRouteQualityAnalyticsResponse {
   recommendations: RouteQualityRecommendation[];
 }
 
+export interface RouteHealthHistoryPoint {
+  routeGroup: string;
+  bucketStart: string;
+  serverExternalId: string;
+  serverHostname?: string | null;
+  outboundId?: string | null;
+  outboundKey?: string | null;
+  outboundName?: string | null;
+  operator?: string | null;
+  protocol: RouteProbeProtocol | string;
+  scoreProfile?: RouteScoreProfile | string | null;
+  sampleCount: number;
+  averageScore: number;
+  averageLatencyMs?: number | null;
+  averageJitterMs?: number | null;
+  averagePacketLossPercent?: number | null;
+  degradedSamplePercent: number;
+  criticalSamplePercent: number;
+  healthStatus: HealthState;
+}
+
+export interface AdminRouteHealthHistoryResponse {
+  routeGroup: string;
+  rangeHours: number;
+  generatedAt: string;
+  points: RouteHealthHistoryPoint[];
+}
+
 export type RouteDecisionAction =
   | 'keepCurrent'
   | 'switchRecommended'
