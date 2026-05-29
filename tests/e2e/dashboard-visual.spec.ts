@@ -138,6 +138,20 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await page.getByLabel('Import to customer').selectOption('account-created');
   await page.getByRole('button', { name: 'Import configs' }).click();
   await expect(page.getByText('1 configs imported, 0 skipped.')).toBeVisible();
+
+  await page.getByLabel('Current panel payload JSON').fill(JSON.stringify({
+    users: [
+      {
+        data_limit: '25GB',
+        expire: 1893456000,
+        status: 'active',
+        used_traffic: '7GB',
+        username: 'vip_gamer',
+      },
+    ],
+  }));
+  await page.getByRole('button', { name: 'Sync usage' }).click();
+  await expect(page.getByText('1 usage updates synced, 0 skipped.')).toBeVisible();
 });
 
 test('audit logs page shows sanitized audit events', async ({ page }) => {
@@ -628,6 +642,43 @@ async function mockDashboardApi(page: Page): Promise<void> {
           skippedCandidates: [],
           skippedCount: 0,
           warnings: ['baseline_usage_events_recorded', 'controlled_import_applied_to_client_configs', 'raw_panel_payload_not_persisted'],
+        });
+        return;
+      case '/api/admin/current-panels/sync-usage':
+        await fulfillJson(route, {
+          adapterVersion: 'current-panel-import-preview-v1',
+          candidateCount: 1,
+          customerAccountId: 'account-created',
+          generatedAt: fixedNow,
+          matchedCount: 1,
+          panelKind: 'marzban',
+          skippedCandidates: [],
+          skippedCount: 0,
+          syncedCount: 1,
+          syncedUsedBytesDelta: 1_073_741_824,
+          updatedConfigs: [
+            {
+              createdAt: fixedNow,
+              customerAccountId: 'account-created',
+              deviceLimit: null,
+              effectiveQuotaLimitBytes: 26_843_545_600,
+              externalPanel: 'marzban',
+              externalPanelConfigId: 'vip_gamer',
+              externalPanelUserId: 'vip_gamer',
+              id: 'client-imported',
+              label: 'vip_gamer',
+              notes: null,
+              protocol: 'vless',
+              quotaLimitBytes: 26_843_545_600,
+              remainingBytes: 19_326_258_176,
+              routePreference: null,
+              status: 'active',
+              updatedAt: fixedNow,
+              usedBytes: 7_517_287_424,
+            },
+          ],
+          usageEventCount: 1,
+          warnings: ['controlled_usage_sync_applied_to_client_configs', 'raw_panel_payload_not_persisted', 'usage_sync_events_recorded'],
         });
         return;
       case '/api/admin/rewarded-ads/settings':

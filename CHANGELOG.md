@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.96.0 - 2026-05-29
+
+- Added guarded `POST /api/admin/current-panels/sync-usage` to reconcile later current-panel exports against existing imported client configs.
+- Recorded only positive panel-counter deltas as idempotent `panel_sync` usage events, skipping missing, ambiguous, cross-account, duplicate, or non-advancing candidates.
+- Added Billing page controls to sync current-panel usage, show synced/skipped counts, and keep the controlled flow bilingual, raw-payload-free, and external-panel-call-free.
+
 ## 0.95.0 - 2026-05-29
 
 - Added guarded `POST /api/admin/current-panels/import-configs` to import sanitized, non-duplicate current-panel candidates into AfroGate client configs.

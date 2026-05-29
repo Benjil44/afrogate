@@ -50,7 +50,7 @@ Public/sensitive endpoints:
 - `POST /api/payments/paypal/webhook` must verify PayPal transmission signature headers before mutating payment orders.
 - `POST /api/telegram/webhook` is disabled by default and requires Telegram's secret-token header before replying.
 - Agent metrics ingest must require agent authentication and reject unauthenticated writes.
-- Future import/sync APIs for Marzban/X-UI/current panels must treat panel responses as untrusted data.
+- Import/sync APIs for Marzban/X-UI/current panels must treat panel responses as untrusted data.
 
 Existing mitigations:
 
@@ -73,7 +73,7 @@ Realistic attacker stories:
 - Abuse Telegram webhook exposure to enumerate linked accounts or force outbound API calls.
 - Compromise a support/admin account and attempt to read secrets, change quotas, or reroute users.
 - Send malicious agent metrics or route-probe metadata to poison health scores and influence route decisions.
-- Exploit panel import/sync code with untrusted remote panel fields; current controlled import must keep parsing adapter-scoped, skip unsupported/duplicate candidates, avoid raw payload storage, and avoid external panel/API/data-plane side effects.
+- Exploit panel import/sync code with untrusted remote panel fields; current controlled import/sync must keep parsing adapter-scoped, skip unsupported, duplicate, missing, ambiguous, cross-account, or non-advancing candidates, avoid raw payload storage, and avoid external panel/API/data-plane side effects.
 - Abuse writable notes, metadata, or public config fields to store secrets or inject UI content.
 
 Out-of-scope or lower-priority stories:

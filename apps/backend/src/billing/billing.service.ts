@@ -14,6 +14,7 @@ import type {
   AdminBillingSettingsSummary,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
+  AdminCurrentPanelUsageSyncResponse,
   AdminRewardedAdSettingsSummary,
   ClientAccessTokenSummary,
   ClientPortalProfileResponse,
@@ -41,6 +42,7 @@ import type {
   CurrentPanelImportConfigsRequest,
   CurrentPanelImportPreviewRequest,
   CurrentPanelImportSkippedCandidate,
+  CurrentPanelUsageSyncRequest,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdGrantSummary,
   ClientRewardedAdStatus,
@@ -57,6 +59,7 @@ import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
   CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
+  CurrentPanelUsageSyncDto,
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
@@ -1653,72 +1656,25 @@ export class BillingService {
 
         if (usedBytes > 0) {
           const client = await this.getClientConfigRowForUpdate(executor, clientId);
-          const usageEvent = await this.insertClientUsageEvent(
+          const usageEvent = await this.recordPanelSyncUsageDelta(
             executor,
             client,
             {
-              direction: 'combined',
+              adapterVersion: preview.adapterVersion,
+              deltaBytes: usedBytes,
               externalReference: candidate.externalPanelConfigId ?? candidate.externalPanelUserId ?? null,
               idempotencyKey: this.currentPanelImportUsageIdempotencyKey(preview.panelKind, candidate, clientId),
               metadata: {
-                adapterVersion: preview.adapterVersion,
                 baselineImport: true,
-                panelKind: preview.panelKind,
+                currentPanelFlow: 'config_import',
               },
-              notes: null,
               observedAt: importObservedAt,
-              ratedOutboundId: null,
-              ratedOutboundName: null,
-              rawUsedBytesDelta: usedBytes,
-              rxBytes: null,
-              source: 'panel_sync',
-              txBytes: null,
-              usageMultiplier: 1,
-              usedBytesDelta: usedBytes,
-              windowEnd: null,
-              windowStart: null,
+              panelKind: preview.panelKind,
             },
             actor,
           );
 
           if (usageEvent) {
-            await executor.query(
-              `
-                UPDATE client_configs
-                SET used_bytes = used_bytes + $1,
-                    updated_at = now()
-                WHERE id = $2
-              `,
-              [usedBytes, clientId],
-            );
-
-            await executor.query(
-              `
-                UPDATE customer_accounts
-                SET used_bytes = used_bytes + $1,
-                    updated_at = now()
-                WHERE id = $2
-              `,
-              [usedBytes, dto.customerAccountId],
-            );
-
-            await this.audit.record(
-              actor,
-              'client_usage_event.record',
-              'client_config',
-              clientId,
-              {
-                customerAccountId: dto.customerAccountId,
-                externalReference: usageEvent.externalReference,
-                hasIdempotencyKey: Boolean(usageEvent.idempotencyKey),
-                importedByCurrentPanel: true,
-                source: 'panel_sync',
-                usageEventId: usageEvent.id,
-                usedBytesDelta: usedBytes,
-              },
-              executor,
-            );
-
             baselineUsageEventCount += 1;
             baselineUsedBytes += usedBytes;
           }
@@ -1769,6 +1725,129 @@ export class BillingService {
       panelKind: preview.panelKind,
       skippedCandidates: importState.skippedCandidates,
       skippedCount: importState.skippedCandidates.length,
+      warnings: Array.from(warnings).sort(),
+    };
+  }
+
+  async syncCurrentPanelUsage(
+    dto: CurrentPanelUsageSyncDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCurrentPanelUsageSyncResponse> {
+    const preview = buildCurrentPanelImportPreview(dto as CurrentPanelUsageSyncRequest);
+    const syncState = await this.database.transaction(async (executor) => {
+      await this.lockCustomerAccount(executor, dto.customerAccountId);
+
+      const updatedConfigIds: string[] = [];
+      const skippedCandidates: CurrentPanelImportSkippedCandidate[] = [];
+      let matchedCount = 0;
+      let syncedUsedBytesDelta = 0;
+      let usageEventCount = 0;
+      const syncObservedAt = new Date(preview.generatedAt);
+
+      for (const candidate of preview.candidates) {
+        const panelUsedBytes = this.normalizeOptionalUsageBytes(candidate.usedBytes ?? null, 'usedBytes');
+        if (panelUsedBytes === null) {
+          skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, ['missing_used_bytes']));
+          continue;
+        }
+
+        const match = await this.getCurrentPanelUsageSyncClientForUpdate(executor, dto.customerAccountId, candidate);
+        if (match.reasonCodes.length > 0 || !match.client) {
+          skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, match.reasonCodes.length > 0 ? match.reasonCodes : ['missing_existing_config']));
+          continue;
+        }
+
+        matchedCount += 1;
+        const currentUsedBytes = this.numberFromBigInt(match.client.usedBytes) ?? 0;
+        if (panelUsedBytes <= currentUsedBytes) {
+          skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, ['panel_usage_not_ahead']));
+          continue;
+        }
+
+        const deltaBytes = panelUsedBytes - currentUsedBytes;
+        if (!Number.isSafeInteger(deltaBytes) || deltaBytes <= 0 || deltaBytes > MAX_SAFE_BYTES) {
+          skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, ['invalid_usage_delta']));
+          continue;
+        }
+
+        const usageEvent = await this.recordPanelSyncUsageDelta(
+          executor,
+          match.client,
+          {
+            adapterVersion: preview.adapterVersion,
+            deltaBytes,
+            externalReference: candidate.externalPanelConfigId ?? candidate.externalPanelUserId ?? null,
+            idempotencyKey: this.currentPanelUsageSyncIdempotencyKey(preview.panelKind, candidate, panelUsedBytes, match.client.id),
+            metadata: {
+              currentPanelFlow: 'usage_sync',
+              panelObservedUsedBytes: panelUsedBytes,
+              previousUsedBytes: currentUsedBytes,
+              usageSync: true,
+            },
+            observedAt: syncObservedAt,
+            panelKind: preview.panelKind,
+          },
+          actor,
+        );
+
+        if (!usageEvent) {
+          skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, ['duplicate_usage_sync']));
+          continue;
+        }
+
+        updatedConfigIds.push(match.client.id);
+        syncedUsedBytesDelta += deltaBytes;
+        usageEventCount += 1;
+      }
+
+      await this.audit.record(
+        actor,
+        'current_panel.sync_usage',
+        'customer_account',
+        dto.customerAccountId,
+        {
+          adapterVersion: preview.adapterVersion,
+          candidateCount: preview.candidateCount,
+          hasSourceName: Boolean(preview.sourceName),
+          matchedCount,
+          panelKind: preview.panelKind,
+          skippedCount: skippedCandidates.length,
+          syncedCount: updatedConfigIds.length,
+          syncedUsedBytesDelta,
+          usageEventCount,
+        },
+        executor,
+      );
+
+      return {
+        matchedCount,
+        skippedCandidates,
+        syncedUsedBytesDelta,
+        updatedConfigIds,
+        usageEventCount,
+      };
+    });
+
+    const uniqueUpdatedConfigIds = Array.from(new Set(syncState.updatedConfigIds));
+    const updatedConfigs = await Promise.all(uniqueUpdatedConfigIds.map((id) => this.getClientConfig(id)));
+    const warnings = new Set(preview.warnings.filter((warning) => warning !== 'read_only_preview_no_changes_applied'));
+    warnings.add('controlled_usage_sync_applied_to_client_configs');
+    if (syncState.usageEventCount > 0) warnings.add('usage_sync_events_recorded');
+    if (syncState.skippedCandidates.length > 0) warnings.add('skipped_candidates_present');
+
+    return {
+      adapterVersion: preview.adapterVersion,
+      candidateCount: preview.candidateCount,
+      customerAccountId: dto.customerAccountId,
+      generatedAt: preview.generatedAt,
+      matchedCount: syncState.matchedCount,
+      panelKind: preview.panelKind,
+      skippedCandidates: syncState.skippedCandidates,
+      skippedCount: syncState.skippedCandidates.length,
+      syncedCount: updatedConfigs.length,
+      syncedUsedBytesDelta: syncState.syncedUsedBytesDelta,
+      updatedConfigs,
+      usageEventCount: syncState.usageEventCount,
       warnings: Array.from(warnings).sort(),
     };
   }
@@ -3919,6 +3998,172 @@ export class BillingService {
     return reasonCodes;
   }
 
+  private async getCurrentPanelUsageSyncClientForUpdate(
+    executor: DatabaseQueryExecutor,
+    customerAccountId: string,
+    candidate: CurrentPanelImportCandidate,
+  ): Promise<{ client: ClientConfigRow | null; reasonCodes: string[] }> {
+    const externalPanel = this.normalizeNullableString(candidate.externalPanel);
+    const externalPanelConfigId = this.normalizeNullableString(candidate.externalPanelConfigId);
+    const externalPanelUserId = this.normalizeNullableString(candidate.externalPanelUserId);
+
+    if (!externalPanel) return { client: null, reasonCodes: ['missing_external_panel'] };
+    if (!externalPanelConfigId && !externalPanelUserId) return { client: null, reasonCodes: ['missing_external_identity'] };
+
+    if (externalPanelConfigId) {
+      const result = await executor.query<ClientConfigRow>(
+        `
+          SELECT
+            id,
+            customer_account_id AS "customerAccountId",
+            label,
+            protocol,
+            external_panel AS "externalPanel",
+            external_panel_user_id AS "externalPanelUserId",
+            external_panel_config_id AS "externalPanelConfigId",
+            device_limit AS "deviceLimit",
+            quota_limit_bytes AS "quotaLimitBytes",
+            used_bytes AS "usedBytes",
+            status,
+            notes,
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+          FROM client_configs
+          WHERE external_panel = $1
+            AND external_panel_config_id = $2
+          ORDER BY updated_at DESC
+          LIMIT 2
+          FOR UPDATE
+        `,
+        [externalPanel, externalPanelConfigId],
+      );
+
+      if (result.rows.length > 1) return { client: null, reasonCodes: ['ambiguous_external_config'] };
+      const client = result.rows[0];
+      if (client) {
+        if (client.customerAccountId !== customerAccountId) return { client: null, reasonCodes: ['client_belongs_to_other_account'] };
+        return { client, reasonCodes: [] };
+      }
+    }
+
+    if (!externalPanelUserId) return { client: null, reasonCodes: ['missing_existing_config'] };
+    const result = await executor.query<ClientConfigRow>(
+      `
+        SELECT
+          id,
+          customer_account_id AS "customerAccountId",
+          label,
+          protocol,
+          external_panel AS "externalPanel",
+          external_panel_user_id AS "externalPanelUserId",
+          external_panel_config_id AS "externalPanelConfigId",
+          device_limit AS "deviceLimit",
+          quota_limit_bytes AS "quotaLimitBytes",
+          used_bytes AS "usedBytes",
+          status,
+          notes,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM client_configs
+        WHERE customer_account_id = $1
+          AND external_panel = $2
+          AND external_panel_user_id = $3
+        ORDER BY updated_at DESC
+        LIMIT 2
+        FOR UPDATE
+      `,
+      [customerAccountId, externalPanel, externalPanelUserId],
+    );
+
+    if (result.rows.length > 1) return { client: null, reasonCodes: ['ambiguous_external_user'] };
+    return { client: result.rows[0] ?? null, reasonCodes: result.rows[0] ? [] : ['missing_existing_config'] };
+  }
+
+  private async recordPanelSyncUsageDelta(
+    executor: DatabaseQueryExecutor,
+    client: ClientConfigRow,
+    input: {
+      adapterVersion: string;
+      deltaBytes: number;
+      externalReference: string | null;
+      idempotencyKey: string;
+      metadata: Record<string, unknown>;
+      observedAt: Date;
+      panelKind: string;
+    },
+    actor: AuditActor | undefined,
+  ): Promise<ClientUsageEventRow | null> {
+    const usageEvent = await this.insertClientUsageEvent(
+      executor,
+      client,
+      {
+        direction: 'combined',
+        externalReference: input.externalReference,
+        idempotencyKey: input.idempotencyKey,
+        metadata: {
+          ...input.metadata,
+          adapterVersion: input.adapterVersion,
+          panelKind: input.panelKind,
+        },
+        notes: null,
+        observedAt: input.observedAt,
+        ratedOutboundId: null,
+        ratedOutboundName: null,
+        rawUsedBytesDelta: input.deltaBytes,
+        rxBytes: null,
+        source: 'panel_sync',
+        txBytes: null,
+        usageMultiplier: 1,
+        usedBytesDelta: input.deltaBytes,
+        windowEnd: null,
+        windowStart: null,
+      },
+      actor,
+    );
+
+    if (!usageEvent) return null;
+
+    await executor.query(
+      `
+        UPDATE client_configs
+        SET used_bytes = used_bytes + $1,
+            updated_at = now()
+        WHERE id = $2
+      `,
+      [input.deltaBytes, client.id],
+    );
+
+    await executor.query(
+      `
+        UPDATE customer_accounts
+        SET used_bytes = used_bytes + $1,
+            updated_at = now()
+        WHERE id = $2
+      `,
+      [input.deltaBytes, client.customerAccountId],
+    );
+
+    await this.audit.record(
+      actor,
+      'client_usage_event.record',
+      'client_config',
+      client.id,
+      {
+        customerAccountId: client.customerAccountId,
+        currentPanelFlow: input.metadata.currentPanelFlow ?? null,
+        externalReference: usageEvent.externalReference,
+        hasIdempotencyKey: Boolean(usageEvent.idempotencyKey),
+        panelKind: input.panelKind,
+        source: 'panel_sync',
+        usageEventId: usageEvent.id,
+        usedBytesDelta: input.deltaBytes,
+      },
+      executor,
+    );
+
+    return usageEvent;
+  }
+
   private mapSkippedCurrentPanelCandidate(
     candidate: CurrentPanelImportCandidate,
     reasonCodes: string[],
@@ -3940,6 +4185,18 @@ export class BillingService {
     const identity = candidate.externalPanelConfigId ?? candidate.externalPanelUserId ?? clientConfigId;
     const normalizedIdentity = identity.replace(/\s+/g, '_').slice(0, 180);
     return `current_panel_import:${panelKind}:${candidate.externalPanel}:${normalizedIdentity}:baseline_usage`;
+  }
+
+  private currentPanelUsageSyncIdempotencyKey(
+    panelKind: string,
+    candidate: CurrentPanelImportCandidate,
+    targetUsedBytes: number,
+    clientConfigId: string,
+  ): string {
+    const externalPanel = this.normalizeNullableString(candidate.externalPanel) ?? 'unknown_panel';
+    const identity = candidate.externalPanelConfigId ?? candidate.externalPanelUserId ?? clientConfigId;
+    const normalizedIdentity = identity.replace(/\s+/g, '_').slice(0, 150);
+    return `current_panel_usage_sync:${panelKind}:${externalPanel}:${normalizedIdentity}:${targetUsedBytes}`;
   }
 
   private async ensureCustomerAccountExists(executor: DatabaseQueryExecutor, id: string): Promise<void> {

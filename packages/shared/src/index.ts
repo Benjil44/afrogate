@@ -703,6 +703,10 @@ export interface CurrentPanelImportConfigsRequest extends CurrentPanelImportPrev
   customerAccountId: string;
 }
 
+export interface CurrentPanelUsageSyncRequest extends CurrentPanelImportPreviewRequest {
+  customerAccountId: string;
+}
+
 export interface CurrentPanelImportSkippedCandidate {
   label: string;
   externalPanel: string;
@@ -745,6 +749,22 @@ export interface AdminCurrentPanelImportConfigsResponse {
   baselineUsageEventCount: number;
   baselineUsedBytes: number;
   importedConfigs: AdminClientConfigSummary[];
+  skippedCandidates: CurrentPanelImportSkippedCandidate[];
+  warnings: string[];
+}
+
+export interface AdminCurrentPanelUsageSyncResponse {
+  customerAccountId: string;
+  panelKind: CurrentPanelKind | string;
+  generatedAt: string;
+  adapterVersion: string;
+  candidateCount: number;
+  matchedCount: number;
+  syncedCount: number;
+  skippedCount: number;
+  usageEventCount: number;
+  syncedUsedBytesDelta: number;
+  updatedConfigs: AdminClientConfigSummary[];
   skippedCandidates: CurrentPanelImportSkippedCandidate[];
   warnings: string[];
 }

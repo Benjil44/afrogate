@@ -15,6 +15,7 @@ import type {
   AdminBillingSettingsResponse,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
+  AdminCurrentPanelUsageSyncResponse,
   AdminRewardedAdSettingsResponse,
   AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
@@ -43,6 +44,7 @@ import { BillingService } from './billing.service';
 import {
   CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
+  CurrentPanelUsageSyncDto,
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
@@ -310,6 +312,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminCurrentPanelImportConfigsResponse> {
     return this.billingService.importCurrentPanelConfigs(payload, request.actor);
+  }
+
+  @Post('current-panels/sync-usage')
+  @Roles('admin')
+  syncCurrentPanelUsage(
+    @Body() payload: CurrentPanelUsageSyncDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminCurrentPanelUsageSyncResponse> {
+    return this.billingService.syncCurrentPanelUsage(payload, request.actor);
   }
 
   @Get('customer-accounts/:id')

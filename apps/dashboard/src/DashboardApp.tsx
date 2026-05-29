@@ -6,6 +6,7 @@ import type {
   AdminBillingSettingsSummary,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
+  AdminCurrentPanelUsageSyncResponse,
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
@@ -143,6 +144,7 @@ import {
   fetchIncidentTimeline,
   importAdminCurrentPanelConfigs,
   previewAdminCurrentPanelImport,
+  syncAdminCurrentPanelUsage,
   fetchProtocolServerApplyEvent,
   fetchProtocolServerApplyEvents,
   fetchRouteAssignment,
@@ -3499,6 +3501,7 @@ function BillingPage({
   const [currentPanelMessage, setCurrentPanelMessage] = useState<string | null>(null);
   const [isPreviewingCurrentPanel, setIsPreviewingCurrentPanel] = useState(false);
   const [isImportingCurrentPanel, setIsImportingCurrentPanel] = useState(false);
+  const [isSyncingCurrentPanelUsage, setIsSyncingCurrentPanelUsage] = useState(false);
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
 
   const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
@@ -3738,6 +3741,43 @@ function BillingPage({
     }
   };
 
+  const handleSyncCurrentPanelUsage = async () => {
+    if (!canManageBilling) return;
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(currentPanelForm.payloadJson);
+    } catch {
+      setCurrentPanelMessage(t.billing.currentPanelPayloadInvalid);
+      return;
+    }
+
+    if (!currentPanelForm.customerAccountId) {
+      setCurrentPanelMessage(t.billing.currentPanelSelectCustomer);
+      return;
+    }
+
+    setIsSyncingCurrentPanelUsage(true);
+    setCurrentPanelMessage(null);
+
+    try {
+      const result = await syncAdminCurrentPanelUsage(sessionToken, {
+        customerAccountId: currentPanelForm.customerAccountId,
+        defaultProtocol: currentPanelForm.defaultProtocol,
+        panelKind: currentPanelForm.panelKind,
+        payload,
+        sourceName: normalizeNullableText(currentPanelForm.sourceName),
+      });
+
+      setAccounts((current) => updateSyncedCurrentPanelUsageAccount(current, result));
+      setCurrentPanelMessage(t.billing.currentPanelUsageSyncSucceeded(format.integer(result.syncedCount), format.integer(result.skippedCount)));
+    } catch {
+      setCurrentPanelMessage(t.billing.currentPanelUsageSyncFailed);
+    } finally {
+      setIsSyncingCurrentPanelUsage(false);
+    }
+  };
+
   return (
     <section className="mt-0 grid gap-3">
       {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
@@ -3827,9 +3867,11 @@ function BillingPage({
         format={format}
         isImportingCurrentPanel={isImportingCurrentPanel}
         isPreviewingCurrentPanel={isPreviewingCurrentPanel}
+        isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
         onFormChange={setCurrentPanelForm}
         onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
         onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
+        onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
         t={t}
       />
       <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
@@ -3851,6 +3893,25 @@ function updateImportedCurrentPanelAccount(
       ...account,
       activeClientCount: account.activeClientCount + activeImportedCount,
       clientCount: account.clientCount + result.importedCount,
+      remainingBytes: account.quotaLimitBytes === null || account.quotaLimitBytes === undefined
+        ? null
+        : Math.max(account.quotaLimitBytes - usedBytes, 0),
+      updatedAt: result.generatedAt,
+      usedBytes,
+    };
+  });
+}
+
+function updateSyncedCurrentPanelUsageAccount(
+  accounts: AdminCustomerAccountSummary[],
+  result: AdminCurrentPanelUsageSyncResponse,
+): AdminCustomerAccountSummary[] {
+  return accounts.map((account) => {
+    if (account.id !== result.customerAccountId) return account;
+
+    const usedBytes = account.usedBytes + result.syncedUsedBytesDelta;
+    return {
+      ...account,
       remainingBytes: account.quotaLimitBytes === null || account.quotaLimitBytes === undefined
         ? null
         : Math.max(account.quotaLimitBytes - usedBytes, 0),
@@ -4041,9 +4102,11 @@ function CurrentPanelImportPreviewPanel({
   format,
   isImportingCurrentPanel,
   isPreviewingCurrentPanel,
+  isSyncingCurrentPanelUsage,
   onFormChange,
   onImportCurrentPanelConfigs,
   onPreviewCurrentPanelImport,
+  onSyncCurrentPanelUsage,
   t,
 }: {
   accounts: AdminCustomerAccountSummary[];
@@ -4054,14 +4117,16 @@ function CurrentPanelImportPreviewPanel({
   format: DashboardFormatters;
   isImportingCurrentPanel: boolean;
   isPreviewingCurrentPanel: boolean;
+  isSyncingCurrentPanelUsage: boolean;
   onFormChange: (form: CurrentPanelImportFormState) => void;
   onImportCurrentPanelConfigs: () => void;
   onPreviewCurrentPanelImport: (event: FormEvent<HTMLFormElement>) => void;
+  onSyncCurrentPanelUsage: () => void;
   t: DashboardStrings;
 }) {
   const updateForm = (patch: Partial<CurrentPanelImportFormState>) => onFormChange({ ...currentPanelForm, ...patch });
   const candidates = currentPanelPreview?.candidates ?? [];
-  const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel;
+  const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel || isSyncingCurrentPanelUsage;
   const payloadPlaceholder = `{"users":[{"username":"vip_gamer","status":"active","data_limit":"25GB","used_traffic":"6GB","expire":1893456000}]}`;
 
   return (
@@ -4141,7 +4206,7 @@ function CurrentPanelImportPreviewPanel({
               ))}
             </select>
           </label>
-          <div className="grid content-end">
+          <div className="grid content-end gap-2 sm:grid-cols-2">
             <button
               className={primaryButtonClass}
               disabled={!canManageBilling || isBusy || !currentPanelForm.payloadJson.trim() || !currentPanelForm.customerAccountId}
@@ -4149,6 +4214,14 @@ function CurrentPanelImportPreviewPanel({
               type="button"
             >
               {isImportingCurrentPanel ? t.billing.saving : t.billing.currentPanelImportConfigs}
+            </button>
+            <button
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!canManageBilling || isBusy || !currentPanelForm.payloadJson.trim() || !currentPanelForm.customerAccountId}
+              onClick={onSyncCurrentPanelUsage}
+              type="button"
+            >
+              {isSyncingCurrentPanelUsage ? t.billing.saving : t.billing.currentPanelSyncUsage}
             </button>
           </div>
         </div>

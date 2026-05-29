@@ -5,6 +5,7 @@ import type {
   AdminBillingCatalogResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelImportConfigsResponse,
+  AdminCurrentPanelUsageSyncResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
   ApplyRouteDecisionPreviewRequest,
@@ -43,6 +44,7 @@ import type {
   CreateCustomerAccountRequest,
   CurrentPanelImportConfigsRequest,
   CurrentPanelImportPreviewRequest,
+  CurrentPanelUsageSyncRequest,
   CreateProtocolSetupRequest,
   CreateSettingsSecretRequest,
   CreateAdminUserRequest,
@@ -398,6 +400,19 @@ export async function importAdminCurrentPanelConfigs(
   });
 
   return response.json() as Promise<AdminCurrentPanelImportConfigsResponse>;
+}
+
+export async function syncAdminCurrentPanelUsage(
+  sessionToken: string,
+  payload: CurrentPanelUsageSyncRequest,
+): Promise<AdminCurrentPanelUsageSyncResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/current-panels/sync-usage`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminCurrentPanelUsageSyncResponse>;
 }
 
 export async function fetchAdminPaymentOrders(

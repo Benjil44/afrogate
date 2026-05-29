@@ -1645,3 +1645,29 @@ Repository remote is ready:
 ### Remaining
 
 - Full ongoing usage reconciliation, charge/update sync back to external panels, config export, live external-panel write adapters, production protocol apply, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Current Panel Controlled Usage Sync Slice
+
+### Completed
+
+- Added shared current-panel usage-sync contracts for matched/synced/skipped counts, positive synced deltas, updated configs, and skipped candidates.
+- Added guarded `POST /api/admin/current-panels/sync-usage` for admin sessions.
+- The sync endpoint re-runs the current-panel adapter server-side, matches existing imported `client_configs`, records only positive panel-counter deltas through idempotent `panel_sync` `client_usage_events`, and skips missing, ambiguous, cross-account, duplicate, or non-advancing candidates.
+- Added Billing page controls to run usage sync from the same current-panel export box, show synced/skipped counts, and optimistically update customer usage totals.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `227 / 237` items, or `95.8%` complete with `4.2%` remaining.
+- Bumped AfroGate to `0.96.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Billing current-panel preview/import/sync flow.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Charge/update sync back to external panels, config import/export, live external-panel write adapters, scheduled external-panel reconciliation, production protocol apply, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

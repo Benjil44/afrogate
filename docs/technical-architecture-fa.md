@@ -134,7 +134,7 @@ Current implementation starts Phase 2 with `customer_accounts` instead of a sing
 - created_at
 - updated_at
 
-Current panel migration now starts with an adapter boundary. `POST /api/admin/current-panels/import-preview` accepts a pasted/exported Marzban, X-UI, Sanayi, or generic panel payload, normalizes user/config candidates into shared contracts, and returns only sanitized import-preview fields such as label, external ids, protocol, status, quota, usage, expiry, and reason codes. `POST /api/admin/current-panels/import-configs` is the controlled write step: it re-runs the same adapter server-side, imports non-duplicate candidates into AfroGate `client_configs`, and records panel-reported used bytes as idempotent `panel_sync` baseline usage events so account/client counters remain consistent. Neither endpoint stores raw panel payloads, calls external panel APIs, exposes subscription URLs/tokens, or mutates data-plane state; sensitive link-like identifiers are fingerprinted before they are returned or stored.
+Current panel migration now starts with an adapter boundary. `POST /api/admin/current-panels/import-preview` accepts a pasted/exported Marzban, X-UI, Sanayi, or generic panel payload, normalizes user/config candidates into shared contracts, and returns only sanitized import-preview fields such as label, external ids, protocol, status, quota, usage, expiry, and reason codes. `POST /api/admin/current-panels/import-configs` is the controlled write step: it re-runs the same adapter server-side, imports non-duplicate candidates into AfroGate `client_configs`, and records panel-reported used bytes as idempotent `panel_sync` baseline usage events so account/client counters remain consistent. `POST /api/admin/current-panels/sync-usage` is the controlled reconciliation step: it re-runs the adapter against a fresh export, matches existing imported client configs, records only positive panel-counter deltas as idempotent `panel_sync` usage events, and skips missing, ambiguous, cross-account, duplicate, or non-advancing candidates. These endpoints do not store raw panel payloads, call external panel APIs, expose subscription URLs/tokens, overwrite counters downward, charge/update live panel users, or mutate data-plane state; sensitive link-like identifiers are fingerprinted before they are returned or stored.
 
 ### client_usage_events
 
@@ -517,7 +517,7 @@ Backup status monitoring is read-only in the control plane. External backup jobs
 
 - خواندن داده از Marzban/X-UI/پنل صنایی.
 - ساخت dashboard و alert مستقل.
-- وضعیت فعلی: پیش‌نمایش read-only و import کنترل‌شده کانفیگ‌ها از export پنل فعلی در Billing page فعال است و هر دو پشت adapter جدا (`current-panel-import.adapters.ts`) اجرا می‌شوند؛ import فقط `client_configs` و usage baseline audit/idempotency را در کنترل‌پلین تغییر می‌دهد.
+- وضعیت فعلی: پیش‌نمایش read-only، import کنترل‌شده کانفیگ‌ها، و sync کنترل‌شده مصرف از export پنل فعلی در Billing page فعال است و هر سه پشت adapter جدا (`current-panel-import.adapters.ts`) اجرا می‌شوند؛ import فقط `client_configs` و usage baseline audit/idempotency را تغییر می‌دهد و sync فقط delta مثبت مصرف را به ledger اضافه می‌کند.
 
 مرحله دوم:
 
