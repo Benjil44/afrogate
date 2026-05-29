@@ -18,7 +18,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Real alert rows from backend.
 - [x] Real tunnel inventory rows from backend.
 - [ ] Real outbound rows from backend.
-- [ ] Fullscreen/kiosk display toggle.
+- [x] Fullscreen/kiosk display toggle.
 
 ## Servers Page
 

@@ -1882,3 +1882,32 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Dashboard Kiosk Display Slice
+
+### Completed
+
+- Added a localized icon-only dashboard kiosk display toggle in the NOC dashboard header.
+- Kiosk mode stores local browser state in `afrogate.dashboard.kiosk`, requests browser fullscreen when available, hides the sidebar, and expands the dashboard grid to the full viewport.
+- Kept kiosk mode UI-only: no backend state, route policy, session assignment, OS route, or data-plane traffic behavior changes.
+- Added Playwright coverage for entering and exiting kiosk display mode.
+- Marked the dashboard/sidebar `Fullscreen/kiosk display toggle` item complete.
+- Bumped AfroGate to `0.103.1` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran a focused `npm run typecheck` before the version bump.
+- Ran focused `npm run test:e2e -- --grep "kiosk display"`; 1 test passed.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 15 tests passed, including the dashboard kiosk display flow.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Main checklist completion remains `235 / 237` items, or `99.2%` complete with `0.8%` remaining.
+- Production protocol apply and native per-app VPN split tunneling remain future work.

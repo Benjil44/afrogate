@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.103.1 - 2026-05-29
+
+- Added a dashboard kiosk display toggle with localized icon-only controls.
+- Kiosk mode hides the sidebar, expands the NOC dashboard to the full viewport, persists locally, and exits cleanly without changing backend or routing behavior.
+- Added Playwright coverage for entering and exiting kiosk display mode.
+
 ## 0.103.0 - 2026-05-29
 
 - Added a signed rewarded-ad provider webhook at `POST /api/rewarded-ads/webhook`.

@@ -107,7 +107,9 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Maximize2,
   MemoryStick,
+  Minimize2,
   Network,
   Palette,
   PanelLeftClose,
@@ -530,9 +532,14 @@ function primitiveTooltip(value: ReactNode): string | undefined {
 }
 const appVersion = rootPackage.version;
 const sidebarStorageKey = 'afrogate.dashboard.sidebar';
+const kioskStorageKey = 'afrogate.dashboard.kiosk';
 
 function loadInitialSidebarCollapsed() {
   return window.localStorage.getItem(sidebarStorageKey) === 'collapsed';
+}
+
+function loadInitialKioskMode() {
+  return window.localStorage.getItem(kioskStorageKey) === 'enabled';
 }
 
 export function DashboardApp() {
@@ -608,6 +615,7 @@ function AuthenticatedDashboard({
   const [backupStatus, setBackupStatus] = useState<AdminBackupStatusSummary | null>(null);
   const [backupDataState, setBackupDataState] = useState<DataState>('loading');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
+  const [isKioskMode, setIsKioskMode] = useState(loadInitialKioskMode);
   const wallClock = useWallClock(format);
 
   useEffect(() => {
@@ -771,6 +779,37 @@ function AuthenticatedDashboard({
     window.localStorage.setItem(sidebarStorageKey, isSidebarCollapsed ? 'collapsed' : 'expanded');
   }, [isSidebarCollapsed]);
 
+  useEffect(() => {
+    window.localStorage.setItem(kioskStorageKey, isKioskMode ? 'enabled' : 'disabled');
+  }, [isKioskMode]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) setIsKioskMode(false);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const handleKioskToggle = () => {
+    const nextMode = !isKioskMode;
+    setIsKioskMode(nextMode);
+
+    if (nextMode) {
+      const rootElement = document.documentElement;
+      if (!document.fullscreenElement && rootElement.requestFullscreen) {
+        void rootElement.requestFullscreen().catch(() => undefined);
+      }
+      return;
+    }
+
+    if (document.fullscreenElement && document.exitFullscreen) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+  };
+
   const metricServerRows = useMemo(
     () => (metrics.length > 0 ? metrics.map(mapSnapshotToServerRow) : fallbackServers),
     [metrics],
@@ -828,27 +867,32 @@ function AuthenticatedDashboard({
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t);
-  const shellGridClass = isSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
+  const shellGridClass = isKioskMode
+    ? 'lg:grid-cols-[minmax(0,1fr)]'
+    : isSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
 
   return (
     <main
       className={`grid min-h-screen grid-cols-1 overflow-x-hidden bg-afro-page text-afro-ink lg:h-screen lg:min-h-0 lg:overflow-hidden ${shellGridClass}`}
+      data-dashboard-kiosk={isKioskMode ? 'true' : 'false'}
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
     >
-      <Sidebar
-        activeView={activeView}
-        isCollapsed={isSidebarCollapsed}
-        isRtl={isRtl}
-        nextLanguage={nextLanguage}
-        onLanguageChange={onLanguageChange}
-        onSignOut={onSignOut}
-        onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
-        onViewChange={setActiveView}
-        sidebarAlertState={sidebarAlertState}
-        session={session}
-        t={t}
-      />
+      {isKioskMode ? null : (
+        <Sidebar
+          activeView={activeView}
+          isCollapsed={isSidebarCollapsed}
+          isRtl={isRtl}
+          nextLanguage={nextLanguage}
+          onLanguageChange={onLanguageChange}
+          onSignOut={onSignOut}
+          onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+          onViewChange={setActiveView}
+          sidebarAlertState={sidebarAlertState}
+          session={session}
+          t={t}
+        />
+      )}
 
       <section className="min-w-0 max-w-full p-3 md:p-4 lg:h-screen lg:overflow-y-auto">
         <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -858,6 +902,9 @@ function AuthenticatedDashboard({
           </div>
           {activeView === 'users' ? null : (
             <div className="flex flex-wrap gap-2">
+              {activeView === 'dashboard' ? (
+                <KioskToggleButton isActive={isKioskMode} onToggle={handleKioskToggle} t={t} />
+              ) : null}
               <div className="inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border border-afro-line bg-white px-2.5 text-[12px] font-bold text-afro-ink">
                 <Clock size={15} />
                 {wallClock}
@@ -10785,6 +10832,26 @@ function Sidebar({
         )}
       </div>
     </aside>
+  );
+}
+
+function KioskToggleButton({ isActive, onToggle, t }: { isActive: boolean; onToggle: () => void; t: DashboardStrings }) {
+  const Icon = isActive ? Minimize2 : Maximize2;
+  const label = isActive ? t.exitKioskMode : t.enterKioskMode;
+
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={isActive}
+      className="inline-flex min-h-7 min-w-7 items-center justify-center rounded-full border border-afro-line bg-white px-2 text-afro-ink shadow-sm hover:border-afro-blue hover:text-afro-blue"
+      data-kiosk-toggle="true"
+      onClick={onToggle}
+      title={label}
+      type="button"
+    >
+      <Icon className="shrink-0" size={15} />
+      <span className="sr-only">{label}</span>
+    </button>
   );
 }
 

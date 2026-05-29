@@ -50,6 +50,24 @@ test.describe('dashboard dense layout visual captures', () => {
   }
 });
 
+test('dashboard supports kiosk display mode', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+
+  await expect(page.locator('[data-dashboard-kiosk="false"]')).toBeVisible();
+  await expect(page.locator('aside')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Enter kiosk display' }).click();
+
+  await expect(page.locator('[data-dashboard-kiosk="true"]')).toBeVisible();
+  await expect(page.locator('aside')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Exit kiosk display' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Exit kiosk display' }).click();
+
+  await expect(page.locator('[data-dashboard-kiosk="false"]')).toBeVisible();
+  await expect(page.locator('aside')).toBeVisible();
+});
+
 test('alerts page filters open and resolved history rows', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="alerts"]').click();

@@ -11,6 +11,8 @@ export const dashboardTranslations = {
     switchLanguage: 'Switch language',
     collapseSidebar: 'Collapse sidebar',
     expandSidebar: 'Expand sidebar',
+    enterKioskMode: 'Enter kiosk display',
+    exitKioskMode: 'Exit kiosk display',
     nav: {
       dashboard: 'Dashboard',
       servers: 'Servers',
@@ -1604,6 +1606,8 @@ export const dashboardTranslations = {
     switchLanguage: 'تغییر زبان',
     collapseSidebar: 'جمع کردن منو',
     expandSidebar: 'باز کردن منو',
+    enterKioskMode: 'ورود به نمایش کیوسک',
+    exitKioskMode: 'خروج از نمایش کیوسک',
     nav: {
       dashboard: 'داشبورد',
       servers: 'سرورها',
