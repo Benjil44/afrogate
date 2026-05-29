@@ -73,7 +73,7 @@ Realistic attacker stories:
 - Abuse Telegram webhook exposure to enumerate linked accounts or force outbound API calls.
 - Compromise a support/admin account and attempt to read secrets, change quotas, or reroute users.
 - Send malicious agent metrics or route-probe metadata to poison health scores and influence route decisions.
-- Exploit panel import/sync/export code with untrusted remote panel fields or over-broad local export surfaces; current controlled import/sync/export must keep parsing adapter-scoped, skip unsupported, duplicate, missing, ambiguous, cross-account, or non-advancing candidates, avoid raw payload storage, exclude subscription credentials and secret-bearing config material, and avoid external panel/API/data-plane side effects.
+- Exploit panel import/sync/charge/export code with untrusted remote panel fields or over-broad local export surfaces; current controlled import/sync/export must keep parsing adapter-scoped, skip unsupported, duplicate, missing, ambiguous, cross-account, or non-advancing candidates, avoid raw payload storage, exclude subscription credentials and secret-bearing config material, and avoid external panel/API/data-plane side effects. Local volume charge must stay guarded, audited, idempotency-aware, and explicit that no external-panel write was executed.
 - Abuse writable notes, metadata, or public config fields to store secrets or inject UI content.
 
 Out-of-scope or lower-priority stories:

@@ -859,6 +859,35 @@ export const paymentOrderAllocations = pgTable(
   }),
 );
 
+export const quotaChargeEvents = pgTable(
+  'quota_charge_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'restrict' }),
+    chargeScope: text('charge_scope').notNull().default('account_quota'),
+    volumeBytesDelta: bigint('volume_bytes_delta', { mode: 'number' }).notNull(),
+    accountQuotaBeforeBytes: bigint('account_quota_before_bytes', { mode: 'number' }),
+    accountQuotaAfterBytes: bigint('account_quota_after_bytes', { mode: 'number' }),
+    clientConfigIds: jsonb('client_config_ids').notNull().default(sql`'[]'::jsonb`),
+    clientQuotaChanges: jsonb('client_quota_changes').notNull().default(sql`'[]'::jsonb`),
+    externalPanelWriteStatus: text('external_panel_write_status').notNull().default('not_executed'),
+    idempotencyKey: text('idempotency_key'),
+    notes: text('notes'),
+    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    idempotencyIdx: uniqueIndex('quota_charge_events_idempotency_unique')
+      .on(table.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL AND idempotency_key <> ''`),
+    customerCreatedIdx: index('quota_charge_events_customer_created_idx').on(table.customerAccountId, table.createdAt),
+    createdIdx: index('quota_charge_events_created_idx').on(table.createdAt),
+  }),
+);
+
 export const routeSettings = pgTable(
   'route_settings',
   {
@@ -1030,6 +1059,7 @@ export const customerAccountsRelations = relations(customerAccounts, ({ many }) 
   rewardedAdGrants: many(rewardedAdGrants),
   paymentOrders: many(paymentOrders),
   paymentOrderAllocations: many(paymentOrderAllocations),
+  quotaChargeEvents: many(quotaChargeEvents),
 }));
 
 export const clientConfigsRelations = relations(clientConfigs, ({ many, one }) => ({
@@ -1129,6 +1159,13 @@ export const paymentOrderAllocationsRelations = relations(paymentOrderAllocation
   }),
   customerAccount: one(customerAccounts, {
     fields: [paymentOrderAllocations.customerAccountId],
+    references: [customerAccounts.id],
+  }),
+}));
+
+export const quotaChargeEventsRelations = relations(quotaChargeEvents, ({ one }) => ({
+  customerAccount: one(customerAccounts, {
+    fields: [quotaChargeEvents.customerAccountId],
     references: [customerAccounts.id],
   }),
 }));

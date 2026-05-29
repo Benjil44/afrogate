@@ -8,6 +8,7 @@ import type {
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelUsageSyncResponse,
+  AdminCurrentPanelVolumeChargeResponse,
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
@@ -121,6 +122,7 @@ import rootPackage from '../../../package.json';
 import { useAdminSession } from './auth';
 import {
   createAdminCustomerAccount,
+  chargeAdminCurrentPanelVolume,
   createAdminProtocolSetup,
   createAdminSettingsSecret,
   createAdminUser,
@@ -3435,6 +3437,7 @@ function createEmptyCustomerAccountForm(): CustomerAccountFormState {
 }
 
 type CurrentPanelImportFormState = {
+  chargeGb: string;
   customerAccountId: string;
   defaultProtocol: string;
   panelKind: CurrentPanelKind;
@@ -3444,6 +3447,7 @@ type CurrentPanelImportFormState = {
 
 function createEmptyCurrentPanelImportForm(): CurrentPanelImportFormState {
   return {
+    chargeGb: '10',
     customerAccountId: '',
     defaultProtocol: 'vless',
     panelKind: 'marzban',
@@ -3506,6 +3510,7 @@ function BillingPage({
   const [isImportingCurrentPanel, setIsImportingCurrentPanel] = useState(false);
   const [isSyncingCurrentPanelUsage, setIsSyncingCurrentPanelUsage] = useState(false);
   const [isExportingClientConfigs, setIsExportingClientConfigs] = useState(false);
+  const [isChargingCurrentPanelVolume, setIsChargingCurrentPanelVolume] = useState(false);
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
 
   const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
@@ -3804,6 +3809,42 @@ function BillingPage({
     }
   };
 
+  const handleChargeCurrentPanelVolume = async () => {
+    if (!canManageBilling) return;
+
+    if (!currentPanelForm.customerAccountId) {
+      setCurrentPanelMessage(t.billing.currentPanelSelectCustomer);
+      return;
+    }
+
+    const volumeBytesDelta = parseGbLimitInput(currentPanelForm.chargeGb);
+    if (volumeBytesDelta === undefined || volumeBytesDelta === null || volumeBytesDelta <= 0) {
+      setCurrentPanelMessage(t.billing.currentPanelChargeFailed);
+      return;
+    }
+
+    setIsChargingCurrentPanelVolume(true);
+    setCurrentPanelMessage(null);
+
+    try {
+      const result = await chargeAdminCurrentPanelVolume(sessionToken, {
+        customerAccountId: currentPanelForm.customerAccountId,
+        idempotencyKey: `dashboard:${currentPanelForm.customerAccountId}:${Date.now()}`,
+        metadata: {
+          dashboardFlow: 'current_panel_charge_volume',
+        },
+        scope: 'account_quota',
+        volumeBytesDelta,
+      });
+      setAccounts((current) => updateCurrentPanelVolumeChargeAccount(current, result));
+      setCurrentPanelMessage(t.billing.currentPanelChargeSucceeded(format.bytes(result.chargeEvent.volumeBytesDelta)));
+    } catch {
+      setCurrentPanelMessage(t.billing.currentPanelChargeFailed);
+    } finally {
+      setIsChargingCurrentPanelVolume(false);
+    }
+  };
+
   return (
     <section className="mt-0 grid gap-3">
       {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
@@ -3893,11 +3934,13 @@ function BillingPage({
         currentPanelPreview={currentPanelPreview}
         format={format}
         isExportingClientConfigs={isExportingClientConfigs}
+        isChargingCurrentPanelVolume={isChargingCurrentPanelVolume}
         isImportingCurrentPanel={isImportingCurrentPanel}
         isPreviewingCurrentPanel={isPreviewingCurrentPanel}
         isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
         onFormChange={setCurrentPanelForm}
         onExportClientConfigs={handleExportClientConfigs}
+        onChargeCurrentPanelVolume={handleChargeCurrentPanelVolume}
         onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
         onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
         onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
@@ -3948,6 +3991,16 @@ function updateSyncedCurrentPanelUsageAccount(
       usedBytes,
     };
   });
+}
+
+function updateCurrentPanelVolumeChargeAccount(
+  accounts: AdminCustomerAccountSummary[],
+  result: AdminCurrentPanelVolumeChargeResponse,
+): AdminCustomerAccountSummary[] {
+  return [
+    result.account,
+    ...accounts.filter((account) => account.id !== result.account.id),
+  ];
 }
 
 function formatClientConfigExportJson(result: AdminClientConfigsExportResponse): string {
@@ -4141,11 +4194,13 @@ function CurrentPanelImportPreviewPanel({
   currentPanelMessage,
   currentPanelPreview,
   format,
+  isChargingCurrentPanelVolume,
   isExportingClientConfigs,
   isImportingCurrentPanel,
   isPreviewingCurrentPanel,
   isSyncingCurrentPanelUsage,
   onFormChange,
+  onChargeCurrentPanelVolume,
   onExportClientConfigs,
   onImportCurrentPanelConfigs,
   onPreviewCurrentPanelImport,
@@ -4159,11 +4214,13 @@ function CurrentPanelImportPreviewPanel({
   currentPanelMessage: string | null;
   currentPanelPreview: AdminCurrentPanelImportPreviewResponse | null;
   format: DashboardFormatters;
+  isChargingCurrentPanelVolume: boolean;
   isExportingClientConfigs: boolean;
   isImportingCurrentPanel: boolean;
   isPreviewingCurrentPanel: boolean;
   isSyncingCurrentPanelUsage: boolean;
   onFormChange: (form: CurrentPanelImportFormState) => void;
+  onChargeCurrentPanelVolume: () => void;
   onExportClientConfigs: () => void;
   onImportCurrentPanelConfigs: () => void;
   onPreviewCurrentPanelImport: (event: FormEvent<HTMLFormElement>) => void;
@@ -4172,7 +4229,7 @@ function CurrentPanelImportPreviewPanel({
 }) {
   const updateForm = (patch: Partial<CurrentPanelImportFormState>) => onFormChange({ ...currentPanelForm, ...patch });
   const candidates = currentPanelPreview?.candidates ?? [];
-  const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel || isSyncingCurrentPanelUsage || isExportingClientConfigs;
+  const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel || isSyncingCurrentPanelUsage || isExportingClientConfigs || isChargingCurrentPanelVolume;
   const payloadPlaceholder = `{"users":[{"username":"vip_gamer","status":"active","data_limit":"25GB","used_traffic":"6GB","expire":1893456000}]}`;
 
   return (
@@ -4234,7 +4291,7 @@ function CurrentPanelImportPreviewPanel({
             value={currentPanelForm.payloadJson}
           />
         </label>
-        <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_auto]">
+        <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_minmax(140px,180px)_minmax(260px,1fr)]">
           <label className="grid gap-1.5">
             <span className={mutedTextClass}>{t.billing.currentPanelImportToCustomer}</span>
             <select
@@ -4252,7 +4309,14 @@ function CurrentPanelImportPreviewPanel({
               ))}
             </select>
           </label>
-          <div className="grid content-end gap-2 sm:grid-cols-3">
+          <SettingsInput
+            disabled={!canManageBilling || isBusy}
+            inputMode="numeric"
+            label={t.billing.currentPanelChargeGb}
+            onChange={(chargeGb) => updateForm({ chargeGb })}
+            value={currentPanelForm.chargeGb}
+          />
+          <div className="grid content-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <button
               className={primaryButtonClass}
               disabled={!canManageBilling || isBusy || !currentPanelForm.payloadJson.trim() || !currentPanelForm.customerAccountId}
@@ -4276,6 +4340,14 @@ function CurrentPanelImportPreviewPanel({
               type="button"
             >
               {isExportingClientConfigs ? t.billing.saving : t.billing.currentPanelExportConfigs}
+            </button>
+            <button
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!canManageBilling || isBusy || !currentPanelForm.customerAccountId || !currentPanelForm.chargeGb.trim()}
+              onClick={onChargeCurrentPanelVolume}
+              type="button"
+            >
+              {isChargingCurrentPanelVolume ? t.billing.saving : t.billing.currentPanelChargeVolume}
             </button>
           </div>
         </div>

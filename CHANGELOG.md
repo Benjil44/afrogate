@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.98.0 - 2026-05-29
+
+- Added guarded `POST /api/admin/current-panels/charge-volume` for audited local AfroGate quota top-ups from the current-panel migration workflow.
+- Added the `quota_charge_events` ledger with optional idempotency, non-secret metadata, account quota deltas, selected-client quota change metadata, and explicit external-panel write status.
+- Added Billing page controls to charge selected-customer GB locally with bilingual labels while keeping live external-panel quota writes disabled and explicit.
+
 ## 0.97.0 - 2026-05-29
 
 - Added guarded `GET /api/admin/customer-accounts/:id/client-configs/export` for sanitized account-scoped AfroGate client config export.

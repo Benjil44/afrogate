@@ -7,6 +7,7 @@ import type {
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelUsageSyncResponse,
+  AdminCurrentPanelVolumeChargeResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
   ApplyRouteDecisionPreviewRequest,
@@ -46,6 +47,7 @@ import type {
   CurrentPanelImportConfigsRequest,
   CurrentPanelImportPreviewRequest,
   CurrentPanelUsageSyncRequest,
+  CurrentPanelVolumeChargeRequest,
   CreateProtocolSetupRequest,
   CreateSettingsSecretRequest,
   CreateAdminUserRequest,
@@ -426,6 +428,19 @@ export async function syncAdminCurrentPanelUsage(
   });
 
   return response.json() as Promise<AdminCurrentPanelUsageSyncResponse>;
+}
+
+export async function chargeAdminCurrentPanelVolume(
+  sessionToken: string,
+  payload: CurrentPanelVolumeChargeRequest,
+): Promise<AdminCurrentPanelVolumeChargeResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/current-panels/charge-volume`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminCurrentPanelVolumeChargeResponse>;
 }
 
 export async function fetchAdminPaymentOrders(

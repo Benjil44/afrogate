@@ -156,6 +156,10 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await page.getByRole('button', { name: 'Export configs' }).click();
   await expect(page.getByText('1 configs exported.')).toBeVisible();
   await expect(page.getByLabel('Exported config JSON')).toHaveValue(/afrogate_client_configs_export_v1/);
+
+  await page.getByLabel('Charge GB').fill('5');
+  await page.getByRole('button', { name: 'Charge volume' }).click();
+  await expect(page.getByText('5 GB charged locally; external panel write not executed.')).toBeVisible();
 });
 
 test('audit logs page shows sanitized audit events', async ({ page }) => {
@@ -683,6 +687,54 @@ async function mockDashboardApi(page: Page): Promise<void> {
           ],
           usageEventCount: 1,
           warnings: ['controlled_usage_sync_applied_to_client_configs', 'raw_panel_payload_not_persisted', 'usage_sync_events_recorded'],
+        });
+        return;
+      case '/api/admin/current-panels/charge-volume':
+        await fulfillJson(route, {
+          account: {
+            activeClientCount: 1,
+            clientCount: 1,
+            createdAt: fixedNow,
+            displayName: 'VIP gamer',
+            hasPaidNumberHash: false,
+            id: 'account-created',
+            notes: null,
+            perClientLimitBytes: 21_474_836_480,
+            quotaLimitBytes: 91_268_055_040,
+            quotaScope: 'per_client',
+            remainingBytes: 83_750_767_616,
+            status: 'active',
+            telegramId: null,
+            telegramUsername: 'vip_gamer',
+            updatedAt: fixedNow,
+            usedBytes: 7_517_287_424,
+          },
+          chargeEvent: {
+            accountQuotaLimitAfterBytes: 91_268_055_040,
+            accountQuotaLimitBeforeBytes: 85_899_345_920,
+            clientConfigIds: [],
+            clientQuotaChanges: [],
+            createdAt: fixedNow,
+            createdBy: 'admin-visual',
+            customerAccountId: 'account-created',
+            externalPanelWriteStatus: 'not_executed',
+            id: 'charge-volume-visual',
+            idempotencyKey: route.request().postDataJSON().idempotencyKey,
+            metadata: {
+              dashboardFlow: 'current_panel_charge_volume',
+            },
+            notes: null,
+            scope: 'account_quota',
+            volumeBytesDelta: 5_368_709_120,
+          },
+          duplicate: false,
+          externalPanelWrite: {
+            attempted: false,
+            reasonCode: 'live_external_panel_write_not_enabled',
+            status: 'not_executed',
+          },
+          updatedClients: [],
+          warnings: ['external_panel_write_not_executed', 'local_quota_charge_recorded'],
         });
         return;
       case '/api/admin/customer-accounts/account-created/client-configs/export':

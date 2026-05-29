@@ -778,6 +778,55 @@ export interface AdminCurrentPanelUsageSyncResponse {
   warnings: string[];
 }
 
+export type CurrentPanelVolumeChargeScope = 'account_quota' | 'selected_clients' | 'account_and_selected_clients';
+export type CurrentPanelExternalWriteStatus = 'not_configured' | 'not_executed';
+
+export interface CurrentPanelVolumeChargeRequest {
+  customerAccountId: string;
+  volumeBytesDelta: number;
+  scope?: CurrentPanelVolumeChargeScope;
+  clientConfigIds?: string[];
+  idempotencyKey?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AdminCurrentPanelVolumeChargeClientQuotaChange {
+  clientConfigId: string;
+  quotaLimitBeforeBytes?: number | null;
+  quotaLimitAfterBytes: number;
+}
+
+export interface AdminCurrentPanelVolumeChargeEventSummary {
+  id: string;
+  customerAccountId: string;
+  scope: CurrentPanelVolumeChargeScope | string;
+  volumeBytesDelta: number;
+  accountQuotaLimitBeforeBytes?: number | null;
+  accountQuotaLimitAfterBytes?: number | null;
+  clientConfigIds: string[];
+  clientQuotaChanges: AdminCurrentPanelVolumeChargeClientQuotaChange[];
+  externalPanelWriteStatus: CurrentPanelExternalWriteStatus | string;
+  idempotencyKey?: string | null;
+  notes?: string | null;
+  metadata: Record<string, unknown>;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export interface AdminCurrentPanelVolumeChargeResponse {
+  chargeEvent: AdminCurrentPanelVolumeChargeEventSummary;
+  account: AdminCustomerAccountSummary;
+  updatedClients: AdminClientConfigSummary[];
+  duplicate: boolean;
+  externalPanelWrite: {
+    attempted: false;
+    status: CurrentPanelExternalWriteStatus | string;
+    reasonCode: string;
+  };
+  warnings: string[];
+}
+
 export interface CreateCustomerAccountRequest {
   displayName?: string | null;
   telegramId?: string | null;

@@ -15,6 +15,8 @@ import type {
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelUsageSyncResponse,
+  AdminCurrentPanelVolumeChargeEventSummary,
+  AdminCurrentPanelVolumeChargeResponse,
   AdminRewardedAdSettingsSummary,
   ClientAccessTokenSummary,
   ClientPortalProfileResponse,
@@ -44,6 +46,7 @@ import type {
   CurrentPanelImportPreviewRequest,
   CurrentPanelImportSkippedCandidate,
   CurrentPanelUsageSyncRequest,
+  CurrentPanelVolumeChargeScope,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdGrantSummary,
   ClientRewardedAdStatus,
@@ -61,6 +64,7 @@ import {
   CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
   CurrentPanelUsageSyncDto,
+  CurrentPanelVolumeChargeDto,
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
@@ -94,6 +98,11 @@ const MAX_REWARDED_AD_REWARD_BYTES = 10 * BYTES_PER_GB;
 const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 const CURRENT_PANEL_IMPORTABLE_STATUSES = new Set(['active', 'limited', 'disabled', 'expired']);
+const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = new Set<CurrentPanelVolumeChargeScope>([
+  'account_quota',
+  'selected_clients',
+  'account_and_selected_clients',
+]);
 const CLIENT_USAGE_EVENT_SOURCES = new Set([
   'admin',
   'agent',
@@ -484,6 +493,29 @@ interface PaymentOrderAllocationRow {
   metadata: Record<string, unknown>;
   createdBy: string | null;
   createdAt: Date;
+}
+
+interface CurrentPanelVolumeChargeEventRow {
+  id: string;
+  customerAccountId: string;
+  chargeScope: string;
+  volumeBytesDelta: string | number;
+  accountQuotaBeforeBytes: string | number | null;
+  accountQuotaAfterBytes: string | number | null;
+  clientConfigIds: unknown;
+  clientQuotaChanges: unknown;
+  externalPanelWriteStatus: string;
+  idempotencyKey: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: Date;
+}
+
+interface CurrentPanelVolumeChargeClientQuotaChange {
+  clientConfigId: string;
+  quotaLimitBeforeBytes: number | null;
+  quotaLimitAfterBytes: number;
 }
 
 interface CustomerAccountFilters {
@@ -1851,6 +1883,168 @@ export class BillingService {
       usageEventCount: syncState.usageEventCount,
       warnings: Array.from(warnings).sort(),
     };
+  }
+
+  async chargeCurrentPanelVolume(
+    dto: CurrentPanelVolumeChargeDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCurrentPanelVolumeChargeResponse> {
+    try {
+      const scope = this.normalizeCurrentPanelVolumeChargeScope(dto.scope);
+      const volumeBytes = this.normalizePositiveByteDelta(dto.volumeBytesDelta, 'volumeBytesDelta');
+      const clientConfigIds = this.normalizeCurrentPanelChargeClientIds(dto.clientConfigIds ?? []);
+      const shouldChargeAccount = scope === 'account_quota' || scope === 'account_and_selected_clients';
+      const shouldChargeClients = scope === 'selected_clients' || scope === 'account_and_selected_clients';
+      const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+
+      if (scope === 'account_quota' && clientConfigIds.length > 0) {
+        throw new BadRequestException('Client config ids require a selected-client charge scope');
+      }
+      if (shouldChargeClients && clientConfigIds.length === 0) {
+        throw new BadRequestException('Selected-client volume charge requires at least one client config id');
+      }
+
+      const chargeState = await this.database.transaction(async (executor) => {
+        if (idempotencyKey) {
+          const existingForKey = await this.getCurrentPanelVolumeChargeByIdempotencyForUpdate(executor, idempotencyKey);
+          if (existingForKey) {
+            this.assertCurrentPanelVolumeChargeDuplicateMatches(existingForKey, {
+              customerAccountId: dto.customerAccountId,
+              scope,
+              volumeBytes,
+              clientConfigIds,
+            });
+
+            return {
+              chargeEvent: existingForKey,
+              duplicate: true,
+            };
+          }
+        }
+
+        const account = await this.getCustomerAccountRowForUpdate(executor, dto.customerAccountId);
+        const accountQuotaBeforeBytes = shouldChargeAccount ? this.numberFromBigInt(account.quotaLimitBytes) : null;
+        const accountUsedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+        const accountQuotaAfterBytes = shouldChargeAccount
+          ? this.addPositiveBytes(accountQuotaBeforeBytes ?? accountUsedBytes, volumeBytes, 'Charged account quota would exceed the safe byte limit')
+          : null;
+        const clientQuotaChanges: CurrentPanelVolumeChargeClientQuotaChange[] = [];
+
+        if (shouldChargeClients) {
+          const perClientLimitBytes = this.numberFromBigInt(account.perClientLimitBytes);
+
+          for (const clientConfigId of clientConfigIds) {
+            const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
+            if (client.customerAccountId !== dto.customerAccountId) {
+              throw new BadRequestException('Client config must belong to the selected customer account');
+            }
+
+            const clientQuotaBeforeBytes = this.numberFromBigInt(client.quotaLimitBytes);
+            const clientUsedBytes = this.numberFromBigInt(client.usedBytes) ?? 0;
+            const clientQuotaAfterBytes = this.addPositiveBytes(
+              clientQuotaBeforeBytes ?? perClientLimitBytes ?? clientUsedBytes,
+              volumeBytes,
+              'Charged client quota would exceed the safe byte limit',
+            );
+
+            await executor.query(
+              `
+                UPDATE client_configs
+                SET quota_limit_bytes = $1,
+                    updated_at = now()
+                WHERE id = $2
+              `,
+              [clientQuotaAfterBytes, clientConfigId],
+            );
+
+            clientQuotaChanges.push({
+              clientConfigId,
+              quotaLimitBeforeBytes: clientQuotaBeforeBytes,
+              quotaLimitAfterBytes: clientQuotaAfterBytes,
+            });
+          }
+        }
+
+        if (accountQuotaAfterBytes !== null) {
+          await executor.query(
+            `
+              UPDATE customer_accounts
+              SET quota_limit_bytes = $1,
+                  updated_at = now()
+              WHERE id = $2
+            `,
+            [accountQuotaAfterBytes, dto.customerAccountId],
+          );
+        }
+
+        const chargeEvent = await this.insertCurrentPanelVolumeChargeEvent(
+          executor,
+          {
+            accountQuotaBeforeBytes,
+            accountQuotaAfterBytes,
+            chargeScope: scope,
+            clientConfigIds,
+            clientQuotaChanges,
+            customerAccountId: dto.customerAccountId,
+            idempotencyKey,
+            metadata: dto.metadata ?? {},
+            notes: this.normalizeNullableString(dto.notes),
+            volumeBytes,
+          },
+          actor,
+        );
+
+        await this.audit.record(
+          actor,
+          'current_panel.charge_volume',
+          'customer_account',
+          dto.customerAccountId,
+          {
+            chargeEventId: chargeEvent.id,
+            clientConfigCount: clientConfigIds.length,
+            externalPanelWriteAttempted: false,
+            externalPanelWriteStatus: chargeEvent.externalPanelWriteStatus,
+            scope,
+            volumeBytesDelta: volumeBytes,
+          },
+          executor,
+        );
+
+        return {
+          chargeEvent,
+          duplicate: false,
+        };
+      });
+
+      const chargeEvent = this.mapCurrentPanelVolumeChargeEvent(chargeState.chargeEvent);
+      const [accountDetail, updatedClients] = await Promise.all([
+        this.getCustomerAccount(chargeEvent.customerAccountId),
+        Promise.all(chargeEvent.clientConfigIds.map((id) => this.getClientConfig(id))),
+      ]);
+      const { clientConfigs: _clientConfigs, ...account } = accountDetail;
+      const warnings = new Set<string>([
+        'external_panel_write_not_executed',
+        'local_quota_charge_recorded',
+      ]);
+      if (chargeState.duplicate) warnings.add('idempotent_duplicate_returned');
+      if (chargeEvent.clientConfigIds.length > 0) warnings.add('selected_client_quota_updated');
+
+      return {
+        account,
+        chargeEvent,
+        duplicate: chargeState.duplicate,
+        externalPanelWrite: {
+          attempted: false,
+          status: chargeEvent.externalPanelWriteStatus,
+          reasonCode: 'live_external_panel_write_not_enabled',
+        },
+        updatedClients,
+        warnings: Array.from(warnings).sort(),
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Current panel volume charge already exists');
+      throw error;
+    }
   }
 
   async getCustomerAccount(id: string): Promise<AdminCustomerAccountDetail> {
@@ -3555,6 +3749,98 @@ export class BillingService {
     return result.rows[0];
   }
 
+  private async getCurrentPanelVolumeChargeByIdempotencyForUpdate(
+    executor: DatabaseQueryExecutor,
+    idempotencyKey: string,
+  ): Promise<CurrentPanelVolumeChargeEventRow | null> {
+    const result = await executor.query<CurrentPanelVolumeChargeEventRow>(
+      `${this.currentPanelVolumeChargeSelectSql()} WHERE idempotency_key = $1 FOR UPDATE`,
+      [idempotencyKey],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async insertCurrentPanelVolumeChargeEvent(
+    executor: DatabaseQueryExecutor,
+    input: {
+      customerAccountId: string;
+      chargeScope: CurrentPanelVolumeChargeScope;
+      volumeBytes: number;
+      accountQuotaBeforeBytes: number | null;
+      accountQuotaAfterBytes: number | null;
+      clientConfigIds: string[];
+      clientQuotaChanges: CurrentPanelVolumeChargeClientQuotaChange[];
+      idempotencyKey: string | null;
+      notes: string | null;
+      metadata: Record<string, unknown>;
+    },
+    actor: AuditActor | undefined,
+  ): Promise<CurrentPanelVolumeChargeEventRow> {
+    const result = await executor.query<CurrentPanelVolumeChargeEventRow>(
+      `
+        INSERT INTO quota_charge_events (
+          customer_account_id, charge_scope, volume_bytes_delta,
+          account_quota_before_bytes, account_quota_after_bytes,
+          client_config_ids, client_quota_changes, external_panel_write_status,
+          idempotency_key, notes, metadata, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, 'not_executed', $8, $9, $10::jsonb, $11)
+        RETURNING
+          id,
+          customer_account_id AS "customerAccountId",
+          charge_scope AS "chargeScope",
+          volume_bytes_delta AS "volumeBytesDelta",
+          account_quota_before_bytes AS "accountQuotaBeforeBytes",
+          account_quota_after_bytes AS "accountQuotaAfterBytes",
+          client_config_ids AS "clientConfigIds",
+          client_quota_changes AS "clientQuotaChanges",
+          external_panel_write_status AS "externalPanelWriteStatus",
+          idempotency_key AS "idempotencyKey",
+          notes,
+          metadata,
+          created_by AS "createdBy",
+          created_at AS "createdAt"
+      `,
+      [
+        input.customerAccountId,
+        input.chargeScope,
+        input.volumeBytes,
+        input.accountQuotaBeforeBytes,
+        input.accountQuotaAfterBytes,
+        JSON.stringify(input.clientConfigIds),
+        JSON.stringify(input.clientQuotaChanges),
+        input.idempotencyKey,
+        input.notes,
+        this.stringifyPublicRecord(input.metadata, 'Current panel volume charge metadata'),
+        actor?.id ?? null,
+      ],
+    );
+
+    return result.rows[0];
+  }
+
+  private currentPanelVolumeChargeSelectSql(): string {
+    return `
+      SELECT
+        id,
+        customer_account_id AS "customerAccountId",
+        charge_scope AS "chargeScope",
+        volume_bytes_delta AS "volumeBytesDelta",
+        account_quota_before_bytes AS "accountQuotaBeforeBytes",
+        account_quota_after_bytes AS "accountQuotaAfterBytes",
+        client_config_ids AS "clientConfigIds",
+        client_quota_changes AS "clientQuotaChanges",
+        external_panel_write_status AS "externalPanelWriteStatus",
+        idempotency_key AS "idempotencyKey",
+        notes,
+        metadata,
+        created_by AS "createdBy",
+        created_at AS "createdAt"
+      FROM quota_charge_events
+    `;
+  }
+
   private paymentOrderAllocationSelectSql(): string {
     return `
       SELECT
@@ -3698,6 +3984,27 @@ export class BillingService {
       quotaLimitBeforeBytes: this.numberFromBigInt(row.quotaLimitBeforeBytes),
       quotaLimitAfterBytes: this.numberFromBigInt(row.quotaLimitAfterBytes) ?? 0,
       idempotencyKey: row.idempotencyKey,
+      metadata: row.metadata ?? {},
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private mapCurrentPanelVolumeChargeEvent(
+    row: CurrentPanelVolumeChargeEventRow,
+  ): AdminCurrentPanelVolumeChargeEventSummary {
+    return {
+      id: row.id,
+      customerAccountId: row.customerAccountId,
+      scope: row.chargeScope,
+      volumeBytesDelta: this.numberFromBigInt(row.volumeBytesDelta) ?? 0,
+      accountQuotaLimitBeforeBytes: this.numberFromBigInt(row.accountQuotaBeforeBytes),
+      accountQuotaLimitAfterBytes: this.numberFromBigInt(row.accountQuotaAfterBytes),
+      clientConfigIds: this.normalizeJsonStringArray(row.clientConfigIds),
+      clientQuotaChanges: this.normalizeCurrentPanelClientQuotaChanges(row.clientQuotaChanges),
+      externalPanelWriteStatus: row.externalPanelWriteStatus,
+      idempotencyKey: row.idempotencyKey,
+      notes: row.notes,
       metadata: row.metadata ?? {},
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
@@ -5966,6 +6273,93 @@ export class BillingService {
       throw new BadRequestException(`${fieldName} must be a safe non-negative integer`);
     }
     return value;
+  }
+
+  private normalizePositiveByteDelta(value: number | null | undefined, fieldName: string): number {
+    if (!Number.isSafeInteger(value) || value === null || value === undefined || value <= 0 || value > MAX_SAFE_BYTES) {
+      throw new BadRequestException(`${fieldName} must be a safe positive integer`);
+    }
+    return value;
+  }
+
+  private addPositiveBytes(baseBytes: number, deltaBytes: number, errorMessage: string): number {
+    const nextBytes = baseBytes + deltaBytes;
+    if (!Number.isSafeInteger(nextBytes) || nextBytes > MAX_SAFE_BYTES) {
+      throw new BadRequestException(errorMessage);
+    }
+    return nextBytes;
+  }
+
+  private normalizeCurrentPanelVolumeChargeScope(value: string | null | undefined): CurrentPanelVolumeChargeScope {
+    const normalized = this.normalizeNullableString(value) ?? 'account_quota';
+    if (!CURRENT_PANEL_VOLUME_CHARGE_SCOPES.has(normalized as CurrentPanelVolumeChargeScope)) {
+      throw new BadRequestException('Invalid current panel volume charge scope');
+    }
+    return normalized as CurrentPanelVolumeChargeScope;
+  }
+
+  private normalizeCurrentPanelChargeClientIds(value: string[]): string[] {
+    return Array.from(new Set(value.map((id) => id.trim()).filter(Boolean))).sort();
+  }
+
+  private assertCurrentPanelVolumeChargeDuplicateMatches(
+    row: CurrentPanelVolumeChargeEventRow,
+    request: {
+      customerAccountId: string;
+      scope: CurrentPanelVolumeChargeScope;
+      volumeBytes: number;
+      clientConfigIds: string[];
+    },
+  ): void {
+    const existingVolumeBytes = this.numberFromBigInt(row.volumeBytesDelta) ?? 0;
+    const existingClientConfigIds = this.normalizeJsonStringArray(row.clientConfigIds).sort();
+    const requestedClientConfigIds = request.clientConfigIds.slice().sort();
+    const sameClientConfigIds =
+      existingClientConfigIds.length === requestedClientConfigIds.length &&
+      existingClientConfigIds.every((id, index) => id === requestedClientConfigIds[index]);
+
+    if (
+      row.customerAccountId !== request.customerAccountId ||
+      row.chargeScope !== request.scope ||
+      existingVolumeBytes !== request.volumeBytes ||
+      !sameClientConfigIds
+    ) {
+      throw new ConflictException('Current panel volume charge idempotency key already belongs to another request');
+    }
+  }
+
+  private normalizeJsonStringArray(value: unknown): string[] {
+    const parsed = this.parseJsonValue(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string');
+  }
+
+  private normalizeCurrentPanelClientQuotaChanges(value: unknown): CurrentPanelVolumeChargeClientQuotaChange[] {
+    const parsed = this.parseJsonValue(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const record = item as Record<string, unknown>;
+      const clientConfigId = typeof record.clientConfigId === 'string' ? record.clientConfigId : null;
+      const quotaLimitAfterBytes = this.numberFromBigInt(record.quotaLimitAfterBytes as string | number | null | undefined);
+      if (!clientConfigId || quotaLimitAfterBytes === null) return [];
+
+      return [{
+        clientConfigId,
+        quotaLimitBeforeBytes: this.numberFromBigInt(record.quotaLimitBeforeBytes as string | number | null | undefined),
+        quotaLimitAfterBytes,
+      }];
+    });
+  }
+
+  private parseJsonValue(value: unknown): unknown {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
   }
 
   private normalizeUsageMultiplier(value: number | string | null | undefined): number {

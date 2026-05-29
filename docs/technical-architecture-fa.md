@@ -134,7 +134,7 @@ Current implementation starts Phase 2 with `customer_accounts` instead of a sing
 - created_at
 - updated_at
 
-Current panel migration now starts with an adapter boundary. `POST /api/admin/current-panels/import-preview` accepts a pasted/exported Marzban, X-UI, Sanayi, or generic panel payload, normalizes user/config candidates into shared contracts, and returns only sanitized import-preview fields such as label, external ids, protocol, status, quota, usage, expiry, and reason codes. `POST /api/admin/current-panels/import-configs` is the controlled write step: it re-runs the same adapter server-side, imports non-duplicate candidates into AfroGate `client_configs`, and records panel-reported used bytes as idempotent `panel_sync` baseline usage events so account/client counters remain consistent. `POST /api/admin/current-panels/sync-usage` is the controlled reconciliation step: it re-runs the adapter against a fresh export, matches existing imported client configs, records only positive panel-counter deltas as idempotent `panel_sync` usage events, and skips missing, ambiguous, cross-account, duplicate, or non-advancing candidates. `GET /api/admin/customer-accounts/:id/client-configs/export` exports sanitized AfroGate client config summaries in `afrogate_client_configs_export_v1` format for backup/migration review. These endpoints do not store raw panel payloads, call external panel APIs, expose subscription URLs/tokens, export subscription credentials or secret-bearing config material, overwrite counters downward, charge/update live panel users, or mutate data-plane state; sensitive link-like identifiers are fingerprinted before they are returned or stored.
+Current panel migration now starts with an adapter boundary. `POST /api/admin/current-panels/import-preview` accepts a pasted/exported Marzban, X-UI, Sanayi, or generic panel payload, normalizes user/config candidates into shared contracts, and returns only sanitized import-preview fields such as label, external ids, protocol, status, quota, usage, expiry, and reason codes. `POST /api/admin/current-panels/import-configs` is the controlled write step: it re-runs the same adapter server-side, imports non-duplicate candidates into AfroGate `client_configs`, and records panel-reported used bytes as idempotent `panel_sync` baseline usage events so account/client counters remain consistent. `POST /api/admin/current-panels/sync-usage` is the controlled reconciliation step: it re-runs the adapter against a fresh export, matches existing imported client configs, records only positive panel-counter deltas as idempotent `panel_sync` usage events, and skips missing, ambiguous, cross-account, duplicate, or non-advancing candidates. `POST /api/admin/current-panels/charge-volume` records an audited local quota top-up in `quota_charge_events` and increases AfroGate account quota, with optional selected-client quota support in the backend contract. `GET /api/admin/customer-accounts/:id/client-configs/export` exports sanitized AfroGate client config summaries in `afrogate_client_configs_export_v1` format for backup/migration review. These endpoints do not store raw panel payloads, call external panel APIs, expose subscription URLs/tokens, export subscription credentials or secret-bearing config material, overwrite counters downward, write live quota changes back to external panels, or mutate data-plane state; sensitive link-like identifiers are fingerprinted before they are returned or stored.
 
 ### client_usage_events
 
@@ -335,6 +335,25 @@ The PayPal adapter exposes guarded admin actions to create a hosted checkout ord
 - created_at
 
 `payment_order_allocations` is the idempotent bridge from a paid order to usable customer quota. Creating the allocation locks the payment order and account, inserts one ledger row, then increases `customer_accounts.quota_limit_bytes` by the paid package volume. If the account quota limit is null, the allocator treats the current `used_bytes` value as the baseline before adding the purchased volume, so an account with prior usage receives the purchased remaining volume without becoming accidentally unlimited. Payment order reads expose allocation status and delay seconds so paid-but-unallocated orders are visible.
+
+### quota_charge_events
+
+- id
+- customer_account_id
+- charge_scope: account_quota, selected_clients, or account_and_selected_clients
+- volume_bytes_delta
+- account_quota_before_bytes nullable
+- account_quota_after_bytes nullable
+- client_config_ids jsonb
+- client_quota_changes jsonb
+- external_panel_write_status: not_executed or not_configured
+- idempotency_key nullable, unique when present
+- notes
+- metadata jsonb for non-secret charge context
+- created_by
+- created_at
+
+`quota_charge_events` is the audited admin/manual top-up ledger for current-panel migration and support workflows. The current dashboard uses account-level charge only: it locks the customer account, treats a null quota limit as current used bytes before adding the top-up, updates AfroGate local quota, records an audit event, and returns `externalPanelWrite.attempted = false`. This is intentionally not a live write to Marzban/X-UI/Sanayi; external-panel quota sync needs a separate explicit adapter, feature flag, rollback, and audit design.
 
 ### subscriptions
 

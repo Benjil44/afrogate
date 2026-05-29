@@ -16,6 +16,7 @@ import type {
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelUsageSyncResponse,
+  AdminCurrentPanelVolumeChargeResponse,
   AdminRewardedAdSettingsResponse,
   AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
@@ -46,6 +47,7 @@ import {
   CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
   CurrentPanelUsageSyncDto,
+  CurrentPanelVolumeChargeDto,
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
@@ -322,6 +324,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminCurrentPanelUsageSyncResponse> {
     return this.billingService.syncCurrentPanelUsage(payload, request.actor);
+  }
+
+  @Post('current-panels/charge-volume')
+  @Roles('admin')
+  chargeCurrentPanelVolume(
+    @Body() payload: CurrentPanelVolumeChargeDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminCurrentPanelVolumeChargeResponse> {
+    return this.billingService.chargeCurrentPanelVolume(payload, request.actor);
   }
 
   @Get('customer-accounts/:id/client-configs/export')

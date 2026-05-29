@@ -1697,3 +1697,30 @@ Repository remote is ready:
 ### Remaining
 
 - Charge/update sync back to external panels, live external-panel write adapters, scheduled external-panel reconciliation, production protocol apply, backup/restore UI, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Current Panel Volume Charge Slice
+
+### Completed
+
+- Added guarded `POST /api/admin/current-panels/charge-volume` for audited local AfroGate quota top-ups.
+- Added `quota_charge_events` migration/schema support with account quota deltas, selected-client quota-change metadata, optional idempotency, non-secret metadata, and explicit external-panel write status.
+- Added shared charge request/response contracts and backend validation for account-only, selected-client, and account-plus-selected-client charge scopes.
+- Added Billing page controls to charge the selected customer by GB, update the account summary, and show bilingual success/failure copy.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `229 / 237` items, or `96.6%` complete with `3.4%` remaining.
+- Bumped AfroGate to `0.98.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm --workspace @afrogate/backend run db:migrate`; local migrations completed through `0025_quota_charge_events.sql`.
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Billing current-panel preview/import/sync/export/charge flow.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Live external-panel quota write adapters, scheduled external-panel reconciliation, production protocol apply, backup/restore UI, reports/data analysis, tenant branding, enterprise deployment guide, additional payment providers, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.

@@ -45,7 +45,7 @@ Privacy-sensitive inputs and stores:
 - Customer notes and display names may accidentally contain personal data; support/admin UI should discourage storing secrets or unnecessary identity details.
 - Telegram id/username links are useful for bot support, but bot replies must reveal only safe account/quota summaries to the linked user.
 - Paid phone numbers are accepted only as write-only input and stored as HMAC hashes with `AFROGATE_IDENTITY_HASH_KEY` or the deployment secrets key.
-- Usage accounting stores byte counters and idempotency keys, not packet captures, URLs, or user destinations.
+- Usage accounting and local quota-charge ledgers store byte counters, idempotency keys, compact non-secret metadata, and selected client ids when needed; they must not store packet captures, URLs, user destinations, raw panel exports, or subscription secrets.
 - Client country detection stores only coarse ISO country code, source, and timestamp; no client IP history is needed.
 - Future per-app VPN split tunneling should keep app selection local to the native client or store only explicit client-scoped preference metadata; it must not collect installed-app inventories, traffic contents, or destination history.
 - Route analytics use synthetic probe metadata such as route group, operator, outbound, protocol, score profile, hour, and day; they must not derive from user destinations.

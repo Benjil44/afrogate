@@ -1,8 +1,10 @@
 import { Type } from 'class-transformer';
 import {
   Allow,
+  ArrayMaxSize,
   IsBoolean,
   IsDefined,
+  IsArray,
   IsISO8601,
   IsIn,
   IsInt,
@@ -42,6 +44,7 @@ export const CLIENT_USAGE_EVENT_SOURCES = [
 ] as const;
 export const CLIENT_USAGE_DIRECTIONS = ['rx', 'tx', 'combined'] as const;
 export const CLIENT_SUBSCRIPTION_CREDENTIAL_PROTOCOLS = ['wireguard', 'vless', 'l2tp', 'ikev2'] as const;
+export const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = ['account_quota', 'selected_clients', 'account_and_selected_clients'] as const;
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 
@@ -190,6 +193,41 @@ export class CurrentPanelImportConfigsDto extends CurrentPanelImportPreviewDto {
 export class CurrentPanelUsageSyncDto extends CurrentPanelImportPreviewDto {
   @IsUUID('4')
   customerAccountId!: string;
+}
+
+export class CurrentPanelVolumeChargeDto {
+  @IsUUID('4')
+  customerAccountId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_SAFE_BYTES)
+  volumeBytesDelta!: number;
+
+  @IsOptional()
+  @IsIn(CURRENT_PANEL_VOLUME_CHARGE_SCOPES)
+  scope?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  clientConfigIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string | null;
 }
 
 export class CreateClientConfigDto {
