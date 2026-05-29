@@ -2102,3 +2102,30 @@ Repository remote is ready:
 ### Remaining
 
 - Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.
+
+## 2026-05-30 Release Readiness Browser Smoke and Favicons
+
+### Completed
+
+- Confirmed the local backend, dashboard, and client dev services are running on `127.0.0.1:7000`, `127.0.0.1:4000`, and `127.0.0.1:4100`.
+- Ran a token-safe live backend smoke check using local `.env` credentials without printing secrets or session tokens; health, admin session, admin users, permissions, servers, outbounds, alerts, audit logs, billing, customer accounts, payment orders, rewarded-ad settings, route assignment, route preview, and reports returned successfully.
+- Ran a live dashboard browser smoke against the real backend and opened Dashboard, Servers, Routes, Alerts, Settings, Users, Audit, Backups, Billing, and Reports.
+- Fixed the only browser QA console issue by adding local SVG favicons and favicon links to both the dashboard and client Vite app shells.
+- Re-ran live dashboard/client browser smoke; no failed browser responses or console errors remained.
+- Bumped AfroGate to `0.108.1` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran full `npm run test:e2e`; 17 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.
+- Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.

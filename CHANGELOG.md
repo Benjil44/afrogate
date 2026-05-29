@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.108.1 - 2026-05-30
+
+- Added local SVG favicons for the dashboard and client apps.
+- Linked both Vite app shells to the favicon asset so live browser QA no longer reports the default missing `/favicon.ico` request.
+
 ## 0.108.0 - 2026-05-29
 
 - Added PostgreSQL-backed `admin_users` persistence for managed dashboard admin users, with unique normalized usernames, protected non-superadmin roles, and database-source summaries.
