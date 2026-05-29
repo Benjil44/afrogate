@@ -2,15 +2,144 @@ export type HealthState = 'healthy' | 'degraded' | 'critical' | 'unknown';
 
 export type Role = 'superadmin' | 'owner' | 'admin' | 'supervisor' | 'support' | 'auditor' | 'agent';
 
+export const ADMIN_ROLE_ORDER = ['superadmin', 'owner', 'admin', 'supervisor', 'support', 'auditor'] as const;
+export const MANAGED_ADMIN_ROLES = ['owner', 'admin', 'supervisor', 'support', 'auditor'] as const;
+
+export const ADMIN_PERMISSION_DEFINITIONS = [
+  { id: 'dashboard:read', category: 'operations', risk: 'low' },
+  { id: 'servers:read', category: 'operations', risk: 'low' },
+  { id: 'servers:write', category: 'operations', risk: 'high' },
+  { id: 'serverCredentials:write', category: 'secrets', risk: 'critical' },
+  { id: 'tunnels:read', category: 'operations', risk: 'low' },
+  { id: 'tunnels:write', category: 'operations', risk: 'high' },
+  { id: 'routes:read', category: 'routing', risk: 'low' },
+  { id: 'routes:write', category: 'routing', risk: 'high' },
+  { id: 'routeDecisions:apply', category: 'routing', risk: 'critical' },
+  { id: 'alerts:read', category: 'operations', risk: 'low' },
+  { id: 'alerts:write', category: 'operations', risk: 'medium' },
+  { id: 'billing:read', category: 'billing', risk: 'medium' },
+  { id: 'billing:write', category: 'billing', risk: 'high' },
+  { id: 'customers:read', category: 'billing', risk: 'medium' },
+  { id: 'customers:write', category: 'billing', risk: 'high' },
+  { id: 'settings:read', category: 'settings', risk: 'medium' },
+  { id: 'protocols:write', category: 'settings', risk: 'critical' },
+  { id: 'telegramBot:write', category: 'settings', risk: 'critical' },
+  { id: 'adminUsers:read', category: 'access', risk: 'high' },
+  { id: 'adminUsers:write', category: 'access', risk: 'critical' },
+  { id: 'audit:read', category: 'compliance', risk: 'medium' },
+  { id: 'backups:read', category: 'compliance', risk: 'medium' },
+  { id: 'reports:read', category: 'compliance', risk: 'medium' },
+  { id: 'metrics:write', category: 'agent', risk: 'medium' },
+] as const;
+
+export type AdminRole = typeof ADMIN_ROLE_ORDER[number];
+export type ManagedAdminRole = typeof MANAGED_ADMIN_ROLES[number];
+export type AdminPermissionId = typeof ADMIN_PERMISSION_DEFINITIONS[number]['id'];
+export type AdminPermissionCategory = typeof ADMIN_PERMISSION_DEFINITIONS[number]['category'];
+export type AdminPermissionRisk = typeof ADMIN_PERMISSION_DEFINITIONS[number]['risk'];
+export type RolePermissionGrant = AdminPermissionId | '*';
+
+export interface AdminPermissionDefinition {
+  id: AdminPermissionId;
+  category: AdminPermissionCategory;
+  risk: AdminPermissionRisk;
+}
+
+export interface AdminRolePermissionSummary {
+  role: AdminRole;
+  permissions: AdminPermissionId[];
+  inheritsAll: boolean;
+  isSystemOwner: boolean;
+  canManageAdminUsers: boolean;
+}
+
+export interface AdminPermissionsResponse {
+  permissions: AdminPermissionDefinition[];
+  roles: AdminRolePermissionSummary[];
+  currentRole: Role;
+  currentPermissions: AdminPermissionId[];
+  currentHasFullAccess: boolean;
+  deniedByDefault: true;
+}
+
 export const ROLE_PERMISSIONS = {
   superadmin: ['*'],
   owner: ['*'],
-  admin: ['servers:write', 'routes:write', 'users:write', 'alerts:write'],
-  supervisor: ['servers:read', 'routes:read', 'users:read', 'alerts:read'],
-  support: ['users:read', 'users:support', 'alerts:read'],
-  auditor: ['audit:read', 'reports:read'],
+  admin: [
+    'dashboard:read',
+    'servers:read',
+    'servers:write',
+    'serverCredentials:write',
+    'tunnels:read',
+    'tunnels:write',
+    'routes:read',
+    'routes:write',
+    'routeDecisions:apply',
+    'alerts:read',
+    'alerts:write',
+    'billing:read',
+    'billing:write',
+    'customers:read',
+    'customers:write',
+    'settings:read',
+    'protocols:write',
+    'telegramBot:write',
+    'adminUsers:read',
+    'audit:read',
+    'backups:read',
+  ],
+  supervisor: [
+    'dashboard:read',
+    'servers:read',
+    'tunnels:read',
+    'routes:read',
+    'alerts:read',
+    'billing:read',
+    'customers:read',
+    'settings:read',
+    'audit:read',
+    'backups:read',
+    'reports:read',
+  ],
+  support: [
+    'dashboard:read',
+    'servers:read',
+    'tunnels:read',
+    'routes:read',
+    'alerts:read',
+    'billing:read',
+    'customers:read',
+  ],
+  auditor: [
+    'dashboard:read',
+    'servers:read',
+    'tunnels:read',
+    'routes:read',
+    'alerts:read',
+    'audit:read',
+    'backups:read',
+    'reports:read',
+  ],
   agent: ['metrics:write'],
-} as const;
+} as const satisfies Record<Role, readonly RolePermissionGrant[]>;
+
+export function roleInheritsAllPermissions(role: Role): boolean {
+  return (ROLE_PERMISSIONS[role] as readonly RolePermissionGrant[] | undefined)?.includes('*') === true;
+}
+
+export function getEffectiveRolePermissions(role: Role): AdminPermissionId[] {
+  const grants = ROLE_PERMISSIONS[role] as readonly RolePermissionGrant[] | undefined;
+  if (!grants) return [];
+  if (grants.includes('*')) return ADMIN_PERMISSION_DEFINITIONS.map((permission) => permission.id);
+
+  return grants.filter((permission): permission is AdminPermissionId => permission !== '*');
+}
+
+export function roleHasPermission(role: Role, permission: AdminPermissionId): boolean {
+  const grants = ROLE_PERMISSIONS[role] as readonly RolePermissionGrant[] | undefined;
+
+  return grants?.includes('*') === true || grants?.includes(permission) === true;
+}
 
 export interface ServerMetricSnapshot {
   serverId: string;

@@ -1474,3 +1474,34 @@ Repository remote is ready:
 
 - Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports, tenant branding, and native per-app VPN split tunneling remain future work.
 - Existing single-role PostgreSQL deployments should back up first and may need manual object ownership reassignment before future DDL-heavy migrations run as `afrogate_migrator`.
+
+## 2026-05-29 Fine-Grained RBAC Slice
+
+### Completed
+
+- Added a shared admin permission catalog and role-permission policy in `packages/shared`.
+- Extended backend guard metadata with `@Permissions(...)` and updated `RolesGuard` to enforce both role and permission requirements.
+- Added guarded `GET /api/admin/permissions` so the dashboard can inspect the permission catalog, role matrix, current role, and effective permissions.
+- Added `adminUsers:read` and `adminUsers:write` checks to admin-user endpoints while preserving protected bootstrap/env account invariants.
+- Allowed `owner` and `superadmin` sessions to manage local managed admin users; normal admins can inspect but not mutate, and support/supervisor/auditor sessions do not see the Users page.
+- Added the bilingual Role Permissions matrix to the Users page and Playwright coverage for it.
+- Added `docs/admin-rbac.md` and updated security, repository, roadmap, dashboard checklist, checklist, and memory docs.
+- Marked fine-grained production RBAC policy and permission UI complete in `.codex/checklist.md`; checklist completion is now `220 / 236` items, or `93.2%` complete with `6.8%` remaining.
+- Bumped AfroGate to `0.90.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran focused typechecks for shared, backend, and dashboard during implementation.
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run contrast:check`.
+- Ran `npm run test:e2e`; 11 tests passed, including the new RBAC permission matrix flow.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

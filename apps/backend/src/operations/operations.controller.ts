@@ -16,6 +16,7 @@ import type {
   AdminAlertsResponse,
   AdminAuditLogsResponse,
   AdminBackupStatusResponse,
+  AdminPermissionsResponse,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
   AdminSessionResponse,
@@ -54,7 +55,7 @@ import { AuthService } from '../auth/auth.service';
 import { CreateAdminUserDto, UpdateAdminUserDto, UpdateAdminUserPasswordDto } from '../auth/dto/admin-user.dto';
 import { AdminTokenGuard } from '../security/admin-token.guard';
 import type { RequestWithAuth } from '../security/auth-request';
-import { Roles } from '../security/roles.decorator';
+import { Permissions, Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { CreateOutboundDto, MoveOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
 import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto } from './dto/server.dto';
@@ -117,8 +118,16 @@ export class OperationsController {
 
   @Get('users')
   @Roles('admin')
+  @Permissions('adminUsers:read')
   listUsers(@Req() request: RequestWithAuth): Promise<AdminUsersResponse> {
     return this.authService.listAdminUsers(request.actor);
+  }
+
+  @Get('permissions')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  @Permissions('dashboard:read')
+  getPermissions(@Req() request: RequestWithAuth): AdminPermissionsResponse {
+    return this.authService.getAdminPermissions(request.actor);
   }
 
   @Get('audit-logs')
@@ -153,6 +162,7 @@ export class OperationsController {
 
   @Post('users')
   @Roles('admin')
+  @Permissions('adminUsers:write')
   createUser(
     @Body() payload: CreateAdminUserDto,
     @Req() request: RequestWithAuth,
@@ -162,6 +172,7 @@ export class OperationsController {
 
   @Patch('users/:id')
   @Roles('admin')
+  @Permissions('adminUsers:write')
   updateUser(
     @Param('id') id: string,
     @Body() payload: UpdateAdminUserDto,
@@ -172,6 +183,7 @@ export class OperationsController {
 
   @Patch('users/:id/password')
   @Roles('admin')
+  @Permissions('adminUsers:write')
   updateUserPassword(
     @Param('id') id: string,
     @Body() payload: UpdateAdminUserPasswordDto,
@@ -182,6 +194,7 @@ export class OperationsController {
 
   @Delete('users/:id')
   @Roles('admin')
+  @Permissions('adminUsers:write')
   @HttpCode(204)
   deleteUser(
     @Param('id') id: string,

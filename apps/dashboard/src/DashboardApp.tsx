@@ -7,6 +7,8 @@ import type {
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
+  AdminPermissionId,
+  AdminPermissionsResponse,
   AdminProtocolServerApplyAdapterSummary,
   AdminProtocolServerApplyEventDetail,
   AdminProtocolServerApplyEventSummary,
@@ -119,6 +121,7 @@ import {
   fetchAdminBillingCatalog,
   fetchAdminCustomerAccounts,
   fetchAdminOutbounds,
+  fetchAdminPermissions,
   fetchAdminPaymentOrders,
   fetchAdminRewardedAdSettings,
   fetchAdminServer,
@@ -2537,7 +2540,9 @@ function UsersPage({
   const [newRole, setNewRole] = useState<Role>('admin');
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
-  const canManageUsers = session.actor.role === 'superadmin' && session.actor.isSuperAdmin === true;
+  const [permissionPolicy, setPermissionPolicy] = useState<AdminPermissionsResponse | null>(null);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const canManageUsers = canManageAdminUsers(session);
 
   const loadUsers = useMemo(() => async (signal?: AbortSignal) => {
     setIsLoading(true);
@@ -2560,6 +2565,25 @@ function UsersPage({
 
     return () => controller.abort();
   }, [loadUsers]);
+
+  const loadPermissions = useMemo(() => async (signal?: AbortSignal) => {
+    setPermissionError(null);
+
+    try {
+      const response = await fetchAdminPermissions(sessionToken, signal);
+      setPermissionPolicy(response);
+    } catch (loadError) {
+      if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
+      setPermissionError(t.rbac.errors.load);
+    }
+  }, [sessionToken, t]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPermissions(controller.signal);
+
+    return () => controller.abort();
+  }, [loadPermissions]);
 
   const resetCreateForm = () => {
     setNewUsername('');
@@ -2796,8 +2820,116 @@ function UsersPage({
           ) : null}
         </div>
       </section>
+      <RolePermissionsPanel format={format} policy={permissionPolicy} error={permissionError} t={t} />
     </section>
   );
+}
+
+function RolePermissionsPanel({
+  error,
+  format,
+  policy,
+  t,
+}: {
+  error: string | null;
+  format: DashboardFormatters;
+  policy: AdminPermissionsResponse | null;
+  t: DashboardStrings;
+}) {
+  const permissionCount = policy ? format.integer(policy.permissions.length) : t.dataStatus.loading;
+  const currentRole = policy?.currentRole ?? t.dataStatus.loading;
+  const currentAccess = policy?.currentHasFullAccess ? t.rbac.fullAccess : format.integer(policy?.currentPermissions.length ?? 0);
+
+  return (
+    <section className={panelClass}>
+      <div className="flex min-h-9 flex-col gap-2 border-b border-afro-line pb-2 sm:flex-row sm:items-center sm:justify-between">
+        <PanelHeadingContent title={t.panels.rolePermissions} meta={t.rbac.permissionsLoaded(permissionCount)} />
+        <StatusBadge tone={policy?.deniedByDefault ? 'good' : 'warning'}>{t.rbac.deniedByDefault}</StatusBadge>
+      </div>
+      <div className="mt-2 grid gap-2 md:grid-cols-3">
+        <div className="rounded-md border border-afro-line bg-white px-3 py-2">
+          <span className={mutedTextClass}>{t.rbac.currentRole}</span>
+          <strong className="mt-1 block text-sm text-afro-ink">{currentRole}</strong>
+        </div>
+        <div className="rounded-md border border-afro-line bg-white px-3 py-2">
+          <span className={mutedTextClass}>{t.rbac.currentPermissions}</span>
+          <strong className="mt-1 block text-sm text-afro-ink">{currentAccess}</strong>
+        </div>
+        <div className="rounded-md border border-afro-line bg-white px-3 py-2">
+          <span className={mutedTextClass}>{t.rbac.policy}</span>
+          <strong className="mt-1 block text-sm text-afro-ink">{t.rbac.roleGuarded}</strong>
+        </div>
+      </div>
+      <div className="mt-2 grid gap-2">
+        {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
+        {!policy && !error ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
+        {policy ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] border-collapse">
+              <thead>
+                <tr>
+                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0">
+                    {t.rbac.permission}
+                  </th>
+                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted">
+                    {t.rbac.category}
+                  </th>
+                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted">
+                    {t.rbac.risk}
+                  </th>
+                  {policy.roles.map((role) => (
+                    <th className="border-b border-afro-line px-2 py-1.5 text-center text-[13px] font-bold text-afro-muted last:pr-0" key={role.role}>
+                      {role.role}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {policy.permissions.map((permission) => (
+                  <tr key={permission.id}>
+                    <TableCell>
+                      <strong className="block text-afro-ink">{permissionLabel(permission.id, t)}</strong>
+                      <span className="text-[12px] text-afro-muted">{permission.id}</span>
+                    </TableCell>
+                    <TableCell>{t.rbac.categories[permission.category]}</TableCell>
+                    <TableCell>
+                      <StatusBadge tone={permissionRiskTone(permission.risk)}>{t.rbac.risks[permission.risk]}</StatusBadge>
+                    </TableCell>
+                    {policy.roles.map((role) => {
+                      const allowed = role.inheritsAll || role.permissions.includes(permission.id);
+
+                      return (
+                        <td className="border-b border-afro-line px-2 py-1.5 text-center text-[13px] text-afro-muted last:pr-0" key={`${permission.id}:${role.role}`}>
+                          <span
+                            className={`inline-grid size-7 place-items-center rounded-md border ${allowed ? 'border-[#bbdec8] bg-[#eefbf2] text-[#166534]' : 'border-afro-line bg-[#f8fafb] text-afro-muted'}`}
+                            title={allowed ? t.rbac.allowed : t.rbac.blocked}
+                          >
+                            {allowed ? <CheckCircle2 size={15} /> : <LockKeyhole size={15} />}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function permissionLabel(permissionId: AdminPermissionId, t: DashboardStrings): string {
+  return t.rbac.permissions[permissionId] ?? permissionId;
+}
+
+function permissionRiskTone(risk: AdminPermissionsResponse['permissions'][number]['risk']): Tone {
+  if (risk === 'critical') return 'critical';
+  if (risk === 'high') return 'warning';
+  if (risk === 'medium') return 'neutral';
+
+  return 'good';
 }
 
 type AuditLogFilterState = {
@@ -9016,6 +9148,7 @@ function Sidebar({
   t: DashboardStrings;
 }) {
   const visibleNavItems = navItems.filter((item) => {
+    if (item.id === 'users') return canViewAdminUsers(session);
     if (item.id === 'audit') return canViewAuditLogs(session);
     if (item.id === 'backups') return canViewBackupStatus(session);
 
@@ -9094,6 +9227,14 @@ function SignOutButton({ onSignOut, t }: { onSignOut: () => void; t: DashboardSt
       <LogOut className="shrink-0" size={16} />
     </button>
   );
+}
+
+function canViewAdminUsers(session: AdminSessionResponse): boolean {
+  return ['superadmin', 'owner', 'admin'].includes(session.actor.role);
+}
+
+function canManageAdminUsers(session: AdminSessionResponse): boolean {
+  return (session.actor.role === 'superadmin' && session.actor.isSuperAdmin === true) || session.actor.role === 'owner';
 }
 
 function canViewAuditLogs(session: AdminSessionResponse): boolean {

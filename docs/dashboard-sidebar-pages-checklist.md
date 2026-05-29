@@ -105,6 +105,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Superadmin-protected admin user list.
 - [x] Create, disable/enable, delete, and password-change actions for managed admin users.
 - [x] Prevent normal admins from mutating the bootstrap superadmin account.
+- [x] Role permission matrix for production RBAC visibility.
 - [ ] Persist admin users in PostgreSQL when production database auth replaces the local file store.
 
 ## Later Pages

@@ -1,8 +1,8 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Role } from '@afrogate/shared';
+import { roleHasPermission, type AdminPermissionId, type Role } from '@afrogate/shared';
 import type { RequestWithAuth } from './auth-request';
-import { ROLES_KEY } from './roles.decorator';
+import { PERMISSIONS_KEY, ROLES_KEY } from './roles.decorator';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -13,8 +13,12 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+    const requiredPermissions = this.reflector.getAllAndOverride<AdminPermissionId[]>(PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
-    if (!requiredRoles?.length) return true;
+    if (!requiredRoles?.length && !requiredPermissions?.length) return true;
 
     const request = context.switchToHttp().getRequest<RequestWithAuth>();
     const actor = request.actor;
@@ -23,7 +27,14 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Admin role is required');
     }
 
-    if (actor.role === 'superadmin' || actor.role === 'owner' || requiredRoles.includes(actor.role)) return true;
+    const roleAllowed = !requiredRoles?.length
+      || actor.role === 'superadmin'
+      || actor.role === 'owner'
+      || requiredRoles.includes(actor.role);
+    const permissionsAllowed = !requiredPermissions?.length
+      || requiredPermissions.every((permission) => roleHasPermission(actor.role, permission));
+
+    if (roleAllowed && permissionsAllowed) return true;
 
     throw new ForbiddenException('Insufficient role');
   }

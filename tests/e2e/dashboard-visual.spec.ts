@@ -114,6 +114,18 @@ test('backups page shows monitored backup readiness', async ({ page }) => {
   await expect(page.getByText('No backup issues')).toBeVisible();
 });
 
+test('users page shows RBAC permission matrix', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="users"]').click();
+
+  await expect(page.getByRole('heading', { name: 'User management' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Admin Users' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Role Permissions' })).toBeVisible();
+  await expect(page.getByText('Deny by default')).toBeVisible();
+  await expect(page.getByText('Server credential write')).toBeVisible();
+  await expect(page.getByText('adminUsers:write')).toBeVisible();
+});
+
 async function loadSignedInDashboard(page: Page, size: { width: number; height: number }): Promise<void> {
   await mockDashboardApi(page);
   await page.setViewportSize(size);
@@ -151,6 +163,92 @@ async function mockDashboardApi(page: Page): Promise<void> {
           issuedAt: fixedNow,
           mfaReady: true,
           mfaRequired: false,
+        });
+        return;
+      case '/api/admin/users':
+        await fulfillJson(route, {
+          users: [
+            {
+              canChangePassword: false,
+              canDelete: false,
+              canDisable: false,
+              createdAt: fixedNow,
+              id: 'superadmin',
+              isSuperAdmin: true,
+              lastLoginAt: fixedNow,
+              role: 'superadmin',
+              source: 'bootstrap',
+              status: 'active',
+              updatedAt: fixedNow,
+              username: 'superadmin',
+            },
+            {
+              canChangePassword: true,
+              canDelete: true,
+              canDisable: true,
+              createdAt: fixedNow,
+              id: 'admin:owner-visual',
+              isSuperAdmin: false,
+              lastLoginAt: null,
+              role: 'owner',
+              source: 'local',
+              status: 'active',
+              updatedAt: fixedNow,
+              username: 'ops-owner',
+            },
+          ],
+        });
+        return;
+      case '/api/admin/permissions':
+        await fulfillJson(route, {
+          currentHasFullAccess: true,
+          currentPermissions: [
+            'dashboard:read',
+            'servers:read',
+            'serverCredentials:write',
+            'adminUsers:write',
+          ],
+          currentRole: 'superadmin',
+          deniedByDefault: true,
+          permissions: [
+            { category: 'operations', id: 'dashboard:read', risk: 'low' },
+            { category: 'operations', id: 'servers:read', risk: 'low' },
+            { category: 'secrets', id: 'serverCredentials:write', risk: 'critical' },
+            { category: 'access', id: 'adminUsers:write', risk: 'critical' },
+          ],
+          roles: [
+            {
+              canManageAdminUsers: true,
+              inheritsAll: true,
+              isSystemOwner: true,
+              permissions: [
+                'dashboard:read',
+                'servers:read',
+                'serverCredentials:write',
+                'adminUsers:write',
+              ],
+              role: 'superadmin',
+            },
+            {
+              canManageAdminUsers: true,
+              inheritsAll: true,
+              isSystemOwner: true,
+              permissions: [
+                'dashboard:read',
+                'servers:read',
+                'serverCredentials:write',
+                'adminUsers:write',
+              ],
+              role: 'owner',
+            },
+            {
+              canManageAdminUsers: false,
+              inheritsAll: false,
+              isSystemOwner: false,
+              permissions: ['dashboard:read', 'servers:read'],
+              role: 'support',
+            },
+          ],
         });
         return;
       case '/api/metrics/latest':

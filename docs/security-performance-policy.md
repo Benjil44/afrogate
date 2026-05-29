@@ -125,8 +125,10 @@ Rules:
 
 - Deny by default.
 - Role checks must happen server-side.
+- Fine-grained admin permission ids are defined in `packages/shared` and exposed through the guarded `GET /api/admin/permissions` endpoint for dashboard/audit visibility.
 - Admins can have broad operational access, but they must not remove, disable, or change the superadmin account.
-- Managed admin accounts must store password hashes only; local MVP storage uses scrypt hashes in `AFROGATE_ADMIN_USERS_FILE`, and production should move this to PostgreSQL with the same superadmin invariant.
+- Managed admin accounts must store password hashes only; local MVP storage uses scrypt hashes in `AFROGATE_ADMIN_USERS_FILE`, and production should move this to PostgreSQL with the same superadmin invariant and permission catalog.
+- Owner/superadmin sessions may manage local managed admin users; bootstrap/env accounts remain protected from deletion, disablement, and password changes.
 - Support must not access secrets or private routing keys.
 - Agent tokens must not be accepted for admin APIs.
 - Sensitive role changes require audit logs and later MFA.

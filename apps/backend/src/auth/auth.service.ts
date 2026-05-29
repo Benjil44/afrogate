@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type {
   AdminLoginResponse,
+  AdminPermissionsResponse,
   AdminSessionResponse,
   AdminUserStatus,
   AdminUserSummary,
@@ -16,6 +17,13 @@ import type {
   Role,
   UpdateAdminUserPasswordRequest,
   UpdateAdminUserRequest,
+} from '@afrogate/shared';
+import {
+  ADMIN_PERMISSION_DEFINITIONS,
+  ADMIN_ROLE_ORDER,
+  getEffectiveRolePermissions,
+  roleHasPermission,
+  roleInheritsAllPermissions,
 } from '@afrogate/shared';
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -158,8 +166,27 @@ export class AuthService {
     };
   }
 
+  getAdminPermissions(actor: AuthActor | undefined): AdminPermissionsResponse {
+    this.assertAdminActor(actor);
+
+    return {
+      permissions: ADMIN_PERMISSION_DEFINITIONS.map((permission) => ({ ...permission })),
+      roles: ADMIN_ROLE_ORDER.map((role) => ({
+        role,
+        permissions: getEffectiveRolePermissions(role),
+        inheritsAll: roleInheritsAllPermissions(role),
+        isSystemOwner: role === 'superadmin' || role === 'owner',
+        canManageAdminUsers: roleHasPermission(role, 'adminUsers:write'),
+      })),
+      currentRole: actor.role,
+      currentPermissions: getEffectiveRolePermissions(actor.role),
+      currentHasFullAccess: roleInheritsAllPermissions(actor.role),
+      deniedByDefault: true,
+    };
+  }
+
   async createAdminUser(actor: AuthActor | undefined, payload: CreateAdminUserRequest): Promise<AdminUserSummary> {
-    this.assertSuperAdminActor(actor);
+    this.assertAdminUserManagerActor(actor);
     const username = normalizeUsername(payload.username);
     const role = this.resolveManagedUserRole(payload.role);
     const status = payload.status === 'disabled' ? 'disabled' : 'active';
@@ -201,7 +228,7 @@ export class AuthService {
     id: string,
     payload: UpdateAdminUserRequest,
   ): Promise<AdminUserSummary> {
-    this.assertSuperAdminActor(actor);
+    this.assertAdminUserManagerActor(actor);
     const storedUsers = await this.loadManagedUsers();
     const userIndex = storedUsers.findIndex((user) => user.id === id);
 
@@ -234,7 +261,7 @@ export class AuthService {
     id: string,
     payload: UpdateAdminUserPasswordRequest,
   ): Promise<AdminUserSummary> {
-    this.assertSuperAdminActor(actor);
+    this.assertAdminUserManagerActor(actor);
 
     if (payload.password.trim().length < 8) throw new BadRequestException('Password must be at least 8 characters');
 
@@ -258,7 +285,7 @@ export class AuthService {
   }
 
   async deleteAdminUser(actor: AuthActor | undefined, id: string): Promise<void> {
-    this.assertSuperAdminActor(actor);
+    this.assertAdminUserManagerActor(actor);
     const storedUsers = await this.loadManagedUsers();
     const user = storedUsers.find((candidate) => candidate.id === id);
 
@@ -458,18 +485,17 @@ export class AuthService {
     }
   }
 
-  private assertSuperAdminActor(actor: AuthActor | undefined): asserts actor is AuthActor {
+  private assertAdminUserManagerActor(actor: AuthActor | undefined): asserts actor is AuthActor {
     this.assertAdminActor(actor);
 
-    if (actor.role !== 'superadmin' || actor.isSuperAdmin !== true) {
-      throw new ForbiddenException('Superadmin access is required');
+    if (!this.canManageAdminUsers(actor)) {
+      throw new ForbiddenException('Admin-user management permission is required');
     }
   }
 
   private toAdminUserSummary(account: AdminAccountConfig, actor: AuthActor | undefined): AdminUserSummary {
-    const isSuperAdminActor = actor?.role === 'superadmin' && actor.isSuperAdmin === true;
     const isLocalManagedUser = account.source === 'local';
-    const canManage = isSuperAdminActor && isLocalManagedUser && !account.isSuperAdmin;
+    const canManage = this.canManageAdminUsers(actor) && isLocalManagedUser && !account.isSuperAdmin;
 
     return {
       id: account.id,
@@ -485,6 +511,10 @@ export class AuthService {
       updatedAt: account.updatedAt,
       lastLoginAt: account.lastLoginAt ?? null,
     };
+  }
+
+  private canManageAdminUsers(actor: AuthActor | undefined): boolean {
+    return (actor?.role === 'superadmin' && actor.isSuperAdmin === true) || actor?.role === 'owner';
   }
 
   private async loadManagedUsers(): Promise<StoredAdminUser[]> {

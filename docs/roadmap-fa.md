@@ -86,7 +86,7 @@
 
 ## فاز 5: Enterprise Foundation
 
-- role های Owner/Admin/Support.
+- role های Owner/Admin/Support با permission catalog و نمایش ماتریس RBAC در داشبورد.
 - multi-server scaling.
 - advanced audit.
 - backup/restore UI.

@@ -11,6 +11,7 @@ import type {
   AdminLoginResponse,
   AdminOutboundsResponse,
   AdminPaymentOrdersResponse,
+  AdminPermissionsResponse,
   AdminRewardedAdSettingsResponse,
   AdminServerInterfacesResponse,
   AdminServersResponse,
@@ -113,6 +114,18 @@ export async function fetchAdminUsers(sessionToken: string, signal?: AbortSignal
   });
 
   return response.json() as Promise<AdminUsersResponse>;
+}
+
+export async function fetchAdminPermissions(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminPermissionsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/permissions`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminPermissionsResponse>;
 }
 
 export async function fetchAdminAlerts(

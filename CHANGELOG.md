@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.90.0 - 2026-05-29
+
+- Added a shared fine-grained admin permission catalog and permission-aware backend guard metadata.
+- Added guarded `GET /api/admin/permissions` for the current role, effective permissions, and role permission matrix.
+- Added a bilingual Role Permissions matrix to the Users page and documented the production RBAC policy.
+
 ## 0.89.0 - 2026-05-29
 
 - Added PostgreSQL least-privilege role templates for no-login ownership, migration-only DDL, and runtime app access.
