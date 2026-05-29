@@ -1,5 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'crypto';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   AdminAlertSummary,
   ApplyRouteDecisionPreviewResponse,
@@ -265,8 +269,12 @@ interface ProtocolSetupRow {
   targetServerLabel: string | null;
   targetServerAccessReady: boolean;
   targetServerAccessProfileId: string | null;
+  targetServerAccessAddress: string | null;
+  targetServerSshPort: number | null;
+  targetServerUsername: string | null;
   targetServerAccessMethod: string | null;
   targetServerCredentialRef: string | null;
+  targetServerCredentialKind: string | null;
   targetServerCredentialReady: boolean;
   provisionedOutboundId: string | null;
   provisionedOutboundEnabled: boolean | null;
@@ -296,8 +304,12 @@ type ProtocolServerApplySource = Pick<
   targetServerLabel?: string | null;
   targetServerAccessReady?: boolean;
   targetServerAccessProfileId?: string | null;
+  targetServerAccessAddress?: string | null;
+  targetServerSshPort?: number | null;
+  targetServerUsername?: string | null;
   targetServerAccessMethod?: string | null;
   targetServerCredentialRef?: string | null;
+  targetServerCredentialKind?: string | null;
   targetServerCredentialReady?: boolean;
 };
 
@@ -455,6 +467,65 @@ interface ServerCredentialRow {
   revokedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+interface ProtocolServerApplyCredentialMaterialRow {
+  id: string;
+  serverId: string;
+  kind: string;
+  encryptedPayload: string;
+  status: string;
+  revokedAt: Date | null;
+}
+
+interface ProtocolServerApplySecretMaterialRow {
+  secretRef: string;
+  kind: string;
+  routeGroup: string | null;
+  protocol: string | null;
+  encryptedPayload: string;
+  status: string;
+  revokedAt: Date | null;
+}
+
+interface ProtocolServerApplyRemoteAccess {
+  address: string;
+  sshPort: number;
+  username: string;
+  credentialRef: string;
+  credentialKind: string;
+  privateKey: string;
+}
+
+interface ProtocolServerApplySecretMaterial {
+  kind: string;
+  value: string;
+}
+
+interface ProtocolServerApplyExecutionCommandResult {
+  id: string;
+  kind: string;
+  status: 'succeeded' | 'failed' | 'skipped';
+  exitCode: number | null;
+  durationMs: number;
+  dataPlaneMutation: boolean;
+  timedOut: boolean;
+}
+
+interface ProtocolServerApplyExecutionSummary {
+  status: 'accepted' | 'succeeded' | 'failed' | 'rolledBack';
+  executor: 'openssh';
+  startedAt: string;
+  finishedAt: string;
+  stagedConfigPath: string;
+  configPath: string;
+  commandCount: number;
+  successfulCommandCount: number;
+  failedCommandId: string | null;
+  rollbackAttempted: boolean;
+  rollbackSucceeded: boolean | null;
+  dataPlaneMutationExecuted: boolean;
+  steps: ProtocolServerApplyExecutionCommandResult[];
 }
 
 interface OutboundOrderRow {
@@ -2896,8 +2967,13 @@ export class OperationsService {
 
     const eventId = randomUUID();
     let blockedReasonCodes: string[] = [];
+    let liveApplyAccepted = false;
+    let dataPlaneMutationExecuted = false;
 
-    await this.database.transaction(async (executor) => {
+    const liveRequest = await this.database.transaction<{
+      setup: ProtocolSetupRow;
+      plan: AdminProtocolServerApplyPlanSummary;
+    } | null>(async (executor) => {
       const setup = await this.getProtocolSetupForUpdate(executor, id);
       if (!setup.provisionedOutboundId) {
         throw new ConflictException('Protocol setup must be provisioned before server apply request');
@@ -2907,13 +2983,19 @@ export class OperationsService {
 
       const plan = this.buildProtocolServerApplyPlan(setup);
       blockedReasonCodes = this.protocolServerApplyLiveBlockedReasonCodes(plan);
-      const snapshot = this.buildProtocolServerApplyLiveRequestSnapshot(setup, plan, applyMode, blockedReasonCodes);
+      const snapshot =
+        blockedReasonCodes.length > 0
+          ? this.buildProtocolServerApplyLiveRequestSnapshot(setup, plan, applyMode, blockedReasonCodes)
+          : this.buildProtocolServerApplyLiveAcceptedSnapshot(setup, plan, applyMode);
       const createdBy = actor?.username ?? actor?.id ?? null;
       const reasonCodes = await this.insertProtocolApplyEvent(executor, eventId, setup, snapshot, createdBy);
+      liveApplyAccepted = blockedReasonCodes.length === 0;
 
       await this.audit.record(
         actor,
-        'settings.protocol.server_apply.live.request',
+        liveApplyAccepted
+          ? 'settings.protocol.server_apply.live.accept'
+          : 'settings.protocol.server_apply.live.request',
         'protocol_apply_event',
         eventId,
         {
@@ -2937,13 +3019,66 @@ export class OperationsService {
           canExecuteDataPlane: snapshot.preflight.canExecuteDataPlane,
           preflightBlockedReasonCodes: snapshot.preflight.blockedReasonCodes,
           liveApplyRequested: true,
-          liveApplyAccepted: false,
+          liveApplyAccepted,
           dataPlaneMutationExecuted: false,
           blockedReasonCodes,
         },
         executor,
       );
+
+      return liveApplyAccepted ? { setup, plan } : null;
     });
+
+    if (liveRequest) {
+      const acceptedSetup = liveRequest.setup;
+      const acceptedPlan = liveRequest.plan;
+      const execution = await this.executeProtocolServerApply(acceptedSetup, acceptedPlan);
+      dataPlaneMutationExecuted = execution.dataPlaneMutationExecuted;
+
+      await this.database.transaction(async (executor) => {
+        const snapshot = this.buildProtocolServerApplyLiveExecutionSnapshot(acceptedSetup, acceptedPlan, execution);
+        const reasonCodes = await this.updateProtocolApplyEventSnapshot(executor, eventId, snapshot);
+
+        await this.audit.record(
+          actor,
+          execution.status === 'succeeded'
+            ? 'settings.protocol.server_apply.live.succeeded'
+            : 'settings.protocol.server_apply.live.failed',
+          'protocol_apply_event',
+          eventId,
+          {
+            protocolSetupId: acceptedSetup.id,
+            protocol: acceptedSetup.protocol,
+            profile: acceptedSetup.profile,
+            routeGroup: acceptedSetup.routeGroup,
+            outboundId: snapshot.outboundId,
+            targetServerId: snapshot.targetServerId,
+            applyMode,
+            applyStatus: snapshot.applyStatus,
+            featureFlagEnabled: snapshot.featureFlagEnabled,
+            adapterImplemented: snapshot.adapterImplemented,
+            canExecute: snapshot.canExecute,
+            commandCount: snapshot.commandCount,
+            configChangeCount: snapshot.configChangeCount,
+            secretSafe: snapshot.secretSafe,
+            reasonCodes,
+            preflightStatus: snapshot.preflight.status,
+            canRecordDryRun: snapshot.preflight.canRecordDryRun,
+            canExecuteDataPlane: snapshot.preflight.canExecuteDataPlane,
+            preflightBlockedReasonCodes: snapshot.preflight.blockedReasonCodes,
+            liveApplyRequested: true,
+            liveApplyAccepted: true,
+            dataPlaneMutationExecuted: snapshot.dataPlaneMutationExecuted,
+            executor: execution.executor,
+            executionStatus: execution.status,
+            failedCommandId: execution.failedCommandId,
+            rollbackAttempted: execution.rollbackAttempted,
+            rollbackSucceeded: execution.rollbackSucceeded,
+          },
+          executor,
+        );
+      });
+    }
 
     const [event, protocolSetup] = await Promise.all([
       this.getProtocolApplyEventDetail(eventId),
@@ -2955,8 +3090,8 @@ export class OperationsService {
       protocolSetup,
       serverApplyPlan: protocolSetup.serverApplyPlan ?? this.buildProtocolServerApplyPlan(protocolSetup),
       liveApplyRequested: true,
-      liveApplyAccepted: false,
-      dataPlaneMutationExecuted: false,
+      liveApplyAccepted,
+      dataPlaneMutationExecuted,
       blockedReasonCodes,
     };
   }
@@ -3001,6 +3136,44 @@ export class OperationsService {
         JSON.stringify(reasonCodes),
         JSON.stringify(snapshot),
         createdBy,
+      ],
+    );
+
+    return reasonCodes;
+  }
+
+  private async updateProtocolApplyEventSnapshot(
+    executor: DatabaseQueryExecutor,
+    eventId: string,
+    snapshot: AdminProtocolServerApplyDryRunSnapshot,
+  ): Promise<string[]> {
+    const reasonCodes = snapshot.reasonCodes.map(String);
+
+    await executor.query(
+      `
+        UPDATE protocol_apply_events
+        SET apply_status = $2,
+            feature_flag_enabled = $3,
+            adapter_implemented = $4,
+            can_execute = $5,
+            command_count = $6,
+            config_change_count = $7,
+            secret_safe = $8,
+            reason_codes = $9::jsonb,
+            dry_run_snapshot = $10::jsonb
+        WHERE id = $1
+      `,
+      [
+        eventId,
+        snapshot.applyStatus,
+        snapshot.featureFlagEnabled,
+        snapshot.adapterImplemented,
+        snapshot.canExecute,
+        snapshot.commandCount,
+        snapshot.configChangeCount,
+        snapshot.secretSafe,
+        JSON.stringify(reasonCodes),
+        JSON.stringify(snapshot),
       ],
     );
 
@@ -4393,8 +4566,12 @@ export class OperationsService {
           AND sap.bootstrap_state = 'installed'
         ) AS "targetServerAccessReady",
         sap.id AS "targetServerAccessProfileId",
+        sap.address AS "targetServerAccessAddress",
+        sap.ssh_port AS "targetServerSshPort",
+        sap.username AS "targetServerUsername",
         sap.access_method AS "targetServerAccessMethod",
         NULLIF(btrim(sap.credential_ref), '') AS "targetServerCredentialRef",
+        sc.kind AS "targetServerCredentialKind",
         (sc.id IS NOT NULL) AS "targetServerCredentialReady",
         ps.provisioned_outbound_id AS "provisionedOutboundId",
         po.enabled AS "provisionedOutboundEnabled",
@@ -7881,7 +8058,6 @@ export class OperationsService {
       'protocolSupported',
       'auditRequired',
       'defaultInactive',
-      'adapterDryRunOnly',
       'healthVerifyRequired',
     ]);
 
@@ -7924,6 +8100,7 @@ export class OperationsService {
       }
     }
     if (dataPlaneReady) reasonCodes.add('dataPlaneReady');
+    else reasonCodes.add('adapterDryRunOnly');
     for (const reason of preflightDraft.liveApplyBlockedReasonCodes) reasonCodes.add(reason);
 
     const status = this.protocolServerApplyStatus({
@@ -8002,14 +8179,21 @@ export class OperationsService {
     const protocolSupported = supportedProtocols.includes(input.setup.protocol);
     const liveExecutionEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED', false);
     const credentialDecryptEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED', false);
-    const implemented = false;
+    const implemented = protocolSupported;
+    const accessMethodSupported =
+      !input.requiresServerAccess ||
+      ['ssh_key', 'temporary_root_key', 'existing_admin_key'].includes(input.setup.targetServerAccessMethod ?? '');
     const credentialRefPresent = Boolean(input.setup.targetServerCredentialRef);
     const credentialRecordActive = Boolean(input.setup.targetServerCredentialReady);
+    const credentialKindSupported =
+      !input.requiresServerAccess || input.setup.targetServerCredentialKind === 'ssh_private_key';
+    const commandRunnerReady = protocolSupported && implemented && liveExecutionEnabled;
     const credentialDecryptAllowed = Boolean(
       input.featureFlagEnabled &&
-        liveExecutionEnabled &&
+        commandRunnerReady &&
         credentialDecryptEnabled &&
-        implemented &&
+        accessMethodSupported &&
+        credentialKindSupported &&
         input.hasTargetServer &&
         input.hasServerAccess &&
         credentialRefPresent &&
@@ -8035,30 +8219,34 @@ export class OperationsService {
     } else {
       accessReasonCodes.add('serverCredentialInactive');
     }
+    if (!accessMethodSupported) accessReasonCodes.add('serverAccessMethodUnsupported');
+    if (credentialRefPresent && credentialRecordActive && !credentialKindSupported) {
+      accessReasonCodes.add('serverCredentialKindUnsupported');
+    }
     accessReasonCodes.add(credentialDecryptAllowed ? 'serverCredentialDecryptReady' : 'serverCredentialDecryptDisabled');
 
-    const commandRunnerReasonCodes = new Set<ProtocolServerApplyReason | string>([
-      'commandRunnerDryRunOnly',
-      'liveExecutorMissing',
-    ]);
+    const commandRunnerReasonCodes = new Set<ProtocolServerApplyReason | string>();
+    if (commandRunnerReady) commandRunnerReasonCodes.add('liveExecutorReady');
+    else commandRunnerReasonCodes.add('commandRunnerDryRunOnly');
+    if (!implemented) commandRunnerReasonCodes.add('liveExecutorMissing');
     if (!liveExecutionEnabled) commandRunnerReasonCodes.add('liveExecutorDisabled');
 
-    const accessReady = !input.requiresServerAccess || (input.hasServerAccess && input.hasServerCredential);
+    const accessReady =
+      !input.requiresServerAccess ||
+      (input.hasServerAccess && input.hasServerCredential && accessMethodSupported && credentialKindSupported);
     const dataPlaneReady = Boolean(
       input.featureFlagEnabled &&
-        liveExecutionEnabled &&
-        implemented &&
-        protocolSupported &&
+        commandRunnerReady &&
         accessReady &&
         (!input.requiresServerAccess || credentialDecryptAllowed),
     );
     const reasonCodes = new Set<ProtocolServerApplyReason | string>([
       protocolSupported ? 'protocolSupported' : 'adapterMissing',
       implemented ? 'adapterReady' : 'adapterMissing',
-      'adapterDryRunOnly',
       ...accessReasonCodes,
       ...commandRunnerReasonCodes,
     ]);
+    if (!dataPlaneReady) reasonCodes.add('adapterDryRunOnly');
     if (input.featureFlagEnabled) reasonCodes.add('featureFlagReady');
     else reasonCodes.add('featureFlagDisabled');
     const status: AdminProtocolServerApplyAdapterSummary['status'] = dataPlaneReady
@@ -8083,9 +8271,9 @@ export class OperationsService {
       commandRunner: {
         id: 'protocol-server-command-runner',
         label: 'Protocol server command runner',
-        mode: dataPlaneReady ? 'live' : 'dryRunOnly',
+        mode: commandRunnerReady ? 'live' : 'dryRunOnly',
         liveExecutionEnabled,
-        dryRunOnly: !dataPlaneReady,
+        dryRunOnly: !commandRunnerReady,
         implemented,
         reasonCodes: [...commandRunnerReasonCodes],
       },
@@ -8203,6 +8391,54 @@ export class OperationsService {
     };
   }
 
+  private buildProtocolServerApplyLiveAcceptedSnapshot(
+    setup: ProtocolServerApplySource,
+    plan: AdminProtocolServerApplyPlanSummary,
+    applyMode: 'live',
+  ): AdminProtocolServerApplyDryRunSnapshot {
+    const snapshot = this.buildProtocolServerApplyDryRunSnapshot(setup, plan, applyMode);
+    const reasonCodes = this.uniqueStrings([
+      ...snapshot.reasonCodes.map(String),
+      'liveApplyRequested',
+      'liveApplyAccepted',
+    ]);
+
+    return {
+      ...snapshot,
+      applyStatus: 'accepted',
+      liveApply: true,
+      dataPlaneMutationExecuted: false,
+      reasonCodes,
+      execution: null,
+    };
+  }
+
+  private buildProtocolServerApplyLiveExecutionSnapshot(
+    setup: ProtocolServerApplySource,
+    plan: AdminProtocolServerApplyPlanSummary,
+    execution: ProtocolServerApplyExecutionSummary,
+  ): AdminProtocolServerApplyDryRunSnapshot {
+    const snapshot = this.buildProtocolServerApplyDryRunSnapshot(setup, plan, 'live');
+    const succeeded = execution.status === 'succeeded';
+    const reasonCodes = this.uniqueStrings([
+      ...snapshot.reasonCodes.map(String),
+      'liveApplyRequested',
+      'liveApplyAccepted',
+      succeeded ? 'liveApplySucceeded' : 'liveApplyFailed',
+      execution.rollbackAttempted ? 'rollbackRequired' : null,
+      execution.rollbackSucceeded ? 'rollbackReady' : null,
+    ].filter((reason): reason is string => Boolean(reason)));
+
+    return {
+      ...snapshot,
+      applyStatus: succeeded ? 'executed' : execution.status,
+      liveApply: true,
+      dataPlaneMutationExecuted: execution.dataPlaneMutationExecuted,
+      reasonCodes,
+      execution,
+    };
+  }
+
   private protocolServerApplyLiveBlockedReasonCodes(plan: AdminProtocolServerApplyPlanSummary): string[] {
     const preflightReasons = plan.preflight.liveApplyBlockedReasonCodes.map(String);
 
@@ -8210,7 +8446,561 @@ export class OperationsService {
       return this.uniqueStrings(['liveApplyBlocked', ...preflightReasons]);
     }
 
-    return ['liveExecutorMissing'];
+    return [];
+  }
+
+  private async executeProtocolServerApply(
+    setup: ProtocolServerApplySource,
+    plan: AdminProtocolServerApplyPlanSummary,
+  ): Promise<ProtocolServerApplyExecutionSummary> {
+    const startedAt = new Date().toISOString();
+    const unitName = this.safeProtocolUnitName(setup);
+    const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
+    const stagedConfigPath = `/var/lib/afrogate/protocols/${this.safePathSegment(unitName)}.rendered`;
+    const steps: ProtocolServerApplyExecutionCommandResult[] = [];
+    let tempDir: string | null = null;
+    let dataPlaneMutationExecuted = false;
+    let rollbackAttempted = false;
+    let rollbackSucceeded: boolean | null = null;
+    let failedCommandId: string | null = null;
+
+    const finish = (status: ProtocolServerApplyExecutionSummary['status']): ProtocolServerApplyExecutionSummary => ({
+      status,
+      executor: 'openssh',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      stagedConfigPath,
+      configPath,
+      commandCount: steps.length,
+      successfulCommandCount: steps.filter((step) => step.status === 'succeeded').length,
+      failedCommandId,
+      rollbackAttempted,
+      rollbackSucceeded,
+      dataPlaneMutationExecuted,
+      steps,
+    });
+    const pushFailure = (id: string, kind: string, dataPlaneMutation = false) => {
+      failedCommandId = id;
+      steps.push({
+        id,
+        kind,
+        status: 'failed',
+        exitCode: null,
+        durationMs: 0,
+        dataPlaneMutation,
+        timedOut: false,
+      });
+    };
+
+    try {
+      const access = await this.loadProtocolServerApplyRemoteAccess(setup);
+      const secret = await this.loadProtocolServerApplySecretMaterial(setup);
+      const renderedConfig = this.renderProtocolServerConfig(setup, unitName, secret);
+      this.assertRenderedProtocolServerConfig(renderedConfig);
+
+      tempDir = await mkdtemp(join(tmpdir(), 'afrogate-protocol-apply-'));
+      const keyPath = join(tempDir, 'id_ed25519');
+      const configFilePath = join(tempDir, 'protocol.rendered');
+      await writeFile(keyPath, this.normalizePrivateKey(access.privateKey), { encoding: 'utf8' });
+      await chmod(keyPath, 0o600);
+      await writeFile(configFilePath, renderedConfig, { encoding: 'utf8' });
+      await chmod(configFilePath, 0o600);
+
+      const runCommand = async (
+        command: AdminProtocolServerApplyPlanSummary['commands'][number],
+        options: { allowFailure?: boolean } = {},
+      ): Promise<ProtocolServerApplyExecutionCommandResult> => {
+        const result = await this.runProtocolServerApplySshCommand(access, keyPath, command);
+        if (result.status === 'failed' && options.allowFailure) result.status = 'skipped';
+        steps.push(result);
+        if (result.status === 'failed' && !options.allowFailure) failedCommandId = command.id;
+        return result;
+      };
+      const runInternalCommand = async (
+        idSuffix: string,
+        kind: AdminProtocolServerApplyPlanSummary['commands'][number]['kind'],
+        command: string,
+        dataPlaneMutation: boolean,
+        timeoutSeconds = 20,
+        options: { allowFailure?: boolean } = {},
+      ): Promise<ProtocolServerApplyExecutionCommandResult> =>
+        runCommand(
+          {
+            id: `${setup.id}:${idSuffix}`,
+            kind,
+            command,
+            requiresRoot: true,
+            dataPlaneMutation,
+            secretSafe: true,
+            allowlisted: this.protocolServerApplyCommandAllowlisted(command),
+            timeoutSeconds,
+          },
+          options,
+        );
+
+      for (const command of plan.commands.filter((item) => item.kind === 'preflight' || item.kind === 'package')) {
+        const result = await runCommand(command);
+        if (result.status === 'failed') return finish('failed');
+      }
+
+      const stageDir = this.posixDirname(stagedConfigPath);
+      const configDir = this.posixDirname(configPath);
+      const stageDirCommand = plan.commands.find((item) => item.id.endsWith(':config-stage-dir'));
+      const stageDirResult = stageDirCommand
+        ? await runCommand(stageDirCommand)
+        : await runInternalCommand('config-stage-dir', 'config', `mkdir -p ${this.shellToken(stageDir)}`, false);
+      if (stageDirResult.status === 'failed') return finish('failed');
+
+      const targetDirCommand = plan.commands.find((item) => item.id.endsWith(':config-target-dir'));
+      const targetDirResult = targetDirCommand
+        ? await runCommand(targetDirCommand)
+        : await runInternalCommand('config-target-dir', 'config', `mkdir -p ${this.shellToken(configDir)}`, false);
+      if (targetDirResult.status === 'failed') return finish('failed');
+
+      const uploadResult = await this.runProtocolServerApplyScp(
+        access,
+        keyPath,
+        configFilePath,
+        stagedConfigPath,
+        `${setup.id}:config-stage-upload`,
+      );
+      steps.push(uploadResult);
+      if (uploadResult.status === 'failed') {
+        failedCommandId = uploadResult.id;
+        return finish('failed');
+      }
+
+      const existingConfig = await runInternalCommand(
+        'config-existing',
+        'config',
+        `test -f ${this.shellToken(configPath)}`,
+        false,
+        10,
+        { allowFailure: true },
+      );
+      const backupCommand = plan.commands.find((item) => item.id.endsWith(':config-backup'));
+      let backupCreated = false;
+      if (existingConfig.status === 'succeeded' && backupCommand) {
+        const backupResult = await runCommand(backupCommand);
+        backupCreated = backupResult.status === 'succeeded';
+        if (!backupCreated) return finish('failed');
+      } else if (backupCommand) {
+        steps.push({
+          id: backupCommand.id,
+          kind: backupCommand.kind,
+          status: 'skipped',
+          exitCode: null,
+          durationMs: 0,
+          dataPlaneMutation: backupCommand.dataPlaneMutation,
+          timedOut: false,
+        });
+      }
+
+      const installCommand = plan.commands.find((item) => item.id.endsWith(':config-install'));
+      const installResult = installCommand
+        ? await runCommand(installCommand)
+        : await runInternalCommand(
+            'config-install',
+            'config',
+            `install -m 600 ${this.shellToken(stagedConfigPath)} ${this.shellToken(configPath)}`,
+            true,
+          );
+      if (installResult.status === 'failed') return finish('failed');
+      dataPlaneMutationExecuted = true;
+
+      const executionCommands = plan.commands.filter(
+        (item) =>
+          item.kind !== 'preflight' &&
+          item.kind !== 'package' &&
+          item.kind !== 'rollback' &&
+          !item.id.endsWith(':config-stage-dir') &&
+          !item.id.endsWith(':config-target-dir') &&
+          !item.id.endsWith(':config-install'),
+      );
+      for (const command of executionCommands) {
+        const result = await runCommand(command);
+        if (result.status !== 'failed') {
+          if (command.dataPlaneMutation) dataPlaneMutationExecuted = true;
+          continue;
+        }
+
+        if (backupCreated) {
+          const rollbackCommand = plan.commands.find((item) => item.kind === 'rollback' && item.id.includes(':rollback-'));
+          if (rollbackCommand) {
+            rollbackAttempted = true;
+            const rollbackResult = await runCommand(rollbackCommand, { allowFailure: true });
+            rollbackSucceeded = rollbackResult.status === 'succeeded';
+          }
+        }
+
+        return finish(rollbackSucceeded ? 'rolledBack' : 'failed');
+      }
+
+      await this.markProtocolServerApplySecretsUsed(setup);
+      return finish('succeeded');
+    } catch {
+      pushFailure(`${setup.id}:executor`, 'preflight');
+      return finish('failed');
+    } finally {
+      if (tempDir) {
+        await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+  }
+
+  private async loadProtocolServerApplyRemoteAccess(
+    setup: ProtocolServerApplySource,
+  ): Promise<ProtocolServerApplyRemoteAccess> {
+    const serverId = setup.targetServerId?.trim();
+    const credentialRef = setup.targetServerCredentialRef?.trim();
+    if (!serverId || !credentialRef || !setup.targetServerAccessAddress || !setup.targetServerUsername) {
+      throw new ConflictException('Protocol apply server access is incomplete');
+    }
+    if (setup.targetServerCredentialKind !== 'ssh_private_key') {
+      throw new ConflictException('Protocol apply currently requires an SSH private-key credential');
+    }
+    const address = setup.targetServerAccessAddress.trim();
+    const username = setup.targetServerUsername.trim();
+    const sshPort = setup.targetServerSshPort ?? 22;
+    if (!this.isSafeProtocolServerApplyHost(address) || !this.isSafeProtocolServerApplyUsername(username)) {
+      throw new ConflictException('Protocol apply server access contains unsupported SSH target characters');
+    }
+    if (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535) {
+      throw new ConflictException('Protocol apply SSH port is invalid');
+    }
+
+    const result = await this.database.query<ProtocolServerApplyCredentialMaterialRow>(
+      `
+        SELECT
+          id,
+          server_id AS "serverId",
+          kind,
+          encrypted_payload AS "encryptedPayload",
+          status,
+          revoked_at AS "revokedAt"
+        FROM server_credentials
+        WHERE id::text = $1
+          AND server_id = $2
+          AND status = 'active'
+          AND revoked_at IS NULL
+      `,
+      [credentialRef, serverId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new ConflictException('Active server credential was not found for protocol apply');
+
+    const payload = this.secretVault.decryptJson(
+      row.encryptedPayload,
+      this.serverCredentialEncryptionContext(row.serverId, row.id, row.kind),
+    );
+    const privateKey = this.stringFromConfig(payload.value);
+    if (payload.kind !== row.kind || !privateKey) {
+      throw new ConflictException('Server credential payload is invalid');
+    }
+
+    return {
+      address,
+      sshPort,
+      username,
+      credentialRef,
+      credentialKind: row.kind,
+      privateKey,
+    };
+  }
+
+  private async loadProtocolServerApplySecretMaterial(
+    setup: ProtocolServerApplySource,
+  ): Promise<ProtocolServerApplySecretMaterial> {
+    const secretRef = setup.secretRef?.trim();
+    if (!secretRef) throw new ConflictException('Protocol apply secret reference is missing');
+
+    const result = await this.database.query<ProtocolServerApplySecretMaterialRow>(
+      `
+        SELECT
+          secret_ref AS "secretRef",
+          kind,
+          route_group AS "routeGroup",
+          protocol,
+          encrypted_payload AS "encryptedPayload",
+          status,
+          revoked_at AS "revokedAt"
+        FROM secret_records
+        WHERE secret_ref = $1
+          AND status = 'active'
+          AND revoked_at IS NULL
+      `,
+      [secretRef],
+    );
+    const row = result.rows[0];
+    if (!row) throw new ConflictException('Protocol apply secret reference is inactive');
+    if (row.routeGroup && row.routeGroup !== setup.routeGroup) {
+      throw new ConflictException('Protocol apply secret belongs to a different route group');
+    }
+    if (row.protocol && row.protocol !== setup.protocol) {
+      throw new ConflictException('Protocol apply secret belongs to a different protocol');
+    }
+
+    const payload = this.secretVault.decryptJson(
+      row.encryptedPayload,
+      this.secretEncryptionContext(row.secretRef, row.kind, row.routeGroup ?? setup.routeGroup, row.protocol ?? null),
+    );
+    const value = this.stringFromConfig(payload.value);
+    if (payload.kind !== row.kind || !value) throw new ConflictException('Protocol apply secret payload is invalid');
+
+    return {
+      kind: row.kind,
+      value,
+    };
+  }
+
+  private renderProtocolServerConfig(
+    setup: ProtocolServerApplySource,
+    unitName: string,
+    secret: ProtocolServerApplySecretMaterial,
+  ): string {
+    const config = this.asRecord(setup.config);
+
+    if (secret.kind === 'protocolCredential' && config.rawSecretConfig === true) {
+      return secret.value.trimEnd() + '\n';
+    }
+
+    switch (setup.protocol) {
+      case 'wireguard':
+        return this.renderWireGuardServerConfig(setup, secret);
+      case 'vless':
+        return this.renderVlessServerConfig(setup, unitName, secret);
+      case 'l2tp':
+      case 'ikev2':
+        return secret.value.trimEnd() + '\n';
+      default:
+        throw new ConflictException('Protocol apply adapter does not support this protocol');
+    }
+  }
+
+  private renderWireGuardServerConfig(
+    setup: ProtocolServerApplySource,
+    secret: ProtocolServerApplySecretMaterial,
+  ): string {
+    const config = this.asRecord(setup.config);
+    const privateKey = secret.value.trim();
+    const addressCidr = this.stringFromConfig(config.addressCidr);
+    const listenPort = this.numberFromConfig(config.listenPort) ?? setup.port;
+    const peerPublicKey = this.stringFromConfig(config.peerPublicKey);
+    const allowedIps = this.stringFromConfig(config.allowedIps);
+    const endpoint = this.stringFromConfig(config.endpoint);
+    const persistentKeepalive = this.numberFromConfig(config.persistentKeepalive);
+
+    if (secret.kind !== 'wireguardPrivateKey' || !privateKey || !addressCidr || !peerPublicKey || !allowedIps) {
+      throw new ConflictException('WireGuard protocol apply material is incomplete');
+    }
+
+    const lines = [
+      '[Interface]',
+      `PrivateKey = ${privateKey}`,
+      `Address = ${addressCidr}`,
+      `ListenPort = ${listenPort}`,
+      '',
+      '[Peer]',
+      `PublicKey = ${peerPublicKey}`,
+      `AllowedIPs = ${allowedIps}`,
+    ];
+
+    if (endpoint) lines.push(`Endpoint = ${endpoint}`);
+    if (persistentKeepalive && persistentKeepalive > 0) lines.push(`PersistentKeepalive = ${persistentKeepalive}`);
+
+    return `${lines.join('\n')}\n`;
+  }
+
+  private renderVlessServerConfig(
+    setup: ProtocolServerApplySource,
+    unitName: string,
+    secret: ProtocolServerApplySecretMaterial,
+  ): string {
+    const config = this.asRecord(setup.config);
+    const credential = secret.value.trim();
+    if (secret.kind !== 'protocolCredential' || !credential) {
+      throw new ConflictException('VLESS protocol apply material is incomplete');
+    }
+
+    const listenAddress = this.stringFromConfig(config.listenAddress) ?? '::';
+    const flow = this.stringFromConfig(config.flow);
+    const user: Record<string, string> = { uuid: credential };
+    if (flow) user.flow = flow;
+
+    return `${JSON.stringify(
+      {
+        log: { level: 'warn' },
+        inbounds: [
+          {
+            type: 'vless',
+            tag: unitName,
+            listen: listenAddress,
+            listen_port: setup.port,
+            users: [user],
+          },
+        ],
+        outbounds: [{ type: 'direct', tag: 'direct' }],
+      },
+      null,
+      2,
+    )}\n`;
+  }
+
+  private assertRenderedProtocolServerConfig(value: string): void {
+    if (!value.trim()) throw new ConflictException('Rendered protocol config is empty');
+    if (value.length > 65536) throw new ConflictException('Rendered protocol config is too large');
+    if (value.includes('\0')) throw new ConflictException('Rendered protocol config contains invalid bytes');
+  }
+
+  private normalizePrivateKey(value: string): string {
+    return value.endsWith('\n') ? value : `${value}\n`;
+  }
+
+  private async markProtocolServerApplySecretsUsed(setup: ProtocolServerApplySource): Promise<void> {
+    const now = new Date();
+    await Promise.all([
+      setup.secretRef
+        ? this.database.query(
+            `UPDATE secret_records SET last_used_at = $2, updated_at = now() WHERE secret_ref = $1`,
+            [setup.secretRef, now],
+          )
+        : Promise.resolve(),
+      setup.targetServerCredentialRef
+        ? this.database.query(
+            `UPDATE server_credentials SET last_used_at = $2, updated_at = now() WHERE id::text = $1`,
+            [setup.targetServerCredentialRef, now],
+          )
+        : Promise.resolve(),
+    ]);
+  }
+
+  private async runProtocolServerApplySshCommand(
+    access: ProtocolServerApplyRemoteAccess,
+    keyPath: string,
+    command: AdminProtocolServerApplyPlanSummary['commands'][number],
+  ): Promise<ProtocolServerApplyExecutionCommandResult> {
+    const startedAt = Date.now();
+    const result = await this.runLocalProcess(
+      'ssh',
+      [
+        '-i',
+        keyPath,
+        '-p',
+        String(access.sshPort),
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'IdentitiesOnly=yes',
+        '-o',
+        'StrictHostKeyChecking=accept-new',
+        '-o',
+        'ConnectTimeout=10',
+        '-l',
+        access.username,
+        access.address,
+        command.command,
+      ],
+      command.timeoutSeconds,
+    );
+
+    return {
+      id: command.id,
+      kind: command.kind,
+      status: result.exitCode === 0 ? 'succeeded' : 'failed',
+      exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+      dataPlaneMutation: command.dataPlaneMutation,
+      timedOut: result.timedOut,
+    };
+  }
+
+  private async runProtocolServerApplyScp(
+    access: ProtocolServerApplyRemoteAccess,
+    keyPath: string,
+    localPath: string,
+    remotePath: string,
+    id: string,
+  ): Promise<ProtocolServerApplyExecutionCommandResult> {
+    const startedAt = Date.now();
+    const result = await this.runLocalProcess(
+      'scp',
+      [
+        '-i',
+        keyPath,
+        '-P',
+        String(access.sshPort),
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'IdentitiesOnly=yes',
+        '-o',
+        'StrictHostKeyChecking=accept-new',
+        '-o',
+        'ConnectTimeout=10',
+        localPath,
+        this.scpProtocolServerApplyTarget(access, remotePath),
+      ],
+      45,
+    );
+
+    return {
+      id,
+      kind: 'config',
+      status: result.exitCode === 0 ? 'succeeded' : 'failed',
+      exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+      dataPlaneMutation: false,
+      timedOut: result.timedOut,
+    };
+  }
+
+  private scpProtocolServerApplyTarget(access: ProtocolServerApplyRemoteAccess, remotePath: string): string {
+    const host = access.address.includes(':') && !access.address.startsWith('[') ? `[${access.address}]` : access.address;
+    return `${access.username}@${host}:${remotePath}`;
+  }
+
+  private isSafeProtocolServerApplyHost(value: string): boolean {
+    return value.length > 0 && value.length <= 253 && !/[\s"'`;$\\]/.test(value);
+  }
+
+  private isSafeProtocolServerApplyUsername(value: string): boolean {
+    return /^[a-z_][a-z0-9_.-]{0,63}$/i.test(value);
+  }
+
+  private runLocalProcess(
+    command: string,
+    args: string[],
+    timeoutSeconds: number,
+  ): Promise<{ exitCode: number | null; timedOut: boolean }> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timedOut = false;
+      const child = spawn(command, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      const finish = (exitCode: number | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve({ exitCode, timedOut });
+      };
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, Math.max(5, timeoutSeconds) * 1000);
+
+      child.stdout?.on('data', () => undefined);
+      child.stderr?.on('data', () => undefined);
+      child.on('error', () => finish(null));
+      child.on('close', (code) => finish(code));
+    });
+  }
+
+  private posixDirname(value: string): string {
+    const index = value.lastIndexOf('/');
+    if (index <= 0) return '/';
+    return value.slice(0, index);
   }
 
   private protocolServerApplyStatus(input: {
@@ -8301,6 +9091,11 @@ export class OperationsService {
           : input.secretDecryptAllowed
             ? 'passed'
             : 'future';
+    const accessMethodSupported =
+      !input.requiresServerAccess ||
+      ['ssh_key', 'temporary_root_key', 'existing_admin_key'].includes(input.setup.targetServerAccessMethod ?? '');
+    const credentialKindSupported =
+      !input.requiresServerAccess || input.setup.targetServerCredentialKind === 'ssh_private_key';
     const serverCredentialStatus =
       !input.requiresServerAccess
         ? 'notRequired'
@@ -8308,6 +9103,8 @@ export class OperationsService {
           ? 'blocked'
           : !input.hasServerCredential
             ? 'blocked'
+            : !accessMethodSupported || !credentialKindSupported
+              ? 'blocked'
             : input.adapter.serverAccessBoundary.credentialDecryptAllowed
               ? 'passed'
               : 'future';
@@ -8410,6 +9207,8 @@ export class OperationsService {
                   ? 'serverCredentialDecryptReady'
                   : 'serverCredentialDecryptDisabled'
                 : null,
+              !accessMethodSupported ? 'serverAccessMethodUnsupported' : null,
+              input.hasServerCredential && !credentialKindSupported ? 'serverCredentialKindUnsupported' : null,
             ].filter((reason): reason is ProtocolServerApplyReason => Boolean(reason))
           : [],
       ),
@@ -8566,9 +9365,6 @@ export class OperationsService {
     const requireString = (key: string, label = key) => {
       if (!this.stringFromConfig(config[key])) missingFields.add(label);
     };
-    const requireBooleanTrue = (key: string, label = key) => {
-      if (config[key] !== true) missingFields.add(label);
-    };
     const requirePort = (label = 'port') => {
       if (!Number.isInteger(setup.port) || setup.port < 1 || setup.port > 65535) missingFields.add(label);
     };
@@ -8580,7 +9376,7 @@ export class OperationsService {
         requirePort('listenPort');
         requireString('endpoint');
         requireString('allowedIps');
-        requireBooleanTrue('peerPublicKeyPresent', 'peerPublicKey');
+        requireString('peerPublicKey');
         break;
       case 'vless':
         requireString('endpoint');
@@ -8665,6 +9461,8 @@ export class OperationsService {
       'systemctl ',
       'wg ',
       'cp ',
+      'mkdir ',
+      'install ',
       'sing-box ',
       'test ',
       'ipsec ',
@@ -8681,6 +9479,8 @@ export class OperationsService {
     unitName: string,
   ): AdminProtocolServerApplyPlanSummary['commands'] {
     const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
+    const stagedPath = `/var/lib/afrogate/protocols/${this.safePathSegment(unitName)}.rendered`;
+    const configDir = this.posixDirname(configPath);
     const command = (
       idSuffix: string,
       kind: AdminProtocolServerApplyPlanSummary['commands'][number]['kind'],
@@ -8701,6 +9501,12 @@ export class OperationsService {
       command('preflight-user', 'preflight', 'id -u afrogate', false, false),
       command('preflight-systemctl', 'preflight', 'command -v systemctl', false, false),
     ];
+    const configPrepare = [
+      command('config-stage-dir', 'config', `mkdir -p ${this.shellToken('/var/lib/afrogate/protocols')}`, true, false),
+      command('config-target-dir', 'config', `mkdir -p ${this.shellToken(configDir)}`, true, false),
+      command('config-backup', 'rollback', `cp ${this.shellToken(configPath)} ${this.shellToken(`${configPath}.afrogate.bak`)}`, true, true),
+      command('config-install', 'config', `install -m 600 ${this.shellToken(stagedPath)} ${this.shellToken(configPath)}`, true, true),
+    ];
 
     switch (setup.protocol) {
       case 'wireguard':
@@ -8708,6 +9514,7 @@ export class OperationsService {
           ...base,
           command('package-wireguard-wg', 'package', 'command -v wg', false, false),
           command('package-wireguard-wg-quick', 'package', 'command -v wg-quick', false, false),
+          ...configPrepare,
           command('config-wireguard-check', 'config', `wg-quick strip ${this.shellToken(configPath)}`, true, false),
           command('service-wireguard-status', 'service', `systemctl status wg-quick@${this.shellToken(unitName)}`, false, false),
           command('service-wireguard-reload', 'service', `systemctl reload-or-restart wg-quick@${this.shellToken(unitName)}`, true, true),
@@ -8719,6 +9526,7 @@ export class OperationsService {
           ...base,
           command('package-vless-sing-box', 'package', 'command -v sing-box', false, false),
           command('package-vless-xray', 'package', 'command -v xray', false, false),
+          ...configPrepare,
           command('config-vless-check', 'config', `sing-box check -c ${this.shellToken(configPath)}`, true, false),
           command('service-vless-status', 'service', 'systemctl status sing-box', false, false),
           command('service-vless-reload', 'service', 'systemctl reload-or-restart sing-box', true, true),
@@ -8730,6 +9538,7 @@ export class OperationsService {
           ...base,
           command('package-l2tp-ipsec', 'package', 'command -v ipsec', false, false),
           command('package-l2tp-xl2tpd', 'package', 'command -v xl2tpd', false, false),
+          ...configPrepare,
           command('config-l2tp-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
           command('service-l2tp-status', 'service', 'systemctl status strongswan-starter xl2tpd', false, false),
           command('service-l2tp-reload', 'service', 'systemctl reload-or-restart strongswan-starter xl2tpd', true, true),
@@ -8742,6 +9551,7 @@ export class OperationsService {
           ...base,
           command('package-ikev2-ipsec', 'package', 'command -v ipsec', false, false),
           command('package-ikev2-swanctl', 'package', 'command -v swanctl', false, false),
+          ...configPrepare,
           command('config-ikev2-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
           command('service-ikev2-status', 'service', 'systemctl status strongswan-starter', false, false),
           command('service-ikev2-reload', 'service', 'systemctl reload-or-restart strongswan-starter', true, true),
@@ -8753,6 +9563,7 @@ export class OperationsService {
         return [
           ...base,
           command('package-custom', 'package', 'test -d /etc/afrogate', false, false),
+          ...configPrepare,
           command('config-custom-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
           command('health-custom', 'health', 'true', false, false),
         ];

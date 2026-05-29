@@ -6777,7 +6777,13 @@ function SettingsPage({
         ...current.filter((event) => event.id !== response.event.id),
       ].slice(0, 10));
       setProtocolApplyEventDetail(response.event);
-      setServerApplyMessage(t.settings.serverApplyLiveRequestRecorded);
+      setServerApplyMessage(
+        response.dataPlaneMutationExecuted
+          ? t.settings.serverApplyLiveExecuted
+          : response.liveApplyAccepted
+            ? t.settings.serverApplyLiveAccepted
+            : t.settings.serverApplyLiveRequestRecorded,
+      );
     } catch (error) {
       setServerApplyMessage(t.settings.serverApplyLiveRequestFailed);
     } finally {
@@ -10682,6 +10688,7 @@ function createProtocolSetupConfig(
     addressCidr: draft.addressCidr.trim() || undefined,
     listenPort: Number(draft.listenPort) || undefined,
     peerPublicKeyPresent: Boolean(draft.peerPublicKey.trim()),
+    peerPublicKey: draft.peerPublicKey.trim() || undefined,
     endpoint: draft.endpoint.trim() || undefined,
     allowedIps: draft.allowedIps.trim() || undefined,
     persistentKeepalive: Number(draft.persistentKeepalive) || undefined,
@@ -11973,8 +11980,12 @@ function ProtocolApplyEventDetailCard({
       {snapshot ? (
         <>
           <div className="flex flex-wrap gap-1.5">
-            <StatusBadge tone={snapshot.liveApply || snapshot.dataPlaneMutationExecuted ? 'warning' : 'neutral'}>
-              {snapshot.liveApply || snapshot.dataPlaneMutationExecuted ? t.settings.serverApplyExecutable : t.settings.protocolApplyLiveBlocked}
+            <StatusBadge tone={snapshot.dataPlaneMutationExecuted ? 'warning' : snapshot.liveApply ? 'good' : 'neutral'}>
+              {snapshot.dataPlaneMutationExecuted
+                ? t.settings.serverApplyMutationExecuted
+                : snapshot.liveApply
+                  ? t.settings.protocolApplyLiveAccepted
+                  : t.settings.protocolApplyLiveBlocked}
             </StatusBadge>
             <StatusBadge tone={snapshot.canExecute ? 'good' : 'neutral'}>
               {snapshot.canExecute ? t.settings.serverApplyExecutable : t.settings.serverApplyNoMutation}
@@ -12006,6 +12017,31 @@ function ProtocolApplyEventDetailCard({
           />
           <ProtocolServerApplyPreflightCard format={format} preflight={snapshot.preflight} t={t} />
           <ProtocolServerApplyAdapterCard adapter={snapshot.adapter} t={t} />
+          {snapshot.execution ? (
+            <div className="grid gap-1 rounded border border-afro-line bg-white px-2 py-1">
+              <strong className="text-[12px] text-afro-muted">{t.settings.protocolApplyExecution}</strong>
+              <span className="flex flex-wrap gap-1">
+                <StatusBadge tone={snapshot.execution.status === 'succeeded' ? 'good' : snapshot.execution.status === 'rolledBack' ? 'warning' : 'critical'}>
+                  {snapshot.execution.status === 'succeeded'
+                    ? t.settings.protocolApplyExecutionSucceeded
+                    : snapshot.execution.status === 'rolledBack'
+                      ? t.settings.protocolApplyExecutionRolledBack
+                      : t.settings.protocolApplyExecutionFailed}
+                </StatusBadge>
+                <StatusBadge tone="neutral">
+                  {t.settings.protocolApplyExecutionCommands(
+                    format.integer(snapshot.execution.successfulCommandCount),
+                    format.integer(snapshot.execution.commandCount),
+                  )}
+                </StatusBadge>
+                {snapshot.execution.rollbackAttempted ? (
+                  <StatusBadge tone={snapshot.execution.rollbackSucceeded ? 'good' : 'warning'}>
+                    {t.settings.serverApplyRollback}
+                  </StatusBadge>
+                ) : null}
+              </span>
+            </div>
+          ) : null}
 
           {snapshot.commands.length > 0 ? (
             <div className="grid gap-1">

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.106.0 - 2026-05-29
+
+- Added the disabled-by-default production protocol server apply runner for guarded live config staging, install, service reload, health verification, and rollback metadata.
+- Live apply now records accepted and final execution audit snapshots while keeping decrypted protocol/server secrets, rendered configs, stdout, and stderr out of API responses and stored snapshots.
+- Settings now distinguishes blocked, accepted, and executed protocol apply events and shows secret-free execution counts in English and Persian.
+
 ## 0.105.0 - 2026-05-29
 
 - Added client-side per-app VPN selection with all-apps and selected-apps modes for native split-tunnel handoff.

@@ -1887,9 +1887,11 @@ export type ProtocolServerApplyReason =
   | 'serverMissing'
   | 'serverAccessMissing'
   | 'serverAccessReady'
+  | 'serverAccessMethodUnsupported'
   | 'serverCredentialRefMissing'
   | 'serverCredentialReady'
   | 'serverCredentialInactive'
+  | 'serverCredentialKindUnsupported'
   | 'serverCredentialDecryptReady'
   | 'serverCredentialDecryptDisabled'
   | 'secretMissing'
@@ -1919,7 +1921,11 @@ export type ProtocolServerApplyReason =
   | 'dryRunSafe'
   | 'dryRunUnsafe'
   | 'liveApplyRequested'
+  | 'liveApplyAccepted'
+  | 'liveApplySucceeded'
+  | 'liveApplyFailed'
   | 'liveApplyBlocked'
+  | 'liveExecutorReady'
   | 'liveExecutorMissing'
   | 'liveExecutorDisabled'
   | 'commandRunnerDryRunOnly'
@@ -2027,6 +2033,32 @@ export interface AdminProtocolServerApplyConfigChange {
   secretSafe: boolean;
 }
 
+export interface AdminProtocolServerApplyExecutionStepSummary {
+  id: string;
+  kind: ProtocolServerApplyStepKind | string;
+  status: 'succeeded' | 'failed' | 'skipped' | string;
+  exitCode?: number | null;
+  durationMs: number;
+  dataPlaneMutation: boolean;
+  timedOut: boolean;
+}
+
+export interface AdminProtocolServerApplyExecutionSummary {
+  status: 'accepted' | 'succeeded' | 'failed' | 'rolledBack' | string;
+  executor: 'openssh' | string;
+  startedAt: string;
+  finishedAt: string;
+  stagedConfigPath: string;
+  configPath: string;
+  commandCount: number;
+  successfulCommandCount: number;
+  failedCommandId?: string | null;
+  rollbackAttempted: boolean;
+  rollbackSucceeded?: boolean | null;
+  dataPlaneMutationExecuted: boolean;
+  steps: AdminProtocolServerApplyExecutionStepSummary[];
+}
+
 export interface AdminProtocolServerApplyPlanSummary {
   status: ProtocolServerApplyStatus | string;
   generatedAt: string;
@@ -2097,6 +2129,7 @@ export interface AdminProtocolServerApplyDryRunSnapshot {
   steps: AdminProtocolServerApplyStep[];
   commands: AdminProtocolServerApplyCommand[];
   configChanges: AdminProtocolServerApplyConfigChange[];
+  execution?: AdminProtocolServerApplyExecutionSummary | null;
 }
 
 export interface AdminProtocolServerApplyEventSummary {

@@ -1840,7 +1840,14 @@ Repository remote is ready:
 
 ### Verification
 
+- Ran `npm run version:check`.
 - Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run test:e2e`; 17 tests passed.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only CRLF conversion warnings were reported.
 - Ran `npm run version:check`.
 - Ran `npm run secrets:check`.
 - Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
@@ -2015,3 +2022,25 @@ Repository remote is ready:
 - Production server-side protocol apply remains the only future main-checklist work.
 - Packaged native Android/iOS app distribution and iOS MDM profile deployment remain deployment/productization work beyond the current client/native profile foundation.
 - Dedicated Telegram bot operations UI remains pending in the dashboard/sidebar backlog.
+
+## 2026-05-29 Production Protocol Server Apply Engine
+
+### Completed
+
+- Implemented the guarded live protocol server apply execution path behind the existing protocol apply, live executor, protocol-secret decrypt, and server-credential decrypt flags.
+- Added an OpenSSH/SCP runner that records an accepted audit event before mutation, decrypts protocol/server secrets only in backend memory, stages rendered config to `/var/lib/afrogate/protocols`, installs the target service config, runs allowlisted timeout-bounded commands, verifies health, and records a secret-free execution snapshot.
+- Kept blocked live requests non-mutating when any preflight gate is missing, and added final success/failure/rollback execution metadata without storing stdout, stderr, private keys, protocol secrets, or rendered secret-bearing config.
+- Updated WireGuard live readiness to require the actual peer public key, added VLESS sing-box rendering from a protocol credential, and kept L2TP/IKEv2 on raw secret config material for their managed single-file apply target.
+- Surfaced accepted/executed live-apply status and execution counts in the Settings protocol apply audit detail with typed English/Persian labels.
+- Marked the production protocol server apply checklist item complete.
+- Main checklist completion is now `238 / 238` items, or `100.0%` complete with `0.0%` remaining.
+- Bumped AfroGate to `0.106.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck`.
+
+### Remaining
+
+- Dedicated Telegram bot operations UI remains pending in the dashboard/sidebar backlog.
+- Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.
