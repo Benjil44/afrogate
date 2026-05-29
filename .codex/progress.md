@@ -2073,3 +2073,32 @@ Repository remote is ready:
 
 - Persist admin users in PostgreSQL when production database auth replaces the current local file store.
 - Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.
+
+## 2026-05-29 PostgreSQL Admin Users Persistence
+
+### Completed
+
+- Added PostgreSQL migration `0027_admin_users.sql` plus Drizzle schema metadata for managed dashboard admin users, with normalized unique usernames, non-superadmin role/status constraints, and database-only source marking.
+- Updated the auth service so managed admin users default to PostgreSQL when `DATABASE_URL` is configured, while preserving the local JSON file as an explicit fallback and optional one-time legacy import source.
+- Kept bootstrap/env accounts protected and made database-backed managed users editable by `owner`/protected `superadmin` sessions through the existing Users page actions.
+- Updated shared/dashboard source typing and bilingual labels for the new `database` admin-user source.
+- Updated deployment samples, RBAC/security docs, `.codex` memory/agent notes, and the Users-page Playwright mock for database-backed admin-user management.
+- Marked the last dashboard/sidebar checklist item complete; `.codex/checklist.md` and `docs/dashboard-sidebar-pages-checklist.md` now have `0` unchecked items.
+- Bumped AfroGate to `0.108.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm --workspace @afrogate/backend run db:migrate`; all migrations through `0027_admin_users.sql` applied successfully.
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran focused `npm run test:e2e -- --grep "users page"`; 1 test passed.
+- Ran full `npm run test:e2e`; 17 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.

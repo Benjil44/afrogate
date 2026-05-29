@@ -300,7 +300,7 @@ export interface AdminLoginResponse extends AdminSessionResponse {
 }
 
 export type AdminUserStatus = 'active' | 'disabled';
-export type AdminUserSource = 'bootstrap' | 'env' | 'local';
+export type AdminUserSource = 'bootstrap' | 'env' | 'local' | 'database';
 
 export interface AdminUserSummary {
   id: string;

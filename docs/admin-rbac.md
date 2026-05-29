@@ -5,7 +5,7 @@ AfroGate uses a deny-by-default admin RBAC model. Static roles still exist for o
 ## Roles
 
 - `superadmin`: bootstrap root owner. Full access, cannot be removed, disabled, or changed by managed-user workflows.
-- `owner`: full operational access for production ownership. Can manage local managed admin users, but cannot mutate bootstrap/env-protected accounts.
+- `owner`: full operational access for production ownership. Can manage database-backed managed admin users, but cannot mutate bootstrap/env-protected accounts.
 - `admin`: day-to-day operations across servers, tunnels, routes, billing, tenant branding, settings, audit, backups, and reports. Cannot create or mutate admin accounts.
 - `supervisor`: read-oriented operations, billing/customer visibility, settings visibility, tenant branding reads, audit reads, backups, and reports.
 - `support`: support-safe reads for dashboard, servers, tunnels, routes, alerts, billing, customers, and public tenant branding.
@@ -56,11 +56,11 @@ Admin-user endpoints now require admin-user permissions in addition to the exist
 
 The Users page now shows a Role Permissions panel. It renders the backend permission matrix with bilingual labels from the dashboard typed i18n layer, making permission risk and role access visible to admins before production rollout.
 
-The sidebar hides the admin Users page from support/supervisor/auditor sessions. Admins can view admin-user state; only `superadmin` and `owner` can mutate local managed admin users.
+The sidebar hides the admin Users page from support/supervisor/auditor sessions. Admins can view admin-user state; only `superadmin` and `owner` can mutate managed admin users.
 
 ## Production Notes
 
 - Keep permission ids stable once external audit/reporting workflows depend on them.
 - Add new endpoints with `@Permissions(...)` at implementation time instead of relying only on coarse roles.
 - Do not grant support roles secret, credential, admin-user-write, route-apply, protocol-write, or provider-secret permissions.
-- Future PostgreSQL-backed admin users should preserve the same permission ids and protected superadmin invariant.
+- PostgreSQL-backed admin users preserve the same permission ids and protected superadmin invariant. The `admin_users` table stores managed users only; bootstrap/env accounts stay configuration-owned and protected.

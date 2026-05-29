@@ -170,6 +170,29 @@ export const auditLogs = pgTable(
   }),
 );
 
+export const adminUsers = pgTable(
+  'admin_users',
+  {
+    id: text('id').primaryKey(),
+    username: text('username').notNull(),
+    usernameNormalized: text('username_normalized').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    role: text('role').notNull(),
+    status: text('status').notNull().default('active'),
+    source: text('source').notNull().default('database'),
+    createdBy: text('created_by'),
+    updatedBy: text('updated_by'),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    usernameNormalizedIdx: uniqueIndex('admin_users_username_normalized_idx').on(table.usernameNormalized),
+    roleStatusIdx: index('admin_users_role_status_idx').on(table.role, table.status),
+    createdAtIdx: index('admin_users_created_at_idx').on(table.createdAt),
+  }),
+);
+
 export const agentTokens = pgTable(
   'agent_tokens',
   {

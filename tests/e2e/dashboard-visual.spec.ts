@@ -259,6 +259,7 @@ test('users page shows RBAC permission matrix', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'User management' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Admin Users' })).toBeVisible();
+  await expect(page.getByText('database', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Role Permissions' })).toBeVisible();
   await expect(page.getByText('Deny by default')).toBeVisible();
   await expect(page.getByText('Server credential write')).toBeVisible();
@@ -330,7 +331,7 @@ async function mockDashboardApi(page: Page): Promise<void> {
               isSuperAdmin: false,
               lastLoginAt: null,
               role: 'owner',
-              source: 'local',
+              source: 'database',
               status: 'active',
               updatedAt: fixedNow,
               username: 'ops-owner',

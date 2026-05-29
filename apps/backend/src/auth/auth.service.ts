@@ -29,6 +29,7 @@ import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { AuditService } from '../audit/audit.service';
+import { DatabaseService } from '../database/database.service';
 import type { AuthActor } from '../security/auth-request';
 import { secureTokenEquals } from '../security/bearer-token';
 
@@ -42,6 +43,8 @@ const SCRYPT_P = 1;
 
 const SUPPORTED_ADMIN_ROLES = new Set<Role>(['superadmin', 'owner', 'admin', 'supervisor', 'support', 'auditor']);
 const NON_SUPERADMIN_ROLES = new Set<Role>(['owner', 'admin', 'supervisor', 'support', 'auditor']);
+const ADMIN_USERS_STORE_DATABASE_VALUES = new Set(['database', 'postgres', 'postgresql']);
+const ADMIN_USERS_STORE_FILE_VALUES = new Set(['file', 'local', 'json']);
 
 interface AdminAccountConfig {
   id: string;
@@ -51,7 +54,7 @@ interface AdminAccountConfig {
   role: Role;
   isSuperAdmin: boolean;
   status: AdminUserStatus;
-  source: 'bootstrap' | 'env' | 'local';
+  source: 'bootstrap' | 'env' | 'local' | 'database';
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string | null;
@@ -63,6 +66,7 @@ interface StoredAdminUser {
   passwordHash: string;
   role: Role;
   status: AdminUserStatus;
+  source?: 'local' | 'database';
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string | null;
@@ -70,6 +74,17 @@ interface StoredAdminUser {
 
 interface StoredAdminUsersFile {
   users?: StoredAdminUser[];
+}
+
+interface AdminUserRow {
+  id: string;
+  username: string;
+  passwordHash: string;
+  role: string;
+  status: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  lastLoginAt: Date | string | null;
 }
 
 interface AdminSessionPayload {
@@ -86,8 +101,12 @@ interface AdminSessionPayload {
 @Injectable()
 export class AuthService {
   private managedUsersCache: StoredAdminUser[] | null = null;
+  private attemptedLegacyFileImport = false;
 
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    private readonly database: DatabaseService,
+  ) {}
 
   async login(usernameInput: string, passwordInput: string): Promise<AdminLoginResponse> {
     const username = usernameInput.trim();
@@ -112,7 +131,7 @@ export class AuthService {
       isSuperAdmin: actor.isSuperAdmin === true,
     });
 
-    await this.recordLocalUserLogin(actor.id, issuedAt.toISOString());
+    await this.recordManagedUserLogin(actor.id, issuedAt.toISOString());
 
     return {
       ...this.createSessionResponse(actor, issuedAt, expiresAt),
@@ -206,18 +225,18 @@ export class AuthService {
       passwordHash: hashPassword(payload.password),
       role,
       status,
+      source: this.getManagedUsersStore() === 'database' ? 'database' : 'local',
       createdAt: now,
       updatedAt: now,
       lastLoginAt: null,
     };
 
-    const storedUsers = await this.loadManagedUsers();
-    storedUsers.push(user);
-    await this.saveManagedUsers(storedUsers);
+    await this.createManagedUser(user, actor);
     await this.audit.recordBestEffort(actor, 'admin.user.created', 'admin_user', user.id, {
       username: user.username,
       role: user.role,
       status: user.status,
+      source: user.source,
     });
 
     return this.toAdminUserSummary(storedUserToAccount(user), actor);
@@ -229,12 +248,10 @@ export class AuthService {
     payload: UpdateAdminUserRequest,
   ): Promise<AdminUserSummary> {
     this.assertAdminUserManagerActor(actor);
-    const storedUsers = await this.loadManagedUsers();
-    const userIndex = storedUsers.findIndex((user) => user.id === id);
+    const existingUser = await this.getManagedUserById(id);
+    if (!existingUser) throw this.createUnmanagedUserException(id);
 
-    if (userIndex < 0) throw this.createUnmanagedUserException(id);
-
-    const updatedUser = { ...storedUsers[userIndex] };
+    const updatedUser = { ...existingUser };
 
     if (payload.role !== undefined) {
       updatedUser.role = this.resolveManagedUserRole(payload.role);
@@ -245,12 +262,12 @@ export class AuthService {
     }
 
     updatedUser.updatedAt = new Date().toISOString();
-    storedUsers[userIndex] = updatedUser;
-    await this.saveManagedUsers(storedUsers);
+    await this.updateManagedUser(updatedUser, actor);
     await this.audit.recordBestEffort(actor, 'admin.user.updated', 'admin_user', id, {
       username: updatedUser.username,
       role: updatedUser.role,
       status: updatedUser.status,
+      source: updatedUser.source,
     });
 
     return this.toAdminUserSummary(storedUserToAccount(updatedUser), actor);
@@ -265,20 +282,18 @@ export class AuthService {
 
     if (payload.password.trim().length < 8) throw new BadRequestException('Password must be at least 8 characters');
 
-    const storedUsers = await this.loadManagedUsers();
-    const userIndex = storedUsers.findIndex((user) => user.id === id);
-
-    if (userIndex < 0) throw this.createUnmanagedUserException(id);
+    const existingUser = await this.getManagedUserById(id);
+    if (!existingUser) throw this.createUnmanagedUserException(id);
 
     const updatedUser = {
-      ...storedUsers[userIndex],
+      ...existingUser,
       passwordHash: hashPassword(payload.password),
       updatedAt: new Date().toISOString(),
     };
-    storedUsers[userIndex] = updatedUser;
-    await this.saveManagedUsers(storedUsers);
+    await this.updateManagedUserPassword(updatedUser, actor);
     await this.audit.recordBestEffort(actor, 'admin.user.password_changed', 'admin_user', id, {
       username: updatedUser.username,
+      source: updatedUser.source,
     });
 
     return this.toAdminUserSummary(storedUserToAccount(updatedUser), actor);
@@ -286,15 +301,15 @@ export class AuthService {
 
   async deleteAdminUser(actor: AuthActor | undefined, id: string): Promise<void> {
     this.assertAdminUserManagerActor(actor);
-    const storedUsers = await this.loadManagedUsers();
-    const user = storedUsers.find((candidate) => candidate.id === id);
+    const user = await this.getManagedUserById(id);
 
     if (!user) throw this.createUnmanagedUserException(id);
 
-    await this.saveManagedUsers(storedUsers.filter((candidate) => candidate.id !== id));
+    await this.deleteManagedUser(id);
     await this.audit.recordBestEffort(actor, 'admin.user.deleted', 'admin_user', id, {
       username: user.username,
       role: user.role,
+      source: user.source,
     });
   }
 
@@ -494,8 +509,8 @@ export class AuthService {
   }
 
   private toAdminUserSummary(account: AdminAccountConfig, actor: AuthActor | undefined): AdminUserSummary {
-    const isLocalManagedUser = account.source === 'local';
-    const canManage = this.canManageAdminUsers(actor) && isLocalManagedUser && !account.isSuperAdmin;
+    const isManagedAdminUser = account.source === 'local' || account.source === 'database';
+    const canManage = this.canManageAdminUsers(actor) && isManagedAdminUser && !account.isSuperAdmin;
 
     return {
       id: account.id,
@@ -518,6 +533,236 @@ export class AuthService {
   }
 
   private async loadManagedUsers(): Promise<StoredAdminUser[]> {
+    if (this.getManagedUsersStore() === 'database') {
+      return this.loadDatabaseManagedUsers();
+    }
+
+    return this.loadFileManagedUsers();
+  }
+
+  private async createManagedUser(user: StoredAdminUser, actor: AuthActor): Promise<void> {
+    if (this.getManagedUsersStore() === 'database') {
+      await this.insertDatabaseManagedUser(user, actor);
+      return;
+    }
+
+    const storedUsers = await this.loadFileManagedUsers();
+    storedUsers.push({ ...user, source: 'local' });
+    await this.saveFileManagedUsers(storedUsers);
+  }
+
+  private async getManagedUserById(id: string): Promise<StoredAdminUser | null> {
+    const users = await this.loadManagedUsers();
+
+    return users.find((user) => user.id === id) ?? null;
+  }
+
+  private async updateManagedUser(user: StoredAdminUser, actor: AuthActor): Promise<void> {
+    if (this.getManagedUsersStore() === 'database') {
+      await this.updateDatabaseManagedUser(user, actor);
+      return;
+    }
+
+    const storedUsers = await this.loadFileManagedUsers();
+    const userIndex = storedUsers.findIndex((candidate) => candidate.id === user.id);
+    if (userIndex < 0) throw this.createUnmanagedUserException(user.id);
+    storedUsers[userIndex] = { ...user, source: 'local' };
+    await this.saveFileManagedUsers(storedUsers);
+  }
+
+  private async updateManagedUserPassword(user: StoredAdminUser, actor: AuthActor): Promise<void> {
+    if (this.getManagedUsersStore() === 'database') {
+      await this.updateDatabaseManagedUserPassword(user, actor);
+      return;
+    }
+
+    await this.updateManagedUser(user, actor);
+  }
+
+  private async deleteManagedUser(id: string): Promise<void> {
+    if (this.getManagedUsersStore() === 'database') {
+      await this.database.query('DELETE FROM admin_users WHERE id = $1', [id]);
+      return;
+    }
+
+    const storedUsers = await this.loadFileManagedUsers();
+    await this.saveFileManagedUsers(storedUsers.filter((candidate) => candidate.id !== id));
+  }
+
+  private async recordManagedUserLogin(id: string, lastLoginAt: string): Promise<void> {
+    if (this.getManagedUsersStore() === 'database') {
+      await this.database.query(
+        `
+          UPDATE admin_users
+          SET last_login_at = $2
+          WHERE id = $1
+        `,
+        [id, lastLoginAt],
+      );
+      return;
+    }
+
+    const storedUsers = await this.loadFileManagedUsers();
+    const userIndex = storedUsers.findIndex((user) => user.id === id);
+
+    if (userIndex < 0) return;
+
+    storedUsers[userIndex] = {
+      ...storedUsers[userIndex],
+      lastLoginAt,
+      updatedAt: storedUsers[userIndex].updatedAt,
+    };
+    await this.saveFileManagedUsers(storedUsers);
+  }
+
+  private async loadDatabaseManagedUsers(): Promise<StoredAdminUser[]> {
+    let rows = await this.queryDatabaseManagedUserRows();
+    if (rows.length === 0 && !this.attemptedLegacyFileImport && process.env.AFROGATE_ADMIN_USERS_IMPORT_FILE !== 'false') {
+      this.attemptedLegacyFileImport = true;
+      const importedCount = await this.importLegacyFileUsersToDatabase();
+      if (importedCount > 0) {
+        await this.audit.recordBestEffort(undefined, 'admin.users.legacy_file_imported', 'admin_user_store', 'database', {
+          importedCount,
+        });
+        rows = await this.queryDatabaseManagedUserRows();
+      }
+    }
+
+    return rows.map(databaseRowToStoredUser).filter((user) => NON_SUPERADMIN_ROLES.has(user.role));
+  }
+
+  private async queryDatabaseManagedUserRows(): Promise<AdminUserRow[]> {
+    try {
+      const result = await this.database.query<AdminUserRow>(
+        `
+          SELECT
+            id,
+            username,
+            password_hash AS "passwordHash",
+            role,
+            status,
+            created_at AS "createdAt",
+            updated_at AS "updatedAt",
+            last_login_at AS "lastLoginAt"
+          FROM admin_users
+          ORDER BY created_at DESC, username ASC
+        `,
+      );
+
+      return result.rows;
+    } catch (error) {
+      if (isPostgresUndefinedTableError(error)) {
+        throw new ServiceUnavailableException('Admin users database table is not migrated');
+      }
+
+      throw error;
+    }
+  }
+
+  private async insertDatabaseManagedUser(user: StoredAdminUser, actor: AuthActor): Promise<void> {
+    try {
+      await this.database.query(
+        `
+          INSERT INTO admin_users (
+            id, username, username_normalized, password_hash, role, status,
+            source, created_by, updated_by, created_at, updated_at, last_login_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, 'database', $7, $7, $8, $8, $9)
+        `,
+        [
+          user.id,
+          user.username,
+          normalizeUsernameForUniqueIndex(user.username),
+          user.passwordHash,
+          user.role,
+          user.status,
+          actor.id,
+          user.createdAt,
+          user.lastLoginAt ?? null,
+        ],
+      );
+    } catch (error) {
+      if (isPostgresUniqueViolation(error)) throw new BadRequestException('Admin username already exists');
+      if (isPostgresUndefinedTableError(error)) throw new ServiceUnavailableException('Admin users database table is not migrated');
+      throw error;
+    }
+  }
+
+  private async updateDatabaseManagedUser(user: StoredAdminUser, actor: AuthActor): Promise<void> {
+    const result = await this.database.query(
+      `
+        UPDATE admin_users
+        SET role = $2,
+            status = $3,
+            updated_by = $4,
+            updated_at = $5
+        WHERE id = $1
+      `,
+      [user.id, user.role, user.status, actor.id, user.updatedAt],
+    );
+
+    if (result.rowCount === 0) throw this.createUnmanagedUserException(user.id);
+  }
+
+  private async updateDatabaseManagedUserPassword(user: StoredAdminUser, actor: AuthActor): Promise<void> {
+    const result = await this.database.query(
+      `
+        UPDATE admin_users
+        SET password_hash = $2,
+            updated_by = $3,
+            updated_at = $4
+        WHERE id = $1
+      `,
+      [user.id, user.passwordHash, actor.id, user.updatedAt],
+    );
+
+    if (result.rowCount === 0) throw this.createUnmanagedUserException(user.id);
+  }
+
+  private async importLegacyFileUsersToDatabase(): Promise<number> {
+    const fileUsers = await this.loadFileManagedUsers();
+    let importedCount = 0;
+
+    for (const user of fileUsers) {
+      if (!NON_SUPERADMIN_ROLES.has(user.role)) continue;
+
+      try {
+        const now = new Date().toISOString();
+        const result = await this.database.query(
+          `
+            INSERT INTO admin_users (
+              id, username, username_normalized, password_hash, role, status,
+              source, created_by, updated_by, created_at, updated_at, last_login_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, 'database', 'legacy-file-import', 'legacy-file-import', $7, $8, $9)
+            ON CONFLICT (username_normalized) DO NOTHING
+          `,
+          [
+            user.id,
+            user.username,
+            normalizeUsernameForUniqueIndex(user.username),
+            user.passwordHash,
+            user.role,
+            user.status,
+            user.createdAt || now,
+            user.updatedAt || now,
+            user.lastLoginAt ?? null,
+          ],
+        );
+        importedCount += result.rowCount ?? 0;
+      } catch (error) {
+        if (isPostgresUndefinedTableError(error)) {
+          throw new ServiceUnavailableException('Admin users database table is not migrated');
+        }
+
+        throw error;
+      }
+    }
+
+    return importedCount;
+  }
+
+  private async loadFileManagedUsers(): Promise<StoredAdminUser[]> {
     if (this.managedUsersCache) return [...this.managedUsersCache];
 
     const filePath = this.getManagedUsersFilePath();
@@ -526,7 +771,8 @@ export class AuthService {
       const parsed = JSON.parse(await readFile(filePath, 'utf8')) as StoredAdminUsersFile;
       this.managedUsersCache = (parsed.users ?? [])
         .filter(isStoredAdminUser)
-        .filter((user) => NON_SUPERADMIN_ROLES.has(user.role));
+        .filter((user) => NON_SUPERADMIN_ROLES.has(user.role))
+        .map((user) => ({ ...user, source: 'local' }));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw new ServiceUnavailableException('Admin users file could not be read');
@@ -538,11 +784,20 @@ export class AuthService {
     return [...this.managedUsersCache];
   }
 
-  private async saveManagedUsers(users: StoredAdminUser[]): Promise<void> {
+  private async saveFileManagedUsers(users: StoredAdminUser[]): Promise<void> {
     const filePath = this.getManagedUsersFilePath();
     const safeUsers = users
       .filter((user) => NON_SUPERADMIN_ROLES.has(user.role))
-      .map((user) => ({ ...user, username: user.username.trim() }));
+      .map((user) => ({
+        id: user.id,
+        username: user.username.trim(),
+        passwordHash: user.passwordHash,
+        role: user.role,
+        status: user.status,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        lastLoginAt: user.lastLoginAt ?? null,
+      }));
 
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(
@@ -550,11 +805,19 @@ export class AuthService {
       `${JSON.stringify({ users: safeUsers } satisfies StoredAdminUsersFile, null, 2)}\n`,
       'utf8',
     );
-    this.managedUsersCache = safeUsers;
+    this.managedUsersCache = safeUsers.map((user) => ({ ...user, source: 'local' }));
   }
 
   private getManagedUsersFilePath(): string {
     return resolve(process.env.AFROGATE_ADMIN_USERS_FILE ?? 'tmp/admin-users.json');
+  }
+
+  private getManagedUsersStore(): 'database' | 'file' {
+    const configuredStore = process.env.AFROGATE_ADMIN_USERS_STORE?.trim().toLowerCase();
+    if (configuredStore && ADMIN_USERS_STORE_DATABASE_VALUES.has(configuredStore)) return 'database';
+    if (configuredStore && ADMIN_USERS_STORE_FILE_VALUES.has(configuredStore)) return 'file';
+
+    return process.env.DATABASE_URL ? 'database' : 'file';
   }
 
   private createUnmanagedUserException(id: string): Error {
@@ -565,19 +828,6 @@ export class AuthService {
     return new NotFoundException('Admin user was not found');
   }
 
-  private async recordLocalUserLogin(id: string, lastLoginAt: string): Promise<void> {
-    const storedUsers = await this.loadManagedUsers();
-    const userIndex = storedUsers.findIndex((user) => user.id === id);
-
-    if (userIndex < 0) return;
-
-    storedUsers[userIndex] = {
-      ...storedUsers[userIndex],
-      lastLoginAt,
-      updatedAt: storedUsers[userIndex].updatedAt,
-    };
-    await this.saveManagedUsers(storedUsers);
-  }
 }
 
 function accountToActor(account: AdminAccountConfig): AuthActor {
@@ -598,10 +848,24 @@ function storedUserToAccount(user: StoredAdminUser): AdminAccountConfig {
     role: user.role,
     isSuperAdmin: false,
     status: user.status,
-    source: 'local',
+    source: user.source ?? 'local',
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     lastLoginAt: user.lastLoginAt ?? null,
+  };
+}
+
+function databaseRowToStoredUser(row: AdminUserRow): StoredAdminUser {
+  return {
+    id: row.id,
+    username: row.username,
+    passwordHash: row.passwordHash,
+    role: NON_SUPERADMIN_ROLES.has(row.role as Role) ? row.role as Role : 'support',
+    status: row.status === 'active' || row.status === 'disabled' ? row.status : 'disabled',
+    source: 'database',
+    createdAt: serializeDatabaseTimestamp(row.createdAt),
+    updatedAt: serializeDatabaseTimestamp(row.updatedAt),
+    lastLoginAt: row.lastLoginAt ? serializeDatabaseTimestamp(row.lastLoginAt) : null,
   };
 }
 
@@ -619,6 +883,16 @@ function normalizeSecret(value: string | undefined): string | undefined {
 
 function usernamesMatch(actual: string, expected: string): boolean {
   return secureTokenEquals(actual.toLowerCase(), expected.toLowerCase());
+}
+
+function normalizeUsernameForUniqueIndex(username: string): string {
+  return username.trim().toLowerCase();
+}
+
+function serializeDatabaseTimestamp(value: Date | string): string {
+  const date = value instanceof Date ? value : new Date(value);
+
+  return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
 }
 
 function signPayload(encodedPayload: string, secret: string): string {
@@ -706,4 +980,12 @@ function isStoredAdminUser(value: unknown): value is StoredAdminUser {
     && (candidate.status === 'active' || candidate.status === 'disabled')
     && typeof candidate.createdAt === 'string'
     && typeof candidate.updatedAt === 'string';
+}
+
+function isPostgresUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505';
+}
+
+function isPostgresUndefinedTableError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
 }

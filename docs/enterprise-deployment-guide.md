@@ -112,7 +112,8 @@ Required production values:
 - `AFROGATE_SECRETS_KEY=<32-byte base64 secret>`
 - `AFROGATE_SECRETS_KEY_ID=production-v1`
 - `AFROGATE_IDENTITY_HASH_KEY=<separate long random value>`
-- `AFROGATE_ADMIN_USERS_FILE=/var/lib/afrogate/admin-users.json`
+- `AFROGATE_ADMIN_USERS_STORE=database`
+- `AFROGATE_ADMIN_USERS_FILE=/var/lib/afrogate/admin-users.json` only when importing legacy local users into an empty `admin_users` table
 - `AFROGATE_BACKUP_STATUS_FILE=/var/lib/afrogate/backup-status.json`
 - `AFROGATE_REWARDED_AD_WEBHOOK_SECRET=<long random value>` when signed rewarded-ad callbacks are enabled
 

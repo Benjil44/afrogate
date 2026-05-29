@@ -27,7 +27,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Treat username/password admin login as the dashboard-facing auth path; `AFROGATE_ADMIN_TOKEN` is only a legacy direct API/bootstrap fallback.
 - Preserve the permanent `superadmin` account invariant in future user-management work: normal admins must not remove, disable, or change it.
 - Treat managed dashboard roles as `owner`, `admin`, `supervisor`, `support`, and `auditor`; `supervisor` is read-oriented supervision, while superadmin remains the protected bootstrap root.
-- Store managed admin-user passwords as hashes only. The MVP local store is `AFROGATE_ADMIN_USERS_FILE`; never place real passwords or admin-user runtime data in `.codex` or git.
+- Store managed admin-user passwords as hashes only. Production/default managed users live in PostgreSQL `admin_users`; `AFROGATE_ADMIN_USERS_FILE` is only a legacy fallback/import source. Never place real passwords or admin-user runtime data in `.codex` or git.
 - Update `.codex/progress.md` after each session.
 - Update `.codex/checklist.md` when a task changes state.
 - Update `.codex/memory.md` only for durable decisions and facts.

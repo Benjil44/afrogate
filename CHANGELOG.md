@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.108.0 - 2026-05-29
+
+- Added PostgreSQL-backed `admin_users` persistence for managed dashboard admin users, with unique normalized usernames, protected non-superadmin roles, and database-source summaries.
+- The auth service now defaults managed admin-user storage to PostgreSQL when `DATABASE_URL` is configured, while keeping the local JSON file as an explicit fallback and one-time legacy import source.
+- Updated deployment samples, RBAC docs, and dashboard tests for database-backed admin-user management, completing the dashboard/sidebar checklist.
+
 ## 0.107.0 - 2026-05-29
 
 - Added Billing-page Telegram operations visibility for bot readiness, command/API/proxy state, linked accounts, delivery candidates, allocated linked orders, and pending paid allocations.
