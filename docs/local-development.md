@@ -27,7 +27,7 @@ VITE_API_BASE_URL=http://127.0.0.1:7000/api
 AFROGATE_API_URL=http://127.0.0.1:7000/api
 ```
 
-Database-backed endpoints such as agent registration, agent token rotation, heartbeat persistence, server inventory, and route history require `DATABASE_URL` plus PostgreSQL migrations. The dashboard can still load with fallback sample data when the API or database is unavailable.
+Database-backed endpoints such as agent registration, agent token rotation, heartbeat persistence, server inventory, and route history require `DATABASE_URL` plus PostgreSQL migrations. The migration runner uses `DATABASE_MIGRATION_URL` when set, then falls back to `DATABASE_URL` for local/dev simplicity. The dashboard can still load with fallback sample data when the API or database is unavailable.
 
 Settings private-key storage also requires `AFROGATE_SECRETS_KEY`. Use a unique 32-byte base64/base64url or 64-character hex value per environment and keep it in the git-ignored `.env` or a deployment secret store. If this key is lost, encrypted secret records cannot be decrypted later by the provisioning engine.
 
@@ -43,7 +43,7 @@ On Windows, run the setup from an Administrator PowerShell when PostgreSQL is no
 npm run db:setup:local -- -WriteEnv
 ```
 
-The script installs PostgreSQL through Chocolatey when needed, creates the local `afrogate` role/database, writes a git-ignored `.env` only when `-WriteEnv` is passed and `.env` does not already exist, and runs backend migrations.
+The script installs PostgreSQL through Chocolatey when needed, creates the local `afrogate` database plus three least-privilege roles, writes a git-ignored `.env` only when `-WriteEnv` is passed and `.env` does not already exist, and runs backend migrations. The generated runtime `DATABASE_URL` uses `afrogate_app`; the generated migration `DATABASE_MIGRATION_URL` uses `afrogate_migrator`; `afrogate_owner` is a no-login owner role.
 
 If PostgreSQL is already installed, the same script can prepare the database without reinstalling:
 

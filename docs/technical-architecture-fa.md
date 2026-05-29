@@ -63,6 +63,7 @@ agent باید lightweight باشد و حتی با سرورهای 4 core / 4 GB 
 پیشنهاد MVP:
 
 - PostgreSQL برای داده‌های محصول، کاربران، billing، تنظیمات.
+- PostgreSQL runtime access uses `afrogate_app` through `DATABASE_URL`; migrations use `afrogate_migrator` through `DATABASE_MIGRATION_URL`; `afrogate_owner` stays a no-login ownership boundary.
 - TimescaleDB extension یا جدول‌های partition شده برای metrics مهم.
 - Redis برای queue، cache، و event های سریع.
 

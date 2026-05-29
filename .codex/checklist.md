@@ -260,5 +260,5 @@
 - [x] Dependency audit in CI.
 - [x] Secret scan in CI.
 - [x] Per-agent token rotation.
-- [ ] Database least-privilege roles.
+- [x] Database least-privilege roles.
 - [x] Loaded latency and bufferbloat monitoring.

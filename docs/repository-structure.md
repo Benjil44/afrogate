@@ -75,6 +75,8 @@ agent POST /api/metrics -> servers/server_metrics -> GET /api/metrics/latest -> 
 
 The metrics payload already includes CPU/RAM/storage/network counters and privacy-safe WireGuard status telemetry when `wg` is installed on the agent host.
 
+PostgreSQL runtime access should use the least-privilege `afrogate_app` role through `DATABASE_URL`. Migrations should use `afrogate_migrator` through `DATABASE_MIGRATION_URL`, while `afrogate_owner` remains a no-login ownership boundary for the database/schema.
+
 Database-issued agent tokens are per server and stored only as hashes. Admins can rotate one server's agent token with `POST /api/agents/:serverId/tokens/rotate`; the endpoint revokes active tokens for that server, returns the new plaintext token once, and records an audit event. The legacy `AFROGATE_AGENT_TOKEN` remains only a bootstrap/local fallback.
 
 Settings route candidates can now come from two sources: managed outbound health rows and live agent WireGuard telemetry. Only managed outbound rows can be persisted as selected outbounds for route settings; agent candidates remain live diagnostics until provisioning/apply links them to routing state.

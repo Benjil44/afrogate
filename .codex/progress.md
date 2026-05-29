@@ -1443,5 +1443,34 @@ Repository remote is ready:
 
 ### Remaining
 
-- Database least-privilege roles remain pending in the security hardening track.
+- Database least-privilege roles were the next security hardening target after this slice.
 - Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports, tenant branding, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Database Least-Privilege Roles Slice
+
+### Completed
+
+- Added `DATABASE_MIGRATION_URL` support to the backend migration runner, with `DATABASE_URL` retained as the local/dev fallback.
+- Updated the local PostgreSQL setup script to create `afrogate_owner`, `afrogate_migrator`, and `afrogate_app`, apply least-privilege grants before/after migrations, and write separate runtime/migration URLs when requested.
+- Added production SQL templates for applying and verifying the PostgreSQL owner/migrator/runtime role boundary.
+- Updated local, Ubuntu, PostgreSQL, architecture, repository, security, env-sample, checklist, and memory docs for the least-privilege database workflow.
+- Marked database least-privilege roles complete in `.codex/checklist.md`; checklist completion is now `219 / 236` items, or `92.8%` complete with `7.2%` remaining.
+- Bumped AfroGate to `0.89.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Parsed `scripts/setup-local-postgres.ps1` as a PowerShell script block.
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run contrast:check`.
+- Ran `npm run test:e2e`; 10 tests passed.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports, tenant branding, and native per-app VPN split tunneling remain future work.
+- Existing single-role PostgreSQL deployments should back up first and may need manual object ownership reassignment before future DDL-heavy migrations run as `afrogate_migrator`.

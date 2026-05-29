@@ -73,22 +73,35 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE ROLE afrogate_app WITH LOGIN PASSWORD 'replace-with-long-random-password';
-CREATE DATABASE afrogate OWNER afrogate_app;
+CREATE ROLE afrogate_owner NOLOGIN;
+CREATE ROLE afrogate_migrator WITH LOGIN PASSWORD 'replace-with-long-random-migration-password';
+CREATE ROLE afrogate_app WITH LOGIN PASSWORD 'replace-with-long-random-runtime-password';
+CREATE DATABASE afrogate OWNER afrogate_owner;
 \q
+```
+
+Apply the least-privilege grants from the repository checkout as `postgres`:
+
+```bash
+sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/least-privilege-roles.sql
 ```
 
 In production, also review `/etc/postgresql/*/main/postgresql.conf` and `pg_hba.conf` so PostgreSQL listens only on localhost or a private interface. Do not allow public `5432/tcp`.
 
-Apply migrations after dependencies are installed and `/etc/afrogate/afrogate.env` exists:
+Apply migrations after dependencies are installed and `/etc/afrogate/afrogate.env` exists. Use the migrator role only for this shell, not for the long-running backend service:
 
 ```bash
 set -a
 . /etc/afrogate/afrogate.env
+DATABASE_MIGRATION_URL='postgresql://afrogate_migrator:replace-with-long-random-migration-password@127.0.0.1:5432/afrogate'
 set +a
 cd /opt/afrogate
 npm --workspace @afrogate/backend run db:migrate
+sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/least-privilege-roles.sql
+sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/verify-least-privilege.sql
 ```
+
+The migrator role has database/schema `CREATE` for migrations and trusted extensions such as `pgcrypto`; the runtime `afrogate_app` role does not. If your PostgreSQL extension policy blocks migrator-created extensions, install `pgcrypto` once as `postgres` before running migrations.
 
 Back up the database before every migration once real data exists.
 
@@ -101,7 +114,8 @@ Important production values:
 - `HOST=127.0.0.1`
 - `PORT=7000`
 - `CORS_ORIGIN=https://your-domain.example`
-- `DATABASE_URL=postgresql://...@127.0.0.1:5432/afrogate`
+- `DATABASE_URL=postgresql://afrogate_app:...@127.0.0.1:5432/afrogate`
+- `DATABASE_MIGRATION_URL` should be set only for migration commands, or kept in a separate root-readable migration env file.
 - `ADMIN_SESSION_SECRET` must be long and random.
 - `AFROGATE_SUPERADMIN_PASSWORD_HASH` is preferred over plaintext password.
 - `AFROGATE_SECRETS_KEY` must decode to exactly 32 bytes and must be backed up securely.

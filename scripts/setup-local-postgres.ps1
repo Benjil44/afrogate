@@ -1,7 +1,10 @@
 param(
   [string]$PostgresPassword = "afrogate",
   [string]$DatabaseName = "afrogate",
-  [string]$DatabaseUser = "afrogate",
+  [string]$DatabaseOwner = "afrogate_owner",
+  [string]$DatabaseMigrator = "afrogate_migrator",
+  [string]$DatabaseMigratorPassword = "afrogate_migrator",
+  [string]$DatabaseUser = "afrogate_app",
   [string]$DatabasePassword = "afrogate",
   [int]$Port = 5432,
   [switch]$SkipInstall,
@@ -90,6 +93,8 @@ function Invoke-PostgresScalar([string]$Database, [string]$Sql) {
 }
 
 Assert-SafeIdentifier $DatabaseName "DatabaseName"
+Assert-SafeIdentifier $DatabaseOwner "DatabaseOwner"
+Assert-SafeIdentifier $DatabaseMigrator "DatabaseMigrator"
 Assert-SafeIdentifier $DatabaseUser "DatabaseUser"
 
 $script:psqlPath = Find-Psql
@@ -114,10 +119,29 @@ if (-not $script:psqlPath) {
 }
 
 $roleName = '"' + $DatabaseUser + '"'
+$ownerRoleName = '"' + $DatabaseOwner + '"'
+$migratorRoleName = '"' + $DatabaseMigrator + '"'
 $dbName = '"' + $DatabaseName + '"'
 $userLiteral = Escape-SqlLiteral $DatabaseUser
+$ownerLiteral = Escape-SqlLiteral $DatabaseOwner
+$migratorLiteral = Escape-SqlLiteral $DatabaseMigrator
 $dbLiteral = Escape-SqlLiteral $DatabaseName
 $passwordLiteral = Escape-SqlLiteral $DatabasePassword
+$migratorPasswordLiteral = Escape-SqlLiteral $DatabaseMigratorPassword
+
+$ownerExists = Invoke-PostgresScalar "postgres" "SELECT 1 FROM pg_roles WHERE rolname = '$ownerLiteral';"
+if ($ownerExists -eq "1") {
+  Invoke-Postgres "postgres" "ALTER ROLE $ownerRoleName WITH NOLOGIN;"
+} else {
+  Invoke-Postgres "postgres" "CREATE ROLE $ownerRoleName NOLOGIN;"
+}
+
+$migratorExists = Invoke-PostgresScalar "postgres" "SELECT 1 FROM pg_roles WHERE rolname = '$migratorLiteral';"
+if ($migratorExists -eq "1") {
+  Invoke-Postgres "postgres" "ALTER ROLE $migratorRoleName WITH LOGIN PASSWORD '$migratorPasswordLiteral';"
+} else {
+  Invoke-Postgres "postgres" "CREATE ROLE $migratorRoleName LOGIN PASSWORD '$migratorPasswordLiteral';"
+}
 
 $roleExists = Invoke-PostgresScalar "postgres" "SELECT 1 FROM pg_roles WHERE rolname = '$userLiteral';"
 if ($roleExists -eq "1") {
@@ -128,12 +152,38 @@ if ($roleExists -eq "1") {
 
 $databaseExists = Invoke-PostgresScalar "postgres" "SELECT 1 FROM pg_database WHERE datname = '$dbLiteral';"
 if ($databaseExists -ne "1") {
-  Invoke-Postgres "postgres" "CREATE DATABASE $dbName OWNER $roleName;"
+  Invoke-Postgres "postgres" "CREATE DATABASE $dbName OWNER $ownerRoleName;"
+} else {
+  Invoke-Postgres "postgres" "ALTER DATABASE $dbName OWNER TO $ownerRoleName;"
 }
 
-Invoke-Postgres $DatabaseName "GRANT ALL PRIVILEGES ON DATABASE $dbName TO $roleName;"
+function Apply-LeastPrivilegeGrants {
+  Invoke-Postgres $DatabaseName @"
+REVOKE ALL ON DATABASE $dbName FROM PUBLIC;
+GRANT CONNECT ON DATABASE $dbName TO $roleName, $migratorRoleName;
+GRANT CREATE ON DATABASE $dbName TO $migratorRoleName;
+ALTER SCHEMA public OWNER TO $ownerRoleName;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO $roleName, $migratorRoleName;
+GRANT CREATE ON SCHEMA public TO $migratorRoleName;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO $roleName;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO $roleName;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO $roleName;
+ALTER DEFAULT PRIVILEGES FOR ROLE $migratorRoleName IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $roleName;
+ALTER DEFAULT PRIVILEGES FOR ROLE $migratorRoleName IN SCHEMA public
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO $roleName;
+ALTER DEFAULT PRIVILEGES FOR ROLE $migratorRoleName IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO $roleName;
+ALTER DEFAULT PRIVILEGES FOR ROLE $migratorRoleName IN SCHEMA public
+  GRANT USAGE ON TYPES TO $roleName;
+"@
+}
+
+Apply-LeastPrivilegeGrants
 
 $databaseUrl = "postgresql://${DatabaseUser}:${DatabasePassword}@localhost:${Port}/${DatabaseName}"
+$migrationDatabaseUrl = "postgresql://${DatabaseMigrator}:${DatabaseMigratorPassword}@localhost:${Port}/${DatabaseName}"
 
 if ($WriteEnv) {
   $envPath = Join-Path (Get-Location) ".env"
@@ -145,6 +195,7 @@ if ($WriteEnv) {
 PORT=7000
 CORS_ORIGIN=http://127.0.0.1:4000,http://localhost:4000
 DATABASE_URL=$databaseUrl
+DATABASE_MIGRATION_URL=$migrationDatabaseUrl
 DATABASE_POOL_MAX=5
 DATABASE_CONNECTION_TIMEOUT_MS=5000
 DATABASE_IDLE_TIMEOUT_MS=30000
@@ -168,7 +219,9 @@ AFROGATE_AGENT_STATE_FILE=
 }
 
 $previousDatabaseUrl = $env:DATABASE_URL
+$previousMigrationDatabaseUrl = $env:DATABASE_MIGRATION_URL
 $env:DATABASE_URL = $databaseUrl
+$env:DATABASE_MIGRATION_URL = $migrationDatabaseUrl
 
 try {
   npm --workspace @afrogate/backend run db:migrate
@@ -178,6 +231,15 @@ try {
   } else {
     $env:DATABASE_URL = $previousDatabaseUrl
   }
+
+  if ($null -eq $previousMigrationDatabaseUrl) {
+    Remove-Item Env:DATABASE_MIGRATION_URL -ErrorAction SilentlyContinue
+  } else {
+    $env:DATABASE_MIGRATION_URL = $previousMigrationDatabaseUrl
+  }
 }
 
-Write-Host "Local PostgreSQL is ready: $databaseUrl"
+Apply-LeastPrivilegeGrants
+
+Write-Host "Local PostgreSQL runtime URL is ready: $databaseUrl"
+Write-Host "Local PostgreSQL migration URL is ready: $migrationDatabaseUrl"

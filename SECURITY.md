@@ -22,7 +22,7 @@ For now, report security issues privately to the project owner. Do not open publ
 - Per-agent credentials and the guarded agent token rotation endpoint.
 - Firewall baseline applied on every VPS.
 - Nginx rate limiting, backend API rate limiting for sensitive public endpoints, and request size limits.
-- PostgreSQL bound to private/local interfaces only.
+- PostgreSQL bound to private/local interfaces only, with separate owner, migration, and runtime least-privilege roles.
 - Encrypted backups and restore tests.
 - Dependency audit and secret scan in CI.
 

@@ -10,10 +10,10 @@ const migrationsDir = path.join(repoRoot, 'infra/postgres/migrations');
 
 await loadEnvFile(path.join(repoRoot, '.env'));
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL;
 
 if (!databaseUrl) {
-  console.error('DATABASE_URL is required to run migrations.');
+  console.error('DATABASE_MIGRATION_URL or DATABASE_URL is required to run migrations.');
   process.exit(1);
 }
 

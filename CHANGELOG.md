@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.89.0 - 2026-05-29
+
+- Added PostgreSQL least-privilege role templates for no-login ownership, migration-only DDL, and runtime app access.
+- Updated the migration runner and local PostgreSQL setup to support `DATABASE_MIGRATION_URL` while keeping `DATABASE_URL` for the runtime app role.
+- Updated Ubuntu/local deployment docs and verification SQL for the separate owner, migrator, and app role workflow.
+
 ## 0.88.0 - 2026-05-29
 
 - Added guarded per-server agent token rotation with audit logging and one-time plaintext token issuance.
