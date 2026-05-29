@@ -272,6 +272,32 @@ export const telegramBotSettings = pgTable(
   }),
 );
 
+export const tenantBrandSettings = pgTable(
+  'tenant_brand_settings',
+  {
+    settingKey: text('setting_key').primaryKey(),
+    tenantSlug: text('tenant_slug').notNull().default('default'),
+    displayName: text('display_name').notNull().default('AfroGate'),
+    legalName: text('legal_name'),
+    supportEmail: text('support_email'),
+    supportTelegram: text('support_telegram'),
+    supportUrl: text('support_url'),
+    logoUrl: text('logo_url'),
+    dashboardTitle: text('dashboard_title').notNull().default('AfroGate'),
+    clientAppTitle: text('client_app_title').notNull().default('AfroGate Client'),
+    primaryColor: text('primary_color').notNull().default('#176B87'),
+    accentColor: text('accent_color').notNull().default('#0E9F8F'),
+    publicBrandingEnabled: boolean('public_branding_enabled').notNull().default(true),
+    clientSupportMessage: text('client_support_message'),
+    updatedBy: text('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    tenantSlugIdx: uniqueIndex('tenant_brand_settings_slug_idx').on(table.tenantSlug),
+  }),
+);
+
 export const serverAccessProfiles = pgTable(
   'server_access_profiles',
   {

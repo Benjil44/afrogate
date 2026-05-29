@@ -12,7 +12,7 @@ npm --workspace @afrogate/backend run db:migrate
 
 The current migration files are idempotent and live in `infra/postgres/migrations`.
 
-Migration `0007_route_quality_hourly.sql` adds compact hourly route-quality summaries for historical route intelligence. Migration `0008_route_quality_dimensions.sql` adds outbound, operator, and score-profile dimensions for predictive time-window recommendations. Apply migrations before enabling long-range route analytics in production so the backend can use `route_quality_hourly` instead of scanning raw `server_metrics` JSON for every recommendation request.
+Migration `0007_route_quality_hourly.sql` adds compact hourly route-quality summaries for historical route intelligence. Migration `0008_route_quality_dimensions.sql` adds outbound, operator, and score-profile dimensions for predictive time-window recommendations. Migration `0026_tenant_brand_settings.sql` adds default-tenant public brand/support settings. Apply migrations before enabling long-range route analytics or tenant branding in production so the backend can rely on the expected tables instead of fallback behavior.
 
 ## Local Windows Setup
 

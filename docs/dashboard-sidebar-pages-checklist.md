@@ -100,6 +100,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Show protocol server apply config-material readiness separately from secret and credential readiness.
 - [x] Show protocol server apply generated-command policy readiness and command timeout metadata.
 - [ ] Production server-side protocol apply engine with encrypted secret storage.
+- [x] Tenant branding settings for default tenant public names, support contacts, logo URL, colors, and client support copy.
 - [x] Superadmin Telegram bot setup wizard with write-only BotFather token storage, webhook secret, allowed chat/admin IDs, and Telegram API test.
 
 ## Users Page
@@ -126,4 +127,4 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Backups restore-readiness UI with guarded read-only runbook/checklist and no restore execution controls.
 - [x] Reports page with guarded read-only operational risk, backup, alert, server, outbound, and synthetic route-quality analysis.
 - [x] Audit logs.
-- [x] Settings with guided WireGuard/system setup and write-only secret inputs.
+- [x] Settings with guided WireGuard/system setup, tenant branding, and write-only secret inputs.

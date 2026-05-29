@@ -22,6 +22,8 @@ export const ADMIN_PERMISSION_DEFINITIONS = [
   { id: 'customers:read', category: 'billing', risk: 'medium' },
   { id: 'customers:write', category: 'billing', risk: 'high' },
   { id: 'settings:read', category: 'settings', risk: 'medium' },
+  { id: 'tenantBranding:read', category: 'settings', risk: 'low' },
+  { id: 'tenantBranding:write', category: 'settings', risk: 'high' },
   { id: 'protocols:write', category: 'settings', risk: 'critical' },
   { id: 'telegramBot:write', category: 'settings', risk: 'critical' },
   { id: 'adminUsers:read', category: 'access', risk: 'high' },
@@ -82,11 +84,14 @@ export const ROLE_PERMISSIONS = {
     'customers:read',
     'customers:write',
     'settings:read',
+    'tenantBranding:read',
+    'tenantBranding:write',
     'protocols:write',
     'telegramBot:write',
     'adminUsers:read',
     'audit:read',
     'backups:read',
+    'reports:read',
   ],
   supervisor: [
     'dashboard:read',
@@ -97,6 +102,7 @@ export const ROLE_PERMISSIONS = {
     'billing:read',
     'customers:read',
     'settings:read',
+    'tenantBranding:read',
     'audit:read',
     'backups:read',
     'reports:read',
@@ -109,6 +115,7 @@ export const ROLE_PERMISSIONS = {
     'alerts:read',
     'billing:read',
     'customers:read',
+    'tenantBranding:read',
   ],
   auditor: [
     'dashboard:read',
@@ -119,6 +126,7 @@ export const ROLE_PERMISSIONS = {
     'audit:read',
     'backups:read',
     'reports:read',
+    'tenantBranding:read',
   ],
   agent: ['metrics:write'],
 } as const satisfies Record<Role, readonly RolePermissionGrant[]>;
@@ -457,6 +465,46 @@ export interface UpdateTelegramBotSettingsRequest {
   allowedAdminChatIds?: string[];
   alertsEnabled?: boolean;
   commandsEnabled?: boolean;
+}
+
+export interface AdminTenantBrandSettingsSummary {
+  settingKey: string;
+  tenantSlug: string;
+  displayName: string;
+  legalName?: string | null;
+  supportEmail?: string | null;
+  supportTelegram?: string | null;
+  supportUrl?: string | null;
+  logoUrl?: string | null;
+  dashboardTitle: string;
+  clientAppTitle: string;
+  primaryColor: string;
+  accentColor: string;
+  publicBrandingEnabled: boolean;
+  clientSupportMessage?: string | null;
+  updatedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateTenantBrandSettingsRequest {
+  tenantSlug?: string;
+  displayName?: string;
+  legalName?: string | null;
+  supportEmail?: string | null;
+  supportTelegram?: string | null;
+  supportUrl?: string | null;
+  logoUrl?: string | null;
+  dashboardTitle?: string;
+  clientAppTitle?: string;
+  primaryColor?: string;
+  accentColor?: string;
+  publicBrandingEnabled?: boolean;
+  clientSupportMessage?: string | null;
+}
+
+export interface AdminTenantBrandSettingsResponse {
+  branding: AdminTenantBrandSettingsSummary;
 }
 
 export interface AdminTelegramBotTestResponse {

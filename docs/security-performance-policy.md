@@ -10,7 +10,7 @@ That means every feature must pass three checks:
 - Does it preserve safety and privacy?
 - Does it run efficiently on expensive, low-resource VPS machines?
 
-Repository-scoped threat models live in `docs/security-threat-model.md` and `docs/privacy-threat-model.md`. New features that touch auth, billing, provider webhooks, route decisions, server credentials, reports, backups, panel imports, or client/mobile data must be checked against those documents before implementation.
+Repository-scoped threat models live in `docs/security-threat-model.md` and `docs/privacy-threat-model.md`. New features that touch auth, billing, provider webhooks, route decisions, server credentials, reports, backups, tenant branding, panel imports, or client/mobile data must be checked against those documents before implementation.
 
 ## Clean Code Rules
 
@@ -66,6 +66,7 @@ Routing must be fast, explainable, and stable.
 - Route health history must stay read-only and synthetic-signal-based. The dashboard may show hourly route score, latency, jitter, packet loss, outbound/operator, and profile summaries from `route_quality_hourly`, but it must not expose user destinations, traffic contents, client IP history, secrets, or hidden route mutations.
 - Incident timeline must stay read-only and derived from existing operational records such as alerts and route-decision events. It may show alert open/resolve times, route groups, outbound labels, decision states, and reason codes, but it must not expose secrets, client IP history, user destinations, traffic contents, or trigger hidden route changes.
 - Reports must stay aggregate and privacy-safe. They may combine server/outbound health, open-alert counts, backup readiness, audit-safe reason codes, and synthetic route-quality recommendations, but must not expose customer identities, raw traffic, user destinations, client IP history, raw backup/export data, provider secrets, or decrypted credentials.
+- Tenant branding settings are public metadata only. Admins may edit brand names, public support contacts, logo URL, UI colors, and client-facing support copy, but this surface must not store secrets, production config, customer identity, paid numbers, private support notes, traffic contents, user destinations, or client IP history.
 - Keep client VPN route preferences separate from admin/seller workflows. Client country detection may store only coarse ISO country codes plus a detection source and timestamp; do not store client IP history or traffic destinations for this feature.
 - Let client apps request automatic country detection, a preferred exit country, or a specific server/outbound, but exact server/outbound choice must be explicit and lock-aware so games and active sessions are not silently moved.
 - Per-app VPN split tunneling belongs in a future native client layer. App selection should stay local/client-scoped, use operating-system VPN APIs where available, and avoid sending installed-app inventories, traffic contents, or destination history to the admin control plane.

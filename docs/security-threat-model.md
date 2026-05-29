@@ -4,7 +4,7 @@
 
 AfroGate is a control plane for monitoring VPN/server health, billing VPN-client accounts, and making advisory route decisions for stable internet access. The repository contains:
 
-- `apps/backend`: NestJS API for admin auth, billing, metrics ingest, alerts, route decisions, Telegram/PayPal integration, and server/outbound management.
+- `apps/backend`: NestJS API for admin auth, billing, tenant branding, metrics ingest, alerts, route decisions, Telegram/PayPal integration, and server/outbound management.
 - `apps/dashboard`: React admin/seller dashboard.
 - `apps/client`: React VPN-client app for quota and route preference.
 - `apps/agent`: Python monitoring agent that sends compact server metrics and synthetic route probes.
@@ -33,7 +33,7 @@ Trust boundaries:
 - Backend to deployment secrets: decrypted secrets must remain server-side, write-only from API clients, and never appear in API responses, dry-run snapshots, logs, or dashboard state.
 - Control plane to data plane: current route/protocol apply workflows are advisory or assignment-only unless explicit feature flags, audited adapters, secret readiness, rollback, cooldown, and health checks are present.
 
-Attacker-controlled inputs include login credentials, webhook bodies and headers, client tokens, route preference updates, admin form values from compromised lower-privilege accounts, agent metric payloads, public payment metadata, uploaded/imported panel data in future phases, and any data returned by external APIs. Operator-controlled inputs include environment variables, systemd files, Nginx config, migration execution, and deployment secrets. Developer-controlled inputs include code, migrations, tests, package scripts, and CI configuration.
+Attacker-controlled inputs include login credentials, webhook bodies and headers, client tokens, route preference updates, tenant branding form values from compromised admin accounts, admin form values from compromised lower-privilege accounts, agent metric payloads, public payment metadata, uploaded/imported panel data in future phases, and any data returned by external APIs. Operator-controlled inputs include environment variables, systemd files, Nginx config, migration execution, and deployment secrets. Developer-controlled inputs include code, migrations, tests, package scripts, and CI configuration.
 
 Assumptions:
 
@@ -63,6 +63,7 @@ Existing mitigations:
 - Route apply remains advisory/assignment-only until audited data-plane adapters are ready.
 - API rate limiting is enabled by default for login and public webhook routes.
 - PayPal provider credentials live in environment/deployment settings. Telegram bot/webhook secrets can live in encrypted Settings secret storage with environment values kept as bootstrap/fallback configuration.
+- Tenant branding is guarded by explicit read/write permissions, audited on update, and limited to public metadata fields so it cannot become secret or production-config storage.
 - Audit logs are required for sensitive admin, billing, routing, credential, and live-apply requests.
 - CI includes version checks, secret scanning, dependency audit, typecheck, build, and browser smoke coverage.
 
@@ -74,7 +75,7 @@ Realistic attacker stories:
 - Compromise a support/admin account and attempt to read secrets, change quotas, or reroute users.
 - Send malicious agent metrics or route-probe metadata to poison health scores and influence route decisions.
 - Exploit panel import/sync/charge/export code with untrusted remote panel fields or over-broad local export surfaces; current controlled import/sync/export must keep parsing adapter-scoped, skip unsupported, duplicate, missing, ambiguous, cross-account, or non-advancing candidates, avoid raw payload storage, exclude subscription credentials and secret-bearing config material, and avoid external panel/API/data-plane side effects. Local volume charge must stay guarded, audited, idempotency-aware, and explicit that no external-panel write was executed.
-- Abuse writable notes, metadata, or public config fields to store secrets or inject UI content.
+- Abuse writable notes, metadata, tenant branding, or public config fields to store secrets or inject UI content.
 
 Out-of-scope or lower-priority stories:
 
@@ -98,12 +99,13 @@ High:
 - Agent token bypass allowing attacker-controlled metrics to create critical alerts, poison route scores, or impersonate server health at scale.
 - Stored XSS in dashboard-visible fields that can steal admin sessions or trigger privileged API calls.
 - SSRF through health checks, outbound API calls, webhook verification, or future panel sync that reaches local metadata, private services, or control-plane ports.
+- Tenant branding write access used for phishing, stored UI injection, or unsafe logo/support URLs if validation and role checks are weakened.
 
 Medium:
 
 - Missing rate limits on login/webhooks that enable brute-force, provider retry amplification, or resource exhaustion.
 - Information leaks of customer identity metadata, hashed paid-number presence, quota state, route assignment state, or admin usernames beyond intended roles.
-- Weak validation on route preferences, public provider config, rewarded-ad metadata, or notes that enables stored junk, UI confusion, or operational mistakes.
+- Weak validation on route preferences, tenant branding, public provider config, rewarded-ad metadata, or notes that enables stored junk, UI confusion, or operational mistakes.
 - Audit gaps for sensitive quota, route, credential, admin, or live-apply actions.
 
 Low:

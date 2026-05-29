@@ -4,7 +4,7 @@ AfroGate uses a small monorepo layout so product, API, dashboard, agent, and dep
 
 ```text
 apps/
-  backend/       NestJS API, alerts, billing, backup status, metrics ingest, protocol-aware route decisions
+  backend/       NestJS API, alerts, billing, branding, backup status, metrics ingest, protocol-aware route decisions
   dashboard/     React/Vite/Tailwind admin dashboard
   client/        React/Vite/Tailwind VPN client route and quota surface
   agent/         Python server monitoring agent and privacy-safe route probes
@@ -118,3 +118,5 @@ The guarded route health history API, `GET /api/admin/route-health/history`, rea
 The guarded incident timeline API, `GET /api/admin/incidents/timeline`, merges existing alert open/resolve timestamps with route decision and assignment records for the Alerts page. It is read-only, requires `alerts:read` and `routes:read`, keeps metadata compact and non-secret, and does not inspect user traffic or mutate routing state.
 
 The guarded reports API, `GET /api/admin/reports/summary`, aggregates operational counts for servers, outbounds, open alerts, backup readiness, and synthetic route-quality recommendations into a dashboard Reports page. It is read-only, requires `reports:read`, and avoids customer identity, traffic contents, user destinations, client IP history, raw backups, secrets, and export data.
+
+Tenant branding lives in `apps/backend/src/branding` with guarded `GET/PATCH /api/admin/tenant-branding` and PostgreSQL migration `0026_tenant_brand_settings.sql`. The dashboard Settings page edits the default tenant's public brand/support metadata and preview, while shared contracts live in `packages/shared`.

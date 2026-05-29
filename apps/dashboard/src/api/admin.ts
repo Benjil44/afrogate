@@ -40,6 +40,7 @@ import type {
   AdminServerDetail,
   AdminTelegramBotSettingsResponse,
   AdminTelegramBotTestResponse,
+  AdminTenantBrandSettingsResponse,
   AdminTunnelSummary,
   AdminTunnelsResponse,
   AdminUserSummary,
@@ -65,6 +66,7 @@ import type {
   UpsertRouteAssignmentRequest,
   UpsertRouteSettingsRequest,
   UpdateRewardedAdSettingsRequest,
+  UpdateTenantBrandSettingsRequest,
   UpdateTelegramBotSettingsRequest,
   UpdateCustomerAccountRequest,
   UpdateServerRequest,
@@ -234,6 +236,31 @@ export async function fetchAdminReportsSummary(
   });
 
   return response.json() as Promise<AdminReportsSummaryResponse>;
+}
+
+export async function fetchAdminTenantBranding(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminTenantBrandSettingsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/tenant-branding`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminTenantBrandSettingsResponse>;
+}
+
+export async function updateAdminTenantBranding(
+  sessionToken: string,
+  payload: UpdateTenantBrandSettingsRequest,
+): Promise<AdminTenantBrandSettingsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/tenant-branding`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminTenantBrandSettingsResponse>;
 }
 
 export async function fetchAdminServers(sessionToken: string, signal?: AbortSignal): Promise<AdminServersResponse> {

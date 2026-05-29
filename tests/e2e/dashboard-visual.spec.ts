@@ -197,6 +197,22 @@ test('reports page shows operational analysis summary', async ({ page }) => {
   await expect(page.getByText('A degraded route window is upcoming.')).toBeVisible();
 });
 
+test('settings page saves tenant branding', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="settings"]').click();
+
+  await expect(page.getByRole('heading', { name: 'WireGuard and system setup' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tenant Branding' })).toBeVisible();
+  await expect(page.getByLabel('Brand name')).toHaveValue('AfroGate Pro');
+
+  await page.getByLabel('Brand name').fill('AfroGate Elite');
+  await page.getByLabel('Support Telegram').fill('@afrogate_ops');
+  await page.getByRole('button', { name: 'Save branding' }).click();
+
+  await expect(page.getByText('Brand settings saved.')).toBeVisible();
+  await expect(page.getByText('AfroGate Elite')).toBeVisible();
+});
+
 test('users page shows RBAC permission matrix', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="users"]').click();
@@ -369,6 +385,13 @@ async function mockDashboardApi(page: Page): Promise<void> {
         return;
       case '/api/admin/reports/summary':
         await fulfillJson(route, reportsSummaryRow());
+        return;
+      case '/api/admin/tenant-branding':
+        await fulfillJson(route, {
+          branding: tenantBrandingRow(route.request().method() === 'PATCH'
+            ? route.request().postDataJSON() as Parameters<typeof tenantBrandingRow>[0]
+            : {}),
+        });
         return;
       case '/api/admin/servers':
         await fulfillJson(route, {
@@ -1089,6 +1112,42 @@ function backupRestorePlanRow() {
     ],
     targetArtifacts: ['postgres', 'config', 'secrets'],
     warningReasonCodes: [],
+  };
+}
+
+function tenantBrandingRow(patch: Partial<{
+  accentColor: string;
+  clientAppTitle: string;
+  clientSupportMessage: string | null;
+  dashboardTitle: string;
+  displayName: string;
+  legalName: string | null;
+  logoUrl: string | null;
+  primaryColor: string;
+  publicBrandingEnabled: boolean;
+  supportEmail: string | null;
+  supportTelegram: string | null;
+  supportUrl: string | null;
+  tenantSlug: string;
+}> = {}) {
+  return {
+    accentColor: patch.accentColor ?? '#0E9F8F',
+    clientAppTitle: patch.clientAppTitle ?? 'AfroGate Mobile',
+    clientSupportMessage: patch.clientSupportMessage ?? 'Message support for route issues.',
+    createdAt: fixedNow,
+    dashboardTitle: patch.dashboardTitle ?? 'AfroGate Ops',
+    displayName: patch.displayName ?? 'AfroGate Pro',
+    legalName: patch.legalName ?? 'AfroGate Labs',
+    logoUrl: patch.logoUrl ?? null,
+    primaryColor: patch.primaryColor ?? '#176B87',
+    publicBrandingEnabled: patch.publicBrandingEnabled ?? true,
+    settingKey: 'default',
+    supportEmail: patch.supportEmail ?? 'support@example.com',
+    supportTelegram: patch.supportTelegram ?? '@afrogate_support',
+    supportUrl: patch.supportUrl ?? 'https://example.com/support',
+    tenantSlug: patch.tenantSlug ?? 'default',
+    updatedAt: fixedNow,
+    updatedBy: 'admin-visual',
   };
 }
 

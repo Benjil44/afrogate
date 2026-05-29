@@ -10,6 +10,7 @@ Primary privacy assets:
 - Client account data: client config labels, protocol type, quota/usage counters, route preference, and client access-token metadata.
 - Billing and rewarded-ad data: payment orders, provider ids, package/price snapshots, allocation events, rewarded-ad grants, and provider callback metadata.
 - Operational telemetry: server metrics, tunnel/interface health, outbound health checks, route-probe samples, alerts, and route decision events.
+- Public tenant branding: brand names, support contacts, logo URL, UI colors, and client support copy.
 - Secrets and credentials: admin sessions, one-time plaintext agent/client tokens at issuance, stored agent/client token hashes, Telegram/PayPal secrets, server credentials, and protocol private keys.
 
 AfroGate must not store user traffic content, user destination history, DNS query history from user traffic, per-user IP history for routing, decrypted server credentials in logs, or raw paid phone numbers in API responses or dashboard state.
@@ -50,6 +51,7 @@ Privacy-sensitive inputs and stores:
 - Future per-app VPN split tunneling should keep app selection local to the native client or store only explicit client-scoped preference metadata; it must not collect installed-app inventories, traffic contents, or destination history.
 - Route analytics use synthetic probe metadata such as route group, operator, outbound, protocol, score profile, hour, and day; they must not derive from user destinations.
 - Rewarded-ad claims and provider metadata must stay idempotent and minimal, with provider secrets outside public config.
+- Tenant branding settings are public metadata only; they must not be used as a place to store production config, provider secrets, customer identity, paid numbers, private support notes, or traffic details.
 
 Existing mitigations:
 
@@ -102,6 +104,7 @@ Medium:
 Low:
 
 - Aggregate server/outbound health, synthetic probe quality, or package pricing reports that cannot identify a person or client.
+- Public tenant brand/support metadata that contains no secrets, customer identity, or private operational notes.
 - Dashboard layout issues that reveal no additional data and do not weaken access controls.
 - Local-only development sample data that contains no real identifiers or secrets.
 
@@ -115,5 +118,6 @@ Low:
 - Keep audit snapshots secret-safe and compact.
 - Keep backup restore readiness derived from sanitized backup status only; do not expose raw dumps, object-store credentials, decrypted secrets, local backup paths, or broad backup/export data through the dashboard.
 - Keep reports aggregate and operational: route-quality recommendations may use synthetic probes, but reports must not include customer identities, small-group customer behavior, user destinations, client IP history, traffic contents, or raw exports/backups.
+- Keep tenant branding public and minimal: brand/support fields may be displayed to admins or future clients, so they must not contain secrets, customer identity, or private operational instructions.
 - Add retention policies before enterprise reporting/export features.
 - Add privacy review before expanding current controlled panel import/sync into live external-panel API sync/export, ad-network SDK, backup/restore UI, reports, or live data-plane route apply features.

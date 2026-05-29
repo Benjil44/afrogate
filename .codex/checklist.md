@@ -240,7 +240,7 @@
 - [x] Fine-grained production RBAC policy and permission UI.
 - [x] Backup and restore UI.
 - [x] Reports and data analysis.
-- [ ] Tenant/brand settings.
+- [x] Tenant/brand settings.
 - [ ] Enterprise deployment guide.
 
 ## Enhancement Tracks

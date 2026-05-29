@@ -1775,3 +1775,32 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Tenant Branding Settings Slice
+
+### Completed
+
+- Added default-tenant brand settings backed by PostgreSQL migration `0026_tenant_brand_settings.sql` and schema metadata.
+- Added shared tenant-branding contracts plus `tenantBranding:read` and `tenantBranding:write` permissions.
+- Added guarded admin `GET/PATCH /api/admin/tenant-branding` with validation and audit logging for public brand/support metadata.
+- Added a dashboard Settings-page branding form and preview for brand names, support contacts, logo URL, colors, client app title, and client support copy.
+- Aligned the admin role permission matrix with the visible Reports page by granting `reports:read` to the `admin` role.
+- Kept the feature public-metadata-only: no secrets, customer identity, paid numbers, client IP history, user destinations, traffic contents, or production config belong in tenant branding.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `232 / 237` items, or `97.9%` complete with `2.1%` remaining.
+- Bumped AfroGate to `0.101.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm --workspace @afrogate/backend run db:migrate`; local migrations completed through `0026_tenant_brand_settings.sql`.
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 14 tests passed, including the Settings tenant-branding save flow.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

@@ -168,6 +168,8 @@ Current implementation note: adapter-based migration now has a read/controlled-i
 - SLA report برای مشتری enterprise.
 - license/plan limits برای نسخه فروش.
 
+Current implementation note: default-tenant branding is now implemented as public metadata only through `tenant_brand_settings`, guarded `/api/admin/tenant-branding`, and a Settings-page form/preview. It supports names, support contacts, logo URL, UI colors, and client support copy; multi-tenant isolation, per-tenant ownership, and license/plan enforcement remain later enterprise work.
+
 ## 8. Data Analysis
 
 تحلیل داده بعد از جمع‌آوری درست metrics ارزشمند می‌شود.

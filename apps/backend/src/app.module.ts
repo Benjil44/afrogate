@@ -21,6 +21,8 @@ import { AlertNotificationService } from './notifications/alert-notification.ser
 import { TelegramAlertService } from './notifications/telegram-alert.service';
 import { AuditService } from './audit/audit.service';
 import { BackupStatusService } from './backups/backup-status.service';
+import { AdminTenantBrandingController } from './branding/admin-tenant-branding.controller';
+import { AdminTenantBrandingService } from './branding/admin-tenant-branding.service';
 import { OperationsController } from './operations/operations.controller';
 import { OperationsService } from './operations/operations.service';
 import { RouteQualityAggregationService } from './operations/route-quality-aggregation.service';
@@ -50,6 +52,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AgentHeartbeatController,
     AgentsController,
     AuthController,
+    AdminTenantBrandingController,
     BillingController,
     ClientController,
     HealthController,
@@ -65,6 +68,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AuditService,
     AuthService,
     BackupStatusService,
+    AdminTenantBrandingService,
     BillingService,
     PayPalPaymentService,
     MetricsService,

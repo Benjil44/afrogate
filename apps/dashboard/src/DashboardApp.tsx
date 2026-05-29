@@ -55,6 +55,7 @@ import type {
   AdminSettingsResponse,
   AdminSessionResponse,
   AdminTelegramBotSettingsSummary,
+  AdminTenantBrandSettingsSummary,
   AdminTunnelSummary,
   AdminVolumePackageSummary,
   AdminWireGuardCandidate,
@@ -107,6 +108,7 @@ import {
   LogOut,
   MemoryStick,
   Network,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -148,6 +150,7 @@ import {
   fetchAdminServers,
   fetchAdminSettings,
   fetchAdminTelegramBotSettings,
+  fetchAdminTenantBranding,
   fetchAdminTunnel,
   fetchAdminTunnels,
   fetchAdminUsers,
@@ -177,6 +180,7 @@ import {
   updateAdminRewardedAdSettings,
   updateAdminServer,
   updateAdminTelegramBotSettings,
+  updateAdminTenantBranding,
   updateAdminUser,
   updateAdminUserPassword,
   applyRouteDecisionPreview,
@@ -322,6 +326,22 @@ interface TelegramBotSettingsForm {
   allowedAdminChatIds: string;
   alertsEnabled: boolean;
   commandsEnabled: boolean;
+}
+
+interface TenantBrandSettingsForm {
+  tenantSlug: string;
+  displayName: string;
+  legalName: string;
+  supportEmail: string;
+  supportTelegram: string;
+  supportUrl: string;
+  logoUrl: string;
+  dashboardTitle: string;
+  clientAppTitle: string;
+  primaryColor: string;
+  accentColor: string;
+  publicBrandingEnabled: boolean;
+  clientSupportMessage: string;
 }
 
 interface NavItemData {
@@ -5013,6 +5033,42 @@ function normalizeNullableText(value: string): string | null {
   return trimmedValue ? trimmedValue : null;
 }
 
+function createEmptyTenantBrandForm(): TenantBrandSettingsForm {
+  return {
+    accentColor: '#0E9F8F',
+    clientAppTitle: 'AfroGate Client',
+    clientSupportMessage: '',
+    dashboardTitle: 'AfroGate',
+    displayName: 'AfroGate',
+    legalName: '',
+    logoUrl: '',
+    primaryColor: '#176B87',
+    publicBrandingEnabled: true,
+    supportEmail: '',
+    supportTelegram: '',
+    supportUrl: '',
+    tenantSlug: 'default',
+  };
+}
+
+function mapTenantBrandingToForm(settings: AdminTenantBrandSettingsSummary): TenantBrandSettingsForm {
+  return {
+    accentColor: settings.accentColor,
+    clientAppTitle: settings.clientAppTitle,
+    clientSupportMessage: settings.clientSupportMessage ?? '',
+    dashboardTitle: settings.dashboardTitle,
+    displayName: settings.displayName,
+    legalName: settings.legalName ?? '',
+    logoUrl: settings.logoUrl ?? '',
+    primaryColor: settings.primaryColor,
+    publicBrandingEnabled: settings.publicBrandingEnabled,
+    supportEmail: settings.supportEmail ?? '',
+    supportTelegram: settings.supportTelegram ?? '',
+    supportUrl: settings.supportUrl ?? '',
+    tenantSlug: settings.tenantSlug,
+  };
+}
+
 function RoutesPage({
   dataState,
   failoverRows,
@@ -5982,6 +6038,10 @@ function SettingsPage({
     routeGroup: 'main',
     targetServerId: '',
   });
+  const [tenantBranding, setTenantBranding] = useState<AdminTenantBrandSettingsSummary | null>(null);
+  const [tenantBrandForm, setTenantBrandForm] = useState<TenantBrandSettingsForm>(createEmptyTenantBrandForm);
+  const [tenantBrandMessage, setTenantBrandMessage] = useState<string | null>(null);
+  const [isTenantBrandSaving, setIsTenantBrandSaving] = useState(false);
   const [telegramBotSettings, setTelegramBotSettings] = useState<AdminTelegramBotSettingsSummary | null>(null);
   const [telegramBotForm, setTelegramBotForm] = useState<TelegramBotSettingsForm>({
     botToken: '',
@@ -6024,6 +6084,7 @@ function SettingsPage({
   const [isProtocolApplyEventDetailLoading, setIsProtocolApplyEventDetailLoading] = useState(false);
   const canCreateProtocols = session.actor.role === 'superadmin' || Boolean(session.actor.isSuperAdmin);
   const canManageTelegramBot = canCreateProtocols;
+  const canManageTenantBranding = ['superadmin', 'owner', 'admin'].includes(session.actor.role);
   const sampleWireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
     () => [
       {
@@ -6099,6 +6160,10 @@ function SettingsPage({
           : current.profile,
     }));
   };
+  const applyTenantBranding = (settings: AdminTenantBrandSettingsSummary) => {
+    setTenantBranding(settings);
+    setTenantBrandForm(mapTenantBrandingToForm(settings));
+  };
   const applyTelegramBotSettings = (settings: AdminTelegramBotSettingsSummary) => {
     setTelegramBotSettings(settings);
     setTelegramBotForm((current) => ({
@@ -6127,6 +6192,7 @@ function SettingsPage({
     setIsDecisionEventDetailLoading(false);
     setIsProtocolApplyEventDetailLoading(false);
     setServerLiveApplyingSetupId(null);
+    setTenantBrandMessage(null);
     setTelegramBotMessage(null);
 
     fetchAdminSettings(sessionToken, 'main', controller.signal)
@@ -6173,6 +6239,18 @@ function SettingsPage({
       })
       .catch((error) => {
         if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+      });
+
+    fetchAdminTenantBranding(sessionToken, controller.signal)
+      .then((data) => {
+        if (!isActive) return;
+
+        applyTenantBranding(data.branding);
+      })
+      .catch((error) => {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setTenantBranding(null);
       });
 
     if (canManageTelegramBot) {
@@ -6331,6 +6409,30 @@ function SettingsPage({
       telegramBotSettings?.outboundProxyConfigured ? 'good' : 'neutral',
     ],
   ];
+  const tenantBrandingRows: Array<[string, string, Tone]> = [
+    [
+      t.settings.tenantSlug,
+      tenantBranding?.tenantSlug ?? tenantBrandForm.tenantSlug,
+      tenantBranding ? 'good' : 'neutral',
+    ],
+    [
+      t.settings.publicBranding,
+      tenantBrandForm.publicBrandingEnabled ? t.settings.enabled : t.settings.disabled,
+      tenantBrandForm.publicBrandingEnabled ? 'good' : 'neutral',
+    ],
+    [
+      t.settings.supportContact,
+      tenantBrandForm.supportEmail || tenantBrandForm.supportTelegram || tenantBrandForm.supportUrl
+        ? t.settings.configured
+        : t.settings.pending,
+      tenantBrandForm.supportEmail || tenantBrandForm.supportTelegram || tenantBrandForm.supportUrl ? 'good' : 'neutral',
+    ],
+    [
+      t.settings.updatedAt,
+      tenantBranding?.updatedAt ? format.time(new Date(tenantBranding.updatedAt), false) : t.settings.pending,
+      tenantBranding ? 'good' : 'neutral',
+    ],
+  ];
   const previewRows: Array<[string, string]> = [
     [t.settings.protocolName, protocolDraft.name || '-'],
     [t.settings.protocol, protocolOptions.find(([value]) => value === protocolDraft.protocol)?.[1] ?? '-'],
@@ -6362,6 +6464,10 @@ function SettingsPage({
   const updateProtocolDraft = <K extends keyof ProtocolSetupDraft>(field: K, value: ProtocolSetupDraft[K]) => {
     setProtocolDraft((current) => ({ ...current, [field]: value }));
     setProtocolMessage(null);
+  };
+  const updateTenantBrandForm = <K extends keyof TenantBrandSettingsForm>(field: K, value: TenantBrandSettingsForm[K]) => {
+    setTenantBrandForm((current) => ({ ...current, [field]: value }));
+    setTenantBrandMessage(null);
   };
   const updateTelegramBotForm = <K extends keyof TelegramBotSettingsForm>(field: K, value: TelegramBotSettingsForm[K]) => {
     setTelegramBotForm((current) => ({ ...current, [field]: value }));
@@ -6605,6 +6711,41 @@ function SettingsPage({
       setRouteMessage(t.settings.saveFailed);
     } finally {
       setIsRouteSaving(false);
+    }
+  };
+
+  const saveTenantBranding = async () => {
+    if (!canManageTenantBranding) {
+      setTenantBrandMessage(t.settings.adminOnly);
+      return;
+    }
+
+    setIsTenantBrandSaving(true);
+    setTenantBrandMessage(null);
+
+    try {
+      const response = await updateAdminTenantBranding(sessionToken, {
+        accentColor: tenantBrandForm.accentColor,
+        clientAppTitle: tenantBrandForm.clientAppTitle,
+        clientSupportMessage: normalizeNullableText(tenantBrandForm.clientSupportMessage),
+        dashboardTitle: tenantBrandForm.dashboardTitle,
+        displayName: tenantBrandForm.displayName,
+        legalName: normalizeNullableText(tenantBrandForm.legalName),
+        logoUrl: normalizeNullableText(tenantBrandForm.logoUrl),
+        primaryColor: tenantBrandForm.primaryColor,
+        publicBrandingEnabled: tenantBrandForm.publicBrandingEnabled,
+        supportEmail: normalizeNullableText(tenantBrandForm.supportEmail),
+        supportTelegram: normalizeNullableText(tenantBrandForm.supportTelegram),
+        supportUrl: normalizeNullableText(tenantBrandForm.supportUrl),
+        tenantSlug: tenantBrandForm.tenantSlug,
+      });
+
+      applyTenantBranding(response.branding);
+      setTenantBrandMessage(t.settings.tenantBrandingSaved);
+    } catch (error) {
+      setTenantBrandMessage(t.settings.tenantBrandingSaveFailed);
+    } finally {
+      setIsTenantBrandSaving(false);
     }
   };
 
@@ -6962,6 +7103,184 @@ function SettingsPage({
             </div>
             {routeMessage ? <p className="text-[13px] font-bold text-afro-teal">{routeMessage}</p> : null}
           </div>
+        </section>
+
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.tenantBranding} icon={Palette} meta={canManageTenantBranding ? t.settings.adminReady : t.settings.adminOnly} />
+          <form className="mt-3 grid gap-3" onSubmit={(event) => { event.preventDefault(); void saveTenantBranding(); }}>
+            <div className="grid gap-2 md:grid-cols-3">
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.tenantSlug}
+                onChange={(value) => updateTenantBrandForm('tenantSlug', value)}
+                required
+                value={tenantBrandForm.tenantSlug}
+              />
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.brandDisplayName}
+                onChange={(value) => updateTenantBrandForm('displayName', value)}
+                required
+                value={tenantBrandForm.displayName}
+              />
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.brandLegalName}
+                onChange={(value) => updateTenantBrandForm('legalName', value)}
+                value={tenantBrandForm.legalName}
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.dashboardTitle}
+                onChange={(value) => updateTenantBrandForm('dashboardTitle', value)}
+                required
+                value={tenantBrandForm.dashboardTitle}
+              />
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.clientAppTitle}
+                onChange={(value) => updateTenantBrandForm('clientAppTitle', value)}
+                required
+                value={tenantBrandForm.clientAppTitle}
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.supportEmail}
+                onChange={(value) => updateTenantBrandForm('supportEmail', value)}
+                value={tenantBrandForm.supportEmail}
+              />
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.supportTelegram}
+                onChange={(value) => updateTenantBrandForm('supportTelegram', value)}
+                value={tenantBrandForm.supportTelegram}
+              />
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.supportUrl}
+                onChange={(value) => updateTenantBrandForm('supportUrl', value)}
+                value={tenantBrandForm.supportUrl}
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              <SettingsInput
+                disabled={!canManageTenantBranding}
+                label={t.settings.logoUrl}
+                onChange={(value) => updateTenantBrandForm('logoUrl', value)}
+                value={tenantBrandForm.logoUrl}
+              />
+              <label className="grid gap-1.5">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.primaryColor}</span>
+                <span className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="min-h-10 rounded-md border border-afro-line"
+                    style={{ backgroundColor: tenantBrandForm.primaryColor }}
+                  />
+                  <input
+                    className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                    disabled={!canManageTenantBranding}
+                    dir="ltr"
+                    onChange={(event) => updateTenantBrandForm('primaryColor', event.target.value)}
+                    value={tenantBrandForm.primaryColor}
+                  />
+                </span>
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.accentColor}</span>
+                <span className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="min-h-10 rounded-md border border-afro-line"
+                    style={{ backgroundColor: tenantBrandForm.accentColor }}
+                  />
+                  <input
+                    className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                    disabled={!canManageTenantBranding}
+                    dir="ltr"
+                    onChange={(event) => updateTenantBrandForm('accentColor', event.target.value)}
+                    value={tenantBrandForm.accentColor}
+                  />
+                </span>
+              </label>
+            </div>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{t.settings.clientSupportMessage}</span>
+              <textarea
+                className="min-h-20 w-full resize-y rounded-md border border-afro-line bg-white px-3 py-2 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                disabled={!canManageTenantBranding}
+                onChange={(event) => updateTenantBrandForm('clientSupportMessage', event.target.value)}
+                value={tenantBrandForm.clientSupportMessage}
+              />
+            </label>
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.7fr)]">
+              <div className="grid gap-2">
+                {tenantBrandingRows.map(([label, value, tone]) => (
+                  <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+                    <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
+                    <StatusBadge tone={tone}>{value}</StatusBadge>
+                  </div>
+                ))}
+                <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3 py-2">
+                  <span className="text-[13px] font-bold text-afro-muted">{t.settings.publicBranding}</span>
+                  <input
+                    checked={tenantBrandForm.publicBrandingEnabled}
+                    className="size-4 accent-afro-teal"
+                    disabled={!canManageTenantBranding}
+                    onChange={(event) => updateTenantBrandForm('publicBrandingEnabled', event.target.checked)}
+                    type="checkbox"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5">
+                <div
+                  className="flex min-h-16 items-center gap-3 rounded-md px-3 py-2 text-white"
+                  style={{ backgroundColor: tenantBrandForm.primaryColor }}
+                >
+                  {tenantBrandForm.logoUrl ? (
+                    <img
+                      alt=""
+                      className="size-10 rounded-md border border-white/40 bg-white object-contain"
+                      src={tenantBrandForm.logoUrl}
+                    />
+                  ) : (
+                    <span
+                      className="inline-flex size-10 items-center justify-center rounded-md border border-white/40 text-sm font-black"
+                      style={{ backgroundColor: tenantBrandForm.accentColor }}
+                    >
+                      {tenantBrandForm.displayName.slice(0, 2).toUpperCase() || 'AG'}
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <strong className="block truncate text-base">{tenantBrandForm.displayName || t.settings.brandDisplayName}</strong>
+                    <span className="block truncate text-[12px] font-bold text-white/85">{tenantBrandForm.clientAppTitle || t.settings.clientAppTitle}</span>
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <StatusBadge tone="neutral">{tenantBrandForm.dashboardTitle || t.settings.dashboardTitle}</StatusBadge>
+                  <StatusBadge tone={tenantBrandForm.publicBrandingEnabled ? 'good' : 'neutral'}>
+                    {tenantBrandForm.publicBrandingEnabled ? t.settings.enabled : t.settings.disabled}
+                  </StatusBadge>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
+              <p className="min-w-0 text-[13px] font-bold text-afro-muted">{t.settings.tenantBrandingNote}</p>
+              <button
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-60"
+                disabled={!canManageTenantBranding || isTenantBrandSaving}
+                type="submit"
+              >
+                <CheckCircle2 size={16} />
+                {isTenantBrandSaving ? t.settings.saving : t.settings.saveTenantBranding}
+              </button>
+            </div>
+            {tenantBrandMessage ? <p className="text-[13px] font-bold text-afro-teal">{tenantBrandMessage}</p> : null}
+          </form>
         </section>
 
         <section className={panelClass}>

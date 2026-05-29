@@ -96,6 +96,7 @@
 - backup/restore UI.
 - reports و data analysis.
 - tenant/brand settings برای فروش enterprise.
+- Current implementation note: default-tenant brand settings are now persisted in `tenant_brand_settings`, exposed through guarded `GET/PATCH /api/admin/tenant-branding`, and editable in the dashboard Settings page for public names, support contacts, logo URL, colors, and client support copy. Multi-tenant data isolation and per-tenant routing/billing ownership remain future enterprise work.
 
 ## تصمیم‌های باز
 

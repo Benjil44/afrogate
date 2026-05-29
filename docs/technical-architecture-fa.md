@@ -218,6 +218,22 @@ Superadmin Settings now has a Telegram bot setup surface:
 - Environment variables remain bootstrap/fallback values for existing deployments.
 - Telegram API tests use the shared outbound HTTP client and `AFROGATE_OUTBOUND_PROXY_URL` when configured.
 
+### tenant_brand_settings
+
+Tenant/brand settings are a default-tenant enterprise foundation, not a multi-tenant data-isolation layer yet:
+
+- setting_key: default
+- tenant_slug
+- display_name and optional legal_name
+- dashboard_title and client_app_title
+- public support email, Telegram, URL, logo URL, primary color, accent color, and client support message
+- public_branding_enabled
+- updated_by
+- created_at
+- updated_at
+
+Guarded `GET /api/admin/tenant-branding` requires `tenantBranding:read`; guarded `PATCH /api/admin/tenant-branding` requires `tenantBranding:write` and admin role. The dashboard Settings page edits this public metadata and previews how it can appear in admin/client UX. These settings must not store secrets, customer identity, traffic contents, user destinations, client IP history, paid numbers, or production config.
+
 ### rewarded_ad_settings
 
 - setting_key

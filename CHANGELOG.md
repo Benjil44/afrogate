@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.101.0 - 2026-05-29
+
+- Added default-tenant branding settings backed by `tenant_brand_settings` and guarded `GET/PATCH /api/admin/tenant-branding`.
+- Added explicit `tenantBranding:read` and `tenantBranding:write` permissions with audit logging for branding updates.
+- Added a Settings-page branding form and preview for public names, support contacts, logo URL, colors, and client support copy while keeping secrets and customer data out of the surface.
+
 ## 0.100.0 - 2026-05-29
 
 - Added guarded `GET /api/admin/reports/summary` for read-only operational reports across server/outbound health, open alerts, backup readiness, and synthetic route-quality recommendations.

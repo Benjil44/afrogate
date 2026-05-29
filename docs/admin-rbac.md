@@ -6,10 +6,10 @@ AfroGate uses a deny-by-default admin RBAC model. Static roles still exist for o
 
 - `superadmin`: bootstrap root owner. Full access, cannot be removed, disabled, or changed by managed-user workflows.
 - `owner`: full operational access for production ownership. Can manage local managed admin users, but cannot mutate bootstrap/env-protected accounts.
-- `admin`: day-to-day operations across servers, tunnels, routes, billing, settings, and audit reads. Cannot create or mutate admin accounts.
-- `supervisor`: read-oriented operations, billing/customer visibility, settings visibility, audit reads, backups, and reports.
-- `support`: support-safe reads for dashboard, servers, tunnels, routes, alerts, billing, and customers.
-- `auditor`: read-only operational/compliance visibility for dashboard, servers, tunnels, routes, alerts, audit logs, backups, and reports.
+- `admin`: day-to-day operations across servers, tunnels, routes, billing, tenant branding, settings, audit, backups, and reports. Cannot create or mutate admin accounts.
+- `supervisor`: read-oriented operations, billing/customer visibility, settings visibility, tenant branding reads, audit reads, backups, and reports.
+- `support`: support-safe reads for dashboard, servers, tunnels, routes, alerts, billing, customers, and public tenant branding.
+- `auditor`: read-only operational/compliance visibility for dashboard, servers, tunnels, routes, alerts, audit logs, backups, reports, and tenant branding.
 - `agent`: metrics write-only. Agent tokens must never be accepted for admin APIs.
 
 ## Permission Catalog
@@ -22,7 +22,7 @@ Permission categories:
 - `operations`: dashboard, servers, tunnels, and alerts.
 - `routing`: route policy and route-decision application.
 - `billing`: billing catalog, customer accounts, and quota operations.
-- `settings`: protocol setup and Telegram bot settings.
+- `settings`: protocol setup, tenant branding, and Telegram bot settings.
 - `secrets`: write-only secret/credential storage paths.
 - `compliance`: audit logs, backups, and reports.
 - `agent`: metrics ingestion.
