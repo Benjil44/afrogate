@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.107.0 - 2026-05-29
+
+- Added Billing-page Telegram operations visibility for bot readiness, command/API/proxy state, linked accounts, delivery candidates, allocated linked orders, and pending paid allocations.
+- The Billing page now loads superadmin Telegram bot settings as a non-blocking operations signal while keeping tokens, webhook secrets, Telegram chat IDs, VLESS configs, and provider secrets out of the dashboard surface.
+- Updated the dashboard backlog so Telegram bot operations and purchase-fulfillment visibility are complete, leaving PostgreSQL-backed admin-user persistence as the remaining unchecked dashboard item.
+
 ## 0.106.0 - 2026-05-29
 
 - Added the disabled-by-default production protocol server apply runner for guarded live config staging, install, service reload, health verification, and rollback metadata.

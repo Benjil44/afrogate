@@ -124,8 +124,8 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Usage/Billing payment provider adapter readiness for PayPal, card, crypto, bank transfer, and local gateways.
 - [x] Signed rewarded-ad provider webhook adapter with idempotent quota crediting.
 - [x] Backend Telegram bot user-command webhook for linked account status and quota replies.
-- [ ] Telegram bot operations.
-- [ ] Telegram bot purchase fulfillment operations for verified purchases, one client-scoped VLESS config delivery, and usage-link visibility.
+- [x] Telegram bot operations.
+- [x] Telegram bot purchase fulfillment operations for verified purchases, one client-scoped VLESS config delivery, and usage-link visibility.
 - [x] Backups status page with guarded read-only monitoring.
 - [x] Backups restore-readiness UI with guarded read-only runbook/checklist and no restore execution controls.
 - [x] Reports page with guarded read-only operational risk, backup, alert, server, outbound, and synthetic route-quality analysis.

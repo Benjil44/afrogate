@@ -2044,3 +2044,32 @@ Repository remote is ready:
 
 - Dedicated Telegram bot operations UI remains pending in the dashboard/sidebar backlog.
 - Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.
+
+## 2026-05-29 Billing Telegram Operations Visibility
+
+### Completed
+
+- Added a Billing-page Telegram Operations panel that shows bot identity, BotFather token presence, webhook-secret readiness, user command readiness, alert readiness, Telegram API test status, outbound proxy state, linked Telegram accounts, delivery candidates, allocated linked orders, and pending paid allocations.
+- Loaded superadmin Telegram bot settings as a non-blocking Billing-page operations signal so billing catalog/orders/accounts/rewarded ads still render if Telegram settings cannot be read.
+- Kept the panel secret-safe: it does not show BotFather tokens, webhook secrets, Telegram chat IDs, delivered VLESS URIs, provider secrets, paid numbers, raw config JSON, or other clients' usage.
+- Added English/Persian typed dashboard labels and Playwright coverage for the Billing-page Telegram Operations panel.
+- Marked the dashboard/sidebar Telegram bot operations and Telegram purchase-fulfillment visibility items complete.
+- Main checklist remains `238 / 238` complete. Dashboard/sidebar checklist now has `1` unchecked item remaining: PostgreSQL-backed admin-user persistence.
+- Bumped AfroGate to `0.107.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck`.
+- Ran focused `npm run test:e2e -- --grep "billing page"`; 1 test passed.
+- Ran `npm run version:check`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran full `npm run test:e2e`; 17 tests passed.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Persist admin users in PostgreSQL when production database auth replaces the current local file store.
+- Live route data-plane mutation, packaged native Android/iOS distribution, iOS MDM deployment, and fleet-specific protocol-apply rollout audits remain future productization/deployment work.

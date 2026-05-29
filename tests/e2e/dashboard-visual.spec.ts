@@ -140,6 +140,9 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByText('Payment provider adapters')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Card' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Bank transfer' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Telegram Operations' })).toBeVisible();
+  await expect(page.getByText('Usage link')).toBeVisible();
+  await expect(page.getByText('Delivery candidates')).toBeVisible();
 
   await page.getByLabel('Reward MB').fill('150');
   await page.getByRole('button', { name: 'Save reward settings' }).click();
@@ -668,6 +671,31 @@ async function mockDashboardApi(page: Page): Promise<void> {
               usedBytes: 21_474_836_480,
             },
           ],
+        });
+        return;
+      case '/api/admin/settings/telegram-bot':
+        await fulfillJson(route, {
+          telegramBot: {
+            alertChatId: '123456789',
+            alertChatIdSource: 'database',
+            alertsEnabled: true,
+            allowedAdminChatIds: ['123456789'],
+            botFirstName: 'AfroGate Demo',
+            botId: 987654321,
+            botTokenSource: 'database',
+            botUsername: 'afrogate_demo_bot',
+            commandsEnabled: true,
+            hasBotToken: true,
+            hasWebhookSecret: true,
+            lastTestDurationMs: 84,
+            lastTestErrorCode: null,
+            lastTestStatus: 'ok',
+            lastTestedAt: fixedNow,
+            outboundProxyConfigured: true,
+            updatedAt: fixedNow,
+            updatedBy: 'admin-visual',
+            webhookSecretSource: 'database',
+          },
         });
         return;
       case '/api/admin/current-panels/import-preview':

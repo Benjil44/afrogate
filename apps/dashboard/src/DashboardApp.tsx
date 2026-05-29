@@ -3885,6 +3885,7 @@ function BillingPage({
   const [paymentProviderAdapters, setPaymentProviderAdapters] = useState<AdminPaymentProviderAdapterSummary[]>([]);
   const [accounts, setAccounts] = useState<AdminCustomerAccountSummary[]>([]);
   const [rewardSettings, setRewardSettings] = useState<AdminRewardedAdSettingsSummary | null>(null);
+  const [telegramBotSettings, setTelegramBotSettings] = useState<AdminTelegramBotSettingsSummary | null>(null);
   const [dataState, setDataState] = useState<DataState>('loading');
   const [error, setError] = useState<string | null>(null);
   const [rewardEnabled, setRewardEnabled] = useState(true);
@@ -3908,17 +3909,22 @@ function BillingPage({
   const [isExportingClientConfigs, setIsExportingClientConfigs] = useState(false);
   const [isChargingCurrentPanelVolume, setIsChargingCurrentPanelVolume] = useState(false);
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
+  const canViewTelegramOperations = session.actor.role === 'superadmin' || session.actor.isSuperAdmin === true;
 
   const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
     setDataState('loading');
     setError(null);
 
     try {
-      const [catalogResponse, orderResponse, accountResponse, rewardResponse] = await Promise.all([
+      const telegramBotRequest = canViewTelegramOperations
+        ? fetchAdminTelegramBotSettings(sessionToken, signal).catch(() => null)
+        : Promise.resolve(null);
+      const [catalogResponse, orderResponse, accountResponse, rewardResponse, telegramBotResponse] = await Promise.all([
         fetchAdminBillingCatalog(sessionToken, signal),
         fetchAdminPaymentOrders(sessionToken, signal),
         fetchAdminCustomerAccounts(sessionToken, signal),
         fetchAdminRewardedAdSettings(sessionToken, signal),
+        telegramBotRequest,
       ]);
 
       setSettings(catalogResponse.settings);
@@ -3928,6 +3934,7 @@ function BillingPage({
       setPaymentOrders(orderResponse.paymentOrders);
       setAccounts(accountResponse.accounts);
       setRewardSettings(rewardResponse.rewardedAds);
+      setTelegramBotSettings(telegramBotResponse?.telegramBot ?? null);
       setDataState('live');
     } catch (loadError) {
       if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
@@ -3935,7 +3942,7 @@ function BillingPage({
       setError(t.billing.errors.load);
       setDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
     }
-  }, [sessionToken, t]);
+  }, [canViewTelegramOperations, sessionToken, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -4342,6 +4349,14 @@ function BillingPage({
         onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
         onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
         onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
+        t={t}
+      />
+      <TelegramBotOperationsPanel
+        accounts={accounts}
+        canViewTelegramOperations={canViewTelegramOperations}
+        format={format}
+        paymentOrders={paymentOrders}
+        telegramBotSettings={telegramBotSettings}
         t={t}
       />
       <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
@@ -4993,6 +5008,140 @@ function PaymentOrdersPanel({
             </table>
           </div>
         ) : null}
+      </div>
+    </section>
+  );
+}
+
+function TelegramBotOperationsPanel({
+  accounts,
+  canViewTelegramOperations,
+  format,
+  paymentOrders,
+  telegramBotSettings,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  canViewTelegramOperations: boolean;
+  format: DashboardFormatters;
+  paymentOrders: AdminPaymentOrderSummary[];
+  telegramBotSettings: AdminTelegramBotSettingsSummary | null;
+  t: DashboardStrings;
+}) {
+  const accountsById = new Map(accounts.map((account) => [account.id, account]));
+  const linkedAccountCount = accounts.filter((account) => Boolean(account.telegramId)).length;
+  const paidOrders = paymentOrders.filter((order) => order.status === 'paid');
+  const pendingAllocationCount = paidOrders.filter((order) => order.allocationStatus === 'pending').length;
+  const allocatedLinkedOrderCount = paidOrders.filter((order) => {
+    const account = accountsById.get(order.customerAccountId);
+    return Boolean(account?.telegramId) && order.allocationStatus === 'allocated';
+  }).length;
+  const deliveryCandidateCount = paidOrders.filter((order) => {
+    const account = accountsById.get(order.customerAccountId);
+    return Boolean(account?.telegramId) && account?.activeClientCount === 1;
+  }).length;
+  const botIdentity = telegramBotSettings?.botUsername
+    ? `@${telegramBotSettings.botUsername}`
+    : telegramBotSettings?.botFirstName ?? (canViewTelegramOperations ? t.billing.pending : t.billing.adminOnly);
+  const deliveryReady = Boolean(telegramBotSettings?.hasBotToken);
+  const commandsReady = Boolean(telegramBotSettings?.hasBotToken && telegramBotSettings.commandsEnabled && telegramBotSettings.botUsername);
+  const alertsReady = Boolean(telegramBotSettings?.hasBotToken && telegramBotSettings.alertsEnabled && telegramBotSettings.alertChatId);
+  const apiTestTone: Tone = telegramBotSettings?.lastTestStatus === 'ok'
+    ? 'good'
+    : telegramBotSettings?.lastTestStatus === 'failed' || telegramBotSettings?.lastTestStatus === 'missingToken'
+      ? 'warning'
+      : 'neutral';
+  const readinessRows: Array<{ label: string; value: string; tone: Tone }> = [
+    {
+      label: t.settings.telegramBotToken,
+      value: telegramBotSettings?.hasBotToken ? t.billing.stored : t.billing.missing,
+      tone: telegramBotSettings?.hasBotToken ? 'good' : 'warning',
+    },
+    {
+      label: t.settings.telegramWebhookSecret,
+      value: telegramBotSettings?.hasWebhookSecret ? t.billing.ready : t.billing.pending,
+      tone: telegramBotSettings?.hasWebhookSecret ? 'good' : 'neutral',
+    },
+    {
+      label: t.billing.telegramCommands,
+      value: commandsReady ? t.billing.ready : t.billing.blocked,
+      tone: commandsReady ? 'good' : 'warning',
+    },
+    {
+      label: t.billing.telegramAlerts,
+      value: alertsReady ? t.billing.ready : t.billing.pending,
+      tone: alertsReady ? 'good' : 'neutral',
+    },
+    {
+      label: t.settings.telegramBotApiTest,
+      value: telegramTestStatusLabel(telegramBotSettings?.lastTestStatus ?? 'notTested', t),
+      tone: apiTestTone,
+    },
+    {
+      label: t.settings.outboundProxy,
+      value: telegramBotSettings?.outboundProxyConfigured ? t.billing.configured : t.billing.direct,
+      tone: telegramBotSettings?.outboundProxyConfigured ? 'good' : 'neutral',
+    },
+  ];
+  const operationRows: Array<{ label: string; value: string; tone: Tone }> = [
+    {
+      label: t.billing.telegramDeliveryGate,
+      value: deliveryReady ? t.billing.ready : t.billing.blocked,
+      tone: deliveryReady ? 'good' : 'warning',
+    },
+    {
+      label: t.billing.telegramUsageLinkGate,
+      value: commandsReady ? t.billing.ready : t.billing.blocked,
+      tone: commandsReady ? 'good' : 'warning',
+    },
+    {
+      label: t.billing.telegramLinkedAccounts,
+      value: format.integer(linkedAccountCount),
+      tone: linkedAccountCount > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.billing.telegramDeliveryCandidates,
+      value: format.integer(deliveryCandidateCount),
+      tone: deliveryCandidateCount > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.billing.telegramAllocatedLinkedOrders,
+      value: format.integer(allocatedLinkedOrderCount),
+      tone: allocatedLinkedOrderCount > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.billing.telegramPendingAllocationOrders,
+      value: format.integer(pendingAllocationCount),
+      tone: pendingAllocationCount > 0 ? 'warning' : 'good',
+    },
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.billing.telegramOperations} icon={Bot} meta={t.billing.telegramOrdersTracked(format.integer(paymentOrders.length))} />
+      <div className="mt-2 grid gap-3 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.2fr)]">
+        <div className="grid content-start gap-2">
+          <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-3 py-2">
+            <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramBotIdentity}</span>
+            <strong className="min-w-0 truncate text-sm" dir="ltr" title={botIdentity}>
+              {botIdentity}
+            </strong>
+          </div>
+          {readinessRows.map((row) => (
+            <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={row.label}>
+              <span className={`${mutedTextClass} min-w-0 truncate`}>{row.label}</span>
+              <StatusBadge tone={row.tone}>{row.value}</StatusBadge>
+            </div>
+          ))}
+        </div>
+        <div className="grid content-start gap-2 sm:grid-cols-2">
+          {operationRows.map((row) => (
+            <div className="flex min-h-12 items-center justify-between gap-2 rounded-md border border-afro-line bg-[#fbfcfc] px-3 py-2" key={row.label}>
+              <span className={`${mutedTextClass} min-w-0 truncate`}>{row.label}</span>
+              <StatusBadge tone={row.tone}>{row.value}</StatusBadge>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
