@@ -27,6 +27,8 @@ import type {
   AdminSecretRefSummary,
   AdminSettingsResponse,
   AdminServerDetail,
+  AdminTelegramBotSettingsResponse,
+  AdminTelegramBotTestResponse,
   AdminTunnelSummary,
   AdminTunnelsResponse,
   AdminUserSummary,
@@ -48,6 +50,7 @@ import type {
   UpsertRouteAssignmentRequest,
   UpsertRouteSettingsRequest,
   UpdateRewardedAdSettingsRequest,
+  UpdateTelegramBotSettingsRequest,
   UpdateCustomerAccountRequest,
   UpdateServerRequest,
   UpdateAdminUserPasswordRequest,
@@ -382,6 +385,42 @@ export async function fetchAdminSettings(
   });
 
   return response.json() as Promise<AdminSettingsResponse>;
+}
+
+export async function fetchAdminTelegramBotSettings(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminTelegramBotSettingsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/settings/telegram-bot`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminTelegramBotSettingsResponse>;
+}
+
+export async function updateAdminTelegramBotSettings(
+  sessionToken: string,
+  payload: UpdateTelegramBotSettingsRequest,
+): Promise<AdminTelegramBotSettingsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/settings/telegram-bot`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminTelegramBotSettingsResponse>;
+}
+
+export async function testAdminTelegramBotConnection(
+  sessionToken: string,
+): Promise<AdminTelegramBotTestResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/settings/telegram-bot/test`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminTelegramBotTestResponse>;
 }
 
 export async function fetchRouteQualityAnalytics(

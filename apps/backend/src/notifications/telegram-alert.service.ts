@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AdminAlertSummary } from '@afrogate/shared';
 import { OutboundHttpService } from '../outbound/outbound-http.service';
+import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
 
 export type TelegramAlertSendResult =
   | { status: 'sent'; statusCode: number; durationMs: number }
@@ -20,6 +21,7 @@ interface TelegramApiResponse {
 
 interface TelegramSendMessageOptions {
   disableWebPagePreview?: boolean;
+  botToken?: string;
 }
 
 @Injectable()
@@ -27,31 +29,46 @@ export class TelegramAlertService {
   constructor(
     private readonly config: ConfigService,
     private readonly outboundHttp: OutboundHttpService,
+    private readonly telegramConfig: TelegramBotConfigService,
   ) {}
 
-  isEnabled(): boolean {
-    return this.configFlag('AFROGATE_TELEGRAM_ALERTS_ENABLED', false);
+  async isEnabled(): Promise<boolean> {
+    try {
+      return (await this.telegramConfig.getSettingsSummary()).alertsEnabled;
+    } catch {
+      return false;
+    }
   }
 
-  isConfigured(): boolean {
-    return Boolean(this.botToken() && this.chatId());
+  async isConfigured(): Promise<boolean> {
+    try {
+      const settings = await this.telegramConfig.getSettingsSummary();
+      return Boolean(settings.hasBotToken && settings.alertChatId);
+    } catch {
+      return false;
+    }
   }
 
-  isBotConfigured(): boolean {
-    return Boolean(this.botToken());
+  async isBotConfigured(): Promise<boolean> {
+    try {
+      return (await this.telegramConfig.getSettingsSummary()).hasBotToken;
+    } catch {
+      return false;
+    }
   }
 
   async sendAlert(alert: AdminAlertSummary): Promise<TelegramAlertSendResult> {
-    if (!this.isEnabled()) {
+    const runtime = await this.safeRuntimeConfig();
+    if (!runtime?.alertsEnabled) {
       return { status: 'skipped', reason: 'disabled' };
     }
 
-    const chatId = this.chatId();
+    const chatId = runtime.alertChatId;
     if (!chatId) {
       return { status: 'skipped', reason: 'missing_config' };
     }
 
-    return this.sendMessage(chatId, this.formatAlert(alert), { disableWebPagePreview: true });
+    return this.sendMessage(chatId, this.formatAlert(alert), { disableWebPagePreview: true, botToken: runtime.botToken });
   }
 
   async sendMessage(
@@ -59,7 +76,8 @@ export class TelegramAlertService {
     text: string,
     options: TelegramSendMessageOptions = {},
   ): Promise<TelegramMessageSendResult> {
-    const token = this.botToken();
+    const runtime = await this.safeRuntimeConfig();
+    const token = options.botToken ?? runtime?.botToken;
     const normalizedChatId = String(chatId).trim();
     if (!token || !normalizedChatId) {
       return { status: 'skipped', reason: 'missing_config' };
@@ -137,28 +155,17 @@ export class TelegramAlertService {
     return this.config.get<string>('AFROGATE_TELEGRAM_API_BASE_URL')?.trim().replace(/\/+$/, '') || 'https://api.telegram.org';
   }
 
-  private botToken(): string | undefined {
-    return this.nonEmptyConfig('AFROGATE_TELEGRAM_BOT_TOKEN');
-  }
-
-  private chatId(): string | undefined {
-    return this.nonEmptyConfig('AFROGATE_TELEGRAM_ALERT_CHAT_ID');
-  }
-
   private timeoutMs(): number {
     const configured = Number(this.config.get<string>('AFROGATE_TELEGRAM_TIMEOUT_MS'));
     return Number.isInteger(configured) && configured >= 1000 ? configured : 10000;
   }
 
-  private nonEmptyConfig(name: string): string | undefined {
-    const value = this.config.get<string>(name)?.trim();
-    return value || undefined;
-  }
-
-  private configFlag(name: string, fallback: boolean): boolean {
-    const value = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!value) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(value);
+  private async safeRuntimeConfig() {
+    try {
+      return await this.telegramConfig.getRuntimeConfig();
+    } catch {
+      return null;
+    }
   }
 
   private truncate(value: string, maxLength: number): string {

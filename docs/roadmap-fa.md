@@ -54,7 +54,7 @@
 - price per GB قابل تنظیم.
 - نمایش remaining volume.
 - اتصال Telegram bot برای مشاهده حجم و شارژ.
-- wizard سوپراَدمن برای تنظیم Telegram bot ساخته شده در BotFather، ذخیره امن token، chat/admin idهای مجاز، webhook secret، و تست اتصال Telegram API.
+- Superadmin Settings Telegram bot setup now stores BotFather token/webhook secret encrypted and write-only, captures alert/admin chat IDs, and tests Telegram API connectivity through the shared outbound egress path.
 - ثبت paid number با privacy protection.
 - Separate seller/admin UX from VPN client UX; mobile/client APIs now start with scoped profile/quota, route options, and route-preference actions under `/api/client/*`, with package/usage purchase flows remaining future work.
 - Usage accounting now starts with idempotent `client_usage_events` rows that update account/client used-byte counters for remaining-volume reads.
@@ -73,6 +73,7 @@
 - cooldown/hysteresis برای جلوگیری از route flapping.
 - نمایش reason انتخاب مسیر.
 - Per-client route preferences and a separate mobile-first client app for automatic country detection, preferred exit country, explicit server/outbound choice, subscription refresh metadata, and secret-safe protocol config readiness without exposing admin controls.
+- Future native client per-app VPN split tunneling so selected apps such as Instagram, Telegram, and WhatsApp can use AfroGate while other apps keep normal internet unless the client explicitly includes them.
 
 ## فاز 4: Integration با سیستم فعلی
 

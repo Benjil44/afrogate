@@ -9,6 +9,7 @@ import { TelegramAlertService } from './telegram-alert.service';
 export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AlertNotificationService.name);
   private readonly lastAttemptByAlert = new Map<string, number>();
+  private lastConfigWarningAt = 0;
   private timer: NodeJS.Timeout | undefined;
   private isDelivering = false;
 
@@ -20,13 +21,6 @@ export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    if (!this.telegram.isEnabled()) return;
-
-    if (!this.telegram.isConfigured()) {
-      this.logger.warn('Telegram alert delivery is enabled but bot token or alert chat id is missing');
-      return;
-    }
-
     this.timer = setInterval(() => void this.deliverCriticalAlerts(), this.intervalMs());
     this.timer.unref?.();
     void this.deliverCriticalAlerts();
@@ -41,6 +35,12 @@ export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
 
     this.isDelivering = true;
     try {
+      if (!(await this.telegram.isEnabled())) return;
+      if (!(await this.telegram.isConfigured())) {
+        this.warnMissingTelegramConfig();
+        return;
+      }
+
       const alerts = await this.operations.listAlerts({
         status: 'open',
         severity: 'critical',
@@ -83,6 +83,14 @@ export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
   private shouldAttempt(alert: AdminAlertSummary): boolean {
     const lastAttempt = this.lastAttemptByAlert.get(alert.id);
     return lastAttempt === undefined || Date.now() - lastAttempt >= this.cooldownMs();
+  }
+
+  private warnMissingTelegramConfig(): void {
+    const now = Date.now();
+    if (now - this.lastConfigWarningAt < 5 * 60 * 1000) return;
+
+    this.lastConfigWarningAt = now;
+    this.logger.warn('Telegram alert delivery is enabled but bot token or alert chat id is missing');
   }
 
   private intervalMs(): number {

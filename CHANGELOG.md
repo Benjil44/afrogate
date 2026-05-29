@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.87.0 - 2026-05-29
+
+- Added superadmin Telegram bot setup in Settings with encrypted write-only BotFather token and webhook-secret storage.
+- Added guarded Telegram settings APIs, API reachability testing through the shared outbound HTTP client, and runtime use of database settings with environment fallback.
+- Documented Telegram bot setup/rotation and recorded native client per-app VPN split tunneling as a future client requirement.
+
 ## 0.86.0 - 2026-05-29
 
 - Added encrypted per-client subscription credential storage with guarded admin list/store/revoke APIs and metadata-only responses.

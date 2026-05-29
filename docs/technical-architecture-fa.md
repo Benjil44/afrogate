@@ -204,6 +204,17 @@ The dashboard Usage/Billing page is the seller/admin surface for catalog, custom
 
 The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, rewarded-data claims, automatic/country/server route mode selection, subscription server refresh visibility, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
 
+Future native VPN clients should support per-app split tunneling. A client may choose an include-only set such as Instagram, Telegram, and WhatsApp through AfroGate while Chrome, Firefox, or other apps keep normal internet, or explicitly add Chrome while leaving Firefox outside the VPN. This requires native OS VPN APIs and must stay client-scoped; AfroGate should not collect installed-app inventories, traffic contents, or destination history.
+
+### telegram_bot_settings
+
+Superadmin Settings now has a Telegram bot setup surface:
+
+- BotFather token and webhook secret are stored write-only through encrypted `secret_records` rows with `scope = telegram_bot`.
+- `telegram_bot_settings` stores only metadata: alert chat ID, allowed admin chat IDs, enabled flags, bot identity from `getMe`, last test status, and updated-by/updated-at.
+- Environment variables remain bootstrap/fallback values for existing deployments.
+- Telegram API tests use the shared outbound HTTP client and `AFROGATE_OUTBOUND_PROXY_URL` when configured.
+
 ### rewarded_ad_settings
 
 - setting_key
@@ -488,7 +499,7 @@ Backup status monitoring is read-only in the control plane. External backup jobs
 - HTTPS/TLS اجباری.
 - JWT/session امن برای dashboard.
 - Telegram webhook secret: مسیر `POST /api/telegram/webhook` فقط با `AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED=true`، توکن bot، و header رسمی `x-telegram-bot-api-secret-token` فعال می‌شود و پاسخ‌های کاربر فقط وضعیت امن account/quota را نشان می‌دهند.
-- Telegram bot باید در خود Telegram و با BotFather ساخته شود؛ AfroGate در فاز بعدی فقط wizard سوپراَدمن برای وارد کردن یک‌باره token، ذخیره encrypted/write-only، ثبت chat/admin idهای مجاز، webhook secret، و تست اتصال Telegram API فراهم می‌کند.
+- Telegram bot باید در خود Telegram و با BotFather ساخته شود؛ AfroGate اکنون wizard سوپراَدمن برای وارد کردن یک‌باره token، ذخیره encrypted/write-only، ثبت chat/admin idهای مجاز، webhook secret، و تست اتصال Telegram API فراهم می‌کند.
 - API rate limiting برای endpoint های حساس عمومی مثل login، PayPal webhook، و Telegram webhook.
 - agent token per server.
 - rotation برای token ها.

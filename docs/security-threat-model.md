@@ -61,7 +61,7 @@ Existing mitigations:
 - Per-client subscription credentials use encrypted client-owned rows; admin APIs return metadata only, and client subscription rendering is scoped to the authenticated client's own active credential plus explicit public endpoint metadata.
 - Route apply remains advisory/assignment-only until audited data-plane adapters are ready.
 - API rate limiting is enabled by default for login and public webhook routes.
-- PayPal provider credentials and Telegram bot/webhook secrets live in environment/deployment settings.
+- PayPal provider credentials live in environment/deployment settings. Telegram bot/webhook secrets can live in encrypted Settings secret storage with environment values kept as bootstrap/fallback configuration.
 - Audit logs are required for sensitive admin, billing, routing, credential, and live-apply requests.
 - CI includes version checks, secret scanning, dependency audit, typecheck, build, and browser smoke coverage.
 

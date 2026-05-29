@@ -36,6 +36,8 @@ import type {
   StoreServerCredentialResponse,
   AdminSecretRefSummary,
   AdminSettingsResponse,
+  AdminTelegramBotSettingsResponse,
+  AdminTelegramBotTestResponse,
   AdminTunnelSummary,
   AdminTunnelsResponse,
   AdminUserSummary,
@@ -69,10 +71,12 @@ import {
   RecordProtocolServerApplyDto,
   RecordRouteDecisionPreviewDto,
   RequestProtocolServerApplyDto,
+  UpdateTelegramBotSettingsDto,
   UpsertRouteAssignmentDto,
   UpsertRouteSettingsDto,
 } from './dto/settings.dto';
 import { OperationsService } from './operations.service';
+import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
 
 @Controller('admin')
 @UseGuards(AdminTokenGuard, RolesGuard)
@@ -82,6 +86,7 @@ export class OperationsController {
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
     private readonly backupStatusService: BackupStatusService,
+    private readonly telegramBotConfigService: TelegramBotConfigService,
   ) {}
 
   @Get('session')
@@ -382,6 +387,31 @@ export class OperationsController {
   @Roles('admin', 'supervisor', 'support', 'auditor')
   getSettings(@Query('routeGroup') routeGroup?: string): Promise<AdminSettingsResponse> {
     return this.operationsService.getSettings(routeGroup);
+  }
+
+  @Get('settings/telegram-bot')
+  @Roles('superadmin')
+  async getTelegramBotSettings(@Req() request: RequestWithAuth): Promise<AdminTelegramBotSettingsResponse> {
+    return {
+      telegramBot: await this.telegramBotConfigService.getSettingsSummary(request.actor),
+    };
+  }
+
+  @Patch('settings/telegram-bot')
+  @Roles('superadmin')
+  async updateTelegramBotSettings(
+    @Body() payload: UpdateTelegramBotSettingsDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminTelegramBotSettingsResponse> {
+    return {
+      telegramBot: await this.telegramBotConfigService.updateSettings(payload, request.actor),
+    };
+  }
+
+  @Post('settings/telegram-bot/test')
+  @Roles('superadmin')
+  testTelegramBotConnection(@Req() request: RequestWithAuth): Promise<AdminTelegramBotTestResponse> {
+    return this.telegramBotConfigService.testConnection(request.actor);
   }
 
   @Get('route-quality/analytics')

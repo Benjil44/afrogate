@@ -47,6 +47,7 @@ Privacy-sensitive inputs and stores:
 - Paid phone numbers are accepted only as write-only input and stored as HMAC hashes with `AFROGATE_IDENTITY_HASH_KEY` or the deployment secrets key.
 - Usage accounting stores byte counters and idempotency keys, not packet captures, URLs, or user destinations.
 - Client country detection stores only coarse ISO country code, source, and timestamp; no client IP history is needed.
+- Future per-app VPN split tunneling should keep app selection local to the native client or store only explicit client-scoped preference metadata; it must not collect installed-app inventories, traffic contents, or destination history.
 - Route analytics use synthetic probe metadata such as route group, operator, outbound, protocol, score profile, hour, and day; they must not derive from user destinations.
 - Rewarded-ad claims and provider metadata must stay idempotent and minimal, with provider secrets outside public config.
 
@@ -109,6 +110,7 @@ Low:
 - Keep all future route intelligence based on synthetic targets, managed outbound metadata, coarse country preferences, and local tunnel health.
 - Keep paid-number handling write-only and HMAC-only.
 - Keep dashboard/admin and VPN-client APIs separate.
+- Keep future per-app VPN rules client-scoped and privacy-safe; the control plane should not learn which non-selected apps a user has installed.
 - Keep provider secrets and webhook credentials in deployment/encrypted secret storage.
 - Keep audit snapshots secret-safe and compact.
 - Add retention policies before enterprise reporting/export features.

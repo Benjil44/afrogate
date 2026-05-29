@@ -97,7 +97,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Show protocol server apply config-material readiness separately from secret and credential readiness.
 - [x] Show protocol server apply generated-command policy readiness and command timeout metadata.
 - [ ] Production server-side protocol apply engine with encrypted secret storage.
-- [ ] Superadmin Telegram bot setup wizard with write-only BotFather token storage, webhook secret, allowed chat/admin IDs, and Telegram API test.
+- [x] Superadmin Telegram bot setup wizard with write-only BotFather token storage, webhook secret, allowed chat/admin IDs, and Telegram API test.
 
 ## Users Page
 

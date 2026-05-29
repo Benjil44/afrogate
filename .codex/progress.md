@@ -751,6 +751,7 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+
 - Added guarded read-only backup status monitoring at `GET /api/admin/backups/status` with environment-driven freshness, encryption, retention, artifact, destination-label, and restore-test readiness.
 - Added `BackupStatusService` for sanitized external backup-status JSON ingestion without returning status file paths, decrypted data, object-store credentials, raw dumps, or restore execution controls.
 - Added the dashboard Backups page, role-aware sidebar item, NOC backup badge, English/Persian labels, and browser coverage for healthy monitored backup readiness.
@@ -1349,6 +1350,7 @@ Repository remote is ready:
 - Verified repository secret hygiene with `npm run secrets:check`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+
 - Added guarded `GET /api/admin/audit-logs` with exact-match filters, bounded result limits, newest-first ordering, and dashboard-safe metadata redaction for secret-like keys.
 - Added the dashboard Audit Logs page with summary cards, action/target filters, compact event table, English/Persian labels, and role-aware sidebar visibility that excludes support-role sessions.
 - Added Playwright browser coverage for the Audit Logs page and sanitized metadata display.
@@ -1383,3 +1385,34 @@ Repository remote is ready:
 - Verified repository secret hygiene with `npm run secrets:check`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+
+## 2026-05-29 Telegram Bot Settings Slice
+
+### Completed
+
+- Added PostgreSQL migration `0023_telegram_bot_settings.sql` for database-backed Telegram bot setup metadata.
+- Added encrypted/write-only Telegram BotFather token and webhook-secret storage through `secret_records` scope `telegram_bot`.
+- Added guarded superadmin Settings APIs for reading Telegram bot readiness metadata, saving token/webhook/chat settings, and testing Telegram `getMe` through the shared outbound HTTP client.
+- Updated Telegram alert delivery and user-command webhook runtime resolution to use database settings with environment values as bootstrap/fallback.
+- Added a dashboard Settings Telegram Bot Setup panel with bilingual labels, write-only token inputs, alert/admin chat ID controls, alerts/commands toggles, and API test action.
+- Added `docs/telegram-bot-setup.md` for BotFather setup and token rotation.
+- Recorded native client per-app VPN split tunneling as a future client requirement: selected apps can use AfroGate while other apps stay on normal internet without exposing installed-app inventories or traffic destinations.
+- Marked Telegram bot setup and onboarding/rotation guide complete in `.codex/checklist.md`; checklist completion is now `217 / 236` items, or `91.9%` complete with `8.1%` remaining.
+- Bumped AfroGate to `0.87.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run version:check`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run test:e2e`; 10 tests passed.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Implement native client per-app VPN split tunneling in a future mobile/desktop client phase.
+- Keep the separate Telegram bot operations page pending until there is more operational state to manage beyond setup/readiness.

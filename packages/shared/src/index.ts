@@ -290,6 +290,55 @@ export interface TelegramBotWebhookResponse {
   reason?: string;
 }
 
+export type TelegramBotSettingsSecretSource = 'database' | 'environment' | 'none';
+export type TelegramBotSettingsTestStatus = 'notTested' | 'ok' | 'failed' | 'missingToken';
+
+export interface AdminTelegramBotSettingsSummary {
+  hasBotToken: boolean;
+  botTokenSource: TelegramBotSettingsSecretSource | string;
+  hasWebhookSecret: boolean;
+  webhookSecretSource: TelegramBotSettingsSecretSource | string;
+  alertsEnabled: boolean;
+  commandsEnabled: boolean;
+  alertChatId?: string | null;
+  alertChatIdSource: TelegramBotSettingsSecretSource | string;
+  allowedAdminChatIds: string[];
+  outboundProxyConfigured: boolean;
+  botId?: string | null;
+  botUsername?: string | null;
+  botFirstName?: string | null;
+  lastTestStatus: TelegramBotSettingsTestStatus | string;
+  lastTestedAt?: string | null;
+  lastTestErrorCode?: string | null;
+  lastTestDurationMs?: number | null;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface AdminTelegramBotSettingsResponse {
+  telegramBot: AdminTelegramBotSettingsSummary;
+}
+
+export interface UpdateTelegramBotSettingsRequest {
+  botToken?: string;
+  webhookSecret?: string;
+  clearBotToken?: boolean;
+  clearWebhookSecret?: boolean;
+  alertChatId?: string | null;
+  allowedAdminChatIds?: string[];
+  alertsEnabled?: boolean;
+  commandsEnabled?: boolean;
+}
+
+export interface AdminTelegramBotTestResponse {
+  ok: boolean;
+  status: TelegramBotSettingsTestStatus | string;
+  durationMs?: number | null;
+  botUsername?: string | null;
+  errorCode?: string | null;
+  telegramBot: AdminTelegramBotSettingsSummary;
+}
+
 export interface ClientRoutePreferenceSummary {
   routeGroup: string;
   assignmentKey: string;

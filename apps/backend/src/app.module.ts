@@ -34,6 +34,7 @@ import { RateLimitGuard } from './security/rate-limit.guard';
 import { RateLimitService } from './security/rate-limit.service';
 import { SecretVaultService } from './security/secret-vault.service';
 import { TelegramBotController } from './telegram/telegram-bot.controller';
+import { TelegramBotConfigService } from './telegram/telegram-bot-config.service';
 import { TelegramBotService } from './telegram/telegram-bot.service';
 
 @Module({
@@ -79,6 +80,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     SecretVaultService,
     PostgresMetricsRepository,
     TelegramAlertService,
+    TelegramBotConfigService,
     TelegramBotService,
     {
       provide: METRICS_REPOSITORY,

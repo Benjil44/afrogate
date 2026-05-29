@@ -39,6 +39,7 @@ import type {
   AdminRewardedAdSettingsSummary,
   AdminSettingsResponse,
   AdminSessionResponse,
+  AdminTelegramBotSettingsSummary,
   AdminTunnelSummary,
   AdminVolumePackageSummary,
   AdminWireGuardCandidate,
@@ -71,6 +72,7 @@ import {
   Archive,
   ArrowDownUp,
   Bell,
+  Bot,
   CheckCircle2,
   Clock,
   CreditCard,
@@ -123,6 +125,7 @@ import {
   fetchAdminServerInterfaces,
   fetchAdminServers,
   fetchAdminSettings,
+  fetchAdminTelegramBotSettings,
   fetchAdminTunnel,
   fetchAdminTunnels,
   fetchAdminUsers,
@@ -139,11 +142,13 @@ import {
   recordRouteDecisionPreview,
   requestAdminProtocolServerApply,
   storeAdminServerCredential,
+  testAdminTelegramBotConnection,
   updateAdminRouteAssignment,
   updateAdminRouteSettings,
   updateAdminCustomerAccount,
   updateAdminRewardedAdSettings,
   updateAdminServer,
+  updateAdminTelegramBotSettings,
   updateAdminUser,
   updateAdminUserPassword,
   applyRouteDecisionPreview,
@@ -280,6 +285,15 @@ interface ProtocolSetupDraft {
   port: string;
   routeGroup: string;
   targetServerId: string;
+}
+
+interface TelegramBotSettingsForm {
+  botToken: string;
+  webhookSecret: string;
+  alertChatId: string;
+  allowedAdminChatIds: string;
+  alertsEnabled: boolean;
+  commandsEnabled: boolean;
 }
 
 interface NavItemData {
@@ -4227,7 +4241,6 @@ function RoutePolicyPanel({
     setHysteresisScoreDelta(String(nextAssignment.hysteresisScoreDelta));
     setCooldownSeconds(String(nextAssignment.cooldownSeconds));
   };
-
   useEffect(() => {
     let isActive = true;
     const controller = new AbortController();
@@ -4673,6 +4686,15 @@ function SettingsPage({
     routeGroup: 'main',
     targetServerId: '',
   });
+  const [telegramBotSettings, setTelegramBotSettings] = useState<AdminTelegramBotSettingsSummary | null>(null);
+  const [telegramBotForm, setTelegramBotForm] = useState<TelegramBotSettingsForm>({
+    botToken: '',
+    webhookSecret: '',
+    alertChatId: '',
+    allowedAdminChatIds: '',
+    alertsEnabled: false,
+    commandsEnabled: false,
+  });
   const [privateKeyAccepted, setPrivateKeyAccepted] = useState(false);
   const [privateKeySecretRef, setPrivateKeySecretRef] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -4680,6 +4702,7 @@ function SettingsPage({
   const [provisionMessage, setProvisionMessage] = useState<string | null>(null);
   const [serverApplyMessage, setServerApplyMessage] = useState<string | null>(null);
   const [routeMessage, setRouteMessage] = useState<string | null>(null);
+  const [telegramBotMessage, setTelegramBotMessage] = useState<string | null>(null);
   const [settingsDataState, setSettingsDataState] = useState<DataState>('loading');
   const [persistedProtocolSetups, setPersistedProtocolSetups] = useState<AdminProtocolSetupSummary[]>([]);
   const [protocolApplyEvents, setProtocolApplyEvents] = useState<AdminProtocolServerApplyEventSummary[]>([]);
@@ -4697,11 +4720,14 @@ function SettingsPage({
   const [serverApplyingSetupId, setServerApplyingSetupId] = useState<string | null>(null);
   const [serverLiveApplyingSetupId, setServerLiveApplyingSetupId] = useState<string | null>(null);
   const [isRouteSaving, setIsRouteSaving] = useState(false);
+  const [isTelegramBotSaving, setIsTelegramBotSaving] = useState(false);
+  const [isTelegramBotTesting, setIsTelegramBotTesting] = useState(false);
   const [isDecisionRecording, setIsDecisionRecording] = useState(false);
   const [isDecisionApplying, setIsDecisionApplying] = useState(false);
   const [isDecisionEventDetailLoading, setIsDecisionEventDetailLoading] = useState(false);
   const [isProtocolApplyEventDetailLoading, setIsProtocolApplyEventDetailLoading] = useState(false);
   const canCreateProtocols = session.actor.role === 'superadmin' || Boolean(session.actor.isSuperAdmin);
+  const canManageTelegramBot = canCreateProtocols;
   const sampleWireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
     () => [
       {
@@ -4777,6 +4803,18 @@ function SettingsPage({
           : current.profile,
     }));
   };
+  const applyTelegramBotSettings = (settings: AdminTelegramBotSettingsSummary) => {
+    setTelegramBotSettings(settings);
+    setTelegramBotForm((current) => ({
+      ...current,
+      botToken: '',
+      webhookSecret: '',
+      alertChatId: settings.alertChatId ?? '',
+      allowedAdminChatIds: settings.allowedAdminChatIds.join(', '),
+      alertsEnabled: settings.alertsEnabled,
+      commandsEnabled: settings.commandsEnabled,
+    }));
+  };
 
   useEffect(() => {
     let isActive = true;
@@ -4793,6 +4831,7 @@ function SettingsPage({
     setIsDecisionEventDetailLoading(false);
     setIsProtocolApplyEventDetailLoading(false);
     setServerLiveApplyingSetupId(null);
+    setTelegramBotMessage(null);
 
     fetchAdminSettings(sessionToken, 'main', controller.signal)
       .then((data: AdminSettingsResponse) => {
@@ -4839,6 +4878,20 @@ function SettingsPage({
       .catch((error) => {
         if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
       });
+
+    if (canManageTelegramBot) {
+      fetchAdminTelegramBotSettings(sessionToken, controller.signal)
+        .then((data) => {
+          if (!isActive) return;
+
+          applyTelegramBotSettings(data.telegramBot);
+        })
+        .catch((error) => {
+          if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+          setTelegramBotSettings(null);
+        });
+    }
 
     fetchRouteQualityAnalytics(sessionToken, 'main', 168, controller.signal)
       .then((data) => {
@@ -4950,6 +5003,38 @@ function SettingsPage({
     [t.settings.settingsStorage, settingsDataState === 'live' ? t.settings.configured : t.settings.pending, settingsDataState === 'live' ? 'good' : 'warning'],
     [t.settings.secretStorage, hasSavedPrivateKey ? t.settings.encryptedStorageReady : t.settings.encryptedStoragePending, hasSavedPrivateKey ? 'good' : 'neutral'],
   ];
+  const telegramBotReadinessRows: Array<[string, string, Tone]> = [
+    [
+      t.settings.telegramBotToken,
+      telegramBotSettings?.hasBotToken ? telegramSecretSourceLabel(telegramBotSettings.botTokenSource, t) : t.settings.pending,
+      telegramBotSettings?.hasBotToken ? 'good' : 'warning',
+    ],
+    [
+      t.settings.telegramWebhookSecret,
+      telegramBotSettings?.hasWebhookSecret ? telegramSecretSourceLabel(telegramBotSettings.webhookSecretSource, t) : t.settings.pending,
+      telegramBotSettings?.hasWebhookSecret ? 'good' : 'warning',
+    ],
+    [
+      t.settings.telegramAlertChatId,
+      telegramBotSettings?.alertChatId ? t.settings.configured : t.settings.pending,
+      telegramBotSettings?.alertChatId ? 'good' : 'neutral',
+    ],
+    [
+      t.settings.telegramAllowedAdminChatIds,
+      t.settings.telegramAllowedChatCount(format.integer(telegramBotSettings?.allowedAdminChatIds.length ?? 0)),
+      telegramBotSettings?.allowedAdminChatIds.length ? 'good' : 'neutral',
+    ],
+    [
+      t.settings.telegramBotApiTest,
+      telegramTestStatusLabel(telegramBotSettings?.lastTestStatus ?? 'notTested', t),
+      telegramBotSettings?.lastTestStatus === 'ok' ? 'good' : telegramBotSettings?.lastTestStatus === 'failed' ? 'warning' : 'neutral',
+    ],
+    [
+      t.settings.outboundProxy,
+      telegramBotSettings?.outboundProxyConfigured ? t.settings.configured : t.settings.pending,
+      telegramBotSettings?.outboundProxyConfigured ? 'good' : 'neutral',
+    ],
+  ];
   const previewRows: Array<[string, string]> = [
     [t.settings.protocolName, protocolDraft.name || '-'],
     [t.settings.protocol, protocolOptions.find(([value]) => value === protocolDraft.protocol)?.[1] ?? '-'],
@@ -4981,6 +5066,10 @@ function SettingsPage({
   const updateProtocolDraft = <K extends keyof ProtocolSetupDraft>(field: K, value: ProtocolSetupDraft[K]) => {
     setProtocolDraft((current) => ({ ...current, [field]: value }));
     setProtocolMessage(null);
+  };
+  const updateTelegramBotForm = <K extends keyof TelegramBotSettingsForm>(field: K, value: TelegramBotSettingsForm[K]) => {
+    setTelegramBotForm((current) => ({ ...current, [field]: value }));
+    setTelegramBotMessage(null);
   };
 
   const selectProtocol = (protocol: ProtocolKind) => {
@@ -5220,6 +5309,59 @@ function SettingsPage({
       setRouteMessage(t.settings.saveFailed);
     } finally {
       setIsRouteSaving(false);
+    }
+  };
+
+  const saveTelegramBotSettings = async (showSuccessMessage = true): Promise<AdminTelegramBotSettingsSummary | null> => {
+    if (!canManageTelegramBot) {
+      setTelegramBotMessage(t.settings.superadminRequired);
+      return null;
+    }
+
+    setIsTelegramBotSaving(true);
+    if (showSuccessMessage) setTelegramBotMessage(null);
+
+    try {
+      const response = await updateAdminTelegramBotSettings(sessionToken, {
+        botToken: telegramBotForm.botToken.trim() || undefined,
+        webhookSecret: telegramBotForm.webhookSecret.trim() || undefined,
+        alertChatId: telegramBotForm.alertChatId.trim() || null,
+        allowedAdminChatIds: parseTelegramChatIds(telegramBotForm.allowedAdminChatIds),
+        alertsEnabled: telegramBotForm.alertsEnabled,
+        commandsEnabled: telegramBotForm.commandsEnabled,
+      });
+
+      applyTelegramBotSettings(response.telegramBot);
+      if (showSuccessMessage) setTelegramBotMessage(t.settings.telegramBotSaved);
+      return response.telegramBot;
+    } catch (error) {
+      setTelegramBotMessage(t.settings.telegramBotSaveFailed);
+      return null;
+    } finally {
+      setIsTelegramBotSaving(false);
+    }
+  };
+
+  const testTelegramBotConnection = async () => {
+    if (!canManageTelegramBot) {
+      setTelegramBotMessage(t.settings.superadminRequired);
+      return;
+    }
+
+    setIsTelegramBotTesting(true);
+    setTelegramBotMessage(null);
+
+    try {
+      const saved = await saveTelegramBotSettings(false);
+      if (!saved) return;
+
+      const response = await testAdminTelegramBotConnection(sessionToken);
+      applyTelegramBotSettings(response.telegramBot);
+      setTelegramBotMessage(response.ok ? t.settings.telegramBotTestOk : t.settings.telegramBotTestFailed);
+    } catch (error) {
+      setTelegramBotMessage(t.settings.telegramBotTestFailed);
+    } finally {
+      setIsTelegramBotTesting(false);
     }
   };
 
@@ -5523,6 +5665,112 @@ function SettingsPage({
               </button>
             </div>
             {routeMessage ? <p className="text-[13px] font-bold text-afro-teal">{routeMessage}</p> : null}
+          </div>
+        </section>
+
+        <section className={panelClass}>
+          <PanelHeading title={t.panels.telegramBotSetup} icon={Bot} meta={canManageTelegramBot ? t.settings.superadminReady : t.settings.superadminOnly} />
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <SettingsInput
+                autoComplete="off"
+                disabled={!canManageTelegramBot}
+                label={t.settings.telegramBotToken}
+                onChange={(value) => updateTelegramBotForm('botToken', value)}
+                placeholder={telegramBotSettings?.hasBotToken ? telegramSecretSourceLabel(telegramBotSettings.botTokenSource, t) : ''}
+                type="password"
+                value={telegramBotForm.botToken}
+              />
+              <SettingsInput
+                autoComplete="off"
+                disabled={!canManageTelegramBot}
+                label={t.settings.telegramWebhookSecret}
+                onChange={(value) => updateTelegramBotForm('webhookSecret', value)}
+                placeholder={telegramBotSettings?.hasWebhookSecret ? telegramSecretSourceLabel(telegramBotSettings.webhookSecretSource, t) : ''}
+                type="password"
+                value={telegramBotForm.webhookSecret}
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <SettingsInput
+                disabled={!canManageTelegramBot}
+                inputMode="numeric"
+                label={t.settings.telegramAlertChatId}
+                onChange={(value) => updateTelegramBotForm('alertChatId', value)}
+                value={telegramBotForm.alertChatId}
+              />
+              <SettingsInput
+                disabled={!canManageTelegramBot}
+                label={t.settings.telegramAllowedAdminChatIds}
+                onChange={(value) => updateTelegramBotForm('allowedAdminChatIds', value)}
+                value={telegramBotForm.allowedAdminChatIds}
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3 py-2">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramAlertsEnabled}</span>
+                <input
+                  checked={telegramBotForm.alertsEnabled}
+                  className="size-4 accent-afro-teal"
+                  disabled={!canManageTelegramBot}
+                  onChange={(event) => updateTelegramBotForm('alertsEnabled', event.target.checked)}
+                  type="checkbox"
+                />
+              </label>
+              <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-afro-line px-3 py-2">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramCommandsEnabled}</span>
+                <input
+                  checked={telegramBotForm.commandsEnabled}
+                  className="size-4 accent-afro-teal"
+                  disabled={!canManageTelegramBot}
+                  onChange={(event) => updateTelegramBotForm('commandsEnabled', event.target.checked)}
+                  type="checkbox"
+                />
+              </label>
+            </div>
+            <div className="grid gap-2">
+              {telegramBotReadinessRows.map(([label, value, tone]) => (
+                <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
+                  <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
+                  <StatusBadge tone={tone}>{value}</StatusBadge>
+                </div>
+              ))}
+            </div>
+            {telegramBotSettings?.botUsername || telegramBotSettings?.botFirstName ? (
+              <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-md border border-afro-line bg-white px-3 py-2">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramBotIdentity}</span>
+                <strong className="min-w-0 truncate text-sm" dir="ltr">
+                  {telegramBotSettings.botUsername ? `@${telegramBotSettings.botUsername}` : telegramBotSettings.botFirstName}
+                </strong>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
+              <div className="flex min-w-0 items-center gap-2 text-[13px] text-afro-muted">
+                <LockKeyhole className="shrink-0" size={16} />
+                <span className="min-w-0 truncate">{t.settings.telegramBotWriteOnly}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line px-4 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-wait disabled:opacity-60"
+                  disabled={!canManageTelegramBot || isTelegramBotTesting || isTelegramBotSaving}
+                  onClick={() => void testTelegramBotConnection()}
+                  type="button"
+                >
+                  <ShieldCheck size={16} />
+                  {isTelegramBotTesting ? t.settings.testing : t.settings.testTelegramBotApi}
+                </button>
+                <button
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-60"
+                  disabled={!canManageTelegramBot || isTelegramBotSaving || isTelegramBotTesting}
+                  onClick={() => void saveTelegramBotSettings()}
+                  type="button"
+                >
+                  <CheckCircle2 size={16} />
+                  {isTelegramBotSaving ? t.settings.saving : t.settings.saveTelegramBotSettings}
+                </button>
+              </div>
+            </div>
+            {telegramBotMessage ? <p className="text-[13px] font-bold text-afro-teal">{telegramBotMessage}</p> : null}
           </div>
         </section>
 
@@ -8563,6 +8811,41 @@ function routeDecisionCandidateSourceLabel(candidate: AdminRouteDecisionCandidat
   if (candidate.source === 'outbound') return t.settings.outboundHealth;
 
   return t.settings.localSample;
+}
+
+function telegramSecretSourceLabel(source: string, t: DashboardStrings): string {
+  switch (source) {
+    case 'database':
+      return t.settings.sourceDatabase;
+    case 'environment':
+      return t.settings.sourceEnvironment;
+    default:
+      return t.settings.sourceNone;
+  }
+}
+
+function telegramTestStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'ok':
+      return t.settings.telegramTestOk;
+    case 'failed':
+      return t.settings.telegramTestFailed;
+    case 'missingToken':
+      return t.settings.telegramTestMissingToken;
+    default:
+      return t.settings.telegramTestNotTested;
+  }
+}
+
+function parseTelegramChatIds(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/[\s,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function SettingsInput({

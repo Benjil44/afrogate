@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import type {
   TelegramBotAccountSummary,
@@ -8,6 +7,7 @@ import type {
 } from '@afrogate/shared';
 import { BillingService } from '../billing/billing.service';
 import { TelegramAlertService } from '../notifications/telegram-alert.service';
+import { TelegramBotConfigService } from './telegram-bot-config.service';
 
 interface TelegramWebhookMessage {
   chatId: string;
@@ -20,20 +20,29 @@ interface TelegramWebhookMessage {
 export class TelegramBotService {
   constructor(
     private readonly billing: BillingService,
-    private readonly config: ConfigService,
     private readonly telegram: TelegramAlertService,
+    private readonly telegramConfig: TelegramBotConfigService,
   ) {}
 
-  isWebhookEnabled(): boolean {
-    return this.configFlag('AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED', false);
+  async isWebhookEnabled(): Promise<boolean> {
+    try {
+      return (await this.telegramConfig.getRuntimeConfig()).commandsEnabled;
+    } catch {
+      return false;
+    }
   }
 
-  isWebhookConfigured(): boolean {
-    return Boolean(this.webhookSecret() && this.telegram.isBotConfigured());
+  async isWebhookConfigured(): Promise<boolean> {
+    try {
+      const runtime = await this.telegramConfig.getRuntimeConfig();
+      return Boolean(runtime.webhookSecret && runtime.botToken);
+    } catch {
+      return false;
+    }
   }
 
-  isWebhookSecretValid(value: string | undefined): boolean {
-    const expected = this.webhookSecret();
+  async isWebhookSecretValid(value: string | undefined): Promise<boolean> {
+    const expected = await this.webhookSecret();
     if (!expected || !value) return false;
 
     const expectedBuffer = Buffer.from(expected);
@@ -177,13 +186,11 @@ export class TelegramBotService {
     return normalized || undefined;
   }
 
-  private webhookSecret(): string | undefined {
-    return this.config.get<string>('AFROGATE_TELEGRAM_WEBHOOK_SECRET')?.trim() || undefined;
-  }
-
-  private configFlag(name: string, fallback: boolean): boolean {
-    const value = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!value) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(value);
+  private async webhookSecret(): Promise<string | undefined> {
+    try {
+      return (await this.telegramConfig.getRuntimeConfig()).webhookSecret;
+    } catch {
+      return undefined;
+    }
   }
 }

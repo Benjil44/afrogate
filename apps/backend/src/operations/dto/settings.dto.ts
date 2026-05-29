@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsBoolean,
+  IsArray,
   IsIn,
   IsInt,
   IsObject,
@@ -46,6 +48,48 @@ export class CreateSettingsSecretDto {
   @IsOptional()
   @IsIn(PROTOCOL_KINDS)
   protocol?: string;
+}
+
+export class UpdateTelegramBotSettingsDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(20)
+  @MaxLength(240)
+  botToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(256)
+  webhookSecret?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  clearBotToken?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  clearWebhookSecret?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  alertChatId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  allowedAdminChatIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  alertsEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  commandsEnabled?: boolean;
 }
 
 export class CreateProtocolSetupDto {

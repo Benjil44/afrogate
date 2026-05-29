@@ -182,8 +182,8 @@
 - [x] Client-scoped mobile API/auth for VPN users.
 - [x] Client subscription refresh endpoint for updated safe server addresses.
 - [x] Telegram bot user commands.
-- [ ] Superadmin Settings Telegram bot setup for BotFather token, webhook secret, allowed chat/admin IDs, and Telegram API connection test.
-- [ ] Telegram bot onboarding and rotation guide that explains bot creation happens in Telegram BotFather, while AfroGate stores only encrypted/write-only token material.
+- [x] Superadmin Settings Telegram bot setup for BotFather token, webhook secret, allowed chat/admin IDs, and Telegram API connection test.
+- [x] Telegram bot onboarding and rotation guide that explains bot creation happens in Telegram BotFather, while AfroGate stores only encrypted/write-only token material.
 
 ## Phase 3: Auto Route
 
@@ -221,6 +221,7 @@
 - [x] Per-client route preference model for auto country detection, preferred exit country, and explicit server/outbound choice.
 - [x] Route decision filtering by per-client preferred exit country and available country/server candidates.
 - [x] Mobile client UX for automatic route, country selection, and explicit server choice.
+- [ ] Native client per-app VPN split tunneling so selected apps can use AfroGate while other apps stay on normal internet.
 
 ## Phase 4: Current Panel Integration
 

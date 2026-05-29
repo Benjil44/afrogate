@@ -242,6 +242,35 @@ export const secretRecords = pgTable(
   }),
 );
 
+export const telegramBotSettings = pgTable(
+  'telegram_bot_settings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    settingKey: text('setting_key').notNull().default('default'),
+    botTokenSecretRef: text('bot_token_secret_ref'),
+    webhookSecretRef: text('webhook_secret_ref'),
+    alertChatId: text('alert_chat_id'),
+    allowedAdminChatIds: jsonb('allowed_admin_chat_ids').notNull().default(sql`'[]'::jsonb`),
+    alertsEnabled: boolean('alerts_enabled').notNull().default(false),
+    commandsEnabled: boolean('commands_enabled').notNull().default(false),
+    botId: text('bot_id'),
+    botUsername: text('bot_username'),
+    botFirstName: text('bot_first_name'),
+    lastTestStatus: text('last_test_status'),
+    lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
+    lastTestErrorCode: text('last_test_error_code'),
+    lastTestDurationMs: integer('last_test_duration_ms'),
+    updatedBy: text('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    settingKeyIdx: uniqueIndex('telegram_bot_settings_key_idx').on(table.settingKey),
+    botTokenRefIdx: index('telegram_bot_settings_token_ref_idx').on(table.botTokenSecretRef),
+    webhookRefIdx: index('telegram_bot_settings_webhook_ref_idx').on(table.webhookSecretRef),
+  }),
+);
+
 export const serverAccessProfiles = pgTable(
   'server_access_profiles',
   {

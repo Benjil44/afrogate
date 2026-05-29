@@ -27,15 +27,15 @@ export class TelegramBotController {
     @Headers('x-telegram-bot-api-secret-token') telegramSecret?: string,
     @Headers('x-afrogate-telegram-webhook-secret') afrogateSecret?: string,
   ): Promise<TelegramBotWebhookResponse> {
-    if (!this.telegramBot.isWebhookEnabled()) {
+    if (!(await this.telegramBot.isWebhookEnabled())) {
       throw new NotFoundException('Telegram bot commands are disabled');
     }
 
-    if (!this.telegramBot.isWebhookConfigured()) {
+    if (!(await this.telegramBot.isWebhookConfigured())) {
       throw new ServiceUnavailableException('Telegram bot webhook is not configured');
     }
 
-    if (!this.telegramBot.isWebhookSecretValid(telegramSecret || afrogateSecret)) {
+    if (!(await this.telegramBot.isWebhookSecretValid(telegramSecret || afrogateSecret))) {
       throw new UnauthorizedException('Invalid Telegram webhook secret');
     }
 

@@ -92,7 +92,7 @@ In CI, the same config switches to Playwright Chromium after the workflow instal
 
 ## Optional Telegram Alerts
 
-Telegram delivery is disabled by default for local development. To test it later, configure real bot values only in a git-ignored `.env` or systemd environment file:
+Telegram delivery is disabled by default for local development. Superadmin Settings can store real bot values encrypted/write-only after migrations are running. Environment values are still available as a bootstrap/fallback path; configure them only in a git-ignored `.env` or systemd environment file:
 
 ```powershell
 AFROGATE_TELEGRAM_ALERTS_ENABLED=true
