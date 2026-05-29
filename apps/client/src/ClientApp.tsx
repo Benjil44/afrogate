@@ -12,7 +12,9 @@ import type {
 } from '@afrogate/shared';
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
+  Copy,
   Gamepad2,
   Gift,
   Globe2,
@@ -696,11 +698,22 @@ function ConfigLinkCard({
   configLink: ClientSubscriptionSummary['configLinks'][number];
   messages: ClientMessages;
 }) {
+  const [copied, setCopied] = useState(false);
+  const renderedPayload = configLink.uri ?? configLink.configText ?? null;
   const statusTone = configLink.renderStatus === 'rendered'
     ? 'ok'
     : configLink.renderStatus === 'unsupported_protocol'
       ? 'neutral'
       : 'warning';
+
+  async function handleCopy() {
+    if (!renderedPayload) return;
+    const ok = await copyText(renderedPayload);
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }
+  }
 
   return (
     <div className="rounded-[8px] border border-client-line bg-client-page p-3 text-sm">
@@ -712,8 +725,19 @@ function ConfigLinkCard({
       <div className="mt-2 flex flex-wrap gap-2">
         <Badge tone="neutral" text={configFormatLabel(configLink.format, messages)} />
         {configLink.requiresClientSecret ? <Badge tone="warning" text={messages.requiresClientSecret} /> : null}
+        {configLink.sensitive ? <Badge tone="warning" text={messages.privateConfig} /> : null}
         {configLink.usageMultiplier > 1 ? <Badge tone="warning" text={configLink.chargeLabel} /> : null}
       </div>
+      {renderedPayload ? (
+        <button
+          type="button"
+          onClick={() => void handleCopy()}
+          className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-[8px] bg-client-deep px-3 text-sm font-semibold text-white"
+        >
+          {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+          {copied ? messages.copiedConfig : messages.copyConfig}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -825,6 +849,28 @@ function createRewardClaimKey(): string {
   }
 
   return `client-ad:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+async function copyText(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fall back to the hidden textarea path below.
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  return copied;
 }
 
 function subscriptionEndpointAddress(endpoint: ClientSubscriptionSummary['endpoints'][number]): string {

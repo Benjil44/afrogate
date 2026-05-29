@@ -54,6 +54,7 @@
 - price per GB قابل تنظیم.
 - نمایش remaining volume.
 - اتصال Telegram bot برای مشاهده حجم و شارژ.
+- wizard سوپراَدمن برای تنظیم Telegram bot ساخته شده در BotFather، ذخیره امن token، chat/admin idهای مجاز، webhook secret، و تست اتصال Telegram API.
 - ثبت paid number با privacy protection.
 - Separate seller/admin UX from VPN client UX; mobile/client APIs now start with scoped profile/quota, route options, and route-preference actions under `/api/client/*`, with package/usage purchase flows remaining future work.
 - Usage accounting now starts with idempotent `client_usage_events` rows that update account/client used-byte counters for remaining-volume reads.
@@ -79,7 +80,7 @@
 - sync مصرف حجم.
 - عملیات شارژ volume از AfroGate به سیستم فعلی.
 - import/export config.
-- Encrypted per-client subscription config renderer for connectable WireGuard, VLESS, L2TP, and IKEv2 links after panel import/provisioning can supply client-owned secret material safely.
+- Encrypted per-client subscription config renderer exists for client-owned WireGuard, VLESS, L2TP, and IKEv2 material; panel import/provisioning still needs to feed it safely.
 
 ## فاز 5: Enterprise Foundation
 

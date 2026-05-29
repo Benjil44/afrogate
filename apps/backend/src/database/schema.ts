@@ -659,6 +659,40 @@ export const clientAccessTokens = pgTable(
   }),
 );
 
+export const clientSubscriptionCredentials = pgTable(
+  'client_subscription_credentials',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    outboundId: uuid('outbound_id')
+      .notNull()
+      .references(() => outbounds.id, { onDelete: 'cascade' }),
+    name: text('name'),
+    protocol: text('protocol').notNull(),
+    encryptedPayload: text('encrypted_payload').notNull(),
+    keyId: text('key_id').notNull(),
+    fingerprint: text('fingerprint'),
+    publicMetadata: jsonb('public_metadata').notNull().default(sql`'{}'::jsonb`),
+    status: text('status').notNull().default('active'),
+    createdBy: text('created_by'),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    lastRotatedAt: timestamp('last_rotated_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    activeUnique: uniqueIndex('client_subscription_credentials_active_unique')
+      .on(table.clientConfigId, table.outboundId, table.protocol)
+      .where(sql`revoked_at IS NULL`),
+    clientIdx: index('client_subscription_credentials_client_idx').on(table.clientConfigId, table.createdAt),
+    outboundIdx: index('client_subscription_credentials_outbound_idx').on(table.outboundId),
+    statusIdx: index('client_subscription_credentials_status_idx').on(table.status, table.revokedAt),
+  }),
+);
+
 export const billingSettings = pgTable('billing_settings', {
   settingKey: text('setting_key').primaryKey(),
   currency: text('currency').notNull().default('toman'),
@@ -977,6 +1011,7 @@ export const clientConfigsRelations = relations(clientConfigs, ({ many, one }) =
   rewardedAdGrants: many(rewardedAdGrants),
   routePreferences: many(clientRoutePreferences),
   accessTokens: many(clientAccessTokens),
+  subscriptionCredentials: many(clientSubscriptionCredentials),
 }));
 
 export const clientUsageEventsRelations = relations(clientUsageEvents, ({ one }) => ({
@@ -1016,6 +1051,17 @@ export const clientAccessTokensRelations = relations(clientAccessTokens, ({ one 
   clientConfig: one(clientConfigs, {
     fields: [clientAccessTokens.clientConfigId],
     references: [clientConfigs.id],
+  }),
+}));
+
+export const clientSubscriptionCredentialsRelations = relations(clientSubscriptionCredentials, ({ one }) => ({
+  clientConfig: one(clientConfigs, {
+    fields: [clientSubscriptionCredentials.clientConfigId],
+    references: [clientConfigs.id],
+  }),
+  outbound: one(outbounds, {
+    fields: [clientSubscriptionCredentials.outboundId],
+    references: [outbounds.id],
   }),
 }));
 

@@ -393,6 +393,8 @@ export type ClientSubscriptionConfigFormat =
 export type ClientSubscriptionConfigRenderStatus =
   | 'rendered'
   | 'blocked_secret_required'
+  | 'blocked_secret_unavailable'
+  | 'blocked_secret_invalid'
   | 'missing_public_config'
   | 'unsupported_protocol';
 
@@ -412,7 +414,11 @@ export interface ClientSubscriptionConfigLinkSummary {
   format: ClientSubscriptionConfigFormat | string;
   renderStatus: ClientSubscriptionConfigRenderStatus | string;
   uri?: string | null;
+  configText?: string | null;
   profile?: Record<string, string | number | boolean | null>;
+  credentialId?: string | null;
+  renderedAt?: string | null;
+  sensitive?: boolean;
   missingFields: string[];
   warnings: string[];
   requiresClientSecret: boolean;
@@ -539,6 +545,35 @@ export interface UpdateClientConfigRequest {
   usedBytes?: number;
   status?: ClientConfigStatus;
   notes?: string | null;
+}
+
+export type ClientSubscriptionCredentialProtocol = 'wireguard' | 'vless' | 'l2tp' | 'ikev2';
+
+export interface AdminClientSubscriptionCredentialSummary {
+  id: string;
+  clientConfigId: string;
+  customerAccountId: string;
+  outboundId: string;
+  outboundName?: string | null;
+  protocol: ClientSubscriptionCredentialProtocol | string;
+  name?: string | null;
+  status: 'active' | 'revoked' | string;
+  publicMetadata: Record<string, unknown>;
+  hasSecretMaterial: boolean;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string | null;
+  lastRotatedAt?: string | null;
+  revokedAt?: string | null;
+}
+
+export interface UpsertClientSubscriptionCredentialRequest {
+  outboundId: string;
+  protocol?: ClientSubscriptionCredentialProtocol | string;
+  name?: string | null;
+  secretMaterial: Record<string, unknown>;
+  publicMetadata?: Record<string, unknown> | null;
 }
 
 export interface UpsertClientRoutePreferenceRequest {
@@ -2624,6 +2659,14 @@ export interface AdminClientRoutePreferenceResponse {
 
 export interface AdminClientAccessTokensResponse {
   tokens: ClientAccessTokenSummary[];
+}
+
+export interface AdminClientSubscriptionCredentialsResponse {
+  credentials: AdminClientSubscriptionCredentialSummary[];
+}
+
+export interface AdminClientSubscriptionCredentialResponse {
+  credential: AdminClientSubscriptionCredentialSummary;
 }
 
 export interface AdminIssueClientAccessTokenResponse {

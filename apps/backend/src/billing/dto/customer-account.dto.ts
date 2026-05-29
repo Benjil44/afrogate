@@ -39,6 +39,7 @@ export const CLIENT_USAGE_EVENT_SOURCES = [
   'unknown',
 ] as const;
 export const CLIENT_USAGE_DIRECTIONS = ['rx', 'tx', 'combined'] as const;
+export const CLIENT_SUBSCRIPTION_CREDENTIAL_PROTOCOLS = ['wireguard', 'vless', 'l2tp', 'ikev2'] as const;
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 
@@ -384,4 +385,25 @@ export class CreateClientUsageEventDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+}
+
+export class UpsertClientSubscriptionCredentialDto {
+  @IsUUID()
+  outboundId!: string;
+
+  @IsOptional()
+  @IsIn(CLIENT_SUBSCRIPTION_CREDENTIAL_PROTOCOLS)
+  protocol?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string | null;
+
+  @IsObject()
+  secretMaterial!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsObject()
+  publicMetadata?: Record<string, unknown> | null;
 }

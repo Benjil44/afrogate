@@ -54,6 +54,7 @@ Existing mitigations:
 
 - Admin and VPN-client UX/API boundaries are separate.
 - Client tokens are scoped to one client config and stored only as hashes.
+- Per-client subscription credentials are encrypted, scoped to one client config and outbound, and rendered only to the authenticated client that owns the credential.
 - Dashboard customer-limit management avoids raw paid-number capture/display.
 - Telegram command replies do not expose paid numbers, tokens, server details, or private route data.
 - Route decision previews and switch events are advisory/assignment-only and record non-secret reason/context data.

@@ -71,6 +71,7 @@ Security rules:
 - The Python agent already supports `AFROGATE_OUTBOUND_PROXY_URL` for HTTP/HTTPS API pushes.
 - The backend has a shared outbound HTTP client for Telegram, PayPal, and other external API calls. It uses direct HTTP/HTTPS by default and can route through `AFROGATE_OUTBOUND_PROXY_URL` when that value points to a localhost HTTP proxy.
 - Telegram critical-alert delivery is controlled by `AFROGATE_TELEGRAM_ALERTS_ENABLED`, `AFROGATE_TELEGRAM_BOT_TOKEN`, and `AFROGATE_TELEGRAM_ALERT_CHAT_ID`. User-command webhooks are controlled separately by `AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED` and `AFROGATE_TELEGRAM_WEBHOOK_SECRET`; keep both disabled/unset until the public webhook is behind HTTPS and Telegram's secret-token header is configured.
+- Telegram bots must be created in Telegram through BotFather. A future superadmin Settings wizard should accept the BotFather token once, store it encrypted/write-only, capture allowed chat/admin IDs and the webhook secret, and test Telegram API reachability through this shared outbound egress path.
 - SOCKS/VLESS should be handled by a local client that exposes an HTTP proxy. This avoids adding protocol-specific code to AfroGate.
 
 ## Monitoring

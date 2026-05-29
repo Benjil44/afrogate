@@ -795,7 +795,16 @@ Repository remote is ready:
 - Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`; 10 tests passed.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
-- Remaining: build the secret-backed per-client subscription config-link renderer with encrypted client credentials, then continue Phase 4 panel import/sync work.
+- Added the secret-backed per-client subscription config renderer foundation with migration `0022_client_subscription_credentials.sql`.
+- Admins can now store, list, and revoke encrypted client-owned subscription credential material for WireGuard, VLESS, L2TP, and IKEv2 through guarded admin APIs; responses return metadata only and audit store/revoke actions.
+- `/api/client/subscription` now renders connectable output only when the authenticated client has an active encrypted credential for that outbound/protocol and the outbound publishes explicit public endpoint metadata.
+- Rendered client outputs support VLESS URIs plus WireGuard/L2TP/IKEv2 profile text, while invalid or unavailable credentials surface explicit blocked render states instead of leaking secrets.
+- The VPN client app now shows rendered private config readiness and a copy action through typed English/Persian labels without exposing admin/server secrets or raw outbound config JSON.
+- Updated checklist and memory for the completed encrypted per-client renderer boundary.
+- Bumped AfroGate to `0.86.0` for the encrypted per-client subscription renderer schema/API/client capability.
+- Added future Telegram bot setup work to the checklist: superadmin Settings should guide BotFather token entry, encrypted/write-only token storage, webhook secret, allowed chat/admin IDs, and Telegram API connection tests.
+- Checklist completion after adding the Telegram bot setup follow-up is `215 / 235` items, or `91.5%` complete with `8.5%` remaining.
+- Remaining: continue Phase 4 panel import/sync work for Marzban/X-UI/current panel users, usage, charge/update, and import/export flows.
 
 - Verified protocol server apply dry-run event contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
 - Applied PostgreSQL migrations through `0011_protocol_apply_events.sql` with `npm --workspace @afrogate/backend run db:migrate`.

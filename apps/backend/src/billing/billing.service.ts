@@ -7,8 +7,9 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHmac, randomBytes } from 'crypto';
+import { createHmac, randomBytes, randomUUID } from 'crypto';
 import type {
+  AdminClientSubscriptionCredentialSummary,
   AdminBillingCatalogResponse,
   AdminBillingSettingsSummary,
   AdminRewardedAdSettingsSummary,
@@ -43,6 +44,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { hashClientToken } from '../security/client-token';
+import { SecretVaultService } from '../security/secret-vault.service';
 import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
 import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
@@ -52,6 +54,7 @@ import {
   CreateCustomerAccountDto,
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
+  UpsertClientSubscriptionCredentialDto,
   UpsertClientRoutePreferenceDto,
 } from './dto/customer-account.dto';
 import {
@@ -87,6 +90,37 @@ const CLIENT_USAGE_EVENT_SOURCES = new Set([
   'unknown',
 ]);
 const CLIENT_USAGE_DIRECTIONS = new Set(['rx', 'tx', 'combined']);
+const CLIENT_SUBSCRIPTION_PROTOCOLS = new Set(['wireguard', 'vless', 'l2tp', 'ikev2']);
+const CLIENT_SUBSCRIPTION_SECRET_MAX_BYTES = 16_000;
+const CLIENT_SUBSCRIPTION_PUBLIC_METADATA_MAX_BYTES = 4_000;
+const CLIENT_SUBSCRIPTION_PUBLIC_METADATA_KEYS = new Set([
+  'allowedIPs',
+  'allowedIps',
+  'alpn',
+  'clientDns',
+  'dns',
+  'encryption',
+  'fingerprint',
+  'flow',
+  'headerType',
+  'hostHeader',
+  'keepalive',
+  'mtu',
+  'network',
+  'path',
+  'peerPublicKey',
+  'persistentKeepalive',
+  'publicKey',
+  'remoteId',
+  'security',
+  'serverId',
+  'serverName',
+  'serverPublicKey',
+  'serviceName',
+  'sni',
+  'transport',
+  'type',
+]);
 
 interface CustomerAccountRow {
   id: string;
@@ -193,6 +227,34 @@ interface ClientAccessTokenAuthRow extends ClientAccessTokenRow {
   customerAccountId: string;
   clientStatus: string;
   accountStatus: string;
+}
+
+interface ClientSubscriptionCredentialRow {
+  id: string;
+  clientConfigId: string;
+  customerAccountId: string;
+  outboundId: string;
+  outboundName: string | null;
+  protocol: string;
+  name: string | null;
+  encryptedPayload: string;
+  keyId: string;
+  publicMetadata: Record<string, unknown>;
+  status: string;
+  createdBy: string | null;
+  lastUsedAt: Date | null;
+  lastRotatedAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ClientSubscriptionCredentialRenderResult {
+  status: 'rendered' | 'blocked_secret_unavailable' | 'blocked_secret_invalid';
+  uri?: string | null;
+  configText?: string | null;
+  missingFields: string[];
+  warnings: string[];
 }
 
 interface ClientPortalRow {
@@ -447,6 +509,7 @@ export class BillingService {
     private readonly database: DatabaseService,
     private readonly audit: AuditService,
     private readonly paypal: PayPalPaymentService,
+    private readonly secretVault: SecretVaultService,
   ) {}
 
   async getBillingCatalog(): Promise<AdminBillingCatalogResponse> {
@@ -1997,6 +2060,155 @@ export class BillingService {
     };
   }
 
+  async listClientSubscriptionCredentials(
+    clientConfigId: string,
+  ): Promise<AdminClientSubscriptionCredentialSummary[]> {
+    await this.getClientConfigRow(clientConfigId);
+    const rows = await this.getClientSubscriptionCredentialRows(clientConfigId);
+    return rows.map((row) => this.mapClientSubscriptionCredential(row));
+  }
+
+  async upsertClientSubscriptionCredential(
+    clientConfigId: string,
+    dto: UpsertClientSubscriptionCredentialDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminClientSubscriptionCredentialSummary> {
+    const secretMaterial = this.normalizeClientSubscriptionSecretMaterial(dto.secretMaterial);
+    const publicMetadata = this.normalizeClientSubscriptionPublicMetadata(dto.publicMetadata);
+    const name = this.normalizeNullableString(dto.name);
+    const credentialId = await this.database.transaction(async (executor) => {
+      const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
+      const outbound = await this.getOutboundForSubscriptionCredential(executor, dto.outboundId);
+      const protocol = this.normalizeClientSubscriptionCredentialProtocol(
+        dto.protocol ?? this.normalizeSubscriptionProtocol(outbound.type),
+      );
+      const credentialId = randomUUID();
+      const encrypted = this.secretVault.encryptJson(
+        secretMaterial,
+        this.clientSubscriptionCredentialEncryptionContext(clientConfigId, outbound.id, protocol, credentialId),
+      );
+      const fingerprint = this.secretVault.fingerprint(stableStringifyRecord(secretMaterial));
+
+      const existing = await executor.query<{ id: string }>(
+        `
+          SELECT id
+          FROM client_subscription_credentials
+          WHERE client_config_id = $1
+            AND outbound_id = $2
+            AND protocol = $3
+            AND revoked_at IS NULL
+          FOR UPDATE
+        `,
+        [clientConfigId, outbound.id, protocol],
+      );
+      const existingIds = existing.rows.map((row) => row.id);
+
+      if (existingIds.length) {
+        await executor.query(
+          `
+            UPDATE client_subscription_credentials
+            SET status = 'revoked',
+                revoked_at = COALESCE(revoked_at, now()),
+                updated_at = now()
+            WHERE id = ANY($1::uuid[])
+          `,
+          [existingIds],
+        );
+      }
+
+      await executor.query(
+        `
+          INSERT INTO client_subscription_credentials (
+            id, client_config_id, outbound_id, name, protocol,
+            encrypted_payload, key_id, fingerprint, public_metadata,
+            status, created_by, last_rotated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'active', $10, now())
+        `,
+        [
+          credentialId,
+          clientConfigId,
+          outbound.id,
+          name,
+          protocol,
+          encrypted.payload,
+          encrypted.keyId,
+          fingerprint,
+          JSON.stringify(publicMetadata),
+          actor?.id ?? null,
+        ],
+      );
+
+      await this.audit.record(
+        actor,
+        'client_subscription_credential.store',
+        'client_subscription_credential',
+        credentialId,
+        {
+          clientConfigId,
+          customerAccountId: client.customerAccountId,
+          outboundId: outbound.id,
+          protocol,
+          name,
+          replacedCredentialCount: existingIds.length,
+          secretFieldCount: Object.keys(secretMaterial).length,
+          publicMetadataFieldCount: Object.keys(publicMetadata).length,
+        },
+        executor,
+      );
+
+      return credentialId;
+    });
+
+    return this.getClientSubscriptionCredential(credentialId);
+  }
+
+  async revokeClientSubscriptionCredential(
+    credentialId: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminClientSubscriptionCredentialSummary> {
+    await this.database.transaction(async (executor) => {
+      const result = await executor.query<ClientSubscriptionCredentialRow>(
+        `
+          ${this.clientSubscriptionCredentialSelectSql()}
+          WHERE csc.id = $1
+          FOR UPDATE
+        `,
+        [credentialId],
+      );
+      const credential = result.rows[0];
+      if (!credential) throw new NotFoundException('Client subscription credential not found');
+
+      await executor.query(
+        `
+          UPDATE client_subscription_credentials
+          SET status = 'revoked',
+              revoked_at = COALESCE(revoked_at, now()),
+              updated_at = now()
+          WHERE id = $1
+        `,
+        [credentialId],
+      );
+
+      await this.audit.record(
+        actor,
+        'client_subscription_credential.revoke',
+        'client_subscription_credential',
+        credentialId,
+        {
+          clientConfigId: credential.clientConfigId,
+          customerAccountId: credential.customerAccountId,
+          outboundId: credential.outboundId,
+          protocol: credential.protocol,
+          alreadyRevoked: Boolean(credential.revokedAt),
+        },
+        executor,
+      );
+    });
+
+    return this.getClientSubscriptionCredential(credentialId);
+  }
+
   async authenticateClientAccessToken(token: string): Promise<ClientAuthActor> {
     try {
       const result = await this.database.query<ClientAccessTokenAuthRow>(
@@ -2474,6 +2686,10 @@ export class BillingService {
     const routeGroup = this.normalizeRouteGroup(routeGroupInput);
     const routeOptions = await this.listClientRouteOptions(actor, routeGroup);
     const chargedRemainingBytes = await this.getClientChargedRemainingBytes(actor);
+    const credentialRows = await this.getActiveClientSubscriptionCredentialRows(actor.clientConfigId, routeGroup);
+    const credentialsByOutboundProtocol = new Map(
+      credentialRows.map((row) => [`${row.outboundId}:${row.protocol}`, row] as const),
+    );
 
     return {
       subscription: {
@@ -2484,7 +2700,11 @@ export class BillingService {
         endpoints: routeOptions.outbounds
           .map((outbound) => outbound.subscriptionEndpoint)
           .filter((endpoint): endpoint is ClientSubscriptionEndpointSummary => Boolean(endpoint)),
-        configLinks: routeOptions.outbounds.map((outbound) => this.subscriptionConfigLink(outbound)),
+        configLinks: routeOptions.outbounds.map((outbound) => {
+          const protocol = this.normalizeSubscriptionProtocol(outbound.type);
+          const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
+          return this.subscriptionConfigLink(outbound, credential);
+        }),
       },
     };
   }
@@ -3304,6 +3524,99 @@ export class BillingService {
     return result.rows.map((row) => this.mapClientConfig(row, defaultPerClientLimitBytes));
   }
 
+  private async getClientSubscriptionCredential(
+    credentialId: string,
+  ): Promise<AdminClientSubscriptionCredentialSummary> {
+    const result = await this.database.query<ClientSubscriptionCredentialRow>(
+      `
+        ${this.clientSubscriptionCredentialSelectSql()}
+        WHERE csc.id = $1
+      `,
+      [credentialId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Client subscription credential not found');
+    return this.mapClientSubscriptionCredential(row);
+  }
+
+  private async getClientSubscriptionCredentialRows(
+    clientConfigId: string,
+  ): Promise<ClientSubscriptionCredentialRow[]> {
+    const result = await this.database.query<ClientSubscriptionCredentialRow>(
+      `
+        ${this.clientSubscriptionCredentialSelectSql()}
+        WHERE csc.client_config_id = $1
+        ORDER BY csc.created_at DESC
+      `,
+      [clientConfigId],
+    );
+
+    return result.rows;
+  }
+
+  private async getActiveClientSubscriptionCredentialRows(
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientSubscriptionCredentialRow[]> {
+    const result = await this.database.query<ClientSubscriptionCredentialRow>(
+      `
+        ${this.clientSubscriptionCredentialSelectSql()}
+        WHERE csc.client_config_id = $1
+          AND o.route_group = $2
+          AND csc.status = 'active'
+          AND csc.revoked_at IS NULL
+        ORDER BY csc.created_at DESC
+      `,
+      [clientConfigId, routeGroup],
+    );
+
+    return result.rows;
+  }
+
+  private clientSubscriptionCredentialSelectSql(): string {
+    return `
+      SELECT
+        csc.id,
+        csc.client_config_id AS "clientConfigId",
+        cc.customer_account_id AS "customerAccountId",
+        csc.outbound_id AS "outboundId",
+        o.name AS "outboundName",
+        csc.protocol,
+        csc.name,
+        csc.encrypted_payload AS "encryptedPayload",
+        csc.key_id AS "keyId",
+        csc.public_metadata AS "publicMetadata",
+        csc.status,
+        csc.created_by AS "createdBy",
+        csc.last_used_at AS "lastUsedAt",
+        csc.last_rotated_at AS "lastRotatedAt",
+        csc.revoked_at AS "revokedAt",
+        csc.created_at AS "createdAt",
+        csc.updated_at AS "updatedAt"
+      FROM client_subscription_credentials csc
+      JOIN client_configs cc ON cc.id = csc.client_config_id
+      JOIN outbounds o ON o.id = csc.outbound_id
+    `;
+  }
+
+  private async getOutboundForSubscriptionCredential(
+    executor: DatabaseQueryExecutor,
+    outboundId: string,
+  ): Promise<{ id: string; type: string; name: string }> {
+    const result = await executor.query<{ id: string; type: string; name: string }>(
+      `
+        SELECT id, type, name
+        FROM outbounds
+        WHERE id = $1
+        FOR SHARE
+      `,
+      [outboundId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Outbound was not found');
+    return row;
+  }
+
   private customerAccountSelectSql(): string {
     return `
       SELECT
@@ -3914,6 +4227,29 @@ export class BillingService {
     };
   }
 
+  private mapClientSubscriptionCredential(
+    row: ClientSubscriptionCredentialRow,
+  ): AdminClientSubscriptionCredentialSummary {
+    return {
+      id: row.id,
+      clientConfigId: row.clientConfigId,
+      customerAccountId: row.customerAccountId,
+      outboundId: row.outboundId,
+      outboundName: row.outboundName,
+      protocol: row.protocol,
+      name: row.name,
+      status: row.revokedAt ? 'revoked' : row.status,
+      publicMetadata: this.asRecord(row.publicMetadata) ?? {},
+      hasSecretMaterial: true,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+      lastRotatedAt: row.lastRotatedAt?.toISOString() ?? null,
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+    };
+  }
+
   private mapClientRoutePreferenceForClient(
     row: AdminClientRoutePreferenceSummary,
   ): ClientRoutePreferenceSummary {
@@ -4063,6 +4399,7 @@ export class BillingService {
 
   private subscriptionConfigLink(
     outbound: ClientRouteOptionsResponse['outbounds'][number],
+    credential: ClientSubscriptionCredentialRow | null,
   ): ClientSubscriptionConfigLinkSummary {
     const endpoint = outbound.subscriptionEndpoint ?? null;
     const protocol = this.normalizeSubscriptionProtocol(outbound.type);
@@ -4084,6 +4421,10 @@ export class BillingService {
       transport: endpoint?.transport ?? null,
       format,
       uri: null,
+      configText: null,
+      credentialId: credential?.id ?? null,
+      renderedAt: null,
+      sensitive: false,
       updatedAt: endpoint?.updatedAt ?? null,
       usableBytesAtMultiplier: outbound.usableBytesAtMultiplier ?? endpoint?.usableBytesAtMultiplier ?? null,
     };
@@ -4109,13 +4450,42 @@ export class BillingService {
       };
     }
 
+    if (!credential) {
+      return {
+        ...base,
+        renderStatus: 'blocked_secret_required',
+        profile: this.subscriptionPublicProfile(protocol, outbound, endpoint),
+        missingFields: this.subscriptionSecretMissingFields(protocol),
+        warnings: ['per_client_secret_credential_required'],
+        requiresClientSecret: true,
+      };
+    }
+
+    const rendered = this.renderClientSubscriptionCredential(protocol, outbound, endpoint, credential);
+    if (rendered.status !== 'rendered') {
+      return {
+        ...base,
+        credentialId: credential.id,
+        renderStatus: rendered.status,
+        profile: this.subscriptionPublicProfile(protocol, outbound, endpoint),
+        missingFields: rendered.missingFields,
+        warnings: rendered.warnings,
+        requiresClientSecret: true,
+      };
+    }
+
     return {
       ...base,
-      renderStatus: 'blocked_secret_required',
+      renderStatus: 'rendered',
+      uri: rendered.uri,
+      configText: rendered.configText,
+      credentialId: credential.id,
+      renderedAt: new Date().toISOString(),
       profile: this.subscriptionPublicProfile(protocol, outbound, endpoint),
-      missingFields: this.subscriptionSecretMissingFields(protocol),
-      warnings: ['secret_safe_descriptor_only', 'per_client_secret_renderer_required'],
-      requiresClientSecret: true,
+      missingFields: [],
+      warnings: ['contains_authenticated_client_secret_material'],
+      requiresClientSecret: false,
+      sensitive: true,
     };
   }
 
@@ -4141,6 +4511,262 @@ export class BillingService {
     return [];
   }
 
+  private renderClientSubscriptionCredential(
+    protocol: string,
+    outbound: ClientRouteOptionsResponse['outbounds'][number],
+    endpoint: ClientSubscriptionEndpointSummary,
+    credential: ClientSubscriptionCredentialRow,
+  ): ClientSubscriptionCredentialRenderResult {
+    let secretMaterial: Record<string, unknown>;
+    try {
+      secretMaterial = this.secretVault.decryptJson(
+        credential.encryptedPayload,
+        this.clientSubscriptionCredentialEncryptionContext(
+          credential.clientConfigId,
+          credential.outboundId,
+          credential.protocol,
+          credential.id,
+        ),
+      );
+    } catch {
+      return {
+        status: 'blocked_secret_unavailable',
+        missingFields: [],
+        warnings: ['stored_client_secret_material_unavailable'],
+      };
+    }
+
+    const publicMetadata = this.asRecord(credential.publicMetadata) ?? {};
+    if (protocol === 'wireguard') {
+      return this.renderWireGuardClientConfig(endpoint, secretMaterial, publicMetadata);
+    }
+    if (protocol === 'vless') {
+      return this.renderVlessClientUri(outbound, endpoint, secretMaterial, publicMetadata);
+    }
+    if (protocol === 'l2tp') {
+      return this.renderL2tpClientProfile(endpoint, secretMaterial, publicMetadata);
+    }
+    if (protocol === 'ikev2') {
+      return this.renderIkev2ClientProfile(endpoint, secretMaterial, publicMetadata);
+    }
+
+    return {
+      status: 'blocked_secret_invalid',
+      missingFields: [],
+      warnings: ['unsupported_protocol'],
+    };
+  }
+
+  private renderVlessClientUri(
+    outbound: ClientRouteOptionsResponse['outbounds'][number],
+    endpoint: ClientSubscriptionEndpointSummary,
+    secretMaterial: Record<string, unknown>,
+    publicMetadata: Record<string, unknown>,
+  ): ClientSubscriptionCredentialRenderResult {
+    const target = this.subscriptionEndpointTarget(endpoint);
+    const uuid = this.firstCredentialString([secretMaterial], ['clientUuid', 'uuid', 'clientId', 'id'], 80);
+    const missingFields: string[] = [];
+
+    if (!target.host) missingFields.push('public_host');
+    if (!target.port) missingFields.push('public_port');
+    if (!uuid || !isUuidValue(uuid)) missingFields.push('client_uuid');
+
+    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
+
+    const network =
+      this.firstCredentialString([publicMetadata, secretMaterial], ['transport', 'network', 'type'], 32) ??
+      endpoint.transport ??
+      'tcp';
+    const encryption = this.firstCredentialString([publicMetadata, secretMaterial], ['encryption'], 32) ?? 'none';
+    const params = new URLSearchParams();
+    params.set('type', network);
+    params.set('encryption', encryption);
+
+    for (const [key, queryName, maxLength] of [
+      ['security', 'security', 32],
+      ['sni', 'sni', 160],
+      ['serverName', 'sni', 160],
+      ['flow', 'flow', 80],
+      ['path', 'path', 180],
+      ['hostHeader', 'host', 160],
+      ['serviceName', 'serviceName', 160],
+      ['headerType', 'headerType', 64],
+      ['fingerprint', 'fp', 64],
+      ['alpn', 'alpn', 80],
+    ] as const) {
+      const value = this.firstCredentialString([publicMetadata, secretMaterial], [key], maxLength);
+      if (value) params.set(queryName, value);
+    }
+
+    const targetHost = target.host as string;
+    const targetPort = target.port as number;
+    const host = targetHost.includes(':') && !targetHost.startsWith('[') ? `[${targetHost}]` : targetHost;
+    const label = encodeURIComponent(outbound.name || 'AfroGate');
+    return {
+      status: 'rendered',
+      uri: `vless://${uuid}@${host}:${targetPort}?${params.toString()}#${label}`,
+      configText: null,
+      missingFields: [],
+      warnings: [],
+    };
+  }
+
+  private renderWireGuardClientConfig(
+    endpoint: ClientSubscriptionEndpointSummary,
+    secretMaterial: Record<string, unknown>,
+    publicMetadata: Record<string, unknown>,
+  ): ClientSubscriptionCredentialRenderResult {
+    const target = this.subscriptionEndpointTarget(endpoint);
+    const privateKey = this.firstCredentialString([secretMaterial], ['clientPrivateKey', 'privateKey'], 2048);
+    const address = this.firstCredentialList([secretMaterial], ['clientAddress', 'address', 'addressCidr'], 256);
+    const peerPublicKey = this.firstCredentialString(
+      [publicMetadata, secretMaterial],
+      ['peerPublicKey', 'serverPublicKey', 'publicKey'],
+      2048,
+    );
+    const missingFields: string[] = [];
+
+    if (!target.authority) missingFields.push('public_endpoint');
+    if (!privateKey) missingFields.push('client_private_key');
+    if (!address) missingFields.push('client_address');
+    if (!peerPublicKey) missingFields.push('peer_public_key');
+
+    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
+
+    const dns = this.firstCredentialList([secretMaterial, publicMetadata], ['dns', 'clientDns'], 256);
+    const allowedIps =
+      this.firstCredentialList([secretMaterial, publicMetadata], ['allowedIps', 'allowedIPs'], 512) ??
+      '0.0.0.0/0, ::/0';
+    const mtu = this.firstCredentialString([secretMaterial, publicMetadata], ['mtu'], 16);
+    const presharedKey = this.firstCredentialString(
+      [secretMaterial],
+      ['presharedKey', 'preSharedKey', 'psk'],
+      2048,
+    );
+    const keepalive = this.firstCredentialString(
+      [secretMaterial, publicMetadata],
+      ['persistentKeepalive', 'keepalive'],
+      16,
+    );
+
+    const lines = [
+      '[Interface]',
+      `PrivateKey = ${privateKey}`,
+      `Address = ${address}`,
+      dns ? `DNS = ${dns}` : null,
+      mtu ? `MTU = ${mtu}` : null,
+      '',
+      '[Peer]',
+      `PublicKey = ${peerPublicKey}`,
+      presharedKey ? `PresharedKey = ${presharedKey}` : null,
+      `AllowedIPs = ${allowedIps}`,
+      `Endpoint = ${target.authority}`,
+      keepalive ? `PersistentKeepalive = ${keepalive}` : null,
+    ].filter((line): line is string => line !== null);
+
+    return {
+      status: 'rendered',
+      uri: null,
+      configText: lines.join('\n'),
+      missingFields: [],
+      warnings: [],
+    };
+  }
+
+  private renderL2tpClientProfile(
+    endpoint: ClientSubscriptionEndpointSummary,
+    secretMaterial: Record<string, unknown>,
+    publicMetadata: Record<string, unknown>,
+  ): ClientSubscriptionCredentialRenderResult {
+    const target = this.subscriptionEndpointTarget(endpoint);
+    const username = this.firstCredentialString([secretMaterial], ['username', 'user'], 256);
+    const password = this.firstCredentialString([secretMaterial], ['password', 'clientPassword'], 2048);
+    const psk = this.firstCredentialString([secretMaterial], ['preSharedKey', 'presharedKey', 'ipsecPsk', 'psk'], 2048);
+    const missingFields: string[] = [];
+
+    if (!target.authority) missingFields.push('public_endpoint');
+    if (!username) missingFields.push('username');
+    if (!password) missingFields.push('password');
+    if (!psk) missingFields.push('ipsec_psk');
+
+    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
+
+    const remoteId = this.firstCredentialString([publicMetadata, secretMaterial], ['remoteId', 'serverId'], 256);
+    const lines = [
+      'Protocol: L2TP/IPsec',
+      `Server: ${target.authority}`,
+      remoteId ? `Remote ID: ${remoteId}` : null,
+      `Username: ${username}`,
+      `Password: ${password}`,
+      `PreSharedKey: ${psk}`,
+    ].filter((line): line is string => line !== null);
+
+    return {
+      status: 'rendered',
+      uri: null,
+      configText: lines.join('\n'),
+      missingFields: [],
+      warnings: [],
+    };
+  }
+
+  private renderIkev2ClientProfile(
+    endpoint: ClientSubscriptionEndpointSummary,
+    secretMaterial: Record<string, unknown>,
+    publicMetadata: Record<string, unknown>,
+  ): ClientSubscriptionCredentialRenderResult {
+    const target = this.subscriptionEndpointTarget(endpoint);
+    const identity = this.firstCredentialString(
+      [secretMaterial],
+      ['identity', 'clientIdentity', 'localId', 'username'],
+      256,
+    );
+    const username = this.firstCredentialString([secretMaterial], ['username', 'user'], 256);
+    const password = this.firstCredentialString([secretMaterial], ['password', 'eapPassword'], 2048);
+    const certificate = this.firstCredentialString(
+      [secretMaterial],
+      ['certificateAlias', 'certificateRef', 'clientCertificate'],
+      4096,
+    );
+    const missingFields: string[] = [];
+
+    if (!target.authority) missingFields.push('public_endpoint');
+    if (!identity && !username) missingFields.push('client_identity');
+    if (!password && !certificate) missingFields.push('client_auth_material');
+
+    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
+
+    const remoteId =
+      this.firstCredentialString([publicMetadata, secretMaterial], ['remoteId', 'serverId'], 256) ??
+      target.host ??
+      null;
+    const lines = [
+      'Protocol: IKEv2',
+      `Server: ${target.authority}`,
+      remoteId ? `Remote ID: ${remoteId}` : null,
+      identity ? `Local ID: ${identity}` : null,
+      username ? `Username: ${username}` : null,
+      password ? `Password: ${password}` : null,
+      certificate ? `Certificate: ${certificate}` : null,
+    ].filter((line): line is string => line !== null);
+
+    return {
+      status: 'rendered',
+      uri: null,
+      configText: lines.join('\n'),
+      missingFields: [],
+      warnings: [],
+    };
+  }
+
+  private invalidSubscriptionCredential(missingFields: string[]): ClientSubscriptionCredentialRenderResult {
+    return {
+      status: 'blocked_secret_invalid',
+      missingFields,
+      warnings: ['stored_client_secret_material_incomplete'],
+    };
+  }
+
   private subscriptionPublicProfile(
     protocol: string,
     outbound: ClientRouteOptionsResponse['outbounds'][number],
@@ -4163,6 +4789,65 @@ export class BillingService {
   private endpointHostPort(endpoint: ClientSubscriptionEndpointSummary): string | null {
     if (!endpoint.host) return null;
     return endpoint.port ? `${endpoint.host}:${endpoint.port}` : endpoint.host;
+  }
+
+  private subscriptionEndpointTarget(
+    endpoint: ClientSubscriptionEndpointSummary,
+  ): { host: string | null; port: number | null; authority: string | null } {
+    const parsed = parseSubscriptionAddress(endpoint.address);
+    const host = endpoint.host ?? parsed.host;
+    const port = endpoint.port ?? parsed.port;
+
+    if (!host && endpoint.address) {
+      return { host: null, port, authority: this.sanitizeSubscriptionConfigValue(endpoint.address, 220) };
+    }
+
+    const safeHost = host ? this.sanitizeSubscriptionConfigValue(host, 180) : null;
+    const authority = safeHost ? `${safeHost}${port ? `:${port}` : ''}` : null;
+    return { host: safeHost, port, authority };
+  }
+
+  private firstCredentialString(
+    records: Array<Record<string, unknown>>,
+    keys: string[],
+    maxLength: number,
+  ): string | null {
+    for (const record of records) {
+      for (const key of keys) {
+        const value = record[key];
+        const normalized = scalarCredentialValue(value);
+        const safe = normalized ? this.sanitizeSubscriptionConfigValue(normalized, maxLength) : null;
+        if (safe) return safe;
+      }
+    }
+
+    return null;
+  }
+
+  private firstCredentialList(
+    records: Array<Record<string, unknown>>,
+    keys: string[],
+    maxLength: number,
+  ): string | null {
+    for (const record of records) {
+      for (const key of keys) {
+        const value = record[key];
+        const normalized = Array.isArray(value)
+          ? value.map((item) => scalarCredentialValue(item)).filter((item): item is string => Boolean(item)).join(', ')
+          : scalarCredentialValue(value);
+        const safe = normalized ? this.sanitizeSubscriptionConfigValue(normalized, maxLength) : null;
+        if (safe) return safe;
+      }
+    }
+
+    return null;
+  }
+
+  private sanitizeSubscriptionConfigValue(value: string, maxLength: number): string | null {
+    const normalized = value.trim();
+    if (!normalized || normalized.length > maxLength) return null;
+    if (/[\r\n\u0000]/.test(normalized)) return null;
+    return normalized;
   }
 
   private firstSafeEndpointString(config: Record<string, unknown>, keys: string[]): string | null {
@@ -4584,6 +5269,55 @@ export class BillingService {
     return `client_config:${clientConfigId}`;
   }
 
+  private normalizeClientSubscriptionCredentialProtocol(value: string | null | undefined): string {
+    const normalized = this.normalizeSubscriptionProtocol(this.normalizeNullableString(value) ?? '');
+    if (!CLIENT_SUBSCRIPTION_PROTOCOLS.has(normalized)) {
+      throw new BadRequestException('Client subscription credential protocol is not supported');
+    }
+    return normalized;
+  }
+
+  private normalizeClientSubscriptionSecretMaterial(value: unknown): Record<string, unknown> {
+    const record = this.asRecord(value);
+    if (!record) throw new BadRequestException('secretMaterial must be an object');
+
+    const normalized = normalizeFlatCredentialRecord(record, 'secretMaterial');
+    if (!Object.keys(normalized).length) throw new BadRequestException('secretMaterial must contain at least one field');
+    this.assertJsonSize(normalized, CLIENT_SUBSCRIPTION_SECRET_MAX_BYTES, 'secretMaterial');
+    return normalized;
+  }
+
+  private normalizeClientSubscriptionPublicMetadata(
+    value: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> {
+    const record = value === null || value === undefined ? {} : this.asRecord(value);
+    if (!record) throw new BadRequestException('publicMetadata must be an object');
+
+    const normalized = normalizeFlatCredentialRecord(record, 'publicMetadata');
+    for (const key of Object.keys(normalized)) {
+      if (!CLIENT_SUBSCRIPTION_PUBLIC_METADATA_KEYS.has(key)) {
+        throw new BadRequestException(`publicMetadata contains unsupported non-secret field "${key}"`);
+      }
+    }
+    this.assertNoSecretLikeKeys(normalized, 'Client subscription public metadata');
+    this.assertJsonSize(normalized, CLIENT_SUBSCRIPTION_PUBLIC_METADATA_MAX_BYTES, 'publicMetadata');
+    return normalized;
+  }
+
+  private assertJsonSize(value: Record<string, unknown>, maxBytes: number, fieldName: string): void {
+    const bytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
+    if (bytes > maxBytes) throw new BadRequestException(`${fieldName} is too large`);
+  }
+
+  private clientSubscriptionCredentialEncryptionContext(
+    clientConfigId: string,
+    outboundId: string,
+    protocol: string,
+    credentialId: string,
+  ): string {
+    return ['client-subscription-credential', clientConfigId, outboundId, protocol, credentialId].join(':');
+  }
+
   private normalizeClientUsageEventInput(dto: CreateClientUsageEventDto): NormalizedClientUsageEventInput {
     const source = this.normalizeClientUsageSource(dto.source);
     const rxBytes = this.normalizeOptionalUsageBytes(dto.rxBytes, 'rxBytes');
@@ -4904,4 +5638,102 @@ export class BillingService {
   private isErrorWithCode(error: unknown): error is { code: string } {
     return typeof error === 'object' && error !== null && 'code' in error;
   }
+}
+
+function normalizeFlatCredentialRecord(value: Record<string, unknown>, context: string): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim();
+    if (!/^[A-Za-z0-9_.-]{1,80}$/.test(key)) {
+      throw new BadRequestException(`${context} contains an invalid field name`);
+    }
+
+    if (rawValue === null || rawValue === undefined) {
+      normalized[key] = null;
+      continue;
+    }
+
+    if (Array.isArray(rawValue)) {
+      if (rawValue.length > 32) throw new BadRequestException(`${context}.${key} has too many values`);
+      normalized[key] = rawValue.map((item) => normalizeCredentialScalar(item, `${context}.${key}`));
+      continue;
+    }
+
+    normalized[key] = normalizeCredentialScalar(rawValue, `${context}.${key}`);
+  }
+
+  return normalized;
+}
+
+function normalizeCredentialScalar(value: unknown, fieldName: string): string | number | boolean | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new BadRequestException(`${fieldName} must be finite`);
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    if (!normalized) return null;
+    if (normalized.length > 4096) throw new BadRequestException(`${fieldName} is too long`);
+    if (/[\u0000]/.test(normalized)) throw new BadRequestException(`${fieldName} contains invalid characters`);
+    return normalized;
+  }
+
+  throw new BadRequestException(`${fieldName} must be a string, number, boolean, null, or array of scalar values`);
+}
+
+function stableStringifyRecord(value: Record<string, unknown>): string {
+  const ordered = Object.keys(value)
+    .sort((left, right) => left.localeCompare(right))
+    .reduce<Record<string, unknown>>((result, key) => {
+      result[key] = value[key];
+      return result;
+    }, {});
+  return JSON.stringify(ordered);
+}
+
+function scalarCredentialValue(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return null;
+}
+
+function isUuidValue(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function parseSubscriptionAddress(address: string | null | undefined): { host: string | null; port: number | null } {
+  const normalized = address?.trim();
+  if (!normalized) return { host: null, port: null };
+
+  const addressWithoutScheme = normalized.replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//, '');
+  const authority = addressWithoutScheme.split('/')[0]?.trim() || '';
+  if (!authority) return { host: null, port: null };
+
+  if (authority.startsWith('[')) {
+    const closing = authority.indexOf(']');
+    if (closing > 0) {
+      const host = authority.slice(1, closing);
+      const portValue = authority.slice(closing + 1).replace(/^:/, '');
+      const port = parsePort(portValue);
+      return { host, port };
+    }
+  }
+
+  const lastColon = authority.lastIndexOf(':');
+  if (lastColon > -1 && authority.indexOf(':') === lastColon) {
+    const host = authority.slice(0, lastColon);
+    const port = parsePort(authority.slice(lastColon + 1));
+    return { host: host || null, port };
+  }
+
+  return { host: authority, port: null };
+}
+
+function parsePort(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : null;
 }

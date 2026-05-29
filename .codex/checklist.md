@@ -182,6 +182,8 @@
 - [x] Client-scoped mobile API/auth for VPN users.
 - [x] Client subscription refresh endpoint for updated safe server addresses.
 - [x] Telegram bot user commands.
+- [ ] Superadmin Settings Telegram bot setup for BotFather token, webhook secret, allowed chat/admin IDs, and Telegram API connection test.
+- [ ] Telegram bot onboarding and rotation guide that explains bot creation happens in Telegram BotFather, while AfroGate stores only encrypted/write-only token material.
 
 ## Phase 3: Auto Route
 
@@ -227,7 +229,7 @@
 - [ ] Charge/update user volume.
 - [ ] Import/export configs.
 - [x] Protocol-specific client subscription config-link readiness for WireGuard, VLESS, L2TP, and IKEv2.
-- [ ] Secret-backed per-client subscription config-link renderer with encrypted client credentials.
+- [x] Secret-backed per-client subscription config-link renderer with encrypted client credentials.
 
 ## Phase 5: Enterprise Path
 

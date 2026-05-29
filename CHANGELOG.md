@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.86.0 - 2026-05-29
+
+- Added encrypted per-client subscription credential storage with guarded admin list/store/revoke APIs and metadata-only responses.
+- Enabled `/api/client/subscription` to render authenticated client-owned WireGuard, VLESS, L2TP, and IKEv2 configs when explicit public endpoint metadata and active encrypted credentials exist.
+- Added private-config copy readiness in the VPN client app while keeping raw outbound config JSON, server/admin secrets, and other clients' credentials out of client responses.
+- Recorded the future superadmin Telegram bot setup wizard for BotFather token entry, encrypted token storage, allowed chat/admin IDs, webhook secret, and Telegram API connection tests.
+
 ## 0.85.0 - 2026-05-29
 
 - Added protocol-specific subscription config readiness descriptors for WireGuard, VLESS, L2TP, and IKEv2 under `GET /api/client/subscription`.

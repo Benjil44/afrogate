@@ -48,6 +48,8 @@ export const translations = {
     noSubscriptionEndpoints: 'No subscription endpoints published',
     ready: 'Ready',
     needsSecret: 'Needs client secret',
+    secretUnavailable: 'Secret unavailable',
+    secretInvalid: 'Secret incomplete',
     missingEndpoint: 'Missing endpoint',
     unsupportedProtocol: 'Unsupported',
     manualProfile: 'Manual profile',
@@ -55,6 +57,9 @@ export const translations = {
     l2tpProfile: 'L2TP profile',
     ikev2Profile: 'IKEv2 profile',
     requiresClientSecret: 'Client secret required',
+    privateConfig: 'Private config',
+    copyConfig: 'Copy',
+    copiedConfig: 'Copied',
     mode: 'Mode',
     profile: 'Profile',
     detectedCountry: 'Detected country',
@@ -134,6 +139,8 @@ export const translations = {
     noSubscriptionEndpoints: 'اندپوینتی برای سابسکریپشن منتشر نشده',
     ready: 'آماده',
     needsSecret: 'نیازمند سکرت کلاینت',
+    secretUnavailable: 'سکرت در دسترس نیست',
+    secretInvalid: 'سکرت ناقص است',
     missingEndpoint: 'اندپوینت ناقص',
     unsupportedProtocol: 'پشتیبانی نشده',
     manualProfile: 'پروفایل دستی',
@@ -141,6 +148,9 @@ export const translations = {
     l2tpProfile: 'پروفایل L2TP',
     ikev2Profile: 'پروفایل IKEv2',
     requiresClientSecret: 'سکرت کلاینت لازم است',
+    privateConfig: 'پیکربندی خصوصی',
+    copyConfig: 'کپی',
+    copiedConfig: 'کپی شد',
     mode: 'حالت',
     profile: 'پروفایل',
     detectedCountry: 'کشور تشخیص داده شده',
@@ -225,6 +235,8 @@ export function healthLabel(status: OutboundHealthStatus | string, messages: Cli
 export function configRenderStatusLabel(status: string, messages: ClientMessages): string {
   if (status === 'rendered') return messages.ready;
   if (status === 'blocked_secret_required') return messages.needsSecret;
+  if (status === 'blocked_secret_unavailable') return messages.secretUnavailable;
+  if (status === 'blocked_secret_invalid') return messages.secretInvalid;
   if (status === 'missing_public_config') return messages.missingEndpoint;
   if (status === 'unsupported_protocol') return messages.unsupportedProtocol;
   return messages.unknown;

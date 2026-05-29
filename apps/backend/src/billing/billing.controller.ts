@@ -17,6 +17,8 @@ import type {
   AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceResponse,
+  AdminClientSubscriptionCredentialResponse,
+  AdminClientSubscriptionCredentialsResponse,
   AdminClientUsageEventsResponse,
   AdminCustomerAccountDetail,
   AdminAllocatePaymentOrderResponse,
@@ -42,6 +44,7 @@ import {
   CreateCustomerAccountDto,
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
+  UpsertClientSubscriptionCredentialDto,
   UpsertClientRoutePreferenceDto,
 } from './dto/customer-account.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
@@ -388,6 +391,39 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminClientAccessTokensResponse> {
     return this.billingService.revokeClientAccessToken(id, request.actor);
+  }
+
+  @Get('client-configs/:id/subscription-credentials')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listClientSubscriptionCredentials(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminClientSubscriptionCredentialsResponse> {
+    return {
+      credentials: await this.billingService.listClientSubscriptionCredentials(id),
+    };
+  }
+
+  @Post('client-configs/:id/subscription-credentials')
+  @Roles('admin')
+  async upsertClientSubscriptionCredential(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpsertClientSubscriptionCredentialDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminClientSubscriptionCredentialResponse> {
+    return {
+      credential: await this.billingService.upsertClientSubscriptionCredential(id, payload, request.actor),
+    };
+  }
+
+  @Patch('client-subscription-credentials/:id/revoke')
+  @Roles('admin')
+  async revokeClientSubscriptionCredential(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminClientSubscriptionCredentialResponse> {
+    return {
+      credential: await this.billingService.revokeClientSubscriptionCredential(id, request.actor),
+    };
   }
 
   @Get('client-configs/:id/route-preference')

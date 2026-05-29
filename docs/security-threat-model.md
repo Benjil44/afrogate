@@ -58,6 +58,7 @@ Existing mitigations:
 - Client access tokens are one-time plaintext at issuance and stored only as hashes.
 - Paid numbers are write-only and stored as HMAC hashes.
 - Server and protocol secrets use encrypted secret references; API responses return metadata only.
+- Per-client subscription credentials use encrypted client-owned rows; admin APIs return metadata only, and client subscription rendering is scoped to the authenticated client's own active credential plus explicit public endpoint metadata.
 - Route apply remains advisory/assignment-only until audited data-plane adapters are ready.
 - API rate limiting is enabled by default for login and public webhook routes.
 - PayPal provider credentials and Telegram bot/webhook secrets live in environment/deployment settings.
