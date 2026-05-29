@@ -68,6 +68,22 @@ test('dashboard supports kiosk display mode', async ({ page }) => {
   await expect(page.locator('aside')).toBeVisible();
 });
 
+test('dashboard starts on NOC view with backend outbounds and client-side switches', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  const initialPath = new URL(page.url()).pathname;
+
+  await expect(page.getByRole('heading', { name: 'Network operations display' })).toBeVisible();
+  await expect(page.getByText('Frankfurt WG gaming').first()).toBeVisible();
+
+  await page.locator('[data-view="alerts"]').click();
+  await expect(page.getByRole('heading', { name: 'Alerts and delivery' })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(initialPath);
+
+  await page.locator('[data-view="dashboard"]').click();
+  await expect(page.getByRole('heading', { name: 'Network operations display' })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(initialPath);
+});
+
 test('alerts page filters open and resolved history rows', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="alerts"]').click();

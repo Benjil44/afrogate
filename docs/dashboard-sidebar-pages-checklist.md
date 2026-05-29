@@ -5,9 +5,9 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 ## Page Foundation
 
 - [x] Replace decorative anchors with real dashboard view state or routing.
-- [ ] Keep the NOC/wall display as the default `Dashboard` page.
-- [ ] Preserve the second-LCD layout for passive monitoring.
-- [ ] Keep page transitions instant and static-first.
+- [x] Keep the NOC/wall display as the default `Dashboard` page.
+- [x] Preserve the second-LCD layout for passive monitoring.
+- [x] Keep page transitions instant and static-first.
 - [x] Add shared empty/loading/stale states.
 
 ## Dashboard Page
@@ -17,7 +17,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Server, tunnel, alert, outbound, capacity, and control-plane panels.
 - [x] Real alert rows from backend.
 - [x] Real tunnel inventory rows from backend.
-- [ ] Real outbound rows from backend.
+- [x] Real outbound rows from backend.
 - [x] Fullscreen/kiosk display toggle.
 
 ## Servers Page

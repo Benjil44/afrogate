@@ -1911,3 +1911,27 @@ Repository remote is ready:
 
 - Main checklist completion remains `235 / 237` items, or `99.2%` complete with `0.8%` remaining.
 - Production protocol apply and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Dashboard Foundation Checklist Verification
+
+### Completed
+
+- Verified the dashboard still starts on the NOC/wall display by default through `activeView = 'dashboard'`.
+- Verified the dashboard already uses guarded backend outbound rows for the Dashboard and Routes pages, with local sample outbounds only as fallback.
+- Added Playwright coverage that checks the default NOC heading, backend outbound row rendering, and static client-side page switches that keep the browser path stable.
+- Marked the dashboard/sidebar checklist items for default NOC display, second-LCD passive layout, static-first page transitions, and real backend outbound rows complete.
+- Bumped AfroGate to `0.103.2` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran focused `npm run test:e2e -- --grep "NOC view"`; 1 test passed.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run test:e2e`; 16 tests passed, including the dashboard NOC/default/static-switch verification.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Main checklist completion remains `235 / 237` items, or `99.2%` complete with `0.8%` remaining.
+- Production protocol apply and native per-app VPN split tunneling remain future work.

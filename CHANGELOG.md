@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.103.2 - 2026-05-29
+
+- Verified and marked dashboard foundation checklist items for default NOC display, second-LCD passive layout, static client-side page switches, and backend-backed outbound rows.
+- Added Playwright coverage that confirms the dashboard opens on the NOC view, renders backend outbounds, and switches pages without route/navigation reload.
+
 ## 0.103.1 - 2026-05-29
 
 - Added a dashboard kiosk display toggle with localized icon-only controls.
