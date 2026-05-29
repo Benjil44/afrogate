@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.104.0 - 2026-05-29
+
+- Added Telegram purchase fulfillment after verified payment-order quota allocation.
+- Allocation responses now include a secret-free `telegramFulfillment` summary with delivery status, reason codes, selected client id, and usage-link availability.
+- The bot now sends one rendered client-scoped VLESS URI plus a private Telegram usage/status deep link only for linked accounts with exactly one enabled renderable VLESS client, without exposing client tokens or admin/server/provider secrets.
+
 ## 0.103.3 - 2026-05-29
 
 - Added the Telegram purchase-fulfillment backlog item for verified bot purchases.

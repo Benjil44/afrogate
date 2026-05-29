@@ -1267,11 +1267,26 @@ export interface AdminPaymentOrderAllocationSummary {
   createdAt: string;
 }
 
+export interface AdminTelegramPurchaseFulfillmentSummary {
+  paymentOrderId: string;
+  customerAccountId: string;
+  attempted: boolean;
+  status: 'sent' | 'skipped' | 'failed' | string;
+  reasonCodes: string[];
+  telegramChatIdAvailable: boolean;
+  clientConfigId?: string | null;
+  configDelivered: boolean;
+  usageStatusLink?: string | null;
+  messageStatus?: 'sent' | 'skipped' | 'failed' | string | null;
+  messageReason?: string | null;
+}
+
 export interface AdminAllocatePaymentOrderResponse {
   allocation: AdminPaymentOrderAllocationSummary;
   paymentOrder: AdminPaymentOrderSummary;
   account: AdminCustomerAccountSummary;
   duplicate: boolean;
+  telegramFulfillment?: AdminTelegramPurchaseFulfillmentSummary;
 }
 
 export interface CreatePayPalCheckoutRequest {

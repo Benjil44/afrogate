@@ -38,6 +38,7 @@ import type {
   AdminPaymentProviderAdapterSummary,
   AdminPaymentProviderCheckoutResponse,
   AdminPaymentOrderAllocationSummary,
+  AdminTelegramPurchaseFulfillmentSummary,
   IssuedClientAccessTokenSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
@@ -60,6 +61,8 @@ import { DatabaseService, type DatabaseQueryExecutor } from '../database/databas
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { hashClientToken } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
+import { TelegramAlertService, type TelegramMessageSendResult } from '../notifications/telegram-alert.service';
+import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
 import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
 import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
 import { RewardedAdProviderWebhookDto } from './dto/rewarded-ad-webhook.dto';
@@ -206,6 +209,15 @@ interface ClientConfigRow {
   routePreferenceCreatedBy?: string | null;
   routePreferenceCreatedAt?: Date | null;
   routePreferenceUpdatedAt?: Date | null;
+}
+
+interface TelegramFulfillmentClientRow {
+  id: string;
+  customerAccountId: string;
+  label: string;
+  protocol: string;
+  status: string;
+  accountStatus: string;
 }
 
 interface ClientRoutePreferenceRow {
@@ -576,6 +588,8 @@ export class BillingService {
     private readonly paypal: PayPalPaymentService,
     private readonly rewardedAdWebhook: RewardedAdWebhookService,
     private readonly secretVault: SecretVaultService,
+    private readonly telegram: TelegramAlertService,
+    private readonly telegramConfig: TelegramBotConfigService,
   ) {}
 
   async getBillingCatalog(): Promise<AdminBillingCatalogResponse> {
@@ -1233,12 +1247,21 @@ export class BillingService {
         this.getCustomerAccount(allocationState.customerAccountId),
       ]);
       const { clientConfigs: _clientConfigs, ...account } = accountDetail;
+      const allocation = this.mapPaymentOrderAllocation(allocationState.allocation);
+      const telegramFulfillment = await this.fulfillTelegramPurchaseAfterAllocation(
+        paymentOrder,
+        accountDetail,
+        allocation,
+        allocationState.duplicate,
+        actor,
+      );
 
       return {
-        allocation: this.mapPaymentOrderAllocation(allocationState.allocation),
+        allocation,
         paymentOrder,
         account,
         duplicate: allocationState.duplicate,
+        telegramFulfillment,
       };
     } catch (error) {
       this.throwConflictIfUniqueViolation(error, 'Payment order allocation already exists');
@@ -2959,6 +2982,317 @@ export class BillingService {
     if (!result.rows[0]) return { status: 'not_found' };
 
     return { status: 'found', account: this.mapTelegramBotAccount(result.rows[0]) };
+  }
+
+  private async fulfillTelegramPurchaseAfterAllocation(
+    paymentOrder: AdminPaymentOrderSummary,
+    account: AdminCustomerAccountDetail,
+    allocation: AdminPaymentOrderAllocationSummary,
+    duplicate: boolean,
+    actor: AuthActor | undefined,
+  ): Promise<AdminTelegramPurchaseFulfillmentSummary> {
+    const telegramChatId = this.normalizeNullableString(account.telegramId);
+    const base: AdminTelegramPurchaseFulfillmentSummary = {
+      paymentOrderId: paymentOrder.id,
+      customerAccountId: account.id,
+      attempted: false,
+      status: 'skipped',
+      reasonCodes: [],
+      telegramChatIdAvailable: Boolean(telegramChatId),
+      clientConfigId: null,
+      configDelivered: false,
+      usageStatusLink: null,
+      messageStatus: null,
+      messageReason: null,
+    };
+
+    if (duplicate) {
+      return this.finalizeTelegramPurchaseFulfillment(
+        {
+          ...base,
+          reasonCodes: ['duplicate_allocation'],
+        },
+        actor,
+        allocation,
+      );
+    }
+
+    if (!telegramChatId) {
+      return this.finalizeTelegramPurchaseFulfillment(
+        {
+          ...base,
+          reasonCodes: ['missing_telegram_chat_id'],
+        },
+        actor,
+        allocation,
+      );
+    }
+
+    if (account.status !== 'active') {
+      return this.finalizeTelegramPurchaseFulfillment(
+        {
+          ...base,
+          reasonCodes: ['account_not_active'],
+        },
+        actor,
+        allocation,
+      );
+    }
+
+    try {
+      if (!(await this.telegram.isBotConfigured())) {
+        return this.finalizeTelegramPurchaseFulfillment(
+          {
+            ...base,
+            reasonCodes: ['missing_bot_config'],
+          },
+          actor,
+          allocation,
+        );
+      }
+
+      const clients = await this.listTelegramFulfillmentVlessClients(account.id);
+      if (!clients.length) {
+        return this.finalizeTelegramPurchaseFulfillment(
+          {
+            ...base,
+            reasonCodes: ['no_enabled_vless_client'],
+          },
+          actor,
+          allocation,
+        );
+      }
+      if (clients.length > 1) {
+        return this.finalizeTelegramPurchaseFulfillment(
+          {
+            ...base,
+            reasonCodes: ['multiple_enabled_vless_clients'],
+          },
+          actor,
+          allocation,
+        );
+      }
+
+      const client = clients[0];
+      const clientActor: ClientAuthActor = {
+        id: client.id,
+        type: 'client',
+        clientConfigId: client.id,
+        customerAccountId: client.customerAccountId,
+        tokenId: 'telegram-purchase-fulfillment',
+        scopes: ['client:read'],
+        clientStatus: client.status,
+        accountStatus: client.accountStatus,
+      };
+      const subscription = await this.getClientSubscription(clientActor, 'main');
+      const configLink = this.selectTelegramFulfillmentVlessConfig(subscription.subscription.configLinks);
+      if (!configLink?.uri) {
+        return this.finalizeTelegramPurchaseFulfillment(
+          {
+            ...base,
+            clientConfigId: client.id,
+            reasonCodes: ['no_rendered_vless_config'],
+          },
+          actor,
+          allocation,
+        );
+      }
+
+      const usageStatusLink = await this.telegramUsageStatusLink();
+      const sendResult = await this.telegram.sendMessage(
+        telegramChatId,
+        this.telegramPurchaseFulfillmentMessage({
+          paymentOrder,
+          allocation,
+          account,
+          client,
+          configUri: configLink.uri,
+          usageStatusLink,
+        }),
+        { disableWebPagePreview: true },
+      );
+      const nonBlockingReasonCodes = usageStatusLink ? [] : ['usage_status_link_unavailable'];
+      const reasonCodes =
+        sendResult.status === 'sent'
+          ? nonBlockingReasonCodes
+          : [...nonBlockingReasonCodes, `telegram_${sendResult.reason}`];
+
+      return this.finalizeTelegramPurchaseFulfillment(
+        {
+          ...base,
+          attempted: true,
+          status: sendResult.status === 'sent' ? 'sent' : sendResult.status,
+          reasonCodes,
+          clientConfigId: client.id,
+          configDelivered: sendResult.status === 'sent',
+          usageStatusLink,
+          messageStatus: sendResult.status,
+          messageReason: this.telegramSendMessageReason(sendResult),
+        },
+        actor,
+        allocation,
+      );
+    } catch (error) {
+      return this.finalizeTelegramPurchaseFulfillment(
+        {
+          ...base,
+          attempted: true,
+          status: 'failed',
+          reasonCodes: ['telegram_fulfillment_exception'],
+          messageReason: this.safeErrorMessage(error),
+        },
+        actor,
+        allocation,
+      );
+    }
+  }
+
+  private async finalizeTelegramPurchaseFulfillment(
+    summary: AdminTelegramPurchaseFulfillmentSummary,
+    actor: AuthActor | undefined,
+    allocation: AdminPaymentOrderAllocationSummary,
+  ): Promise<AdminTelegramPurchaseFulfillmentSummary> {
+    try {
+      await this.audit.record(
+        actor,
+        'payment_order.telegram_purchase_fulfillment',
+        'payment_order',
+        summary.paymentOrderId,
+        {
+          customerAccountId: summary.customerAccountId,
+          allocationId: allocation.id,
+          status: summary.status,
+          attempted: summary.attempted,
+          reasonCodes: summary.reasonCodes,
+          telegramChatIdAvailable: summary.telegramChatIdAvailable,
+          clientConfigId: summary.clientConfigId,
+          configDelivered: summary.configDelivered,
+          usageStatusLinkAvailable: Boolean(summary.usageStatusLink),
+          messageStatus: summary.messageStatus,
+          messageReason: summary.messageReason,
+        },
+      );
+    } catch {
+      return summary;
+    }
+
+    return summary;
+  }
+
+  private async listTelegramFulfillmentVlessClients(customerAccountId: string): Promise<TelegramFulfillmentClientRow[]> {
+    const result = await this.database.query<TelegramFulfillmentClientRow>(
+      `
+        SELECT
+          cc.id,
+          cc.customer_account_id AS "customerAccountId",
+          cc.label,
+          cc.protocol,
+          cc.status,
+          ca.status AS "accountStatus"
+        FROM client_configs cc
+        JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+        WHERE cc.customer_account_id = $1
+          AND cc.status <> 'disabled'
+          AND lower(cc.protocol) IN ('vless', 'vless-local-proxy')
+        ORDER BY
+          CASE cc.status
+            WHEN 'active' THEN 0
+            WHEN 'limited' THEN 1
+            ELSE 2
+          END,
+          cc.created_at DESC
+        LIMIT 2
+      `,
+      [customerAccountId],
+    );
+
+    return result.rows;
+  }
+
+  private selectTelegramFulfillmentVlessConfig(
+    configLinks: ClientSubscriptionConfigLinkSummary[],
+  ): ClientSubscriptionConfigLinkSummary | null {
+    return (
+      configLinks.find(
+        (link) =>
+          this.normalizeSubscriptionProtocol(link.type) === 'vless' &&
+          link.renderStatus === 'rendered' &&
+          typeof link.uri === 'string' &&
+          link.uri.trim().startsWith('vless://'),
+      ) ?? null
+    );
+  }
+
+  private async telegramUsageStatusLink(): Promise<string | null> {
+    try {
+      const settings = await this.telegramConfig.getSettingsSummary();
+      const username = this.normalizeNullableString(settings.botUsername)?.replace(/^@+/, '');
+      if (!settings.commandsEnabled || !username) return null;
+      return `https://t.me/${username}?start=status`;
+    } catch {
+      return null;
+    }
+  }
+
+  private telegramPurchaseFulfillmentMessage(input: {
+    paymentOrder: AdminPaymentOrderSummary;
+    allocation: AdminPaymentOrderAllocationSummary;
+    account: AdminCustomerAccountDetail;
+    client: TelegramFulfillmentClientRow;
+    configUri: string;
+    usageStatusLink: string | null;
+  }): string {
+    const accountName = input.account.displayName?.trim() || 'Linked account';
+    const quotaLine =
+      input.account.quotaLimitBytes === null || input.account.quotaLimitBytes === undefined
+        ? 'Account quota: Unlimited'
+        : `Account remaining: ${this.formatTelegramBytes(input.account.remainingBytes ?? 0)} of ${this.formatTelegramBytes(input.account.quotaLimitBytes)}`;
+    const usageLine = input.usageStatusLink
+      ? `Usage/status: ${input.usageStatusLink}`
+      : 'Usage/status: send /status to this bot.';
+
+    return [
+      'AfroGate purchase is active',
+      `Account: ${accountName}`,
+      `Package: ${input.paymentOrder.packageName}`,
+      `Added: ${this.formatTelegramBytes(input.allocation.volumeBytesDelta)}`,
+      quotaLine,
+      `Client: ${input.client.label}`,
+      usageLine,
+      '',
+      'VLESS config:',
+      input.configUri,
+      '',
+      'Keep this config private. Support will never ask for your full config.',
+    ].join('\n');
+  }
+
+  private telegramSendMessageReason(result: TelegramMessageSendResult): string | null {
+    return result.status === 'sent' ? null : this.truncateTelegramText(result.reason, 120);
+  }
+
+  private safeErrorMessage(error: unknown): string {
+    return this.truncateTelegramText(error instanceof Error ? error.message : 'unknown_error', 120);
+  }
+
+  private truncateTelegramText(value: string, maxLength: number): string {
+    if (value.length <= maxLength) return value;
+    return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+  }
+
+  private formatTelegramBytes(value: number): string {
+    if (!Number.isFinite(value) || value <= 0) return '0 B';
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let amount = value;
+    let unitIndex = 0;
+    while (amount >= 1024 && unitIndex < units.length - 1) {
+      amount /= 1024;
+      unitIndex += 1;
+    }
+
+    const precision = amount >= 100 || unitIndex === 0 ? 0 : amount >= 10 ? 1 : 2;
+    return `${amount.toFixed(precision)} ${units[unitIndex]}`;
   }
 
   async getClientRewardedAdStatus(actor: ClientAuthActor): Promise<ClientRewardedAdStatus> {

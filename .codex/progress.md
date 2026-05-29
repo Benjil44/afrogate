@@ -1957,3 +1957,31 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, Telegram purchase fulfillment, and native per-app VPN split tunneling remain future main-checklist work.
+
+## 2026-05-29 Telegram Purchase Fulfillment Implementation
+
+### Completed
+
+- Implemented Telegram purchase fulfillment from the verified payment-order quota allocation path.
+- Added a secret-free `telegramFulfillment` allocation response summary with delivery status, reason codes, selected client id, and usage-link availability.
+- Reused the existing client-scoped subscription renderer to send one rendered VLESS URI only when the linked account has exactly one enabled renderable VLESS client.
+- Added private Telegram usage/status deep-link support through `/start status`, plus a `/usage` command alias for linked account status.
+- Kept duplicate allocations idempotent: quota allocation can return the previous allocation without resending a sensitive config.
+- Marked the main Telegram purchase fulfillment checklist item complete.
+- Main checklist completion is now `236 / 238` items, or `99.2%` complete with `0.8%` remaining.
+- Bumped AfroGate to `0.104.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 16 tests passed.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production server-side protocol apply and native per-app VPN split tunneling remain future main-checklist work.
+- Dedicated Telegram bot operations UI remains pending in the dashboard/sidebar backlog.

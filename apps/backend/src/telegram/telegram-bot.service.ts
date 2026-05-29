@@ -16,6 +16,8 @@ interface TelegramWebhookMessage {
   text: string;
 }
 
+type LinkedTelegramBotCommandName = Extract<TelegramBotCommandName, 'status' | 'quota'>;
+
 @Injectable()
 export class TelegramBotService {
   constructor(
@@ -70,9 +72,20 @@ export class TelegramBotService {
   }
 
   private async buildReply(command: TelegramBotCommandName, message: TelegramWebhookMessage): Promise<string> {
-    if (command === 'start' || command === 'help') return this.helpReply();
+    if (command === 'start') {
+      const linkedCommand = this.startLinkedAccountCommand(message.text);
+      return linkedCommand ? this.linkedAccountReply(linkedCommand, message) : this.helpReply();
+    }
+    if (command === 'help') return this.helpReply();
     if (command === 'unknown') return `Unknown command.\n\n${this.helpReply()}`;
 
+    return this.linkedAccountReply(command, message);
+  }
+
+  private async linkedAccountReply(
+    command: LinkedTelegramBotCommandName,
+    message: TelegramWebhookMessage,
+  ): Promise<string> {
     const lookup = await this.billing.getTelegramBotAccountStatus({
       telegramId: message.fromId,
       telegramUsername: message.username,
@@ -95,7 +108,7 @@ export class TelegramBotService {
     return this.accountStatusReply(lookup.account, command);
   }
 
-  private accountStatusReply(account: TelegramBotAccountSummary, command: TelegramBotCommandName): string {
+  private accountStatusReply(account: TelegramBotAccountSummary, command: LinkedTelegramBotCommandName): string {
     const title = command === 'quota' ? 'AfroGate quota' : 'AfroGate account status';
     const accountName = account.displayName?.trim() || 'Linked account';
     const quotaLine =
@@ -119,6 +132,7 @@ export class TelegramBotService {
       'Commands:',
       '/status - account status and linked clients',
       '/quota - remaining account data',
+      '/usage - account status and remaining data',
       '/help - command list',
       'Your Telegram id or username must be linked by support before account details are shown.',
     ].join('\n');
@@ -156,9 +170,19 @@ export class TelegramBotService {
         return 'status';
       case 'quota':
         return 'quota';
+      case 'usage':
+        return 'status';
       default:
         return 'unknown';
     }
+  }
+
+  private startLinkedAccountCommand(text: string): LinkedTelegramBotCommandName | null {
+    const [, rawArgument] = text.trim().split(/\s+/, 2);
+    const argument = rawArgument?.trim().toLowerCase();
+    if (argument === 'status' || argument === 'usage') return 'status';
+    if (argument === 'quota') return 'quota';
+    return null;
   }
 
   private formatBytes(value: number): string {

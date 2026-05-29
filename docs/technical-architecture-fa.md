@@ -218,7 +218,7 @@ Superadmin Settings now has a Telegram bot setup surface:
 - Environment variables remain bootstrap/fallback values for existing deployments.
 - Telegram API tests use the shared outbound HTTP client and `AFROGATE_OUTBOUND_PROXY_URL` when configured.
 
-Future Telegram purchase fulfillment should run only after payment verification and quota allocation. The bot should send one client-scoped VLESS config plus a private usage/status link for the purchased client config. This flow must reuse the encrypted per-client subscription credential renderer and client-scoped usage APIs; it must not expose admin data, raw outbound config JSON, server credentials, provider secrets, paid numbers, client tokens, or other clients' usage.
+Telegram purchase fulfillment runs only after payment verification and quota allocation. The allocation response includes a secret-free fulfillment summary, and the bot sends at most one client-scoped VLESS config when the customer has a linked numeric Telegram chat id and exactly one enabled VLESS client with a rendered per-client subscription credential. The usage/status link is a private Telegram deep link to the linked-account status flow when bot commands and bot username are configured. This flow reuses the encrypted per-client subscription credential renderer; it must not expose admin data, raw outbound config JSON, server credentials, provider secrets, paid numbers, client tokens, or other clients' usage.
 
 ### tenant_brand_settings
 

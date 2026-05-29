@@ -1,6 +1,6 @@
 {
   "name": "@afrogate/client",
-  "version": "0.103.3",
+  "version": "0.104.0",
   "private": true,
   "scripts": {
     "predev": "npm --workspace @afrogate/shared run build",
@@ -13,7 +13,7 @@
     "lint": "echo \"client lint not configured yet\""
   },
   "dependencies": {
-    "@afrogate/shared": "0.103.3",
+    "@afrogate/shared": "0.104.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
