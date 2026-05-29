@@ -46,6 +46,8 @@
 
 Billing note: the backend now has a PayPal provider adapter for checkout creation, capture, and verified webhooks. Paid orders can be allocated once to customer quota through an audited allocation ledger. Rewarded ads can grant small capped quota credits through admin-managed reward/cap settings and a separate client-scoped ledger; verified ad-network callbacks remain a separate hardening phase. Refund reversal flows remain a separate phase.
 
+High-cost route note: expensive VPS or emergency anti-blocking paths can carry a route usage multiplier. If an outbound is set to `10x`, `10 GB` of observed traffic consumes `100 GB` of quota, so a `100 GB` balance gives about `10 GB` usable traffic on that path. This must be visible to clients before they choose the route.
+
 ## ظرفیت اولیه
 
 - هدف اولیه: حدود 150 کاربر.

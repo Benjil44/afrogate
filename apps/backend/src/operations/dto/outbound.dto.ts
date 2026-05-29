@@ -105,6 +105,13 @@ export class CreateOutboundDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(100)
+  usageMultiplier?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @Max(1_000_000)
   maxUsers?: number | null;
 }
@@ -186,6 +193,13 @@ export class UpdateOutboundDto {
   @Min(1)
   @Max(10000)
   weight?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  usageMultiplier?: number;
 
   @IsOptional()
   @Type(() => Number)

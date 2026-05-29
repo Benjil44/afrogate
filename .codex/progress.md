@@ -764,6 +764,21 @@ Repository remote is ready:
 - Verified dashboard/client browser coverage with `npm run test:e2e`; 10 tests passed including the new Backups flow.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added outbound `usage_multiplier` from `1x` to `100x` with migration `0021_outbound_usage_multiplier_subscription.sql`.
+- Rated client usage events can now reference an outbound id, preserve raw observed bytes, store the applied multiplier, and charge the multiplied byte delta to account/client quota without double-counting idempotent events.
+- Added client subscription refresh metadata at `GET /api/client/subscription` so client apps can refresh safe public endpoint addresses after a VPS address change without exposing raw outbound config, private keys, client tokens, or generated secret-bearing config links.
+- Extended route options and the VPN client app to show route charge multipliers and usable remaining data on high-cost paths.
+- Updated shared contracts, backend DTOs/schema, client/dashboard labels, architecture/security docs, memory, roadmap, and checklist for subscription refresh and expensive-route billing.
+- Bumped AfroGate to `0.84.0` for the route usage multiplier and client subscription refresh foundation.
+- Checklist completion after this slice is `213 / 232` items, or `91.8%` complete with `8.2%` remaining.
+- Verified the migration stack with `npm --workspace @afrogate/backend run db:migrate`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck` and `npm run build`.
+- Verified dashboard/client browser coverage with `npm run test:e2e`; 10 tests passed.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 
 - Verified protocol server apply dry-run event contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
 - Applied PostgreSQL migrations through `0011_protocol_apply_events.sql` with `npm --workspace @afrogate/backend run db:migrate`.

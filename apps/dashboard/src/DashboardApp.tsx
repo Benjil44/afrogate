@@ -231,6 +231,7 @@ interface OutboundRowData {
   statusTone: Tone;
   latencyMs: number | null;
   mode: string;
+  usageMultiplier: number;
   serverLabel?: string | null;
 }
 
@@ -408,6 +409,7 @@ const outbounds: OutboundRowData[] = [
     statusTone: 'good',
     latencyMs: 50,
     mode: 'primary',
+    usageMultiplier: 1,
   },
   {
     id: 'sample-control-egress',
@@ -418,6 +420,7 @@ const outbounds: OutboundRowData[] = [
     statusTone: 'neutral',
     latencyMs: 67,
     mode: 'telegram/api',
+    usageMultiplier: 2,
   },
   {
     id: 'sample-iran-direct',
@@ -428,6 +431,7 @@ const outbounds: OutboundRowData[] = [
     statusTone: 'warning',
     latencyMs: null,
     mode: 'last resort',
+    usageMultiplier: 1,
   },
 ];
 
@@ -1335,6 +1339,7 @@ function OutboundsPanel({
               <strong className="block truncate">{format.label(outbound.name)}</strong>
               <span className={`${mutedTextClass} block truncate`}>
                 {format.label(outbound.type)} / {format.label(outbound.mode)}
+                {outbound.usageMultiplier > 1 ? ` / x${format.integer(outbound.usageMultiplier)}` : ''}
                 {outbound.serverLabel ? ` / ${format.label(outbound.serverLabel)}` : ''}
               </span>
             </div>
@@ -9299,6 +9304,7 @@ function mapAdminOutboundToRow(outbound: AdminOutboundSummary): OutboundRowData 
     statusTone: mapOutboundStatusToTone(statusText),
     latencyMs: null,
     mode: outbound.routeGroup,
+    usageMultiplier: outbound.usageMultiplier ?? 1,
     serverLabel: outbound.serverHostname || outbound.serverExternalId,
   };
 }

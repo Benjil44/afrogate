@@ -16,6 +16,8 @@ import type {
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceSummary,
+  ClientSubscriptionEndpointSummary,
+  ClientSubscriptionResponse,
   TelegramBotAccountLookup,
   TelegramBotAccountSummary,
   AdminClientConfigSummary,
@@ -216,6 +218,10 @@ interface ClientUsageEventRow {
   source: string;
   direction: string;
   usedBytesDelta: string | number;
+  rawUsedBytesDelta: string | number;
+  usageMultiplier: number;
+  ratedOutboundId: string | null;
+  ratedOutboundName: string | null;
   rxBytes: string | number | null;
   txBytes: string | number | null;
   observedAt: Date;
@@ -263,7 +269,11 @@ interface RewardedAdGrantRow {
 interface NormalizedClientUsageEventInput {
   source: string;
   direction: string;
+  rawUsedBytesDelta: number;
   usedBytesDelta: number;
+  usageMultiplier: number;
+  ratedOutboundId: string | null;
+  ratedOutboundName: string | null;
   rxBytes: number | null;
   txBytes: number | null;
   observedAt: Date;
@@ -273,6 +283,12 @@ interface NormalizedClientUsageEventInput {
   externalReference: string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
+}
+
+interface RatedOutboundRow {
+  id: string;
+  name: string;
+  usageMultiplier: number;
 }
 
 interface ClientRouteOptionOutboundRow {
@@ -285,6 +301,9 @@ interface ClientRouteOptionOutboundRow {
   healthStatus: string;
   enabled: boolean;
   maintenanceMode: boolean;
+  usageMultiplier: number;
+  config: Record<string, unknown> | null;
+  updatedAt: Date;
 }
 
 interface PreferredOutboundRow {
@@ -1739,14 +1758,15 @@ export class BillingService {
         }
       }
 
-      const inserted = await this.insertClientUsageEvent(executor, client, input, actor);
+      const ratedInput = await this.rateClientUsageEvent(executor, input);
+      const inserted = await this.insertClientUsageEvent(executor, client, ratedInput, actor);
       if (!inserted) {
-        if (!input.idempotencyKey) throw new ConflictException('Usage event could not be recorded');
+        if (!ratedInput.idempotencyKey) throw new ConflictException('Usage event could not be recorded');
 
         const existing = await this.getClientUsageEventByIdempotency(
           executor,
-          input.source,
-          input.idempotencyKey,
+          ratedInput.source,
+          ratedInput.idempotencyKey,
         );
         if (!existing) throw new ConflictException('Usage event idempotency conflict could not be resolved');
         if (existing.clientConfigId !== clientConfigId) {
@@ -1769,7 +1789,7 @@ export class BillingService {
               updated_at = now()
           WHERE id = $2
         `,
-        [input.usedBytesDelta, client.id],
+        [ratedInput.usedBytesDelta, client.id],
       );
 
       await executor.query(
@@ -1779,7 +1799,7 @@ export class BillingService {
               updated_at = now()
           WHERE id = $2
         `,
-        [input.usedBytesDelta, client.customerAccountId],
+        [ratedInput.usedBytesDelta, client.customerAccountId],
       );
 
       await this.audit.record(
@@ -1790,11 +1810,14 @@ export class BillingService {
         {
           customerAccountId: client.customerAccountId,
           usageEventId: row.id,
-          source: input.source,
-          direction: input.direction,
-          usedBytesDelta: input.usedBytesDelta,
-          hasIdempotencyKey: Boolean(input.idempotencyKey),
-          externalReference: input.externalReference,
+          source: ratedInput.source,
+          direction: ratedInput.direction,
+          rawUsedBytesDelta: ratedInput.rawUsedBytesDelta,
+          usedBytesDelta: ratedInput.usedBytesDelta,
+          usageMultiplier: ratedInput.usageMultiplier,
+          ratedOutboundId: ratedInput.ratedOutboundId,
+          hasIdempotencyKey: Boolean(ratedInput.idempotencyKey),
+          externalReference: ratedInput.externalReference,
         },
         executor,
       );
@@ -2362,7 +2385,10 @@ export class BillingService {
           NULLIF(TRIM(s.region), '') AS "region",
           o.health_status AS "healthStatus",
           o.enabled,
-          o.maintenance_mode AS "maintenanceMode"
+          o.maintenance_mode AS "maintenanceMode",
+          o.usage_multiplier AS "usageMultiplier",
+          o.config,
+          o.updated_at AS "updatedAt"
         FROM outbounds o
         LEFT JOIN servers s ON s.id = o.server_id
         WHERE o.route_group = $1
@@ -2381,7 +2407,14 @@ export class BillingService {
       [routeGroup],
     );
 
-    const countryMap = new Map<string, { total: number; healthy: number; bestRank: number; bestHealthStatus: string }>();
+    const chargedRemainingBytes = await this.getClientChargedRemainingBytes(actor);
+    const countryMap = new Map<string, {
+      total: number;
+      healthy: number;
+      bestRank: number;
+      bestHealthStatus: string;
+      minUsageMultiplier: number;
+    }>();
     for (const row of result.rows) {
       if (!row.countryCode) continue;
       const current = countryMap.get(row.countryCode) ?? {
@@ -2389,10 +2422,13 @@ export class BillingService {
         healthy: 0,
         bestRank: Number.POSITIVE_INFINITY,
         bestHealthStatus: 'unknown',
+        minUsageMultiplier: Number.POSITIVE_INFINITY,
       };
       const rank = this.clientRouteHealthRank(row.healthStatus);
+      const usageMultiplier = this.normalizeUsageMultiplier(row.usageMultiplier);
       current.total += 1;
       current.healthy += row.healthStatus === 'healthy' ? 1 : 0;
+      current.minUsageMultiplier = Math.min(current.minUsageMultiplier, usageMultiplier);
       if (rank < current.bestRank) {
         current.bestRank = rank;
         current.bestHealthStatus = row.healthStatus;
@@ -2409,6 +2445,7 @@ export class BillingService {
           availableOutboundCount: summary.total,
           healthyOutboundCount: summary.healthy,
           bestHealthStatus: summary.bestHealthStatus,
+          minUsageMultiplier: Number.isFinite(summary.minUsageMultiplier) ? summary.minUsageMultiplier : 1,
         }))
         .sort((left, right) => left.countryCode.localeCompare(right.countryCode)),
       outbounds: result.rows.map((row) => ({
@@ -2420,7 +2457,33 @@ export class BillingService {
         region: row.region,
         healthStatus: row.healthStatus,
         available: row.enabled && !row.maintenanceMode && row.healthStatus !== 'critical',
+        usageMultiplier: this.normalizeUsageMultiplier(row.usageMultiplier),
+        chargeLabel: this.usageMultiplierLabel(row.usageMultiplier),
+        usableBytesAtMultiplier: this.bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
+        subscriptionEndpoint: this.publicSubscriptionEndpoint(row, chargedRemainingBytes),
       })),
+    };
+  }
+
+  async getClientSubscription(
+    actor: ClientAuthActor,
+    routeGroupInput?: string,
+  ): Promise<ClientSubscriptionResponse> {
+    this.assertClientScope(actor, 'client:read');
+    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeOptions = await this.listClientRouteOptions(actor, routeGroup);
+    const chargedRemainingBytes = await this.getClientChargedRemainingBytes(actor);
+
+    return {
+      subscription: {
+        clientConfigId: actor.clientConfigId,
+        routeGroup,
+        generatedAt: new Date().toISOString(),
+        chargedRemainingBytes,
+        endpoints: routeOptions.outbounds
+          .map((outbound) => outbound.subscriptionEndpoint)
+          .filter((endpoint): endpoint is ClientSubscriptionEndpointSummary => Boolean(endpoint)),
+      },
     };
   }
 
@@ -3113,6 +3176,10 @@ export class BillingService {
       source: row.source,
       direction: row.direction,
       usedBytesDelta: this.numberFromBigInt(row.usedBytesDelta) ?? 0,
+      rawUsedBytesDelta: this.numberFromBigInt(row.rawUsedBytesDelta),
+      usageMultiplier: row.usageMultiplier,
+      ratedOutboundId: row.ratedOutboundId,
+      ratedOutboundName: row.ratedOutboundName,
       rxBytes: this.numberFromBigInt(row.rxBytes),
       txBytes: this.numberFromBigInt(row.txBytes),
       observedAt: row.observedAt.toISOString(),
@@ -3344,6 +3411,47 @@ export class BillingService {
     return result.rows[0] ?? null;
   }
 
+  private async rateClientUsageEvent(
+    executor: DatabaseQueryExecutor,
+    input: NormalizedClientUsageEventInput,
+  ): Promise<NormalizedClientUsageEventInput> {
+    if (!input.ratedOutboundId) return input;
+
+    const result = await executor.query<RatedOutboundRow>(
+      `
+        SELECT
+          id,
+          name,
+          usage_multiplier AS "usageMultiplier"
+        FROM outbounds
+        WHERE id = $1
+      `,
+      [input.ratedOutboundId],
+    );
+    const outbound = result.rows[0];
+    if (!outbound) throw new BadRequestException('Rated outbound was not found');
+
+    const multiplier = this.normalizeUsageMultiplier(outbound.usageMultiplier);
+    const usedBytesDelta = input.rawUsedBytesDelta * multiplier;
+    if (!Number.isSafeInteger(usedBytesDelta) || usedBytesDelta > MAX_SAFE_BYTES) {
+      throw new BadRequestException('Rated usage exceeds the safe billing limit');
+    }
+
+    return {
+      ...input,
+      usedBytesDelta,
+      usageMultiplier: multiplier,
+      ratedOutboundId: outbound.id,
+      ratedOutboundName: outbound.name,
+      metadata: {
+        ...input.metadata,
+        rawUsedBytesDelta: input.rawUsedBytesDelta,
+        usageMultiplier: multiplier,
+        ratedOutboundId: outbound.id,
+      },
+    };
+  }
+
   private async insertClientUsageEvent(
     executor: DatabaseQueryExecutor,
     client: ClientConfigRow,
@@ -3354,11 +3462,11 @@ export class BillingService {
       `
         INSERT INTO client_usage_events (
           customer_account_id, client_config_id, source, direction,
-          used_bytes_delta, rx_bytes, tx_bytes, observed_at,
-          window_start, window_end, idempotency_key, external_reference,
-          notes, metadata, created_by
+          used_bytes_delta, raw_used_bytes_delta, usage_multiplier, rated_outbound_id,
+          rx_bytes, tx_bytes, observed_at, window_start, window_end,
+          idempotency_key, external_reference, notes, metadata, created_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18)
         ON CONFLICT (source, idempotency_key)
           WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''
           DO NOTHING
@@ -3369,6 +3477,14 @@ export class BillingService {
           source,
           direction,
           used_bytes_delta AS "usedBytesDelta",
+          raw_used_bytes_delta AS "rawUsedBytesDelta",
+          usage_multiplier AS "usageMultiplier",
+          rated_outbound_id AS "ratedOutboundId",
+          (
+            SELECT name
+            FROM outbounds
+            WHERE id = client_usage_events.rated_outbound_id
+          ) AS "ratedOutboundName",
           rx_bytes AS "rxBytes",
           tx_bytes AS "txBytes",
           observed_at AS "observedAt",
@@ -3387,6 +3503,9 @@ export class BillingService {
         input.source,
         input.direction,
         input.usedBytesDelta,
+        input.rawUsedBytesDelta,
+        input.usageMultiplier,
+        input.ratedOutboundId,
         input.rxBytes,
         input.txBytes,
         input.observedAt,
@@ -3412,6 +3531,14 @@ export class BillingService {
         source,
         direction,
         used_bytes_delta AS "usedBytesDelta",
+        raw_used_bytes_delta AS "rawUsedBytesDelta",
+        usage_multiplier AS "usageMultiplier",
+        rated_outbound_id AS "ratedOutboundId",
+        (
+          SELECT name
+          FROM outbounds
+          WHERE id = client_usage_events.rated_outbound_id
+        ) AS "ratedOutboundName",
         rx_bytes AS "rxBytes",
         tx_bytes AS "txBytes",
         observed_at AS "observedAt",
@@ -3866,6 +3993,120 @@ export class BillingService {
     return 3;
   }
 
+  private async getClientChargedRemainingBytes(actor: ClientAuthActor): Promise<number | null> {
+    const profile = await this.getClientPortalRow(actor);
+    const accountQuotaLimitBytes = this.numberFromBigInt(profile.accountQuotaLimitBytes);
+    const accountUsedBytes = this.numberFromBigInt(profile.accountUsedBytes) ?? 0;
+    const perClientLimitBytes = this.numberFromBigInt(profile.perClientLimitBytes);
+    const clientQuotaLimitBytes = this.numberFromBigInt(profile.clientQuotaLimitBytes);
+    const clientUsedBytes = this.numberFromBigInt(profile.clientUsedBytes) ?? 0;
+    const effectiveClientQuotaLimitBytes = clientQuotaLimitBytes ?? perClientLimitBytes;
+
+    return this.minNullableBytes([
+      this.remainingBytes(accountQuotaLimitBytes, accountUsedBytes),
+      this.remainingBytes(effectiveClientQuotaLimitBytes, clientUsedBytes),
+    ]);
+  }
+
+  private publicSubscriptionEndpoint(
+    row: ClientRouteOptionOutboundRow,
+    chargedRemainingBytes: number | null,
+  ): ClientSubscriptionEndpointSummary | null {
+    const config = this.asRecord(row.config) ?? {};
+    const address = this.firstSafeEndpointString(config, [
+      'subscriptionAddress',
+      'clientAddress',
+      'publicAddress',
+      'publicEndpoint',
+      'endpoint',
+    ]);
+    const host = this.firstSafeEndpointString(config, [
+      'subscriptionHost',
+      'clientHost',
+      'publicHost',
+      'host',
+    ]);
+    const port = this.firstSafeEndpointNumber(config, [
+      'subscriptionPort',
+      'clientPort',
+      'publicPort',
+      'port',
+    ]);
+    const transport = this.firstSafeEndpointString(config, [
+      'transport',
+      'network',
+      'protocolTransport',
+    ]);
+
+    if (!address && !host) return null;
+
+    return {
+      outboundId: row.id,
+      name: row.name,
+      type: row.type,
+      routeGroup: row.routeGroup,
+      countryCode: row.countryCode,
+      region: row.region,
+      healthStatus: row.healthStatus,
+      usageMultiplier: this.normalizeUsageMultiplier(row.usageMultiplier),
+      chargeLabel: this.usageMultiplierLabel(row.usageMultiplier),
+      address,
+      host,
+      port,
+      transport,
+      updatedAt: row.updatedAt.toISOString(),
+      usableBytesAtMultiplier: this.bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
+    };
+  }
+
+  private firstSafeEndpointString(config: Record<string, unknown>, keys: string[]): string | null {
+    for (const key of keys) {
+      const value = config[key];
+      const normalized = typeof value === 'string' || typeof value === 'number'
+        ? this.normalizePublicEndpointValue(String(value))
+        : null;
+      if (normalized) return normalized;
+    }
+
+    return null;
+  }
+
+  private firstSafeEndpointNumber(config: Record<string, unknown>, keys: string[]): number | null {
+    for (const key of keys) {
+      const value = config[key];
+      const parsed = Number(value);
+      if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) return parsed;
+    }
+
+    return null;
+  }
+
+  private normalizePublicEndpointValue(value: string): string | null {
+    const normalized = value.trim();
+    if (!normalized || normalized.length > 160) return null;
+    if (/[@<>"'`\\]/.test(normalized)) return null;
+    if (/(secret|token|password|private[_-]?key|credential)/i.test(normalized)) return null;
+
+    return normalized;
+  }
+
+  private bytesAtMultiplier(chargedRemainingBytes: number | null, multiplierValue: number | string | null | undefined): number | null {
+    if (chargedRemainingBytes === null) return null;
+
+    return Math.floor(chargedRemainingBytes / this.normalizeUsageMultiplier(multiplierValue));
+  }
+
+  private usageMultiplierLabel(multiplierValue: number | string | null | undefined): string {
+    return `x${this.normalizeUsageMultiplier(multiplierValue)}`;
+  }
+
+  private minNullableBytes(values: Array<number | null | undefined>): number | null {
+    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    if (!finiteValues.length) return null;
+
+    return Math.min(...finiteValues);
+  }
+
   private async updateCustomerAccountFields(
     executor: DatabaseQueryExecutor,
     id: string,
@@ -4247,7 +4488,7 @@ export class BillingService {
       throw new BadRequestException('usedBytesDelta, rxBytes, or txBytes is required');
     }
 
-    const usedBytesDelta = explicitDelta ?? (rxBytes ?? 0) + (txBytes ?? 0);
+    const rawUsedBytesDelta = explicitDelta ?? (rxBytes ?? 0) + (txBytes ?? 0);
     const direction = this.normalizeClientUsageDirection(
       dto.direction ?? (rxBytes !== null && txBytes === null ? 'rx' : txBytes !== null && rxBytes === null ? 'tx' : 'combined'),
     );
@@ -4264,7 +4505,11 @@ export class BillingService {
     return {
       source,
       direction,
-      usedBytesDelta,
+      rawUsedBytesDelta,
+      usedBytesDelta: rawUsedBytesDelta,
+      usageMultiplier: 1,
+      ratedOutboundId: this.normalizeNullableString(dto.outboundId),
+      ratedOutboundName: null,
       rxBytes,
       txBytes,
       observedAt,
@@ -4295,6 +4540,14 @@ export class BillingService {
       throw new BadRequestException(`${fieldName} must be a safe non-negative integer`);
     }
     return value;
+  }
+
+  private normalizeUsageMultiplier(value: number | string | null | undefined): number {
+    const normalized = Number(value ?? 1);
+    if (!Number.isInteger(normalized) || normalized < 1 || normalized > 100) {
+      throw new BadRequestException('Usage multiplier must be an integer between 1 and 100');
+    }
+    return normalized;
   }
 
   private hashPaidNumberIfPresent(value: string | null | undefined): string | null {

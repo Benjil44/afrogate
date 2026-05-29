@@ -165,6 +165,7 @@
 - [x] Volume package model.
 - [x] Price per GB setting.
 - [x] Shared account GB quota with optional per-client/device caps.
+- [x] Route usage multipliers for expensive outbounds and rated usage events.
 - [x] Extensible payment method catalog with PayPal as a first-class provider.
 - [x] Payment order lifecycle with pending/paid/failed/refunded states.
 - [x] Separate seller/admin and VPN-client UX boundaries in the backend contract.
@@ -179,6 +180,7 @@
 - [x] Usage accounting.
 - [x] Remaining volume display.
 - [x] Client-scoped mobile API/auth for VPN users.
+- [x] Client subscription refresh endpoint for updated safe server addresses.
 - [x] Telegram bot user commands.
 
 ## Phase 3: Auto Route
@@ -224,6 +226,7 @@
 - [ ] Sync volume usage.
 - [ ] Charge/update user volume.
 - [ ] Import/export configs.
+- [ ] Protocol-specific client subscription config-link generation for WireGuard, VLESS, L2TP, and IKEv2.
 
 ## Phase 5: Enterprise Path
 

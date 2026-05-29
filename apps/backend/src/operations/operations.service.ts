@@ -150,6 +150,7 @@ interface OutboundRow {
   recoveryThreshold: number;
   cooldownSeconds: number;
   weight: number;
+  usageMultiplier: number;
   maxUsers: number | null;
   lastCheckedAt: Date | null;
   lastHealthyAt: Date | null;
@@ -1159,6 +1160,7 @@ export class OperationsService {
           o.recovery_threshold AS "recoveryThreshold",
           o.cooldown_seconds AS "cooldownSeconds",
           o.weight,
+          o.usage_multiplier AS "usageMultiplier",
           o.max_users AS "maxUsers",
           o.last_checked_at AS "lastCheckedAt",
           o.last_healthy_at AS "lastHealthyAt",
@@ -1199,6 +1201,7 @@ export class OperationsService {
           o.recovery_threshold AS "recoveryThreshold",
           o.cooldown_seconds AS "cooldownSeconds",
           o.weight,
+          o.usage_multiplier AS "usageMultiplier",
           o.max_users AS "maxUsers",
           o.last_checked_at AS "lastCheckedAt",
           o.last_healthy_at AS "lastHealthyAt",
@@ -1230,9 +1233,9 @@ export class OperationsService {
           INSERT INTO outbounds (
             server_id, name, type, route_group, priority, enabled, maintenance_mode,
             config, secret_ref, health_interval_seconds, fail_threshold,
-            recovery_threshold, cooldown_seconds, weight, max_users
+            recovery_threshold, cooldown_seconds, weight, usage_multiplier, max_users
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16)
           RETURNING id
         `,
         [
@@ -1250,6 +1253,7 @@ export class OperationsService {
           dto.recoveryThreshold ?? 3,
           dto.cooldownSeconds ?? 120,
           dto.weight ?? 100,
+          dto.usageMultiplier ?? 1,
           dto.maxUsers ?? null,
         ],
       );
@@ -1266,6 +1270,7 @@ export class OperationsService {
           type: dto.type,
           serverId: dto.serverId ?? null,
           hasSecretRef: Boolean(dto.secretRef),
+          usageMultiplier: dto.usageMultiplier ?? 1,
         },
         executor,
       );
@@ -4228,6 +4233,7 @@ export class OperationsService {
       recoveryThreshold: row.recoveryThreshold,
       cooldownSeconds: row.cooldownSeconds,
       weight: row.weight,
+      usageMultiplier: row.usageMultiplier,
       maxUsers: row.maxUsers,
       lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
       lastHealthyAt: row.lastHealthyAt?.toISOString() ?? null,
@@ -8758,6 +8764,7 @@ export class OperationsService {
     if (dto.recoveryThreshold !== undefined) add('recoveryThreshold', 'recovery_threshold', dto.recoveryThreshold);
     if (dto.cooldownSeconds !== undefined) add('cooldownSeconds', 'cooldown_seconds', dto.cooldownSeconds);
     if (dto.weight !== undefined) add('weight', 'weight', dto.weight);
+    if (dto.usageMultiplier !== undefined) add('usageMultiplier', 'usage_multiplier', dto.usageMultiplier);
     if (dto.maxUsers !== undefined) add('maxUsers', 'max_users', dto.maxUsers);
 
     if (!setClauses.length) return fields;

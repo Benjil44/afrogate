@@ -337,6 +337,10 @@ export class CreateClientUsageEventDto {
   usedBytesDelta?: number;
 
   @IsOptional()
+  @IsUUID()
+  outboundId?: string | null;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)

@@ -6,6 +6,7 @@ import type {
   ClientRouteOptionsResponse,
   ClientRoutePreferenceMode,
   ClientRoutePreferenceSummary,
+  ClientSubscriptionSummary,
   RouteScoreProfile,
   UpdateClientRoutePreferenceRequest,
 } from '@afrogate/shared';
@@ -34,6 +35,7 @@ import {
   getClientRewardedAdStatus,
   getClientRouteOptions,
   getClientRoutePreference,
+  getClientSubscription,
   updateClientRoutePreference,
 } from './api';
 import {
@@ -78,6 +80,7 @@ export function ClientApp() {
   const [rewardedAds, setRewardedAds] = useState<ClientRewardedAdStatus | null>(null);
   const [routePreference, setRoutePreference] = useState<ClientRoutePreferenceSummary | null>(null);
   const [routeOptions, setRouteOptions] = useState<ClientRouteOptionsResponse | null>(null);
+  const [subscription, setSubscription] = useState<ClientSubscriptionSummary | null>(null);
   const [mode, setMode] = useState<ClientRoutePreferenceMode>('auto');
   const [scoreProfile, setScoreProfile] = useState<RouteScoreProfile>('balanced');
   const [autoDetectCountry, setAutoDetectCountry] = useState(true);
@@ -119,9 +122,10 @@ export function ClientApp() {
     try {
       const nextProfile = await getClientProfile(token);
       const selectedRouteGroup = routeGroup ?? nextProfile.routePreference.routeGroup;
-      const [preferenceResponse, optionsResponse, rewardResponse] = await Promise.all([
+      const [preferenceResponse, optionsResponse, subscriptionResponse, rewardResponse] = await Promise.all([
         getClientRoutePreference(token, selectedRouteGroup),
         getClientRouteOptions(token, selectedRouteGroup),
+        getClientSubscription(token, selectedRouteGroup),
         getClientRewardedAdStatus(token),
       ]);
 
@@ -131,12 +135,14 @@ export function ClientApp() {
       });
       setRewardedAds(rewardResponse.rewardedAds);
       setRouteOptions(optionsResponse);
+      setSubscription(subscriptionResponse.subscription);
       applyPreference(preferenceResponse.routePreference);
     } catch (requestError) {
       setProfile(null);
       setRewardedAds(null);
       setRoutePreference(null);
       setRouteOptions(null);
+      setSubscription(null);
       setError(errorText(requestError, messages));
       if (requestError instanceof ClientApiError && requestError.status === 401) {
         localStorage.removeItem(tokenStorageKey);
@@ -197,6 +203,7 @@ export function ClientApp() {
     setRewardedAds(null);
     setRoutePreference(null);
     setRouteOptions(null);
+    setSubscription(null);
     setError(null);
     setSaved(false);
     setRewardClaimed(false);
@@ -404,6 +411,32 @@ export function ClientApp() {
               ))}
             </div>
           </section>
+
+          <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
+            <PanelTitle icon={<RefreshCw className="h-5 w-5" aria-hidden="true" />} title={messages.subscription} />
+            <div className="mt-4 grid gap-2">
+              <CompactMetric
+                label={messages.subscriptionServers}
+                value={formatCount(subscription?.endpoints.length ?? 0, language)}
+              />
+              {subscription?.endpoints.length ? subscription.endpoints.slice(0, 4).map((endpoint) => (
+                <div key={endpoint.outboundId} className="rounded-[8px] border border-client-line bg-client-page p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate font-semibold">{endpoint.name}</span>
+                    <Badge tone={endpoint.usageMultiplier > 1 ? 'warning' : 'neutral'} text={endpoint.chargeLabel} />
+                  </div>
+                  <div className="mt-1 truncate text-client-muted">{subscriptionEndpointAddress(endpoint)}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <CompactMetric label={messages.usageCost} value={endpoint.chargeLabel} />
+                    <CompactMetric
+                      label={messages.usableOnServer}
+                      value={formatBytes(endpoint.usableBytesAtMultiplier, language, messages)}
+                    />
+                  </div>
+                </div>
+              )) : <EmptyState text={messages.noSubscriptionEndpoints} />}
+            </div>
+          </section>
         </div>
 
         <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
@@ -478,6 +511,7 @@ export function ClientApp() {
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         <span className="text-client-muted">{outbound.countryCode ?? '--'}</span>
+                        {outbound.usageMultiplier > 1 ? <Badge tone="warning" text={outbound.chargeLabel} /> : null}
                         <HealthPill status={outbound.healthStatus} label={healthLabel(outbound.healthStatus, messages)} />
                       </span>
                     </button>
@@ -751,6 +785,12 @@ function createRewardClaimKey(): string {
   }
 
   return `client-ad:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function subscriptionEndpointAddress(endpoint: ClientSubscriptionSummary['endpoints'][number]): string {
+  if (endpoint.address) return endpoint.address;
+  const hostPort = [endpoint.host, endpoint.port].filter(Boolean).join(':');
+  return hostPort || endpoint.countryCode || '--';
 }
 
 function isRouteMode(value: string): value is ClientRoutePreferenceMode {

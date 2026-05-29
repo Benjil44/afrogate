@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.84.0 - 2026-05-29
+
+- Added outbound usage multipliers so expensive routes can charge quota at `2x`, `10x`, or higher while preserving raw and charged bytes in usage events.
+- Added client subscription refresh metadata through `GET /api/client/subscription` for safe public endpoint updates after VPS address changes.
+- Surfaced route charge multipliers and subscription server availability in the VPN client app without exposing secret-bearing config links.
+
 ## 0.83.0 - 2026-05-29
 
 - Added guarded read-only backup status monitoring through `GET /api/admin/backups/status`.

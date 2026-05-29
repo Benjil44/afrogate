@@ -5,6 +5,7 @@ import type {
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceResponse,
+  ClientSubscriptionResponse,
 } from '@afrogate/shared';
 import { BillingService } from '../billing/billing.service';
 import { ClientTokenGuard } from '../security/client-token.guard';
@@ -69,6 +70,14 @@ export class ClientController {
     @Query('routeGroup') routeGroup?: string,
   ): Promise<ClientRouteOptionsResponse> {
     return this.billingService.listClientRouteOptions(this.requireClientActor(request), routeGroup);
+  }
+
+  @Get('subscription')
+  getSubscription(
+    @Req() request: RequestWithClientAuth,
+    @Query('routeGroup') routeGroup?: string,
+  ): Promise<ClientSubscriptionResponse> {
+    return this.billingService.getClientSubscription(this.requireClientActor(request), routeGroup);
   }
 
   private requireClientActor(request: RequestWithClientAuth): ClientAuthActor {

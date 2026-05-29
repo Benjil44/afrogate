@@ -143,6 +143,9 @@ Usage accounting is append-only and idempotent at the API boundary. Admin/panel-
 - source: admin, agent, panel_sync, payment_adjustment, manual_adjustment, client_report, or unknown
 - direction: rx, tx, or combined
 - used_bytes_delta
+- raw_used_bytes_delta: actual observed bytes before route pricing
+- usage_multiplier: route cost multiplier applied to the event, default `1`
+- rated_outbound_id nullable when usage is tied to a specific expensive outbound
 - rx_bytes nullable
 - tx_bytes nullable
 - observed_at
@@ -155,7 +158,7 @@ Usage accounting is append-only and idempotent at the API boundary. Admin/panel-
 - created_by
 - created_at
 
-Recording a new non-duplicate usage event atomically increments both `client_configs.used_bytes` and `customer_accounts.used_bytes`, so remaining-volume responses stay cheap to read on low-resource VPS machines. Duplicate `(source, idempotency_key)` reports return the existing event and do not double-count usage.
+Recording a new non-duplicate usage event atomically increments both `client_configs.used_bytes` and `customer_accounts.used_bytes`, so remaining-volume responses stay cheap to read on low-resource VPS machines. Duplicate `(source, idempotency_key)` reports return the existing event and do not double-count usage. If an admin/panel/agent usage report includes a `rated_outbound_id`, AfroGate reads that outbound's `usage_multiplier` and stores both raw bytes and charged bytes. Example: `10 GB` observed on a `10x` high-cost route consumes `100 GB` from quota, so a client with `100 GB` remaining has about `10 GB` usable on that route.
 
 ### client_route_preferences
 
@@ -195,11 +198,11 @@ Mobile/client API auth is separate from admin/seller auth. Admins can issue one-
 - last_used_at
 - revoked_at
 
-Client-scoped endpoints live under `/api/client/*`. They can read only the authenticated client profile, quota summary, route preference, selectable route options, and rewarded-ad status, and can update only that client's route preference when `allow_client_override` is true. These endpoints must not expose admin dashboard operations, server secrets, outbound config JSON, client IP history, or user traffic destinations.
+Client-scoped endpoints live under `/api/client/*`. They can read only the authenticated client profile, quota summary, route preference, selectable route options, subscription refresh metadata, and rewarded-ad status, and can update only that client's route preference when `allow_client_override` is true. These endpoints must not expose admin dashboard operations, server secrets, outbound config JSON, client IP history, or user traffic destinations. `/api/client/subscription` returns safe public endpoint metadata from explicit outbound config keys such as `publicEndpoint`, `publicHost`, and `publicPort`, plus each route's usage multiplier; it does not generate secret-bearing protocol config links yet.
 
 The dashboard Usage/Billing page is the seller/admin surface for catalog, customer quota, recent payment orders, allocation status, customer account limit management, and non-secret rewarded-ad reward/cap settings. It can create/update customer account display metadata, shared account GB quota, per-client GB caps, quota scope, and account status through guarded `/api/admin/*` billing APIs only; it does not collect raw paid numbers in the dashboard workflow and keeps user-facing labels in the typed dashboard translation layer.
 
-The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, rewarded-data claims, automatic/country/server route mode selection, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
+The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, rewarded-data claims, automatic/country/server route mode selection, subscription server refresh visibility, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
 
 ### rewarded_ad_settings
 
@@ -366,6 +369,11 @@ The PayPal adapter exposes guarded admin actions to create a hosted checkout ord
 - status
 - route_group
 - lockable
+
+### outbounds
+
+- usage_multiplier: integer `1` to `100`; high-cost VPS paths can charge quota faster
+- public endpoint metadata for client subscription refresh should be explicit non-secret config, not copied from server credentials or raw protocol secrets
 
 ### tunnel_metrics
 

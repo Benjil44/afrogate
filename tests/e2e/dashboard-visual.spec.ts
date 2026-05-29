@@ -634,6 +634,7 @@ function createOutbound(id: string, serverId: string, serverHostname: string, na
     serverId,
     type: 'wireguard',
     updatedAt: fixedNow,
+    usageMultiplier: routeGroup === 'gaming' ? 2 : 1,
     weight: Math.max(10, 100 - priority * 20),
   };
 }

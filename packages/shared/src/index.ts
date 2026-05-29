@@ -362,6 +362,25 @@ export interface ClientRouteCountryOption {
   availableOutboundCount: number;
   healthyOutboundCount: number;
   bestHealthStatus: OutboundHealthStatus | string;
+  minUsageMultiplier: number;
+}
+
+export interface ClientSubscriptionEndpointSummary {
+  outboundId: string;
+  name: string;
+  type: OutboundType | string;
+  routeGroup: string;
+  countryCode?: string | null;
+  region?: string | null;
+  healthStatus: OutboundHealthStatus | string;
+  usageMultiplier: number;
+  chargeLabel: string;
+  address?: string | null;
+  host?: string | null;
+  port?: number | null;
+  transport?: string | null;
+  updatedAt?: string | null;
+  usableBytesAtMultiplier?: number | null;
 }
 
 export interface ClientRouteOutboundOption {
@@ -373,6 +392,10 @@ export interface ClientRouteOutboundOption {
   region?: string | null;
   healthStatus: OutboundHealthStatus | string;
   available: boolean;
+  usageMultiplier: number;
+  chargeLabel: string;
+  usableBytesAtMultiplier?: number | null;
+  subscriptionEndpoint?: ClientSubscriptionEndpointSummary | null;
 }
 
 export interface UpdateClientRoutePreferenceRequest {
@@ -502,6 +525,10 @@ export interface AdminClientUsageEventSummary {
   source: ClientUsageEventSource | string;
   direction: ClientUsageDirection | string;
   usedBytesDelta: number;
+  rawUsedBytesDelta?: number | null;
+  usageMultiplier: number;
+  ratedOutboundId?: string | null;
+  ratedOutboundName?: string | null;
   rxBytes?: number | null;
   txBytes?: number | null;
   observedAt: string;
@@ -519,6 +546,7 @@ export interface CreateClientUsageEventRequest {
   source?: ClientUsageEventSource;
   direction?: ClientUsageDirection;
   usedBytesDelta?: number;
+  outboundId?: string | null;
   rxBytes?: number | null;
   txBytes?: number | null;
   observedAt?: string;
@@ -1058,6 +1086,7 @@ export interface AdminOutboundSummary {
   recoveryThreshold: number;
   cooldownSeconds: number;
   weight: number;
+  usageMultiplier: number;
   maxUsers?: number | null;
   lastCheckedAt?: string | null;
   lastHealthyAt?: string | null;
@@ -2589,6 +2618,18 @@ export interface ClientRouteOptionsResponse {
   routeGroup: string;
   countries: ClientRouteCountryOption[];
   outbounds: ClientRouteOutboundOption[];
+}
+
+export interface ClientSubscriptionSummary {
+  clientConfigId: string;
+  routeGroup: string;
+  generatedAt: string;
+  chargedRemainingBytes?: number | null;
+  endpoints: ClientSubscriptionEndpointSummary[];
+}
+
+export interface ClientSubscriptionResponse {
+  subscription: ClientSubscriptionSummary;
 }
 
 export interface AdminBillingSettingsResponse {

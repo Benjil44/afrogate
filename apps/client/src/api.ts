@@ -5,6 +5,7 @@ import type {
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceResponse,
+  ClientSubscriptionResponse,
   UpdateClientRoutePreferenceRequest,
 } from '@afrogate/shared';
 
@@ -55,6 +56,14 @@ export async function getClientRouteOptions(
 ): Promise<ClientRouteOptionsResponse> {
   const query = routeGroup ? `?routeGroup=${encodeURIComponent(routeGroup)}` : '';
   return requestClientApi<ClientRouteOptionsResponse>(`/client/route-options${query}`, token);
+}
+
+export async function getClientSubscription(
+  token: string,
+  routeGroup?: string,
+): Promise<ClientSubscriptionResponse> {
+  const query = routeGroup ? `?routeGroup=${encodeURIComponent(routeGroup)}` : '';
+  return requestClientApi<ClientSubscriptionResponse>(`/client/subscription${query}`, token);
 }
 
 export async function updateClientRoutePreference(
