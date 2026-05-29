@@ -123,6 +123,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Usage/Billing sanitized client-config export for selected customer accounts.
 - [x] Usage/Billing payment provider adapter readiness for PayPal, card, crypto, bank transfer, and local gateways.
 - [x] Signed rewarded-ad provider webhook adapter with idempotent quota crediting.
+- [x] Reseller seller workspace with scoped Dashboard, Users, and Billing sidebar pages, sales charts, sold-users table, and wallet selling summary.
 - [x] Backend Telegram bot user-command webhook for linked account status and quota replies.
 - [x] Telegram bot operations.
 - [x] Telegram bot purchase fulfillment operations for verified purchases, one client-scoped VLESS config delivery, and usage-link visibility.

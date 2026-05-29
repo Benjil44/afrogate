@@ -518,6 +518,7 @@ const navItems: NavItemData[] = [
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
   { id: 'settings', labelKey: 'settings', icon: SettingsIcon },
 ];
+const resellerNavViews = new Set<ActiveView>(['dashboard', 'users', 'billing']);
 const managedAdminRoles: Role[] = ['owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller'];
 const protocolDefaultPorts: Record<ProtocolKind, string> = {
   wireguard: '51820',
@@ -605,7 +606,8 @@ function AuthenticatedDashboard({
   sessionToken: string;
   t: DashboardStrings;
 }) {
-  const [activeView, setActiveView] = useState<ActiveView>(session.actor.role === 'reseller' ? 'billing' : 'dashboard');
+  const isResellerSession = session.actor.role === 'reseller';
+  const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
@@ -627,6 +629,14 @@ function AuthenticatedDashboard({
   const wallClock = useWallClock(format);
 
   useEffect(() => {
+    if (isResellerSession) {
+      setMetrics([]);
+      setTimeseries([]);
+      setDataState('fallback');
+      setLastUpdated(null);
+      return;
+    }
+
     let isActive = true;
     let controller: AbortController | null = null;
 
@@ -660,9 +670,15 @@ function AuthenticatedDashboard({
       controller?.abort();
       window.clearInterval(timer);
     };
-  }, [timeRange]);
+  }, [isResellerSession, timeRange]);
 
   useEffect(() => {
+    if (isResellerSession) {
+      setApiAlerts([]);
+      setAlertDataState('fallback');
+      return;
+    }
+
     let isActive = true;
     let controller: AbortController | null = null;
 
@@ -691,7 +707,7 @@ function AuthenticatedDashboard({
       controller?.abort();
       window.clearInterval(timer);
     };
-  }, [sessionToken]);
+  }, [isResellerSession, sessionToken]);
 
   useEffect(() => {
     if (!canViewBackupStatus(session)) {
@@ -731,6 +747,17 @@ function AuthenticatedDashboard({
   }, [session, sessionToken]);
 
   useEffect(() => {
+    if (isResellerSession) {
+      setAdminServers([]);
+      setServerDataState('fallback');
+      setAdminOutbounds([]);
+      setAdminTunnels([]);
+      setRouteFailoverEvents([]);
+      setRouteDataState('fallback');
+      setTunnelDataState('fallback');
+      return;
+    }
+
     let isActive = true;
     let controller: AbortController | null = null;
 
@@ -781,7 +808,13 @@ function AuthenticatedDashboard({
       controller?.abort();
       window.clearInterval(timer);
     };
-  }, [sessionToken]);
+  }, [isResellerSession, sessionToken]);
+
+  useEffect(() => {
+    if (isResellerSession && !resellerNavViews.has(activeView)) {
+      setActiveView('dashboard');
+    }
+  }, [activeView, isResellerSession]);
 
   useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, isSidebarCollapsed ? 'collapsed' : 'expanded');
@@ -874,7 +907,7 @@ function AuthenticatedDashboard({
   );
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
   const status = getDataStatus(dataState, lastUpdated, t, format);
-  const header = getPageHeader(activeView, t);
+  const header = getPageHeader(activeView, t, session);
   const shellGridClass = isKioskMode
     ? 'lg:grid-cols-[minmax(0,1fr)]'
     : isSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
@@ -910,22 +943,24 @@ function AuthenticatedDashboard({
           </div>
           {activeView === 'users' ? null : (
             <div className="flex flex-wrap gap-2">
-              {activeView === 'dashboard' ? (
+              {activeView === 'dashboard' && !isResellerSession ? (
                 <KioskToggleButton isActive={isKioskMode} onToggle={handleKioskToggle} t={t} />
               ) : null}
               <div className="inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border border-afro-line bg-white px-2.5 text-[12px] font-bold text-afro-ink">
                 <Clock size={15} />
                 {wallClock}
               </div>
+              {!isResellerSession ? (
               <div className={`inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-bold ${status.className}`}>
                 <span className={`size-2 rounded-full ${status.dotClassName}`} />
                 {status.label}
               </div>
+              ) : null}
             </div>
           )}
         </header>
 
-        {activeView === 'dashboard' ? (
+        {activeView === 'dashboard' && !isResellerSession ? (
           <>
             <SystemResourceHeader format={format} servers={serverRows} t={t} trafficTotals={trafficTotals} />
 
@@ -1232,6 +1267,18 @@ function ActivePage({
   timeRange: MetricsTimeRange;
   trafficTotals: TrafficTotals;
 }) {
+  if (session.actor.role === 'reseller') {
+    if (activeView === 'users') {
+      return <ResellerUsersPage format={format} sessionToken={sessionToken} t={t} />;
+    }
+
+    if (activeView === 'billing') {
+      return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
+    }
+
+    return <ResellerDashboardPage format={format} sessionToken={sessionToken} t={t} />;
+  }
+
   switch (activeView) {
     case 'servers':
       return (
@@ -3877,6 +3924,359 @@ function createEmptyCurrentPanelImportForm(): CurrentPanelImportFormState {
   };
 }
 
+type ResellerWorkspaceViewState = {
+  accounts: AdminCustomerAccountSummary[];
+  dataState: DataState;
+  error: boolean;
+  ledgerEntries: AdminResellerWalletLedgerEntry[];
+  packages: AdminVolumePackageSummary[];
+  paymentOrders: AdminPaymentOrderSummary[];
+  reseller: AdminResellerAccountSummary | null;
+};
+
+type ResellerSalesStats = {
+  activeCustomerCount: number;
+  afroGateShareAmount: number;
+  averageSoldGb: number;
+  currency: string;
+  lowQuotaCount: number;
+  orderCount: number;
+  remainingBytes: number | null;
+  sellerMarginAmount: number;
+  soldBytes: number;
+  totalSalesAmount: number;
+  usedBytes: number;
+};
+
+function useResellerWorkspace(sessionToken: string): ResellerWorkspaceViewState {
+  const [state, setState] = useState<ResellerWorkspaceViewState>({
+    accounts: [],
+    dataState: 'loading',
+    error: false,
+    ledgerEntries: [],
+    packages: [],
+    paymentOrders: [],
+    reseller: null,
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    setState((current) => ({ ...current, dataState: 'loading', error: false }));
+    void fetchAdminResellerWorkspace(sessionToken, controller.signal)
+      .then((response) => {
+        setState({
+          accounts: response.workspace.accounts,
+          dataState: 'live',
+          error: false,
+          ledgerEntries: response.workspace.ledgerEntries,
+          packages: response.workspace.packages,
+          paymentOrders: response.workspace.paymentOrders,
+          reseller: response.workspace.reseller,
+        });
+      })
+      .catch((loadError) => {
+        if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
+
+        setState((current) => ({ ...current, dataState: 'fallback', error: true }));
+      });
+
+    return () => controller.abort();
+  }, [sessionToken]);
+
+  return state;
+}
+
+function ResellerDashboardPage({
+  format,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const workspace = useResellerWorkspace(sessionToken);
+  const stats = useMemo(
+    () => createResellerSalesStats(workspace.accounts, workspace.paymentOrders, workspace.reseller),
+    [workspace.accounts, workspace.paymentOrders, workspace.reseller],
+  );
+
+  const summaryCards: MetricCardData[] = [
+    {
+      label: t.reseller.salesAmount,
+      value: formatMoneyAmount(stats.totalSalesAmount, stats.currency, format),
+      tone: stats.totalSalesAmount > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.reseller.soldVolume,
+      value: format.bytes(stats.soldBytes),
+      tone: stats.soldBytes > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.reseller.activeCustomers,
+      value: format.integer(stats.activeCustomerCount),
+      tone: stats.activeCustomerCount > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.reseller.availableWallet,
+      value: workspace.reseller ? formatMoneyAmount(workspace.reseller.availableBalanceAmount, workspace.reseller.currency, format) : '--',
+      tone: workspace.reseller && workspace.reseller.availableBalanceAmount > 0 ? 'good' : 'warning',
+    },
+  ];
+
+  return (
+    <section className="mt-2 grid gap-3">
+      {workspace.error ? <PanelState detail={t.billing.errors.load} kind="error" title={t.panelStates.errorTitle} /> : null}
+      {workspace.dataState === 'loading' ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
+      {workspace.dataState !== 'live' && workspace.dataState !== 'loading' ? <DataStateNotice state={workspace.dataState} t={t} /> : null}
+
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label={t.reseller.dashboardSummary}>
+        {summaryCards.map((item) => <MetricCard item={item} key={item.label} />)}
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+        <ResellerSalesTrendPanel format={format} paymentOrders={workspace.paymentOrders} t={t} />
+        <ResellerExperiencePanel accounts={workspace.accounts} format={format} stats={stats} t={t} />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]">
+        <ResellerSalesSummaryPanel format={format} reseller={workspace.reseller} stats={stats} t={t} />
+        <ResellerRecentUsersPanel accounts={workspace.accounts} format={format} paymentOrders={workspace.paymentOrders} t={t} />
+      </section>
+    </section>
+  );
+}
+
+function ResellerUsersPage({
+  format,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const workspace = useResellerWorkspace(sessionToken);
+  const stats = useMemo(
+    () => createResellerSalesStats(workspace.accounts, workspace.paymentOrders, workspace.reseller),
+    [workspace.accounts, workspace.paymentOrders, workspace.reseller],
+  );
+
+  return (
+    <section className="mt-2 grid gap-3">
+      {workspace.error ? <PanelState detail={t.billing.errors.load} kind="error" title={t.panelStates.errorTitle} /> : null}
+      {workspace.dataState === 'loading' ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
+      {workspace.dataState !== 'live' && workspace.dataState !== 'loading' ? <DataStateNotice state={workspace.dataState} t={t} /> : null}
+
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label={t.reseller.usersSummary}>
+        <MetricCard item={{ label: t.reseller.totalCustomers, value: format.integer(workspace.accounts.length), tone: workspace.accounts.length > 0 ? 'good' : 'neutral' }} />
+        <MetricCard item={{ label: t.reseller.activeCustomers, value: format.integer(stats.activeCustomerCount), tone: stats.activeCustomerCount > 0 ? 'good' : 'neutral' }} />
+        <MetricCard item={{ label: t.reseller.lowQuotaUsers, value: format.integer(stats.lowQuotaCount), tone: stats.lowQuotaCount > 0 ? 'warning' : 'good' }} />
+        <MetricCard item={{ label: t.reseller.soldVolume, value: format.bytes(stats.soldBytes), tone: stats.soldBytes > 0 ? 'good' : 'neutral' }} />
+      </section>
+
+      <ResellerUsersTable accounts={workspace.accounts} format={format} paymentOrders={workspace.paymentOrders} t={t} />
+    </section>
+  );
+}
+
+function ResellerSalesTrendPanel({
+  format,
+  paymentOrders,
+  t,
+}: {
+  format: DashboardFormatters;
+  paymentOrders: AdminPaymentOrderSummary[];
+  t: DashboardStrings;
+}) {
+  const option = useMemo(() => createResellerSalesTrendOption(paymentOrders, format, t), [format, paymentOrders, t]);
+  const hasOrders = paymentOrders.some(isCompletedResellerSaleOrder);
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.reseller.salesTrend} icon={Activity} meta={t.reseller.lastSevenDays} />
+      <div className="mt-2">
+        {hasOrders ? (
+          <EChart
+            ariaLabel={t.reseller.salesTrend}
+            className="h-[260px] w-full"
+            option={option}
+          />
+        ) : (
+          <EmptyState message={t.reseller.noSalesYet} />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ResellerExperiencePanel({
+  accounts,
+  format,
+  stats,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  format: DashboardFormatters;
+  stats: ResellerSalesStats;
+  t: DashboardStrings;
+}) {
+  const option = useMemo(() => createResellerUsageMixOption(accounts, format, t), [accounts, format, t]);
+  const hasAccounts = accounts.length > 0;
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.reseller.serviceExperience} icon={Gauge} meta={t.reseller.customerQuotaMix} />
+      <div className="mt-2 grid gap-2">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <MetricPill icon={ShieldCheck} label={t.reseller.remainingVolume} value={stats.remainingBytes === null ? t.billing.unlimited : format.bytes(stats.remainingBytes)} />
+          <MetricPill icon={UserRound} label={t.reseller.lowQuotaUsers} value={format.integer(stats.lowQuotaCount)} />
+          <MetricPill icon={Activity} label={t.reseller.averageSoldGb} value={format.bytes(Math.round(stats.averageSoldGb * 1024 ** 3))} />
+        </div>
+        {hasAccounts ? (
+          <EChart
+            ariaLabel={t.reseller.serviceExperience}
+            className="h-[210px] w-full"
+            option={option}
+          />
+        ) : (
+          <EmptyState message={t.billing.noCustomerAccounts} />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ResellerSalesSummaryPanel({
+  format,
+  reseller,
+  stats,
+  t,
+}: {
+  format: DashboardFormatters;
+  reseller: AdminResellerAccountSummary | null;
+  stats: ResellerSalesStats;
+  t: DashboardStrings;
+}) {
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.reseller.salesSummary} icon={CreditCard} meta={reseller ? reseller.displayName : t.dataStatus.loading} />
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <MetricPill icon={CreditCard} label={t.reseller.salesAmount} value={formatMoneyAmount(stats.totalSalesAmount, stats.currency, format)} />
+        <MetricPill icon={Inbox} label={t.reseller.soldVolume} value={format.bytes(stats.soldBytes)} />
+        <MetricPill icon={ShieldCheck} label={t.reseller.afroGateDebited} value={formatMoneyAmount(stats.afroGateShareAmount, stats.currency, format)} />
+        <MetricPill icon={UserRound} label={t.reseller.estimatedSellerMargin} value={formatMoneyAmount(stats.sellerMarginAmount, stats.currency, format)} />
+        <MetricPill icon={Activity} label={t.reseller.orders} value={format.integer(stats.orderCount)} />
+        <MetricPill icon={Gauge} label={t.reseller.activeCustomers} value={format.integer(stats.activeCustomerCount)} />
+      </div>
+    </section>
+  );
+}
+
+function ResellerRecentUsersPanel({
+  accounts,
+  format,
+  paymentOrders,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  format: DashboardFormatters;
+  paymentOrders: AdminPaymentOrderSummary[];
+  t: DashboardStrings;
+}) {
+  const recentAccounts = [...accounts]
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+    .slice(0, 6);
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.reseller.recentCustomers} icon={UserRound} meta={t.billing.accountsLoaded(format.integer(accounts.length))} />
+      <div className="mt-2 grid gap-2">
+        {recentAccounts.length === 0 ? <EmptyState message={t.billing.noCustomerAccounts} /> : null}
+        {recentAccounts.map((account) => {
+          const customerOrders = paymentOrders.filter((order) => order.customerAccountId === account.id && isCompletedResellerSaleOrder(order));
+          const soldBytes = customerOrders.reduce((sum, order) => sum + order.volumeBytes, 0);
+
+          return (
+            <div className="grid min-h-[58px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-afro-line bg-white px-3 py-2" key={account.id}>
+              <div className="min-w-0">
+                <strong className="block truncate text-sm text-afro-ink">{resellerCustomerName(account)}</strong>
+                <span className="block truncate text-[12px] text-afro-muted">{account.telegramUsername ?? account.id.slice(0, 8)}</span>
+              </div>
+              <div className="flex flex-wrap justify-end gap-1.5">
+                <StatusBadge tone={billingStatusTone(account.status)}>{customerAccountStatusLabel(account.status, t)}</StatusBadge>
+                <StatusBadge tone="neutral">{format.bytes(soldBytes)}</StatusBadge>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ResellerUsersTable({
+  accounts,
+  format,
+  paymentOrders,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  format: DashboardFormatters;
+  paymentOrders: AdminPaymentOrderSummary[];
+  t: DashboardStrings;
+}) {
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.reseller.soldUsers} icon={UserRound} meta={t.billing.accountsLoaded(format.integer(accounts.length))} />
+      {accounts.length === 0 ? <div className="mt-2"><EmptyState message={t.billing.noCustomerAccounts} /></div> : null}
+      {accounts.length > 0 ? (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[880px] border-collapse">
+            <thead>
+              <tr>
+                {[t.billing.customer, t.billing.clients, t.billing.usedQuota, t.billing.remaining, t.reseller.soldVolume, t.reseller.orders, t.reseller.lastSale, t.billing.status].map((heading) => (
+                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((account) => {
+                const customerOrders = paymentOrders.filter((order) => order.customerAccountId === account.id && isCompletedResellerSaleOrder(order));
+                const soldBytes = customerOrders.reduce((sum, order) => sum + order.volumeBytes, 0);
+                const latestSale = customerOrders
+                  .map((order) => order.paidAt ?? order.createdAt)
+                  .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
+
+                return (
+                  <tr key={account.id}>
+                    <TableCell>
+                      <strong className="block text-afro-ink">{resellerCustomerName(account)}</strong>
+                      <span className="text-[12px] text-afro-muted">{account.telegramUsername ?? account.id.slice(0, 8)}</span>
+                    </TableCell>
+                    <TableCell>{`${format.integer(account.activeClientCount)} / ${format.integer(account.clientCount)}`}</TableCell>
+                    <TableCell>{format.bytes(account.usedBytes)}</TableCell>
+                    <TableCell>{account.remainingBytes === null || account.remainingBytes === undefined ? t.billing.unlimited : format.bytes(account.remainingBytes)}</TableCell>
+                    <TableCell>{format.bytes(soldBytes)}</TableCell>
+                    <TableCell>{format.integer(customerOrders.length)}</TableCell>
+                    <TableCell>{latestSale ? format.dateTime(new Date(latestSale)) : '--'}</TableCell>
+                    <TableCell>
+                      <StatusBadge tone={billingStatusTone(account.status)}>{customerAccountStatusLabel(account.status, t)}</StatusBadge>
+                    </TableCell>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function mapCustomerAccountToForm(account: AdminCustomerAccountSummary): CustomerAccountFormState {
   return {
     displayName: account.displayName ?? '',
@@ -4032,6 +4432,10 @@ function BillingPage({
   const pendingAllocationCount = paymentOrders.filter((order) => order.status === 'paid' && order.allocationStatus === 'pending').length;
   const activePackageCount = packages.filter((item) => item.status === 'active').length;
   const activeMethodCount = paymentMethods.filter((item) => item.status === 'active').length;
+  const resellerStats = useMemo(
+    () => createResellerSalesStats(accounts, paymentOrders, reseller),
+    [accounts, paymentOrders, reseller],
+  );
   const summaryCards: MetricCardData[] = isResellerSession && reseller ? [
     {
       label: t.billing.resellerWalletBalance,
@@ -4415,6 +4819,15 @@ function BillingPage({
       ) : null}
 
       {isResellerSession ? (
+        <ResellerSalesSummaryPanel
+          format={format}
+          reseller={reseller}
+          stats={resellerStats}
+          t={t}
+        />
+      ) : null}
+
+      {isResellerSession ? (
         <ResellerPackageSalePanel
           accounts={accounts}
           format={format}
@@ -4793,6 +5206,289 @@ function formatClientConfigExportJson(result: AdminClientConfigsExportResponse):
     generatedAt: result.generatedAt,
     warnings: result.warnings,
   }, null, 2);
+}
+
+function createResellerSalesStats(
+  accounts: AdminCustomerAccountSummary[],
+  paymentOrders: AdminPaymentOrderSummary[],
+  reseller: AdminResellerAccountSummary | null,
+): ResellerSalesStats {
+  const completedOrders = paymentOrders.filter(isCompletedResellerSaleOrder);
+  const totalSalesAmount = completedOrders.reduce((sum, order) => sum + order.amount, 0);
+  const soldBytes = completedOrders.reduce((sum, order) => sum + order.volumeBytes, 0);
+  const afroGateShareAmount = reseller
+    ? Math.round(totalSalesAmount * reseller.afroGateShareBps / 10_000)
+    : 0;
+  const remainingValues = accounts
+    .map((account) => account.remainingBytes ?? null)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const allRemainingKnown = remainingValues.length === accounts.length;
+  const lowQuotaCount = accounts.filter((account) => {
+    if (account.quotaLimitBytes === null || account.quotaLimitBytes === undefined || account.quotaLimitBytes <= 0) return false;
+    const remainingBytes = account.remainingBytes ?? Math.max(account.quotaLimitBytes - account.usedBytes, 0);
+
+    return remainingBytes / account.quotaLimitBytes <= 0.2;
+  }).length;
+
+  return {
+    activeCustomerCount: accounts.filter((account) => account.status === 'active').length,
+    afroGateShareAmount,
+    averageSoldGb: completedOrders.length > 0 ? soldBytes / completedOrders.length / 1024 ** 3 : 0,
+    currency: reseller?.currency ?? completedOrders[0]?.currency ?? 'IRR',
+    lowQuotaCount,
+    orderCount: completedOrders.length,
+    remainingBytes: allRemainingKnown ? remainingValues.reduce((sum, value) => sum + value, 0) : null,
+    sellerMarginAmount: Math.max(totalSalesAmount - afroGateShareAmount, 0),
+    soldBytes,
+    totalSalesAmount,
+    usedBytes: accounts.reduce((sum, account) => sum + account.usedBytes, 0),
+  };
+}
+
+function isCompletedResellerSaleOrder(order: AdminPaymentOrderSummary): boolean {
+  return order.provider === 'reseller_wallet' && order.status === 'paid';
+}
+
+function resellerCustomerName(account: AdminCustomerAccountSummary): string {
+  return account.displayName || account.telegramUsername || account.telegramId || account.id.slice(0, 8);
+}
+
+function createResellerSalesTrendOption(
+  paymentOrders: AdminPaymentOrderSummary[],
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): AfroChartOption {
+  const buckets = createRecentDayBuckets(7).map((date) => ({
+    amount: 0,
+    date,
+    key: localDateKey(date),
+    orderCount: 0,
+    volumeGb: 0,
+  }));
+  const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  paymentOrders.filter(isCompletedResellerSaleOrder).forEach((order) => {
+    const orderDate = new Date(order.paidAt ?? order.createdAt);
+    const bucket = bucketByKey.get(localDateKey(orderDate));
+    if (!bucket) return;
+
+    bucket.amount += order.amount;
+    bucket.orderCount += 1;
+    bucket.volumeGb += order.volumeBytes / 1024 ** 3;
+  });
+
+  return {
+    color: ['#2764a8', '#0f8f83', '#c27a1a'],
+    textStyle: {
+      fontFamily: format.fontFamily,
+    },
+    tooltip: {
+      trigger: 'axis',
+      valueFormatter: (value) => format.integer(Number(value)),
+    },
+    legend: {
+      top: 0,
+      icon: 'roundRect',
+      itemHeight: 8,
+      itemWidth: 18,
+      textStyle: {
+        color: '#60717a',
+        fontFamily: format.fontFamily,
+      },
+    },
+    grid: {
+      bottom: 26,
+      containLabel: true,
+      left: 6,
+      right: 8,
+      top: 34,
+    },
+    xAxis: {
+      type: 'category',
+      data: buckets.map((bucket) => format.dateTime(bucket.date)),
+      axisLine: {
+        lineStyle: { color: '#dce4e8' },
+      },
+      axisLabel: {
+        color: '#60717a',
+        hideOverlap: true,
+        margin: 8,
+      },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        min: 0,
+        splitNumber: 4,
+        axisLabel: {
+          color: '#60717a',
+          formatter: (value: string | number) => format.integer(Number(value)),
+          margin: 6,
+        },
+        splitLine: {
+          lineStyle: { color: '#edf2f4' },
+        },
+      },
+      {
+        type: 'value',
+        min: 0,
+        splitNumber: 4,
+        axisLabel: {
+          color: '#60717a',
+          formatter: (value: string | number) => format.integer(Number(value)),
+          margin: 6,
+        },
+        splitLine: {
+          show: false,
+        },
+      },
+    ],
+    dataZoom: [
+      {
+        type: 'inside',
+        throttle: 50,
+      },
+    ],
+    series: [
+      {
+        name: t.reseller.soldGbSeries,
+        type: 'bar',
+        barMaxWidth: 24,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+        },
+        data: buckets.map((bucket) => Math.round(bucket.volumeGb * 10) / 10),
+      },
+      {
+        name: t.reseller.ordersSeries,
+        type: 'line',
+        yAxisIndex: 1,
+        showSymbol: false,
+        smooth: true,
+        lineStyle: {
+          width: 3,
+        },
+        areaStyle: {
+          opacity: 0.08,
+        },
+        data: buckets.map((bucket) => bucket.orderCount),
+      },
+    ],
+  };
+}
+
+function createResellerUsageMixOption(
+  accounts: AdminCustomerAccountSummary[],
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): AfroChartOption {
+  const rows = [...accounts]
+    .sort((left, right) => (right.usedBytes + (right.remainingBytes ?? 0)) - (left.usedBytes + (left.remainingBytes ?? 0)))
+    .slice(0, 8);
+
+  return {
+    color: ['#2764a8', '#8bbf9f'],
+    textStyle: {
+      fontFamily: format.fontFamily,
+    },
+    tooltip: {
+      trigger: 'axis',
+      valueFormatter: (value) => format.bytes(Math.round(Number(value) * 1024 ** 3)),
+    },
+    legend: {
+      top: 0,
+      icon: 'roundRect',
+      itemHeight: 8,
+      itemWidth: 18,
+      textStyle: {
+        color: '#60717a',
+        fontFamily: format.fontFamily,
+      },
+    },
+    grid: {
+      bottom: 30,
+      containLabel: true,
+      left: 6,
+      right: 8,
+      top: 34,
+    },
+    xAxis: {
+      type: 'category',
+      data: rows.map((account) => resellerCustomerName(account)),
+      axisLine: {
+        lineStyle: { color: '#dce4e8' },
+      },
+      axisLabel: {
+        color: '#60717a',
+        hideOverlap: true,
+        margin: 8,
+        overflow: 'truncate',
+        width: 86,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      splitNumber: 4,
+      axisLabel: {
+        color: '#60717a',
+        formatter: (value: string | number) => format.integer(Number(value)),
+        margin: 6,
+      },
+      splitLine: {
+        lineStyle: { color: '#edf2f4' },
+      },
+    },
+    dataZoom: [
+      {
+        type: 'inside',
+        throttle: 50,
+      },
+    ],
+    series: [
+      {
+        name: t.reseller.usedGbSeries,
+        type: 'bar',
+        stack: 'quota',
+        barMaxWidth: 26,
+        data: rows.map((account) => Math.round(account.usedBytes / 1024 ** 3 * 10) / 10),
+      },
+      {
+        name: t.reseller.remainingGbSeries,
+        type: 'bar',
+        stack: 'quota',
+        barMaxWidth: 26,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+        },
+        data: rows.map((account) => (
+          account.remainingBytes === null || account.remainingBytes === undefined
+            ? 0
+            : Math.round(account.remainingBytes / 1024 ** 3 * 10) / 10
+        )),
+      },
+    ],
+  };
+}
+
+function createRecentDayBuckets(dayCount: number): Date[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: dayCount }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (dayCount - 1 - index));
+
+    return date;
+  });
+}
+
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 function CustomerAccountEditorPanel({
@@ -11363,7 +12059,7 @@ function Sidebar({
   t: DashboardStrings;
 }) {
   const visibleNavItems = navItems.filter((item) => {
-    if (session.actor.role === 'reseller') return item.id === 'billing';
+    if (session.actor.role === 'reseller') return resellerNavViews.has(item.id);
     if (item.id === 'users') return canViewAdminUsers(session);
     if (item.id === 'audit') return canViewAuditLogs(session);
     if (item.id === 'backups') return canViewBackupStatus(session);
@@ -12358,7 +13054,14 @@ function getDataStatus(
   }
 }
 
-function getPageHeader(activeView: ActiveView, t: DashboardStrings) {
+function getPageHeader(activeView: ActiveView, t: DashboardStrings, session: AdminSessionResponse) {
+  if (session.actor.role === 'reseller') {
+    if (activeView === 'users') return t.reseller.pageHeaders.users;
+    if (activeView === 'billing') return t.reseller.pageHeaders.billing;
+
+    return t.reseller.pageHeaders.dashboard;
+  }
+
   return t.pageHeaders[activeView];
 }
 

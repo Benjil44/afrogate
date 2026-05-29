@@ -208,18 +208,31 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByText('5 GB charged locally; external panel write not executed.')).toBeVisible();
 });
 
-test('reseller session starts on scoped billing workspace', async ({ page }) => {
+test('reseller session shows scoped seller dashboard, users, and billing', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 }, { sessionRole: 'reseller' });
 
-  await expect(page.getByRole('heading', { name: 'Usage and billing' })).toBeVisible();
-  await expect(page.locator('[data-view="billing"]')).toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('[data-view="dashboard"]')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Seller dashboard' })).toBeVisible();
+  await expect(page.locator('[data-view="dashboard"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('[data-view="users"]')).toBeVisible();
+  await expect(page.locator('[data-view="billing"]')).toBeVisible();
   await expect(page.locator('[data-view="servers"]')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Sales trend' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Service experience' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Selling summary' })).toBeVisible();
+
+  await page.locator('[data-view="users"]').click();
+  await expect(page.locator('h1', { hasText: 'Sold users' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: /Reseller gaming customer/ }).first()).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Sold volume' })).toBeVisible();
+
+  await page.locator('[data-view="billing"]').click();
+  await expect(page.getByRole('heading', { name: 'Seller billing' })).toBeVisible();
 
   await expect(page.getByRole('heading', { name: 'Reseller workspace' })).toBeVisible();
-  await expect(page.getByText('Mobile Shop Tehran')).toBeVisible();
+  await expect(page.getByText('Mobile Shop Tehran').first()).toBeVisible();
   await expect(page.getByText('Wallet balance').first()).toBeVisible();
   await expect(page.getByText('Available balance').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Selling summary' })).toBeVisible();
   await expect(page.getByText('Sale debit')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Reward Settings' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Current panel import' })).toHaveCount(0);

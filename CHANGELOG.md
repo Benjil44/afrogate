@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.113.0 - 2026-05-30
+
+- Expanded reseller sessions into a scoped seller workspace with Dashboard, Users, and Billing sidebar pages.
+- Added seller Dashboard ECharts for sales trend and customer quota/service experience, plus seller summary cards and recent-customer visibility.
+- Added a reseller Users table and Billing sales summary while keeping seller sessions scoped to their own customers, orders, and wallet data.
+
 ## 0.112.0 - 2026-05-30
 
 - Added opt-in synthetic DF/path-MTU probes for route diagnostics.

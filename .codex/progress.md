@@ -2254,3 +2254,33 @@ Repository remote is ready:
 
 - Main checklist has no unchecked items.
 - Continue release-readiness QA with deeper mutable admin/client workflows, production install checks, backup drills, and real deployment validation before selling to customers.
+
+## 2026-05-30 Reseller Seller Dashboard UX
+
+### Completed
+
+- Expanded reseller sessions from a Billing-only sidebar to a scoped seller workspace with Dashboard, Users, and Billing entries.
+- Added a reseller Dashboard backed only by `/api/admin/reseller/workspace`, with seller sales summary cards, ECharts sales trend, customer quota/service-experience chart, recent customers, and estimated seller margin/AfroGate share metrics.
+- Added a reseller Users page with the representative's own sold-customer table, including clients, used/remaining quota, sold volume, order count, latest sale, and status.
+- Added a reseller Billing selling summary so representatives can see sales amount, sold volume, AfroGate debit, estimated seller margin, orders, and active customers beside the existing wallet and package-sale workflow.
+- Kept reseller sessions away from global admin/server/route/alert/backups/report navigation and skipped global management polling for reseller sessions.
+- Updated dashboard/sidebar and main checklist records for the seller workspace UX.
+- Main checklist is now `245 / 245` complete, or `100.0%` complete with `0` unchecked items.
+- Bumped AfroGate to `0.113.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck`.
+- Ran focused `npm run test:e2e -- tests/e2e/dashboard-visual.spec.ts --grep "reseller session"`; 1 test passed.
+- Ran `npm run version:check`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran full `npm run test:e2e`; 18 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Main checklist has no unchecked items.
+- Continue release-readiness QA with deeper mutable admin/client workflows, production install checks, backup drills, and real deployment validation before selling to customers.
