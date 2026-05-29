@@ -13,6 +13,7 @@ import {
 import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsResponse,
+  AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminRewardedAdSettingsResponse,
   AdminClientAccessTokensResponse,
@@ -40,6 +41,7 @@ import { Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { BillingService } from './billing.service';
 import {
+  CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
   CreateClientUsageEventDto,
   CreateClientConfigDto,
@@ -299,6 +301,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminCurrentPanelImportPreviewResponse> {
     return this.billingService.previewCurrentPanelImport(payload, request.actor);
+  }
+
+  @Post('current-panels/import-configs')
+  @Roles('admin')
+  importCurrentPanelConfigs(
+    @Body() payload: CurrentPanelImportConfigsDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminCurrentPanelImportConfigsResponse> {
+    return this.billingService.importCurrentPanelConfigs(payload, request.actor);
   }
 
   @Get('customer-accounts/:id')

@@ -226,6 +226,7 @@
 ## Phase 4: Current Panel Integration
 
 - [x] Read users from Marzban/X-UI/current panel.
+- [x] Controlled current-panel config import into AfroGate client configs with baseline usage events.
 - [ ] Sync volume usage.
 - [ ] Charge/update user volume.
 - [ ] Import/export configs.

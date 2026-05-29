@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.95.0 - 2026-05-29
+
+- Added guarded `POST /api/admin/current-panels/import-configs` to import sanitized, non-duplicate current-panel candidates into AfroGate client configs.
+- Recorded panel-reported used bytes as idempotent `panel_sync` baseline usage events so imported account/client counters stay ledger-backed.
+- Added Billing page controls to select a customer, import previewed configs, show import results, and keep the flow bilingual and raw-payload-free.
+
 ## 0.94.0 - 2026-05-29
 
 - Added guarded `POST /api/admin/current-panels/import-preview` for read-only Marzban, X-UI, Sanayi, and generic current-panel export previews.

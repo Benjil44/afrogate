@@ -182,6 +182,11 @@ export class CurrentPanelImportPreviewDto {
   defaultProtocol?: string;
 }
 
+export class CurrentPanelImportConfigsDto extends CurrentPanelImportPreviewDto {
+  @IsUUID('4')
+  customerAccountId!: string;
+}
+
 export class CreateClientConfigDto {
   @IsString()
   @MaxLength(120)

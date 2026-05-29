@@ -1619,3 +1619,29 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, controlled panel writes/import, usage reconciliation, charge/update sync, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Current Panel Controlled Config Import Slice
+
+### Completed
+
+- Added shared current-panel controlled-import contracts for server-side config import results, skipped candidates, and baseline usage counts.
+- Added guarded `POST /api/admin/current-panels/import-configs` for admin/owner/superadmin sessions.
+- The import endpoint re-runs the current-panel adapter server-side, skips duplicate or unsupported candidates, imports sanitized rows into `client_configs`, and records panel-reported used bytes through idempotent `panel_sync` baseline `client_usage_events` so account/client counters stay consistent.
+- Added Billing page controls to choose a customer, import the same pasted/exported current-panel payload after preview, show imported/skipped counts, and optimistically update customer usage/client totals.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `226 / 237` items, or `95.4%` complete with `4.6%` remaining.
+- Bumped AfroGate to `0.95.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Billing current-panel preview/import flow.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Full ongoing usage reconciliation, charge/update sync back to external panels, config export, live external-panel write adapters, production protocol apply, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

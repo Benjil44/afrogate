@@ -114,4 +114,4 @@ Low:
 - Keep provider secrets and webhook credentials in deployment/encrypted secret storage.
 - Keep audit snapshots secret-safe and compact.
 - Add retention policies before enterprise reporting/export features.
-- Add privacy review before any future panel import, ad-network SDK, backup/restore UI, reports, or live data-plane route apply feature.
+- Add privacy review before expanding current controlled panel import into live panel sync/export, ad-network SDK, backup/restore UI, reports, or live data-plane route apply features.

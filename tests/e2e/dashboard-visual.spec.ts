@@ -134,6 +134,10 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByText('1 candidates ready.')).toBeVisible();
   await expect(page.getByRole('cell', { name: /vip_gamer/ })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Marzban' })).toBeVisible();
+
+  await page.getByLabel('Import to customer').selectOption('account-created');
+  await page.getByRole('button', { name: 'Import configs' }).click();
+  await expect(page.getByText('1 configs imported, 0 skipped.')).toBeVisible();
 });
 
 test('audit logs page shows sanitized audit events', async ({ page }) => {
@@ -588,6 +592,42 @@ async function mockDashboardApi(page: Page): Promise<void> {
           totalQuotaBytes: 26_843_545_600,
           totalUsedBytes: 6_443_545_600,
           warnings: ['raw_panel_payload_not_persisted', 'read_only_preview_no_changes_applied'],
+        });
+        return;
+      case '/api/admin/current-panels/import-configs':
+        await fulfillJson(route, {
+          adapterVersion: 'current-panel-import-preview-v1',
+          baselineUsageEventCount: 1,
+          baselineUsedBytes: 6_443_545_600,
+          candidateCount: 1,
+          customerAccountId: 'account-created',
+          generatedAt: fixedNow,
+          importedConfigs: [
+            {
+              createdAt: fixedNow,
+              customerAccountId: 'account-created',
+              deviceLimit: null,
+              effectiveQuotaLimitBytes: 26_843_545_600,
+              externalPanel: 'marzban',
+              externalPanelConfigId: 'vip_gamer',
+              externalPanelUserId: 'vip_gamer',
+              id: 'client-imported',
+              label: 'vip_gamer',
+              notes: null,
+              protocol: 'vless',
+              quotaLimitBytes: 26_843_545_600,
+              remainingBytes: 20_400_000_000,
+              routePreference: null,
+              status: 'active',
+              updatedAt: fixedNow,
+              usedBytes: 6_443_545_600,
+            },
+          ],
+          importedCount: 1,
+          panelKind: 'marzban',
+          skippedCandidates: [],
+          skippedCount: 0,
+          warnings: ['baseline_usage_events_recorded', 'controlled_import_applied_to_client_configs', 'raw_panel_payload_not_persisted'],
         });
         return;
       case '/api/admin/rewarded-ads/settings':

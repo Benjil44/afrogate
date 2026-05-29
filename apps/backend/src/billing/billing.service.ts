@@ -12,6 +12,7 @@ import type {
   AdminClientSubscriptionCredentialSummary,
   AdminBillingCatalogResponse,
   AdminBillingSettingsSummary,
+  AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminRewardedAdSettingsSummary,
   ClientAccessTokenSummary,
@@ -36,7 +37,10 @@ import type {
   AdminPaymentOrderSummary,
   AdminRecordClientUsageResponse,
   AdminVolumePackageSummary,
+  CurrentPanelImportCandidate,
+  CurrentPanelImportConfigsRequest,
   CurrentPanelImportPreviewRequest,
+  CurrentPanelImportSkippedCandidate,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdGrantSummary,
   ClientRewardedAdStatus,
@@ -51,6 +55,7 @@ import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-pr
 import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
+  CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
   CreateClientUsageEventDto,
   CreateClientConfigDto,
@@ -84,6 +89,7 @@ const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
 const MAX_REWARDED_AD_REWARD_BYTES = 10 * BYTES_PER_GB;
 const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
+const CURRENT_PANEL_IMPORTABLE_STATUSES = new Set(['active', 'limited', 'disabled', 'expired']);
 const CLIENT_USAGE_EVENT_SOURCES = new Set([
   'admin',
   'agent',
@@ -1585,6 +1591,186 @@ export class BillingService {
     });
 
     return preview;
+  }
+
+  async importCurrentPanelConfigs(
+    dto: CurrentPanelImportConfigsDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCurrentPanelImportConfigsResponse> {
+    const preview = buildCurrentPanelImportPreview(dto as CurrentPanelImportConfigsRequest);
+    const importState = await this.database.transaction(async (executor) => {
+      await this.lockCustomerAccount(executor, dto.customerAccountId);
+
+      const importedConfigIds: string[] = [];
+      const skippedCandidates: CurrentPanelImportSkippedCandidate[] = [];
+      let baselineUsageEventCount = 0;
+      let baselineUsedBytes = 0;
+      const importObservedAt = new Date(preview.generatedAt);
+
+      for (const candidate of preview.candidates) {
+        const skipReasonCodes = await this.currentPanelImportSkipReasonCodes(executor, dto.customerAccountId, candidate);
+        if (skipReasonCodes.length > 0) {
+          skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, skipReasonCodes));
+          continue;
+        }
+
+        const usedBytes = this.normalizeOptionalUsageBytes(candidate.usedBytes ?? null, 'usedBytes') ?? 0;
+        const result = await executor.query<{ id: string }>(
+          `
+            INSERT INTO client_configs (
+              customer_account_id, label, protocol, external_panel,
+              external_panel_user_id, external_panel_config_id, device_limit,
+              quota_limit_bytes, used_bytes, status, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, NULL)
+            ON CONFLICT (external_panel, external_panel_config_id)
+              WHERE external_panel IS NOT NULL
+                AND external_panel <> ''
+                AND external_panel_config_id IS NOT NULL
+                AND external_panel_config_id <> ''
+              DO NOTHING
+            RETURNING id
+          `,
+          [
+            dto.customerAccountId,
+            candidate.label.trim(),
+            this.normalizeProtocol(candidate.protocol),
+            this.normalizeNullableString(candidate.externalPanel),
+            this.normalizeNullableString(candidate.externalPanelUserId),
+            this.normalizeNullableString(candidate.externalPanelConfigId),
+            candidate.deviceLimit ?? null,
+            candidate.quotaBytes ?? null,
+            candidate.status,
+          ],
+        );
+        const clientId = result.rows[0]?.id;
+        if (!clientId) {
+          skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, ['duplicate_external_config']));
+          continue;
+        }
+
+        importedConfigIds.push(clientId);
+
+        if (usedBytes > 0) {
+          const client = await this.getClientConfigRowForUpdate(executor, clientId);
+          const usageEvent = await this.insertClientUsageEvent(
+            executor,
+            client,
+            {
+              direction: 'combined',
+              externalReference: candidate.externalPanelConfigId ?? candidate.externalPanelUserId ?? null,
+              idempotencyKey: this.currentPanelImportUsageIdempotencyKey(preview.panelKind, candidate, clientId),
+              metadata: {
+                adapterVersion: preview.adapterVersion,
+                baselineImport: true,
+                panelKind: preview.panelKind,
+              },
+              notes: null,
+              observedAt: importObservedAt,
+              ratedOutboundId: null,
+              ratedOutboundName: null,
+              rawUsedBytesDelta: usedBytes,
+              rxBytes: null,
+              source: 'panel_sync',
+              txBytes: null,
+              usageMultiplier: 1,
+              usedBytesDelta: usedBytes,
+              windowEnd: null,
+              windowStart: null,
+            },
+            actor,
+          );
+
+          if (usageEvent) {
+            await executor.query(
+              `
+                UPDATE client_configs
+                SET used_bytes = used_bytes + $1,
+                    updated_at = now()
+                WHERE id = $2
+              `,
+              [usedBytes, clientId],
+            );
+
+            await executor.query(
+              `
+                UPDATE customer_accounts
+                SET used_bytes = used_bytes + $1,
+                    updated_at = now()
+                WHERE id = $2
+              `,
+              [usedBytes, dto.customerAccountId],
+            );
+
+            await this.audit.record(
+              actor,
+              'client_usage_event.record',
+              'client_config',
+              clientId,
+              {
+                customerAccountId: dto.customerAccountId,
+                externalReference: usageEvent.externalReference,
+                hasIdempotencyKey: Boolean(usageEvent.idempotencyKey),
+                importedByCurrentPanel: true,
+                source: 'panel_sync',
+                usageEventId: usageEvent.id,
+                usedBytesDelta: usedBytes,
+              },
+              executor,
+            );
+
+            baselineUsageEventCount += 1;
+            baselineUsedBytes += usedBytes;
+          }
+        }
+      }
+
+      await this.audit.record(
+        actor,
+        'current_panel.import_configs',
+        'customer_account',
+        dto.customerAccountId,
+        {
+          adapterVersion: preview.adapterVersion,
+          baselineUsageEventCount,
+          baselineUsedBytes,
+          candidateCount: preview.candidateCount,
+          hasSourceName: Boolean(preview.sourceName),
+          importedCount: importedConfigIds.length,
+          panelKind: preview.panelKind,
+          skippedCount: skippedCandidates.length,
+        },
+        executor,
+      );
+
+      return {
+        baselineUsageEventCount,
+        baselineUsedBytes,
+        importedConfigIds,
+        skippedCandidates,
+      };
+    });
+
+    const importedConfigs = await Promise.all(importState.importedConfigIds.map((id) => this.getClientConfig(id)));
+    const warnings = new Set(preview.warnings.filter((warning) => warning !== 'read_only_preview_no_changes_applied'));
+    warnings.add('controlled_import_applied_to_client_configs');
+    if (importState.baselineUsageEventCount > 0) warnings.add('baseline_usage_events_recorded');
+    if (importState.skippedCandidates.length > 0) warnings.add('skipped_candidates_present');
+
+    return {
+      adapterVersion: preview.adapterVersion,
+      baselineUsageEventCount: importState.baselineUsageEventCount,
+      baselineUsedBytes: importState.baselineUsedBytes,
+      candidateCount: preview.candidateCount,
+      customerAccountId: dto.customerAccountId,
+      generatedAt: preview.generatedAt,
+      importedConfigs,
+      importedCount: importedConfigs.length,
+      panelKind: preview.panelKind,
+      skippedCandidates: importState.skippedCandidates,
+      skippedCount: importState.skippedCandidates.length,
+      warnings: Array.from(warnings).sort(),
+    };
   }
 
   async getCustomerAccount(id: string): Promise<AdminCustomerAccountDetail> {
@@ -3660,6 +3846,100 @@ export class BillingService {
       FROM customer_accounts ca
       LEFT JOIN client_configs cc ON cc.customer_account_id = ca.id
     `;
+  }
+
+  private async currentPanelImportSkipReasonCodes(
+    executor: DatabaseQueryExecutor,
+    customerAccountId: string,
+    candidate: CurrentPanelImportCandidate,
+  ): Promise<string[]> {
+    const reasonCodes: string[] = [];
+    const status = this.normalizeNullableString(candidate.status) ?? 'unknown';
+    const externalPanel = this.normalizeNullableString(candidate.externalPanel);
+    const externalPanelUserId = this.normalizeNullableString(candidate.externalPanelUserId);
+    const externalPanelConfigId = this.normalizeNullableString(candidate.externalPanelConfigId);
+
+    if (!candidate.label.trim()) reasonCodes.push('missing_label');
+    if (!CURRENT_PANEL_IMPORTABLE_STATUSES.has(status)) reasonCodes.push('unsupported_status');
+    if (!externalPanel) reasonCodes.push('missing_external_panel');
+    if (
+      candidate.deviceLimit !== null &&
+      candidate.deviceLimit !== undefined &&
+      (!Number.isInteger(candidate.deviceLimit) || candidate.deviceLimit < 1 || candidate.deviceLimit > 1000)
+    ) {
+      reasonCodes.push('invalid_device_limit');
+    }
+    if (
+      candidate.quotaBytes !== null &&
+      candidate.quotaBytes !== undefined &&
+      (!Number.isSafeInteger(candidate.quotaBytes) || candidate.quotaBytes < 0 || candidate.quotaBytes > MAX_SAFE_BYTES)
+    ) {
+      reasonCodes.push('invalid_quota_bytes');
+    }
+    if (
+      candidate.usedBytes !== null &&
+      candidate.usedBytes !== undefined &&
+      (!Number.isSafeInteger(candidate.usedBytes) || candidate.usedBytes < 0 || candidate.usedBytes > MAX_SAFE_BYTES)
+    ) {
+      reasonCodes.push('invalid_used_bytes');
+    }
+
+    if (reasonCodes.length > 0 || !externalPanel) return reasonCodes;
+
+    if (externalPanelConfigId) {
+      const duplicateConfig = await executor.query<{ id: string }>(
+        `
+          SELECT id
+          FROM client_configs
+          WHERE external_panel = $1
+            AND external_panel_config_id = $2
+          LIMIT 1
+        `,
+        [externalPanel, externalPanelConfigId],
+      );
+      if (duplicateConfig.rows.length > 0) reasonCodes.push('duplicate_external_config');
+      return reasonCodes;
+    }
+
+    if (externalPanelUserId) {
+      const duplicateUser = await executor.query<{ id: string }>(
+        `
+          SELECT id
+          FROM client_configs
+          WHERE customer_account_id = $1
+            AND external_panel = $2
+            AND external_panel_user_id = $3
+          LIMIT 1
+        `,
+        [customerAccountId, externalPanel, externalPanelUserId],
+      );
+      if (duplicateUser.rows.length > 0) reasonCodes.push('duplicate_external_user');
+    }
+
+    return reasonCodes;
+  }
+
+  private mapSkippedCurrentPanelCandidate(
+    candidate: CurrentPanelImportCandidate,
+    reasonCodes: string[],
+  ): CurrentPanelImportSkippedCandidate {
+    return {
+      externalPanel: candidate.externalPanel,
+      externalPanelConfigId: candidate.externalPanelConfigId ?? null,
+      externalPanelUserId: candidate.externalPanelUserId ?? null,
+      label: candidate.label,
+      reasonCodes,
+    };
+  }
+
+  private currentPanelImportUsageIdempotencyKey(
+    panelKind: string,
+    candidate: CurrentPanelImportCandidate,
+    clientConfigId: string,
+  ): string {
+    const identity = candidate.externalPanelConfigId ?? candidate.externalPanelUserId ?? clientConfigId;
+    const normalizedIdentity = identity.replace(/\s+/g, '_').slice(0, 180);
+    return `current_panel_import:${panelKind}:${candidate.externalPanel}:${normalizedIdentity}:baseline_usage`;
   }
 
   private async ensureCustomerAccountExists(executor: DatabaseQueryExecutor, id: string): Promise<void> {

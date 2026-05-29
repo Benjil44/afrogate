@@ -699,6 +699,18 @@ export interface CurrentPanelImportCandidate {
   reasonCodes: string[];
 }
 
+export interface CurrentPanelImportConfigsRequest extends CurrentPanelImportPreviewRequest {
+  customerAccountId: string;
+}
+
+export interface CurrentPanelImportSkippedCandidate {
+  label: string;
+  externalPanel: string;
+  externalPanelUserId?: string | null;
+  externalPanelConfigId?: string | null;
+  reasonCodes: string[];
+}
+
 export interface CurrentPanelImportRejectedRow {
   index: number;
   reasonCodes: string[];
@@ -719,6 +731,21 @@ export interface AdminCurrentPanelImportPreviewResponse {
   totalUsedBytes?: number | null;
   candidates: CurrentPanelImportCandidate[];
   rejectedRows: CurrentPanelImportRejectedRow[];
+  warnings: string[];
+}
+
+export interface AdminCurrentPanelImportConfigsResponse {
+  customerAccountId: string;
+  panelKind: CurrentPanelKind | string;
+  generatedAt: string;
+  adapterVersion: string;
+  candidateCount: number;
+  importedCount: number;
+  skippedCount: number;
+  baselineUsageEventCount: number;
+  baselineUsedBytes: number;
+  importedConfigs: AdminClientConfigSummary[];
+  skippedCandidates: CurrentPanelImportSkippedCandidate[];
   warnings: string[];
 }
 

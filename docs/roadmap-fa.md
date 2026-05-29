@@ -86,7 +86,7 @@
 - عملیات شارژ volume از AfroGate به سیستم فعلی.
 - import/export config.
 - Encrypted per-client subscription config renderer exists for client-owned WireGuard, VLESS, L2TP, and IKEv2 material; panel import/provisioning still needs to feed it safely.
-- Current implementation note: admins can now paste/export current-panel user/config payloads into the Billing page and call guarded `POST /api/admin/current-panels/import-preview` for a read-only Marzban/X-UI/Sanayi/generic adapter preview. It reads users/config candidates safely but does not yet sync usage, charge/update users, or write imported configs.
+- Current implementation note: admins can now paste/export current-panel user/config payloads into the Billing page, preview them through guarded `POST /api/admin/current-panels/import-preview`, and import sanitized non-duplicate configs through guarded `POST /api/admin/current-panels/import-configs`. Import writes AfroGate client configs and idempotent baseline `panel_sync` usage events only; ongoing usage sync, charge/update users, live external-panel writes, and full config export remain future work.
 
 ## فاز 5: Enterprise Foundation
 
