@@ -1935,3 +1935,25 @@ Repository remote is ready:
 
 - Main checklist completion remains `235 / 237` items, or `99.2%` complete with `0.8%` remaining.
 - Production protocol apply and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Telegram Purchase Fulfillment Checklist Slice
+
+### Completed
+
+- Added a pending Phase 2 checklist item for Telegram purchase fulfillment after verified payment.
+- Defined the future bot delivery shape: one client-scoped VLESS config plus a private usage/status link after quota allocation.
+- Updated the dashboard/sidebar backlog, roadmap, PRD, architecture notes, security/performance policy, and durable memory with the secret-safe boundary for Telegram fulfillment.
+- Kept the requirement pending because no Telegram purchase fulfillment code or bot operations UI was implemented in this slice.
+- Main checklist completion is now `235 / 238` items, or `98.7%` complete with `1.3%` remaining.
+- Bumped AfroGate to `0.103.3` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, Telegram purchase fulfillment, and native per-app VPN split tunneling remain future main-checklist work.

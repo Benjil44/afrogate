@@ -184,6 +184,7 @@
 - [x] Telegram bot user commands.
 - [x] Superadmin Settings Telegram bot setup for BotFather token, webhook secret, allowed chat/admin IDs, and Telegram API connection test.
 - [x] Telegram bot onboarding and rotation guide that explains bot creation happens in Telegram BotFather, while AfroGate stores only encrypted/write-only token material.
+- [ ] Telegram purchase fulfillment flow that sends one client-scoped VLESS config plus a private usage/status link after verified payment.
 
 ## Phase 3: Auto Route
 

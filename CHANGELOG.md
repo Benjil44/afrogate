@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.103.3 - 2026-05-29
+
+- Added the Telegram purchase-fulfillment backlog item for verified bot purchases.
+- Documented that fulfillment should send one client-scoped VLESS config plus a private usage/status link after quota allocation.
+- Recorded the secret-safe boundary: Telegram delivery must reuse client-scoped subscription rendering and must not expose admin data, server credentials, provider secrets, paid numbers, or other clients' usage.
+
 ## 0.103.2 - 2026-05-29
 
 - Verified and marked dashboard foundation checklist items for default NOC display, second-LCD passive layout, static client-side page switches, and backend-backed outbound rows.

@@ -218,6 +218,8 @@ Superadmin Settings now has a Telegram bot setup surface:
 - Environment variables remain bootstrap/fallback values for existing deployments.
 - Telegram API tests use the shared outbound HTTP client and `AFROGATE_OUTBOUND_PROXY_URL` when configured.
 
+Future Telegram purchase fulfillment should run only after payment verification and quota allocation. The bot should send one client-scoped VLESS config plus a private usage/status link for the purchased client config. This flow must reuse the encrypted per-client subscription credential renderer and client-scoped usage APIs; it must not expose admin data, raw outbound config JSON, server credentials, provider secrets, paid numbers, client tokens, or other clients' usage.
+
 ### tenant_brand_settings
 
 Tenant/brand settings are a default-tenant enterprise foundation, not a multi-tenant data-isolation layer yet:

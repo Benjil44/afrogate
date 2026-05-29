@@ -57,6 +57,7 @@
 - نمایش remaining volume.
 - اتصال Telegram bot برای مشاهده حجم و شارژ.
 - Superadmin Settings Telegram bot setup now stores BotFather token/webhook secret encrypted and write-only, captures alert/admin chat IDs, and tests Telegram API connectivity through the shared outbound egress path.
+- Future Telegram purchase fulfillment should send one client-scoped VLESS config and one private usage/status link after a Telegram purchase is verified and quota is allocated, without exposing admin data or server/provider secrets.
 - ثبت paid number با privacy protection.
 - Separate seller/admin UX from VPN client UX; mobile/client APIs now start with scoped profile/quota, route options, and route-preference actions under `/api/client/*`, with package/usage purchase flows remaining future work.
 - Usage accounting now starts with idempotent `client_usage_events` rows that update account/client used-byte counters for remaining-volume reads.

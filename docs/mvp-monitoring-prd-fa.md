@@ -175,6 +175,7 @@ score = 100
 
 - حجم باقی‌مانده را ببیند.
 - بسته بخرد یا شارژ کند.
+- After a verified Telegram purchase, the bot should send one client-scoped VLESS config plus a private usage/status link so the client can connect and check remaining usage without seeing admin data or secrets.
 - وضعیت سرویس را ببیند.
 - کانفیگ دریافت کند.
 - در صورت اختلال، پیام ساده و قابل فهم بگیرد.
