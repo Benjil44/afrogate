@@ -780,6 +780,23 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 
+- Added protocol-specific client subscription config readiness descriptors to `GET /api/client/subscription`.
+- The subscription response now includes `configLinks` for WireGuard, VLESS, L2TP, and IKEv2, with render status, safe public endpoint/profile metadata, usage multiplier labels, and missing-field/warning codes.
+- Kept secret-bearing config generation blocked: the backend does not return private keys, client UUIDs, PSKs, passwords, certificates, raw outbound config JSON, or connectable generated links.
+- Surfaced subscription config readiness in the VPN client app with English/Persian labels for config-link count, format, missing endpoint state, unsupported protocol state, and required client secret state.
+- Updated architecture, security, repository, roadmap, multilingual, memory, checklist, changelog, and version docs for the secret-safe subscription renderer boundary.
+- Bumped AfroGate to `0.85.0` for the client subscription config readiness contract.
+- Checklist completion after this slice is `214 / 233` items, or `91.8%` complete with `8.2%` remaining.
+- Verified focused shared, backend, and client typing with `npm run typecheck --workspace @afrogate/shared`, `npm run typecheck --workspace @afrogate/backend`, and `npm run typecheck --workspace @afrogate/client`.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified workspace typecheck and production build with `npm run typecheck` and `npm run build`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified fixed-port dashboard/client browser coverage with `npm run test:e2e`; 10 tests passed.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Remaining: build the secret-backed per-client subscription config-link renderer with encrypted client credentials, then continue Phase 4 panel import/sync work.
+
 - Verified protocol server apply dry-run event contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
 - Applied PostgreSQL migrations through `0011_protocol_apply_events.sql` with `npm --workspace @afrogate/backend run db:migrate`.
 - Verified `0.51.0` with `npm run version:check`.

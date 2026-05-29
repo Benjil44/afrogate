@@ -71,7 +71,7 @@
 - protocol-aware route decision for TCP-heavy, UDP-heavy, QUIC, DNS-sensitive, low-speed, and high-speed profiles.
 - cooldown/hysteresis برای جلوگیری از route flapping.
 - نمایش reason انتخاب مسیر.
-- Per-client route preferences and a separate mobile-first client app for automatic country detection, preferred exit country, explicit server/outbound choice, and subscription refresh metadata without exposing admin controls.
+- Per-client route preferences and a separate mobile-first client app for automatic country detection, preferred exit country, explicit server/outbound choice, subscription refresh metadata, and secret-safe protocol config readiness without exposing admin controls.
 
 ## فاز 4: Integration با سیستم فعلی
 
@@ -79,6 +79,7 @@
 - sync مصرف حجم.
 - عملیات شارژ volume از AfroGate به سیستم فعلی.
 - import/export config.
+- Encrypted per-client subscription config renderer for connectable WireGuard, VLESS, L2TP, and IKEv2 links after panel import/provisioning can supply client-owned secret material safely.
 
 ## فاز 5: Enterprise Foundation
 

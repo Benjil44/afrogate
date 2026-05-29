@@ -383,6 +383,43 @@ export interface ClientSubscriptionEndpointSummary {
   usableBytesAtMultiplier?: number | null;
 }
 
+export type ClientSubscriptionConfigFormat =
+  | 'wireguard-profile'
+  | 'vless-uri'
+  | 'l2tp-profile'
+  | 'ikev2-profile'
+  | 'manual-profile';
+
+export type ClientSubscriptionConfigRenderStatus =
+  | 'rendered'
+  | 'blocked_secret_required'
+  | 'missing_public_config'
+  | 'unsupported_protocol';
+
+export interface ClientSubscriptionConfigLinkSummary {
+  outboundId: string;
+  name: string;
+  type: OutboundType | string;
+  routeGroup: string;
+  countryCode?: string | null;
+  region?: string | null;
+  usageMultiplier: number;
+  chargeLabel: string;
+  address?: string | null;
+  host?: string | null;
+  port?: number | null;
+  transport?: string | null;
+  format: ClientSubscriptionConfigFormat | string;
+  renderStatus: ClientSubscriptionConfigRenderStatus | string;
+  uri?: string | null;
+  profile?: Record<string, string | number | boolean | null>;
+  missingFields: string[];
+  warnings: string[];
+  requiresClientSecret: boolean;
+  updatedAt?: string | null;
+  usableBytesAtMultiplier?: number | null;
+}
+
 export interface ClientRouteOutboundOption {
   id: string;
   name: string;
@@ -2626,6 +2663,7 @@ export interface ClientSubscriptionSummary {
   generatedAt: string;
   chargedRemainingBytes?: number | null;
   endpoints: ClientSubscriptionEndpointSummary[];
+  configLinks: ClientSubscriptionConfigLinkSummary[];
 }
 
 export interface ClientSubscriptionResponse {

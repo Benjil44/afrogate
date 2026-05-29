@@ -16,6 +16,7 @@ import type {
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceSummary,
+  ClientSubscriptionConfigLinkSummary,
   ClientSubscriptionEndpointSummary,
   ClientSubscriptionResponse,
   TelegramBotAccountLookup,
@@ -2483,6 +2484,7 @@ export class BillingService {
         endpoints: routeOptions.outbounds
           .map((outbound) => outbound.subscriptionEndpoint)
           .filter((endpoint): endpoint is ClientSubscriptionEndpointSummary => Boolean(endpoint)),
+        configLinks: routeOptions.outbounds.map((outbound) => this.subscriptionConfigLink(outbound)),
       },
     };
   }
@@ -4057,6 +4059,110 @@ export class BillingService {
       updatedAt: row.updatedAt.toISOString(),
       usableBytesAtMultiplier: this.bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
     };
+  }
+
+  private subscriptionConfigLink(
+    outbound: ClientRouteOptionsResponse['outbounds'][number],
+  ): ClientSubscriptionConfigLinkSummary {
+    const endpoint = outbound.subscriptionEndpoint ?? null;
+    const protocol = this.normalizeSubscriptionProtocol(outbound.type);
+    const format = this.subscriptionConfigFormat(protocol);
+    const supported = ['wireguard', 'vless', 'l2tp', 'ikev2'].includes(protocol);
+    const hasPublicEndpoint = Boolean(endpoint?.address || endpoint?.host);
+    const base = {
+      outboundId: outbound.id,
+      name: outbound.name,
+      type: outbound.type,
+      routeGroup: outbound.routeGroup,
+      countryCode: outbound.countryCode,
+      region: outbound.region,
+      usageMultiplier: outbound.usageMultiplier,
+      chargeLabel: outbound.chargeLabel,
+      address: endpoint?.address ?? null,
+      host: endpoint?.host ?? null,
+      port: endpoint?.port ?? null,
+      transport: endpoint?.transport ?? null,
+      format,
+      uri: null,
+      updatedAt: endpoint?.updatedAt ?? null,
+      usableBytesAtMultiplier: outbound.usableBytesAtMultiplier ?? endpoint?.usableBytesAtMultiplier ?? null,
+    };
+
+    if (!supported) {
+      return {
+        ...base,
+        renderStatus: 'unsupported_protocol',
+        profile: endpoint ? this.subscriptionPublicProfile(protocol, outbound, endpoint) : undefined,
+        missingFields: [],
+        warnings: ['unsupported_protocol'],
+        requiresClientSecret: false,
+      };
+    }
+
+    if (!hasPublicEndpoint || !endpoint) {
+      return {
+        ...base,
+        renderStatus: 'missing_public_config',
+        missingFields: ['public_endpoint_or_host'],
+        warnings: ['publish_explicit_public_endpoint_metadata'],
+        requiresClientSecret: true,
+      };
+    }
+
+    return {
+      ...base,
+      renderStatus: 'blocked_secret_required',
+      profile: this.subscriptionPublicProfile(protocol, outbound, endpoint),
+      missingFields: this.subscriptionSecretMissingFields(protocol),
+      warnings: ['secret_safe_descriptor_only', 'per_client_secret_renderer_required'],
+      requiresClientSecret: true,
+    };
+  }
+
+  private normalizeSubscriptionProtocol(type: string): string {
+    const normalized = type.trim().toLowerCase();
+    if (normalized === 'vless-local-proxy') return 'vless';
+    return normalized;
+  }
+
+  private subscriptionConfigFormat(protocol: string): string {
+    if (protocol === 'wireguard') return 'wireguard-profile';
+    if (protocol === 'vless') return 'vless-uri';
+    if (protocol === 'l2tp') return 'l2tp-profile';
+    if (protocol === 'ikev2') return 'ikev2-profile';
+    return 'manual-profile';
+  }
+
+  private subscriptionSecretMissingFields(protocol: string): string[] {
+    if (protocol === 'wireguard') return ['client_private_key', 'client_public_key', 'peer_public_key'];
+    if (protocol === 'vless') return ['client_uuid'];
+    if (protocol === 'l2tp') return ['username', 'password_or_psk'];
+    if (protocol === 'ikev2') return ['client_identity_or_certificate'];
+    return [];
+  }
+
+  private subscriptionPublicProfile(
+    protocol: string,
+    outbound: ClientRouteOptionsResponse['outbounds'][number],
+    endpoint: ClientSubscriptionEndpointSummary,
+  ): Record<string, string | number | boolean | null> {
+    return {
+      protocol,
+      outboundId: outbound.id,
+      routeGroup: outbound.routeGroup,
+      endpoint: endpoint.address ?? this.endpointHostPort(endpoint),
+      host: endpoint.host ?? null,
+      port: endpoint.port ?? null,
+      transport: endpoint.transport ?? null,
+      countryCode: endpoint.countryCode ?? null,
+      usageMultiplier: endpoint.usageMultiplier,
+      secretSafe: true,
+    };
+  }
+
+  private endpointHostPort(endpoint: ClientSubscriptionEndpointSummary): string | null {
+    if (!endpoint.host) return null;
+    return endpoint.port ? `${endpoint.host}:${endpoint.port}` : endpoint.host;
   }
 
   private firstSafeEndpointString(config: Record<string, unknown>, keys: string[]): string | null {

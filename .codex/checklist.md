@@ -226,7 +226,8 @@
 - [ ] Sync volume usage.
 - [ ] Charge/update user volume.
 - [ ] Import/export configs.
-- [ ] Protocol-specific client subscription config-link generation for WireGuard, VLESS, L2TP, and IKEv2.
+- [x] Protocol-specific client subscription config-link readiness for WireGuard, VLESS, L2TP, and IKEv2.
+- [ ] Secret-backed per-client subscription config-link renderer with encrypted client credentials.
 
 ## Phase 5: Enterprise Path
 

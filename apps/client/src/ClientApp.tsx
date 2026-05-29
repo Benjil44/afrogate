@@ -39,6 +39,8 @@ import {
   updateClientRoutePreference,
 } from './api';
 import {
+  configFormatLabel,
+  configRenderStatusLabel,
   clientStatusLabel,
   defaultLanguage,
   directionFor,
@@ -415,10 +417,16 @@ export function ClientApp() {
           <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
             <PanelTitle icon={<RefreshCw className="h-5 w-5" aria-hidden="true" />} title={messages.subscription} />
             <div className="mt-4 grid gap-2">
-              <CompactMetric
-                label={messages.subscriptionServers}
-                value={formatCount(subscription?.endpoints.length ?? 0, language)}
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <CompactMetric
+                  label={messages.subscriptionServers}
+                  value={formatCount(subscription?.endpoints.length ?? 0, language)}
+                />
+                <CompactMetric
+                  label={messages.configLinks}
+                  value={formatCount(subscription?.configLinks?.length ?? 0, language)}
+                />
+              </div>
               {subscription?.endpoints.length ? subscription.endpoints.slice(0, 4).map((endpoint) => (
                 <div key={endpoint.outboundId} className="rounded-[8px] border border-client-line bg-client-page p-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
@@ -435,6 +443,9 @@ export function ClientApp() {
                   </div>
                 </div>
               )) : <EmptyState text={messages.noSubscriptionEndpoints} />}
+              {subscription?.configLinks?.slice(0, 4).map((configLink) => (
+                <ConfigLinkCard key={`config-${configLink.outboundId}`} configLink={configLink} messages={messages} />
+              ))}
             </div>
           </section>
         </div>
@@ -678,6 +689,35 @@ function CompactMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ConfigLinkCard({
+  configLink,
+  messages,
+}: {
+  configLink: ClientSubscriptionSummary['configLinks'][number];
+  messages: ClientMessages;
+}) {
+  const statusTone = configLink.renderStatus === 'rendered'
+    ? 'ok'
+    : configLink.renderStatus === 'unsupported_protocol'
+      ? 'neutral'
+      : 'warning';
+
+  return (
+    <div className="rounded-[8px] border border-client-line bg-client-page p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="truncate font-semibold">{configLink.name}</span>
+        <Badge tone={statusTone} text={configRenderStatusLabel(configLink.renderStatus, messages)} />
+      </div>
+      <div className="mt-1 truncate text-client-muted">{subscriptionConfigAddress(configLink)}</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Badge tone="neutral" text={configFormatLabel(configLink.format, messages)} />
+        {configLink.requiresClientSecret ? <Badge tone="warning" text={messages.requiresClientSecret} /> : null}
+        {configLink.usageMultiplier > 1 ? <Badge tone="warning" text={configLink.chargeLabel} /> : null}
+      </div>
+    </div>
+  );
+}
+
 function Badge({ tone, text }: { tone: 'ok' | 'warning' | 'neutral'; text: string }) {
   const toneClass = tone === 'ok'
     ? 'border-client-green/30 bg-client-green/10 text-client-green'
@@ -791,6 +831,12 @@ function subscriptionEndpointAddress(endpoint: ClientSubscriptionSummary['endpoi
   if (endpoint.address) return endpoint.address;
   const hostPort = [endpoint.host, endpoint.port].filter(Boolean).join(':');
   return hostPort || endpoint.countryCode || '--';
+}
+
+function subscriptionConfigAddress(configLink: ClientSubscriptionSummary['configLinks'][number]): string {
+  if (configLink.address) return configLink.address;
+  const hostPort = [configLink.host, configLink.port].filter(Boolean).join(':');
+  return hostPort || configLink.countryCode || '--';
 }
 
 function isRouteMode(value: string): value is ClientRoutePreferenceMode {

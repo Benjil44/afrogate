@@ -41,10 +41,20 @@ export const translations = {
     route: 'Route',
     subscription: 'Subscription',
     subscriptionServers: 'Subscription servers',
+    configLinks: 'Config links',
     subscriptionUpdated: 'Updated',
     usageCost: 'Usage cost',
     usableOnServer: 'Usable here',
     noSubscriptionEndpoints: 'No subscription endpoints published',
+    ready: 'Ready',
+    needsSecret: 'Needs client secret',
+    missingEndpoint: 'Missing endpoint',
+    unsupportedProtocol: 'Unsupported',
+    manualProfile: 'Manual profile',
+    vlessUri: 'VLESS URI',
+    l2tpProfile: 'L2TP profile',
+    ikev2Profile: 'IKEv2 profile',
+    requiresClientSecret: 'Client secret required',
     mode: 'Mode',
     profile: 'Profile',
     detectedCountry: 'Detected country',
@@ -117,10 +127,20 @@ export const translations = {
     route: 'مسیر',
     subscription: 'سابسکریپشن',
     subscriptionServers: 'سرورهای سابسکریپشن',
+    configLinks: 'لینک پیکربندی',
     subscriptionUpdated: 'به روز شده',
     usageCost: 'ضریب مصرف',
     usableOnServer: 'قابل استفاده اینجا',
     noSubscriptionEndpoints: 'اندپوینتی برای سابسکریپشن منتشر نشده',
+    ready: 'آماده',
+    needsSecret: 'نیازمند سکرت کلاینت',
+    missingEndpoint: 'اندپوینت ناقص',
+    unsupportedProtocol: 'پشتیبانی نشده',
+    manualProfile: 'پروفایل دستی',
+    vlessUri: 'VLESS URI',
+    l2tpProfile: 'پروفایل L2TP',
+    ikev2Profile: 'پروفایل IKEv2',
+    requiresClientSecret: 'سکرت کلاینت لازم است',
     mode: 'حالت',
     profile: 'پروفایل',
     detectedCountry: 'کشور تشخیص داده شده',
@@ -200,6 +220,22 @@ export function healthLabel(status: OutboundHealthStatus | string, messages: Cli
   if (status === 'degraded') return messages.degraded;
   if (status === 'critical') return messages.critical;
   return messages.unknown;
+}
+
+export function configRenderStatusLabel(status: string, messages: ClientMessages): string {
+  if (status === 'rendered') return messages.ready;
+  if (status === 'blocked_secret_required') return messages.needsSecret;
+  if (status === 'missing_public_config') return messages.missingEndpoint;
+  if (status === 'unsupported_protocol') return messages.unsupportedProtocol;
+  return messages.unknown;
+}
+
+export function configFormatLabel(format: string, messages: ClientMessages): string {
+  if (format === 'wireguard-profile') return messages.wireguard;
+  if (format === 'vless-uri') return messages.vlessUri;
+  if (format === 'l2tp-profile') return messages.l2tpProfile;
+  if (format === 'ikev2-profile') return messages.ikev2Profile;
+  return messages.manualProfile;
 }
 
 export function clientStatusLabel(status: ClientConfigStatus | string, messages: ClientMessages): string {

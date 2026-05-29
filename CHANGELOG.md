@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.85.0 - 2026-05-29
+
+- Added protocol-specific subscription config readiness descriptors for WireGuard, VLESS, L2TP, and IKEv2 under `GET /api/client/subscription`.
+- Surfaced config readiness in the VPN client app with bilingual labels for missing public endpoint material and required client secret material.
+- Kept connectable secret-bearing config generation blocked until an encrypted per-client renderer exists.
+
 ## 0.84.0 - 2026-05-29
 
 - Added outbound usage multipliers so expensive routes can charge quota at `2x`, `10x`, or higher while preserving raw and charged bytes in usage events.
