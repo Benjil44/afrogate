@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.111.0 - 2026-05-30
+
+- Added wallet-gated reseller package sales from the representative workspace.
+- Reseller sales now create or renew owned customers, credit package quota, record a paid `reseller_wallet` order/allocation, and atomically debit AfroGate's share from the reseller wallet.
+- Added a Billing-page sale panel and Playwright coverage for reseller package sales.
+
 ## 0.110.0 - 2026-05-30
 
 - Added reseller-scoped workspace APIs so each representative can load only their own reseller account, wallet ledger, customer accounts, and payment orders.

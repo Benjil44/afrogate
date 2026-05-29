@@ -2193,3 +2193,33 @@ Repository remote is ready:
 - Add wallet-gated reseller client creation/renewal so sale debits happen automatically at the quota/config creation boundary.
 - Design adaptive MTU diagnostics and recommendations as a route/session-safety feature before any automatic MTU changes.
 - Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.
+
+## 2026-05-30 Wallet-Gated Reseller Package Sales
+
+### Completed
+
+- Added a reseller-only `/api/admin/reseller/package-sales` endpoint for wallet-gated package sales from representative sessions.
+- Sales can renew an existing owned customer or create a new reseller-owned customer, then credit package quota, record a paid `reseller_wallet` payment order/allocation, and debit AfroGate's share from the reseller wallet in one transaction.
+- Added idempotency handling so repeated sale requests return the original order/allocation/ledger state instead of double-debiting the wallet.
+- Added a Billing-page reseller sale panel with active package selection, existing/new customer selection, notes, localized success/error copy, and workspace state refresh after sale.
+- Added Playwright coverage for reseller package sales through the representative Billing workspace.
+- Marked the wallet-gated reseller client creation/renewal checklist item complete.
+- Main checklist is now `243 / 244` complete, or `99.6%` complete with `1` future item remaining.
+- Bumped AfroGate to `0.111.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck`.
+- Ran focused `npm run test:e2e -- tests/e2e/dashboard-visual.spec.ts --grep "reseller session"`; 1 test passed.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run version:check`.
+- Ran full `npm run test:e2e`; 18 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Adaptive MTU/fragmentation diagnostics and safe recommendations remain the only unchecked main checklist item.
+- Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.

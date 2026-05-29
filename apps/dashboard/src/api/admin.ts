@@ -19,6 +19,7 @@ import type {
   AdminPaymentOrdersResponse,
   AdminPermissionsResponse,
   AdminRewardedAdSettingsResponse,
+  AdminResellerPackageSaleResponse,
   AdminResellerWorkspaceResponse,
   AdminReportsSummaryResponse,
   AdminIncidentTimelineResponse,
@@ -48,6 +49,7 @@ import type {
   AdminUsersResponse,
   CreateServerCredentialRequest,
   CreateCustomerAccountRequest,
+  CreateResellerPackageSaleRequest,
   CurrentPanelImportConfigsRequest,
   CurrentPanelImportPreviewRequest,
   CurrentPanelUsageSyncRequest,
@@ -430,6 +432,19 @@ export async function createAdminResellerCustomerAccount(
   });
 
   return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+export async function createAdminResellerPackageSale(
+  sessionToken: string,
+  payload: CreateResellerPackageSaleRequest,
+): Promise<AdminResellerPackageSaleResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/package-sales`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminResellerPackageSaleResponse>;
 }
 
 export async function updateAdminResellerCustomerAccount(

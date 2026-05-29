@@ -225,11 +225,24 @@ test('reseller session starts on scoped billing workspace', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Current panel import' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Telegram Operations' })).toHaveCount(0);
 
-  await expect(page.getByRole('heading', { name: 'Customer limit manager' })).toBeVisible();
-  await page.getByLabel('Display name').fill('Mobile shop customer');
-  await page.getByLabel('Telegram username').fill('mobile_customer');
-  await page.getByLabel('Account quota GB').fill('50');
-  await page.getByRole('button', { name: 'Create customer' }).click();
+  const packageSalePanel = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Wallet-gated package sale' }),
+  }).last();
+  await expect(packageSalePanel).toBeVisible();
+  await packageSalePanel.getByLabel('Display name').fill('Wallet sale customer');
+  await packageSalePanel.getByLabel('Telegram username').fill('wallet_customer');
+  await packageSalePanel.getByRole('button', { name: 'Sell package' }).click();
+  await expect(packageSalePanel.getByText(/sold; .* debited from wallet/)).toBeVisible();
+  await expect(page.getByRole('cell', { name: /Wallet sale customer/ }).first()).toBeVisible();
+
+  const customerPanel = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Customer limit manager' }),
+  }).last();
+  await expect(customerPanel).toBeVisible();
+  await customerPanel.getByLabel('Display name').fill('Mobile shop customer');
+  await customerPanel.getByLabel('Telegram username').fill('mobile_customer');
+  await customerPanel.getByLabel('Account quota GB').fill('50');
+  await customerPanel.getByRole('button', { name: 'Create customer' }).click();
   await expect(page.getByText('Customer account saved.')).toBeVisible();
   await expect(page.getByRole('cell', { name: /Mobile shop customer/ })).toBeVisible();
 });
@@ -486,6 +499,22 @@ async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}
         }
 
         await fulfillJson(route, { error: 'Unsupported reseller customer method' }, 405);
+        return;
+      case '/api/admin/reseller/package-sales':
+        if (route.request().method() === 'POST') {
+          const payload = route.request().postDataJSON() as {
+            customerAccount?: {
+              displayName?: string | null;
+              notes?: string | null;
+              telegramUsername?: string | null;
+            } | null;
+            volumePackageId: string;
+          };
+          await fulfillJson(route, resellerPackageSaleResponse(payload));
+          return;
+        }
+
+        await fulfillJson(route, { error: 'Unsupported reseller package sale method' }, 405);
         return;
       case '/api/metrics/latest':
         await fulfillJson(route, { servers: snapshots });
@@ -1155,6 +1184,151 @@ function resellerWorkspaceResponse() {
       settingKey: 'default',
       updatedAt: fixedNow,
       updatedBy: 'superadmin',
+    },
+  };
+}
+
+function resellerPackageSaleResponse(payload: {
+  customerAccount?: {
+    displayName?: string | null;
+    notes?: string | null;
+    telegramUsername?: string | null;
+  } | null;
+  volumePackageId: string;
+}) {
+  const customerDisplayName = payload.customerAccount?.displayName ?? 'Wallet sale customer';
+  const customerTelegramUsername = payload.customerAccount?.telegramUsername ?? 'wallet_customer';
+
+  return {
+    allocation: {
+      allocationScope: 'account_quota',
+      createdAt: fixedNow,
+      createdBy: 'admin-reseller-visual',
+      customerAccountId: 'reseller-sale-customer-created',
+      id: 'reseller-sale-allocation-created',
+      idempotencyKey: 'reseller-sale-allocation',
+      metadata: {},
+      paymentOrderId: 'reseller-sale-order-created',
+      quotaLimitAfterBytes: 26_843_545_600,
+      quotaLimitBeforeBytes: null,
+      volumeBytesDelta: 26_843_545_600,
+    },
+    customerAccount: {
+      activeClientCount: 0,
+      clientConfigs: [],
+      clientCount: 0,
+      createdAt: fixedNow,
+      displayName: customerDisplayName,
+      hasPaidNumberHash: false,
+      id: 'reseller-sale-customer-created',
+      notes: payload.customerAccount?.notes ?? null,
+      perClientLimitBytes: null,
+      quotaLimitBytes: 26_843_545_600,
+      quotaScope: 'account_shared',
+      remainingBytes: 26_843_545_600,
+      resellerAccountId: 'reseller-visual',
+      resellerDisplayName: 'Mobile Shop Tehran',
+      status: 'active',
+      telegramId: null,
+      telegramUsername: customerTelegramUsername,
+      updatedAt: fixedNow,
+      usedBytes: 0,
+    },
+    duplicate: false,
+    ledgerEntry: {
+      amount: -750_000,
+      balanceAfterAmount: 3_250_000,
+      balanceBeforeAmount: 4_000_000,
+      createdAt: fixedNow,
+      createdBy: 'admin-reseller-visual',
+      currency: 'IRR',
+      customerAccountId: 'reseller-sale-customer-created',
+      customerDisplayName,
+      entryType: 'sale_debit',
+      id: 'reseller-sale-ledger-created',
+      idempotencyKey: 'reseller-sale',
+      metadata: {},
+      notes: null,
+      resellerAccountId: 'reseller-visual',
+      source: 'client_sale',
+      sourceId: 'reseller-sale-order-created',
+      volumePackageId: payload.volumePackageId,
+      volumePackageName: 'Starter 25GB',
+    },
+    paymentOrder: {
+      allocationDelaySeconds: 0,
+      allocationId: 'reseller-sale-allocation-created',
+      allocationStatus: 'allocated',
+      allocatedAt: fixedNow,
+      allocatedVolumeBytes: 26_843_545_600,
+      amount: 1_000_000,
+      createdAt: fixedNow,
+      currency: 'IRR',
+      customerAccountId: 'reseller-sale-customer-created',
+      customerDisplayName,
+      customerTelegramUsername,
+      durationDays: 30,
+      expiresAt: null,
+      failedAt: null,
+      id: 'reseller-sale-order-created',
+      idempotencyKey: 'reseller-sale-order',
+      metadata: {},
+      notes: null,
+      packageName: 'Starter 25GB',
+      packageSlug: 'starter-25gb',
+      paidAt: fixedNow,
+      paymentMethodId: null,
+      paymentMethodName: 'Reseller wallet',
+      paymentMethodSlug: 'reseller_wallet',
+      pricePerGb: 40_000,
+      provider: 'reseller_wallet',
+      providerCaptureId: null,
+      providerOrderId: 'reseller-sale-provider-order',
+      refundedAt: null,
+      status: 'paid',
+      updatedAt: fixedNow,
+      volumeBytes: 26_843_545_600,
+      volumeGb: 25,
+      volumePackageId: payload.volumePackageId,
+    },
+    quote: {
+      balanceAfterAmount: 3_250_000,
+      balanceBeforeAmount: 4_000_000,
+      blockedReason: null,
+      canDebit: true,
+      creditLimitAmount: 0,
+      currency: 'IRR',
+      customerPriceAmount: 1_000_000,
+      packageName: 'Starter 25GB',
+      resellerAccountId: 'reseller-visual',
+      sellerMarginAmount: 250_000,
+      sellerMarginBps: 2500,
+      volumePackageId: payload.volumePackageId,
+      walletDebitAmount: 750_000,
+    },
+    reseller: {
+      activeCustomerAccountCount: 2,
+      adminUserId: 'admin-reseller-visual',
+      afroGateShareBps: 7500,
+      afroGateSharePercent: 75,
+      availableBalanceAmount: 3_250_000,
+      balanceAmount: 3_250_000,
+      contactName: 'Tehran Shop Owner',
+      createdAt: fixedNow,
+      createdBy: 'superadmin',
+      creditLimitAmount: 0,
+      currency: 'IRR',
+      customerAccountCount: 2,
+      displayName: 'Mobile Shop Tehran',
+      id: 'reseller-visual',
+      ledgerEntryCount: 3,
+      notes: null,
+      sellerMarginBps: 2500,
+      sellerMarginPercent: 25,
+      status: 'active',
+      telegramUsername: 'tehran_shop',
+      updatedAt: fixedNow,
+      updatedBy: 'admin-reseller-visual',
     },
   };
 }

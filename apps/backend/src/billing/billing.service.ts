@@ -45,6 +45,7 @@ import type {
   AdminRecordClientUsageResponse,
   AdminResellerAccountSummary,
   AdminResellerPackageQuote,
+  AdminResellerPackageSaleResponse,
   AdminResellerWalletActionResponse,
   AdminResellerWalletLedgerEntry,
   AdminResellerWorkspaceSummary,
@@ -101,6 +102,7 @@ import {
 } from './dto/billing.dto';
 import {
   CreateResellerAccountDto,
+  CreateResellerPackageSaleDto,
   DebitResellerWalletForPackageDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
@@ -2118,6 +2120,177 @@ export class BillingService {
       ...dto,
       resellerAccountId: reseller.id,
     }, actor);
+  }
+
+  async createResellerPackageSale(
+    dto: CreateResellerPackageSaleDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerPackageSaleResponse> {
+    const currentReseller = await this.getResellerAccountRowForActor(actor);
+    const requestedCustomerAccountId = this.normalizeNullableString(dto.customerAccountId);
+    const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+    try {
+      const saleState = await this.database.transaction(async (executor) => {
+      if (idempotencyKey) {
+        const existingLedger = await this.getResellerWalletLedgerByIdempotencyForUpdate(executor, idempotencyKey);
+        if (existingLedger) {
+          if (
+            existingLedger.resellerAccountId !== currentReseller.id ||
+            existingLedger.entryType !== 'sale_debit' ||
+            existingLedger.source !== 'client_sale' ||
+            existingLedger.volumePackageId !== dto.volumePackageId ||
+            !existingLedger.customerAccountId ||
+            !existingLedger.sourceId ||
+            (requestedCustomerAccountId && existingLedger.customerAccountId !== requestedCustomerAccountId)
+          ) {
+            throw new ConflictException('Reseller package sale idempotency key already belongs to another request');
+          }
+
+          const paymentOrder = await this.getPaymentOrderRowForUpdate(executor, existingLedger.sourceId);
+          const allocation = await this.getPaymentOrderAllocationByOrderIdForUpdate(executor, paymentOrder.id);
+          if (!allocation) throw new ConflictException('Reseller package sale allocation is missing');
+          const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+          const volumePackage = await this.getVolumePackageRowForUpdate(executor, dto.volumePackageId);
+
+          return {
+            allocation,
+            customerAccountId: existingLedger.customerAccountId,
+            duplicate: true,
+            ledgerEntry: existingLedger,
+            paymentOrderId: paymentOrder.id,
+            quote: this.calculateResellerPackageQuote(reseller, volumePackage),
+          };
+        }
+      }
+
+      const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+      if (reseller.status !== 'active') throw new BadRequestException('Reseller account is not active');
+      const volumePackage = await this.getVolumePackageRowForUpdate(executor, dto.volumePackageId);
+      if (volumePackage.status !== 'active') throw new BadRequestException('Volume package is not active');
+      if (volumePackage.currency !== reseller.currency) {
+        throw new BadRequestException('Package currency does not match reseller wallet currency');
+      }
+
+      const quote = this.calculateResellerPackageQuote(reseller, volumePackage);
+      if (!quote.canDebit) {
+        throw new BadRequestException(quote.blockedReason ?? 'Reseller wallet balance is not enough for this package');
+      }
+      if (quote.walletDebitAmount <= 0) throw new BadRequestException('Package wallet debit amount must be positive');
+
+      const customerAccountId = requestedCustomerAccountId
+        ? await this.prepareExistingResellerSaleCustomer(executor, requestedCustomerAccountId, reseller.id)
+        : await this.createResellerSaleCustomer(executor, dto.customerAccount, reseller.id, actor);
+      const account = await this.getCustomerAccountRowForUpdate(executor, customerAccountId);
+      const volumeBytes = this.numberFromBigInt(volumePackage.volumeBytes) ?? 0;
+      if (volumeBytes <= 0) throw new BadRequestException('Package volume must be positive');
+      const quotaLimitBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
+      const usedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+      const quotaLimitAfterBytes = this.addPositiveBytes(
+        quotaLimitBeforeBytes ?? usedBytes,
+        volumeBytes,
+        'Reseller sale quota would exceed the safe byte limit',
+      );
+
+      const paymentOrderId = await this.insertResellerWalletPaymentOrder(executor, {
+        actor,
+        customerAccountId,
+        idempotencyKey,
+        metadata: dto.metadata ?? {},
+        notes: this.normalizeNullableString(dto.notes),
+        quote,
+        volumePackage,
+      });
+      const paymentOrder = await this.getPaymentOrderRowForUpdate(executor, paymentOrderId);
+      const allocation = await this.insertPaymentOrderAllocation(
+        executor,
+        paymentOrder,
+        {
+          idempotencyKey: `reseller_package_sale:${paymentOrderId}:allocation`,
+          metadata: {
+            ...(dto.metadata ?? {}),
+            resellerAccountId: reseller.id,
+            resellerPackageSale: true,
+            walletDebitAmount: quote.walletDebitAmount,
+          },
+          quotaLimitAfterBytes,
+          quotaLimitBeforeBytes,
+          volumeBytes,
+        },
+        actor,
+      );
+
+      await executor.query(
+        `
+          UPDATE customer_accounts
+          SET quota_limit_bytes = $1,
+              updated_at = now()
+          WHERE id = $2
+        `,
+        [quotaLimitAfterBytes, customerAccountId],
+      );
+
+      const ledgerEntry = await this.insertResellerWalletLedgerEntry(executor, reseller, {
+        amount: -quote.walletDebitAmount,
+        actor,
+        clientConfigId: null,
+        customerAccountId,
+        entryType: 'sale_debit',
+        idempotencyKey,
+        metadata: {
+          ...(dto.metadata ?? {}),
+          paymentOrderId,
+          quotaLimitAfterBytes,
+          quotaLimitBeforeBytes,
+          resellerPackageSale: true,
+        },
+        notes: this.normalizeNullableString(dto.notes),
+        source: 'client_sale',
+        sourceId: paymentOrderId,
+        volumePackageId: dto.volumePackageId,
+      });
+
+      await this.audit.record(
+        actor,
+        'reseller_wallet.package_sale',
+        'reseller_account',
+        reseller.id,
+        {
+          allocationId: allocation.id,
+          customerAccountId,
+          ledgerEntryId: ledgerEntry.id,
+          paymentOrderId,
+          quotaLimitAfterBytes,
+          quotaLimitBeforeBytes,
+          volumeBytes,
+          volumePackageId: dto.volumePackageId,
+          walletDebitAmount: quote.walletDebitAmount,
+        },
+        executor,
+      );
+
+      return {
+        allocation,
+        customerAccountId,
+        duplicate: false,
+        ledgerEntry,
+        paymentOrderId,
+        quote,
+      };
+      });
+
+      return {
+        allocation: this.mapPaymentOrderAllocation(saleState.allocation),
+        customerAccount: await this.getCustomerAccount(saleState.customerAccountId),
+        duplicate: saleState.duplicate,
+        ledgerEntry: this.mapResellerWalletLedger(saleState.ledgerEntry),
+        paymentOrder: await this.getPaymentOrder(saleState.paymentOrderId),
+        quote: saleState.quote,
+        reseller: await this.getResellerAccount(currentReseller.id),
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Reseller package sale already exists');
+      throw error;
+    }
   }
 
   async updateResellerCustomerAccount(
@@ -4519,6 +4692,141 @@ export class BillingService {
     if (row.resellerAccountId !== resellerAccountId) {
       throw new BadRequestException('Client config does not belong to this reseller');
     }
+  }
+
+  private async prepareExistingResellerSaleCustomer(
+    executor: DatabaseQueryExecutor,
+    customerAccountId: string,
+    resellerAccountId: string,
+  ): Promise<string> {
+    await this.ensureCustomerAccountBelongsToReseller(executor, customerAccountId, resellerAccountId);
+    return customerAccountId;
+  }
+
+  private async createResellerSaleCustomer(
+    executor: DatabaseQueryExecutor,
+    dto: CreateCustomerAccountDto | null | undefined,
+    resellerAccountId: string,
+    actor: AuthActor | undefined,
+  ): Promise<string> {
+    if (!dto) throw new BadRequestException('Customer account payload is required for a new reseller package sale');
+    this.assertResellerCustomerPayload(dto);
+    const requestedResellerAccountId = this.normalizeNullableString(dto.resellerAccountId);
+    if (requestedResellerAccountId && requestedResellerAccountId !== resellerAccountId) {
+      throw new BadRequestException('Reseller package sale customer must belong to the current reseller');
+    }
+    if (dto.quotaLimitBytes !== undefined && dto.quotaLimitBytes !== null && dto.quotaLimitBytes > 0) {
+      throw new BadRequestException('Reseller package sales assign quota from the selected package');
+    }
+    if (dto.usedBytes !== undefined && dto.usedBytes > 0) {
+      throw new BadRequestException('New reseller package sale customers cannot start with used volume');
+    }
+
+    const displayName = this.normalizeNullableString(dto.displayName);
+    const telegramId = this.normalizeNullableString(dto.telegramId);
+    const telegramUsername = this.normalizeTelegramUsername(dto.telegramUsername);
+    if (!displayName && !telegramId && !telegramUsername) {
+      throw new BadRequestException('New reseller package sale requires a customer display name or Telegram identity');
+    }
+
+    const insertResult = await executor.query<{ id: string }>(
+      `
+        INSERT INTO customer_accounts (
+          reseller_account_id, display_name, telegram_id, telegram_username, paid_number_hash,
+          status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
+          used_bytes, notes
+        )
+        VALUES ($1, $2, $3, $4, NULL, $5, $6, NULL, $7, 0, $8)
+        RETURNING id
+      `,
+      [
+        resellerAccountId,
+        displayName,
+        telegramId,
+        telegramUsername,
+        dto.status ?? 'active',
+        dto.quotaScope ?? 'account_shared',
+        dto.perClientLimitBytes ?? null,
+        this.normalizeNullableString(dto.notes),
+      ],
+    );
+    const customerAccountId = insertResult.rows[0].id;
+
+    await this.audit.record(
+      actor,
+      'customer_account.create',
+      'customer_account',
+      customerAccountId,
+      {
+        hasPaidNumberHash: false,
+        hasTelegramId: Boolean(telegramId),
+        quotaLimitBytes: null,
+        quotaScope: dto.quotaScope ?? 'account_shared',
+        resellerAccountId,
+        resellerPackageSale: true,
+      },
+      executor,
+    );
+
+    return customerAccountId;
+  }
+
+  private async insertResellerWalletPaymentOrder(
+    executor: DatabaseQueryExecutor,
+    input: {
+      actor: AuthActor | undefined;
+      customerAccountId: string;
+      idempotencyKey: string | null;
+      metadata: Record<string, unknown>;
+      notes: string | null;
+      quote: AdminResellerPackageQuote;
+      volumePackage: VolumePackageRow;
+    },
+  ): Promise<string> {
+    const orderIdempotencyKey = input.idempotencyKey ? `reseller_package_sale:${input.idempotencyKey}:order` : null;
+    const providerOrderId = input.idempotencyKey ? `reseller_wallet:${input.idempotencyKey}` : null;
+    const metadata = {
+      ...input.metadata,
+      resellerAccountId: input.quote.resellerAccountId,
+      resellerPackageSale: true,
+      sellerMarginAmount: input.quote.sellerMarginAmount,
+      walletDebitAmount: input.quote.walletDebitAmount,
+    };
+    const result = await executor.query<{ id: string }>(
+      `
+        INSERT INTO payment_orders (
+          customer_account_id, volume_package_id, payment_method_id,
+          package_name, package_slug, volume_bytes, duration_days, price_per_gb,
+          amount, currency, status, provider, provider_order_id, provider_capture_id,
+          idempotency_key, paid_at, metadata, notes, created_by
+        )
+        VALUES (
+          $1, $2, NULL,
+          $3, $4, $5, $6, $7,
+          $8, $9, 'paid', 'reseller_wallet', $10, NULL,
+          $11, now(), $12::jsonb, $13, $14
+        )
+        RETURNING id
+      `,
+      [
+        input.customerAccountId,
+        input.volumePackage.id,
+        input.volumePackage.name,
+        input.volumePackage.slug,
+        this.numberFromBigInt(input.volumePackage.volumeBytes) ?? 0,
+        input.volumePackage.durationDays,
+        this.numberFromBigInt(input.volumePackage.pricePerGb) ?? 0,
+        input.quote.customerPriceAmount,
+        input.volumePackage.currency,
+        providerOrderId,
+        orderIdempotencyKey,
+        this.stringifyPublicRecord(metadata, 'Reseller package sale payment metadata'),
+        input.notes,
+        input.actor?.id ?? null,
+      ],
+    );
+
+    return result.rows[0].id;
   }
 
   private async updateVolumePackageFields(

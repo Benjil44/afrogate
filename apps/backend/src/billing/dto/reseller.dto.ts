@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { CreateCustomerAccountDto } from './customer-account.dto';
 
 export const RESELLER_ACCOUNT_STATUSES = ['active', 'suspended', 'disabled'] as const;
 
@@ -147,6 +148,34 @@ export class DebitResellerWalletForPackageDto {
   @IsString()
   @MaxLength(160)
   sourceId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+}
+
+export class CreateResellerPackageSaleDto {
+  @IsUUID('4')
+  volumePackageId!: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  customerAccountId?: string | null;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateCustomerAccountDto)
+  customerAccount?: CreateCustomerAccountDto | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
 
   @IsOptional()
   @IsString()

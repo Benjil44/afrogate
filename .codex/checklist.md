@@ -173,7 +173,7 @@
 - [x] Reseller account and wallet ledger schema.
 - [x] Guarded admin reseller wallet APIs for account listing, package quote, top-up, and package debit.
 - [x] Reseller-scoped dashboard/panel so each representative can manage only their own customers, orders, and wallet.
-- [ ] Wallet-gated reseller client creation/renewal that automatically debits AfroGate share at sale time.
+- [x] Wallet-gated reseller client creation/renewal that automatically debits AfroGate share at sale time.
 - [x] PayPal checkout capture adapter and webhook verification.
 - [x] Paid payment order quota allocation.
 - [x] Rewarded-ad quota credit ledger and mobile client claim surface.

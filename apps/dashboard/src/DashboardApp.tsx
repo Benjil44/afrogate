@@ -133,6 +133,7 @@ import rootPackage from '../../../package.json';
 import { useAdminSession } from './auth';
 import {
   createAdminCustomerAccount,
+  createAdminResellerPackageSale,
   createAdminResellerCustomerAccount,
   chargeAdminCurrentPanelVolume,
   createAdminProtocolSetup,
@@ -527,6 +528,8 @@ const protocolDefaultPorts: Record<ProtocolKind, string> = {
 
 const panelClass = 'min-w-0 rounded-md border border-afro-line bg-afro-panel p-2.5';
 const mutedTextClass = 'text-[13px] text-afro-muted';
+const formLabelClass = 'text-[13px] font-bold text-afro-muted';
+const inputClass = 'min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45';
 const fieldLabelClass = 'grid gap-1 text-[12px] font-bold text-afro-muted';
 const fieldInputClass = 'min-h-9 rounded-md border border-afro-line bg-white px-2 text-[13px] text-afro-ink outline-none focus:border-afro-blue disabled:bg-[#eef3f5] disabled:text-afro-muted';
 const primaryButtonClass = 'min-h-9 rounded-md bg-afro-blue px-3 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:bg-[#9fb1bd]';
@@ -3836,6 +3839,24 @@ function createEmptyCustomerAccountForm(): CustomerAccountFormState {
   };
 }
 
+type ResellerPackageSaleFormState = {
+  customerAccountId: string;
+  displayName: string;
+  notes: string;
+  telegramUsername: string;
+  volumePackageId: string;
+};
+
+function createEmptyResellerPackageSaleForm(): ResellerPackageSaleFormState {
+  return {
+    customerAccountId: '',
+    displayName: '',
+    notes: '',
+    telegramUsername: '',
+    volumePackageId: '',
+  };
+}
+
 type CurrentPanelImportFormState = {
   chargeGb: string;
   customerAccountId: string;
@@ -3906,6 +3927,9 @@ function BillingPage({
   const [customerForm, setCustomerForm] = useState<CustomerAccountFormState>(() => createEmptyCustomerAccountForm());
   const [customerMessage, setCustomerMessage] = useState<string | null>(null);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const [resellerSaleForm, setResellerSaleForm] = useState<ResellerPackageSaleFormState>(() => createEmptyResellerPackageSaleForm());
+  const [resellerSaleMessage, setResellerSaleMessage] = useState<string | null>(null);
+  const [isSellingResellerPackage, setIsSellingResellerPackage] = useState(false);
   const [currentPanelForm, setCurrentPanelForm] = useState<CurrentPanelImportFormState>(() => createEmptyCurrentPanelImportForm());
   const [currentPanelPreview, setCurrentPanelPreview] = useState<AdminCurrentPanelImportPreviewResponse | null>(null);
   const [currentPanelMessage, setCurrentPanelMessage] = useState<string | null>(null);
@@ -3987,6 +4011,14 @@ function BillingPage({
     setProvider(rewardSettings.provider);
     setVerificationMode(rewardSettings.verificationMode);
   }, [rewardSettings]);
+
+  useEffect(() => {
+    if (!isResellerSession || resellerSaleForm.volumePackageId || packages.length === 0) return;
+    setResellerSaleForm((current) => ({
+      ...current,
+      volumePackageId: packages.find((item) => item.status === 'active')?.id ?? packages[0].id,
+    }));
+  }, [isResellerSession, packages, resellerSaleForm.volumePackageId]);
 
   useEffect(() => {
     if (!selectedCustomerAccountId) return;
@@ -4132,6 +4164,68 @@ function BillingPage({
       setCustomerMessage(t.billing.customerAccountSaveFailed);
     } finally {
       setIsSavingCustomer(false);
+    }
+  };
+
+  const handleCreateResellerPackageSale = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isResellerSession || !resellerSaleForm.volumePackageId) return;
+    const existingCustomerId = normalizeNullableText(resellerSaleForm.customerAccountId);
+    const displayName = normalizeNullableText(resellerSaleForm.displayName);
+    const telegramUsername = normalizeNullableText(resellerSaleForm.telegramUsername);
+    if (!existingCustomerId && !displayName && !telegramUsername) {
+      setResellerSaleMessage(t.billing.resellerPackageSaleFailed);
+      return;
+    }
+
+    setIsSellingResellerPackage(true);
+    setResellerSaleMessage(null);
+
+    try {
+      const result = await createAdminResellerPackageSale(sessionToken, {
+        customerAccount: existingCustomerId
+          ? null
+          : {
+              displayName,
+              notes: normalizeNullableText(resellerSaleForm.notes),
+              quotaScope: 'account_shared',
+              status: 'active',
+              telegramUsername,
+            },
+        customerAccountId: existingCustomerId,
+        idempotencyKey: `dashboard-reseller-sale:${Date.now()}`,
+        metadata: {
+          dashboardFlow: 'reseller_package_sale',
+        },
+        notes: normalizeNullableText(resellerSaleForm.notes),
+        volumePackageId: resellerSaleForm.volumePackageId,
+      });
+
+      setAccounts((current) => [
+        result.customerAccount,
+        ...current.filter((account) => account.id !== result.customerAccount.id),
+      ]);
+      setPaymentOrders((current) => [
+        result.paymentOrder,
+        ...current.filter((order) => order.id !== result.paymentOrder.id),
+      ]);
+      setReseller(result.reseller);
+      setResellerLedgerEntries((current) => [
+        result.ledgerEntry,
+        ...current.filter((entry) => entry.id !== result.ledgerEntry.id),
+      ].slice(0, 50));
+      setResellerSaleForm((current) => ({
+        ...createEmptyResellerPackageSaleForm(),
+        volumePackageId: current.volumePackageId,
+      }));
+      setResellerSaleMessage(t.billing.resellerPackageSaleSaved(
+        format.bytes(result.allocation.volumeBytesDelta),
+        formatMoneyAmount(result.quote.walletDebitAmount, result.quote.currency, format),
+      ));
+    } catch {
+      setResellerSaleMessage(t.billing.resellerPackageSaleFailed);
+    } finally {
+      setIsSellingResellerPackage(false);
     }
   };
 
@@ -4316,6 +4410,20 @@ function BillingPage({
           format={format}
           ledgerEntries={resellerLedgerEntries}
           reseller={reseller}
+          t={t}
+        />
+      ) : null}
+
+      {isResellerSession ? (
+        <ResellerPackageSalePanel
+          accounts={accounts}
+          format={format}
+          form={resellerSaleForm}
+          isSelling={isSellingResellerPackage}
+          message={resellerSaleMessage}
+          onFormChange={setResellerSaleForm}
+          onSubmit={handleCreateResellerPackageSale}
+          packages={packages}
           t={t}
         />
       ) : null}
@@ -4509,6 +4617,117 @@ function ResellerWorkspacePanel({
       ) : (
         <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} />
       )}
+    </section>
+  );
+}
+
+function ResellerPackageSalePanel({
+  accounts,
+  format,
+  form,
+  isSelling,
+  message,
+  onFormChange,
+  onSubmit,
+  packages,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  format: DashboardFormatters;
+  form: ResellerPackageSaleFormState;
+  isSelling: boolean;
+  message: string | null;
+  onFormChange: (form: ResellerPackageSaleFormState) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  packages: AdminVolumePackageSummary[];
+  t: DashboardStrings;
+}) {
+  const activePackages = packages.filter((item) => item.status === 'active');
+  const selectedPackage = activePackages.find((item) => item.id === form.volumePackageId) ?? null;
+  const updateForm = (patch: Partial<ResellerPackageSaleFormState>) => onFormChange({ ...form, ...patch });
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading
+        title={t.billing.resellerPackageSale}
+        icon={CreditCard}
+        meta={selectedPackage ? `${format.bytes(selectedPackage.volumeBytes)} / ${formatMoneyAmount(selectedPackage.totalPrice, selectedPackage.currency, format)}` : t.billing.selectPackage}
+      />
+      <form className="mt-2 grid gap-2" onSubmit={onSubmit}>
+        <div className="grid gap-2 md:grid-cols-3">
+          <label className="grid gap-1.5">
+            <span className={formLabelClass}>{t.billing.packageName}</span>
+            <select
+              className={inputClass}
+              onChange={(event) => updateForm({ volumePackageId: event.target.value })}
+              required
+              value={form.volumePackageId}
+            >
+              <option value="">{t.billing.selectPackage}</option>
+              {activePackages.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {`${item.name} / ${formatMoneyAmount(item.totalPrice, item.currency, format)}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className={formLabelClass}>{t.billing.saleCustomer}</span>
+            <select
+              className={inputClass}
+              onChange={(event) => updateForm({ customerAccountId: event.target.value })}
+              value={form.customerAccountId}
+            >
+              <option value="">{t.billing.newCustomer}</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.displayName ?? account.telegramUsername ?? account.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className={formLabelClass}>{t.billing.notes}</span>
+            <input
+              className={inputClass}
+              onChange={(event) => updateForm({ notes: event.target.value })}
+              value={form.notes}
+            />
+          </label>
+        </div>
+        {!form.customerAccountId ? (
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className={formLabelClass}>{t.billing.displayName}</span>
+              <input
+                className={inputClass}
+                onChange={(event) => updateForm({ displayName: event.target.value })}
+                required={!form.telegramUsername.trim()}
+                value={form.displayName}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className={formLabelClass}>{t.billing.telegramUsername}</span>
+              <input
+                className={inputClass}
+                onChange={(event) => updateForm({ telegramUsername: event.target.value })}
+                value={form.telegramUsername}
+              />
+            </label>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2 border-t border-afro-line pt-2">
+          <button
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={isSelling || !form.volumePackageId}
+            type="submit"
+          >
+            <CreditCard size={16} />
+            {isSelling ? t.billing.saving : t.billing.sellPackage}
+          </button>
+          {message ? <span className={mutedTextClass}>{message}</span> : null}
+        </div>
+      </form>
     </section>
   );
 }

@@ -910,6 +910,15 @@ export interface DebitResellerWalletForPackageRequest {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface CreateResellerPackageSaleRequest {
+  volumePackageId: string;
+  customerAccountId?: string | null;
+  customerAccount?: CreateCustomerAccountRequest | null;
+  idempotencyKey?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface AdminClientConfigsExportResponse {
   customerAccountId: string;
   generatedAt: string;
@@ -3527,6 +3536,16 @@ export interface AdminResellerWalletActionResponse {
 
 export interface AdminResellerPackageQuoteResponse {
   quote: AdminResellerPackageQuote;
+}
+
+export interface AdminResellerPackageSaleResponse {
+  allocation: AdminPaymentOrderAllocationSummary;
+  customerAccount: AdminCustomerAccountDetail;
+  duplicate: boolean;
+  ledgerEntry: AdminResellerWalletLedgerEntry;
+  paymentOrder: AdminPaymentOrderSummary;
+  quote: AdminResellerPackageQuote;
+  reseller: AdminResellerAccountSummary;
 }
 
 export interface AdminResellerWorkspaceResponse {

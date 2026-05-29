@@ -40,6 +40,7 @@ import type {
   AdminResellerAccountSummary,
   AdminResellerAccountsResponse,
   AdminResellerPackageQuoteResponse,
+  AdminResellerPackageSaleResponse,
   AdminResellerWalletActionResponse,
   AdminResellerWalletLedgerResponse,
   AdminResellerWorkspaceResponse,
@@ -81,6 +82,7 @@ import {
 } from './dto/billing.dto';
 import {
   CreateResellerAccountDto,
+  CreateResellerPackageSaleDto,
   DebitResellerWalletForPackageDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
@@ -331,6 +333,16 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminCustomerAccountDetail> {
     return this.billingService.createResellerCustomerAccount(payload, request.actor);
+  }
+
+  @Post('reseller/package-sales')
+  @Roles('reseller')
+  @Permissions('customers:write', 'resellerWallet:read')
+  createResellerPackageSale(
+    @Body() payload: CreateResellerPackageSaleDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerPackageSaleResponse> {
+    return this.billingService.createResellerPackageSale(payload, request.actor);
   }
 
   @Patch('reseller/customer-accounts/:id')
