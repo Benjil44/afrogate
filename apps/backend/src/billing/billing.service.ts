@@ -52,6 +52,7 @@ import type {
   ClientRewardedAdClaimResponse,
   ClientRewardedAdGrantSummary,
   ClientRewardedAdStatus,
+  RewardedAdWebhookHandlerResponse,
   PayPalWebhookHandlerResponse,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
@@ -61,6 +62,7 @@ import { hashClientToken } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
 import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
+import { RewardedAdProviderWebhookDto } from './dto/rewarded-ad-webhook.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
   CurrentPanelImportConfigsDto,
@@ -96,6 +98,7 @@ import {
   prepareAdditionalPaymentProviderCheckout,
   type PreparedPaymentProviderCheckout,
 } from './payment-provider-adapters';
+import { RewardedAdWebhookService, type RewardedAdWebhookSignatureHeaders } from './rewarded-ad-webhook.service';
 
 const BYTES_PER_GB = 1024 ** 3;
 const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
@@ -557,12 +560,21 @@ interface ClientUsageEventFilters {
   limit: number;
 }
 
+interface RewardedAdGrantCreateState {
+  grant: RewardedAdGrantRow;
+  duplicate: boolean;
+  clientConfigId: string;
+  customerAccountId: string;
+  provider: string;
+}
+
 @Injectable()
 export class BillingService {
   constructor(
     private readonly database: DatabaseService,
     private readonly audit: AuditService,
     private readonly paypal: PayPalPaymentService,
+    private readonly rewardedAdWebhook: RewardedAdWebhookService,
     private readonly secretVault: SecretVaultService,
   ) {}
 
@@ -2969,156 +2981,15 @@ export class BillingService {
       throw new ForbiddenException('Rewarded ad grants are not available for this client status');
     }
 
-    const today = this.currentUtcDay();
-
     try {
-      const claimState = await this.database.transaction(async (executor) => {
-        const settings = await this.getRewardedAdSettings(executor);
-        if (!settings.enabled) throw new ForbiddenException('Rewarded ad grants are disabled');
-        if (settings.dailyLimit <= 0) throw new ForbiddenException('Rewarded ad daily limit is zero');
-
-        const provider = this.normalizeRewardedAdProvider(dto.provider, settings.provider);
-        const adSessionId = this.normalizeNullableString(dto.adSessionId);
-        const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey) ?? adSessionId;
-        if (!idempotencyKey) {
-          throw new BadRequestException('Rewarded ad claim requires an idempotency key or ad session id');
-        }
-
-        const existingForKey = await this.getRewardedAdGrantByIdempotencyForUpdate(
-          executor,
-          actor.clientConfigId,
-          provider,
-          idempotencyKey,
-        );
-        if (existingForKey) {
-          return {
-            grant: existingForKey,
-            duplicate: true,
-          };
-        }
-
-        if (adSessionId) {
-          const existingForSession = await this.getRewardedAdGrantBySessionForUpdate(executor, provider, adSessionId);
-          if (existingForSession) {
-            if (existingForSession.clientConfigId !== actor.clientConfigId) {
-              throw new ConflictException('Rewarded ad session already belongs to another client');
-            }
-
-            return {
-              grant: existingForSession,
-              duplicate: true,
-            };
-          }
-        }
-
-        const client = await this.getClientConfigRowForUpdate(executor, actor.clientConfigId);
-        if (client.customerAccountId !== actor.customerAccountId) {
-          throw new ForbiddenException('Client token does not match this account');
-        }
-
-        const account = await this.getCustomerAccountRowForUpdate(executor, actor.customerAccountId);
-        if (account.status !== 'active') throw new ForbiddenException('Rewarded ad grants require an active account');
-        if (!['active', 'limited'].includes(client.status)) {
-          throw new ForbiddenException('Rewarded ad grants are not available for this client status');
-        }
-
-        const watchedToday = await this.countRewardedAdGrants(actor.clientConfigId, today, executor);
-        if (watchedToday >= settings.dailyLimit) {
-          throw new BadRequestException('Rewarded ad daily limit reached');
-        }
-
-        const rewardBytes = this.numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
-        if (rewardBytes <= 0) throw new BadRequestException('Rewarded ad reward amount must be positive');
-
-        const accountQuotaBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
-        const accountUsedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
-        const accountQuotaAfterBytes = (accountQuotaBeforeBytes ?? accountUsedBytes) + rewardBytes;
-        if (!Number.isSafeInteger(accountQuotaAfterBytes) || accountQuotaAfterBytes > MAX_SAFE_BYTES) {
-          throw new BadRequestException('Rewarded ad account quota would exceed the safe byte limit');
-        }
-
-        const clientQuotaBeforeBytes = this.numberFromBigInt(client.quotaLimitBytes);
-        const perClientLimitBytes = this.numberFromBigInt(account.perClientLimitBytes);
-        const clientUsedBytes = this.numberFromBigInt(client.usedBytes) ?? 0;
-        const shouldCreditClientQuota =
-          account.quotaScope === 'per_client' || clientQuotaBeforeBytes !== null || perClientLimitBytes !== null;
-        const clientQuotaAfterBytes = shouldCreditClientQuota
-          ? (clientQuotaBeforeBytes ?? perClientLimitBytes ?? clientUsedBytes) + rewardBytes
-          : null;
-        if (
-          clientQuotaAfterBytes !== null &&
-          (!Number.isSafeInteger(clientQuotaAfterBytes) || clientQuotaAfterBytes > MAX_SAFE_BYTES)
-        ) {
-          throw new BadRequestException('Rewarded ad client quota would exceed the safe byte limit');
-        }
-
-        const grant = await this.insertRewardedAdGrant(
-          executor,
-          {
-            customerAccountId: actor.customerAccountId,
-            clientConfigId: actor.clientConfigId,
-            grantDay: today,
-            dailyGrantNumber: watchedToday + 1,
-            provider,
-            adSessionId,
-            idempotencyKey,
-            rewardBytes,
-            accountQuotaBeforeBytes,
-            accountQuotaAfterBytes,
-            clientQuotaBeforeBytes,
-            clientQuotaAfterBytes,
-            verificationMode: settings.verificationMode,
-            metadata: dto.metadata ?? {},
-          },
-        );
-
-        await executor.query(
-          `
-            UPDATE customer_accounts
-            SET quota_limit_bytes = $1,
-                updated_at = now()
-            WHERE id = $2
-          `,
-          [accountQuotaAfterBytes, actor.customerAccountId],
-        );
-
-        if (clientQuotaAfterBytes !== null) {
-          await executor.query(
-            `
-              UPDATE client_configs
-              SET quota_limit_bytes = $1,
-                  updated_at = now()
-              WHERE id = $2
-            `,
-            [clientQuotaAfterBytes, actor.clientConfigId],
-          );
-        }
-
-        await this.audit.record(
-          actor,
-          'rewarded_ad.grant_quota',
-          'client_config',
-          actor.clientConfigId,
-          {
-            customerAccountId: actor.customerAccountId,
-            grantId: grant.id,
-            provider,
-            rewardBytes,
-            dailyGrantNumber: watchedToday + 1,
-            dailyLimit: settings.dailyLimit,
-            accountQuotaBeforeBytes,
-            accountQuotaAfterBytes,
-            clientQuotaBeforeBytes,
-            clientQuotaAfterBytes,
-            verificationMode: settings.verificationMode,
-          },
-          executor,
-        );
-
-        return {
-          grant,
-          duplicate: false,
-        };
+      const claimState = await this.createRewardedAdGrantForClient({
+        auditActor: actor,
+        clientConfigId: actor.clientConfigId,
+        customerAccountId: actor.customerAccountId,
+        provider: dto.provider,
+        adSessionId: dto.adSessionId,
+        idempotencyKey: dto.idempotencyKey,
+        metadata: dto.metadata ?? {},
       });
 
       const [rewardedAds, profile] = await Promise.all([
@@ -3131,6 +3002,39 @@ export class BillingService {
         rewardedAds,
         profile,
         duplicate: claimState.duplicate,
+      };
+    } catch (error) {
+      this.throwConflictIfUniqueViolation(error, 'Rewarded ad grant already exists');
+      throw error;
+    }
+  }
+
+  async handleRewardedAdProviderWebhook(
+    headers: RewardedAdWebhookSignatureHeaders,
+    dto: RewardedAdProviderWebhookDto,
+  ): Promise<RewardedAdWebhookHandlerResponse> {
+    const verified = this.rewardedAdWebhook.verify(headers, dto);
+
+    try {
+      const grantState = await this.createRewardedAdGrantForClient({
+        clientConfigId: verified.clientConfigId,
+        provider: verified.provider,
+        adSessionId: verified.adSessionId,
+        idempotencyKey: verified.idempotencyKey,
+        metadata: verified.metadata,
+        requiredVerificationModes: ['signed_webhook', 'provider_signed_webhook'],
+        strictProviderMatch: true,
+      });
+
+      return {
+        ok: true,
+        action: grantState.duplicate ? 'duplicate' : 'granted',
+        provider: grantState.provider,
+        clientConfigId: grantState.clientConfigId,
+        adSessionId: grantState.grant.adSessionId,
+        idempotencyKey: grantState.grant.idempotencyKey,
+        grant: this.mapRewardedAdGrant(grantState.grant),
+        duplicate: grantState.duplicate,
       };
     } catch (error) {
       this.throwConflictIfUniqueViolation(error, 'Rewarded ad grant already exists');
@@ -4864,6 +4768,190 @@ export class BillingService {
         created_at AS "createdAt"
       FROM client_usage_events
     `;
+  }
+
+  private async createRewardedAdGrantForClient(input: {
+    clientConfigId: string;
+    customerAccountId?: string | null;
+    provider?: string | null;
+    adSessionId?: string | null;
+    idempotencyKey?: string | null;
+    metadata: Record<string, unknown>;
+    auditActor?: AuditActor | undefined;
+    requiredVerificationModes?: string[];
+    strictProviderMatch?: boolean;
+  }): Promise<RewardedAdGrantCreateState> {
+    const today = this.currentUtcDay();
+
+    return this.database.transaction(async (executor) => {
+      const settings = await this.getRewardedAdSettings(executor);
+      if (!settings.enabled) throw new ForbiddenException('Rewarded ad grants are disabled');
+      if (settings.dailyLimit <= 0) throw new ForbiddenException('Rewarded ad daily limit is zero');
+      if (
+        input.requiredVerificationModes?.length &&
+        !input.requiredVerificationModes.includes(settings.verificationMode)
+      ) {
+        throw new ForbiddenException('Rewarded ad signed webhooks are not enabled');
+      }
+
+      const provider = this.normalizeRewardedAdProvider(input.provider, settings.provider);
+      if (input.strictProviderMatch && provider !== settings.provider) {
+        throw new BadRequestException('Rewarded ad provider does not match active settings');
+      }
+
+      const adSessionId = this.normalizeNullableString(input.adSessionId);
+      const idempotencyKey = this.normalizeNullableString(input.idempotencyKey) ?? adSessionId;
+      if (!idempotencyKey) {
+        throw new BadRequestException('Rewarded ad claim requires an idempotency key or ad session id');
+      }
+
+      const existingForKey = await this.getRewardedAdGrantByIdempotencyForUpdate(
+        executor,
+        input.clientConfigId,
+        provider,
+        idempotencyKey,
+      );
+      if (existingForKey) {
+        return {
+          grant: existingForKey,
+          duplicate: true,
+          clientConfigId: existingForKey.clientConfigId,
+          customerAccountId: existingForKey.customerAccountId,
+          provider,
+        };
+      }
+
+      if (adSessionId) {
+        const existingForSession = await this.getRewardedAdGrantBySessionForUpdate(executor, provider, adSessionId);
+        if (existingForSession) {
+          if (existingForSession.clientConfigId !== input.clientConfigId) {
+            throw new ConflictException('Rewarded ad session already belongs to another client');
+          }
+
+          return {
+            grant: existingForSession,
+            duplicate: true,
+            clientConfigId: existingForSession.clientConfigId,
+            customerAccountId: existingForSession.customerAccountId,
+            provider,
+          };
+        }
+      }
+
+      const client = await this.getClientConfigRowForUpdate(executor, input.clientConfigId);
+      const customerAccountId = input.customerAccountId ?? client.customerAccountId;
+      if (client.customerAccountId !== customerAccountId) {
+        throw new ForbiddenException('Client token does not match this account');
+      }
+
+      const account = await this.getCustomerAccountRowForUpdate(executor, customerAccountId);
+      if (account.status !== 'active') throw new ForbiddenException('Rewarded ad grants require an active account');
+      if (!['active', 'limited'].includes(client.status)) {
+        throw new ForbiddenException('Rewarded ad grants are not available for this client status');
+      }
+
+      const watchedToday = await this.countRewardedAdGrants(input.clientConfigId, today, executor);
+      if (watchedToday >= settings.dailyLimit) {
+        throw new BadRequestException('Rewarded ad daily limit reached');
+      }
+
+      const rewardBytes = this.numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+      if (rewardBytes <= 0) throw new BadRequestException('Rewarded ad reward amount must be positive');
+
+      const accountQuotaBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
+      const accountUsedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+      const accountQuotaAfterBytes = (accountQuotaBeforeBytes ?? accountUsedBytes) + rewardBytes;
+      if (!Number.isSafeInteger(accountQuotaAfterBytes) || accountQuotaAfterBytes > MAX_SAFE_BYTES) {
+        throw new BadRequestException('Rewarded ad account quota would exceed the safe byte limit');
+      }
+
+      const clientQuotaBeforeBytes = this.numberFromBigInt(client.quotaLimitBytes);
+      const perClientLimitBytes = this.numberFromBigInt(account.perClientLimitBytes);
+      const clientUsedBytes = this.numberFromBigInt(client.usedBytes) ?? 0;
+      const shouldCreditClientQuota =
+        account.quotaScope === 'per_client' || clientQuotaBeforeBytes !== null || perClientLimitBytes !== null;
+      const clientQuotaAfterBytes = shouldCreditClientQuota
+        ? (clientQuotaBeforeBytes ?? perClientLimitBytes ?? clientUsedBytes) + rewardBytes
+        : null;
+      if (
+        clientQuotaAfterBytes !== null &&
+        (!Number.isSafeInteger(clientQuotaAfterBytes) || clientQuotaAfterBytes > MAX_SAFE_BYTES)
+      ) {
+        throw new BadRequestException('Rewarded ad client quota would exceed the safe byte limit');
+      }
+
+      const grant = await this.insertRewardedAdGrant(
+        executor,
+        {
+          customerAccountId,
+          clientConfigId: input.clientConfigId,
+          grantDay: today,
+          dailyGrantNumber: watchedToday + 1,
+          provider,
+          adSessionId,
+          idempotencyKey,
+          rewardBytes,
+          accountQuotaBeforeBytes,
+          accountQuotaAfterBytes,
+          clientQuotaBeforeBytes,
+          clientQuotaAfterBytes,
+          verificationMode: settings.verificationMode,
+          metadata: input.metadata,
+        },
+      );
+
+      await executor.query(
+        `
+          UPDATE customer_accounts
+          SET quota_limit_bytes = $1,
+              updated_at = now()
+          WHERE id = $2
+        `,
+        [accountQuotaAfterBytes, customerAccountId],
+      );
+
+      if (clientQuotaAfterBytes !== null) {
+        await executor.query(
+          `
+            UPDATE client_configs
+            SET quota_limit_bytes = $1,
+                updated_at = now()
+            WHERE id = $2
+          `,
+          [clientQuotaAfterBytes, input.clientConfigId],
+        );
+      }
+
+      await this.audit.record(
+        input.auditActor,
+        'rewarded_ad.grant_quota',
+        'client_config',
+        input.clientConfigId,
+        {
+          customerAccountId,
+          grantId: grant.id,
+          provider,
+          rewardBytes,
+          dailyGrantNumber: watchedToday + 1,
+          dailyLimit: settings.dailyLimit,
+          accountQuotaBeforeBytes,
+          accountQuotaAfterBytes,
+          clientQuotaBeforeBytes,
+          clientQuotaAfterBytes,
+          verificationMode: settings.verificationMode,
+          signedWebhook: Boolean(input.metadata.signedWebhook),
+        },
+        executor,
+      );
+
+      return {
+        grant,
+        duplicate: false,
+        clientConfigId: input.clientConfigId,
+        customerAccountId,
+        provider,
+      };
+    });
   }
 
   private async getRewardedAdSettings(

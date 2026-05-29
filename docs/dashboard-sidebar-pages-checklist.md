@@ -122,6 +122,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Usage/Billing audited local current-panel volume charge into AfroGate quota.
 - [x] Usage/Billing sanitized client-config export for selected customer accounts.
 - [x] Usage/Billing payment provider adapter readiness for PayPal, card, crypto, bank transfer, and local gateways.
+- [x] Signed rewarded-ad provider webhook adapter with idempotent quota crediting.
 - [x] Backend Telegram bot user-command webhook for linked account status and quota replies.
 - [ ] Telegram bot operations.
 - [x] Backups status page with guarded read-only monitoring.

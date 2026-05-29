@@ -11,6 +11,8 @@ import { BillingController } from './billing/billing.controller';
 import { BillingService } from './billing/billing.service';
 import { PayPalPaymentService } from './billing/paypal-payment.service';
 import { PayPalWebhookController } from './billing/paypal-webhook.controller';
+import { RewardedAdWebhookController } from './billing/rewarded-ad-webhook.controller';
+import { RewardedAdWebhookService } from './billing/rewarded-ad-webhook.service';
 import { ClientController } from './client/client.controller';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
@@ -59,6 +61,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     MetricsController,
     OperationsController,
     PayPalWebhookController,
+    RewardedAdWebhookController,
     TelegramBotController,
   ],
   providers: [
@@ -71,6 +74,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AdminTenantBrandingService,
     BillingService,
     PayPalPaymentService,
+    RewardedAdWebhookService,
     MetricsService,
     OperationsService,
     RouteQualityAggregationService,

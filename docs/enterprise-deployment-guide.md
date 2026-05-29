@@ -2,7 +2,7 @@
 
 This guide is the production operating checklist for deploying AfroGate as an enterprise control plane. It favors the native Ubuntu path because it is predictable on low-resource VPS machines, with Docker Compose kept as an optional packaging path.
 
-AfroGate can be deployed for monitoring, billing, client subscription refresh, advisory routing, backups status, reports, Telegram operations, and admin/client UX separation. Live server-side protocol apply, live data-plane route mutation, native per-app VPN split tunneling, provider-specific automatic settlement beyond the existing PayPal and generic/manual payment adapters, and verified rewarded-ad provider callbacks are still separate implementation gates.
+AfroGate can be deployed for monitoring, billing, client subscription refresh, advisory routing, backups status, reports, Telegram operations, signed rewarded-ad provider callbacks, and admin/client UX separation. Live server-side protocol apply, live data-plane route mutation, native per-app VPN split tunneling, and provider-specific automatic settlement beyond the existing PayPal and generic/manual payment adapters are still separate implementation gates.
 
 ## Production Topology
 
@@ -114,6 +114,7 @@ Required production values:
 - `AFROGATE_IDENTITY_HASH_KEY=<separate long random value>`
 - `AFROGATE_ADMIN_USERS_FILE=/var/lib/afrogate/admin-users.json`
 - `AFROGATE_BACKUP_STATUS_FILE=/var/lib/afrogate/backup-status.json`
+- `AFROGATE_REWARDED_AD_WEBHOOK_SECRET=<long random value>` when signed rewarded-ad callbacks are enabled
 
 Production safety flags must stay disabled until audited implementations exist:
 
@@ -294,7 +295,7 @@ No-go:
 - Backups are unencrypted or untested.
 - Admins share a superadmin account for daily use.
 - Route/protocol live-apply flags are enabled without audited implementation, rollback, and health verification.
-- Provider credentials or webhook secrets are missing for enabled payment/Telegram workflows.
+- Provider credentials or webhook secrets are missing for enabled payment, rewarded-ad, or Telegram workflows.
 
 ## Optional Docker Compose Path
 

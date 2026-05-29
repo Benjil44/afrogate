@@ -556,6 +556,20 @@ export interface ClaimRewardedAdRequest {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface RewardedAdProviderWebhookRequest {
+  provider?: string | null;
+  clientConfigId: string;
+  adSessionId?: string | null;
+  idempotencyKey?: string | null;
+  providerEventId?: string | null;
+  adUnitId?: string | null;
+  placementId?: string | null;
+  rewardAmount?: number | null;
+  rewardCurrency?: string | null;
+  eventTimestamp?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface ClientRewardedAdGrantSummary {
   id: string;
   customerAccountId: string;
@@ -579,6 +593,17 @@ export interface ClientRewardedAdClaimResponse {
   grant: ClientRewardedAdGrantSummary;
   rewardedAds: ClientRewardedAdStatus;
   profile: ClientPortalProfileResponse;
+  duplicate: boolean;
+}
+
+export interface RewardedAdWebhookHandlerResponse {
+  ok: true;
+  action: 'granted' | 'duplicate';
+  provider: string;
+  clientConfigId: string;
+  adSessionId?: string | null;
+  idempotencyKey: string;
+  grant: ClientRewardedAdGrantSummary;
   duplicate: boolean;
 }
 

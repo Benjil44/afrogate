@@ -1811,7 +1811,7 @@ Repository remote is ready:
 
 - Added `docs/enterprise-deployment-guide.md` as the production control-plane deployment runbook.
 - Covered native Ubuntu/Nginx/systemd/PostgreSQL topology, public-port boundaries, host provisioning, environment secrets, least-privilege database roles, migrations, service setup, firewall, agent rules, backups, monitoring, update flow, rollback, privacy rules, and go/no-go checks.
-- Explicitly kept live route/protocol data-plane apply, native per-app VPN split tunneling, additional production payment provider hardening, and verified rewarded-ad provider callbacks behind future implementation gates.
+- Explicitly kept live route/protocol data-plane apply, native per-app VPN split tunneling, and additional production payment provider hardening behind future implementation gates.
 - Linked the guide from `README.md`, `SECURITY.md`, repository structure docs, and dashboard/sidebar checklist.
 - Updated memory and main checklist; checklist completion is now `233 / 237` items, or `98.3%` complete with `1.7%` remaining.
 - Bumped AfroGate to `0.101.1` and updated `CHANGELOG.md`.
@@ -1824,7 +1824,7 @@ Repository remote is ready:
 
 ### Remaining
 
-- Production protocol apply, additional production payment provider hardening, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.
+- Production protocol apply, additional production payment provider hardening, and native per-app VPN split tunneling remain future work.
 
 ## 2026-05-29 Payment Provider Adapter Slice
 
@@ -1852,4 +1852,33 @@ Repository remote is ready:
 
 ### Remaining
 
-- Production protocol apply, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.
+- Production protocol apply and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Rewarded-Ad Signed Webhook Slice
+
+### Completed
+
+- Added public `POST /api/rewarded-ads/webhook` with rate limiting for provider/server-to-server rewarded-ad callbacks.
+- Added HMAC-SHA256 signature verification over `timestamp.canonicalJson(payload)` using `AFROGATE_REWARDED_AD_WEBHOOK_SECRET` plus timestamp freshness through `AFROGATE_REWARDED_AD_WEBHOOK_TOLERANCE_SECONDS`.
+- Required admin rewarded-ad verification mode to be `signed_webhook` or `provider_signed_webhook` before signed callbacks can credit quota.
+- Reused the existing rewarded-ad grant ledger for client/account locking, provider/session idempotency, daily caps, audit logging, account quota updates, and per-client quota updates when per-client caps are active.
+- Kept callback metadata minimal and non-secret: provider event id, ad unit/placement id, reward amount/currency, timestamp, and signed-webhook marker only.
+- Updated env examples, docs, privacy/security threat models, memory, dashboard checklist, and main checklist; checklist completion is now `235 / 237` items, or `99.2%` complete with `0.8%` remaining.
+- Bumped AfroGate to `0.103.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran focused `npm run typecheck` during implementation.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran a built Node smoke test for the rewarded-ad webhook verifier; a valid HMAC signature produced the expected idempotency key and signed-webhook metadata.
+- Ran `npm run test:e2e`; 14 tests passed.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply and native per-app VPN split tunneling remain future work.

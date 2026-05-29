@@ -4,7 +4,7 @@
 
 AfroGate is a control plane for monitoring VPN/server health, billing VPN-client accounts, and making advisory route decisions for stable internet access. The repository contains:
 
-- `apps/backend`: NestJS API for admin auth, billing, tenant branding, metrics ingest, alerts, route decisions, Telegram/PayPal integration, and server/outbound management.
+- `apps/backend`: NestJS API for admin auth, billing, tenant branding, metrics ingest, alerts, route decisions, Telegram/PayPal/rewarded-ad integration, and server/outbound management.
 - `apps/dashboard`: React admin/seller dashboard.
 - `apps/client`: React VPN-client app for quota and route preference.
 - `apps/agent`: Python monitoring agent that sends compact server metrics and synthetic route probes.
@@ -21,7 +21,7 @@ Primary actors:
 - Admin/seller/support/auditor users authenticated to the dashboard.
 - VPN clients authenticated with client-scoped access tokens.
 - Agents authenticated with per-server hashed tokens or the legacy bootstrap fallback token.
-- Payment and Telegram providers sending public webhooks.
+- Payment, rewarded-ad, and Telegram providers sending public webhooks.
 - Operators with deployment access to `.env`, systemd, Nginx, and database credentials.
 
 Trust boundaries:
@@ -29,7 +29,7 @@ Trust boundaries:
 - Public internet to Nginx/backend: only HTTPS and required VPN UDP ports should be public. Backend port, dashboard dev port, PostgreSQL, Redis, and metrics internals must stay local/private.
 - Browser to backend API: dashboard routes use admin session/auth guards; client routes under `/api/client/*` use client token guards and must not expose admin operations.
 - Agent to backend: metrics ingest is write-only and token-authenticated. Agent payloads are not trusted just because they come from a known server.
-- Provider webhooks to backend: PayPal and Telegram webhooks are public inputs and require provider signature/secret checks before side effects.
+- Provider webhooks to backend: PayPal, rewarded-ad, and Telegram webhooks are public inputs and require provider signature/secret checks before side effects.
 - Backend to deployment secrets: decrypted secrets must remain server-side, write-only from API clients, and never appear in API responses, dry-run snapshots, logs, or dashboard state.
 - Control plane to data plane: current route/protocol apply workflows are advisory or assignment-only unless explicit feature flags, audited adapters, secret readiness, rollback, cooldown, and health checks are present.
 
@@ -48,6 +48,7 @@ Public/sensitive endpoints:
 
 - `POST /api/auth/login` is protected by password hashing and API rate limiting.
 - `POST /api/payments/paypal/webhook` must verify PayPal transmission signature headers before mutating payment orders.
+- `POST /api/rewarded-ads/webhook` must verify HMAC signature and timestamp freshness before rewarding quota.
 - `POST /api/telegram/webhook` is disabled by default and requires Telegram's secret-token header before replying.
 - Agent metrics ingest must require agent authentication and reject unauthenticated writes.
 - Import/sync APIs for Marzban/X-UI/current panels must treat panel responses as untrusted data.
@@ -71,6 +72,7 @@ Realistic attacker stories:
 
 - Brute-force admin login or reuse leaked credentials to gain dashboard access.
 - Send forged PayPal webhook events to mark orders paid or allocate quota without real payment.
+- Send forged rewarded-ad webhook events to credit data without a real provider-confirmed ad view.
 - Abuse Telegram webhook exposure to enumerate linked accounts or force outbound API calls.
 - Compromise a support/admin account and attempt to read secrets, change quotas, or reroute users.
 - Send malicious agent metrics or route-probe metadata to poison health scores and influence route decisions.

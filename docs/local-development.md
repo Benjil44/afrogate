@@ -104,6 +104,17 @@ AFROGATE_TELEGRAM_ALERT_CHAT_ID=...
 
 If Telegram is blocked from the backend host, expose a localhost HTTP proxy through sing-box/xray/VLESS or another gateway client and set `AFROGATE_OUTBOUND_PROXY_URL=http://127.0.0.1:10809`.
 
+## Optional Rewarded-Ad Webhooks
+
+Rewarded-ad signed callbacks are disabled until a secret is configured and the admin reward verification mode is set to `signed_webhook` or `provider_signed_webhook`.
+
+```powershell
+AFROGATE_REWARDED_AD_WEBHOOK_SECRET=change-me-long-random-secret
+AFROGATE_REWARDED_AD_WEBHOOK_TOLERANCE_SECONDS=300
+```
+
+The callback signature is `HMAC-SHA256(timestamp + "." + canonicalJson(payload))` sent as `x-afrogate-ad-signature`, with the timestamp in `x-afrogate-ad-timestamp`. Keep the secret in `.env` or deployment secret storage only.
+
 ## Outbound Health Checks
 
 The backend health scheduler is enabled by default and is idle when no outbounds exist. For a local test outbound, use a non-secret config shape such as:

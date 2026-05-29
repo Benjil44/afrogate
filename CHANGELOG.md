@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.103.0 - 2026-05-29
+
+- Added a signed rewarded-ad provider webhook at `POST /api/rewarded-ads/webhook`.
+- Verified rewarded-ad callbacks with HMAC-SHA256 signatures, timestamp freshness, and admin-enabled `signed_webhook` or `provider_signed_webhook` verification mode before quota crediting.
+- Reused the existing rewarded-ad grant ledger for idempotency, daily caps, client/account checks, audit logging, and quota updates.
+
 ## 0.102.0 - 2026-05-29
 
 - Added payment-provider adapter readiness to the billing catalog for PayPal, card, local gateway, bank transfer, and crypto.

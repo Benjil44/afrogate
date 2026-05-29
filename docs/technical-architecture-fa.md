@@ -267,7 +267,7 @@ Guarded admin endpoints `GET /api/admin/rewarded-ads/settings` and `PATCH /api/a
 - metadata jsonb for non-secret claim context
 - created_at
 
-Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The client app can read the current reward status and submit an idempotent claim after an ad callback. The backend locks the client/account, enforces the current admin-managed UTC daily cap, records one grant per idempotency/session key, increases account quota, and also increases the specific client quota when per-client caps are active. The current `client_callback_mvp` verification mode is suitable for MVP flow wiring only; production rewards need a verified ad-network SDK/webhook adapter.
+Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The client app can read the current reward status and submit an idempotent claim after an ad callback. That `client_callback_mvp` mode is suitable for MVP flow wiring only. Production-style crediting should use `POST /api/rewarded-ads/webhook`, where the ad SDK/provider backend sends `clientConfigId`, provider/session/idempotency fields, and non-secret reward metadata. AfroGate verifies `x-afrogate-ad-signature` as HMAC-SHA256 over `timestamp.canonicalJson(payload)` with `AFROGATE_REWARDED_AD_WEBHOOK_SECRET`, enforces `x-afrogate-ad-timestamp` freshness through `AFROGATE_REWARDED_AD_WEBHOOK_TOLERANCE_SECONDS`, and only accepts the callback when admin reward settings use `signed_webhook` or `provider_signed_webhook`. After verification, the backend locks the client/account, enforces the UTC daily cap, records one grant per idempotency/session key, increases account quota, and also increases the specific client quota when per-client caps are active.
 
 ### packages
 

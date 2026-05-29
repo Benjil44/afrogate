@@ -23,7 +23,7 @@ Privacy actors:
 - Admin/seller users who manage accounts and packages but should not see raw paid numbers or secrets.
 - Support users who may need safe troubleshooting data but not credentials or private routing keys.
 - Operators with deployment/database access who must be treated as highly privileged.
-- Third-party providers such as PayPal, Telegram, and future ad-network/payment providers.
+- Third-party providers such as PayPal, Telegram, ad-network callbacks, and payment providers.
 
 Privacy trust boundaries:
 
@@ -50,7 +50,7 @@ Privacy-sensitive inputs and stores:
 - Client country detection stores only coarse ISO country code, source, and timestamp; no client IP history is needed.
 - Future per-app VPN split tunneling should keep app selection local to the native client or store only explicit client-scoped preference metadata; it must not collect installed-app inventories, traffic contents, or destination history.
 - Route analytics use synthetic probe metadata such as route group, operator, outbound, protocol, score profile, hour, and day; they must not derive from user destinations.
-- Rewarded-ad claims and provider metadata must stay idempotent and minimal, with provider secrets outside public config.
+- Rewarded-ad claims and provider metadata must stay idempotent and minimal, with provider secrets outside public config. Signed ad callbacks should carry only the client config id, provider/session/idempotency ids, and non-secret reward context needed to validate the grant.
 - Tenant branding settings are public metadata only; they must not be used as a place to store production config, provider secrets, customer identity, paid numbers, private support notes, or traffic details.
 
 Existing mitigations:

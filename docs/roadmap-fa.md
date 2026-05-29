@@ -63,7 +63,7 @@
 - Expensive outbounds can now carry usage multipliers so a high-cost VPS route can charge quota at `2x`, `10x`, or higher while preserving raw and charged bytes in the ledger.
 - Paid payment orders now allocate purchased volume through an idempotent `payment_order_allocations` ledger before customer quota changes.
 - Payment provider adapters now cover PayPal verified checkout/capture/webhooks, generic card/local hosted checkout preparation, and bank-transfer/crypto payment-reference instructions. Non-PayPal generic adapters stay pending/manual until admin verification or a future provider-specific verified callback marks an order paid.
-- Rewarded ads now start with admin-managed reward/cap settings, a capped `rewarded_ad_grants` quota-credit ledger, and a mobile client claim surface; verified ad-network SDK/webhook validation remains future hardening.
+- Rewarded ads now include admin-managed reward/cap settings, a capped `rewarded_ad_grants` quota-credit ledger, a mobile client claim surface for MVP wiring, and a signed provider webhook path for production-style ad-network/server callbacks.
 - The admin Usage/Billing dashboard now includes a customer limit manager for creating/updating customer accounts, shared account GB quota, per-client GB caps, quota scope, and account status without collecting raw paid numbers in the dashboard.
 
 ## فاز 3: Auto Route
