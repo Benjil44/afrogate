@@ -244,7 +244,7 @@
 - [x] Initial advisory route quality suggestions from historical synthetic probes.
 - [x] Predictive route quality suggestions.
 - [x] Charge allocation delay tracking.
-- [ ] Backup status monitoring.
+- [x] Backup status monitoring.
 - [ ] Route canary rollout.
 - [ ] Adapter-based migration from current panels.
 - [x] Privacy threat model.

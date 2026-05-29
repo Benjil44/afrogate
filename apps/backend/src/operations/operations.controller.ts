@@ -15,6 +15,7 @@ import {
 import type {
   AdminAlertsResponse,
   AdminAuditLogsResponse,
+  AdminBackupStatusResponse,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
   AdminSessionResponse,
@@ -46,6 +47,7 @@ import type {
   RouteFailoverEventsResponse,
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
+import { BackupStatusService } from '../backups/backup-status.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateAdminUserDto, UpdateAdminUserDto, UpdateAdminUserPasswordDto } from '../auth/dto/admin-user.dto';
 import { AdminTokenGuard } from '../security/admin-token.guard';
@@ -79,6 +81,7 @@ export class OperationsController {
     private readonly operationsService: OperationsService,
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
+    private readonly backupStatusService: BackupStatusService,
   ) {}
 
   @Get('session')
@@ -132,6 +135,14 @@ export class OperationsController {
         targetId,
         targetType,
       }),
+    };
+  }
+
+  @Get('backups/status')
+  @Roles('admin', 'supervisor', 'auditor')
+  async getBackupStatus(): Promise<AdminBackupStatusResponse> {
+    return {
+      backup: await this.backupStatusService.getStatus(),
     };
   }
 

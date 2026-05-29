@@ -112,6 +112,6 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Usage/Billing customer account limit manager for shared account and per-client GB caps.
 - [x] Backend Telegram bot user-command webhook for linked account status and quota replies.
 - [ ] Telegram bot operations.
-- [ ] Backups.
+- [x] Backups status page with guarded read-only monitoring.
 - [x] Audit logs.
 - [x] Settings with guided WireGuard/system setup and write-only secret inputs.

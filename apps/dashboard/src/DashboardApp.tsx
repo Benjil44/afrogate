@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, t
 import type {
   AdminAlertSummary,
   AdminAuditLogSummary,
+  AdminBackupStatusSummary,
   AdminBillingSettingsSummary,
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
@@ -67,6 +68,7 @@ import type {
 import {
   Activity,
   AlertTriangle,
+  Archive,
   ArrowDownUp,
   Bell,
   CheckCircle2,
@@ -111,6 +113,7 @@ import {
   deleteAdminUser,
   fetchAdminAlerts,
   fetchAdminAuditLogs,
+  fetchAdminBackupStatus,
   fetchAdminBillingCatalog,
   fetchAdminCustomerAccounts,
   fetchAdminOutbounds,
@@ -152,7 +155,7 @@ import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } f
 type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-type ActiveView = 'dashboard' | 'servers' | 'users' | 'audit' | 'billing' | 'routes' | 'alerts' | 'settings';
+type ActiveView = 'dashboard' | 'servers' | 'users' | 'audit' | 'backups' | 'billing' | 'routes' | 'alerts' | 'settings';
 type AlertStatusFilter = 'open' | 'resolved';
 type AlertSeverityFilter = 'all' | Tone;
 type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
@@ -433,6 +436,7 @@ const navItems: NavItemData[] = [
   { id: 'servers', labelKey: 'servers', icon: Server },
   { id: 'users', labelKey: 'users', icon: UserRound },
   { id: 'audit', labelKey: 'audit', icon: ScrollText },
+  { id: 'backups', labelKey: 'backups', icon: Archive },
   { id: 'billing', labelKey: 'billing', icon: CreditCard },
   { id: 'routes', labelKey: 'routes', icon: Route },
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
@@ -533,6 +537,8 @@ function AuthenticatedDashboard({
   const [routeFailoverEvents, setRouteFailoverEvents] = useState<RouteFailoverEventSummary[]>([]);
   const [routeDataState, setRouteDataState] = useState<DataState>('loading');
   const [tunnelDataState, setTunnelDataState] = useState<DataState>('loading');
+  const [backupStatus, setBackupStatus] = useState<AdminBackupStatusSummary | null>(null);
+  const [backupDataState, setBackupDataState] = useState<DataState>('loading');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const wallClock = useWallClock(format);
 
@@ -602,6 +608,43 @@ function AuthenticatedDashboard({
       window.clearInterval(timer);
     };
   }, [sessionToken]);
+
+  useEffect(() => {
+    if (!canViewBackupStatus(session)) {
+      setBackupStatus(null);
+      setBackupDataState('fallback');
+      return;
+    }
+
+    let isActive = true;
+    let controller: AbortController | null = null;
+
+    const loadBackupStatus = async () => {
+      controller?.abort();
+      controller = new AbortController();
+
+      try {
+        const response = await fetchAdminBackupStatus(sessionToken, controller.signal);
+        if (!isActive) return;
+
+        setBackupStatus(response.backup);
+        setBackupDataState('live');
+      } catch (error) {
+        if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+        setBackupDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+      }
+    };
+
+    void loadBackupStatus();
+    const timer = window.setInterval(loadBackupStatus, 60_000);
+
+    return () => {
+      isActive = false;
+      controller?.abort();
+      window.clearInterval(timer);
+    };
+  }, [session, sessionToken]);
 
   useEffect(() => {
     let isActive = true;
@@ -771,6 +814,8 @@ function AuthenticatedDashboard({
           activeView={activeView}
           alertDataState={alertDataState}
           alerts={alerts}
+          backupDataState={backupDataState}
+          backupStatus={backupStatus}
           chartSeries={chartSeries}
           dataState={dataState}
           format={format}
@@ -1015,6 +1060,8 @@ function ActivePage({
   activeView,
   alertDataState,
   alerts,
+  backupDataState,
+  backupStatus,
   chartSeries,
   dataState,
   format,
@@ -1039,6 +1086,8 @@ function ActivePage({
   activeView: ActiveView;
   alertDataState: DataState;
   alerts: AlertRowData[];
+  backupDataState: DataState;
+  backupStatus: AdminBackupStatusSummary | null;
   chartSeries: ServerMetricTimeseries[];
   dataState: DataState;
   format: DashboardFormatters;
@@ -1077,6 +1126,8 @@ function ActivePage({
       return <UsersPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     case 'audit':
       return <AuditLogsPage format={format} sessionToken={sessionToken} t={t} />;
+    case 'backups':
+      return <BackupsPage format={format} initialBackupStatus={backupStatus} sessionToken={sessionToken} t={t} />;
     case 'billing':
       return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     case 'routes':
@@ -1103,6 +1154,8 @@ function ActivePage({
         <DashboardPage
           alertDataState={alertDataState}
           alerts={alerts}
+          backupDataState={backupDataState}
+          backupStatus={backupStatus}
           chartSeries={chartSeries}
           dataState={dataState}
           format={format}
@@ -1125,6 +1178,8 @@ function ActivePage({
 function DashboardPage({
   alertDataState,
   alerts,
+  backupDataState,
+  backupStatus,
   chartSeries,
   dataState,
   format,
@@ -1142,6 +1197,8 @@ function DashboardPage({
 }: {
   alertDataState: DataState;
   alerts: AlertRowData[];
+  backupDataState: DataState;
+  backupStatus: AdminBackupStatusSummary | null;
   chartSeries: ServerMetricTimeseries[];
   dataState: DataState;
   format: DashboardFormatters;
@@ -1185,7 +1242,7 @@ function DashboardPage({
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-3">
         <OutboundsPanel dataState={routeDataState} format={format} outbounds={outbounds} t={t} />
         <CapacityPanel format={format} t={t} trafficTotals={trafficTotals} />
-        <ControlPlanePanel format={format} t={t} />
+        <ControlPlanePanel backupDataState={backupDataState} backupStatus={backupStatus} format={format} t={t} />
       </section>
     </>
   );
@@ -1349,12 +1406,23 @@ function CapacityPanel({ format, t, trafficTotals }: { format: DashboardFormatte
   );
 }
 
-function ControlPlanePanel({ format, t }: { format: DashboardFormatters; t: DashboardStrings }) {
+function ControlPlanePanel({
+  backupDataState,
+  backupStatus,
+  format,
+  t,
+}: {
+  backupDataState: DataState;
+  backupStatus: AdminBackupStatusSummary | null;
+  format: DashboardFormatters;
+  t: DashboardStrings;
+}) {
+  const backupRow = createBackupControlPlaneRow(backupStatus, backupDataState, t);
   const rows = [
     { label: t.controlPlaneRows.metricsIngest, value: format.durationSeconds(10), tone: 'good' as Tone },
     { label: t.controlPlaneRows.telegramApiEgress, value: t.controlPlaneRows.proxyReady, tone: 'neutral' as Tone },
     { label: t.controlPlaneRows.storageAlert, value: format.percentThreshold('<', 10), tone: 'warning' as Tone },
-    { label: t.controlPlaneRows.backups, value: t.controlPlaneRows.pending, tone: 'warning' as Tone },
+    { label: t.controlPlaneRows.backups, value: backupRow.value, tone: backupRow.tone },
   ];
 
   return (
@@ -1370,6 +1438,24 @@ function ControlPlanePanel({ format, t }: { format: DashboardFormatters; t: Dash
       </div>
     </section>
   );
+}
+
+function createBackupControlPlaneRow(
+  backupStatus: AdminBackupStatusSummary | null,
+  dataState: DataState,
+  t: DashboardStrings,
+): { value: string; tone: Tone } {
+  if (!backupStatus) {
+    return {
+      value: dataState === 'loading' ? t.dataStatus.loading : t.controlPlaneRows.pending,
+      tone: 'warning',
+    };
+  }
+
+  return {
+    value: backupStatusLabel(backupStatus.status, t),
+    tone: backupStatusTone(backupStatus.status),
+  };
 }
 
 function ServersPage({
@@ -2886,6 +2972,272 @@ function formatAuditMetadata(metadata: Record<string, unknown>, emptyLabel: stri
   if (serialized.length <= 240) return serialized;
 
   return `${serialized.slice(0, 240)}...`;
+}
+
+function BackupsPage({
+  format,
+  initialBackupStatus,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  initialBackupStatus: AdminBackupStatusSummary | null;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const [backupStatus, setBackupStatus] = useState<AdminBackupStatusSummary | null>(initialBackupStatus);
+  const [dataState, setDataState] = useState<DataState>(initialBackupStatus ? 'live' : 'loading');
+  const [error, setError] = useState<string | null>(null);
+
+  const loadBackupStatus = useMemo(() => async (signal?: AbortSignal) => {
+    setDataState('loading');
+    setError(null);
+
+    try {
+      const response = await fetchAdminBackupStatus(sessionToken, signal);
+      setBackupStatus(response.backup);
+      setDataState('live');
+    } catch (loadError) {
+      if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
+
+      setError(t.backupStatus.errors.load);
+      setDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
+    }
+  }, [sessionToken, t]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadBackupStatus(controller.signal);
+
+    return () => controller.abort();
+  }, [loadBackupStatus]);
+
+  const statusTone = backupStatus ? backupStatusTone(backupStatus.status) : 'warning';
+  const latestSuccess = formatBackupDate(backupStatus?.latestSuccessfulBackupAt, format, t);
+  const latestAge = formatBackupAgeHours(backupStatus?.latestBackupAgeHours, format, t);
+  const encryptionLabel = backupStatus?.encrypted === true
+    ? t.backupStatus.encrypted
+    : backupStatus?.encrypted === false
+      ? t.backupStatus.notEncrypted
+      : t.backupStatus.unknown;
+  const restoreTest = formatBackupDate(backupStatus?.restoreTestedAt, format, t);
+  const issues = backupStatus?.issues ?? [];
+
+  return (
+    <section className="mt-0 grid gap-3">
+      <section className="grid gap-2 md:grid-cols-4">
+        <BackupMetricCard
+          label={t.backupStatus.status}
+          tone={statusTone}
+          value={backupStatus ? backupStatusLabel(backupStatus.status, t) : t.dataStatus.loading}
+        />
+        <BackupMetricCard label={t.backupStatus.latestSuccess} tone={backupStatusAgeTone(backupStatus)} value={latestSuccess} />
+        <BackupMetricCard label={t.backupStatus.backupAge} tone={backupStatusAgeTone(backupStatus)} value={latestAge} />
+        <BackupMetricCard label={t.backupStatus.encryption} tone={backupStatusEncryptionTone(backupStatus)} value={encryptionLabel} />
+      </section>
+
+      <section className={panelClass}>
+        <div className="flex min-h-9 flex-col gap-2 border-b border-afro-line pb-2 sm:flex-row sm:items-center sm:justify-between">
+          <PanelHeadingContent
+            title={t.backupStatus.title}
+            meta={backupStatus ? t.backupStatus.issuesLoaded(format.integer(issues.length)) : t.dataStatus.loading}
+          />
+          <button
+            className="inline-flex min-h-9 w-fit items-center justify-center rounded-md bg-afro-sidebar px-3 text-[13px] font-bold text-white hover:bg-[#1f3138]"
+            onClick={() => void loadBackupStatus()}
+            type="button"
+          >
+            {t.backupStatus.refresh}
+          </button>
+        </div>
+
+        <div className="mt-2 grid gap-2">
+          {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
+          {dataState === 'loading' && !backupStatus ? (
+            <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} />
+          ) : null}
+          {backupStatus ? (
+            <div className="grid gap-2 lg:grid-cols-2">
+              <DetailRow label={t.backupStatus.latestJob}>
+                <StatusBadge tone={backupJobStatusTone(backupStatus.latestJobStatus)}>
+                  {backupJobStatusLabel(backupStatus.latestJobStatus, t)}
+                </StatusBadge>
+              </DetailRow>
+              <DetailRow label={t.backupStatus.latestFailure}>
+                {formatBackupDate(backupStatus.latestFailedBackupAt, format, t)}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.maxAge}>
+                {t.backupStatus.hours(format.integer(backupStatus.maxBackupAgeHours))}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restoreTest}>{restoreTest}</DetailRow>
+              <DetailRow label={t.backupStatus.restoreAge}>
+                {formatBackupAgeDays(backupStatus.restoreTestAgeDays, format, t)}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restoreMaxAge}>
+                {t.backupStatus.days(format.integer(backupStatus.restoreTestMaxAgeDays))}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.backupSize}>
+                {format.bytes(backupStatus.sizeBytes ?? null)}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.duration}>
+                {formatBackupDuration(backupStatus.durationSeconds, format, t)}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.destination}>
+                {backupStatus.destinationLabel ?? backupStatus.destinationType ?? t.backupStatus.notAvailable}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.statusFile}>
+                <StatusBadge tone={backupStatus.statusFileReadable ? 'good' : backupStatus.statusFileConfigured ? 'critical' : 'warning'}>
+                  {backupStatus.statusFileReadable ? t.backupStatus.readable : backupStatus.statusFileConfigured ? t.backupStatus.unreadable : t.backupStatus.notConfigured}
+                </StatusBadge>
+              </DetailRow>
+              <DetailRow label={t.backupStatus.statusFileUpdated}>
+                {formatBackupDate(backupStatus.statusFileUpdatedAt, format, t)}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restoreExecution}>
+                <StatusBadge tone="neutral">{t.backupStatus.readOnly}</StatusBadge>
+              </DetailRow>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {backupStatus ? (
+        <section className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <section className={panelClass}>
+            <PanelHeading title={t.backupStatus.readiness} icon={ShieldCheck} meta={backupStatusLabel(backupStatus.status, t)} />
+            <div className="mt-2 grid gap-2">
+              <DetailRow label={t.backupStatus.monitoring}>
+                <StatusBadge tone={backupStatus.monitoringEnabled ? 'good' : 'warning'}>
+                  {backupStatus.monitoringEnabled ? t.backupStatus.enabled : t.backupStatus.notConfigured}
+                </StatusBadge>
+              </DetailRow>
+              <DetailRow label={t.backupStatus.encryptionRequired}>
+                {backupStatus.encryptionRequired ? t.backupStatus.required : t.backupStatus.notRequired}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.retention}>
+                {t.backupStatus.retentionSummary(
+                  format.integer(backupStatus.retention.dailyDays),
+                  format.integer(backupStatus.retention.weeklyWeeks),
+                  format.integer(backupStatus.retention.monthlyMonths),
+                )}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.artifacts}>
+                {backupStatus.artifacts.length > 0
+                  ? backupStatus.artifacts.map((artifact) => backupArtifactLabel(artifact, t)).join(', ')
+                  : t.backupStatus.notAvailable}
+              </DetailRow>
+            </div>
+          </section>
+
+          <section className={panelClass}>
+            <PanelHeading title={t.backupStatus.issues} icon={AlertTriangle} meta={t.backupStatus.issuesLoaded(format.integer(issues.length))} />
+            <div className="mt-2 grid gap-2">
+              {issues.length === 0 ? (
+                <PanelState detail={t.backupStatus.noIssuesDetail} kind="empty" title={t.backupStatus.noIssues} />
+              ) : (
+                issues.map((issue) => (
+                  <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={`${issue.code}-${issue.severity}`}>
+                    <span className="min-w-0 truncate text-sm font-bold text-afro-ink" title={backupIssueLabel(issue.code, t)}>
+                      {backupIssueLabel(issue.code, t)}
+                    </span>
+                    <StatusBadge tone={issue.severity === 'critical' ? 'critical' : 'warning'}>
+                      {issue.severity === 'critical' ? t.status.critical : t.status.warning}
+                    </StatusBadge>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function BackupMetricCard({ label, tone, value }: { label: string; tone: Tone; value: string }) {
+  return (
+    <div className={panelClass}>
+      <span className={mutedTextClass}>{label}</span>
+      <strong className={`mt-1 block truncate text-[18px] leading-tight ${tone === 'critical' ? 'text-[#b91c1c]' : tone === 'warning' ? 'text-[#9a5b00]' : 'text-afro-ink'}`} title={value}>
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function backupStatusTone(status: AdminBackupStatusSummary['status']): Tone {
+  if (status === 'healthy') return 'good';
+  if (status === 'critical') return 'critical';
+
+  return 'warning';
+}
+
+function backupStatusAgeTone(backupStatus: AdminBackupStatusSummary | null): Tone {
+  if (!backupStatus) return 'warning';
+  if (backupStatus.status === 'critical') return 'critical';
+  if (!backupStatus.latestSuccessfulBackupAt) return 'critical';
+  if (backupStatus.latestBackupAgeHours !== null && backupStatus.latestBackupAgeHours !== undefined && backupStatus.latestBackupAgeHours > backupStatus.maxBackupAgeHours) return 'critical';
+
+  return backupStatus.status === 'warning' ? 'warning' : 'good';
+}
+
+function backupStatusEncryptionTone(backupStatus: AdminBackupStatusSummary | null): Tone {
+  if (!backupStatus) return 'warning';
+  if (backupStatus.encryptionRequired && backupStatus.encrypted !== true) return 'critical';
+  if (backupStatus.encrypted === true) return 'good';
+
+  return 'warning';
+}
+
+function backupJobStatusTone(status: AdminBackupStatusSummary['latestJobStatus']): Tone {
+  if (status === 'succeeded') return 'good';
+  if (status === 'failed') return 'critical';
+  if (status === 'running') return 'warning';
+
+  return 'neutral';
+}
+
+function backupStatusLabel(status: AdminBackupStatusSummary['status'], t: DashboardStrings): string {
+  return t.backupStatus.statusLabels[status];
+}
+
+function backupJobStatusLabel(status: AdminBackupStatusSummary['latestJobStatus'], t: DashboardStrings): string {
+  return t.backupStatus.jobStatusLabels[status];
+}
+
+function backupIssueLabel(code: string, t: DashboardStrings): string {
+  const labels = t.backupStatus.issueLabels as Record<string, string>;
+
+  return labels[code] ?? code;
+}
+
+function backupArtifactLabel(artifact: string, t: DashboardStrings): string {
+  const labels = t.backupStatus.artifactLabels as Record<string, string>;
+
+  return labels[artifact] ?? artifact;
+}
+
+function formatBackupDate(value: string | null | undefined, format: DashboardFormatters, t: DashboardStrings): string {
+  return value ? format.dateTime(new Date(value)) : t.backupStatus.notAvailable;
+}
+
+function formatBackupAgeHours(value: number | null | undefined, format: DashboardFormatters, t: DashboardStrings): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return t.backupStatus.notAvailable;
+
+  return t.backupStatus.hoursAgo(format.integer(Math.round(value)));
+}
+
+function formatBackupAgeDays(value: number | null | undefined, format: DashboardFormatters, t: DashboardStrings): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return t.backupStatus.notAvailable;
+
+  return t.backupStatus.daysAgo(format.integer(Math.round(value)));
+}
+
+function formatBackupDuration(value: number | null | undefined, format: DashboardFormatters, t: DashboardStrings): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return t.backupStatus.notAvailable;
+  if (value < 60) return format.durationSeconds(Math.round(value));
+
+  return format.durationMinutes(Math.round(value / 60));
 }
 
 type CustomerAccountFormState = {
@@ -8375,7 +8727,12 @@ function Sidebar({
   session: AdminSessionResponse;
   t: DashboardStrings;
 }) {
-  const visibleNavItems = navItems.filter((item) => item.id !== 'audit' || canViewAuditLogs(session));
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.id === 'audit') return canViewAuditLogs(session);
+    if (item.id === 'backups') return canViewBackupStatus(session);
+
+    return true;
+  });
 
   return (
     <aside
@@ -8452,6 +8809,10 @@ function SignOutButton({ onSignOut, t }: { onSignOut: () => void; t: DashboardSt
 }
 
 function canViewAuditLogs(session: AdminSessionResponse): boolean {
+  return ['superadmin', 'owner', 'admin', 'supervisor', 'auditor'].includes(session.actor.role);
+}
+
+function canViewBackupStatus(session: AdminSessionResponse): boolean {
   return ['superadmin', 'owner', 'admin', 'supervisor', 'auditor'].includes(session.actor.role);
 }
 

@@ -751,6 +751,19 @@ Repository remote is ready:
 - Verified fixed-port dashboard smoke test with `npm run test:e2e`.
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
+- Added guarded read-only backup status monitoring at `GET /api/admin/backups/status` with environment-driven freshness, encryption, retention, artifact, destination-label, and restore-test readiness.
+- Added `BackupStatusService` for sanitized external backup-status JSON ingestion without returning status file paths, decrypted data, object-store credentials, raw dumps, or restore execution controls.
+- Added the dashboard Backups page, role-aware sidebar item, NOC backup badge, English/Persian labels, and browser coverage for healthy monitored backup readiness.
+- Updated `.env.example`, architecture, repository, security/performance, memory, dashboard checklist, and main checklist for the read-only backup monitoring boundary.
+- Bumped AfroGate to `0.83.0` for the guarded backup status API and dashboard page.
+- Checklist completion after this slice is `211 / 229` items, or `92.1%` complete with `7.9%` remaining.
+- Verified version alignment with `npm run version:check`.
+- Verified repository secret hygiene with `npm run secrets:check`.
+- Verified dashboard contrast with `npm run contrast:check`.
+- Verified workspace typecheck and production build with `npm run typecheck` and `npm run build`.
+- Verified dashboard/client browser coverage with `npm run test:e2e`; 10 tests passed including the new Backups flow.
+- Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 
 - Verified protocol server apply dry-run event contracts and Settings rendering with `npm run typecheck --workspaces --if-present`.
 - Applied PostgreSQL migrations through `0011_protocol_apply_events.sql` with `npm --workspace @afrogate/backend run db:migrate`.

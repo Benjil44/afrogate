@@ -4,7 +4,7 @@ AfroGate uses a small monorepo layout so product, API, dashboard, agent, and dep
 
 ```text
 apps/
-  backend/       NestJS API, alerts, billing, metrics ingest, protocol-aware route decisions
+  backend/       NestJS API, alerts, billing, backup status, metrics ingest, protocol-aware route decisions
   dashboard/     React/Vite/Tailwind admin dashboard
   client/        React/Vite/Tailwind VPN client route and quota surface
   agent/         Python server monitoring agent and privacy-safe route probes
@@ -94,6 +94,8 @@ Route decision previews and event detail also include `switchRollout`. This advi
 Route decision previews and event detail also include `switchRolloutEvaluation`. This advisory guard result records observed candidate loss, jitter, latency, and score against the rollout thresholds, then recommends hold, start canary, expand canary, manual review, or rollback without mutating OS routing.
 
 Route decision previews and event detail also include `switchOrchestration`. This state-machine-style summary combines route locks, manual mode, cooldown, preflight, rollout plan, canary guard, sticky-session policy, route-consistency hold, and rollback readiness into one audited next-action model. It can recommend assignment-only control-plane recording, hold, canary, expand, rollback, or manual review while keeping server OS/data-plane mutation disabled until an audited adapter exists.
+
+Backup status monitoring lives in the backend as a read-only control-plane API under `/api/admin/backups/status`. External backup jobs own backup execution and may publish a compact JSON status file; AfroGate returns only sanitized readiness evidence for the dashboard and does not expose local file paths, decrypted data, object-store credentials, raw dumps, or restore controls.
 
 Route-quality analytics currently live in the backend operations service and dashboard Settings page. The first endpoint, `/api/admin/route-quality/analytics`, derives hourly recommendations from historical synthetic route probes already stored in `server_metrics.raw`, so it adds no extra agent payload and no new traffic-derived user data.
 

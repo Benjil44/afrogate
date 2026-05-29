@@ -20,6 +20,7 @@ import { PostgresMetricsRepository } from './metrics/postgres-metrics.repository
 import { AlertNotificationService } from './notifications/alert-notification.service';
 import { TelegramAlertService } from './notifications/telegram-alert.service';
 import { AuditService } from './audit/audit.service';
+import { BackupStatusService } from './backups/backup-status.service';
 import { OperationsController } from './operations/operations.controller';
 import { OperationsService } from './operations/operations.service';
 import { RouteQualityAggregationService } from './operations/route-quality-aggregation.service';
@@ -61,6 +62,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AlertNotificationService,
     AuditService,
     AuthService,
+    BackupStatusService,
     BillingService,
     PayPalPaymentService,
     MetricsService,

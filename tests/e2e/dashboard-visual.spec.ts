@@ -103,6 +103,17 @@ test('audit logs page shows sanitized audit events', async ({ page }) => {
   await expect(page.getByText('[redacted]')).toBeVisible();
 });
 
+test('backups page shows monitored backup readiness', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await page.locator('[data-view="backups"]').click();
+
+  await expect(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Backup monitor' })).toBeVisible();
+  await expect(page.getByText('encrypted', { exact: true })).toBeVisible();
+  await expect(page.getByText('PostgreSQL dump, Config files, Encrypted secrets')).toBeVisible();
+  await expect(page.getByText('No backup issues')).toBeVisible();
+});
+
 async function loadSignedInDashboard(page: Page, size: { width: number; height: number }): Promise<void> {
   await mockDashboardApi(page);
   await page.setViewportSize(size);
@@ -160,6 +171,11 @@ async function mockDashboardApi(page: Page): Promise<void> {
       case '/api/admin/audit-logs':
         await fulfillJson(route, {
           auditLogs: auditLogRows(),
+        });
+        return;
+      case '/api/admin/backups/status':
+        await fulfillJson(route, {
+          backup: backupStatusRow(),
         });
         return;
       case '/api/admin/servers':
@@ -559,6 +575,39 @@ function auditLogRows() {
       targetType: 'payment_order',
     },
   ];
+}
+
+function backupStatusRow() {
+  return {
+    artifacts: ['postgres', 'config', 'secrets'],
+    destinationLabel: 's3://afrogate-prod/daily',
+    destinationType: 's3',
+    durationSeconds: 42,
+    encrypted: true,
+    encryptionRequired: true,
+    issues: [],
+    latestBackupAgeHours: 2,
+    latestBackupAt: fixedNow,
+    latestFailedBackupAt: null,
+    latestJobStatus: 'succeeded',
+    latestSuccessfulBackupAt: fixedNow,
+    maxBackupAgeHours: 30,
+    monitoringEnabled: true,
+    restoreTestAgeDays: 4,
+    restoreTestMaxAgeDays: 30,
+    restoreTestedAt: '2026-05-24T08:00:00.000Z',
+    retention: {
+      dailyDays: 7,
+      monthlyMonths: 3,
+      weeklyWeeks: 4,
+    },
+    sizeBytes: 8_388_608,
+    status: 'healthy',
+    statusFileConfigured: true,
+    statusFileReadable: true,
+    statusFileUpdatedAt: fixedNow,
+    updatedAt: fixedNow,
+  };
 }
 
 function createOutbound(id: string, serverId: string, serverHostname: string, name: string, routeGroup: string, priority: number, healthStatus: string) {

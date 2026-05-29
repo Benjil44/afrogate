@@ -158,6 +158,7 @@ Required protections:
 - Saved server secrets must never be displayed back to admins; support replace, test, rotate, revoke, and audit instead.
 - Database least-privilege accounts.
 - Backups encrypted and tested.
+- Backup monitoring must stay read-only unless an explicit audited backup/restore engine is implemented. Dashboard/API responses may show freshness, encryption, retention, artifact, destination label, and restore-test status, but must not return backup file paths, decrypted data, object-store credentials, raw dumps, or restore execution controls.
 
 ## Implementation Priority
 

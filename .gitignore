@@ -51,4 +51,4 @@ Thumbs.db
 # Local database and backups
 *.sqlite
 *.db
-backups/
+/backups/

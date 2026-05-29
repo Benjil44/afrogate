@@ -1100,6 +1100,48 @@ export interface AdminAuditLogSummary {
   createdAt: string;
 }
 
+export type BackupStatusKind = 'not_configured' | 'healthy' | 'warning' | 'critical';
+export type BackupJobStatus = 'unknown' | 'succeeded' | 'failed' | 'running';
+export type BackupIssueSeverity = 'warning' | 'critical';
+
+export interface AdminBackupIssueSummary {
+  code: string;
+  severity: BackupIssueSeverity;
+}
+
+export interface AdminBackupRetentionSummary {
+  dailyDays: number;
+  weeklyWeeks: number;
+  monthlyMonths: number;
+}
+
+export interface AdminBackupStatusSummary {
+  status: BackupStatusKind;
+  latestJobStatus: BackupJobStatus;
+  monitoringEnabled: boolean;
+  statusFileConfigured: boolean;
+  statusFileReadable: boolean;
+  statusFileUpdatedAt?: string | null;
+  latestBackupAt?: string | null;
+  latestSuccessfulBackupAt?: string | null;
+  latestFailedBackupAt?: string | null;
+  latestBackupAgeHours?: number | null;
+  maxBackupAgeHours: number;
+  encrypted?: boolean | null;
+  encryptionRequired: boolean;
+  restoreTestedAt?: string | null;
+  restoreTestAgeDays?: number | null;
+  restoreTestMaxAgeDays: number;
+  sizeBytes?: number | null;
+  durationSeconds?: number | null;
+  destinationType?: string | null;
+  destinationLabel?: string | null;
+  retention: AdminBackupRetentionSummary;
+  artifacts: string[];
+  issues: AdminBackupIssueSummary[];
+  updatedAt: string;
+}
+
 export type ProtocolKind = 'wireguard' | 'vless' | 'l2tp' | 'ikev2';
 export type ProtocolProfile = 'balanced' | 'highSpeed' | 'highSecurity' | 'gaming';
 export type RouteProtocolProfile =
@@ -2597,4 +2639,8 @@ export interface AdminAlertsResponse {
 
 export interface AdminAuditLogsResponse {
   auditLogs: AdminAuditLogSummary[];
+}
+
+export interface AdminBackupStatusResponse {
+  backup: AdminBackupStatusSummary;
 }

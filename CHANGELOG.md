@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.83.0 - 2026-05-29
+
+- Added guarded read-only backup status monitoring through `GET /api/admin/backups/status`.
+- Added the dashboard Backups page and NOC backup badge for encrypted, fresh, restore-tested backup readiness.
+- Added environment/status-file configuration for external backup jobs without exposing backup file paths or enabling restore execution.
+
 ## 0.82.0 - 2026-05-29
 
 - Added guarded `GET /api/admin/audit-logs` for compact recent audit event review by admin, supervisor, and auditor roles.
