@@ -502,7 +502,7 @@ Backup status monitoring is read-only in the control plane. External backup jobs
 - Telegram bot باید در خود Telegram و با BotFather ساخته شود؛ AfroGate اکنون wizard سوپراَدمن برای وارد کردن یک‌باره token، ذخیره encrypted/write-only، ثبت chat/admin idهای مجاز، webhook secret، و تست اتصال Telegram API فراهم می‌کند.
 - API rate limiting برای endpoint های حساس عمومی مثل login، PayPal webhook، و Telegram webhook.
 - agent token per server.
-- rotation برای token ها.
+- rotation برای token ها از طریق endpoint محافظت‌شده `POST /api/agents/:serverId/tokens/rotate` انجام می‌شود: tokenهای فعال همان server revoke می‌شوند، token جدید فقط یک‌بار plaintext برمی‌گردد، در دیتابیس فقط hash ذخیره می‌شود، و audit event ثبت می‌شود.
 - محدودسازی دسترسی به endpoint های agent.
 - audit برای عملیات حساس: شارژ حجم، حذف کاربر، تغییر route، تغییر قیمت.
 

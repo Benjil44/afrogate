@@ -28,6 +28,7 @@
 ### Agent
 
 - ثبت سرور در control plane.
+- چرخش token هر agent از طریق endpoint محافظت‌شده و audited، با ذخیره فقط hash.
 - ارسال CPU/RAM/disk.
 - ارسال network counters.
 - ارسال WireGuard status.

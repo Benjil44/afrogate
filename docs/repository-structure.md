@@ -75,6 +75,8 @@ agent POST /api/metrics -> servers/server_metrics -> GET /api/metrics/latest -> 
 
 The metrics payload already includes CPU/RAM/storage/network counters and privacy-safe WireGuard status telemetry when `wg` is installed on the agent host.
 
+Database-issued agent tokens are per server and stored only as hashes. Admins can rotate one server's agent token with `POST /api/agents/:serverId/tokens/rotate`; the endpoint revokes active tokens for that server, returns the new plaintext token once, and records an audit event. The legacy `AFROGATE_AGENT_TOKEN` remains only a bootstrap/local fallback.
+
 Settings route candidates can now come from two sources: managed outbound health rows and live agent WireGuard telemetry. Only managed outbound rows can be persisted as selected outbounds for route settings; agent candidates remain live diagnostics until provisioning/apply links them to routing state.
 
 Agent ping/jitter/packet-loss metrics are collected only for configured synthetic targets via `AFROGATE_PING_TARGETS`; empty configuration keeps those fields null. The agent also has opt-in protocol-aware route probes through `AFROGATE_TCP_PROBE_TARGETS`, `AFROGATE_UDP_PROBE_TARGETS`, `AFROGATE_QUIC_PROBE_TARGETS`, and `AFROGATE_DNS_PROBE_TARGETS`; empty configuration sends no TCP/UDP/QUIC/DNS route-probe rows. WireGuard route-probe rows are derived from local `wg` telemetry when available, using interface status, active peer count, and handshake freshness without raw keys. Route probe rows may include optional `loadedLatencyMs` and `loadedLatencyDeltaMs` values from bounded synthetic checks so the backend can detect paths that look fine at idle but lag under load.

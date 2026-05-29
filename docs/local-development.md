@@ -27,7 +27,7 @@ VITE_API_BASE_URL=http://127.0.0.1:7000/api
 AFROGATE_API_URL=http://127.0.0.1:7000/api
 ```
 
-Database-backed endpoints such as agent registration, heartbeat persistence, server inventory, and route history require `DATABASE_URL` plus PostgreSQL migrations. The dashboard can still load with fallback sample data when the API or database is unavailable.
+Database-backed endpoints such as agent registration, agent token rotation, heartbeat persistence, server inventory, and route history require `DATABASE_URL` plus PostgreSQL migrations. The dashboard can still load with fallback sample data when the API or database is unavailable.
 
 Settings private-key storage also requires `AFROGATE_SECRETS_KEY`. Use a unique 32-byte base64/base64url or 64-character hex value per environment and keep it in the git-ignored `.env` or a deployment secret store. If this key is lost, encrypted secret records cannot be decrypted later by the provisioning engine.
 
@@ -58,6 +58,8 @@ npm run dev:backend
 npm run dev:dashboard
 python apps/agent/run.py --once
 ```
+
+Agent tokens are issued once and stored only as hashes. After a server has been registered, admins can rotate its token through `POST /api/agents/:serverId/tokens/rotate`; the old active tokens for that server are revoked immediately, so update the agent environment before restarting it.
 
 Agent ping/jitter/packet-loss probes are opt-in. Use synthetic targets you control or accept:
 

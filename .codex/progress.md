@@ -1416,3 +1416,32 @@ Repository remote is ready:
 
 - Implement native client per-app VPN split tunneling in a future mobile/desktop client phase.
 - Keep the separate Telegram bot operations page pending until there is more operational state to manage beyond setup/readiness.
+
+## 2026-05-29 Agent Token Rotation Slice
+
+### Completed
+
+- Added guarded `POST /api/agents/:serverId/tokens/rotate` for admin/owner/superadmin agent token rotation.
+- Rotation revokes all active tokens for the target server, issues one new plaintext token once, stores only its SHA-256 hash, and records an `agent.token.rotate` audit event.
+- Added shared rotation contracts, a DTO, and an active-token lookup index migration `0024_agent_token_rotation_index.sql`.
+- Updated security, repository, local-development, threat-model, env-sample, roadmap, checklist, and memory docs for the rotation workflow.
+- Marked per-agent token rotation complete in `.codex/checklist.md`; checklist completion is now `218 / 236` items, or `92.4%` complete with `7.6%` remaining.
+- Bumped AfroGate to `0.88.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck --workspace @afrogate/backend --workspace @afrogate/shared`.
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run contrast:check`.
+- Ran `npm run test:e2e`; 10 tests passed.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Database least-privilege roles remain pending in the security hardening track.
+- Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports, tenant branding, and native per-app VPN split tunneling remain future work.

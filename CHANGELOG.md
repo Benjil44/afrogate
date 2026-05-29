@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.88.0 - 2026-05-29
+
+- Added guarded per-server agent token rotation with audit logging and one-time plaintext token issuance.
+- Rotation revokes existing active agent tokens for the server and stores only the SHA-256 hash of the replacement token.
+- Added an active-token lookup index and updated security/deployment docs for the rotation workflow.
+
 ## 0.87.0 - 2026-05-29
 
 - Added superadmin Telegram bot setup in Settings with encrypted write-only BotFather token and webhook-secret storage.

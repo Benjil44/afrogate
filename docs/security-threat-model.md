@@ -20,7 +20,7 @@ Primary actors:
 - Anonymous internet users reaching public HTTPS routes through Nginx.
 - Admin/seller/support/auditor users authenticated to the dashboard.
 - VPN clients authenticated with client-scoped access tokens.
-- Agents authenticated with per-server or legacy bootstrap tokens.
+- Agents authenticated with per-server hashed tokens or the legacy bootstrap fallback token.
 - Payment and Telegram providers sending public webhooks.
 - Operators with deployment access to `.env`, systemd, Nginx, and database credentials.
 
@@ -56,6 +56,7 @@ Existing mitigations:
 
 - Admin guards and role guards protect `/api/admin/*`.
 - Client access tokens are one-time plaintext at issuance and stored only as hashes.
+- Agent tokens are issued or rotated as one-time plaintext values, stored only as hashes, scoped to metrics writes, and revocable per server through a guarded audited admin endpoint.
 - Paid numbers are write-only and stored as HMAC hashes.
 - Server and protocol secrets use encrypted secret references; API responses return metadata only.
 - Per-client subscription credentials use encrypted client-owned rows; admin APIs return metadata only, and client subscription rendering is scoped to the authenticated client's own active credential plus explicit public endpoint metadata.

@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto';
-import { BadRequestException, Injectable } from '@nestjs/common';
-import type { AgentHeartbeatResponse, AgentRegistrationResponse } from '@afrogate/shared';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { AgentHeartbeatResponse, AgentRegistrationResponse, AgentTokenRotationResponse } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { hashAgentToken } from '../security/agent-token';
 import type { AuthActor } from '../security/auth-request';
 import { AgentHeartbeatDto } from './dto/agent-heartbeat.dto';
 import { RegisterAgentDto } from './dto/register-agent.dto';
+import { RotateAgentTokenDto } from './dto/rotate-agent-token.dto';
 
 interface RegisteredServerRow {
   id: string;
@@ -23,6 +24,10 @@ interface CreatedTokenRow {
   createdAt: Date;
 }
 
+interface RevokedTokenRow {
+  id: string;
+}
+
 const agentTokenScopes = ['metrics:write'];
 
 @Injectable()
@@ -35,7 +40,7 @@ export class AgentsService {
   async register(dto: RegisterAgentDto, actor: AuthActor | undefined): Promise<AgentRegistrationResponse> {
     const token = this.createAgentToken();
     const tokenHash = hashAgentToken(token);
-    const tokenName = dto.tokenName?.trim() || `${dto.serverExternalId}-agent`;
+    const tokenName = this.normalizeTokenName(dto.tokenName, `${dto.serverExternalId}-agent`);
 
     return this.database.transaction(async (executor) => {
       const server = await this.upsertServer(dto, executor);
@@ -95,6 +100,77 @@ export class AgentsService {
           scopes: this.normalizeScopes(createdToken.scopes),
           createdAt: createdToken.createdAt.toISOString(),
         },
+      };
+    });
+  }
+
+  async rotateToken(
+    serverId: string,
+    dto: RotateAgentTokenDto,
+    actor: AuthActor | undefined,
+  ): Promise<AgentTokenRotationResponse> {
+    const token = this.createAgentToken();
+    const tokenHash = hashAgentToken(token);
+
+    return this.database.transaction(async (executor) => {
+      const server = await this.getServerForTokenRotation(serverId, executor);
+      const tokenName = this.normalizeTokenName(dto.tokenName, `${server.externalId}-agent-rotated`);
+
+      const revokedResult = await executor.query<RevokedTokenRow>(
+        `
+          UPDATE agent_tokens
+          SET revoked_at = now()
+          WHERE server_id = $1
+            AND revoked_at IS NULL
+          RETURNING id
+        `,
+        [server.id],
+      );
+
+      const tokenResult = await executor.query<CreatedTokenRow>(
+        `
+          INSERT INTO agent_tokens (server_id, name, token_hash, scopes)
+          VALUES ($1, $2, $3, $4::jsonb)
+          RETURNING
+            id,
+            name,
+            scopes,
+            created_at AS "createdAt"
+        `,
+        [server.id, tokenName, tokenHash, JSON.stringify(agentTokenScopes)],
+      );
+      const createdToken = tokenResult.rows[0];
+
+      await this.audit.record(
+        actor,
+        'agent.token.rotate',
+        'server',
+        server.id,
+        {
+          externalId: server.externalId,
+          tokenId: createdToken.id,
+          tokenName: createdToken.name,
+          revokedTokenCount: revokedResult.rows.length,
+        },
+        executor,
+      );
+
+      return {
+        server: {
+          id: server.id,
+          externalId: server.externalId,
+          hostname: server.hostname,
+          platform: server.platform,
+          status: server.status,
+        },
+        token: {
+          id: createdToken.id,
+          name: createdToken.name,
+          token,
+          scopes: this.normalizeScopes(createdToken.scopes),
+          createdAt: createdToken.createdAt.toISOString(),
+        },
+        revokedTokenCount: revokedResult.rows.length,
       };
     });
   }
@@ -178,8 +254,37 @@ export class AgentsService {
     return result.rows[0];
   }
 
+  private async getServerForTokenRotation(
+    serverId: string,
+    executor: DatabaseQueryExecutor,
+  ): Promise<RegisteredServerRow> {
+    const result = await executor.query<RegisteredServerRow>(
+      `
+        SELECT
+          id,
+          external_id AS "externalId",
+          hostname,
+          platform,
+          status
+        FROM servers
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [serverId],
+    );
+    const server = result.rows[0];
+    if (!server) throw new NotFoundException('Server was not found');
+
+    return server;
+  }
+
   private createAgentToken(): string {
     return `agt_${randomBytes(32).toString('base64url')}`;
+  }
+
+  private normalizeTokenName(value: string | undefined, fallback: string): string {
+    const normalized = value?.trim() || fallback;
+    return normalized.slice(0, 80);
   }
 
   private resolveHeartbeatServerId(dto: AgentHeartbeatDto, actor: AuthActor | undefined): string {

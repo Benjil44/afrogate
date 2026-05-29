@@ -145,6 +145,7 @@ Required protections:
 - Brute-force detection for admin login.
 - Agent authentication for metrics ingest.
 - Separate tokens per agent.
+- Agent token rotation is guarded by admin auth: `POST /api/agents/:serverId/tokens/rotate` revokes active tokens for that server, returns one new plaintext token only once, stores only the SHA-256 hash, and records an audit event.
 - Secret rotation plan.
 - Paid numbers must be write-only in admin APIs and stored as HMAC hashes with `AFROGATE_IDENTITY_HASH_KEY` or the deployment secrets key; never return raw paid numbers to the dashboard.
 - Payment provider catalogs may expose non-secret public config only. PayPal client secrets, webhook IDs, merchant credentials, and private gateway keys must use encrypted secret storage or deployment secrets, never `payment_methods.public_config`.

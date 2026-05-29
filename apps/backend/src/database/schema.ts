@@ -185,6 +185,7 @@ export const agentTokens = pgTable(
   (table) => ({
     tokenHashIdx: uniqueIndex('agent_tokens_token_hash_idx').on(table.tokenHash),
     serverIdx: index('agent_tokens_server_idx').on(table.serverId),
+    serverActiveIdx: index('agent_tokens_server_active_idx').on(table.serverId, table.createdAt).where(sql`revoked_at IS NULL`),
   }),
 );
 

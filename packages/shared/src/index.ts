@@ -959,21 +959,35 @@ export interface RegisterAgentRequest {
   revokeExistingTokens?: boolean;
 }
 
+export interface AgentServerSummary {
+  id: string;
+  externalId: string;
+  hostname?: string | null;
+  platform?: string | null;
+  status: string;
+}
+
+export interface IssuedAgentTokenSummary {
+  id: string;
+  name: string;
+  token: string;
+  scopes: string[];
+  createdAt: string;
+}
+
 export interface AgentRegistrationResponse {
-  server: {
-    id: string;
-    externalId: string;
-    hostname?: string | null;
-    platform?: string | null;
-    status: string;
-  };
-  token: {
-    id: string;
-    name: string;
-    token: string;
-    scopes: string[];
-    createdAt: string;
-  };
+  server: AgentServerSummary;
+  token: IssuedAgentTokenSummary;
+}
+
+export interface RotateAgentTokenRequest {
+  tokenName?: string;
+}
+
+export interface AgentTokenRotationResponse {
+  server: AgentServerSummary;
+  token: IssuedAgentTokenSummary;
+  revokedTokenCount: number;
 }
 
 export interface AgentHeartbeatRequest {

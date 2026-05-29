@@ -19,7 +19,7 @@ For now, report security issues privately to the project owner. Do not open publ
 ## Required Before Production
 
 - Admin authentication and role-based authorization.
-- Agent token rotation and per-agent credentials.
+- Per-agent credentials and the guarded agent token rotation endpoint.
 - Firewall baseline applied on every VPS.
 - Nginx rate limiting, backend API rate limiting for sensitive public endpoints, and request size limits.
 - PostgreSQL bound to private/local interfaces only.

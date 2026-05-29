@@ -259,6 +259,6 @@
 - [x] Rate limiting at API layer.
 - [x] Dependency audit in CI.
 - [x] Secret scan in CI.
-- [ ] Per-agent token rotation.
+- [x] Per-agent token rotation.
 - [ ] Database least-privilege roles.
 - [x] Loaded latency and bufferbloat monitoring.

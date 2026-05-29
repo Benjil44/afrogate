@@ -10,7 +10,7 @@ Primary privacy assets:
 - Client account data: client config labels, protocol type, quota/usage counters, route preference, and client access-token metadata.
 - Billing and rewarded-ad data: payment orders, provider ids, package/price snapshots, allocation events, rewarded-ad grants, and provider callback metadata.
 - Operational telemetry: server metrics, tunnel/interface health, outbound health checks, route-probe samples, alerts, and route decision events.
-- Secrets and credentials: admin sessions, agent tokens, client token hashes, Telegram/PayPal secrets, server credentials, and protocol private keys.
+- Secrets and credentials: admin sessions, one-time plaintext agent/client tokens at issuance, stored agent/client token hashes, Telegram/PayPal secrets, server credentials, and protocol private keys.
 
 AfroGate must not store user traffic content, user destination history, DNS query history from user traffic, per-user IP history for routing, decrypted server credentials in logs, or raw paid phone numbers in API responses or dashboard state.
 
