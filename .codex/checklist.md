@@ -229,7 +229,7 @@
 - [x] Controlled current-panel config import into AfroGate client configs with baseline usage events.
 - [x] Sync volume usage.
 - [ ] Charge/update user volume.
-- [ ] Import/export configs.
+- [x] Import/export configs.
 - [x] Protocol-specific client subscription config-link readiness for WireGuard, VLESS, L2TP, and IKEv2.
 - [x] Secret-backed per-client subscription config-link renderer with encrypted client credentials.
 

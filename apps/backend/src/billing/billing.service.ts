@@ -26,6 +26,7 @@ import type {
   TelegramBotAccountLookup,
   TelegramBotAccountSummary,
   AdminClientConfigSummary,
+  AdminClientConfigsExportResponse,
   AdminClientRoutePreferenceSummary,
   AdminClientUsageEventSummary,
   AdminAllocatePaymentOrderResponse,
@@ -1869,6 +1870,32 @@ export class BillingService {
     return {
       ...account,
       clientConfigs: await this.listClientConfigs(id, account.perClientLimitBytes ?? null),
+    };
+  }
+
+  async exportCustomerClientConfigs(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminClientConfigsExportResponse> {
+    const account = await this.getCustomerAccount(id);
+    await this.audit.record(actor, 'client_configs.export', 'customer_account', id, {
+      configCount: account.clientConfigs.length,
+      exportFormat: 'afrogate_client_configs_export_v1',
+      hasExternalPanelRefs: account.clientConfigs.some((config) => Boolean(config.externalPanel)),
+      subscriptionCredentialsIncluded: false,
+    });
+
+    return {
+      configCount: account.clientConfigs.length,
+      configs: account.clientConfigs,
+      customerAccountId: id,
+      exportFormat: 'afrogate_client_configs_export_v1',
+      generatedAt: new Date().toISOString(),
+      warnings: [
+        'sanitized_config_export_no_secrets',
+        'subscription_credentials_not_included',
+        'raw_panel_payload_not_included',
+      ],
     };
   }
 

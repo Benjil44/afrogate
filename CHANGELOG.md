@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.97.0 - 2026-05-29
+
+- Added guarded `GET /api/admin/customer-accounts/:id/client-configs/export` for sanitized account-scoped AfroGate client config export.
+- Added Billing page controls to export selected-customer configs as read-only JSON and show exported counts with bilingual labels.
+- Kept export secret-safe: no subscription credentials, secret-bearing config material, raw panel payloads, paid numbers, client tokens, or external-panel API calls.
+
 ## 0.96.0 - 2026-05-29
 
 - Added guarded `POST /api/admin/current-panels/sync-usage` to reconcile later current-panel exports against existing imported client configs.

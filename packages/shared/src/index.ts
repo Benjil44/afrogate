@@ -672,6 +672,15 @@ export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary 
   clientConfigs: AdminClientConfigSummary[];
 }
 
+export interface AdminClientConfigsExportResponse {
+  customerAccountId: string;
+  generatedAt: string;
+  exportFormat: 'afrogate_client_configs_export_v1';
+  configCount: number;
+  configs: AdminClientConfigSummary[];
+  warnings: string[];
+}
+
 export type CurrentPanelKind = 'marzban' | 'xui' | 'sanayi' | 'generic';
 export type CurrentPanelImportCandidateStatus = 'active' | 'disabled' | 'expired' | 'limited' | 'unknown';
 

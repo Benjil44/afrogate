@@ -152,6 +152,10 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   }));
   await page.getByRole('button', { name: 'Sync usage' }).click();
   await expect(page.getByText('1 usage updates synced, 0 skipped.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Export configs' }).click();
+  await expect(page.getByText('1 configs exported.')).toBeVisible();
+  await expect(page.getByLabel('Exported config JSON')).toHaveValue(/afrogate_client_configs_export_v1/);
 });
 
 test('audit logs page shows sanitized audit events', async ({ page }) => {
@@ -679,6 +683,36 @@ async function mockDashboardApi(page: Page): Promise<void> {
           ],
           usageEventCount: 1,
           warnings: ['controlled_usage_sync_applied_to_client_configs', 'raw_panel_payload_not_persisted', 'usage_sync_events_recorded'],
+        });
+        return;
+      case '/api/admin/customer-accounts/account-created/client-configs/export':
+        await fulfillJson(route, {
+          configCount: 1,
+          configs: [
+            {
+              createdAt: fixedNow,
+              customerAccountId: 'account-created',
+              deviceLimit: null,
+              effectiveQuotaLimitBytes: 26_843_545_600,
+              externalPanel: 'marzban',
+              externalPanelConfigId: 'vip_gamer',
+              externalPanelUserId: 'vip_gamer',
+              id: 'client-imported',
+              label: 'vip_gamer',
+              notes: null,
+              protocol: 'vless',
+              quotaLimitBytes: 26_843_545_600,
+              remainingBytes: 19_326_258_176,
+              routePreference: null,
+              status: 'active',
+              updatedAt: fixedNow,
+              usedBytes: 7_517_287_424,
+            },
+          ],
+          customerAccountId: 'account-created',
+          exportFormat: 'afrogate_client_configs_export_v1',
+          generatedAt: fixedNow,
+          warnings: ['sanitized_config_export_no_secrets', 'subscription_credentials_not_included', 'raw_panel_payload_not_included'],
         });
         return;
       case '/api/admin/rewarded-ads/settings':

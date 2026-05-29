@@ -3,6 +3,7 @@ import type {
   AdminAuditLogsResponse,
   AdminBackupStatusResponse,
   AdminBillingCatalogResponse,
+  AdminClientConfigsExportResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelUsageSyncResponse,
@@ -374,6 +375,18 @@ export async function updateAdminCustomerAccount(
   });
 
   return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+export async function exportAdminCustomerClientConfigs(
+  sessionToken: string,
+  accountId: string,
+): Promise<AdminClientConfigsExportResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/client-configs/export`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'GET',
+  });
+
+  return response.json() as Promise<AdminClientConfigsExportResponse>;
 }
 
 export async function previewAdminCurrentPanelImport(

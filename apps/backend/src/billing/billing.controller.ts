@@ -19,6 +19,7 @@ import type {
   AdminRewardedAdSettingsResponse,
   AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
+  AdminClientConfigsExportResponse,
   AdminClientRoutePreferenceResponse,
   AdminClientSubscriptionCredentialResponse,
   AdminClientSubscriptionCredentialsResponse,
@@ -321,6 +322,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminCurrentPanelUsageSyncResponse> {
     return this.billingService.syncCurrentPanelUsage(payload, request.actor);
+  }
+
+  @Get('customer-accounts/:id/client-configs/export')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  exportCustomerClientConfigs(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminClientConfigsExportResponse> {
+    return this.billingService.exportCustomerClientConfigs(id, request.actor);
   }
 
   @Get('customer-accounts/:id')

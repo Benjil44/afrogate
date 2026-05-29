@@ -1671,3 +1671,29 @@ Repository remote is ready:
 ### Remaining
 
 - Charge/update sync back to external panels, config import/export, live external-panel write adapters, scheduled external-panel reconciliation, production protocol apply, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Sanitized Client Config Export Slice
+
+### Completed
+
+- Added shared `AdminClientConfigsExportResponse` for sanitized account-scoped client config export.
+- Added guarded `GET /api/admin/customer-accounts/:id/client-configs/export` for admin/supervisor/support/auditor sessions.
+- The export endpoint returns AfroGate client config summaries in `afrogate_client_configs_export_v1` format, audits compact export metadata, and excludes subscription credentials, secret-bearing config material, raw panel payloads, paid numbers, client tokens, and external-panel API calls.
+- Added Billing page controls to export configs for the selected customer, show exported count, and display read-only JSON with bilingual labels.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `228 / 237` items, or `96.2%` complete with `3.8%` remaining.
+- Bumped AfroGate to `0.97.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Billing current-panel preview/import/sync/export flow.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Charge/update sync back to external panels, live external-panel write adapters, scheduled external-panel reconciliation, production protocol apply, backup/restore UI, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

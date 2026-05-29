@@ -4,6 +4,7 @@ import type {
   AdminAuditLogSummary,
   AdminBackupStatusSummary,
   AdminBillingSettingsSummary,
+  AdminClientConfigsExportResponse,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelUsageSyncResponse,
@@ -124,6 +125,7 @@ import {
   createAdminSettingsSecret,
   createAdminUser,
   deleteAdminUser,
+  exportAdminCustomerClientConfigs,
   fetchAdminAlerts,
   fetchAdminAuditLogs,
   fetchAdminBackupStatus,
@@ -3499,9 +3501,11 @@ function BillingPage({
   const [currentPanelForm, setCurrentPanelForm] = useState<CurrentPanelImportFormState>(() => createEmptyCurrentPanelImportForm());
   const [currentPanelPreview, setCurrentPanelPreview] = useState<AdminCurrentPanelImportPreviewResponse | null>(null);
   const [currentPanelMessage, setCurrentPanelMessage] = useState<string | null>(null);
+  const [clientConfigExportJson, setClientConfigExportJson] = useState<string | null>(null);
   const [isPreviewingCurrentPanel, setIsPreviewingCurrentPanel] = useState(false);
   const [isImportingCurrentPanel, setIsImportingCurrentPanel] = useState(false);
   const [isSyncingCurrentPanelUsage, setIsSyncingCurrentPanelUsage] = useState(false);
+  const [isExportingClientConfigs, setIsExportingClientConfigs] = useState(false);
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
 
   const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
@@ -3778,6 +3782,28 @@ function BillingPage({
     }
   };
 
+  const handleExportClientConfigs = async () => {
+    if (!canManageBilling) return;
+
+    if (!currentPanelForm.customerAccountId) {
+      setCurrentPanelMessage(t.billing.currentPanelSelectCustomer);
+      return;
+    }
+
+    setIsExportingClientConfigs(true);
+    setCurrentPanelMessage(null);
+
+    try {
+      const result = await exportAdminCustomerClientConfigs(sessionToken, currentPanelForm.customerAccountId);
+      setClientConfigExportJson(formatClientConfigExportJson(result));
+      setCurrentPanelMessage(t.billing.currentPanelExportSucceeded(format.integer(result.configCount)));
+    } catch {
+      setCurrentPanelMessage(t.billing.currentPanelExportFailed);
+    } finally {
+      setIsExportingClientConfigs(false);
+    }
+  };
+
   return (
     <section className="mt-0 grid gap-3">
       {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
@@ -3861,14 +3887,17 @@ function BillingPage({
       <CurrentPanelImportPreviewPanel
         accounts={accounts}
         canManageBilling={canManageBilling}
+        clientConfigExportJson={clientConfigExportJson}
         currentPanelForm={currentPanelForm}
         currentPanelMessage={currentPanelMessage}
         currentPanelPreview={currentPanelPreview}
         format={format}
+        isExportingClientConfigs={isExportingClientConfigs}
         isImportingCurrentPanel={isImportingCurrentPanel}
         isPreviewingCurrentPanel={isPreviewingCurrentPanel}
         isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
         onFormChange={setCurrentPanelForm}
+        onExportClientConfigs={handleExportClientConfigs}
         onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
         onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
         onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
@@ -3919,6 +3948,17 @@ function updateSyncedCurrentPanelUsageAccount(
       usedBytes,
     };
   });
+}
+
+function formatClientConfigExportJson(result: AdminClientConfigsExportResponse): string {
+  return JSON.stringify({
+    configCount: result.configCount,
+    configs: result.configs,
+    customerAccountId: result.customerAccountId,
+    exportFormat: result.exportFormat,
+    generatedAt: result.generatedAt,
+    warnings: result.warnings,
+  }, null, 2);
 }
 
 function CustomerAccountEditorPanel({
@@ -4096,14 +4136,17 @@ function CustomerAccountEditorPanel({
 function CurrentPanelImportPreviewPanel({
   accounts,
   canManageBilling,
+  clientConfigExportJson,
   currentPanelForm,
   currentPanelMessage,
   currentPanelPreview,
   format,
+  isExportingClientConfigs,
   isImportingCurrentPanel,
   isPreviewingCurrentPanel,
   isSyncingCurrentPanelUsage,
   onFormChange,
+  onExportClientConfigs,
   onImportCurrentPanelConfigs,
   onPreviewCurrentPanelImport,
   onSyncCurrentPanelUsage,
@@ -4111,14 +4154,17 @@ function CurrentPanelImportPreviewPanel({
 }: {
   accounts: AdminCustomerAccountSummary[];
   canManageBilling: boolean;
+  clientConfigExportJson: string | null;
   currentPanelForm: CurrentPanelImportFormState;
   currentPanelMessage: string | null;
   currentPanelPreview: AdminCurrentPanelImportPreviewResponse | null;
   format: DashboardFormatters;
+  isExportingClientConfigs: boolean;
   isImportingCurrentPanel: boolean;
   isPreviewingCurrentPanel: boolean;
   isSyncingCurrentPanelUsage: boolean;
   onFormChange: (form: CurrentPanelImportFormState) => void;
+  onExportClientConfigs: () => void;
   onImportCurrentPanelConfigs: () => void;
   onPreviewCurrentPanelImport: (event: FormEvent<HTMLFormElement>) => void;
   onSyncCurrentPanelUsage: () => void;
@@ -4126,7 +4172,7 @@ function CurrentPanelImportPreviewPanel({
 }) {
   const updateForm = (patch: Partial<CurrentPanelImportFormState>) => onFormChange({ ...currentPanelForm, ...patch });
   const candidates = currentPanelPreview?.candidates ?? [];
-  const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel || isSyncingCurrentPanelUsage;
+  const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel || isSyncingCurrentPanelUsage || isExportingClientConfigs;
   const payloadPlaceholder = `{"users":[{"username":"vip_gamer","status":"active","data_limit":"25GB","used_traffic":"6GB","expire":1893456000}]}`;
 
   return (
@@ -4206,7 +4252,7 @@ function CurrentPanelImportPreviewPanel({
               ))}
             </select>
           </label>
-          <div className="grid content-end gap-2 sm:grid-cols-2">
+          <div className="grid content-end gap-2 sm:grid-cols-3">
             <button
               className={primaryButtonClass}
               disabled={!canManageBilling || isBusy || !currentPanelForm.payloadJson.trim() || !currentPanelForm.customerAccountId}
@@ -4223,8 +4269,28 @@ function CurrentPanelImportPreviewPanel({
             >
               {isSyncingCurrentPanelUsage ? t.billing.saving : t.billing.currentPanelSyncUsage}
             </button>
+            <button
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!canManageBilling || isBusy || !currentPanelForm.customerAccountId}
+              onClick={onExportClientConfigs}
+              type="button"
+            >
+              {isExportingClientConfigs ? t.billing.saving : t.billing.currentPanelExportConfigs}
+            </button>
           </div>
         </div>
+        {clientConfigExportJson ? (
+          <label className="grid gap-1.5">
+            <span className={mutedTextClass}>{t.billing.currentPanelExportJson}</span>
+            <textarea
+              aria-label={t.billing.currentPanelExportJson}
+              className="min-h-[130px] w-full rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-[13px] text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+              dir="ltr"
+              readOnly
+              value={clientConfigExportJson}
+            />
+          </label>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           {currentPanelMessage ? <span className={mutedTextClass}>{currentPanelMessage}</span> : null}
           {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
