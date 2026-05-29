@@ -222,7 +222,7 @@
 - [x] Per-client route preference model for auto country detection, preferred exit country, and explicit server/outbound choice.
 - [x] Route decision filtering by per-client preferred exit country and available country/server candidates.
 - [x] Mobile client UX for automatic route, country selection, and explicit server choice.
-- [ ] Native client per-app VPN split tunneling so selected apps can use AfroGate while other apps stay on normal internet.
+- [x] Native client per-app VPN split tunneling profile with local app selection, Android include-only `VpnService` enforcement reference, and iOS managed-profile boundary so selected apps can use AfroGate where native enforcement is available while other apps stay on normal internet.
 
 ## Phase 4: Current Panel Integration
 

@@ -48,7 +48,7 @@ Privacy-sensitive inputs and stores:
 - Paid phone numbers are accepted only as write-only input and stored as HMAC hashes with `AFROGATE_IDENTITY_HASH_KEY` or the deployment secrets key.
 - Usage accounting and local quota-charge ledgers store byte counters, idempotency keys, compact non-secret metadata, and selected client ids when needed; they must not store packet captures, URLs, user destinations, raw panel exports, or subscription secrets.
 - Client country detection stores only coarse ISO country code, source, and timestamp; no client IP history is needed.
-- Future per-app VPN split tunneling should keep app selection local to the native client or store only explicit client-scoped preference metadata; it must not collect installed-app inventories, traffic contents, or destination history.
+- Per-app VPN split tunneling keeps app selection local to the client/native profile and may store only explicit client-scoped preference metadata; it must not collect installed-app inventories, non-selected apps, traffic contents, or destination history.
 - Route analytics use synthetic probe metadata such as route group, operator, outbound, protocol, score profile, hour, and day; they must not derive from user destinations.
 - Rewarded-ad claims and provider metadata must stay idempotent and minimal, with provider secrets outside public config. Signed ad callbacks should carry only the client config id, provider/session/idempotency ids, and non-secret reward context needed to validate the grant.
 - Tenant branding settings are public metadata only; they must not be used as a place to store production config, provider secrets, customer identity, paid numbers, private support notes, or traffic details.
@@ -113,7 +113,7 @@ Low:
 - Keep all future route intelligence based on synthetic targets, managed outbound metadata, coarse country preferences, and local tunnel health.
 - Keep paid-number handling write-only and HMAC-only.
 - Keep dashboard/admin and VPN-client APIs separate.
-- Keep future per-app VPN rules client-scoped and privacy-safe; the control plane should not learn which non-selected apps a user has installed.
+- Keep per-app VPN rules client-scoped and privacy-safe; the control plane should not learn which non-selected apps a user has installed.
 - Keep provider secrets and webhook credentials in deployment/encrypted secret storage.
 - Keep audit snapshots secret-safe and compact.
 - Keep backup restore readiness derived from sanitized backup status only; do not expose raw dumps, object-store credentials, decrypted secrets, local backup paths, or broad backup/export data through the dashboard.

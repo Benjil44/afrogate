@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.105.0 - 2026-05-29
+
+- Added client-side per-app VPN selection with all-apps and selected-apps modes for native split-tunnel handoff.
+- Added a shared native split-tunnel profile contract plus Android `VpnService` include-only enforcement reference and iOS managed-profile boundary notes.
+- Kept app selection local/privacy-safe: exported profiles include only explicit selections and no installed-app inventory, non-selected apps, traffic destinations, or admin secrets.
+
 ## 0.104.0 - 2026-05-29
 
 - Added Telegram purchase fulfillment after verified payment-order quota allocation.

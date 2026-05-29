@@ -207,7 +207,7 @@ The dashboard Usage/Billing page is the seller/admin surface for catalog, custom
 
 The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, rewarded-data claims, automatic/country/server route mode selection, subscription server refresh visibility, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
 
-Future native VPN clients should support per-app split tunneling. A client may choose an include-only set such as Instagram, Telegram, and WhatsApp through AfroGate while Chrome, Firefox, or other apps keep normal internet, or explicitly add Chrome while leaving Firefox outside the VPN. This requires native OS VPN APIs and must stay client-scoped; AfroGate should not collect installed-app inventories, traffic contents, or destination history.
+AfroGate now defines a native/client per-app split-tunneling profile. A client may choose an include-only set such as Instagram, Telegram, and WhatsApp through AfroGate while Chrome, Firefox, or other apps keep normal internet, or explicitly add Chrome while leaving Firefox outside the VPN. The web client keeps this selection local and can export a native profile; Android enforcement uses `VpnService.Builder.addAllowedApplication`, and iOS enforcement requires a managed per-app VPN profile path. This stays client-scoped; AfroGate should not collect installed-app inventories, non-selected apps, traffic contents, or destination history.
 
 ### telegram_bot_settings
 

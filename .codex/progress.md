@@ -1985,3 +1985,33 @@ Repository remote is ready:
 
 - Production server-side protocol apply and native per-app VPN split tunneling remain future main-checklist work.
 - Dedicated Telegram bot operations UI remains pending in the dashboard/sidebar backlog.
+
+## 2026-05-29 Native Client Per-App VPN Split Tunneling
+
+### Completed
+
+- Added local per-app VPN selection to the client app with `All apps` and `Selected apps` modes plus common app presets for Instagram, Telegram, WhatsApp, Chrome, Firefox, and YouTube.
+- Added a shared native split-tunnel profile contract that includes selected app identifiers, client config id, route group, platform readiness flags, and explicit privacy flags.
+- Added native-client references for Android include-only VPN enforcement through `VpnService.Builder.addAllowedApplication` and documented the iOS managed per-app VPN boundary.
+- Added focused Playwright coverage for the client split-tunnel panel and overflow guard.
+- Updated the architecture, roadmap, repository structure, privacy, security/performance, enterprise deployment, memory, and checklist records with the implemented client/native boundary.
+- Marked the main native per-app VPN split-tunneling checklist item complete.
+- Main checklist completion is now `237 / 238` items, or `99.6%` complete with `0.4%` remaining.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran focused `npm run test:e2e -- --grep "per-app VPN"`; 1 test passed.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 17 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production server-side protocol apply remains the only future main-checklist work.
+- Packaged native Android/iOS app distribution and iOS MDM profile deployment remain deployment/productization work beyond the current client/native profile foundation.
+- Dedicated Telegram bot operations UI remains pending in the dashboard/sidebar backlog.

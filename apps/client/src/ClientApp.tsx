@@ -6,12 +6,16 @@ import type {
   ClientRouteOptionsResponse,
   ClientRoutePreferenceMode,
   ClientRoutePreferenceSummary,
+  ClientSplitTunnelAppSummary,
+  ClientSplitTunnelMode,
+  ClientSplitTunnelNativeProfile,
   ClientSubscriptionSummary,
   RouteScoreProfile,
   UpdateClientRoutePreferenceRequest,
 } from '@afrogate/shared';
 import {
   AlertTriangle,
+  AppWindow,
   Check,
   CheckCircle2,
   Copy,
@@ -59,6 +63,7 @@ import {
 
 const languageStorageKey = 'afrogate.client.language';
 const tokenStorageKey = 'afrogate.client.token';
+const splitTunnelStoragePrefix = 'afrogate.client.splitTunnel.';
 const routeModes: ClientRoutePreferenceMode[] = ['auto', 'country', 'outbound'];
 const routeProfiles: RouteScoreProfile[] = [
   'balanced',
@@ -70,6 +75,15 @@ const routeProfiles: RouteScoreProfile[] = [
   'quic',
   'dns',
   'wireguard',
+];
+const defaultSplitTunnelApps = ['instagram', 'telegram', 'whatsapp'];
+const splitTunnelApps: ClientSplitTunnelAppSummary[] = [
+  { id: 'instagram', label: 'Instagram', androidPackage: 'com.instagram.android', iosBundleId: 'com.burbn.instagram' },
+  { id: 'telegram', label: 'Telegram', androidPackage: 'org.telegram.messenger', iosBundleId: 'ph.telegra.Telegraph' },
+  { id: 'whatsapp', label: 'WhatsApp', androidPackage: 'com.whatsapp', iosBundleId: 'net.whatsapp.WhatsApp' },
+  { id: 'chrome', label: 'Chrome', androidPackage: 'com.android.chrome', iosBundleId: 'com.google.chrome.ios' },
+  { id: 'firefox', label: 'Firefox', androidPackage: 'org.mozilla.firefox', iosBundleId: 'org.mozilla.ios.Firefox' },
+  { id: 'youtube', label: 'YouTube', androidPackage: 'com.google.android.youtube', iosBundleId: 'com.google.ios.youtube' },
 ];
 
 export function ClientApp() {
@@ -91,6 +105,9 @@ export function ClientApp() {
   const [detectedCountryCode, setDetectedCountryCode] = useState('');
   const [preferredCountryCode, setPreferredCountryCode] = useState('');
   const [preferredOutboundId, setPreferredOutboundId] = useState('');
+  const [splitTunnelMode, setSplitTunnelMode] = useState<ClientSplitTunnelMode>('selected_apps');
+  const [selectedSplitTunnelApps, setSelectedSplitTunnelApps] = useState<string[]>(defaultSplitTunnelApps);
+  const [splitTunnelCopied, setSplitTunnelCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [claimingReward, setClaimingReward] = useState(false);
@@ -165,6 +182,14 @@ export function ClientApp() {
     void loadClientData(storedToken);
   }, [loadClientData]);
 
+  useEffect(() => {
+    if (!profile?.clientConfig.id) return;
+    const stored = readSplitTunnelState(profile.clientConfig.id);
+    setSplitTunnelMode(stored.mode);
+    setSelectedSplitTunnelApps(stored.selectedAppIds);
+    setSplitTunnelCopied(false);
+  }, [profile?.clientConfig.id]);
+
   const countryOptions = routeOptions?.countries ?? [];
   const outboundOptions = routeOptions?.outbounds ?? [];
   const canOverride = routePreference?.allowClientOverride ?? false;
@@ -185,6 +210,18 @@ export function ClientApp() {
     () => outboundOptions.find((outbound) => outbound.id === preferredOutboundId) ?? null,
     [outboundOptions, preferredOutboundId],
   );
+  const nativeSplitTunnelProfile = useMemo(
+    () => profile && routePreference
+      ? createNativeSplitTunnelProfile(
+        profile.clientConfig.id,
+        routePreference.routeGroup,
+        splitTunnelMode,
+        selectedSplitTunnelApps,
+      )
+      : null,
+    [profile, routePreference, selectedSplitTunnelApps, splitTunnelMode],
+  );
+  const splitTunnelAppSelectionActive = splitTunnelMode === 'selected_apps';
 
   async function handleConnect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -286,6 +323,32 @@ export function ClientApp() {
     const localeCountry = detectLocaleCountry();
     if (localeCountry) {
       setDetectedCountryCode(localeCountry);
+    }
+  }
+
+  function handleSplitTunnelMode(nextMode: ClientSplitTunnelMode) {
+    if (!profile) return;
+    setSplitTunnelMode(nextMode);
+    persistSplitTunnelState(profile.clientConfig.id, nextMode, selectedSplitTunnelApps);
+    setSplitTunnelCopied(false);
+  }
+
+  function handleSplitTunnelApp(appId: string) {
+    if (!profile) return;
+    const nextSelected = selectedSplitTunnelApps.includes(appId)
+      ? selectedSplitTunnelApps.filter((candidate) => candidate !== appId)
+      : [...selectedSplitTunnelApps, appId];
+    setSelectedSplitTunnelApps(nextSelected);
+    persistSplitTunnelState(profile.clientConfig.id, splitTunnelMode, nextSelected);
+    setSplitTunnelCopied(false);
+  }
+
+  async function handleCopyNativeSplitTunnelProfile() {
+    if (!nativeSplitTunnelProfile) return;
+    const ok = await copyText(JSON.stringify(nativeSplitTunnelProfile, null, 2));
+    if (ok) {
+      setSplitTunnelCopied(true);
+      window.setTimeout(() => setSplitTunnelCopied(false), 1600);
     }
   }
 
@@ -414,6 +477,61 @@ export function ClientApp() {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
+            <PanelTitle icon={<AppWindow className="h-5 w-5" aria-hidden="true" />} title={messages.perAppVpn} />
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleSplitTunnelMode('all_apps')}
+                className={segmentClass(splitTunnelMode === 'all_apps')}
+              >
+                {messages.allApps}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSplitTunnelMode('selected_apps')}
+                className={segmentClass(splitTunnelMode === 'selected_apps')}
+              >
+                {messages.selectedAppsOnly}
+              </button>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {splitTunnelApps.map((app) => {
+                const selected = splitTunnelAppSelectionActive && selectedSplitTunnelApps.includes(app.id);
+                return (
+                  <button
+                    key={app.id}
+                    type="button"
+                    onClick={() => handleSplitTunnelApp(app.id)}
+                    className={splitAppClass(selected, splitTunnelAppSelectionActive)}
+                    aria-pressed={selected}
+                    disabled={!splitTunnelAppSelectionActive}
+                  >
+                    <span className="truncate">{app.label}</span>
+                    {selected ? <Check className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <CompactMetric
+                label={messages.selectedApps}
+                value={formatCount(nativeSplitTunnelProfile?.selectedApps.length ?? 0, language)}
+              />
+              <CompactMetric label={messages.nativeStatus} value={messages.androidReady} />
+              <CompactMetric label={messages.iosStatus} value={messages.iosManaged} />
+              <CompactMetric label={messages.privacy} value={messages.localOnly} />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleCopyNativeSplitTunnelProfile()}
+              className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[8px] border border-client-line bg-white px-3 text-sm font-semibold"
+            >
+              {splitTunnelCopied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+              {splitTunnelCopied ? messages.copiedNativeProfile : messages.copyNativeProfile}
+            </button>
           </section>
 
           <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
@@ -821,6 +939,16 @@ function outboundClass(active: boolean): string {
   ].join(' ');
 }
 
+function splitAppClass(active: boolean, enabled: boolean): string {
+  return [
+    'flex min-h-11 items-center justify-between gap-2 rounded-[8px] border px-3 text-sm font-semibold',
+    active
+      ? 'border-client-teal bg-client-teal/10 text-client-ink'
+      : 'border-client-line bg-white text-client-ink',
+    enabled ? '' : 'cursor-not-allowed opacity-60',
+  ].join(' ');
+}
+
 function errorText(error: unknown, messages: ClientMessages): string {
   if (error instanceof ClientApiError && error.status === 401) return messages.tokenRejected;
   if (error instanceof Error && error.message) return error.message;
@@ -849,6 +977,64 @@ function createRewardClaimKey(): string {
   }
 
   return `client-ad:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function readSplitTunnelState(clientConfigId: string): { mode: ClientSplitTunnelMode; selectedAppIds: string[] } {
+  const fallback = { mode: 'selected_apps' as const, selectedAppIds: defaultSplitTunnelApps };
+  try {
+    const raw = localStorage.getItem(splitTunnelStoragePrefix + clientConfigId);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as { mode?: unknown; selectedAppIds?: unknown };
+    const mode = parsed.mode === 'all_apps' || parsed.mode === 'selected_apps' ? parsed.mode : fallback.mode;
+    const selectedAppIds = Array.isArray(parsed.selectedAppIds)
+      ? parsed.selectedAppIds.filter((value): value is string => splitTunnelApps.some((app) => app.id === value))
+      : fallback.selectedAppIds;
+    return { mode, selectedAppIds: selectedAppIds.length ? [...new Set(selectedAppIds)] : fallback.selectedAppIds };
+  } catch {
+    return fallback;
+  }
+}
+
+function persistSplitTunnelState(
+  clientConfigId: string,
+  mode: ClientSplitTunnelMode,
+  selectedAppIds: string[],
+): void {
+  const normalizedSelected = selectedAppIds.filter((value) => splitTunnelApps.some((app) => app.id === value));
+  localStorage.setItem(splitTunnelStoragePrefix + clientConfigId, JSON.stringify({
+    mode,
+    selectedAppIds: [...new Set(normalizedSelected)],
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
+function createNativeSplitTunnelProfile(
+  clientConfigId: string,
+  routeGroup: string,
+  mode: ClientSplitTunnelMode,
+  selectedAppIds: string[],
+): ClientSplitTunnelNativeProfile {
+  const selectedApps = mode === 'selected_apps'
+    ? splitTunnelApps.filter((app) => selectedAppIds.includes(app.id))
+    : [];
+
+  return {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    clientConfigId,
+    routeGroup,
+    mode,
+    selectedApps,
+    privacy: {
+      localOnly: true,
+      installedAppInventoryShared: false,
+      trafficDestinationsShared: false,
+    },
+    nativeTargets: {
+      androidVpnService: true,
+      iosManagedPerAppVpn: true,
+    },
+  };
 }
 
 async function copyText(value: string): Promise<boolean> {

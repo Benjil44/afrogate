@@ -326,6 +326,7 @@ export type CustomerQuotaScope = 'account_shared' | 'per_client';
 export type ClientConfigStatus = 'active' | 'limited' | 'disabled' | 'expired';
 export type ClientRoutePreferenceMode = 'auto' | 'country' | 'outbound';
 export type ClientRouteCountryDetectionSource = 'client_app' | 'edge_ip' | 'admin' | 'unknown';
+export type ClientSplitTunnelMode = 'all_apps' | 'selected_apps';
 export type ClientUsageEventSource =
   | 'admin'
   | 'agent'
@@ -675,6 +676,31 @@ export interface ClientSubscriptionConfigLinkSummary {
   requiresClientSecret: boolean;
   updatedAt?: string | null;
   usableBytesAtMultiplier?: number | null;
+}
+
+export interface ClientSplitTunnelAppSummary {
+  id: string;
+  label: string;
+  androidPackage?: string | null;
+  iosBundleId?: string | null;
+}
+
+export interface ClientSplitTunnelNativeProfile {
+  version: 1;
+  generatedAt: string;
+  clientConfigId: string;
+  routeGroup: string;
+  mode: ClientSplitTunnelMode | string;
+  selectedApps: ClientSplitTunnelAppSummary[];
+  privacy: {
+    localOnly: boolean;
+    installedAppInventoryShared: boolean;
+    trafficDestinationsShared: boolean;
+  };
+  nativeTargets: {
+    androidVpnService: boolean;
+    iosManagedPerAppVpn: boolean;
+  };
 }
 
 export interface ClientRouteOutboundOption {

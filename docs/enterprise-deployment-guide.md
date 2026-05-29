@@ -2,7 +2,7 @@
 
 This guide is the production operating checklist for deploying AfroGate as an enterprise control plane. It favors the native Ubuntu path because it is predictable on low-resource VPS machines, with Docker Compose kept as an optional packaging path.
 
-AfroGate can be deployed for monitoring, billing, client subscription refresh, advisory routing, backups status, reports, Telegram operations, signed rewarded-ad provider callbacks, and admin/client UX separation. Live server-side protocol apply, live data-plane route mutation, native per-app VPN split tunneling, and provider-specific automatic settlement beyond the existing PayPal and generic/manual payment adapters are still separate implementation gates.
+AfroGate can be deployed for monitoring, billing, client subscription refresh, advisory routing, backups status, reports, Telegram operations, signed rewarded-ad provider callbacks, admin/client UX separation, and local/native per-app VPN profile selection. Live server-side protocol apply, live data-plane route mutation, packaged native-client distribution, and provider-specific automatic settlement beyond the existing PayPal and generic/manual payment adapters are still separate implementation gates.
 
 ## Production Topology
 
@@ -273,7 +273,7 @@ If migrations changed schema or data, restore a tested backup to a compatible da
 - Do not store raw paid phone numbers.
 - Do not put secrets in notes, branding fields, public provider config, payment metadata, or Telegram messages.
 - Keep client route preferences coarse and client-scoped.
-- Keep app selection for future per-app VPN split tunneling local/native-client scoped.
+- Keep app selection for per-app VPN split tunneling local/native-client scoped; exported native profiles should contain only explicit selections.
 - Keep public support copy clear enough for users but free of private operational instructions.
 
 ## Go/No-Go Checklist
