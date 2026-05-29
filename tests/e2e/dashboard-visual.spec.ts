@@ -16,6 +16,12 @@ const snapshots = [
   createMetricSnapshot('server-teh', 'teh-gateway-03', 'ubuntu 22.04', 81, 76, 8, 36, 18_100_000, 7_600_000),
 ];
 
+type VisualSessionRole = 'superadmin' | 'reseller';
+
+interface VisualDashboardOptions {
+  sessionRole?: VisualSessionRole;
+}
+
 test.describe('dashboard dense layout visual captures', () => {
   for (const viewport of denseViewports) {
     test(`${viewport.name} dashboard capture`, async ({ page }, testInfo) => {
@@ -202,6 +208,32 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByText('5 GB charged locally; external panel write not executed.')).toBeVisible();
 });
 
+test('reseller session starts on scoped billing workspace', async ({ page }) => {
+  await loadSignedInDashboard(page, { width: 1440, height: 900 }, { sessionRole: 'reseller' });
+
+  await expect(page.getByRole('heading', { name: 'Usage and billing' })).toBeVisible();
+  await expect(page.locator('[data-view="billing"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('[data-view="dashboard"]')).toHaveCount(0);
+  await expect(page.locator('[data-view="servers"]')).toHaveCount(0);
+
+  await expect(page.getByRole('heading', { name: 'Reseller workspace' })).toBeVisible();
+  await expect(page.getByText('Mobile Shop Tehran')).toBeVisible();
+  await expect(page.getByText('Wallet balance').first()).toBeVisible();
+  await expect(page.getByText('Available balance').first()).toBeVisible();
+  await expect(page.getByText('Sale debit')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Reward Settings' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Current panel import' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Telegram Operations' })).toHaveCount(0);
+
+  await expect(page.getByRole('heading', { name: 'Customer limit manager' })).toBeVisible();
+  await page.getByLabel('Display name').fill('Mobile shop customer');
+  await page.getByLabel('Telegram username').fill('mobile_customer');
+  await page.getByLabel('Account quota GB').fill('50');
+  await page.getByRole('button', { name: 'Create customer' }).click();
+  await expect(page.getByText('Customer account saved.')).toBeVisible();
+  await expect(page.getByRole('cell', { name: /Mobile shop customer/ })).toBeVisible();
+});
+
 test('audit logs page shows sanitized audit events', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="audit"]').click();
@@ -266,8 +298,12 @@ test('users page shows RBAC permission matrix', async ({ page }) => {
   await expect(page.getByText('adminUsers:write')).toBeVisible();
 });
 
-async function loadSignedInDashboard(page: Page, size: { width: number; height: number }): Promise<void> {
-  await mockDashboardApi(page);
+async function loadSignedInDashboard(
+  page: Page,
+  size: { width: number; height: number },
+  options: VisualDashboardOptions = {},
+): Promise<void> {
+  await mockDashboardApi(page, options);
   await page.setViewportSize(size);
   await page.addInitScript((sessionToken) => {
     window.localStorage.setItem('afrogate.dashboard.language', 'en');
@@ -285,7 +321,9 @@ async function loadSignedInDashboard(page: Page, size: { width: number; height: 
   });
 }
 
-async function mockDashboardApi(page: Page): Promise<void> {
+async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}): Promise<void> {
+  const sessionRole = options.sessionRole ?? 'superadmin';
+
   await page.route('http://127.0.0.1:7000/api/**', async (route) => {
     const url = new URL(route.request().url());
 
@@ -293,11 +331,11 @@ async function mockDashboardApi(page: Page): Promise<void> {
       case '/api/admin/session':
         await fulfillJson(route, {
           actor: {
-            id: 'admin-visual',
-            isSuperAdmin: true,
-            role: 'superadmin',
+            id: sessionRole === 'reseller' ? 'admin-reseller-visual' : 'admin-visual',
+            isSuperAdmin: sessionRole === 'superadmin',
+            role: sessionRole,
             type: 'admin',
-            username: 'superadmin',
+            username: sessionRole === 'reseller' ? 'tehran-shop' : 'superadmin',
           },
           expiresAt: '2026-05-28T12:00:00.000Z',
           issuedAt: fixedNow,
@@ -341,18 +379,24 @@ async function mockDashboardApi(page: Page): Promise<void> {
         return;
       case '/api/admin/permissions':
         await fulfillJson(route, {
-          currentHasFullAccess: true,
-          currentPermissions: [
-            'dashboard:read',
-            'servers:read',
-            'serverCredentials:write',
-            'adminUsers:write',
-          ],
-          currentRole: 'superadmin',
+          currentHasFullAccess: sessionRole === 'superadmin',
+          currentPermissions: sessionRole === 'reseller'
+            ? ['billing:read', 'customers:read', 'customers:write', 'resellerWallet:read']
+            : [
+                'dashboard:read',
+                'servers:read',
+                'serverCredentials:write',
+                'adminUsers:write',
+              ],
+          currentRole: sessionRole,
           deniedByDefault: true,
           permissions: [
             { category: 'operations', id: 'dashboard:read', risk: 'low' },
             { category: 'operations', id: 'servers:read', risk: 'low' },
+            { category: 'billing', id: 'billing:read', risk: 'low' },
+            { category: 'billing', id: 'customers:read', risk: 'low' },
+            { category: 'billing', id: 'customers:write', risk: 'medium' },
+            { category: 'billing', id: 'resellerWallet:read', risk: 'medium' },
             { category: 'secrets', id: 'serverCredentials:write', risk: 'critical' },
             { category: 'access', id: 'adminUsers:write', risk: 'critical' },
           ],
@@ -385,11 +429,63 @@ async function mockDashboardApi(page: Page): Promise<void> {
               canManageAdminUsers: false,
               inheritsAll: false,
               isSystemOwner: false,
+              permissions: ['billing:read', 'customers:read', 'customers:write', 'resellerWallet:read'],
+              role: 'reseller',
+            },
+            {
+              canManageAdminUsers: false,
+              inheritsAll: false,
+              isSystemOwner: false,
               permissions: ['dashboard:read', 'servers:read'],
               role: 'support',
             },
           ],
         });
+        return;
+      case '/api/admin/reseller/workspace':
+        await fulfillJson(route, {
+          workspace: resellerWorkspaceResponse(),
+        });
+        return;
+      case '/api/admin/reseller/customer-accounts':
+        if (route.request().method() === 'POST') {
+          const payload = route.request().postDataJSON() as {
+            displayName?: string | null;
+            notes?: string | null;
+            perClientLimitBytes?: number | null;
+            quotaLimitBytes?: number | null;
+            quotaScope?: string;
+            status?: string;
+            telegramUsername?: string | null;
+          };
+          const quotaLimitBytes = payload.quotaLimitBytes ?? null;
+          const usedBytes = 0;
+
+          await fulfillJson(route, {
+            activeClientCount: 0,
+            clientConfigs: [],
+            clientCount: 0,
+            createdAt: fixedNow,
+            displayName: payload.displayName ?? null,
+            hasPaidNumberHash: false,
+            id: 'reseller-account-created',
+            notes: payload.notes ?? null,
+            perClientLimitBytes: payload.perClientLimitBytes ?? null,
+            quotaLimitBytes,
+            quotaScope: payload.quotaScope ?? 'account_shared',
+            remainingBytes: quotaLimitBytes === null ? null : quotaLimitBytes - usedBytes,
+            resellerAccountId: 'reseller-visual',
+            resellerDisplayName: 'Mobile Shop Tehran',
+            status: payload.status ?? 'active',
+            telegramId: null,
+            telegramUsername: payload.telegramUsername ?? null,
+            updatedAt: fixedNow,
+            usedBytes,
+          });
+          return;
+        }
+
+        await fulfillJson(route, { error: 'Unsupported reseller customer method' }, 405);
         return;
       case '/api/metrics/latest':
         await fulfillJson(route, { servers: snapshots });
@@ -905,6 +1001,162 @@ async function mockDashboardApi(page: Page): Promise<void> {
         await fulfillJson(route, { error: `Unmocked visual API route: ${url.pathname}` }, 404);
     }
   });
+}
+
+function resellerWorkspaceResponse() {
+  return {
+    accounts: [
+      {
+        activeClientCount: 1,
+        clientCount: 1,
+        createdAt: fixedNow,
+        displayName: 'Reseller gaming customer',
+        hasPaidNumberHash: false,
+        id: 'reseller-customer-visual',
+        notes: null,
+        perClientLimitBytes: 10_737_418_240,
+        quotaLimitBytes: 53_687_091_200,
+        quotaScope: 'account_shared',
+        remainingBytes: 48_318_382_080,
+        resellerAccountId: 'reseller-visual',
+        resellerDisplayName: 'Mobile Shop Tehran',
+        status: 'active',
+        telegramId: null,
+        telegramUsername: 'reseller_player',
+        updatedAt: fixedNow,
+        usedBytes: 5_368_709_120,
+      },
+    ],
+    generatedAt: fixedNow,
+    ledgerEntries: [
+      {
+        amount: 5_000_000,
+        balanceAfterAmount: 5_000_000,
+        balanceBeforeAmount: 0,
+        createdAt: fixedNow,
+        createdBy: 'superadmin',
+        currency: 'IRR',
+        entryType: 'topup',
+        id: 'ledger-topup-visual',
+        idempotencyKey: 'visual-topup',
+        metadata: {},
+        notes: 'Cash deposit',
+        resellerAccountId: 'reseller-visual',
+        source: 'manual_topup',
+        sourceId: null,
+        volumePackageId: null,
+        volumePackageName: null,
+      },
+      {
+        amount: -1_000_000,
+        balanceAfterAmount: 4_000_000,
+        balanceBeforeAmount: 5_000_000,
+        createdAt: fixedNow,
+        createdBy: 'admin-reseller-visual',
+        currency: 'IRR',
+        customerAccountId: 'reseller-customer-visual',
+        customerDisplayName: 'Reseller gaming customer',
+        entryType: 'sale_debit',
+        id: 'ledger-sale-visual',
+        idempotencyKey: 'visual-sale',
+        metadata: {},
+        notes: null,
+        resellerAccountId: 'reseller-visual',
+        source: 'client_sale',
+        sourceId: 'reseller-order-visual',
+        volumePackageId: 'reseller-package-starter',
+        volumePackageName: 'Starter 25GB',
+      },
+    ],
+    packages: [
+      {
+        createdAt: fixedNow,
+        currency: 'IRR',
+        durationDays: 30,
+        id: 'reseller-package-starter',
+        name: 'Starter 25GB',
+        notes: null,
+        pricePerGb: 40_000,
+        slug: 'starter-25gb',
+        sortOrder: 1,
+        status: 'active',
+        totalPrice: 1_000_000,
+        updatedAt: fixedNow,
+        volumeBytes: 26_843_545_600,
+        volumeGb: 25,
+      },
+    ],
+    paymentOrders: [
+      {
+        allocationDelaySeconds: 0,
+        allocationId: 'reseller-allocation-visual',
+        allocationStatus: 'allocated',
+        allocatedAt: fixedNow,
+        allocatedVolumeBytes: 26_843_545_600,
+        amount: 1_000_000,
+        createdAt: fixedNow,
+        currency: 'IRR',
+        customerAccountId: 'reseller-customer-visual',
+        customerDisplayName: 'Reseller gaming customer',
+        customerTelegramUsername: 'reseller_player',
+        durationDays: 30,
+        expiresAt: null,
+        failedAt: null,
+        id: 'reseller-order-visual',
+        idempotencyKey: 'reseller-order-visual',
+        metadata: {},
+        notes: null,
+        packageName: 'Starter 25GB',
+        packageSlug: 'starter-25gb',
+        paidAt: fixedNow,
+        paymentMethodId: null,
+        paymentMethodName: 'Reseller wallet',
+        paymentMethodSlug: 'reseller_wallet',
+        pricePerGb: 40_000,
+        provider: 'reseller_wallet',
+        providerCaptureId: null,
+        providerOrderId: null,
+        refundedAt: null,
+        status: 'paid',
+        updatedAt: fixedNow,
+        volumeBytes: 26_843_545_600,
+        volumeGb: 25,
+        volumePackageId: 'reseller-package-starter',
+      },
+    ],
+    reseller: {
+      activeCustomerAccountCount: 1,
+      adminUserId: 'admin-reseller-visual',
+      afroGateShareBps: 7500,
+      afroGateSharePercent: 75,
+      availableBalanceAmount: 4_000_000,
+      balanceAmount: 4_000_000,
+      contactName: 'Tehran Shop Owner',
+      createdAt: fixedNow,
+      createdBy: 'superadmin',
+      creditLimitAmount: 0,
+      currency: 'IRR',
+      customerAccountCount: 1,
+      displayName: 'Mobile Shop Tehran',
+      id: 'reseller-visual',
+      ledgerEntryCount: 2,
+      notes: null,
+      sellerMarginBps: 2500,
+      sellerMarginPercent: 25,
+      status: 'active',
+      telegramUsername: 'tehran_shop',
+      updatedAt: fixedNow,
+      updatedBy: 'superadmin',
+    },
+    settings: {
+      createdAt: fixedNow,
+      currency: 'IRR',
+      pricePerGb: 40_000,
+      settingKey: 'default',
+      updatedAt: fixedNow,
+      updatedBy: 'superadmin',
+    },
+  };
 }
 
 async function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {

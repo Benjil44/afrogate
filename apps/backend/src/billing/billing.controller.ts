@@ -42,12 +42,13 @@ import type {
   AdminResellerPackageQuoteResponse,
   AdminResellerWalletActionResponse,
   AdminResellerWalletLedgerResponse,
+  AdminResellerWorkspaceResponse,
   AdminVolumePackageSummary,
   AdminVolumePackagesResponse,
 } from '@afrogate/shared';
 import type { RequestWithAuth } from '../security/auth-request';
 import { AdminTokenGuard } from '../security/admin-token.guard';
-import { Roles } from '../security/roles.decorator';
+import { Permissions, Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { BillingService } from './billing.service';
 import {
@@ -311,6 +312,36 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminPaymentOrderSummary> {
     return this.billingService.updatePaymentOrderStatus(id, payload, request.actor);
+  }
+
+  @Get('reseller/workspace')
+  @Roles('reseller')
+  @Permissions('billing:read', 'customers:read', 'resellerWallet:read')
+  async getResellerWorkspace(@Req() request: RequestWithAuth): Promise<AdminResellerWorkspaceResponse> {
+    return {
+      workspace: await this.billingService.getResellerWorkspace(request.actor),
+    };
+  }
+
+  @Post('reseller/customer-accounts')
+  @Roles('reseller')
+  @Permissions('customers:write')
+  createResellerCustomerAccount(
+    @Body() payload: CreateCustomerAccountDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminCustomerAccountDetail> {
+    return this.billingService.createResellerCustomerAccount(payload, request.actor);
+  }
+
+  @Patch('reseller/customer-accounts/:id')
+  @Roles('reseller')
+  @Permissions('customers:write')
+  updateResellerCustomerAccount(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: UpdateCustomerAccountDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminCustomerAccountDetail> {
+    return this.billingService.updateResellerCustomerAccount(id, payload, request.actor);
   }
 
   @Get('resellers')

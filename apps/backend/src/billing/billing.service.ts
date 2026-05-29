@@ -47,6 +47,7 @@ import type {
   AdminResellerPackageQuote,
   AdminResellerWalletActionResponse,
   AdminResellerWalletLedgerEntry,
+  AdminResellerWorkspaceSummary,
   AdminVolumePackageSummary,
   CurrentPanelImportCandidate,
   CurrentPanelImportConfigsRequest,
@@ -603,6 +604,7 @@ interface CurrentPanelVolumeChargeClientQuotaChange {
 interface CustomerAccountFilters {
   status?: string;
   search?: string;
+  resellerAccountId?: string;
   limit: number;
 }
 
@@ -626,6 +628,7 @@ interface PaymentMethodFilters {
 interface PaymentOrderFilters {
   status?: string;
   customerAccountId?: string;
+  resellerAccountId?: string;
   paymentMethodId?: string;
   provider?: string;
   allocationStatus?: string;
@@ -1085,6 +1088,11 @@ export class BillingService {
     if (filters.customerAccountId?.trim()) {
       values.push(filters.customerAccountId.trim());
       where.push(`po.customer_account_id = $${values.length}`);
+    }
+
+    if (filters.resellerAccountId?.trim()) {
+      values.push(filters.resellerAccountId.trim());
+      where.push(`ca.reseller_account_id = $${values.length}`);
     }
 
     if (filters.paymentMethodId?.trim()) {
@@ -2078,6 +2086,55 @@ export class BillingService {
     };
   }
 
+  async getResellerWorkspace(actor: AuthActor | undefined): Promise<AdminResellerWorkspaceSummary> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    const [settings, packages, accounts, paymentOrders, ledgerEntries] = await Promise.all([
+      this.getBillingSettings(),
+      this.listVolumePackages({ status: 'active', limit: 100 }),
+      this.listCustomerAccounts({ resellerAccountId: reseller.id, limit: 100 }),
+      this.listPaymentOrders({ resellerAccountId: reseller.id, limit: 100 }),
+      this.listResellerWalletLedger(reseller.id, 50),
+    ]);
+
+    return {
+      reseller: this.mapResellerAccount(reseller),
+      settings,
+      packages,
+      accounts,
+      paymentOrders,
+      ledgerEntries,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  async createResellerCustomerAccount(
+    dto: CreateCustomerAccountDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCustomerAccountDetail> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    this.assertResellerCustomerPayload(dto);
+
+    return this.createCustomerAccount({
+      ...dto,
+      resellerAccountId: reseller.id,
+    }, actor);
+  }
+
+  async updateResellerCustomerAccount(
+    id: string,
+    dto: UpdateCustomerAccountDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCustomerAccountDetail> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    await this.ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
+    this.assertResellerCustomerPayload(dto);
+
+    return this.updateCustomerAccount(id, {
+      ...dto,
+      resellerAccountId: reseller.id,
+    }, actor);
+  }
+
   async listCustomerAccounts(filters: CustomerAccountFilters): Promise<AdminCustomerAccountSummary[]> {
     const values: unknown[] = [];
     const where: string[] = [];
@@ -2094,6 +2151,11 @@ export class BillingService {
         OR ca.telegram_id ILIKE $${values.length}
         OR ca.telegram_username ILIKE $${values.length}
       )`);
+    }
+
+    if (filters.resellerAccountId?.trim()) {
+      values.push(filters.resellerAccountId.trim());
+      where.push(`ca.reseller_account_id = $${values.length}`);
     }
 
     values.push(filters.limit);
@@ -4163,6 +4225,26 @@ export class BillingService {
     const row = result.rows[0];
 
     if (!row) throw new NotFoundException('Reseller account not found');
+    return row;
+  }
+
+  private async getResellerAccountRowForActor(actor: AuthActor | undefined): Promise<ResellerAccountRow> {
+    if (!actor || actor.role !== 'reseller') {
+      throw new ForbiddenException('Reseller account is required');
+    }
+
+    const result = await this.database.query<ResellerAccountRow>(
+      `
+        ${this.resellerAccountSelectSql()}
+        WHERE ra.admin_user_id = $1
+        GROUP BY ra.id
+      `,
+      [actor.id],
+    );
+    const row = result.rows[0];
+
+    if (!row) throw new NotFoundException('Reseller account not found for current admin user');
+    if (row.status !== 'active') throw new ForbiddenException('Reseller account is not active');
     return row;
   }
 
@@ -7608,6 +7690,15 @@ export class BillingService {
       row.clientConfigId !== expected.clientConfigId
     ) {
       throw new ConflictException('Reseller wallet idempotency key already belongs to another request');
+    }
+  }
+
+  private assertResellerCustomerPayload(dto: CreateCustomerAccountDto | UpdateCustomerAccountDto): void {
+    if (this.normalizeNullableString(dto.paidNumber)) {
+      throw new BadRequestException('Reseller customer flows cannot store paid numbers');
+    }
+    if ('clearPaidNumber' in dto && dto.clearPaidNumber) {
+      throw new BadRequestException('Reseller customer flows cannot change paid numbers');
     }
   }
 

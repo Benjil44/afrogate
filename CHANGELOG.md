@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.110.0 - 2026-05-30
+
+- Added reseller-scoped workspace APIs so each representative can load only their own reseller account, wallet ledger, customer accounts, and payment orders.
+- Added reseller customer create/update endpoints that force ownership to the current representative and block paid-number changes from the reseller workflow.
+- Updated the dashboard so reseller sessions start on Billing, see a wallet/customer workspace, and hide superadmin/admin-only billing operations.
+- Added Playwright coverage for the reseller-only Billing workspace and customer creation flow.
+
 ## 0.109.0 - 2026-05-30
 
 - Added the reseller/representative foundation for mobile-shop sellers, including the managed `reseller` role, RBAC permissions, PostgreSQL reseller accounts, customer ownership links, and signed wallet ledger rows.

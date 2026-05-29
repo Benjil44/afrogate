@@ -2161,3 +2161,35 @@ Repository remote is ready:
 - Add wallet-gated reseller client creation/renewal so sale debits happen automatically at the quota/config creation boundary.
 - Design adaptive MTU diagnostics and recommendations as a route/session-safety feature before any automatic MTU changes.
 - Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.
+
+## 2026-05-30 Reseller Scoped Workspace
+
+### Completed
+
+- Added reseller self-service backend APIs under `/api/admin/reseller/*` for loading the current representative workspace and creating/updating only that representative's customer accounts.
+- Scoped reseller workspace data by the signed admin actor and `reseller_accounts.admin_user_id`, returning only the representative's reseller account, wallet ledger, customer accounts, and related payment orders.
+- Blocked paid-number set/clear fields from the reseller customer workflow so representative sessions cannot capture or mutate write-only identity data.
+- Updated the dashboard so reseller sessions start directly on Billing, show only the reseller workspace navigation item, and hide admin-only reward settings, current-panel import/export, Telegram operations, and broad billing management controls.
+- Added a reseller workspace panel with wallet balance, available balance, reseller/AfroGate share, and localized wallet ledger labels.
+- Added Playwright coverage for the reseller-only Billing workspace and reseller customer creation flow.
+- Marked the reseller-scoped dashboard/panel checklist item complete.
+- Main checklist is now `242 / 244` complete, or `99.2%` complete with `2` future items remaining.
+- Bumped AfroGate to `0.110.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran focused `npm run test:e2e -- tests/e2e/dashboard-visual.spec.ts --grep "reseller session"`; 1 test passed.
+- Ran full `npm run test:e2e`; 18 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Add wallet-gated reseller client creation/renewal so sale debits happen automatically at the quota/config creation boundary.
+- Design adaptive MTU diagnostics and recommendations as a route/session-safety feature before any automatic MTU changes.
+- Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.

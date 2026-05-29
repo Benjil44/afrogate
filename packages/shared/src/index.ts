@@ -859,6 +859,16 @@ export interface AdminResellerPackageQuote {
   blockedReason?: string | null;
 }
 
+export interface AdminResellerWorkspaceSummary {
+  reseller: AdminResellerAccountSummary;
+  settings: AdminBillingSettingsSummary;
+  packages: AdminVolumePackageSummary[];
+  accounts: AdminCustomerAccountSummary[];
+  paymentOrders: AdminPaymentOrderSummary[];
+  ledgerEntries: AdminResellerWalletLedgerEntry[];
+  generatedAt: string;
+}
+
 export interface CreateResellerAccountRequest {
   adminUserId: string;
   displayName: string;
@@ -3517,6 +3527,10 @@ export interface AdminResellerWalletActionResponse {
 
 export interface AdminResellerPackageQuoteResponse {
   quote: AdminResellerPackageQuote;
+}
+
+export interface AdminResellerWorkspaceResponse {
+  workspace: AdminResellerWorkspaceSummary;
 }
 
 export interface AdminClientRoutePreferenceResponse {

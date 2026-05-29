@@ -18,6 +18,8 @@ import type {
   AdminPaymentProviderAdapterSummary,
   AdminPermissionId,
   AdminPermissionsResponse,
+  AdminResellerAccountSummary,
+  AdminResellerWalletLedgerEntry,
   AdminProtocolServerApplyAdapterSummary,
   AdminProtocolServerApplyEventDetail,
   AdminProtocolServerApplyEventSummary,
@@ -131,6 +133,7 @@ import rootPackage from '../../../package.json';
 import { useAdminSession } from './auth';
 import {
   createAdminCustomerAccount,
+  createAdminResellerCustomerAccount,
   chargeAdminCurrentPanelVolume,
   createAdminProtocolSetup,
   createAdminSettingsSecret,
@@ -148,6 +151,7 @@ import {
   fetchAdminPaymentOrders,
   fetchAdminReportsSummary,
   fetchAdminRewardedAdSettings,
+  fetchAdminResellerWorkspace,
   fetchAdminServer,
   fetchAdminServerInterfaces,
   fetchAdminServers,
@@ -180,6 +184,7 @@ import {
   updateAdminRouteAssignment,
   updateAdminRouteSettings,
   updateAdminCustomerAccount,
+  updateAdminResellerCustomerAccount,
   updateAdminRewardedAdSettings,
   updateAdminServer,
   updateAdminTelegramBotSettings,
@@ -597,7 +602,7 @@ function AuthenticatedDashboard({
   sessionToken: string;
   t: DashboardStrings;
 }) {
-  const [activeView, setActiveView] = useState<ActiveView>('dashboard');
+  const [activeView, setActiveView] = useState<ActiveView>(session.actor.role === 'reseller' ? 'billing' : 'dashboard');
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
@@ -3884,6 +3889,8 @@ function BillingPage({
   const [paymentOrders, setPaymentOrders] = useState<AdminPaymentOrderSummary[]>([]);
   const [paymentProviderAdapters, setPaymentProviderAdapters] = useState<AdminPaymentProviderAdapterSummary[]>([]);
   const [accounts, setAccounts] = useState<AdminCustomerAccountSummary[]>([]);
+  const [reseller, setReseller] = useState<AdminResellerAccountSummary | null>(null);
+  const [resellerLedgerEntries, setResellerLedgerEntries] = useState<AdminResellerWalletLedgerEntry[]>([]);
   const [rewardSettings, setRewardSettings] = useState<AdminRewardedAdSettingsSummary | null>(null);
   const [telegramBotSettings, setTelegramBotSettings] = useState<AdminTelegramBotSettingsSummary | null>(null);
   const [dataState, setDataState] = useState<DataState>('loading');
@@ -3908,7 +3915,9 @@ function BillingPage({
   const [isSyncingCurrentPanelUsage, setIsSyncingCurrentPanelUsage] = useState(false);
   const [isExportingClientConfigs, setIsExportingClientConfigs] = useState(false);
   const [isChargingCurrentPanelVolume, setIsChargingCurrentPanelVolume] = useState(false);
+  const isResellerSession = session.actor.role === 'reseller';
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
+  const canManageCustomerAccounts = canManageBilling || isResellerSession;
   const canViewTelegramOperations = session.actor.role === 'superadmin' || session.actor.isSuperAdmin === true;
 
   const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
@@ -3916,6 +3925,22 @@ function BillingPage({
     setError(null);
 
     try {
+      if (isResellerSession) {
+        const response = await fetchAdminResellerWorkspace(sessionToken, signal);
+        setSettings(response.workspace.settings);
+        setPackages(response.workspace.packages);
+        setPaymentMethods([]);
+        setPaymentProviderAdapters([]);
+        setPaymentOrders(response.workspace.paymentOrders);
+        setAccounts(response.workspace.accounts);
+        setRewardSettings(null);
+        setTelegramBotSettings(null);
+        setReseller(response.workspace.reseller);
+        setResellerLedgerEntries(response.workspace.ledgerEntries);
+        setDataState('live');
+        return;
+      }
+
       const telegramBotRequest = canViewTelegramOperations
         ? fetchAdminTelegramBotSettings(sessionToken, signal).catch(() => null)
         : Promise.resolve(null);
@@ -3935,6 +3960,8 @@ function BillingPage({
       setAccounts(accountResponse.accounts);
       setRewardSettings(rewardResponse.rewardedAds);
       setTelegramBotSettings(telegramBotResponse?.telegramBot ?? null);
+      setReseller(null);
+      setResellerLedgerEntries([]);
       setDataState('live');
     } catch (loadError) {
       if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
@@ -3942,7 +3969,7 @@ function BillingPage({
       setError(t.billing.errors.load);
       setDataState((current) => (current === 'live' || current === 'stale' ? 'stale' : 'fallback'));
     }
-  }, [canViewTelegramOperations, sessionToken, t]);
+  }, [canViewTelegramOperations, isResellerSession, sessionToken, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3973,7 +4000,28 @@ function BillingPage({
   const pendingAllocationCount = paymentOrders.filter((order) => order.status === 'paid' && order.allocationStatus === 'pending').length;
   const activePackageCount = packages.filter((item) => item.status === 'active').length;
   const activeMethodCount = paymentMethods.filter((item) => item.status === 'active').length;
-  const summaryCards: MetricCardData[] = [
+  const summaryCards: MetricCardData[] = isResellerSession && reseller ? [
+    {
+      label: t.billing.resellerWalletBalance,
+      value: formatMoneyAmount(reseller.balanceAmount, reseller.currency, format),
+      tone: reseller.balanceAmount >= 0 ? 'good' : 'warning',
+    },
+    {
+      label: t.billing.resellerAvailableBalance,
+      value: formatMoneyAmount(reseller.availableBalanceAmount, reseller.currency, format),
+      tone: reseller.availableBalanceAmount > 0 ? 'good' : 'warning',
+    },
+    {
+      label: t.billing.customerAccounts,
+      value: format.integer(accounts.length),
+      tone: accounts.length > 0 ? 'good' : 'neutral',
+    },
+    {
+      label: t.billing.usedQuota,
+      value: format.bytes(totalUsedBytes),
+      tone: 'neutral',
+    },
+  ] : [
     {
       label: t.billing.customerAccounts,
       value: format.integer(accounts.length),
@@ -4043,7 +4091,7 @@ function BillingPage({
 
   const handleSaveCustomerAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canManageBilling) return;
+    if (!canManageCustomerAccounts) return;
 
     const quotaLimitBytes = parseGbLimitInput(customerForm.quotaLimitGb);
     const perClientLimitBytes = parseGbLimitInput(customerForm.perClientLimitGb);
@@ -4066,8 +4114,12 @@ function BillingPage({
         telegramUsername: normalizeNullableText(customerForm.telegramUsername),
       };
       const savedAccount = selectedCustomerAccountId
-        ? await updateAdminCustomerAccount(sessionToken, selectedCustomerAccountId, payload)
-        : await createAdminCustomerAccount(sessionToken, payload);
+        ? isResellerSession
+          ? await updateAdminResellerCustomerAccount(sessionToken, selectedCustomerAccountId, payload)
+          : await updateAdminCustomerAccount(sessionToken, selectedCustomerAccountId, payload)
+        : isResellerSession
+          ? await createAdminResellerCustomerAccount(sessionToken, payload)
+          : await createAdminCustomerAccount(sessionToken, payload);
 
       setAccounts((current) => [
         savedAccount,
@@ -4259,7 +4311,17 @@ function BillingPage({
         {summaryCards.map((item) => <MetricCard item={item} key={item.label} />)}
       </section>
 
+      {isResellerSession ? (
+        <ResellerWorkspacePanel
+          format={format}
+          ledgerEntries={resellerLedgerEntries}
+          reseller={reseller}
+          t={t}
+        />
+      ) : null}
+
       <section className="grid gap-3 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)]">
+        {!isResellerSession ? (
         <section className={panelClass}>
           <PanelHeading
             title={t.billing.rewardSettings}
@@ -4300,6 +4362,7 @@ function BillingPage({
             </div>
           </form>
         </section>
+        ) : null}
 
         <BillingCatalogPanel
           activeMethodCount={activeMethodCount}
@@ -4316,7 +4379,7 @@ function BillingPage({
       <section className="grid gap-3 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)]">
         <CustomerAccountEditorPanel
           accounts={accounts}
-          canManageBilling={canManageBilling}
+          canManageBilling={canManageCustomerAccounts}
           customerForm={customerForm}
           customerMessage={customerMessage}
           format={format}
@@ -4330,36 +4393,122 @@ function BillingPage({
         />
         <CustomerAccountsPanel accounts={accounts} format={format} t={t} />
       </section>
-      <CurrentPanelImportPreviewPanel
-        accounts={accounts}
-        canManageBilling={canManageBilling}
-        clientConfigExportJson={clientConfigExportJson}
-        currentPanelForm={currentPanelForm}
-        currentPanelMessage={currentPanelMessage}
-        currentPanelPreview={currentPanelPreview}
-        format={format}
-        isExportingClientConfigs={isExportingClientConfigs}
-        isChargingCurrentPanelVolume={isChargingCurrentPanelVolume}
-        isImportingCurrentPanel={isImportingCurrentPanel}
-        isPreviewingCurrentPanel={isPreviewingCurrentPanel}
-        isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
-        onFormChange={setCurrentPanelForm}
-        onExportClientConfigs={handleExportClientConfigs}
-        onChargeCurrentPanelVolume={handleChargeCurrentPanelVolume}
-        onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
-        onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
-        onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
-        t={t}
-      />
-      <TelegramBotOperationsPanel
-        accounts={accounts}
-        canViewTelegramOperations={canViewTelegramOperations}
-        format={format}
-        paymentOrders={paymentOrders}
-        telegramBotSettings={telegramBotSettings}
-        t={t}
-      />
+      {!isResellerSession ? (
+        <>
+          <CurrentPanelImportPreviewPanel
+            accounts={accounts}
+            canManageBilling={canManageBilling}
+            clientConfigExportJson={clientConfigExportJson}
+            currentPanelForm={currentPanelForm}
+            currentPanelMessage={currentPanelMessage}
+            currentPanelPreview={currentPanelPreview}
+            format={format}
+            isExportingClientConfigs={isExportingClientConfigs}
+            isChargingCurrentPanelVolume={isChargingCurrentPanelVolume}
+            isImportingCurrentPanel={isImportingCurrentPanel}
+            isPreviewingCurrentPanel={isPreviewingCurrentPanel}
+            isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
+            onFormChange={setCurrentPanelForm}
+            onExportClientConfigs={handleExportClientConfigs}
+            onChargeCurrentPanelVolume={handleChargeCurrentPanelVolume}
+            onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
+            onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
+            onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
+            t={t}
+          />
+          <TelegramBotOperationsPanel
+            accounts={accounts}
+            canViewTelegramOperations={canViewTelegramOperations}
+            format={format}
+            paymentOrders={paymentOrders}
+            telegramBotSettings={telegramBotSettings}
+            t={t}
+          />
+        </>
+      ) : null}
       <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
+    </section>
+  );
+}
+
+function ResellerWorkspacePanel({
+  format,
+  ledgerEntries,
+  reseller,
+  t,
+}: {
+  format: DashboardFormatters;
+  ledgerEntries: AdminResellerWalletLedgerEntry[];
+  reseller: AdminResellerAccountSummary | null;
+  t: DashboardStrings;
+}) {
+  const walletMetrics = reseller ? [
+    {
+      icon: CreditCard,
+      label: t.billing.resellerWalletBalance,
+      value: formatMoneyAmount(reseller.balanceAmount, reseller.currency, format),
+    },
+    {
+      icon: ShieldCheck,
+      label: t.billing.resellerAvailableBalance,
+      value: formatMoneyAmount(reseller.availableBalanceAmount, reseller.currency, format),
+    },
+    {
+      icon: UserRound,
+      label: t.billing.sellerMargin,
+      value: `${format.integer(reseller.sellerMarginPercent)}%`,
+    },
+    {
+      icon: Inbox,
+      label: t.billing.afroGateShare,
+      value: `${format.integer(reseller.afroGateSharePercent)}%`,
+    },
+  ] : [];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading
+        title={t.billing.resellerWorkspace}
+        icon={CreditCard}
+        meta={reseller ? reseller.displayName : t.dataStatus.loading}
+      />
+      {reseller ? (
+        <>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {walletMetrics.map((item) => <MetricPill icon={item.icon} key={item.label} label={item.label} value={item.value} />)}
+          </div>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse">
+              <thead>
+                <tr>
+                  {[t.billing.walletEntry, t.billing.amount, t.billing.balanceAfter, t.billing.source, t.billing.packageName, t.billing.createdAt].map((heading) => (
+                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ledgerEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <TableCell>
+                      <StatusBadge tone={entry.amount >= 0 ? 'good' : 'warning'}>{resellerWalletEntryTypeLabel(entry.entryType, t)}</StatusBadge>
+                    </TableCell>
+                    <TableCell>{formatMoneyAmount(entry.amount, entry.currency, format)}</TableCell>
+                    <TableCell>{formatMoneyAmount(entry.balanceAfterAmount, entry.currency, format)}</TableCell>
+                    <TableCell>{resellerWalletSourceLabel(entry.source, t)}</TableCell>
+                    <TableCell>{entry.volumePackageName ?? '--'}</TableCell>
+                    <TableCell>{format.dateTime(new Date(entry.createdAt))}</TableCell>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {ledgerEntries.length === 0 ? <EmptyState message={t.billing.noWalletLedgerEntries} /> : null}
+        </>
+      ) : (
+        <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} />
+      )}
     </section>
   );
 }
@@ -5206,6 +5355,40 @@ function billingStatusTone(status: string): Tone {
   if (status === 'refunded' || status === 'suspended') return 'warning';
 
   return 'critical';
+}
+
+function formatMoneyAmount(amount: number, currency: string, format: DashboardFormatters): string {
+  return `${format.integer(amount)} ${currency}`;
+}
+
+function resellerWalletEntryTypeLabel(value: string, t: DashboardStrings): string {
+  switch (value) {
+    case 'topup':
+      return t.billing.resellerLedgerEntryTypes.topup;
+    case 'sale_debit':
+      return t.billing.resellerLedgerEntryTypes.saleDebit;
+    case 'adjustment':
+      return t.billing.resellerLedgerEntryTypes.adjustment;
+    case 'refund':
+      return t.billing.resellerLedgerEntryTypes.refund;
+    default:
+      return value;
+  }
+}
+
+function resellerWalletSourceLabel(value: string, t: DashboardStrings): string {
+  switch (value) {
+    case 'manual_topup':
+      return t.billing.resellerLedgerSources.manualTopup;
+    case 'client_sale':
+      return t.billing.resellerLedgerSources.clientSale;
+    case 'manual_adjustment':
+      return t.billing.resellerLedgerSources.manualAdjustment;
+    case 'refund':
+      return t.billing.resellerLedgerSources.refund;
+    default:
+      return value;
+  }
 }
 
 function paymentAdapterStatusTone(status: string): Tone {
@@ -10923,6 +11106,7 @@ function Sidebar({
   t: DashboardStrings;
 }) {
   const visibleNavItems = navItems.filter((item) => {
+    if (session.actor.role === 'reseller') return item.id === 'billing';
     if (item.id === 'users') return canViewAdminUsers(session);
     if (item.id === 'audit') return canViewAuditLogs(session);
     if (item.id === 'backups') return canViewBackupStatus(session);

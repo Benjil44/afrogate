@@ -172,7 +172,7 @@
 - [x] Reseller/representative role foundation for mobile-shop sellers.
 - [x] Reseller account and wallet ledger schema.
 - [x] Guarded admin reseller wallet APIs for account listing, package quote, top-up, and package debit.
-- [ ] Reseller-scoped dashboard/panel so each representative can manage only their own customers, orders, and wallet.
+- [x] Reseller-scoped dashboard/panel so each representative can manage only their own customers, orders, and wallet.
 - [ ] Wallet-gated reseller client creation/renewal that automatically debits AfroGate share at sale time.
 - [x] PayPal checkout capture adapter and webhook verification.
 - [x] Paid payment order quota allocation.

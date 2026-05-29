@@ -19,6 +19,7 @@ import type {
   AdminPaymentOrdersResponse,
   AdminPermissionsResponse,
   AdminRewardedAdSettingsResponse,
+  AdminResellerWorkspaceResponse,
   AdminReportsSummaryResponse,
   AdminIncidentTimelineResponse,
   AdminServerInterfacesResponse,
@@ -404,6 +405,45 @@ export async function fetchAdminCustomerAccounts(
   });
 
   return response.json() as Promise<AdminCustomerAccountsResponse>;
+}
+
+export async function fetchAdminResellerWorkspace(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminResellerWorkspaceResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/workspace`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminResellerWorkspaceResponse>;
+}
+
+export async function createAdminResellerCustomerAccount(
+  sessionToken: string,
+  payload: CreateCustomerAccountRequest,
+): Promise<AdminCustomerAccountDetail> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/customer-accounts`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+export async function updateAdminResellerCustomerAccount(
+  sessionToken: string,
+  accountId: string,
+  payload: UpdateCustomerAccountRequest,
+): Promise<AdminCustomerAccountDetail> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/customer-accounts/${encodeURIComponent(accountId)}`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminCustomerAccountDetail>;
 }
 
 export async function createAdminCustomerAccount(
