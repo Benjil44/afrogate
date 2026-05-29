@@ -2223,3 +2223,34 @@ Repository remote is ready:
 
 - Adaptive MTU/fragmentation diagnostics and safe recommendations remain the only unchecked main checklist item.
 - Continue release-readiness QA with deeper mutable admin/client workflows and production install/backup drills before a real customer rollout.
+
+## 2026-05-30 Adaptive MTU Diagnostics
+
+### Completed
+
+- Added opt-in agent DF/path-MTU diagnostics through `AFROGATE_MTU_PROBE_TARGETS` plus bounded MTU range, tunnel-overhead, and configured-MTU environment settings.
+- Extended shared metrics contracts and backend ingest validation so `routeProbes` can carry MTU status, path MTU, recommended tunnel MTU, configured MTU, session-safety state, and reason codes.
+- Added backend route scoring support for MTU/fragmentation risk so gaming/stability-sensitive decisions can penalize routes with unsafe MTU signals.
+- Added route-decision candidate and review MTU guidance in the dashboard with localized keep/reduce/review labels.
+- Updated route-quality aggregation and raw analytics fallbacks so MTU probe samples can participate in compact historical route-quality summaries.
+- Documented the advisory-first MTU policy: diagnose and recommend, but do not change active-session MTU unless a future audited new-session/drain-safe apply path allows it.
+- Marked the adaptive MTU/fragmentation diagnostics checklist item complete.
+- Main checklist is now `244 / 244` complete, or `100.0%` complete with `0` unchecked items.
+- Bumped AfroGate to `0.112.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck`.
+- Ran `python -m compileall apps\agent`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran full `npm run test:e2e`; 18 tests passed.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Main checklist has no unchecked items.
+- Continue release-readiness QA with deeper mutable admin/client workflows, production install checks, backup drills, and real deployment validation before selling to customers.

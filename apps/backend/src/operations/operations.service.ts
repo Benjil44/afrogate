@@ -61,6 +61,8 @@ import type {
   RouteDecisionAction,
   RouteBufferbloatRecommendation,
   RouteBufferbloatSeverity,
+  RouteMtuRecommendation,
+  RouteMtuStatus,
   RouteHealthHistoryPoint,
   RouteQualityRecommendation,
   RouteQualityWindowSummary,
@@ -567,6 +569,16 @@ interface RouteBufferbloatAssessment {
   loadedLatencyDeltaMs: number | null;
   severity: RouteBufferbloatSeverity;
   recommendation: RouteBufferbloatRecommendation;
+}
+
+interface RouteMtuAssessment {
+  pathMtuBytes: number | null;
+  recommendedTunnelMtuBytes: number | null;
+  configuredMtuBytes: number | null;
+  status: RouteMtuStatus;
+  recommendation: RouteMtuRecommendation;
+  sessionSafe: boolean;
+  reasonCodes: string[];
 }
 
 const SENSITIVE_CONFIG_KEY_FRAGMENTS = [
@@ -5000,7 +5012,7 @@ export class OperationsService {
               - GREATEST(0, COALESCE("packetLossPercent", 0)) * CASE protocol WHEN 'tcp' THEN 16 WHEN 'dns' THEN 16 ELSE 24 END
             )) AS "sampleScore"
           FROM probe_rows
-          WHERE protocol IN ('tcp', 'udp', 'quic', 'dns', 'wireguard')
+          WHERE protocol IN ('tcp', 'udp', 'quic', 'dns', 'wireguard', 'mtu')
         ),
         profile_rows AS (
           SELECT
@@ -5011,14 +5023,14 @@ export class OperationsService {
           CROSS JOIN LATERAL (
             VALUES
               ('balanced', "sampleScore"),
-              ('stability', CASE WHEN protocol IN ('udp', 'quic', 'wireguard') THEN "sampleScore" ELSE "sampleScore" - 6 END),
+              ('stability', CASE WHEN protocol IN ('udp', 'quic', 'wireguard', 'mtu') THEN "sampleScore" ELSE "sampleScore" - 6 END),
               ('throughput', CASE WHEN status = 'healthy' THEN "sampleScore" + 3 ELSE "sampleScore" - 4 END),
-              ('gaming', CASE WHEN protocol IN ('udp', 'quic', 'wireguard', 'tcp') THEN "sampleScore" - GREATEST(0, COALESCE("latencyMs", 0) - 85) * 0.05 - GREATEST(0, COALESCE("jitterMs", 0) - 6) * 0.9 - GREATEST(0, COALESCE("packetLossPercent", 0) - 0.1) * 20 END),
+              ('gaming', CASE WHEN protocol IN ('udp', 'quic', 'wireguard', 'tcp', 'mtu') THEN "sampleScore" - GREATEST(0, COALESCE("latencyMs", 0) - 85) * 0.05 - GREATEST(0, COALESCE("jitterMs", 0) - 6) * 0.9 - GREATEST(0, COALESCE("packetLossPercent", 0) - 0.1) * 20 END),
               ('tcp', CASE WHEN protocol = 'tcp' THEN "sampleScore" END),
               ('udp', CASE WHEN protocol IN ('udp', 'wireguard') THEN "sampleScore" END),
               ('quic', CASE WHEN protocol IN ('quic', 'udp') THEN "sampleScore" END),
               ('dns', CASE WHEN protocol = 'dns' THEN "sampleScore" END),
-              ('wireguard', CASE WHEN protocol IN ('wireguard', 'udp') THEN "sampleScore" END)
+              ('wireguard', CASE WHEN protocol IN ('wireguard', 'udp', 'mtu') THEN "sampleScore" END)
           ) AS profile(score_profile, profile_score)
           WHERE profile.profile_score IS NOT NULL
         )
@@ -5295,6 +5307,7 @@ export class OperationsService {
       loadedLatencyMs: routeProbeSummary.loadedLatencyMs,
       loadedLatencyDeltaMs: routeProbeSummary.loadedLatencyDeltaMs,
     });
+    const mtu = this.assessRouteMtu({ routeProbes, configuredMtuBytes: null });
     const scoreResult = this.calculateRouteProfileScores(
       {
         baseScore,
@@ -5329,6 +5342,13 @@ export class OperationsService {
       loadedLatencyDeltaMs: bufferbloat.loadedLatencyDeltaMs,
       bufferbloatSeverity: bufferbloat.severity,
       bufferbloatRecommendation: bufferbloat.recommendation,
+      pathMtuBytes: mtu.pathMtuBytes,
+      recommendedTunnelMtuBytes: mtu.recommendedTunnelMtuBytes,
+      configuredMtuBytes: mtu.configuredMtuBytes,
+      mtuStatus: mtu.status,
+      mtuRecommendation: mtu.recommendation,
+      mtuSessionSafe: mtu.sessionSafe,
+      mtuReasonCodes: mtu.reasonCodes,
       loadPercent: null,
       serverExternalId: row.serverExternalId,
       serverHostname: row.serverHostname,
@@ -5350,6 +5370,10 @@ export class OperationsService {
     const loadPercent = this.extractLoadPercent(config, row.weight);
     const routeProbes = this.getRouteProbes(row.serverMetricRaw);
     const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
+    const configuredMtuBytes =
+      this.numberFromConfig(config.mtu) ??
+      this.numberFromConfig(config.mtuBytes) ??
+      this.numberFromConfig(config.interfaceMtu);
     const bufferbloat = this.assessRouteBufferbloat({
       latencyMs: row.latencyMs ?? routeProbeSummary.latencyMs,
       jitterMs: row.jitterMs ?? routeProbeSummary.jitterMs,
@@ -5357,6 +5381,7 @@ export class OperationsService {
       loadedLatencyMs: this.numberFromConfig(config.loadedLatencyMs) ?? routeProbeSummary.loadedLatencyMs,
       loadedLatencyDeltaMs: this.numberFromConfig(config.loadedLatencyDeltaMs) ?? routeProbeSummary.loadedLatencyDeltaMs,
     });
+    const mtu = this.assessRouteMtu({ routeProbes, configuredMtuBytes });
     const scoreResult = this.calculateRouteProfileScores(
       {
         baseScore: this.calculateWireGuardScore(row),
@@ -5392,6 +5417,13 @@ export class OperationsService {
       loadedLatencyDeltaMs: bufferbloat.loadedLatencyDeltaMs,
       bufferbloatSeverity: bufferbloat.severity,
       bufferbloatRecommendation: bufferbloat.recommendation,
+      pathMtuBytes: mtu.pathMtuBytes,
+      recommendedTunnelMtuBytes: mtu.recommendedTunnelMtuBytes,
+      configuredMtuBytes: mtu.configuredMtuBytes,
+      mtuStatus: mtu.status,
+      mtuRecommendation: mtu.recommendation,
+      mtuSessionSafe: mtu.sessionSafe,
+      mtuReasonCodes: mtu.reasonCodes,
       loadPercent,
       serverExternalId: row.serverExternalId,
       serverHostname: row.serverHostname,
@@ -5428,6 +5460,13 @@ export class OperationsService {
       loadedLatencyDeltaMs: candidate.loadedLatencyDeltaMs ?? null,
       bufferbloatSeverity: candidate.bufferbloatSeverity ?? null,
       bufferbloatRecommendation: candidate.bufferbloatRecommendation ?? null,
+      pathMtuBytes: candidate.pathMtuBytes ?? null,
+      recommendedTunnelMtuBytes: candidate.recommendedTunnelMtuBytes ?? null,
+      configuredMtuBytes: candidate.configuredMtuBytes ?? null,
+      mtuStatus: candidate.mtuStatus ?? null,
+      mtuRecommendation: candidate.mtuRecommendation ?? null,
+      mtuSessionSafe: candidate.mtuSessionSafe ?? null,
+      mtuReasonCodes: candidate.mtuReasonCodes ?? [],
       loadPercent: candidate.loadPercent ?? null,
       serverCountry: candidate.serverCountry ?? null,
       serverRegion: candidate.serverRegion ?? null,
@@ -5472,6 +5511,9 @@ export class OperationsService {
       ) {
         reviewReasonCodes.add('loaded_latency_high');
       }
+      if (candidate.mtuRecommendation === 'reduce') reviewReasonCodes.add('mtu_reduce_recommended');
+      if (candidate.mtuRecommendation === 'manualReview') reviewReasonCodes.add('mtu_manual_review');
+      if (candidate.mtuStatus === 'blocked') reviewReasonCodes.add('mtu_probe_blocked');
       if (candidate.source !== 'outbound') reviewReasonCodes.add('agent_candidate_not_applicable');
       this.routeDecisionPreferenceReasonCodes(candidate, context.clientRoutePreference)
         .forEach((reasonCode) => reviewReasonCodes.add(reasonCode));
@@ -7213,7 +7255,8 @@ export class OperationsService {
       candidate.score >= 50 &&
       status !== 'critical' &&
       status !== 'down' &&
-      candidate.bufferbloatRecommendation !== 'avoidUnderLoad'
+      candidate.bufferbloatRecommendation !== 'avoidUnderLoad' &&
+      candidate.mtuStatus !== 'blocked'
     );
   }
 
@@ -7282,6 +7325,104 @@ export class OperationsService {
       default:
         return 'none';
     }
+  }
+
+  private assessRouteMtu(input: {
+    routeProbes: RouteProbeMetric[];
+    configuredMtuBytes?: number | null;
+  }): RouteMtuAssessment {
+    const mtuProbes = input.routeProbes.filter((probe) => String(probe.protocol).toLowerCase() === 'mtu');
+    const summary = this.summarizeRouteProbes(mtuProbes);
+    const configuredMtuBytes = this.roundMetric(input.configuredMtuBytes ?? summary.configuredMtuBytes, 0);
+    const pathMtuBytes = summary.pathMtuBytes;
+    const recommendedTunnelMtuBytes = summary.recommendedTunnelMtuBytes ?? (
+      pathMtuBytes !== null ? Math.max(576, pathMtuBytes - 80) : null
+    );
+    const reasonCodes = new Set<string>();
+    const hasBlockedProbe = mtuProbes.some((probe) => probe.status === 'critical' || probe.mtuStatus === 'blocked');
+
+    if (!mtuProbes.length) {
+      return {
+        pathMtuBytes: null,
+        recommendedTunnelMtuBytes: null,
+        configuredMtuBytes,
+        status: 'unknown',
+        recommendation: 'none',
+        sessionSafe: false,
+        reasonCodes: ['mtu_probe_not_configured'],
+      };
+    }
+
+    if (hasBlockedProbe && pathMtuBytes === null) {
+      return {
+        pathMtuBytes: null,
+        recommendedTunnelMtuBytes: null,
+        configuredMtuBytes,
+        status: 'blocked',
+        recommendation: 'manualReview',
+        sessionSafe: false,
+        reasonCodes: ['mtu_probe_blocked', 'manual_review_required'],
+      };
+    }
+
+    if (pathMtuBytes !== null && pathMtuBytes < 1280) {
+      reasonCodes.add('path_mtu_below_ipv6_minimum');
+      reasonCodes.add('manual_review_required');
+      return {
+        pathMtuBytes,
+        recommendedTunnelMtuBytes,
+        configuredMtuBytes,
+        status: 'blocked',
+        recommendation: 'manualReview',
+        sessionSafe: false,
+        reasonCodes: [...reasonCodes],
+      };
+    }
+
+    if (
+      configuredMtuBytes !== null &&
+      recommendedTunnelMtuBytes !== null &&
+      configuredMtuBytes > recommendedTunnelMtuBytes + 8
+    ) {
+      reasonCodes.add('configured_mtu_above_safe_path');
+      reasonCodes.add('new_sessions_only');
+      return {
+        pathMtuBytes,
+        recommendedTunnelMtuBytes,
+        configuredMtuBytes,
+        status: 'fragmentationRisk',
+        recommendation: 'reduce',
+        sessionSafe: false,
+        reasonCodes: [...reasonCodes],
+      };
+    }
+
+    if (
+      (pathMtuBytes !== null && pathMtuBytes < 1400) ||
+      (recommendedTunnelMtuBytes !== null && recommendedTunnelMtuBytes < 1320)
+    ) {
+      reasonCodes.add('low_path_mtu');
+      reasonCodes.add('avoid_mid_session_change');
+      return {
+        pathMtuBytes,
+        recommendedTunnelMtuBytes,
+        configuredMtuBytes,
+        status: 'fragmentationRisk',
+        recommendation: configuredMtuBytes === null ? 'manualReview' : 'keep',
+        sessionSafe: false,
+        reasonCodes: [...reasonCodes],
+      };
+    }
+
+    return {
+      pathMtuBytes,
+      recommendedTunnelMtuBytes,
+      configuredMtuBytes,
+      status: 'healthy',
+      recommendation: 'keep',
+      sessionSafe: true,
+      reasonCodes: ['mtu_probe_healthy'],
+    };
   }
 
   private calculateLoadedLatencyPenalty(signals: RouteScoreSignals): number {
@@ -7441,19 +7582,19 @@ export class OperationsService {
   private protocolsForScoreProfile(profile: RouteScoreProfile): string[] {
     switch (profile) {
       case 'tcp':
-        return ['tcp'];
+        return ['tcp', 'mtu'];
       case 'udp':
-        return ['udp', 'wireguard'];
+        return ['udp', 'wireguard', 'mtu'];
       case 'quic':
-        return ['quic', 'udp'];
+        return ['quic', 'udp', 'mtu'];
       case 'dns':
-        return ['dns'];
+        return ['dns', 'mtu'];
       case 'wireguard':
-        return ['wireguard', 'udp'];
+        return ['wireguard', 'udp', 'mtu'];
       case 'gaming':
-        return ['udp', 'quic', 'wireguard', 'tcp'];
+        return ['udp', 'quic', 'wireguard', 'tcp', 'mtu'];
       default:
-        return ['tcp', 'udp', 'quic', 'dns', 'wireguard'];
+        return ['tcp', 'udp', 'quic', 'dns', 'wireguard', 'mtu'];
     }
   }
 
@@ -7486,6 +7627,8 @@ export class OperationsService {
 
   private calculateSingleProbeScore(probe: RouteProbeMetric): number {
     const protocol = String(probe.protocol).toLowerCase();
+    if (protocol === 'mtu') return this.calculateMtuProbeScore(probe);
+
     const statusScore = {
       healthy: 100,
       degraded: 72,
@@ -7505,19 +7648,47 @@ export class OperationsService {
     return this.clamp(score, 0, 100);
   }
 
+  private calculateMtuProbeScore(probe: RouteProbeMetric): number {
+    const statusScore = {
+      healthy: 100,
+      degraded: 68,
+      critical: 20,
+      unknown: 55,
+    }[String(probe.status).toLowerCase()] ?? 55;
+    const pathMtu = this.roundMetric(probe.pathMtuBytes, 0);
+    const recommendedTunnelMtu = this.roundMetric(probe.recommendedTunnelMtuBytes, 0);
+    const configuredMtu = this.roundMetric(probe.configuredMtuBytes, 0);
+    const configuredOverRecommended = configuredMtu !== null && recommendedTunnelMtu !== null
+      ? Math.max(0, configuredMtu - recommendedTunnelMtu)
+      : 0;
+    const pathMtuPenalty = pathMtu === null ? 0 : this.thresholdPenalty(1280 - pathMtu, 0, 0.16);
+    const recommendedPenalty = recommendedTunnelMtu === null ? 0 : this.thresholdPenalty(1280 - recommendedTunnelMtu, 0, 0.2);
+    const configuredPenalty = Math.min(35, configuredOverRecommended * 0.18);
+
+    return this.clamp(statusScore - pathMtuPenalty - recommendedPenalty - configuredPenalty, 0, 100);
+  }
+
   private summarizeRouteProbes(routeProbes: RouteProbeMetric[]): {
     latencyMs: number | null;
     jitterMs: number | null;
     packetLossPercent: number | null;
     loadedLatencyMs: number | null;
     loadedLatencyDeltaMs: number | null;
+    pathMtuBytes: number | null;
+    recommendedTunnelMtuBytes: number | null;
+    configuredMtuBytes: number | null;
   } {
+    const mtuProbes = routeProbes.filter((probe) => String(probe.protocol).toLowerCase() === 'mtu');
+
     return {
       latencyMs: this.averageMetric(routeProbes.map((probe) => probe.latencyMs)),
       jitterMs: this.averageMetric(routeProbes.map((probe) => probe.jitterMs)),
       packetLossPercent: this.averageMetric(routeProbes.map((probe) => probe.packetLossPercent)),
       loadedLatencyMs: this.averageMetric(routeProbes.map((probe) => probe.loadedLatencyMs)),
       loadedLatencyDeltaMs: this.averageMetric(routeProbes.map((probe) => this.loadedLatencyDeltaFromProbe(probe))),
+      pathMtuBytes: this.minimumMetric(mtuProbes.map((probe) => probe.pathMtuBytes)),
+      recommendedTunnelMtuBytes: this.minimumMetric(mtuProbes.map((probe) => probe.recommendedTunnelMtuBytes)),
+      configuredMtuBytes: this.maximumMetric(mtuProbes.map((probe) => probe.configuredMtuBytes)),
     };
   }
 
@@ -7543,6 +7714,22 @@ export class OperationsService {
     if (!finiteValues.length) return null;
 
     return Math.round((finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length) * 10) / 10;
+  }
+
+  private minimumMetric(values: Array<number | null | undefined>): number | null {
+    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+    if (!finiteValues.length) return null;
+
+    return Math.round(Math.min(...finiteValues));
+  }
+
+  private maximumMetric(values: Array<number | null | undefined>): number | null {
+    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+    if (!finiteValues.length) return null;
+
+    return Math.round(Math.max(...finiteValues));
   }
 
   private getRouteProbes(raw: Partial<ServerMetricSnapshot> | null | undefined): RouteProbeMetric[] {
@@ -7596,6 +7783,7 @@ export class OperationsService {
       signals.routeProbes,
       this.protocolsForScoreProfile(selectedProfile),
     );
+    const selectedMtuScore = this.calculateProtocolProbeScore(signals.routeProbes, ['mtu']);
     const loadedLatencyAssessment = this.assessRouteBufferbloat({
       latencyMs: signals.latencyMs,
       jitterMs: signals.jitterMs,
@@ -7645,6 +7833,9 @@ export class OperationsService {
         80,
         this.protocolsForScoreProfile(selectedProfile).join(','),
       );
+    }
+    if (selectedMtuScore !== null) {
+      pushReason('mtu', this.thresholdPenalty(85 - selectedMtuScore, 0, 0.8), selectedMtuScore, 85, 'path-mtu');
     }
 
     return reasons.sort((left, right) => right.impact - left.impact).slice(0, 6);

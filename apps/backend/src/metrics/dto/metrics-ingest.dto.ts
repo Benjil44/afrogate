@@ -1,11 +1,13 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsIn, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
 
 const WIREGUARD_PEER_STATUSES = ['active', 'stale', 'never', 'unknown'] as const;
 const WIREGUARD_INTERFACE_STATUSES = ['up', 'degraded', 'down', 'unknown'] as const;
-const ROUTE_PROBE_PROTOCOLS = ['tcp', 'udp', 'quic', 'dns', 'wireguard'] as const;
+const ROUTE_PROBE_PROTOCOLS = ['tcp', 'udp', 'quic', 'dns', 'wireguard', 'mtu'] as const;
 const ROUTE_PROBE_STATUSES = ['healthy', 'degraded', 'critical', 'unknown'] as const;
 const ROUTE_SCORE_PROFILES = ['balanced', 'stability', 'throughput', 'gaming', 'tcp', 'udp', 'quic', 'dns', 'wireguard'] as const;
+const ROUTE_MTU_STATUSES = ['healthy', 'fragmentationRisk', 'blocked', 'unknown'] as const;
+const ROUTE_MTU_RECOMMENDATIONS = ['none', 'keep', 'reduce', 'manualReview'] as const;
 
 class StorageVolumeMetricDto {
   @IsString()
@@ -228,6 +230,41 @@ class RouteProbeMetricDto {
   @IsOptional()
   @IsNumber()
   loadedLatencyDeltaMs?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(576)
+  @Max(9000)
+  pathMtuBytes?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(576)
+  @Max(9000)
+  recommendedTunnelMtuBytes?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(576)
+  @Max(9000)
+  configuredMtuBytes?: number | null;
+
+  @IsOptional()
+  @IsIn(ROUTE_MTU_STATUSES)
+  mtuStatus?: string | null;
+
+  @IsOptional()
+  @IsIn(ROUTE_MTU_RECOMMENDATIONS)
+  mtuRecommendation?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  mtuSessionSafe?: boolean | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  mtuReasonCodes?: string[];
 
   @IsOptional()
   @IsString()

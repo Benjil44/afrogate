@@ -27,8 +27,13 @@ def main() -> None:
             config.udp_probe_targets,
             config.quic_probe_targets,
             config.dns_probe_targets,
+            config.mtu_probe_targets,
             config.route_probe_count,
             config.route_probe_timeout_seconds,
+            config.route_probe_mtu_min_bytes,
+            config.route_probe_mtu_max_bytes,
+            config.route_probe_tunnel_overhead_bytes,
+            config.route_probe_configured_mtu_bytes,
             {
                 "routeGroup": config.route_probe_route_group,
                 "outboundId": config.route_probe_outbound_id,

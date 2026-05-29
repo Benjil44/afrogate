@@ -125,7 +125,7 @@ export class RouteQualityAggregationService implements OnModuleInit, OnModuleDes
                 - GREATEST(0, COALESCE("packetLossPercent", 0)) * CASE protocol WHEN 'tcp' THEN 16 WHEN 'dns' THEN 16 ELSE 24 END
               )) AS "sampleScore"
             FROM probe_rows
-            WHERE protocol IN ('tcp', 'udp', 'quic', 'dns', 'wireguard')
+            WHERE protocol IN ('tcp', 'udp', 'quic', 'dns', 'wireguard', 'mtu')
           ),
           profile_rows AS (
             SELECT
@@ -136,14 +136,14 @@ export class RouteQualityAggregationService implements OnModuleInit, OnModuleDes
             CROSS JOIN LATERAL (
               VALUES
                 ('balanced', "sampleScore"),
-                ('stability', CASE WHEN protocol IN ('udp', 'quic', 'wireguard') THEN "sampleScore" ELSE "sampleScore" - 6 END),
+                ('stability', CASE WHEN protocol IN ('udp', 'quic', 'wireguard', 'mtu') THEN "sampleScore" ELSE "sampleScore" - 6 END),
                 ('throughput', CASE WHEN status = 'healthy' THEN "sampleScore" + 3 ELSE "sampleScore" - 4 END),
-                ('gaming', CASE WHEN protocol IN ('udp', 'quic', 'wireguard', 'tcp') THEN "sampleScore" - GREATEST(0, COALESCE("latencyMs", 0) - 85) * 0.05 - GREATEST(0, COALESCE("jitterMs", 0) - 6) * 0.9 - GREATEST(0, COALESCE("packetLossPercent", 0) - 0.1) * 20 END),
+                ('gaming', CASE WHEN protocol IN ('udp', 'quic', 'wireguard', 'tcp', 'mtu') THEN "sampleScore" - GREATEST(0, COALESCE("latencyMs", 0) - 85) * 0.05 - GREATEST(0, COALESCE("jitterMs", 0) - 6) * 0.9 - GREATEST(0, COALESCE("packetLossPercent", 0) - 0.1) * 20 END),
                 ('tcp', CASE WHEN protocol = 'tcp' THEN "sampleScore" END),
                 ('udp', CASE WHEN protocol IN ('udp', 'wireguard') THEN "sampleScore" END),
                 ('quic', CASE WHEN protocol IN ('quic', 'udp') THEN "sampleScore" END),
                 ('dns', CASE WHEN protocol = 'dns' THEN "sampleScore" END),
-                ('wireguard', CASE WHEN protocol IN ('wireguard', 'udp') THEN "sampleScore" END)
+                ('wireguard', CASE WHEN protocol IN ('wireguard', 'udp', 'mtu') THEN "sampleScore" END)
             ) AS profile(score_profile, profile_score)
             WHERE profile.profile_score IS NOT NULL
           ),

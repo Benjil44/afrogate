@@ -63,8 +63,13 @@ def collect_metrics(
     udp_probe_targets: tuple[str, ...] | list[str] | None = None,
     quic_probe_targets: tuple[str, ...] | list[str] | None = None,
     dns_probe_targets: tuple[str, ...] | list[str] | None = None,
+    mtu_probe_targets: tuple[str, ...] | list[str] | None = None,
     route_probe_count: int = 2,
     route_probe_timeout_seconds: int = 2,
+    route_probe_mtu_min_bytes: int = 1280,
+    route_probe_mtu_max_bytes: int = 1500,
+    route_probe_tunnel_overhead_bytes: int = 80,
+    route_probe_configured_mtu_bytes: int | None = None,
     route_probe_metadata: dict[str, str | None] | None = None,
 ) -> dict[str, object]:
     now = time.time()
@@ -81,9 +86,14 @@ def collect_metrics(
         udp_probe_targets or (),
         quic_probe_targets or (),
         dns_probe_targets or (),
+        mtu_probe_targets or (),
         wireguard_interfaces,
         route_probe_count,
         route_probe_timeout_seconds,
+        route_probe_mtu_min_bytes,
+        route_probe_mtu_max_bytes,
+        route_probe_tunnel_overhead_bytes,
+        route_probe_configured_mtu_bytes,
         route_probe_metadata,
     )
     storages = _collect_storages()
@@ -635,9 +645,14 @@ def _collect_route_probes(
     udp_targets: tuple[str, ...] | list[str],
     quic_targets: tuple[str, ...] | list[str],
     dns_targets: tuple[str, ...] | list[str],
+    mtu_targets: tuple[str, ...] | list[str],
     wireguard_interfaces: list[dict[str, object]],
     count: int,
     timeout_seconds: int,
+    mtu_min_bytes: int,
+    mtu_max_bytes: int,
+    tunnel_overhead_bytes: int,
+    configured_mtu_bytes: int | None,
     metadata: dict[str, str | None] | None = None,
 ) -> list[dict[str, object]]:
     count = max(1, min(5, int(count)))
@@ -670,6 +685,17 @@ def _collect_route_probes(
     for target in dns_targets[:4]:
         if _is_safe_route_host(target):
             probes.append(_run_dns_route_probe(target, count, timeout_seconds))
+
+    for target in mtu_targets[:4]:
+        if _is_safe_route_host(target):
+            probes.append(_run_mtu_route_probe(
+                target,
+                timeout_seconds,
+                mtu_min_bytes,
+                mtu_max_bytes,
+                tunnel_overhead_bytes,
+                configured_mtu_bytes,
+            ))
 
     for interface in wireguard_interfaces[:8]:
         probe = _run_wireguard_route_probe(interface)
@@ -762,6 +788,223 @@ def _run_dns_route_probe(target: str, count: int, timeout_seconds: int) -> dict[
             socket.setdefaulttimeout(original_timeout)
 
     return _route_probe_result("dns", target, "dns_lookup", samples, count)
+
+
+def _run_mtu_route_probe(
+    target: str,
+    timeout_seconds: int,
+    min_mtu_bytes: int,
+    max_mtu_bytes: int,
+    tunnel_overhead_bytes: int,
+    configured_mtu_bytes: int | None,
+) -> dict[str, object]:
+    timeout_seconds = max(1, min(10, int(timeout_seconds)))
+    min_mtu = max(576, min(9000, int(min_mtu_bytes)))
+    max_mtu = max(576, min(9000, int(max_mtu_bytes)))
+    if max_mtu < min_mtu:
+        min_mtu, max_mtu = max_mtu, min_mtu
+
+    overhead = max(40, min(240, int(tunnel_overhead_bytes)))
+    checked_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    max_result = _run_mtu_ping(target, max_mtu, timeout_seconds)
+    if max_result is None:
+        return _mtu_route_probe_result(
+            target,
+            "unknown",
+            None,
+            max_mtu,
+            overhead,
+            configured_mtu_bytes,
+            ["mtu_probe_unavailable"],
+            checked_at,
+        )
+    if max_result:
+        return _mtu_route_probe_result(
+            target,
+            "healthy",
+            max_mtu,
+            max_mtu,
+            overhead,
+            configured_mtu_bytes,
+            ["max_mtu_ok"],
+            checked_at,
+        )
+
+    min_result = _run_mtu_ping(target, min_mtu, timeout_seconds)
+    if min_result is None:
+        return _mtu_route_probe_result(
+            target,
+            "unknown",
+            None,
+            max_mtu,
+            overhead,
+            configured_mtu_bytes,
+            ["mtu_probe_unavailable"],
+            checked_at,
+        )
+    if not min_result:
+        return _mtu_route_probe_result(
+            target,
+            "critical",
+            None,
+            max_mtu,
+            overhead,
+            configured_mtu_bytes,
+            ["minimum_mtu_failed", "manual_review_required"],
+            checked_at,
+        )
+
+    best_mtu = min_mtu
+    low = min_mtu + 1
+    high = max_mtu - 1
+    attempts = 0
+
+    while low <= high and attempts < 12:
+        attempts += 1
+        midpoint = (low + high) // 2
+        result = _run_mtu_ping(target, midpoint, timeout_seconds)
+        if result is None:
+            break
+        if result:
+            best_mtu = midpoint
+            low = midpoint + 1
+        else:
+            high = midpoint - 1
+
+    return _mtu_route_probe_result(
+        target,
+        "degraded",
+        best_mtu,
+        max_mtu,
+        overhead,
+        configured_mtu_bytes,
+        ["fragmentation_risk", "avoid_mid_session_change"],
+        checked_at,
+    )
+
+
+def _run_mtu_ping(target: str, packet_mtu_bytes: int, timeout_seconds: int) -> bool | None:
+    payload_size = max(0, int(packet_mtu_bytes) - 28)
+    system_name = platform.system().lower()
+    if system_name == "windows":
+        command = ["ping", "-n", "1", "-f", "-l", str(payload_size), "-w", str(timeout_seconds * 1000), target]
+    elif system_name == "darwin":
+        command = ["ping", "-c", "1", "-D", "-s", str(payload_size), "-W", str(timeout_seconds * 1000), target]
+    else:
+        command = ["ping", "-n", "-c", "1", "-M", "do", "-s", str(payload_size), "-W", str(timeout_seconds), target]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=max(3, timeout_seconds + 2),
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+
+    return result.returncode == 0
+
+
+def _mtu_route_probe_result(
+    target: str,
+    status: str,
+    path_mtu_bytes: int | None,
+    tested_mtu_bytes: int,
+    tunnel_overhead_bytes: int,
+    configured_mtu_bytes: int | None,
+    reason_codes: list[str],
+    checked_at: str,
+) -> dict[str, object]:
+    recommended_tunnel_mtu = (
+        max(576, path_mtu_bytes - tunnel_overhead_bytes)
+        if isinstance(path_mtu_bytes, int)
+        else None
+    )
+    mtu_status = _mtu_status(status, path_mtu_bytes, tested_mtu_bytes)
+    mtu_recommendation = _mtu_recommendation(
+        mtu_status,
+        recommended_tunnel_mtu,
+        configured_mtu_bytes,
+    )
+    normalized_reasons = list(dict.fromkeys(reason_codes + _mtu_reason_codes(
+        mtu_status,
+        mtu_recommendation,
+        recommended_tunnel_mtu,
+        configured_mtu_bytes,
+    )))
+
+    return {
+        "protocol": "mtu",
+        "target": target,
+        "mode": "icmp_df_path_mtu",
+        "status": status,
+        "latencyMs": None,
+        "jitterMs": None,
+        "packetLossPercent": 0 if status == "healthy" else None,
+        "pathMtuBytes": path_mtu_bytes,
+        "recommendedTunnelMtuBytes": recommended_tunnel_mtu,
+        "configuredMtuBytes": configured_mtu_bytes,
+        "mtuStatus": mtu_status,
+        "mtuRecommendation": mtu_recommendation,
+        "mtuSessionSafe": mtu_recommendation == "keep",
+        "mtuReasonCodes": normalized_reasons,
+        "checkedAt": checked_at,
+    }
+
+
+def _mtu_status(status: str, path_mtu_bytes: int | None, tested_mtu_bytes: int) -> str:
+    if status == "unknown":
+        return "unknown"
+    if path_mtu_bytes is None:
+        return "blocked"
+    if path_mtu_bytes >= tested_mtu_bytes:
+        return "healthy"
+
+    return "fragmentationRisk"
+
+
+def _mtu_recommendation(
+    mtu_status: str,
+    recommended_tunnel_mtu: int | None,
+    configured_mtu_bytes: int | None,
+) -> str:
+    if mtu_status in {"blocked", "unknown"}:
+        return "manualReview" if mtu_status == "blocked" else "none"
+    if recommended_tunnel_mtu is None:
+        return "none"
+    if configured_mtu_bytes is not None and configured_mtu_bytes > recommended_tunnel_mtu + 8:
+        return "reduce"
+    if recommended_tunnel_mtu < 1320:
+        return "manualReview"
+
+    return "keep"
+
+
+def _mtu_reason_codes(
+    mtu_status: str,
+    recommendation: str,
+    recommended_tunnel_mtu: int | None,
+    configured_mtu_bytes: int | None,
+) -> list[str]:
+    reasons: list[str] = []
+    if mtu_status == "healthy":
+        reasons.append("mtu_probe_healthy")
+    if mtu_status == "fragmentationRisk":
+        reasons.append("fragmentation_risk")
+    if mtu_status == "blocked":
+        reasons.append("mtu_probe_blocked")
+    if recommendation == "reduce":
+        reasons.extend(["configured_mtu_above_safe_path", "new_sessions_only"])
+    if recommendation == "manualReview":
+        reasons.append("manual_review_required")
+    if recommended_tunnel_mtu is not None and recommended_tunnel_mtu < 1320:
+        reasons.append("low_tunnel_mtu")
+    if configured_mtu_bytes is None:
+        reasons.append("configured_mtu_unknown")
+
+    return reasons
 
 
 def _run_wireguard_route_probe(interface: dict[str, object]) -> dict[str, object] | None:

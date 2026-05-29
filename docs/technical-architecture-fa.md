@@ -48,6 +48,7 @@ Protocol-aware smart routing probes should be added to the agent as lightweight 
 - UDP reachability, jitter, packet loss, and response delay when a safe echo/probe target exists.
 - QUIC/HTTP3 handshake/request timing where UDP-based web traffic matters.
 - DNS lookup latency and failure rate when DNS behavior affects route quality.
+- DF/path-MTU diagnostics against configured synthetic hosts, used only for safe tunnel-MTU recommendations.
 - WireGuard handshake freshness, peer transfer counters, and tunnel up/down state.
 - Short bounded loaded-latency and throughput probes for low-speed/high-speed classification.
 

@@ -17,8 +17,13 @@ class AgentConfig:
     udp_probe_targets: tuple[str, ...]
     quic_probe_targets: tuple[str, ...]
     dns_probe_targets: tuple[str, ...]
+    mtu_probe_targets: tuple[str, ...]
     route_probe_count: int
     route_probe_timeout_seconds: int
+    route_probe_mtu_min_bytes: int
+    route_probe_mtu_max_bytes: int
+    route_probe_tunnel_overhead_bytes: int
+    route_probe_configured_mtu_bytes: int | None
     route_probe_route_group: str | None
     route_probe_outbound_id: str | None
     route_probe_outbound_key: str | None
@@ -42,8 +47,13 @@ def load_config() -> AgentConfig:
         udp_probe_targets=_parse_targets(os.getenv("AFROGATE_UDP_PROBE_TARGETS", "")),
         quic_probe_targets=_parse_targets(os.getenv("AFROGATE_QUIC_PROBE_TARGETS", "")),
         dns_probe_targets=_parse_targets(os.getenv("AFROGATE_DNS_PROBE_TARGETS", "")),
+        mtu_probe_targets=_parse_targets(os.getenv("AFROGATE_MTU_PROBE_TARGETS", "")),
         route_probe_count=_bounded_int("AFROGATE_ROUTE_PROBE_COUNT", 2, 1, 5),
         route_probe_timeout_seconds=_bounded_int("AFROGATE_ROUTE_PROBE_TIMEOUT_SECONDS", 2, 1, 10),
+        route_probe_mtu_min_bytes=_bounded_int("AFROGATE_ROUTE_PROBE_MTU_MIN_BYTES", 1280, 576, 9000),
+        route_probe_mtu_max_bytes=_bounded_int("AFROGATE_ROUTE_PROBE_MTU_MAX_BYTES", 1500, 576, 9000),
+        route_probe_tunnel_overhead_bytes=_bounded_int("AFROGATE_ROUTE_PROBE_TUNNEL_OVERHEAD_BYTES", 80, 40, 240),
+        route_probe_configured_mtu_bytes=_optional_int("AFROGATE_ROUTE_PROBE_CONFIGURED_MTU_BYTES", 576, 9000),
         route_probe_route_group=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_ROUTE_GROUP")),
         route_probe_outbound_id=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_OUTBOUND_ID")),
         route_probe_outbound_key=_optional_string(os.getenv("AFROGATE_ROUTE_PROBE_OUTBOUND_KEY")),
@@ -74,3 +84,16 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
         return default
 
     return max(minimum, min(maximum, value))
+
+
+def _optional_int(name: str, minimum: int, maximum: int) -> int | None:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return None
+
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+
+    return max(minimum, min(maximum, parsed))

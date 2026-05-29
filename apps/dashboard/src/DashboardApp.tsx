@@ -9466,11 +9466,12 @@ function RouteDecisionCandidateReviewRow({
         </div>
       </div>
 
-      <div className="grid gap-1.5 sm:grid-cols-5">
+      <div className="grid gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
         <MetricPill icon={Clock} label={t.settings.latency} value={format.latency(review.latencyMs ?? null)} />
         <MetricPill icon={Activity} label={t.settings.jitter} value={format.latency(review.jitterMs ?? null)} />
         <MetricPill icon={AlertTriangle} label={t.settings.packetLoss} value={format.packetLoss(review.packetLossPercent ?? null)} />
         <MetricPill icon={Gauge} label={t.settings.loadedLatency} value={formatLoadedLatency(review, format, t)} />
+        <MetricPill icon={Network} label={t.settings.mtu} value={formatMtuRecommendation(review, format, t)} />
         <MetricPill icon={ArrowDownUp} label={t.settings.routeDecisionCandidateDelta} value={scoreDelta} />
       </div>
 
@@ -9701,11 +9702,12 @@ function RouteDecisionCandidateCard({
         </div>
         <StatusBadge tone={getWireGuardScoreTone(candidate.score)}>{format.integer(candidate.score)}</StatusBadge>
       </div>
-      <div className="mt-2 grid gap-1.5 sm:grid-cols-4">
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-5">
         <MetricPill icon={Clock} label={t.settings.latency} value={format.latency(candidate.latencyMs ?? null)} />
         <MetricPill icon={Activity} label={t.settings.jitter} value={format.latency(candidate.jitterMs ?? null)} />
         <MetricPill icon={AlertTriangle} label={t.settings.packetLoss} value={format.packetLoss(candidate.packetLossPercent ?? null)} />
         <MetricPill icon={Gauge} label={t.settings.loadedLatency} value={formatLoadedLatency(candidate, format, t)} />
+        <MetricPill icon={Network} label={t.settings.mtu} value={formatMtuRecommendation(candidate, format, t)} />
       </div>
     </div>
   );
@@ -9968,6 +9970,12 @@ function routeDecisionReasonLabel(reason: string, t: DashboardStrings): string {
       return t.settings.decisionReasonDryRunOnly;
     case 'loaded_latency_high':
       return t.settings.decisionReasonLoadedLatency;
+    case 'mtu_reduce_recommended':
+      return t.settings.decisionReasonMtuReduce;
+    case 'mtu_manual_review':
+      return t.settings.decisionReasonMtuReview;
+    case 'mtu_probe_blocked':
+      return t.settings.decisionReasonMtuBlocked;
     case 'client_route_preference':
       return t.settings.decisionReasonClientPreference;
     case 'detected_country_context':
@@ -10016,6 +10024,8 @@ function routeScoreReasonLabel(reason: string, t: DashboardStrings): string {
       return t.settings.decisionScoreReasonHandshake;
     case 'routeProbe':
       return t.settings.decisionScoreReasonRouteProbe;
+    case 'mtu':
+      return t.settings.decisionScoreReasonMtu;
     case 'maintenance':
       return t.settings.decisionScoreReasonMaintenance;
     default:
@@ -11084,6 +11094,34 @@ function formatLoadedLatency(
   }
 
   return routeBufferbloatSeverityLabel(candidate.bufferbloatSeverity ?? 'unknown', t);
+}
+
+function formatMtuRecommendation(
+  candidate: Pick<
+    AdminRouteDecisionCandidateSummary,
+    'configuredMtuBytes' | 'mtuRecommendation' | 'mtuStatus' | 'recommendedTunnelMtuBytes'
+  >,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): string {
+  const recommended = candidate.recommendedTunnelMtuBytes;
+  const configured = candidate.configuredMtuBytes;
+
+  if (candidate.mtuRecommendation === 'reduce' && typeof recommended === 'number') {
+    return t.settings.mtuReduceTo(format.integer(recommended));
+  }
+  if (candidate.mtuRecommendation === 'manualReview') return t.settings.mtuManualReview;
+  if (candidate.mtuRecommendation === 'keep') {
+    if (typeof configured === 'number') return format.integer(configured);
+    if (typeof recommended === 'number') return t.settings.mtuSafe(format.integer(recommended));
+    return t.settings.mtuKeep;
+  }
+  if (candidate.mtuStatus === 'blocked') return t.settings.mtuBlocked;
+  if (candidate.mtuStatus === 'fragmentationRisk' && typeof recommended === 'number') {
+    return t.settings.mtuSafe(format.integer(recommended));
+  }
+
+  return t.settings.mtuUnknown;
 }
 
 function routeBufferbloatSeverityLabel(severity: string, t: DashboardStrings): string {

@@ -103,7 +103,9 @@ Settings route selection can use these agent-sourced WireGuard tunnel rows as re
 
 Ping/jitter/packet-loss collection is opt-in through configured synthetic targets such as `AFROGATE_PING_TARGETS`. Do not use user destinations or traffic-derived hosts as probe targets.
 
-Protocol-aware route probes are opt-in through `AFROGATE_TCP_PROBE_TARGETS`, `AFROGATE_UDP_PROBE_TARGETS`, `AFROGATE_QUIC_PROBE_TARGETS`, and `AFROGATE_DNS_PROBE_TARGETS`. TCP probes measure connect latency/failure rate. DNS probes measure lookup latency/failure rate. UDP and QUIC-labeled probes require a configured responder that replies to the small probe payload; they are reachability signals, not continuous speed tests. When `wg` telemetry is available, the agent also emits `wireguard` route-probe rows derived from interface status, active peer count, and handshake freshness without sending raw keys.
+Protocol-aware route probes are opt-in through `AFROGATE_TCP_PROBE_TARGETS`, `AFROGATE_UDP_PROBE_TARGETS`, `AFROGATE_QUIC_PROBE_TARGETS`, `AFROGATE_DNS_PROBE_TARGETS`, and `AFROGATE_MTU_PROBE_TARGETS`. TCP probes measure connect latency/failure rate. DNS probes measure lookup latency/failure rate. UDP and QUIC-labeled probes require a configured responder that replies to the small probe payload; they are reachability signals, not continuous speed tests. MTU probes use DF/path-MTU checks against configured synthetic hosts, estimate a safe tunnel MTU after the configured overhead, and surface reduce/review recommendations. When `wg` telemetry is available, the agent also emits `wireguard` route-probe rows derived from interface status, active peer count, and handshake freshness without sending raw keys.
+
+Adaptive MTU handling is advisory-first. AfroGate may score a route down or recommend reducing the configured tunnel MTU when path-MTU diagnostics show fragmentation risk, but it must not change MTU mid-session for gaming, UDP, QUIC, WireGuard, or other active latency-sensitive flows unless future session-safety gates explicitly allow a new-session-only/drain-safe apply path with audit and rollback.
 
 SSH can still be used for:
 

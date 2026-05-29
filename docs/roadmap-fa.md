@@ -78,6 +78,7 @@
 - نمایش reason انتخاب مسیر.
 - Per-client route preferences and a separate mobile-first client app for automatic country detection, preferred exit country, explicit server/outbound choice, subscription refresh metadata, and secret-safe protocol config readiness without exposing admin controls.
 - Native/client per-app VPN split tunneling now has local app selection, native profile export, Android include-only `VpnService` enforcement reference, and an iOS managed-profile boundary so selected apps such as Instagram, Telegram, and WhatsApp can use AfroGate where native enforcement is available while other apps keep normal internet unless the client explicitly includes them.
+- Adaptive MTU diagnostics now use optional synthetic DF/path-MTU probes to recommend safer tunnel MTU values for mobile/VPN routes, while keeping automatic MTU changes blocked for active sessions unless future session-safety gates allow them.
 - Route health score history now appears on the Routes page from compact hourly synthetic-probe summaries, so admins can review recent score, latency, jitter, and packet-loss history without inspecting user traffic or applying route changes.
 - Route canary rollout status now appears on the Routes page through guarded `GET /api/admin/route-canary/status`, showing new-session canary readiness, rollback thresholds, session protection, and assignment-only/data-plane-disabled boundaries without moving traffic.
 

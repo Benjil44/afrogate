@@ -235,8 +235,10 @@ export interface WireGuardInterfaceMetric {
   peers?: WireGuardPeerMetric[];
 }
 
-export type RouteProbeProtocol = 'tcp' | 'udp' | 'quic' | 'dns' | 'wireguard';
+export type RouteProbeProtocol = 'tcp' | 'udp' | 'quic' | 'dns' | 'wireguard' | 'mtu';
 export type RouteProbeStatus = 'healthy' | 'degraded' | 'critical' | 'unknown';
+export type RouteMtuStatus = 'healthy' | 'fragmentationRisk' | 'blocked' | 'unknown';
+export type RouteMtuRecommendation = 'none' | 'keep' | 'reduce' | 'manualReview';
 
 export interface RouteProbeMetric {
   protocol: RouteProbeProtocol | string;
@@ -254,6 +256,13 @@ export interface RouteProbeMetric {
   packetLossPercent?: number | null;
   loadedLatencyMs?: number | null;
   loadedLatencyDeltaMs?: number | null;
+  pathMtuBytes?: number | null;
+  recommendedTunnelMtuBytes?: number | null;
+  configuredMtuBytes?: number | null;
+  mtuStatus?: RouteMtuStatus | string | null;
+  mtuRecommendation?: RouteMtuRecommendation | string | null;
+  mtuSessionSafe?: boolean | null;
+  mtuReasonCodes?: string[];
   checkedAt?: string | null;
 }
 
@@ -2427,6 +2436,7 @@ export type RouteScoreReasonCode =
   | 'serverHealth'
   | 'wireguardHandshake'
   | 'routeProbe'
+  | 'mtu'
   | 'maintenance';
 
 export interface RouteScoreReason {
@@ -2504,6 +2514,13 @@ export interface AdminWireGuardCandidate {
   loadedLatencyDeltaMs?: number | null;
   bufferbloatSeverity?: RouteBufferbloatSeverity | string | null;
   bufferbloatRecommendation?: RouteBufferbloatRecommendation | string | null;
+  pathMtuBytes?: number | null;
+  recommendedTunnelMtuBytes?: number | null;
+  configuredMtuBytes?: number | null;
+  mtuStatus?: RouteMtuStatus | string | null;
+  mtuRecommendation?: RouteMtuRecommendation | string | null;
+  mtuSessionSafe?: boolean | null;
+  mtuReasonCodes?: string[];
   loadPercent?: number | null;
   serverExternalId?: string | null;
   serverHostname?: string | null;
@@ -2680,6 +2697,13 @@ export interface AdminRouteDecisionCandidateSummary {
   loadedLatencyDeltaMs?: number | null;
   bufferbloatSeverity?: RouteBufferbloatSeverity | string | null;
   bufferbloatRecommendation?: RouteBufferbloatRecommendation | string | null;
+  pathMtuBytes?: number | null;
+  recommendedTunnelMtuBytes?: number | null;
+  configuredMtuBytes?: number | null;
+  mtuStatus?: RouteMtuStatus | string | null;
+  mtuRecommendation?: RouteMtuRecommendation | string | null;
+  mtuSessionSafe?: boolean | null;
+  mtuReasonCodes?: string[];
   loadPercent?: number | null;
   serverCountry?: string | null;
   serverRegion?: string | null;

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.112.0 - 2026-05-30
+
+- Added opt-in synthetic DF/path-MTU probes for route diagnostics.
+- Backend route scoring now treats MTU/fragmentation risk as an advisory route-quality signal and returns safe tunnel-MTU recommendations.
+- Dashboard route-decision reviews now show MTU keep/reduce/review guidance without applying mid-session MTU changes.
+
 ## 0.111.0 - 2026-05-30
 
 - Added wallet-gated reseller package sales from the representative workspace.

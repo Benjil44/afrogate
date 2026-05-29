@@ -83,6 +83,7 @@ Routing must be fast, explainable, and stable.
 - Switch orchestration must keep the full next-action state visible: route lock, manual mode, cooldown, preflight, sticky-session, canary, hold, verify, expand, rollback, and assignment-only boundaries must be explicit before any future live movement can be trusted.
 - Route canary status must stay read-only until the audited data-plane adapter exists. The Routes page may show guard readiness, rollout percentages, rollback thresholds, and session-safety state, but it must not silently move active sessions, hide assignment-only boundaries, or imply OS route mutation when the data plane is disabled.
 - Do not require GPU acceleration for MVP route intelligence. Packet-loss and jitter reduction depends on path measurement, bufferbloat control, policy routing, and stable switching rules; compact CPU-side time-series scoring is the right default for low-resource VPS machines.
+- Adaptive MTU diagnostics must be opt-in, synthetic-target-based, and recommendation-first. The agent may run bounded DF/path-MTU probes against configured hosts and the backend may recommend a safer tunnel MTU, but AfroGate must not change MTU for active sessions unless future audited session-safety gates allow new-session-only/drain-safe application with rollback.
 
 ## Buffering and Latency Policy
 
