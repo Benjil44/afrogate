@@ -238,7 +238,7 @@
 - [x] Owner/Admin/Supervisor/Support/Auditor role foundation.
 - [x] Guarded audit log API and dashboard Audit Logs page.
 - [x] Fine-grained production RBAC policy and permission UI.
-- [ ] Backup and restore UI.
+- [x] Backup and restore UI.
 - [ ] Reports and data analysis.
 - [ ] Tenant/brand settings.
 - [ ] Enterprise deployment guide.

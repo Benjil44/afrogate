@@ -169,7 +169,7 @@ Required protections:
 - Saved server secrets must never be displayed back to admins; support replace, test, rotate, revoke, and audit instead.
 - PostgreSQL least-privilege roles: a no-login owner role, a migration-only role for DDL, and a runtime app role without schema/database create privileges.
 - Backups encrypted and tested.
-- Backup monitoring must stay read-only unless an explicit audited backup/restore engine is implemented. Dashboard/API responses may show freshness, encryption, retention, artifact, destination label, and restore-test status, but must not return backup file paths, decrypted data, object-store credentials, raw dumps, or restore execution controls.
+- Backup monitoring and restore readiness must stay read-only unless an explicit audited backup/restore engine is implemented. Dashboard/API responses may show freshness, encryption, retention, artifact classes, destination labels, restore-test status, checklist blockers, safety notes, and a manual non-executable restore runbook, but must not return backup file paths, decrypted data, object-store credentials, raw dumps, or restore execution controls.
 
 ## Implementation Priority
 

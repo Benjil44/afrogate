@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, t
 import type {
   AdminAlertSummary,
   AdminAuditLogSummary,
+  AdminBackupRestoreCheckSummary,
+  AdminBackupRestorePlanStepSummary,
+  AdminBackupRestorePlanSummary,
   AdminBackupStatusSummary,
   AdminBillingSettingsSummary,
   AdminClientConfigsExportResponse,
@@ -130,6 +133,7 @@ import {
   exportAdminCustomerClientConfigs,
   fetchAdminAlerts,
   fetchAdminAuditLogs,
+  fetchAdminBackupRestorePlan,
   fetchAdminBackupStatus,
   fetchAdminBillingCatalog,
   fetchAdminCustomerAccounts,
@@ -3156,6 +3160,7 @@ function BackupsPage({
   t: DashboardStrings;
 }) {
   const [backupStatus, setBackupStatus] = useState<AdminBackupStatusSummary | null>(initialBackupStatus);
+  const [restorePlan, setRestorePlan] = useState<AdminBackupRestorePlanSummary | null>(null);
   const [dataState, setDataState] = useState<DataState>(initialBackupStatus ? 'live' : 'loading');
   const [error, setError] = useState<string | null>(null);
 
@@ -3164,8 +3169,12 @@ function BackupsPage({
     setError(null);
 
     try {
-      const response = await fetchAdminBackupStatus(sessionToken, signal);
-      setBackupStatus(response.backup);
+      const [statusResponse, restorePlanResponse] = await Promise.all([
+        fetchAdminBackupStatus(sessionToken, signal),
+        fetchAdminBackupRestorePlan(sessionToken, signal),
+      ]);
+      setBackupStatus(statusResponse.backup);
+      setRestorePlan(restorePlanResponse.restorePlan);
       setDataState('live');
     } catch (loadError) {
       if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
@@ -3192,6 +3201,7 @@ function BackupsPage({
       : t.backupStatus.unknown;
   const restoreTest = formatBackupDate(backupStatus?.restoreTestedAt, format, t);
   const issues = backupStatus?.issues ?? [];
+  const restorePlanTone = restorePlan ? backupRestoreReadinessTone(restorePlan.readinessStatus) : 'warning';
 
   return (
     <section className="mt-0 grid gap-3">
@@ -3320,6 +3330,63 @@ function BackupsPage({
           </section>
         </section>
       ) : null}
+
+      {restorePlan ? (
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <section className={panelClass}>
+            <PanelHeading
+              title={t.backupStatus.restoreReadiness}
+              icon={ShieldCheck}
+              meta={backupRestoreReadinessLabel(restorePlan.readinessStatus, t)}
+            />
+            <div className="mt-2 grid gap-2 lg:grid-cols-2">
+              <DetailRow label={t.backupStatus.status}>
+                <StatusBadge tone={restorePlanTone}>
+                  {backupRestoreReadinessLabel(restorePlan.readinessStatus, t)}
+                </StatusBadge>
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restoreExecution}>
+                <StatusBadge tone={restorePlan.canExecuteRestore ? 'good' : 'neutral'}>
+                  {restorePlan.canExecuteRestore ? t.backupStatus.restoreCanExecute : t.backupStatus.restoreExecutionDisabled}
+                </StatusBadge>
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restoreTargets}>
+                {restorePlan.targetArtifacts.map((artifact) => backupArtifactLabel(artifact, t)).join(', ')}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restorePlanGenerated}>
+                {formatBackupDate(restorePlan.generatedAt, format, t)}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restoreBlockers}>
+                {t.backupStatus.restoreReasonCount(format.integer(restorePlan.blockerReasonCodes.length))}
+              </DetailRow>
+              <DetailRow label={t.backupStatus.restoreWarnings}>
+                {t.backupStatus.restoreReasonCount(format.integer(restorePlan.warningReasonCodes.length))}
+              </DetailRow>
+            </div>
+            <div className="mt-2 grid gap-2">
+              {restorePlan.checks.map((check) => (
+                <BackupRestoreCheckRow check={check} key={check.id} t={t} />
+              ))}
+            </div>
+          </section>
+
+          <section className={panelClass}>
+            <PanelHeading title={t.backupStatus.restoreRunbook} icon={Archive} meta={t.backupStatus.restoreStepsLoaded(format.integer(restorePlan.steps.length))} />
+            <div className="mt-2 grid gap-2">
+              {restorePlan.steps.map((step) => (
+                <BackupRestorePlanStepRow key={step.id} step={step} t={t} />
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {restorePlan.safetyNotes.map((note) => (
+                <span className="rounded-full border border-afro-line bg-afro-soft px-2 py-1 text-[11px] font-bold text-afro-muted" key={note}>
+                  {backupRestoreSafetyNoteLabel(note, t)}
+                </span>
+              ))}
+            </div>
+          </section>
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -3335,11 +3402,106 @@ function BackupMetricCard({ label, tone, value }: { label: string; tone: Tone; v
   );
 }
 
+function BackupRestoreCheckRow({ check, t }: { check: AdminBackupRestoreCheckSummary; t: DashboardStrings }) {
+  return (
+    <div className="grid min-h-[46px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2">
+      <div className="min-w-0">
+        <span className="block truncate text-[13px] font-bold text-afro-ink" title={backupRestoreCheckLabel(check.code, t)}>
+          {backupRestoreCheckLabel(check.code, t)}
+        </span>
+        <span className={`${mutedTextClass} block truncate`}>
+          {check.reasonCodes.length > 0
+            ? check.reasonCodes.slice(0, 3).map((reason) => backupRestoreReasonLabel(reason, t)).join(' / ')
+            : t.backupStatus.restoreCheckClear}
+        </span>
+      </div>
+      <StatusBadge tone={backupRestoreCheckStatusTone(check.status)}>
+        {backupRestoreCheckStatusLabel(check.status, t)}
+      </StatusBadge>
+    </div>
+  );
+}
+
+function BackupRestorePlanStepRow({ step, t }: { step: AdminBackupRestorePlanStepSummary; t: DashboardStrings }) {
+  return (
+    <div className="grid min-h-[48px] grid-cols-[auto_1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2">
+      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-afro-soft text-[12px] font-black text-afro-sidebar">
+        {step.order}
+      </span>
+      <div className="min-w-0">
+        <span className="block truncate text-[13px] font-bold text-afro-ink" title={backupRestoreStepLabel(step.code, t)}>
+          {backupRestoreStepLabel(step.code, t)}
+        </span>
+        <span className={`${mutedTextClass} block truncate`}>
+          {step.destructive ? t.backupStatus.restoreDestructive : t.backupStatus.restoreNonDestructive}
+          {' / '}
+          {step.requiresOfflineWindow ? t.backupStatus.restoreOfflineWindow : t.backupStatus.restoreOnlineSafe}
+        </span>
+      </div>
+      <StatusBadge tone={step.executionEnabled ? 'good' : 'neutral'}>
+        {step.executionEnabled ? t.backupStatus.restoreCanExecute : t.backupStatus.restoreManualOnly}
+      </StatusBadge>
+    </div>
+  );
+}
+
 function backupStatusTone(status: AdminBackupStatusSummary['status']): Tone {
   if (status === 'healthy') return 'good';
   if (status === 'critical') return 'critical';
 
   return 'warning';
+}
+
+function backupRestoreReadinessTone(status: string): Tone {
+  if (status === 'ready') return 'good';
+  if (status === 'blocked') return 'critical';
+
+  return 'warning';
+}
+
+function backupRestoreReadinessLabel(status: string, t: DashboardStrings): string {
+  const labels = t.backupStatus.restoreReadinessStatusLabels as Record<string, string>;
+
+  return labels[status] ?? status;
+}
+
+function backupRestoreCheckStatusTone(status: string): Tone {
+  if (status === 'passed') return 'good';
+  if (status === 'blocked') return 'critical';
+  if (status === 'future') return 'neutral';
+
+  return 'warning';
+}
+
+function backupRestoreCheckStatusLabel(status: string, t: DashboardStrings): string {
+  const labels = t.backupStatus.restoreCheckStatusLabels as Record<string, string>;
+
+  return labels[status] ?? status;
+}
+
+function backupRestoreCheckLabel(code: string, t: DashboardStrings): string {
+  const labels = t.backupStatus.restoreCheckLabels as Record<string, string>;
+
+  return labels[code] ?? code;
+}
+
+function backupRestoreStepLabel(code: string, t: DashboardStrings): string {
+  const labels = t.backupStatus.restoreStepLabels as Record<string, string>;
+
+  return labels[code] ?? code;
+}
+
+function backupRestoreReasonLabel(code: string, t: DashboardStrings): string {
+  const restoreLabels = t.backupStatus.restoreReasonLabels as Record<string, string>;
+  const issueLabels = t.backupStatus.issueLabels as Record<string, string>;
+
+  return restoreLabels[code] ?? issueLabels[code] ?? code;
+}
+
+function backupRestoreSafetyNoteLabel(code: string, t: DashboardStrings): string {
+  const labels = t.backupStatus.restoreSafetyLabels as Record<string, string>;
+
+  return labels[code] ?? code;
 }
 
 function backupStatusAgeTone(backupStatus: AdminBackupStatusSummary | null): Tone {

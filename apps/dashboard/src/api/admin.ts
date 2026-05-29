@@ -1,6 +1,7 @@
 import type {
   AdminAlertsResponse,
   AdminAuditLogsResponse,
+  AdminBackupRestorePlanResponse,
   AdminBackupStatusResponse,
   AdminBillingCatalogResponse,
   AdminClientConfigsExportResponse,
@@ -207,6 +208,18 @@ export async function fetchAdminBackupStatus(
   });
 
   return response.json() as Promise<AdminBackupStatusResponse>;
+}
+
+export async function fetchAdminBackupRestorePlan(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminBackupRestorePlanResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/backups/restore-plan`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminBackupRestorePlanResponse>;
 }
 
 export async function fetchAdminServers(sessionToken: string, signal?: AbortSignal): Promise<AdminServersResponse> {

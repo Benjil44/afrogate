@@ -1590,6 +1590,56 @@ export interface AdminBackupStatusSummary {
   updatedAt: string;
 }
 
+export type BackupRestoreReadinessStatus = 'ready' | 'warning' | 'blocked';
+export type BackupRestoreExecutionStatus = 'disabled' | 'ready';
+export type BackupRestoreCheckStatus = 'passed' | 'warning' | 'blocked' | 'future';
+export type BackupRestorePlanStepKind =
+  | 'verify'
+  | 'snapshot'
+  | 'maintenance'
+  | 'database'
+  | 'configuration'
+  | 'migration'
+  | 'health'
+  | 'audit';
+
+export interface AdminBackupRestoreCheckSummary {
+  id: string;
+  code: string;
+  status: BackupRestoreCheckStatus | string;
+  blocksRestore: boolean;
+  reasonCodes: string[];
+}
+
+export interface AdminBackupRestorePlanStepSummary {
+  id: string;
+  order: number;
+  kind: BackupRestorePlanStepKind | string;
+  code: string;
+  destructive: boolean;
+  requiresOfflineWindow: boolean;
+  executionEnabled: boolean;
+  reasonCodes: string[];
+}
+
+export interface AdminBackupRestorePlanSummary {
+  generatedAt: string;
+  readinessStatus: BackupRestoreReadinessStatus | string;
+  executionStatus: BackupRestoreExecutionStatus | string;
+  executionEnabled: boolean;
+  canExecuteRestore: boolean;
+  backupStatus: BackupStatusKind;
+  latestSuccessfulBackupAt?: string | null;
+  restoreTestedAt?: string | null;
+  targetArtifacts: string[];
+  blockerReasonCodes: string[];
+  warningReasonCodes: string[];
+  reasonCodes: string[];
+  checks: AdminBackupRestoreCheckSummary[];
+  steps: AdminBackupRestorePlanStepSummary[];
+  safetyNotes: string[];
+}
+
 export type ProtocolKind = 'wireguard' | 'vless' | 'l2tp' | 'ikev2';
 export type ProtocolProfile = 'balanced' | 'highSpeed' | 'highSecurity' | 'gaming';
 export type RouteProtocolProfile =
@@ -3196,4 +3246,8 @@ export interface AdminAuditLogsResponse {
 
 export interface AdminBackupStatusResponse {
   backup: AdminBackupStatusSummary;
+}
+
+export interface AdminBackupRestorePlanResponse {
+  restorePlan: AdminBackupRestorePlanSummary;
 }

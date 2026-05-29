@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.99.0 - 2026-05-29
+
+- Added guarded `GET /api/admin/backups/restore-plan` for read-only restore readiness derived from sanitized backup status.
+- Added the Backups page restore-readiness and restore-runbook panels with bilingual labels, evidence checks, blockers/warnings, safety notes, and non-executable restore steps.
+- Kept restore execution disabled and explicit: no raw dumps, local backup paths, decrypted secrets, object-store credentials, or restore controls are returned.
+
 ## 0.98.0 - 2026-05-29
 
 - Added guarded `POST /api/admin/current-panels/charge-volume` for audited local AfroGate quota top-ups from the current-panel migration workflow.

@@ -516,7 +516,7 @@ Protocol-aware route scoring:
   - weekly: 4 هفته
   - monthly: 3 ماه
 
-Backup status monitoring is read-only in the control plane. External backup jobs may write a compact local JSON status file configured by `AFROGATE_BACKUP_STATUS_FILE`; the guarded `GET /api/admin/backups/status` endpoint returns sanitized freshness, encryption, retention, artifact, destination-label, and restore-test readiness for the dashboard. It must not return the status file path, decrypted secret material, object-store credentials, raw dumps, or any restore execution controls. Actual backup/restore execution remains a separate future audited engine.
+Backup status monitoring is read-only in the control plane. External backup jobs may write a compact local JSON status file configured by `AFROGATE_BACKUP_STATUS_FILE`; the guarded `GET /api/admin/backups/status` endpoint returns sanitized freshness, encryption, retention, artifact, destination-label, and restore-test readiness for the dashboard. The guarded `GET /api/admin/backups/restore-plan` endpoint derives a read-only restore readiness checklist and manual runbook from that sanitized status, including evidence blockers, warnings, intended artifact classes, safety notes, and non-executable steps. These endpoints must not return the status file path, decrypted secret material, object-store credentials, raw dumps, or any restore execution controls. Actual backup/restore execution remains a separate future audited engine.
 
 ## امنیت عملیاتی
 

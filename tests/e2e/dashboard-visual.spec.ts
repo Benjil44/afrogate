@@ -179,7 +179,10 @@ test('backups page shows monitored backup readiness', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Backup monitor' })).toBeVisible();
   await expect(page.getByText('encrypted', { exact: true })).toBeVisible();
-  await expect(page.getByText('PostgreSQL dump, Config files, Encrypted secrets')).toBeVisible();
+  await expect(page.getByText('PostgreSQL dump, Config files, Encrypted secrets').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Restore readiness' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Restore runbook' })).toBeVisible();
+  await expect(page.getByText('execution disabled')).toBeVisible();
   await expect(page.getByText('No backup issues')).toBeVisible();
 });
 
@@ -346,6 +349,11 @@ async function mockDashboardApi(page: Page): Promise<void> {
       case '/api/admin/backups/status':
         await fulfillJson(route, {
           backup: backupStatusRow(),
+        });
+        return;
+      case '/api/admin/backups/restore-plan':
+        await fulfillJson(route, {
+          restorePlan: backupRestorePlanRow(),
         });
         return;
       case '/api/admin/servers':
@@ -1035,6 +1043,38 @@ function backupStatusRow() {
     statusFileReadable: true,
     statusFileUpdatedAt: fixedNow,
     updatedAt: fixedNow,
+  };
+}
+
+function backupRestorePlanRow() {
+  return {
+    backupStatus: 'healthy',
+    blockerReasonCodes: [],
+    canExecuteRestore: false,
+    checks: [
+      { blocksRestore: true, code: 'monitoring_evidence', id: 'monitoring-evidence', reasonCodes: [], status: 'passed' },
+      { blocksRestore: true, code: 'latest_backup_freshness', id: 'backup-freshness', reasonCodes: [], status: 'passed' },
+      { blocksRestore: true, code: 'encrypted_backup', id: 'backup-encryption', reasonCodes: [], status: 'passed' },
+      { blocksRestore: true, code: 'artifact_coverage', id: 'artifact-coverage', reasonCodes: [], status: 'passed' },
+      { blocksRestore: false, code: 'restore_test_evidence', id: 'restore-test', reasonCodes: [], status: 'passed' },
+      { blocksRestore: true, code: 'restore_execution_engine', id: 'restore-engine', reasonCodes: ['restore_execution_not_implemented'], status: 'future' },
+    ],
+    executionEnabled: false,
+    executionStatus: 'disabled',
+    generatedAt: fixedNow,
+    latestSuccessfulBackupAt: fixedNow,
+    readinessStatus: 'ready',
+    reasonCodes: ['backup_evidence_ready', 'restore_execution_not_implemented', 'restore_plan_read_only'],
+    restoreTestedAt: '2026-05-24T08:00:00.000Z',
+    safetyNotes: ['restore_is_manual_runbook', 'pre_restore_snapshot_required', 'audit_record_required'],
+    steps: [
+      { code: 'verify_backup_evidence', destructive: false, executionEnabled: false, id: 'verify-evidence', kind: 'verify', order: 1, reasonCodes: ['manual_operator_required'], requiresOfflineWindow: false },
+      { code: 'create_pre_restore_snapshot', destructive: false, executionEnabled: false, id: 'pre-restore-snapshot', kind: 'snapshot', order: 2, reasonCodes: ['pre_restore_snapshot_required'], requiresOfflineWindow: false },
+      { code: 'open_maintenance_window', destructive: false, executionEnabled: false, id: 'maintenance-window', kind: 'maintenance', order: 3, reasonCodes: ['manual_operator_required'], requiresOfflineWindow: true },
+      { code: 'restore_postgresql_dump', destructive: true, executionEnabled: false, id: 'restore-postgres', kind: 'database', order: 4, reasonCodes: ['manual_operator_required'], requiresOfflineWindow: true },
+    ],
+    targetArtifacts: ['postgres', 'config', 'secrets'],
+    warningReasonCodes: [],
   };
 }
 

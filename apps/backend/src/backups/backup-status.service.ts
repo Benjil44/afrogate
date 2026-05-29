@@ -4,7 +4,11 @@ import { resolve } from 'node:path';
 import type {
   AdminBackupIssueSummary,
   AdminBackupRetentionSummary,
+  AdminBackupRestoreCheckSummary,
+  AdminBackupRestorePlanStepSummary,
+  AdminBackupRestorePlanSummary,
   AdminBackupStatusSummary,
+  BackupRestoreCheckStatus,
   BackupJobStatus,
 } from '@afrogate/shared';
 
@@ -110,6 +114,178 @@ export class BackupStatusService {
       issues,
       updatedAt: now.toISOString(),
     };
+  }
+
+  async getRestorePlan(): Promise<AdminBackupRestorePlanSummary> {
+    return this.buildRestorePlan(await this.getStatus());
+  }
+
+  private buildRestorePlan(backup: AdminBackupStatusSummary): AdminBackupRestorePlanSummary {
+    const issueCodes = new Set(backup.issues.map((issue) => issue.code));
+    const criticalIssueCodes = backup.issues
+      .filter((issue) => issue.severity === 'critical')
+      .map((issue) => issue.code);
+    const artifactBlockers = backupArtifactKeys
+      .map((artifactKey) => `${artifactKey}_backup_not_confirmed`)
+      .filter((code) => issueCodes.has(code));
+    if (issueCodes.has('backup_artifacts_missing')) artifactBlockers.push('backup_artifacts_missing');
+
+    const blockerReasonCodes = this.uniqueStrings([...criticalIssueCodes, ...artifactBlockers]);
+    const warningReasonCodes = this.uniqueStrings(
+      backup.issues
+        .filter((issue) => issue.severity === 'warning' && !artifactBlockers.includes(issue.code))
+        .map((issue) => issue.code),
+    );
+    const evidenceReady = blockerReasonCodes.length === 0;
+    const readinessStatus = blockerReasonCodes.length > 0
+      ? 'blocked'
+      : warningReasonCodes.length > 0
+        ? 'warning'
+        : 'ready';
+    const checks = this.buildRestoreChecks(backup, issueCodes);
+    const steps = this.buildRestoreSteps();
+    const reasonCodes = this.uniqueStrings([
+      ...blockerReasonCodes,
+      ...warningReasonCodes,
+      evidenceReady ? 'backup_evidence_ready' : 'backup_evidence_blocked',
+      'restore_execution_not_implemented',
+      'restore_plan_read_only',
+      'no_secret_material_returned',
+    ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      readinessStatus,
+      executionStatus: 'disabled',
+      executionEnabled: false,
+      canExecuteRestore: false,
+      backupStatus: backup.status,
+      latestSuccessfulBackupAt: backup.latestSuccessfulBackupAt ?? null,
+      restoreTestedAt: backup.restoreTestedAt ?? null,
+      targetArtifacts: [...backupArtifactKeys],
+      blockerReasonCodes,
+      warningReasonCodes,
+      reasonCodes,
+      checks,
+      steps,
+      safetyNotes: [
+        'restore_is_manual_runbook',
+        'pre_restore_snapshot_required',
+        'audit_record_required',
+        'no_dumps_or_credentials_exposed',
+        'object_store_credentials_not_returned',
+      ],
+    };
+  }
+
+  private buildRestoreChecks(
+    backup: AdminBackupStatusSummary,
+    issueCodes: Set<string>,
+  ): AdminBackupRestoreCheckSummary[] {
+    const artifactIssues = backupArtifactKeys
+      .map((artifactKey) => `${artifactKey}_backup_not_confirmed`)
+      .filter((code) => issueCodes.has(code));
+    if (issueCodes.has('backup_artifacts_missing')) artifactIssues.push('backup_artifacts_missing');
+    const backupFreshnessReasons = ['no_successful_backup', 'backup_stale', 'latest_backup_failed', 'backup_job_running']
+      .filter((code) => issueCodes.has(code));
+    const backupFreshnessBlocked =
+      !backup.latestSuccessfulBackupAt ||
+      issueCodes.has('no_successful_backup') ||
+      issueCodes.has('backup_stale') ||
+      issueCodes.has('latest_backup_failed') ||
+      (backup.latestBackupAgeHours !== null && backup.latestBackupAgeHours !== undefined && backup.latestBackupAgeHours > backup.maxBackupAgeHours);
+    const backupFreshnessStatus: BackupRestoreCheckStatus = backupFreshnessBlocked
+      ? 'blocked'
+      : issueCodes.has('backup_job_running') ? 'warning' : 'passed';
+
+    return [
+      this.restoreCheck(
+        'monitoring-evidence',
+        'monitoring_evidence',
+        backup.monitoringEnabled && backup.statusFileReadable ? 'passed' : 'blocked',
+        ['backup_monitoring_not_configured', 'backup_status_file_missing', 'backup_status_file_unreadable', 'backup_status_file_invalid', 'backup_status_file_too_large']
+          .filter((code) => issueCodes.has(code)),
+        true,
+      ),
+      this.restoreCheck(
+        'backup-freshness',
+        'latest_backup_freshness',
+        backupFreshnessStatus,
+        backupFreshnessReasons,
+        true,
+      ),
+      this.restoreCheck(
+        'backup-encryption',
+        'encrypted_backup',
+        backup.encryptionRequired && backup.encrypted !== true ? 'blocked' : backup.encryptionRequired ? 'passed' : 'warning',
+        issueCodes.has('backup_not_encrypted')
+          ? ['backup_not_encrypted']
+          : backup.encryptionRequired ? [] : ['backup_encryption_not_required'],
+        backup.encryptionRequired,
+      ),
+      this.restoreCheck(
+        'artifact-coverage',
+        'artifact_coverage',
+        artifactIssues.length > 0 ? 'blocked' : 'passed',
+        artifactIssues,
+        true,
+      ),
+      this.restoreCheck(
+        'restore-test',
+        'restore_test_evidence',
+        issueCodes.has('restore_test_missing') || issueCodes.has('restore_test_stale') ? 'warning' : 'passed',
+        ['restore_test_missing', 'restore_test_stale'].filter((code) => issueCodes.has(code)),
+        false,
+      ),
+      this.restoreCheck(
+        'restore-engine',
+        'restore_execution_engine',
+        'future',
+        ['restore_execution_not_implemented', 'restore_plan_read_only'],
+        true,
+      ),
+    ];
+  }
+
+  private restoreCheck(
+    id: string,
+    code: string,
+    status: BackupRestoreCheckStatus,
+    reasonCodes: string[],
+    blocksRestore: boolean,
+  ): AdminBackupRestoreCheckSummary {
+    return {
+      id,
+      code,
+      status,
+      blocksRestore,
+      reasonCodes: this.uniqueStrings(reasonCodes),
+    };
+  }
+
+  private buildRestoreSteps(): AdminBackupRestorePlanStepSummary[] {
+    const steps: Array<Omit<AdminBackupRestorePlanStepSummary, 'order' | 'executionEnabled' | 'reasonCodes'> & { reasonCodes?: string[] }> = [
+      { id: 'verify-evidence', kind: 'verify', code: 'verify_backup_evidence', destructive: false, requiresOfflineWindow: false },
+      { id: 'pre-restore-snapshot', kind: 'snapshot', code: 'create_pre_restore_snapshot', destructive: false, requiresOfflineWindow: false, reasonCodes: ['pre_restore_snapshot_required'] },
+      { id: 'maintenance-window', kind: 'maintenance', code: 'open_maintenance_window', destructive: false, requiresOfflineWindow: true },
+      { id: 'stop-services', kind: 'maintenance', code: 'stop_backend_and_workers', destructive: true, requiresOfflineWindow: true },
+      { id: 'restore-postgres', kind: 'database', code: 'restore_postgresql_dump', destructive: true, requiresOfflineWindow: true },
+      { id: 'restore-config', kind: 'configuration', code: 'restore_config_and_encrypted_secrets', destructive: true, requiresOfflineWindow: true },
+      { id: 'run-migrations', kind: 'migration', code: 'run_migrations_and_version_check', destructive: true, requiresOfflineWindow: true },
+      { id: 'health-checks', kind: 'health', code: 'start_services_and_validate_health', destructive: false, requiresOfflineWindow: false },
+      { id: 'audit-record', kind: 'audit', code: 'record_restore_audit_note', destructive: false, requiresOfflineWindow: false, reasonCodes: ['audit_record_required'] },
+    ];
+
+    return steps.map((step, index) => ({
+      ...step,
+      order: index + 1,
+      executionEnabled: false,
+      reasonCodes: this.uniqueStrings([
+        ...(step.reasonCodes ?? []),
+        'restore_execution_not_implemented',
+        'manual_operator_required',
+      ]),
+    }));
   }
 
   private async readStatusFile(
@@ -310,5 +486,9 @@ export class BackupStatusService {
 
     const normalized = value.trim();
     return normalized ? normalized : null;
+  }
+
+  private uniqueStrings(values: string[]): string[] {
+    return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
   }
 }

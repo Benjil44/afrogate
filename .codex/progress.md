@@ -1724,3 +1724,28 @@ Repository remote is ready:
 ### Remaining
 
 - Live external-panel quota write adapters, scheduled external-panel reconciliation, production protocol apply, backup/restore UI, reports/data analysis, tenant branding, enterprise deployment guide, additional payment providers, verified rewarded-ad provider callbacks, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Backup Restore Readiness UI Slice
+
+### Completed
+
+- Added shared backup restore-plan contracts for readiness status, execution-disabled state, checks, blockers/warnings, safety notes, target artifact classes, and manual runbook steps.
+- Added guarded `GET /api/admin/backups/restore-plan` with `backups:read` permission; it derives a read-only restore plan from sanitized backup status and does not expose dumps, local paths, object-store credentials, decrypted data, or restore controls.
+- Added Backups page restore-readiness and restore-runbook panels with bilingual labels, evidence checks, blocker/warning counts, safety notes, and non-executable restore steps.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `230 / 237` items, or `97.0%` complete with `3.0%` remaining.
+- Bumped AfroGate to `0.99.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Backups restore-readiness/runbook page.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, additional payment provider adapters, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

@@ -123,5 +123,6 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Backend Telegram bot user-command webhook for linked account status and quota replies.
 - [ ] Telegram bot operations.
 - [x] Backups status page with guarded read-only monitoring.
+- [x] Backups restore-readiness UI with guarded read-only runbook/checklist and no restore execution controls.
 - [x] Audit logs.
 - [x] Settings with guided WireGuard/system setup and write-only secret inputs.

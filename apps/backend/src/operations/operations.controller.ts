@@ -15,6 +15,7 @@ import {
 import type {
   AdminAlertsResponse,
   AdminAuditLogsResponse,
+  AdminBackupRestorePlanResponse,
   AdminBackupStatusResponse,
   AdminPermissionsResponse,
   ApplyRouteDecisionPreviewResponse,
@@ -157,9 +158,19 @@ export class OperationsController {
 
   @Get('backups/status')
   @Roles('admin', 'supervisor', 'auditor')
+  @Permissions('backups:read')
   async getBackupStatus(): Promise<AdminBackupStatusResponse> {
     return {
       backup: await this.backupStatusService.getStatus(),
+    };
+  }
+
+  @Get('backups/restore-plan')
+  @Roles('admin', 'supervisor', 'auditor')
+  @Permissions('backups:read')
+  async getBackupRestorePlan(): Promise<AdminBackupRestorePlanResponse> {
+    return {
+      restorePlan: await this.backupStatusService.getRestorePlan(),
     };
   }
 
