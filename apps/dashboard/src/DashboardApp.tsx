@@ -4,6 +4,7 @@ import type {
   AdminAuditLogSummary,
   AdminBackupStatusSummary,
   AdminBillingSettingsSummary,
+  AdminCurrentPanelImportPreviewResponse,
   AdminCustomerAccountSummary,
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
@@ -49,6 +50,7 @@ import type {
   AdminTunnelSummary,
   AdminVolumePackageSummary,
   AdminWireGuardCandidate,
+  CurrentPanelKind,
   CustomerAccountStatus,
   CustomerQuotaScope,
   LoadBalanceStrategy,
@@ -138,6 +140,7 @@ import {
   fetchAdminTunnels,
   fetchAdminUsers,
   fetchIncidentTimeline,
+  previewAdminCurrentPanelImport,
   fetchProtocolServerApplyEvent,
   fetchProtocolServerApplyEvents,
   fetchRouteAssignment,
@@ -3411,6 +3414,7 @@ type CustomerAccountFormState = {
 
 const customerQuotaScopeOptions: CustomerQuotaScope[] = ['account_shared', 'per_client'];
 const customerAccountStatusOptions: CustomerAccountStatus[] = ['active', 'suspended', 'disabled'];
+const currentPanelKindOptions: CurrentPanelKind[] = ['marzban', 'xui', 'sanayi', 'generic'];
 
 function createEmptyCustomerAccountForm(): CustomerAccountFormState {
   return {
@@ -3421,6 +3425,22 @@ function createEmptyCustomerAccountForm(): CustomerAccountFormState {
     quotaScope: 'account_shared',
     status: 'active',
     telegramUsername: '',
+  };
+}
+
+type CurrentPanelImportFormState = {
+  defaultProtocol: string;
+  panelKind: CurrentPanelKind;
+  payloadJson: string;
+  sourceName: string;
+};
+
+function createEmptyCurrentPanelImportForm(): CurrentPanelImportFormState {
+  return {
+    defaultProtocol: 'vless',
+    panelKind: 'marzban',
+    payloadJson: '',
+    sourceName: '',
   };
 }
 
@@ -3470,6 +3490,10 @@ function BillingPage({
   const [customerForm, setCustomerForm] = useState<CustomerAccountFormState>(() => createEmptyCustomerAccountForm());
   const [customerMessage, setCustomerMessage] = useState<string | null>(null);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const [currentPanelForm, setCurrentPanelForm] = useState<CurrentPanelImportFormState>(() => createEmptyCurrentPanelImportForm());
+  const [currentPanelPreview, setCurrentPanelPreview] = useState<AdminCurrentPanelImportPreviewResponse | null>(null);
+  const [currentPanelMessage, setCurrentPanelMessage] = useState<string | null>(null);
+  const [isPreviewingCurrentPanel, setIsPreviewingCurrentPanel] = useState(false);
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
 
   const loadBilling = useMemo(() => async (signal?: AbortSignal) => {
@@ -3638,6 +3662,40 @@ function BillingPage({
     }
   };
 
+  const handlePreviewCurrentPanelImport = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canManageBilling) return;
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(currentPanelForm.payloadJson);
+    } catch {
+      setCurrentPanelPreview(null);
+      setCurrentPanelMessage(t.billing.currentPanelPayloadInvalid);
+      return;
+    }
+
+    setIsPreviewingCurrentPanel(true);
+    setCurrentPanelMessage(null);
+
+    try {
+      const preview = await previewAdminCurrentPanelImport(sessionToken, {
+        defaultProtocol: currentPanelForm.defaultProtocol,
+        panelKind: currentPanelForm.panelKind,
+        payload,
+        sourceName: normalizeNullableText(currentPanelForm.sourceName),
+      });
+
+      setCurrentPanelPreview(preview);
+      setCurrentPanelMessage(t.billing.currentPanelPreviewReady(format.integer(preview.candidateCount)));
+    } catch {
+      setCurrentPanelPreview(null);
+      setCurrentPanelMessage(t.billing.currentPanelPreviewFailed);
+    } finally {
+      setIsPreviewingCurrentPanel(false);
+    }
+  };
+
   return (
     <section className="mt-0 grid gap-3">
       {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
@@ -3718,6 +3776,17 @@ function BillingPage({
         />
         <CustomerAccountsPanel accounts={accounts} format={format} t={t} />
       </section>
+      <CurrentPanelImportPreviewPanel
+        canManageBilling={canManageBilling}
+        currentPanelForm={currentPanelForm}
+        currentPanelMessage={currentPanelMessage}
+        currentPanelPreview={currentPanelPreview}
+        format={format}
+        isPreviewingCurrentPanel={isPreviewingCurrentPanel}
+        onFormChange={setCurrentPanelForm}
+        onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
+        t={t}
+      />
       <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
     </section>
   );
@@ -3891,6 +3960,160 @@ function CustomerAccountEditorPanel({
           {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
         </div>
       </form>
+    </section>
+  );
+}
+
+function CurrentPanelImportPreviewPanel({
+  canManageBilling,
+  currentPanelForm,
+  currentPanelMessage,
+  currentPanelPreview,
+  format,
+  isPreviewingCurrentPanel,
+  onFormChange,
+  onPreviewCurrentPanelImport,
+  t,
+}: {
+  canManageBilling: boolean;
+  currentPanelForm: CurrentPanelImportFormState;
+  currentPanelMessage: string | null;
+  currentPanelPreview: AdminCurrentPanelImportPreviewResponse | null;
+  format: DashboardFormatters;
+  isPreviewingCurrentPanel: boolean;
+  onFormChange: (form: CurrentPanelImportFormState) => void;
+  onPreviewCurrentPanelImport: (event: FormEvent<HTMLFormElement>) => void;
+  t: DashboardStrings;
+}) {
+  const updateForm = (patch: Partial<CurrentPanelImportFormState>) => onFormChange({ ...currentPanelForm, ...patch });
+  const candidates = currentPanelPreview?.candidates ?? [];
+  const payloadPlaceholder = `{"users":[{"username":"vip_gamer","status":"active","data_limit":"25GB","used_traffic":"6GB","expire":1893456000}]}`;
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading
+        title={t.billing.currentPanelImport}
+        icon={Upload}
+        meta={currentPanelPreview ? t.billing.currentPanelAdapter(currentPanelPreview.adapterVersion) : t.billing.currentPanelReadOnly}
+      />
+      <form className="mt-2 grid gap-2" onSubmit={onPreviewCurrentPanelImport}>
+        <div className="grid gap-2 md:grid-cols-4">
+          <label className="grid gap-1.5">
+            <span className={mutedTextClass}>{t.billing.currentPanelKind}</span>
+            <select
+              aria-label={t.billing.currentPanelKind}
+              className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+              disabled={!canManageBilling || isPreviewingCurrentPanel}
+              onChange={(event) => updateForm({ panelKind: event.target.value as CurrentPanelKind })}
+              value={currentPanelForm.panelKind}
+            >
+              {currentPanelKindOptions.map((kind) => (
+                <option key={kind} value={kind}>
+                  {currentPanelKindLabel(kind, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <SettingsInput
+            disabled={!canManageBilling || isPreviewingCurrentPanel}
+            label={t.billing.currentPanelSourceName}
+            onChange={(sourceName) => updateForm({ sourceName })}
+            value={currentPanelForm.sourceName}
+          />
+          <SettingsInput
+            disabled={!canManageBilling || isPreviewingCurrentPanel}
+            label={t.billing.currentPanelDefaultProtocol}
+            onChange={(defaultProtocol) => updateForm({ defaultProtocol })}
+            value={currentPanelForm.defaultProtocol}
+          />
+          <div className="grid content-end">
+            <button
+              className={primaryButtonClass}
+              disabled={!canManageBilling || isPreviewingCurrentPanel || !currentPanelForm.payloadJson.trim()}
+              type="submit"
+            >
+              {isPreviewingCurrentPanel ? t.billing.saving : t.billing.currentPanelPreviewImport}
+            </button>
+          </div>
+        </div>
+        <label className="grid gap-1.5">
+          <span className={mutedTextClass}>{t.billing.currentPanelPayloadJson}</span>
+          <textarea
+            aria-label={t.billing.currentPanelPayloadJson}
+            className="min-h-[150px] w-full rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-[13px] text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+            dir="ltr"
+            disabled={!canManageBilling || isPreviewingCurrentPanel}
+            onChange={(event) => updateForm({ payloadJson: event.target.value })}
+            placeholder={payloadPlaceholder}
+            value={currentPanelForm.payloadJson}
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          {currentPanelMessage ? <span className={mutedTextClass}>{currentPanelMessage}</span> : null}
+          {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
+        </div>
+      </form>
+
+      {currentPanelPreview ? (
+        <div className="mt-2 grid gap-2">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <MetricPill icon={UserRound} label={t.billing.currentPanelCandidates} value={format.integer(currentPanelPreview.candidateCount)} />
+            <MetricPill icon={ShieldCheck} label={t.billing.active} value={format.integer(currentPanelPreview.activeCount)} />
+            <MetricPill icon={WifiOff} label={t.billing.limited} value={format.integer(currentPanelPreview.limitedCount)} />
+            <MetricPill
+              icon={Inbox}
+              label={t.billing.totalQuota}
+              value={currentPanelPreview.totalQuotaBytes === null || currentPanelPreview.totalQuotaBytes === undefined ? t.billing.unlimited : format.bytes(currentPanelPreview.totalQuotaBytes)}
+            />
+          </div>
+          {candidates.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse">
+                <thead>
+                  <tr>
+                    {[t.billing.currentPanelCandidate, t.billing.currentPanelKind, t.billing.usedQuota, t.billing.totalQuota, t.billing.remaining, t.billing.status].map((heading) => (
+                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidates.slice(0, 8).map((candidate) => (
+                    <tr key={`${candidate.externalPanel}:${candidate.externalPanelUserId ?? candidate.label}`} className="border-b border-afro-line/70 last:border-0">
+                      <TableCell>
+                        <strong className="block text-afro-ink">{candidate.label}</strong>
+                        <span className="text-[12px] text-afro-muted">{candidate.username ?? candidate.externalPanelUserId ?? candidate.protocol}</span>
+                      </TableCell>
+                      <TableCell>{currentPanelKindLabel(currentPanelPreview.panelKind as CurrentPanelKind, t)}</TableCell>
+                      <TableCell>{candidate.usedBytes === null || candidate.usedBytes === undefined ? '--' : format.bytes(candidate.usedBytes)}</TableCell>
+                      <TableCell>{candidate.quotaBytes === null || candidate.quotaBytes === undefined ? t.billing.unlimited : format.bytes(candidate.quotaBytes)}</TableCell>
+                      <TableCell>{candidate.remainingBytes === null || candidate.remainingBytes === undefined ? t.billing.unlimited : format.bytes(candidate.remainingBytes)}</TableCell>
+                      <TableCell>
+                        <StatusBadge tone={currentPanelStatusTone(candidate.status)}>
+                          {currentPanelStatusLabel(candidate.status, t)}
+                        </StatusBadge>
+                      </TableCell>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState message={t.billing.currentPanelNoPreview} />}
+          <div className="flex flex-wrap gap-1.5">
+            {currentPanelPreview.rejectedRows.length > 0 ? (
+              <StatusBadge tone="warning">{t.billing.currentPanelRejectedRows(format.integer(currentPanelPreview.rejectedRows.length))}</StatusBadge>
+            ) : null}
+            {currentPanelPreview.warnings.map((warning) => (
+              <StatusBadge key={warning} tone="neutral">{format.label(warning)}</StatusBadge>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <EmptyState message={t.billing.currentPanelNoPreview} />
+        </div>
+      )}
     </section>
   );
 }
@@ -4096,6 +4319,31 @@ function customerAccountStatusLabel(status: CustomerAccountStatus | string, t: D
   if (status === 'disabled') return t.billing.disabled;
 
   return t.billing.enabled;
+}
+
+function currentPanelKindLabel(kind: CurrentPanelKind | string, t: DashboardStrings): string {
+  if (kind === 'marzban') return t.billing.currentPanelMarzban;
+  if (kind === 'xui') return t.billing.currentPanelXui;
+  if (kind === 'sanayi') return t.billing.currentPanelSanayi;
+
+  return t.billing.currentPanelGeneric;
+}
+
+function currentPanelStatusTone(status: string): Tone {
+  if (status === 'active') return 'good';
+  if (status === 'limited' || status === 'expired') return 'warning';
+  if (status === 'disabled') return 'neutral';
+
+  return 'neutral';
+}
+
+function currentPanelStatusLabel(status: string, t: DashboardStrings): string {
+  if (status === 'active') return t.billing.active;
+  if (status === 'limited') return t.billing.limited;
+  if (status === 'expired') return t.billing.expired;
+  if (status === 'disabled') return t.billing.disabled;
+
+  return t.billing.unknown;
 }
 
 function parseGbLimitInput(value: string): number | null | undefined {

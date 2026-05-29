@@ -672,6 +672,56 @@ export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary 
   clientConfigs: AdminClientConfigSummary[];
 }
 
+export type CurrentPanelKind = 'marzban' | 'xui' | 'sanayi' | 'generic';
+export type CurrentPanelImportCandidateStatus = 'active' | 'disabled' | 'expired' | 'limited' | 'unknown';
+
+export interface CurrentPanelImportPreviewRequest {
+  panelKind?: CurrentPanelKind | string;
+  sourceName?: string | null;
+  payload: unknown;
+  defaultProtocol?: ProtocolKind | string;
+}
+
+export interface CurrentPanelImportCandidate {
+  externalPanel: string;
+  externalPanelUserId?: string | null;
+  externalPanelConfigId?: string | null;
+  username?: string | null;
+  displayName?: string | null;
+  label: string;
+  protocol: ProtocolKind | string;
+  status: CurrentPanelImportCandidateStatus | string;
+  quotaBytes?: number | null;
+  usedBytes?: number | null;
+  remainingBytes?: number | null;
+  expiresAt?: string | null;
+  deviceLimit?: number | null;
+  reasonCodes: string[];
+}
+
+export interface CurrentPanelImportRejectedRow {
+  index: number;
+  reasonCodes: string[];
+  rawType?: string | null;
+}
+
+export interface AdminCurrentPanelImportPreviewResponse {
+  panelKind: CurrentPanelKind | string;
+  sourceName?: string | null;
+  generatedAt: string;
+  adapterVersion: string;
+  candidateCount: number;
+  activeCount: number;
+  disabledCount: number;
+  expiredCount: number;
+  limitedCount: number;
+  totalQuotaBytes?: number | null;
+  totalUsedBytes?: number | null;
+  candidates: CurrentPanelImportCandidate[];
+  rejectedRows: CurrentPanelImportRejectedRow[];
+  warnings: string[];
+}
+
 export interface CreateCustomerAccountRequest {
   displayName?: string | null;
   telegramId?: string | null;

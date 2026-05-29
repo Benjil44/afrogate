@@ -225,7 +225,7 @@
 
 ## Phase 4: Current Panel Integration
 
-- [ ] Read users from Marzban/X-UI/current panel.
+- [x] Read users from Marzban/X-UI/current panel.
 - [ ] Sync volume usage.
 - [ ] Charge/update user volume.
 - [ ] Import/export configs.
@@ -253,7 +253,7 @@
 - [x] Charge allocation delay tracking.
 - [x] Backup status monitoring.
 - [x] Route canary rollout.
-- [ ] Adapter-based migration from current panels.
+- [x] Adapter-based migration from current panels.
 - [x] Privacy threat model.
 - [x] Security threat model.
 - [x] Rate limiting at API layer.

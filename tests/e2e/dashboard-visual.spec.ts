@@ -117,6 +117,23 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await page.getByRole('button', { name: 'Create customer' }).click();
   await expect(page.getByText('Customer account saved.')).toBeVisible();
   await expect(page.getByRole('cell', { name: /VIP gamer/ })).toBeVisible();
+
+  await expect(page.getByRole('heading', { name: 'Current panel import' })).toBeVisible();
+  await page.getByLabel('Current panel payload JSON').fill(JSON.stringify({
+    users: [
+      {
+        data_limit: '25GB',
+        expire: 1893456000,
+        status: 'active',
+        used_traffic: '6GB',
+        username: 'vip_gamer',
+      },
+    ],
+  }));
+  await page.getByRole('button', { name: 'Preview import' }).click();
+  await expect(page.getByText('1 candidates ready.')).toBeVisible();
+  await expect(page.getByRole('cell', { name: /vip_gamer/ })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Marzban' })).toBeVisible();
 });
 
 test('audit logs page shows sanitized audit events', async ({ page }) => {
@@ -536,6 +553,41 @@ async function mockDashboardApi(page: Page): Promise<void> {
               usedBytes: 21_474_836_480,
             },
           ],
+        });
+        return;
+      case '/api/admin/current-panels/import-preview':
+        await fulfillJson(route, {
+          activeCount: 1,
+          adapterVersion: 'current-panel-import-preview-v1',
+          candidateCount: 1,
+          candidates: [
+            {
+              deviceLimit: null,
+              displayName: 'vip_gamer',
+              expiresAt: '2030-01-01T00:00:00.000Z',
+              externalPanel: 'marzban',
+              externalPanelConfigId: 'vip_gamer',
+              externalPanelUserId: 'vip_gamer',
+              label: 'vip_gamer',
+              protocol: 'vless',
+              quotaBytes: 26_843_545_600,
+              reasonCodes: ['active_status', 'identity_detected', 'quota_detected', 'usage_detected'],
+              remainingBytes: 20_400_000_000,
+              status: 'active',
+              usedBytes: 6_443_545_600,
+              username: 'vip_gamer',
+            },
+          ],
+          disabledCount: 0,
+          expiredCount: 0,
+          generatedAt: fixedNow,
+          limitedCount: 0,
+          panelKind: 'marzban',
+          rejectedRows: [],
+          sourceName: 'visual-export',
+          totalQuotaBytes: 26_843_545_600,
+          totalUsedBytes: 6_443_545_600,
+          warnings: ['raw_panel_payload_not_persisted', 'read_only_preview_no_changes_applied'],
         });
         return;
       case '/api/admin/rewarded-ads/settings':

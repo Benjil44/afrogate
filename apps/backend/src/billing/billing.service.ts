@@ -12,6 +12,7 @@ import type {
   AdminClientSubscriptionCredentialSummary,
   AdminBillingCatalogResponse,
   AdminBillingSettingsSummary,
+  AdminCurrentPanelImportPreviewResponse,
   AdminRewardedAdSettingsSummary,
   ClientAccessTokenSummary,
   ClientPortalProfileResponse,
@@ -35,6 +36,7 @@ import type {
   AdminPaymentOrderSummary,
   AdminRecordClientUsageResponse,
   AdminVolumePackageSummary,
+  CurrentPanelImportPreviewRequest,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdGrantSummary,
   ClientRewardedAdStatus,
@@ -49,6 +51,7 @@ import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-pr
 import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
 import { IssueClientAccessTokenDto } from './dto/client-access-token.dto';
 import {
+  CurrentPanelImportPreviewDto,
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
@@ -71,6 +74,7 @@ import {
   UpdateVolumePackageDto,
 } from './dto/billing.dto';
 import { PayPalPaymentService, type PayPalWebhookSignatureHeaders } from './paypal-payment.service';
+import { buildCurrentPanelImportPreview } from './current-panel-import.adapters';
 
 const BYTES_PER_GB = 1024 ** 3;
 const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
@@ -1563,6 +1567,24 @@ export class BillingService {
     );
 
     return result.rows.map((row) => this.mapCustomerAccount(row));
+  }
+
+  async previewCurrentPanelImport(
+    dto: CurrentPanelImportPreviewDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCurrentPanelImportPreviewResponse> {
+    const preview = buildCurrentPanelImportPreview(dto as CurrentPanelImportPreviewRequest);
+
+    await this.audit.record(actor, 'current_panel.import_preview', 'current_panel', null, {
+      panelKind: preview.panelKind,
+      adapterVersion: preview.adapterVersion,
+      candidateCount: preview.candidateCount,
+      rejectedRowCount: preview.rejectedRows.length,
+      warningCount: preview.warnings.length,
+      hasSourceName: Boolean(preview.sourceName),
+    });
+
+    return preview;
   }
 
   async getCustomerAccount(id: string): Promise<AdminCustomerAccountDetail> {

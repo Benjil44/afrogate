@@ -1590,3 +1590,32 @@ Repository remote is ready:
 ### Remaining
 
 - Production protocol apply, panel migration adapters, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, adapter-based migration, and native per-app VPN split tunneling remain future work.
+
+## 2026-05-29 Current Panel Import Preview Slice
+
+### Completed
+
+- Added shared current-panel import preview contracts for Marzban, X-UI, Sanayi, and generic panel export payloads.
+- Added adapter-scoped backend parsing in `current-panel-import.adapters.ts` plus guarded `POST /api/admin/current-panels/import-preview`.
+- The endpoint normalizes read-only user/config candidates with status, protocol, quota, usage, expiry, external ids, warnings, and rejected-row counts while fingerprinting link-like identifiers and avoiding raw payload storage.
+- Added a Billing page Current Panel Import preview panel with typed English/Persian labels and Playwright coverage.
+- Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `225 / 236` items, or `95.3%` complete with `4.7%` remaining.
+- Bumped AfroGate to `0.94.0` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran focused workspace typecheck during implementation.
+- Ran `npm --workspace @afrogate/backend run db:migrate`.
+- Ran `npm run version:check`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run typecheck --workspaces --if-present`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run contrast:check`.
+- Ran `npm run test:e2e`; 12 tests passed, including the Billing current-panel import preview flow. An initial e2e run found an ambiguous strict-mode locator in the new assertion; the assertion was tightened and the suite passed.
+- Ran a direct built-adapter smoke call for a Marzban-style payload; it returned one active candidate with `25 GB` quota and `6 GB` usage. An initial smoke payload used an expiry timestamp too close to the current date, so the sample timestamp was moved to `2030-01-01`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Production protocol apply, controlled panel writes/import, usage reconciliation, charge/update sync, additional payment providers, verified rewarded-ad provider callbacks, reports/data analysis, tenant branding, enterprise deployment guide, and native per-app VPN split tunneling remain future work.

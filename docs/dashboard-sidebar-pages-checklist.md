@@ -115,6 +115,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 
 - [x] Usage and billing.
 - [x] Usage/Billing customer account limit manager for shared account and per-client GB caps.
+- [x] Usage/Billing read-only current-panel import preview for Marzban/X-UI/Sanayi/generic exports.
 - [x] Backend Telegram bot user-command webhook for linked account status and quota replies.
 - [ ] Telegram bot operations.
 - [x] Backups status page with guarded read-only monitoring.

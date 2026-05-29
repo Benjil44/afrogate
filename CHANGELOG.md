@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.94.0 - 2026-05-29
+
+- Added guarded `POST /api/admin/current-panels/import-preview` for read-only Marzban, X-UI, Sanayi, and generic current-panel export previews.
+- Added the Billing page Current Panel Import panel with bilingual labels, JSON preview workflow, normalized candidate status/quota/usage rows, warnings, and rejected-row counts.
+- Kept panel migration adapter-scoped and privacy-safe: no raw payload storage, no external panel calls, no user/config writes, and no subscription URL/token exposure.
+
 ## 0.93.0 - 2026-05-29
 
 - Added guarded `GET /api/admin/route-canary/status` for read-only route canary rollout visibility from the existing route decision preview engine.

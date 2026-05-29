@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  Allow,
   IsBoolean,
+  IsDefined,
   IsISO8601,
   IsIn,
   IsInt,
@@ -157,6 +159,27 @@ export class UpdateCustomerAccountDto {
   @IsString()
   @MaxLength(500)
   notes?: string | null;
+}
+
+export class CurrentPanelImportPreviewDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  panelKind?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  sourceName?: string | null;
+
+  @IsDefined()
+  @Allow()
+  payload!: unknown;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  defaultProtocol?: string;
 }
 
 export class CreateClientConfigDto {
