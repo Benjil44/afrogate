@@ -221,10 +221,13 @@ interface DashboardTabItem<T extends string> {
   disabled?: boolean;
 }
 
+type TableCellAlign = 'left' | 'center' | 'right';
+
 interface DataTableColumn<Row> {
   key: string;
   header: string;
   render: (row: Row) => ReactNode;
+  align?: TableCellAlign;
   alignRight?: boolean;
   className?: string;
 }
@@ -3096,6 +3099,45 @@ function RolePermissionsPanel({
   const permissionCount = policy ? format.integer(policy.permissions.length) : t.dataStatus.loading;
   const currentRole = policy?.currentRole ?? t.dataStatus.loading;
   const currentAccess = policy?.currentHasFullAccess ? t.rbac.fullAccess : format.integer(policy?.currentPermissions.length ?? 0);
+  const permissionColumns: Array<DataTableColumn<AdminPermissionsResponse['permissions'][number]>> = policy ? [
+    {
+      key: 'permission',
+      header: t.rbac.permission,
+      render: (permission) => (
+        <>
+          <strong className="block text-afro-ink">{permissionLabel(permission.id, t)}</strong>
+          <span className="text-[12px] text-afro-muted">{permission.id}</span>
+        </>
+      ),
+    },
+    {
+      key: 'category',
+      header: t.rbac.category,
+      render: (permission) => t.rbac.categories[permission.category],
+    },
+    {
+      key: 'risk',
+      header: t.rbac.risk,
+      render: (permission) => <StatusBadge tone={permissionRiskTone(permission.risk)}>{t.rbac.risks[permission.risk]}</StatusBadge>,
+    },
+    ...policy.roles.map((role): DataTableColumn<AdminPermissionsResponse['permissions'][number]> => ({
+      align: 'center',
+      key: `role:${role.role}`,
+      header: role.role,
+      render: (permission) => {
+        const allowed = role.inheritsAll || role.permissions.includes(permission.id);
+
+        return (
+          <span
+            className={`inline-grid size-7 place-items-center rounded-md border ${allowed ? 'border-[#bbdec8] bg-[#eefbf2] text-[#166534]' : 'border-afro-line bg-[#f8fafb] text-afro-muted'}`}
+            title={allowed ? t.rbac.allowed : t.rbac.blocked}
+          >
+            {allowed ? <CheckCircle2 size={15} /> : <LockKeyhole size={15} />}
+          </span>
+        );
+      },
+    })),
+  ] : [];
 
   return (
     <section className={panelClass}>
@@ -3120,58 +3162,7 @@ function RolePermissionsPanel({
       <div className="mt-2 grid gap-2">
         {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
         {!policy && !error ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
-        {policy ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse">
-              <thead>
-                <tr>
-                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0">
-                    {t.rbac.permission}
-                  </th>
-                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted">
-                    {t.rbac.category}
-                  </th>
-                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted">
-                    {t.rbac.risk}
-                  </th>
-                  {policy.roles.map((role) => (
-                    <th className="border-b border-afro-line px-2 py-1.5 text-center text-[13px] font-bold text-afro-muted last:pr-0" key={role.role}>
-                      {role.role}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {policy.permissions.map((permission) => (
-                  <tr key={permission.id}>
-                    <TableCell>
-                      <strong className="block text-afro-ink">{permissionLabel(permission.id, t)}</strong>
-                      <span className="text-[12px] text-afro-muted">{permission.id}</span>
-                    </TableCell>
-                    <TableCell>{t.rbac.categories[permission.category]}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={permissionRiskTone(permission.risk)}>{t.rbac.risks[permission.risk]}</StatusBadge>
-                    </TableCell>
-                    {policy.roles.map((role) => {
-                      const allowed = role.inheritsAll || role.permissions.includes(permission.id);
-
-                      return (
-                        <td className="border-b border-afro-line px-2 py-1.5 text-center text-[13px] text-afro-muted last:pr-0" key={`${permission.id}:${role.role}`}>
-                          <span
-                            className={`inline-grid size-7 place-items-center rounded-md border ${allowed ? 'border-[#bbdec8] bg-[#eefbf2] text-[#166534]' : 'border-afro-line bg-[#f8fafb] text-afro-muted'}`}
-                            title={allowed ? t.rbac.allowed : t.rbac.blocked}
-                          >
-                            {allowed ? <CheckCircle2 size={15} /> : <LockKeyhole size={15} />}
-                          </span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+        {policy ? <DataTable columns={permissionColumns} minWidth="980px" rowKey={(permission) => permission.id} rows={policy.permissions} /> : null}
       </div>
     </section>
   );
@@ -3248,6 +3239,47 @@ function AuditLogsPage({
   const actorTypeCount = new Set(auditLogs.map((log) => log.actorType)).size;
   const targetTypeCount = new Set(auditLogs.map((log) => log.targetType).filter(Boolean)).size;
   const latestEvent = auditLogs[0]?.createdAt ? format.dateTime(new Date(auditLogs[0].createdAt)) : t.auditLogs.none;
+  const auditLogColumns: Array<DataTableColumn<AdminAuditLogSummary>> = [
+    {
+      key: 'time',
+      header: t.auditLogs.time,
+      render: (log) => format.dateTime(new Date(log.createdAt)),
+    },
+    {
+      key: 'actor',
+      header: t.auditLogs.actor,
+      render: (log) => (
+        <>
+          <strong className="block text-afro-ink">{log.actorType}</strong>
+          <span className="font-mono text-[12px] text-afro-muted">{shortenAuditId(log.actorId) ?? t.auditLogs.none}</span>
+        </>
+      ),
+    },
+    {
+      key: 'action',
+      header: t.auditLogs.action,
+      render: (log) => <span className="font-mono text-[12px] text-afro-ink">{log.action}</span>,
+    },
+    {
+      key: 'target',
+      header: t.auditLogs.target,
+      render: (log) => (
+        <>
+          <strong className="block text-afro-ink">{log.targetType ?? t.auditLogs.none}</strong>
+          <span className="font-mono text-[12px] text-afro-muted">{shortenAuditId(log.targetId) ?? t.auditLogs.none}</span>
+        </>
+      ),
+    },
+    {
+      key: 'metadata',
+      header: t.auditLogs.metadata,
+      render: (log) => (
+        <code className="block max-w-[360px] truncate rounded-md border border-afro-line bg-[#f8fafb] px-2 py-1 text-[12px] text-afro-muted" title={formatAuditMetadata(log.metadata, t.auditLogs.none)}>
+          {formatAuditMetadata(log.metadata, t.auditLogs.none)}
+        </code>
+      ),
+    },
+  ];
 
   return (
     <section className="mt-0 grid gap-3">
@@ -3317,50 +3349,7 @@ function AuditLogsPage({
           {dataState !== 'loading' && auditLogs.length === 0 && !error ? (
             <PanelState detail={t.panelStates.emptyDetail} kind="empty" title={t.auditLogs.noEvents} />
           ) : null}
-          {auditLogs.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] border-collapse">
-                <thead>
-                  <tr>
-                    {[
-                      t.auditLogs.time,
-                      t.auditLogs.actor,
-                      t.auditLogs.action,
-                      t.auditLogs.target,
-                      t.auditLogs.metadata,
-                    ].map((heading) => (
-                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {auditLogs.map((log) => (
-                    <tr key={log.id}>
-                      <TableCell>{format.dateTime(new Date(log.createdAt))}</TableCell>
-                      <TableCell>
-                        <strong className="block text-afro-ink">{log.actorType}</strong>
-                        <span className="font-mono text-[12px] text-afro-muted">{shortenAuditId(log.actorId) ?? t.auditLogs.none}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-[12px] text-afro-ink">{log.action}</span>
-                      </TableCell>
-                      <TableCell>
-                        <strong className="block text-afro-ink">{log.targetType ?? t.auditLogs.none}</strong>
-                        <span className="font-mono text-[12px] text-afro-muted">{shortenAuditId(log.targetId) ?? t.auditLogs.none}</span>
-                      </TableCell>
-                      <TableCell>
-                        <code className="block max-w-[360px] truncate rounded-md border border-afro-line bg-[#f8fafb] px-2 py-1 text-[12px] text-afro-muted" title={formatAuditMetadata(log.metadata, t.auditLogs.none)}>
-                          {formatAuditMetadata(log.metadata, t.auditLogs.none)}
-                        </code>
-                      </TableCell>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
+          {auditLogs.length > 0 ? <DataTable columns={auditLogColumns} minWidth="860px" rowKey={(log) => log.id} rows={auditLogs} /> : null}
         </div>
       </section>
     </section>
@@ -4467,6 +4456,52 @@ function ResellerUsersTable({
   paymentOrders: AdminPaymentOrderSummary[];
   t: DashboardStrings;
 }) {
+  const soldUserRows = accounts.map((account) => {
+    const customerOrders = paymentOrders.filter((order) => order.customerAccountId === account.id && isCompletedResellerSaleOrder(order));
+    const soldBytes = customerOrders.reduce((sum, order) => sum + order.volumeBytes, 0);
+    const latestSale = customerOrders
+      .map((order) => order.paidAt ?? order.createdAt)
+      .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
+
+    return {
+      account,
+      latestSale,
+      orderCount: customerOrders.length,
+      soldBytes,
+    };
+  });
+  const soldUserColumns: Array<DataTableColumn<(typeof soldUserRows)[number]>> = [
+    {
+      key: 'customer',
+      header: t.billing.customer,
+      render: (row) => (
+        <>
+          <strong className="block text-afro-ink">{resellerCustomerName(row.account)}</strong>
+          <span className="text-[12px] text-afro-muted">{row.account.telegramUsername ?? row.account.id.slice(0, 8)}</span>
+        </>
+      ),
+    },
+    {
+      key: 'clients',
+      header: t.billing.clients,
+      render: (row) => `${format.integer(row.account.activeClientCount)} / ${format.integer(row.account.clientCount)}`,
+    },
+    { key: 'usedQuota', header: t.billing.usedQuota, render: (row) => format.bytes(row.account.usedBytes) },
+    {
+      key: 'remaining',
+      header: t.billing.remaining,
+      render: (row) => row.account.remainingBytes === null || row.account.remainingBytes === undefined ? t.billing.unlimited : format.bytes(row.account.remainingBytes),
+    },
+    { key: 'soldVolume', header: t.reseller.soldVolume, render: (row) => format.bytes(row.soldBytes) },
+    { key: 'orders', header: t.reseller.orders, render: (row) => format.integer(row.orderCount) },
+    { key: 'lastSale', header: t.reseller.lastSale, render: (row) => row.latestSale ? format.dateTime(new Date(row.latestSale)) : '--' },
+    {
+      key: 'status',
+      header: t.billing.status,
+      render: (row) => <StatusBadge tone={billingStatusTone(row.account.status)}>{customerAccountStatusLabel(row.account.status, t)}</StatusBadge>,
+    },
+  ];
+
   return (
     <section className={panelClass}>
       <div className="flex min-h-7 flex-wrap items-center justify-between gap-2 border-b border-afro-line pb-1.5">
@@ -4483,45 +4518,8 @@ function ResellerUsersTable({
       {actionMessage ? <p className={`${mutedTextClass} mt-2`}>{actionMessage}</p> : null}
       {accounts.length === 0 ? <div className="mt-2"><EmptyState message={t.billing.noCustomerAccounts} /></div> : null}
       {accounts.length > 0 ? (
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[880px] border-collapse">
-            <thead>
-              <tr>
-                {[t.billing.customer, t.billing.clients, t.billing.usedQuota, t.billing.remaining, t.reseller.soldVolume, t.reseller.orders, t.reseller.lastSale, t.billing.status].map((heading) => (
-                  <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((account) => {
-                const customerOrders = paymentOrders.filter((order) => order.customerAccountId === account.id && isCompletedResellerSaleOrder(order));
-                const soldBytes = customerOrders.reduce((sum, order) => sum + order.volumeBytes, 0);
-                const latestSale = customerOrders
-                  .map((order) => order.paidAt ?? order.createdAt)
-                  .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
-
-                return (
-                  <tr key={account.id}>
-                    <TableCell>
-                      <strong className="block text-afro-ink">{resellerCustomerName(account)}</strong>
-                      <span className="text-[12px] text-afro-muted">{account.telegramUsername ?? account.id.slice(0, 8)}</span>
-                    </TableCell>
-                    <TableCell>{`${format.integer(account.activeClientCount)} / ${format.integer(account.clientCount)}`}</TableCell>
-                    <TableCell>{format.bytes(account.usedBytes)}</TableCell>
-                    <TableCell>{account.remainingBytes === null || account.remainingBytes === undefined ? t.billing.unlimited : format.bytes(account.remainingBytes)}</TableCell>
-                    <TableCell>{format.bytes(soldBytes)}</TableCell>
-                    <TableCell>{format.integer(customerOrders.length)}</TableCell>
-                    <TableCell>{latestSale ? format.dateTime(new Date(latestSale)) : '--'}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={billingStatusTone(account.status)}>{customerAccountStatusLabel(account.status, t)}</StatusBadge>
-                    </TableCell>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="mt-2">
+          <DataTable columns={soldUserColumns} minWidth="880px" rowKey={(row) => row.account.id} rows={soldUserRows} />
         </div>
       ) : null}
     </section>
@@ -5330,6 +5328,26 @@ function ResellerWorkspacePanel({
       value: `${format.integer(reseller.afroGateSharePercent)}%`,
     },
   ] : [];
+  const walletLedgerColumns: Array<DataTableColumn<AdminResellerWalletLedgerEntry>> = [
+    {
+      key: 'entry',
+      header: t.billing.walletEntry,
+      render: (entry) => <StatusBadge tone={entry.amount >= 0 ? 'good' : 'warning'}>{resellerWalletEntryTypeLabel(entry.entryType, t)}</StatusBadge>,
+    },
+    {
+      key: 'amount',
+      header: t.billing.amount,
+      render: (entry) => formatMoneyAmount(entry.amount, entry.currency, format),
+    },
+    {
+      key: 'balanceAfter',
+      header: t.billing.balanceAfter,
+      render: (entry) => formatMoneyAmount(entry.balanceAfterAmount, entry.currency, format),
+    },
+    { key: 'source', header: t.billing.source, render: (entry) => resellerWalletSourceLabel(entry.source, t) },
+    { key: 'package', header: t.billing.packageName, render: (entry) => entry.volumePackageName ?? '--' },
+    { key: 'createdAt', header: t.billing.createdAt, render: (entry) => format.dateTime(new Date(entry.createdAt)) },
+  ];
 
   return (
     <section className={panelClass}>
@@ -5343,34 +5361,15 @@ function ResellerWorkspacePanel({
           <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {walletMetrics.map((item) => <MetricPill icon={item.icon} key={item.label} label={item.label} value={item.value} />)}
           </div>
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse">
-              <thead>
-                <tr>
-                  {[t.billing.walletEntry, t.billing.amount, t.billing.balanceAfter, t.billing.source, t.billing.packageName, t.billing.createdAt].map((heading) => (
-                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {ledgerEntries.map((entry) => (
-                  <tr key={entry.id}>
-                    <TableCell>
-                      <StatusBadge tone={entry.amount >= 0 ? 'good' : 'warning'}>{resellerWalletEntryTypeLabel(entry.entryType, t)}</StatusBadge>
-                    </TableCell>
-                    <TableCell>{formatMoneyAmount(entry.amount, entry.currency, format)}</TableCell>
-                    <TableCell>{formatMoneyAmount(entry.balanceAfterAmount, entry.currency, format)}</TableCell>
-                    <TableCell>{resellerWalletSourceLabel(entry.source, t)}</TableCell>
-                    <TableCell>{entry.volumePackageName ?? '--'}</TableCell>
-                    <TableCell>{format.dateTime(new Date(entry.createdAt))}</TableCell>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {ledgerEntries.length === 0 ? <EmptyState message={t.billing.noWalletLedgerEntries} /> : null}
+          {ledgerEntries.length > 0 ? (
+            <div className="mt-2">
+              <DataTable columns={walletLedgerColumns} minWidth="760px" rowKey={(entry) => entry.id} rows={ledgerEntries} />
+            </div>
+          ) : (
+            <div className="mt-2">
+              <EmptyState message={t.billing.noWalletLedgerEntries} />
+            </div>
+          )}
         </>
       ) : (
         <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} />
@@ -6079,6 +6078,48 @@ function CurrentPanelImportPreviewPanel({
   const candidates = currentPanelPreview?.candidates ?? [];
   const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel || isSyncingCurrentPanelUsage || isExportingClientConfigs || isChargingCurrentPanelVolume;
   const payloadPlaceholder = `{"users":[{"username":"vip_gamer","status":"active","data_limit":"25GB","used_traffic":"6GB","expire":1893456000}]}`;
+  const candidateRows = candidates.slice(0, 8);
+  const candidateColumns: Array<DataTableColumn<(typeof candidateRows)[number]>> = [
+    {
+      key: 'candidate',
+      header: t.billing.currentPanelCandidate,
+      render: (candidate) => (
+        <>
+          <strong className="block text-afro-ink">{candidate.label}</strong>
+          <span className="text-[12px] text-afro-muted">{candidate.username ?? candidate.externalPanelUserId ?? candidate.protocol}</span>
+        </>
+      ),
+    },
+    {
+      key: 'kind',
+      header: t.billing.currentPanelKind,
+      render: () => currentPanelPreview ? currentPanelKindLabel(currentPanelPreview.panelKind as CurrentPanelKind, t) : '--',
+    },
+    {
+      key: 'usedQuota',
+      header: t.billing.usedQuota,
+      render: (candidate) => candidate.usedBytes === null || candidate.usedBytes === undefined ? '--' : format.bytes(candidate.usedBytes),
+    },
+    {
+      key: 'totalQuota',
+      header: t.billing.totalQuota,
+      render: (candidate) => candidate.quotaBytes === null || candidate.quotaBytes === undefined ? t.billing.unlimited : format.bytes(candidate.quotaBytes),
+    },
+    {
+      key: 'remaining',
+      header: t.billing.remaining,
+      render: (candidate) => candidate.remainingBytes === null || candidate.remainingBytes === undefined ? t.billing.unlimited : format.bytes(candidate.remainingBytes),
+    },
+    {
+      key: 'status',
+      header: t.billing.status,
+      render: (candidate) => (
+        <StatusBadge tone={currentPanelStatusTone(candidate.status)}>
+          {currentPanelStatusLabel(candidate.status, t)}
+        </StatusBadge>
+      ),
+    },
+  ];
 
   return (
     <section className={panelClass}>
@@ -6230,38 +6271,12 @@ function CurrentPanelImportPreviewPanel({
             />
           </div>
           {candidates.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] border-collapse">
-                <thead>
-                  <tr>
-                    {[t.billing.currentPanelCandidate, t.billing.currentPanelKind, t.billing.usedQuota, t.billing.totalQuota, t.billing.remaining, t.billing.status].map((heading) => (
-                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {candidates.slice(0, 8).map((candidate) => (
-                    <tr key={`${candidate.externalPanel}:${candidate.externalPanelUserId ?? candidate.label}`} className="border-b border-afro-line/70 last:border-0">
-                      <TableCell>
-                        <strong className="block text-afro-ink">{candidate.label}</strong>
-                        <span className="text-[12px] text-afro-muted">{candidate.username ?? candidate.externalPanelUserId ?? candidate.protocol}</span>
-                      </TableCell>
-                      <TableCell>{currentPanelKindLabel(currentPanelPreview.panelKind as CurrentPanelKind, t)}</TableCell>
-                      <TableCell>{candidate.usedBytes === null || candidate.usedBytes === undefined ? '--' : format.bytes(candidate.usedBytes)}</TableCell>
-                      <TableCell>{candidate.quotaBytes === null || candidate.quotaBytes === undefined ? t.billing.unlimited : format.bytes(candidate.quotaBytes)}</TableCell>
-                      <TableCell>{candidate.remainingBytes === null || candidate.remainingBytes === undefined ? t.billing.unlimited : format.bytes(candidate.remainingBytes)}</TableCell>
-                      <TableCell>
-                        <StatusBadge tone={currentPanelStatusTone(candidate.status)}>
-                          {currentPanelStatusLabel(candidate.status, t)}
-                        </StatusBadge>
-                      </TableCell>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={candidateColumns}
+              minWidth="760px"
+              rowKey={(candidate) => `${candidate.externalPanel}:${candidate.externalPanelUserId ?? candidate.label}`}
+              rows={candidateRows}
+            />
           ) : <EmptyState message={t.billing.currentPanelNoPreview} />}
           <div className="flex flex-wrap gap-1.5">
             {currentPanelPreview.rejectedRows.length > 0 ? (
@@ -6300,6 +6315,43 @@ function BillingCatalogPanel({
   settings: AdminBillingSettingsSummary | null;
   t: DashboardStrings;
 }) {
+  const visiblePackages = packages.slice(0, 8);
+  const packageColumns: Array<DataTableColumn<AdminVolumePackageSummary>> = [
+    {
+      key: 'package',
+      header: t.billing.packageName,
+      render: (item) => (
+        <>
+          <strong className="block text-afro-ink">{item.name}</strong>
+          <span className="text-[12px] text-afro-muted">{item.slug}</span>
+        </>
+      ),
+    },
+    { key: 'volume', header: t.billing.volume, render: (item) => format.bytes(item.volumeBytes) },
+    { key: 'price', header: t.billing.price, render: (item) => `${format.integer(item.totalPrice)} ${format.label(item.currency)}` },
+    { key: 'duration', header: t.billing.duration, render: (item) => item.durationDays ? t.billing.days(format.integer(item.durationDays)) : t.billing.noExpiry },
+    {
+      key: 'status',
+      header: t.billing.status,
+      render: (item) => <StatusBadge tone={billingStatusTone(item.status)}>{format.label(item.status)}</StatusBadge>,
+    },
+  ];
+  const paymentProviderAdapterColumns: Array<DataTableColumn<AdminPaymentProviderAdapterSummary>> = [
+    { key: 'provider', header: t.billing.provider, render: (adapter) => paymentProviderLabel(adapter.provider, t) },
+    { key: 'checkout', header: t.billing.checkoutMode, render: (adapter) => paymentCheckoutModeLabel(adapter.checkoutMode, t) },
+    { key: 'settlement', header: t.billing.settlement, render: (adapter) => paymentSettlementLabel(adapter.settlementMode, t) },
+    { key: 'verification', header: t.billing.verification, render: (adapter) => paymentVerificationLabel(adapter.supportsWebhookVerification, t) },
+    {
+      key: 'status',
+      header: t.billing.status,
+      render: (adapter) => (
+        <StatusBadge tone={paymentAdapterStatusTone(adapter.status)}>
+          {paymentAdapterStatusLabel(adapter.status, t)}
+        </StatusBadge>
+      ),
+    },
+  ];
+
   return (
     <section className={panelClass}>
       <PanelHeading title={t.billing.catalog} icon={CreditCard} meta={t.billing.packagesLoaded(format.integer(packages.length))} />
@@ -6315,35 +6367,7 @@ function BillingCatalogPanel({
         </div>
         {packages.length === 0 ? <EmptyState message={t.billing.noPackages} /> : null}
         {packages.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse">
-              <thead>
-                <tr>
-                  {[t.billing.packageName, t.billing.volume, t.billing.price, t.billing.duration, t.billing.status].map((heading) => (
-                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {packages.slice(0, 8).map((item) => (
-                  <tr key={item.id}>
-                    <TableCell>
-                      <strong className="block text-afro-ink">{item.name}</strong>
-                      <span className="text-[12px] text-afro-muted">{item.slug}</span>
-                    </TableCell>
-                    <TableCell>{format.bytes(item.volumeBytes)}</TableCell>
-                    <TableCell>{`${format.integer(item.totalPrice)} ${format.label(item.currency)}`}</TableCell>
-                    <TableCell>{item.durationDays ? t.billing.days(format.integer(item.durationDays)) : t.billing.noExpiry}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={billingStatusTone(item.status)}>{format.label(item.status)}</StatusBadge>
-                    </TableCell>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable columns={packageColumns} minWidth="620px" rowKey={(item) => item.id} rows={visiblePackages} />
         ) : null}
         <div className="flex flex-wrap gap-1.5">
           {paymentMethods.map((method) => (
@@ -6358,34 +6382,12 @@ function BillingCatalogPanel({
               <h3 className="text-sm font-bold text-afro-ink">{t.billing.paymentProviderAdapters}</h3>
               <span className={mutedTextClass}>{t.billing.adaptersLoaded(format.integer(paymentProviderAdapters.length))}</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] border-collapse">
-                <thead>
-                  <tr>
-                    {[t.billing.provider, t.billing.checkoutMode, t.billing.settlement, t.billing.verification, t.billing.status].map((heading) => (
-                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {paymentProviderAdapters.map((adapter) => (
-                    <tr key={adapter.provider}>
-                      <TableCell>{paymentProviderLabel(adapter.provider, t)}</TableCell>
-                      <TableCell>{paymentCheckoutModeLabel(adapter.checkoutMode, t)}</TableCell>
-                      <TableCell>{paymentSettlementLabel(adapter.settlementMode, t)}</TableCell>
-                      <TableCell>{paymentVerificationLabel(adapter.supportsWebhookVerification, t)}</TableCell>
-                      <TableCell>
-                        <StatusBadge tone={paymentAdapterStatusTone(adapter.status)}>
-                          {paymentAdapterStatusLabel(adapter.status, t)}
-                        </StatusBadge>
-                      </TableCell>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={paymentProviderAdapterColumns}
+              minWidth="760px"
+              rowKey={(adapter) => adapter.provider}
+              rows={paymentProviderAdapters}
+            />
           </div>
         ) : null}
       </div>
@@ -7646,6 +7648,34 @@ function AlertsPage({
     [currentAlerts, severityFilter, sourceFilter],
   );
   const activeAlertCount = countActiveAlertRows(filteredAlerts);
+  const alertColumns: Array<DataTableColumn<AlertRowData>> = [
+    {
+      key: 'severity',
+      header: t.tables.severity,
+      render: (alert) => <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>,
+    },
+    { key: 'source', header: t.tables.source, render: (alert) => format.label(alert.source) },
+    {
+      key: 'alert',
+      header: t.tables.alert,
+      render: (alert) => (
+        <>
+          <strong className="block max-w-[420px] truncate text-afro-ink" title={alert.title}>{alert.title}</strong>
+          {alert.message ? <span className="block max-w-[420px] truncate text-[12px]" title={alert.message}>{alert.message}</span> : null}
+        </>
+      ),
+    },
+    { key: 'status', header: t.tables.status, render: (alert) => format.label(alert.status ?? statusFilter) },
+    {
+      key: 'lastSeen',
+      header: t.tables.lastSeen,
+      render: (alert) => {
+        const timestamp = alert.status === 'resolved' && alert.resolvedAt ? alert.resolvedAt : alert.lastSeenAt;
+
+        return timestamp ? format.time(new Date(timestamp), false) : '-';
+      },
+    },
+  ];
 
   useEffect(() => {
     if (sourceFilter !== 'all' && !sourceOptions.includes(sourceFilter)) {
@@ -7724,39 +7754,7 @@ function AlertsPage({
             />
           ) : null}
           {filteredAlerts.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    {[t.tables.severity, t.tables.source, t.tables.alert, t.tables.status, t.tables.lastSeen].map((heading) => (
-                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAlerts.map((alert) => {
-                    const timestamp = alert.status === 'resolved' && alert.resolvedAt ? alert.resolvedAt : alert.lastSeenAt;
-
-                    return (
-                      <tr key={alert.id}>
-                        <TableCell>
-                          <StatusBadge tone={alert.severity}>{t.status[alert.severity]}</StatusBadge>
-                        </TableCell>
-                        <TableCell>{format.label(alert.source)}</TableCell>
-                        <TableCell>
-                          <strong className="block truncate text-afro-ink" title={alert.title}>{alert.title}</strong>
-                          {alert.message ? <span className="block max-w-[420px] truncate text-[12px]" title={alert.message}>{alert.message}</span> : null}
-                        </TableCell>
-                        <TableCell>{format.label(alert.status ?? statusFilter)}</TableCell>
-                        <TableCell>{timestamp ? format.time(new Date(timestamp), false) : '-'}</TableCell>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable columns={alertColumns} minWidth="760px" rowKey={(alert) => alert.id} rows={filteredAlerts} />
           ) : null}
         </div>
       </section>
@@ -12916,6 +12914,39 @@ function TunnelPanel({
   t: DashboardStrings;
   tunnels: TunnelRowData[];
 }) {
+  const tunnelColumns: Array<DataTableColumn<TunnelRowData>> = [
+    {
+      key: 'tunnel',
+      header: t.tables.tunnel,
+      render: (tunnel) => {
+        const key = tunnelRowKey(tunnel);
+        const isSelected = key === selectedTunnelKey;
+
+        return (
+          <button
+            aria-pressed={isSelected}
+            className={`max-w-[180px] truncate text-left font-bold ${isSelected ? 'text-afro-blue' : 'text-afro-ink hover:text-afro-blue'}`}
+            onClick={() => onSelectTunnel?.(key)}
+            title={tunnel.name}
+            type="button"
+          >
+            {tunnel.name}
+          </button>
+        );
+      },
+    },
+    { key: 'operator', header: t.tables.operator, render: (tunnel) => format.label(tunnel.operator) },
+    { key: 'ping', header: t.tables.ping, render: (tunnel) => format.latency(tunnel.ping) },
+    { key: 'jitter', header: t.tables.jitter, render: (tunnel) => format.latency(tunnel.jitter) },
+    { key: 'loss', header: t.tables.loss, render: (tunnel) => format.packetLoss(tunnel.loss) },
+    {
+      alignRight: true,
+      key: 'score',
+      header: t.tables.score,
+      render: (tunnel) => <strong className={getScoreClass(tunnel.score)}>{format.integer(tunnel.score)}</strong>,
+    },
+  ];
+
   return (
     <section className={panelClass}>
       <PanelHeading title={t.panels.tunnels} icon={Route} meta={t.panels.links(format.integer(tunnels.length))} />
@@ -12925,48 +12956,13 @@ function TunnelPanel({
           <DataStateEmpty emptyMessage={emptyMessage ?? t.operationalData.noTunnels} state={dataState} t={t} />
         ) : null}
         {tunnels.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {[t.tables.tunnel, t.tables.operator, t.tables.ping, t.tables.jitter, t.tables.loss, t.tables.score].map((heading) => (
-                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted last:pr-0 last:text-right first:pl-0" key={heading}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tunnels.map((tunnel) => {
-                  const key = tunnelRowKey(tunnel);
-                  const isSelected = key === selectedTunnelKey;
-
-                  return (
-                    <tr className={isSelected ? 'bg-[#edf4ff]' : undefined} key={key}>
-                      <TableCell>
-                        <button
-                          aria-pressed={isSelected}
-                          className={`max-w-[180px] truncate text-left font-bold ${isSelected ? 'text-afro-blue' : 'text-afro-ink hover:text-afro-blue'}`}
-                          onClick={() => onSelectTunnel?.(key)}
-                          title={tunnel.name}
-                          type="button"
-                        >
-                          {tunnel.name}
-                        </button>
-                      </TableCell>
-                      <TableCell>{format.label(tunnel.operator)}</TableCell>
-                      <TableCell>{format.latency(tunnel.ping)}</TableCell>
-                      <TableCell>{format.latency(tunnel.jitter)}</TableCell>
-                      <TableCell>{format.packetLoss(tunnel.loss)}</TableCell>
-                      <TableCell alignRight>
-                        <strong className={getScoreClass(tunnel.score)}>{format.integer(tunnel.score)}</strong>
-                      </TableCell>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={tunnelColumns}
+            minWidth="720px"
+            rowClassName={(tunnel) => tunnelRowKey(tunnel) === selectedTunnelKey ? 'bg-[#edf4ff]' : undefined}
+            rowKey={(tunnel) => tunnelRowKey(tunnel)}
+            rows={tunnels}
+          />
         ) : null}
       </div>
     </section>
@@ -13040,11 +13036,13 @@ function DashboardTabs<T extends string>({
 function DataTable<Row>({
   columns,
   minWidth = '760px',
+  rowClassName,
   rowKey,
   rows,
 }: {
   columns: Array<DataTableColumn<Row>>;
   minWidth?: string;
+  rowClassName?: (row: Row) => string | undefined;
   rowKey: (row: Row) => string;
   rows: Row[];
 }) {
@@ -13055,7 +13053,7 @@ function DataTable<Row>({
           <tr>
             {columns.map((column) => (
               <th
-                className={`border-b border-afro-line px-2 py-1.5 text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0 ${column.alignRight ? 'text-right' : 'text-left'} ${column.className ?? ''}`}
+                className={`border-b border-afro-line px-2 py-1.5 text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0 ${tableAlignmentClass(column.align, column.alignRight)} ${column.className ?? ''}`}
                 key={column.key}
               >
                 {column.header}
@@ -13065,9 +13063,9 @@ function DataTable<Row>({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)}>
+            <tr className={rowClassName?.(row)} key={rowKey(row)}>
               {columns.map((column) => (
-                <TableCell alignRight={column.alignRight} key={column.key}>
+                <TableCell align={column.align} alignRight={column.alignRight} key={column.key}>
                   {column.render(row)}
                 </TableCell>
               ))}
@@ -13079,8 +13077,15 @@ function DataTable<Row>({
   );
 }
 
-function TableCell({ children, alignRight = false }: { children: ReactNode; alignRight?: boolean }) {
-  const alignmentClass = alignRight ? 'text-right' : 'text-left';
+function tableAlignmentClass(align?: TableCellAlign, alignRight = false): string {
+  if (align === 'center') return 'text-center';
+  if (align === 'right' || alignRight) return 'text-right';
+
+  return 'text-left';
+}
+
+function TableCell({ align, alignRight = false, children }: { align?: TableCellAlign; alignRight?: boolean; children: ReactNode }) {
+  const alignmentClass = tableAlignmentClass(align, alignRight);
   const tooltip = primitiveTooltip(children);
 
   return (

@@ -274,7 +274,7 @@
 
 ## UI/UX Refactor Track
 
-Progress: 9 / 11 complete (81.8%), 2 remaining.
+Progress: 10 / 11 complete (90.9%), 1 remaining.
 
 - [x] Create dedicated UI/UX implementation checklist.
 - [x] Add reusable dashboard tabs.
@@ -286,4 +286,4 @@ Progress: 9 / 11 complete (81.8%), 2 remaining.
 - [x] Convert Settings page into Route/WireGuard/Protocols/Branding/Telegram tabs.
 - [x] Move admin users, billing customer accounts, and payment orders onto the shared table primitive.
 - [ ] Run full browser UI audit across all dashboard pages after the tab refactor.
-- [ ] Continue migrating Audit Logs, tunnels, and reseller wallet/sold-user tables to the shared table primitive.
+- [x] Continue migrating Audit Logs, tunnels, and reseller wallet/sold-user tables to the shared table primitive.

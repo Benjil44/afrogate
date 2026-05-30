@@ -1,6 +1,6 @@
 # AfroGate UI/UX Implementation Checklist
 
-Progress: 31 / 40 complete (77.5%), 9 remaining.
+Progress: 34 / 40 complete (85.0%), 6 remaining.
 
 ## Baseline
 
@@ -10,7 +10,7 @@ Progress: 31 / 40 complete (77.5%), 9 remaining.
 - [x] Run browser review after each slice at desktop and mobile widths.
 - [x] Keep English/Persian labels in the typed dashboard translation layer.
 - [ ] Keep every operational page free of horizontal overflow.
-- [ ] Keep repeated tables on the shared table primitive.
+- [x] Keep repeated tables on the shared table primitive.
 
 ## Shared UI Primitives
 
@@ -60,8 +60,8 @@ Progress: 31 / 40 complete (77.5%), 9 remaining.
 
 ## Follow-Up Pages
 
-- [ ] Apply shared table primitive to Audit Logs.
+- [x] Apply shared table primitive to Audit Logs.
 - [x] Apply shared table primitive to Billing tables.
-- [ ] Apply shared table primitive to reseller sold-users and wallet tables.
+- [x] Apply shared table primitive to reseller sold-users and wallet tables.
 - [ ] Review Backups page for tabs or section grouping.
 - [ ] Review Reports page for richer chart usage and better empty-state density.

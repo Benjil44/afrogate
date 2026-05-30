@@ -2373,3 +2373,30 @@ Repository remote is ready:
 - Run full browser UI audit across all dashboard pages at mobile, tablet, desktop, and 1920x1080 second-LCD widths.
 - Continue migrating remaining repeated tables, including Audit Logs, tunnel lists, and reseller wallet/sold-user tables, to the shared table primitive.
 - Review Settings route-decision/load-balancing cards for remaining badge overlap after the tab layout.
+
+## 2026-05-30 UI/UX Shared Table Completion
+
+### Completed
+
+- Extended the shared dashboard table primitive with center alignment and selectable-row styling for dense operational surfaces.
+- Migrated the remaining raw dashboard page tables to the shared primitive: permission matrix, Audit Logs, Alerts, tunnel list, Billing catalog/adapters, current-panel import preview, reseller sold-users, and reseller wallet ledger.
+- Confirmed raw `<table>` markup now exists only in the shared `DataTable` primitive.
+- Updated `.codex/uiuxchecklist.md` to `34 / 40` complete, or `85.0%` complete with `6` remaining UI/UX refinement items.
+- Updated the focused UI/UX refactor track to `10 / 11` complete, or `90.9%` complete with the full browser audit remaining.
+- Bumped AfroGate to `0.113.4` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran full `npm run test:e2e`; 18 tests passed.
+- Ran `git diff --check`; only existing LF-to-CRLF conversion warnings were reported.
+
+### Remaining
+
+- Run the full browser UI audit across all dashboard pages after the tab/table refactor.
+- Continue UI/UX refinement on dashboard duplicated lists/blank space, Settings badge overlap, Backups grouping, Reports chart density, and any remaining horizontal-overflow findings.

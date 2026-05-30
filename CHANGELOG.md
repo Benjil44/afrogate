@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.113.4 - 2026-05-30
+
+- Migrated the remaining dashboard page tables to the shared `DataTable` primitive, including permissions, Audit Logs, Alerts, tunnels, billing catalog/adapters, current-panel preview, reseller sold users, and reseller wallet ledger.
+- Extended the shared table primitive with center alignment and selectable row styling so dense operational tables keep consistent spacing, truncation, and selected-row behavior.
+- Updated the UI/UX checklist to show the shared-table migration at 85.0% overall completion.
+
 ## 0.113.3 - 2026-05-30
 
 - Added reusable dashboard tabs and a shared table primitive for dense admin UX surfaces.
