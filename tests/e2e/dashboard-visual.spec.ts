@@ -225,15 +225,18 @@ test('reseller session shows scoped seller dashboard, users, and billing', async
   await expect(page.getByRole('cell', { name: /Reseller gaming customer/ }).first()).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Sold volume' })).toBeVisible();
 
-  const usersAddPanel = page.locator('section').filter({
-    has: page.getByRole('heading', { name: 'Add user' }),
+  const usersTablePanel = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Sold users' }),
   }).last();
-  await expect(usersAddPanel).toBeVisible();
-  await usersAddPanel.getByLabel('Display name').fill('Users page customer');
-  await usersAddPanel.getByLabel('Telegram username').fill('users_page_customer');
-  await usersAddPanel.getByRole('button', { name: 'Add user' }).click();
-  await expect(usersAddPanel.getByText(/sold; .* debited from wallet/)).toBeVisible();
-  await expect(page.getByRole('cell', { name: /Users page customer/ }).first()).toBeVisible();
+  await usersTablePanel.getByRole('button', { name: 'Add user' }).click();
+  const usersAddDialog = page.getByRole('dialog', { name: 'Add user' });
+  await expect(usersAddDialog).toBeVisible();
+  await usersAddDialog.getByLabel('Display name').fill('Users page customer');
+  await usersAddDialog.getByLabel('Telegram username').fill('users_page_customer');
+  await usersAddDialog.getByRole('button', { name: 'Add user' }).click();
+  await expect(usersAddDialog).toHaveCount(0);
+  await expect(usersTablePanel.getByText(/sold; .* debited from wallet/)).toBeVisible();
+  await expect(usersTablePanel.getByRole('cell', { name: /Users page customer/ }).first()).toBeVisible();
 
   await page.locator('[data-view="billing"]').click();
   await expect(page.getByRole('heading', { name: 'Seller billing' })).toBeVisible();

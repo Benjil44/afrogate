@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.113.2 - 2026-05-30
+
+- Changed the seller Users page so the sold-users table remains its own section with an Add user action in the table header.
+- Moved the seller Add user package-sale form into a focused dialog that opens above the table and closes after a successful wallet-gated sale.
+
 ## 0.113.1 - 2026-05-30
 
 - Added the missing seller Users-page Add user action so reseller sessions can create or renew wallet-gated customer package sales without leaving Users.

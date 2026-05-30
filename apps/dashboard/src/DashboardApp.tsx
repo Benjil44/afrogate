@@ -129,6 +129,7 @@ import {
   UserRound,
   Gift,
   WifiOff,
+  X,
 } from 'lucide-react';
 import rootPackage from '../../../package.json';
 import { useAdminSession } from './auth';
@@ -4087,6 +4088,7 @@ function ResellerUsersPage({
   const [resellerSaleForm, setResellerSaleForm] = useState<ResellerPackageSaleFormState>(() => createEmptyResellerPackageSaleForm());
   const [resellerSaleMessage, setResellerSaleMessage] = useState<string | null>(null);
   const [isSellingResellerPackage, setIsSellingResellerPackage] = useState(false);
+  const [isResellerAddUserDialogOpen, setIsResellerAddUserDialogOpen] = useState(false);
   const stats = useMemo(
     () => createResellerSalesStats(workspace.accounts, workspace.paymentOrders, workspace.reseller),
     [workspace.accounts, workspace.paymentOrders, workspace.reseller],
@@ -4144,11 +4146,32 @@ function ResellerUsersPage({
         format.bytes(result.allocation.volumeBytesDelta),
         formatMoneyAmount(result.quote.walletDebitAmount, result.quote.currency, format),
       ));
+      setIsResellerAddUserDialogOpen(false);
     } catch {
       setResellerSaleMessage(t.billing.resellerPackageSaleFailed);
     } finally {
       setIsSellingResellerPackage(false);
     }
+  };
+
+  const resetResellerSaleForm = () => {
+    setResellerSaleForm((current) => ({
+      ...createEmptyResellerPackageSaleForm(),
+      volumePackageId: current.volumePackageId,
+    }));
+  };
+
+  const openResellerAddUserDialog = () => {
+    resetResellerSaleForm();
+    setResellerSaleMessage(null);
+    setIsResellerAddUserDialogOpen(true);
+  };
+
+  const closeResellerAddUserDialog = () => {
+    if (isSellingResellerPackage) return;
+    resetResellerSaleForm();
+    setResellerSaleMessage(null);
+    setIsResellerAddUserDialogOpen(false);
   };
 
   return (
@@ -4164,21 +4187,28 @@ function ResellerUsersPage({
         <MetricCard item={{ label: t.reseller.soldVolume, value: format.bytes(stats.soldBytes), tone: stats.soldBytes > 0 ? 'good' : 'neutral' }} />
       </section>
 
-      <ResellerPackageSalePanel
+      <ResellerAddUserDialog
         accounts={workspace.accounts}
         format={format}
         form={resellerSaleForm}
+        isOpen={isResellerAddUserDialogOpen}
         isSelling={isSellingResellerPackage}
         message={resellerSaleMessage}
+        onClose={closeResellerAddUserDialog}
         onFormChange={setResellerSaleForm}
         onSubmit={handleCreateResellerUser}
         packages={workspace.packages}
-        submitLabel={t.reseller.addUser}
         t={t}
-        title={t.reseller.addUser}
       />
 
-      <ResellerUsersTable accounts={workspace.accounts} format={format} paymentOrders={workspace.paymentOrders} t={t} />
+      <ResellerUsersTable
+        accounts={workspace.accounts}
+        actionMessage={isResellerAddUserDialogOpen ? null : resellerSaleMessage}
+        format={format}
+        onAddUser={openResellerAddUserDialog}
+        paymentOrders={workspace.paymentOrders}
+        t={t}
+      />
     </section>
   );
 }
@@ -4320,18 +4350,33 @@ function ResellerRecentUsersPanel({
 
 function ResellerUsersTable({
   accounts,
+  actionMessage,
   format,
+  onAddUser,
   paymentOrders,
   t,
 }: {
   accounts: AdminCustomerAccountSummary[];
+  actionMessage?: string | null;
   format: DashboardFormatters;
+  onAddUser?: () => void;
   paymentOrders: AdminPaymentOrderSummary[];
   t: DashboardStrings;
 }) {
   return (
     <section className={panelClass}>
-      <PanelHeading title={t.reseller.soldUsers} icon={UserRound} meta={t.billing.accountsLoaded(format.integer(accounts.length))} />
+      <div className="flex min-h-7 flex-wrap items-center justify-between gap-2 border-b border-afro-line pb-1.5">
+        <PanelHeadingContent title={t.reseller.soldUsers} meta={t.billing.accountsLoaded(format.integer(accounts.length))} />
+        <button
+          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white hover:bg-[#1f3138]"
+          onClick={onAddUser}
+          type="button"
+        >
+          <Plus size={16} />
+          {t.reseller.addUser}
+        </button>
+      </div>
+      {actionMessage ? <p className={`${mutedTextClass} mt-2`}>{actionMessage}</p> : null}
       {accounts.length === 0 ? <div className="mt-2"><EmptyState message={t.billing.noCustomerAccounts} /></div> : null}
       {accounts.length > 0 ? (
         <div className="mt-2 overflow-x-auto">
@@ -4376,6 +4421,76 @@ function ResellerUsersTable({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function ResellerAddUserDialog({
+  accounts,
+  format,
+  form,
+  isOpen,
+  isSelling,
+  message,
+  onClose,
+  onFormChange,
+  onSubmit,
+  packages,
+  t,
+}: {
+  accounts: AdminCustomerAccountSummary[];
+  format: DashboardFormatters;
+  form: ResellerPackageSaleFormState;
+  isOpen: boolean;
+  isSelling: boolean;
+  message: string | null;
+  onClose: () => void;
+  onFormChange: (form: ResellerPackageSaleFormState) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  packages: AdminVolumePackageSummary[];
+  t: DashboardStrings;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-afro-sidebar/55 px-3 py-6 backdrop-blur-sm sm:px-6"
+      onClick={onClose}
+    >
+      <div
+        aria-labelledby="reseller-add-user-title"
+        aria-modal="true"
+        className="mx-auto mt-[min(12vh,96px)] w-full max-w-4xl"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <ResellerPackageSalePanel
+          accounts={accounts}
+          format={format}
+          form={form}
+          isSelling={isSelling}
+          message={message}
+          onClose={onClose}
+          onFormChange={onFormChange}
+          onSubmit={onSubmit}
+          packages={packages}
+          submitLabel={t.reseller.addUser}
+          t={t}
+          title={t.reseller.addUser}
+          titleId="reseller-add-user-title"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -5142,36 +5257,58 @@ function ResellerPackageSalePanel({
   form,
   isSelling,
   message,
+  onClose,
   onFormChange,
   onSubmit,
   packages,
   submitLabel,
   t,
   title,
+  titleId,
 }: {
   accounts: AdminCustomerAccountSummary[];
   format: DashboardFormatters;
   form: ResellerPackageSaleFormState;
   isSelling: boolean;
   message: string | null;
+  onClose?: () => void;
   onFormChange: (form: ResellerPackageSaleFormState) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   packages: AdminVolumePackageSummary[];
   submitLabel?: string;
   t: DashboardStrings;
   title?: string;
+  titleId?: string;
 }) {
   const activePackages = packages.filter((item) => item.status === 'active');
   const selectedPackage = activePackages.find((item) => item.id === form.volumePackageId) ?? null;
+  const panelTitle = title ?? t.billing.resellerPackageSale;
   const updateForm = (patch: Partial<ResellerPackageSaleFormState>) => onFormChange({ ...form, ...patch });
 
   return (
     <section className={panelClass}>
-      <PanelHeading
-        title={title ?? t.billing.resellerPackageSale}
-        icon={CreditCard}
-        meta={selectedPackage ? `${format.bytes(selectedPackage.volumeBytes)} / ${formatMoneyAmount(selectedPackage.totalPrice, selectedPackage.currency, format)}` : t.billing.selectPackage}
-      />
+      <div className="flex min-h-7 items-center justify-between gap-2 border-b border-afro-line pb-1.5">
+        <PanelHeadingContent
+          title={panelTitle}
+          meta={selectedPackage ? `${format.bytes(selectedPackage.volumeBytes)} / ${formatMoneyAmount(selectedPackage.totalPrice, selectedPackage.currency, format)}` : t.billing.selectPackage}
+          titleId={titleId}
+        />
+        <div className="flex shrink-0 items-center gap-2 text-afro-muted">
+          <CreditCard size={16} />
+          {onClose ? (
+            <button
+              aria-label={t.actions.cancel}
+              className="inline-flex size-8 items-center justify-center rounded-md border border-afro-line bg-white text-afro-muted hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={isSelling}
+              onClick={onClose}
+              title={t.actions.cancel}
+              type="button"
+            >
+              <X size={16} />
+            </button>
+          ) : null}
+        </div>
+      </div>
       <form className="mt-2 grid gap-2" onSubmit={onSubmit}>
         <div className="grid gap-2 md:grid-cols-3">
           <label className="grid gap-1.5">
@@ -12646,10 +12783,10 @@ function PanelHeading({
   );
 }
 
-function PanelHeadingContent({ title, meta }: { title: string; meta?: string }) {
+function PanelHeadingContent({ title, meta, titleId }: { title: string; meta?: string; titleId?: string }) {
   return (
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-      <h2 className="truncate text-[14px] font-bold" title={title}>{title}</h2>
+      <h2 className="truncate text-[14px] font-bold" id={titleId} title={title}>{title}</h2>
       {meta ? <span className={`${mutedTextClass} min-w-0 truncate before:mx-1.5 before:text-afro-line before:content-['/']`} title={meta}>{meta}</span> : null}
     </div>
   );
