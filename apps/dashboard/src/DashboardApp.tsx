@@ -19,6 +19,7 @@ import type {
   AdminPermissionId,
   AdminPermissionsResponse,
   AdminResellerAccountSummary,
+  AdminResellerPackageSaleResponse,
   AdminResellerWalletLedgerEntry,
   AdminProtocolServerApplyAdapterSummary,
   AdminProtocolServerApplyEventDetail,
@@ -3934,6 +3935,10 @@ type ResellerWorkspaceViewState = {
   reseller: AdminResellerAccountSummary | null;
 };
 
+type ResellerWorkspaceController = ResellerWorkspaceViewState & {
+  applyPackageSaleResult: (result: AdminResellerPackageSaleResponse) => void;
+};
+
 type ResellerSalesStats = {
   activeCustomerCount: number;
   afroGateShareAmount: number;
@@ -3948,7 +3953,7 @@ type ResellerSalesStats = {
   usedBytes: number;
 };
 
-function useResellerWorkspace(sessionToken: string): ResellerWorkspaceViewState {
+function useResellerWorkspace(sessionToken: string): ResellerWorkspaceController {
   const [state, setState] = useState<ResellerWorkspaceViewState>({
     accounts: [],
     dataState: 'loading',
@@ -3984,7 +3989,28 @@ function useResellerWorkspace(sessionToken: string): ResellerWorkspaceViewState 
     return () => controller.abort();
   }, [sessionToken]);
 
-  return state;
+  const applyPackageSaleResult = (result: AdminResellerPackageSaleResponse) => {
+    setState((current) => ({
+      ...current,
+      accounts: [
+        result.customerAccount,
+        ...current.accounts.filter((account) => account.id !== result.customerAccount.id),
+      ],
+      dataState: 'live',
+      error: false,
+      ledgerEntries: [
+        result.ledgerEntry,
+        ...current.ledgerEntries.filter((entry) => entry.id !== result.ledgerEntry.id),
+      ].slice(0, 50),
+      paymentOrders: [
+        result.paymentOrder,
+        ...current.paymentOrders.filter((order) => order.id !== result.paymentOrder.id),
+      ],
+      reseller: result.reseller,
+    }));
+  };
+
+  return { ...state, applyPackageSaleResult };
 }
 
 function ResellerDashboardPage({
@@ -4058,10 +4084,72 @@ function ResellerUsersPage({
   t: DashboardStrings;
 }) {
   const workspace = useResellerWorkspace(sessionToken);
+  const [resellerSaleForm, setResellerSaleForm] = useState<ResellerPackageSaleFormState>(() => createEmptyResellerPackageSaleForm());
+  const [resellerSaleMessage, setResellerSaleMessage] = useState<string | null>(null);
+  const [isSellingResellerPackage, setIsSellingResellerPackage] = useState(false);
   const stats = useMemo(
     () => createResellerSalesStats(workspace.accounts, workspace.paymentOrders, workspace.reseller),
     [workspace.accounts, workspace.paymentOrders, workspace.reseller],
   );
+
+  useEffect(() => {
+    if (resellerSaleForm.volumePackageId || workspace.packages.length === 0) return;
+    setResellerSaleForm((current) => ({
+      ...current,
+      volumePackageId: workspace.packages.find((item) => item.status === 'active')?.id ?? workspace.packages[0].id,
+    }));
+  }, [resellerSaleForm.volumePackageId, workspace.packages]);
+
+  const handleCreateResellerUser = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!resellerSaleForm.volumePackageId) return;
+
+    const existingCustomerId = normalizeNullableText(resellerSaleForm.customerAccountId);
+    const displayName = normalizeNullableText(resellerSaleForm.displayName);
+    const telegramUsername = normalizeNullableText(resellerSaleForm.telegramUsername);
+    if (!existingCustomerId && !displayName && !telegramUsername) {
+      setResellerSaleMessage(t.billing.resellerPackageSaleFailed);
+      return;
+    }
+
+    setIsSellingResellerPackage(true);
+    setResellerSaleMessage(null);
+
+    try {
+      const result = await createAdminResellerPackageSale(sessionToken, {
+        customerAccount: existingCustomerId
+          ? null
+          : {
+              displayName,
+              notes: normalizeNullableText(resellerSaleForm.notes),
+              quotaScope: 'account_shared',
+              status: 'active',
+              telegramUsername,
+            },
+        customerAccountId: existingCustomerId,
+        idempotencyKey: `dashboard-reseller-users-add:${Date.now()}`,
+        metadata: {
+          dashboardFlow: 'reseller_users_add_user',
+        },
+        notes: normalizeNullableText(resellerSaleForm.notes),
+        volumePackageId: resellerSaleForm.volumePackageId,
+      });
+
+      workspace.applyPackageSaleResult(result);
+      setResellerSaleForm((current) => ({
+        ...createEmptyResellerPackageSaleForm(),
+        volumePackageId: current.volumePackageId,
+      }));
+      setResellerSaleMessage(t.billing.resellerPackageSaleSaved(
+        format.bytes(result.allocation.volumeBytesDelta),
+        formatMoneyAmount(result.quote.walletDebitAmount, result.quote.currency, format),
+      ));
+    } catch {
+      setResellerSaleMessage(t.billing.resellerPackageSaleFailed);
+    } finally {
+      setIsSellingResellerPackage(false);
+    }
+  };
 
   return (
     <section className="mt-2 grid gap-3">
@@ -4075,6 +4163,20 @@ function ResellerUsersPage({
         <MetricCard item={{ label: t.reseller.lowQuotaUsers, value: format.integer(stats.lowQuotaCount), tone: stats.lowQuotaCount > 0 ? 'warning' : 'good' }} />
         <MetricCard item={{ label: t.reseller.soldVolume, value: format.bytes(stats.soldBytes), tone: stats.soldBytes > 0 ? 'good' : 'neutral' }} />
       </section>
+
+      <ResellerPackageSalePanel
+        accounts={workspace.accounts}
+        format={format}
+        form={resellerSaleForm}
+        isSelling={isSellingResellerPackage}
+        message={resellerSaleMessage}
+        onFormChange={setResellerSaleForm}
+        onSubmit={handleCreateResellerUser}
+        packages={workspace.packages}
+        submitLabel={t.reseller.addUser}
+        t={t}
+        title={t.reseller.addUser}
+      />
 
       <ResellerUsersTable accounts={workspace.accounts} format={format} paymentOrders={workspace.paymentOrders} t={t} />
     </section>
@@ -5043,7 +5145,9 @@ function ResellerPackageSalePanel({
   onFormChange,
   onSubmit,
   packages,
+  submitLabel,
   t,
+  title,
 }: {
   accounts: AdminCustomerAccountSummary[];
   format: DashboardFormatters;
@@ -5053,7 +5157,9 @@ function ResellerPackageSalePanel({
   onFormChange: (form: ResellerPackageSaleFormState) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   packages: AdminVolumePackageSummary[];
+  submitLabel?: string;
   t: DashboardStrings;
+  title?: string;
 }) {
   const activePackages = packages.filter((item) => item.status === 'active');
   const selectedPackage = activePackages.find((item) => item.id === form.volumePackageId) ?? null;
@@ -5062,7 +5168,7 @@ function ResellerPackageSalePanel({
   return (
     <section className={panelClass}>
       <PanelHeading
-        title={t.billing.resellerPackageSale}
+        title={title ?? t.billing.resellerPackageSale}
         icon={CreditCard}
         meta={selectedPackage ? `${format.bytes(selectedPackage.volumeBytes)} / ${formatMoneyAmount(selectedPackage.totalPrice, selectedPackage.currency, format)}` : t.billing.selectPackage}
       />
@@ -5136,7 +5242,7 @@ function ResellerPackageSalePanel({
             type="submit"
           >
             <CreditCard size={16} />
-            {isSelling ? t.billing.saving : t.billing.sellPackage}
+            {isSelling ? t.billing.saving : submitLabel ?? t.billing.sellPackage}
           </button>
           {message ? <span className={mutedTextClass}>{message}</span> : null}
         </div>

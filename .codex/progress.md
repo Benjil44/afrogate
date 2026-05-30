@@ -2284,3 +2284,32 @@ Repository remote is ready:
 
 - Main checklist has no unchecked items.
 - Continue release-readiness QA with deeper mutable admin/client workflows, production install checks, backup drills, and real deployment validation before selling to customers.
+
+## 2026-05-30 Reseller Users Add-User Action
+
+### Completed
+
+- Added a seller Users-page Add user panel backed by the existing wallet-gated `/api/admin/reseller/package-sales` flow.
+- Let reseller sessions create a new owned customer or renew an existing owned customer from Users, then immediately refresh the sold-users table, wallet ledger, payment orders, and reseller wallet summary from the sale response.
+- Reused the localized reseller package-sale form with a Users-specific title and submit label.
+- Added English/Persian reseller `addUser` strings and Playwright coverage for Users-page customer sale creation.
+- Updated dashboard/sidebar checklist records for the seller Users add-user action.
+- Main checklist remains `245 / 245` complete, or `100.0%` complete with `0` unchecked items.
+- Bumped AfroGate to `0.113.1` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run typecheck`.
+- Ran focused `npm run test:e2e -- tests/e2e/dashboard-visual.spec.ts --grep "reseller session"`; 1 test passed.
+- Ran `npm run version:check`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran full `npm run test:e2e`; 18 tests passed.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran `git diff --check`; only existing CRLF conversion warnings were reported.
+
+### Remaining
+
+- Main checklist has no unchecked items.
+- Continue release-readiness QA with deeper mutable admin/client workflows, production install checks, backup drills, and real deployment validation before selling to customers.

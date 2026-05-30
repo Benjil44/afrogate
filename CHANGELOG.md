@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.113.1 - 2026-05-30
+
+- Added the missing seller Users-page Add user action so reseller sessions can create or renew wallet-gated customer package sales without leaving Users.
+- Kept the Users action scoped to the representative workspace and the existing `/api/admin/reseller/package-sales` wallet debit flow.
+
 ## 0.113.0 - 2026-05-30
 
 - Expanded reseller sessions into a scoped seller workspace with Dashboard, Users, and Billing sidebar pages.
