@@ -209,6 +209,7 @@ type AlertSeverityFilter = 'all' | Tone;
 type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
 type SettingsTab = 'route' | 'wireguard' | 'protocols' | 'branding' | 'telegram';
 type BillingTab = 'catalog' | 'customers' | 'panelImport' | 'telegram' | 'orders';
+type BackupsTab = 'monitor' | 'readiness' | 'restore';
 type RoutesTab = 'overview' | 'policy' | 'canary' | 'history';
 type UsersTab = 'adminUsers' | 'permissions';
 type AfroIcon = ComponentType<{ size?: number; className?: string }>;
@@ -3413,6 +3414,48 @@ function ReportsPage({
     { label: t.reports.serversAtRisk, value: format.integer(summary.servers.critical + summary.servers.degraded), tone: summary.servers.critical > 0 ? 'critical' : summary.servers.degraded > 0 ? 'warning' : 'good' },
     { label: t.reports.routeWindows, value: format.integer(summary.routeQuality.recommendationCount), tone: summary.routeQuality.upcomingDegradedWindowCount > 0 ? 'warning' : 'good' },
   ] : [];
+  const reportChartCards = summary ? [
+    {
+      ariaLabel: t.reports.servers,
+      label: t.reports.servers,
+      option: createDonutChartOption([
+        { name: t.dashboardCharts.healthy, value: summary.servers.healthy, color: '#238a4b' },
+        { name: t.dashboardCharts.watch, value: summary.servers.degraded, color: '#c27a1a' },
+        { name: t.dashboardCharts.critical, value: summary.servers.critical, color: '#b91c1c' },
+      ], format),
+      value: t.reports.healthMix(format.integer(summary.servers.healthy), format.integer(summary.servers.degraded), format.integer(summary.servers.critical)),
+    },
+    {
+      ariaLabel: t.reports.outbounds,
+      label: t.reports.outbounds,
+      option: createDonutChartOption([
+        { name: t.dashboardCharts.healthy, value: summary.outbounds.healthy, color: '#238a4b' },
+        { name: t.dashboardCharts.watch, value: summary.outbounds.degraded, color: '#c27a1a' },
+        { name: t.dashboardCharts.critical, value: summary.outbounds.critical, color: '#b91c1c' },
+      ], format),
+      value: t.reports.healthMix(format.integer(summary.outbounds.healthy), format.integer(summary.outbounds.degraded), format.integer(summary.outbounds.critical)),
+    },
+    {
+      ariaLabel: t.reports.alerts,
+      label: t.reports.alerts,
+      option: createDonutChartOption([
+        { name: t.dashboardCharts.critical, value: summary.alerts.critical, color: '#b91c1c' },
+        { name: t.dashboardCharts.warning, value: summary.alerts.warning, color: '#c27a1a' },
+        { name: t.dashboardCharts.other, value: Math.max(0, summary.alerts.open - summary.alerts.critical - summary.alerts.warning), color: '#2764a8' },
+      ], format),
+      value: t.reports.alertMix(format.integer(summary.alerts.critical), format.integer(summary.alerts.warning)),
+    },
+    {
+      ariaLabel: t.reports.backups,
+      label: t.reports.backups,
+      option: createDonutChartOption([
+        { name: t.dashboardCharts.critical, value: summary.backups.criticalIssueCount, color: '#b91c1c' },
+        { name: t.dashboardCharts.warning, value: summary.backups.warningIssueCount, color: '#c27a1a' },
+        { name: t.dashboardCharts.healthy, value: summary.backups.criticalIssueCount + summary.backups.warningIssueCount === 0 ? 1 : 0, color: '#238a4b' },
+      ], format),
+      value: t.reports.issueMix(format.integer(summary.backups.criticalIssueCount), format.integer(summary.backups.warningIssueCount)),
+    },
+  ] : [];
 
   return (
     <section className="mt-0 grid gap-3">
@@ -3466,11 +3509,16 @@ function ReportsPage({
         <section className="grid gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <section className={panelClass}>
             <PanelHeading title={t.reports.operationalSummary} icon={Gauge} meta={reportRiskLabel(summary.riskLevel, t)} />
-            <div className="mt-2 grid gap-2 md:grid-cols-2">
-              <MetricPill icon={Server} label={t.reports.servers} value={t.reports.healthMix(format.integer(summary.servers.healthy), format.integer(summary.servers.degraded), format.integer(summary.servers.critical))} />
-              <MetricPill icon={Route} label={t.reports.outbounds} value={t.reports.healthMix(format.integer(summary.outbounds.healthy), format.integer(summary.outbounds.degraded), format.integer(summary.outbounds.critical))} />
-              <MetricPill icon={AlertTriangle} label={t.reports.alerts} value={t.reports.alertMix(format.integer(summary.alerts.critical), format.integer(summary.alerts.warning))} />
-              <MetricPill icon={Archive} label={t.reports.backups} value={t.reports.issueMix(format.integer(summary.backups.criticalIssueCount), format.integer(summary.backups.warningIssueCount))} />
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {reportChartCards.map((card) => (
+                <div className="grid min-h-[84px] grid-cols-[72px_minmax(0,1fr)] items-center gap-2 rounded-md border border-afro-line bg-white px-2 py-1.5" key={card.label}>
+                  <EChart ariaLabel={card.ariaLabel} className="h-[68px] w-[72px]" option={card.option} />
+                  <div className="min-w-0">
+                    <strong className="block truncate text-[13px] text-afro-ink">{card.label}</strong>
+                    <span className="block truncate text-[12px] font-bold text-afro-muted" title={card.value}>{card.value}</span>
+                  </div>
+                </div>
+              ))}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {summary.reasonCodes.map((reason) => (
@@ -3526,6 +3574,7 @@ function BackupsPage({
   const [restorePlan, setRestorePlan] = useState<AdminBackupRestorePlanSummary | null>(null);
   const [dataState, setDataState] = useState<DataState>(initialBackupStatus ? 'live' : 'loading');
   const [error, setError] = useState<string | null>(null);
+  const [activeBackupTab, setActiveBackupTab] = useState<BackupsTab>('monitor');
 
   const loadBackupStatus = useMemo(() => async (signal?: AbortSignal) => {
     setDataState('loading');
@@ -3565,6 +3614,23 @@ function BackupsPage({
   const restoreTest = formatBackupDate(backupStatus?.restoreTestedAt, format, t);
   const issues = backupStatus?.issues ?? [];
   const restorePlanTone = restorePlan ? backupRestoreReadinessTone(restorePlan.readinessStatus) : 'warning';
+  const backupTabs: Array<DashboardTabItem<BackupsTab>> = [
+    {
+      id: 'monitor',
+      label: t.backupStatus.title,
+      meta: backupStatus ? t.backupStatus.issuesLoaded(format.integer(issues.length)) : t.dataStatus.loading,
+    },
+    {
+      id: 'readiness',
+      label: t.backupStatus.readiness,
+      meta: backupStatus ? backupStatusLabel(backupStatus.status, t) : t.dataStatus.loading,
+    },
+    {
+      id: 'restore',
+      label: t.backupStatus.restoreRunbook,
+      meta: restorePlan ? t.backupStatus.restoreStepsLoaded(format.integer(restorePlan.steps.length)) : t.dataStatus.loading,
+    },
+  ];
 
   return (
     <section className="mt-0 grid gap-3">
@@ -3579,6 +3645,9 @@ function BackupsPage({
         <BackupMetricCard label={t.backupStatus.encryption} tone={backupStatusEncryptionTone(backupStatus)} value={encryptionLabel} />
       </section>
 
+      <DashboardTabs activeTab={activeBackupTab} ariaLabel={t.backupStatus.title} onChange={setActiveBackupTab} tabs={backupTabs} />
+
+      {activeBackupTab === 'monitor' ? (
       <section className={panelClass}>
         <div className="flex min-h-9 flex-col gap-2 border-b border-afro-line pb-2 sm:flex-row sm:items-center sm:justify-between">
           <PanelHeadingContent
@@ -3643,8 +3712,9 @@ function BackupsPage({
           ) : null}
         </div>
       </section>
+      ) : null}
 
-      {backupStatus ? (
+      {activeBackupTab === 'readiness' && backupStatus ? (
         <section className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <section className={panelClass}>
             <PanelHeading title={t.backupStatus.readiness} icon={ShieldCheck} meta={backupStatusLabel(backupStatus.status, t)} />
@@ -3694,7 +3764,7 @@ function BackupsPage({
         </section>
       ) : null}
 
-      {restorePlan ? (
+      {activeBackupTab === 'restore' && restorePlan ? (
         <section className="grid gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <section className={panelClass}>
             <PanelHeading
@@ -3748,6 +3818,11 @@ function BackupsPage({
               ))}
             </div>
           </section>
+        </section>
+      ) : null}
+      {activeBackupTab === 'restore' && !restorePlan ? (
+        <section className={panelClass}>
+          <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} />
         </section>
       ) : null}
     </section>

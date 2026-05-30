@@ -296,11 +296,15 @@ test('backups page shows monitored backup readiness', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Backup monitor' })).toBeVisible();
   await expect(page.getByText('encrypted', { exact: true })).toBeVisible();
+
+  await page.getByRole('tab', { name: /Backup readiness/ }).click();
   await expect(page.getByText('PostgreSQL dump, Config files, Encrypted secrets').first()).toBeVisible();
+  await expect(page.getByText('No backup issues')).toBeVisible();
+
+  await page.getByRole('tab', { name: /Restore runbook/ }).click();
   await expect(page.getByRole('heading', { name: 'Restore readiness' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Restore runbook' })).toBeVisible();
   await expect(page.getByText('execution disabled')).toBeVisible();
-  await expect(page.getByText('No backup issues')).toBeVisible();
 });
 
 test('reports page shows operational analysis summary', async ({ page }) => {

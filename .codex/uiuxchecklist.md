@@ -1,6 +1,6 @@
 # AfroGate UI/UX Implementation Checklist
 
-Progress: 34 / 40 complete (85.0%), 6 remaining.
+Progress: 36 / 40 complete (90.0%), 4 remaining.
 
 ## Baseline
 
@@ -63,5 +63,5 @@ Progress: 34 / 40 complete (85.0%), 6 remaining.
 - [x] Apply shared table primitive to Audit Logs.
 - [x] Apply shared table primitive to Billing tables.
 - [x] Apply shared table primitive to reseller sold-users and wallet tables.
-- [ ] Review Backups page for tabs or section grouping.
-- [ ] Review Reports page for richer chart usage and better empty-state density.
+- [x] Review Backups page for tabs or section grouping.
+- [x] Review Reports page for richer chart usage and better empty-state density.

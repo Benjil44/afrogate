@@ -2400,3 +2400,30 @@ Repository remote is ready:
 
 - Run the full browser UI audit across all dashboard pages after the tab/table refactor.
 - Continue UI/UX refinement on dashboard duplicated lists/blank space, Settings badge overlap, Backups grouping, Reports chart density, and any remaining horizontal-overflow findings.
+
+## 2026-05-30 UI/UX Backups Reports Density
+
+### Completed
+
+- Converted the Backups page into Monitor, Readiness, and Restore runbook tabs so backup status, evidence checks, issues, restore readiness, and restore steps are grouped by workflow instead of one long scroll.
+- Added compact Reports donut chart cards for server health, outbound health, alert severity, and backup issues while keeping the existing risk/recommendation panels.
+- Updated the Backups Playwright test to exercise the new tabbed workflow instead of expecting all restore/readiness content on the first view.
+- Updated `.codex/uiuxchecklist.md` to `36 / 40` complete, or `90.0%` complete with `4` remaining UI/UX refinement items.
+- Bumped AfroGate to `0.113.5` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran focused `npm run test:e2e -- tests/e2e/dashboard-visual.spec.ts --grep "backups page"`; 1 test passed.
+- Ran full `npm run test:e2e`; 18 tests passed.
+- Ran `git diff --check`; only existing LF-to-CRLF conversion warnings were reported.
+
+### Remaining
+
+- Run the full browser UI audit across all dashboard pages after the tab/table refactor.
+- Finish Dashboard duplicate-list/blank-space cleanup, Settings badge overlap, and any remaining horizontal-overflow findings.

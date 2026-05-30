@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.113.5 - 2026-05-30
+
+- Converted the Backups page into Monitor, Readiness, and Restore runbook workflow tabs to reduce long scrolling and keep restore planning separate from status monitoring.
+- Added compact Reports donut chart cards for server health, outbound health, alert severity, and backup issues so the analysis page has scan-first visual summaries.
+- Updated the UI/UX checklist to show Backups and Reports review complete at 90.0% overall completion.
+
 ## 0.113.4 - 2026-05-30
 
 - Migrated the remaining dashboard page tables to the shared `DataTable` primitive, including permissions, Audit Logs, Alerts, tunnels, billing catalog/adapters, current-panel preview, reseller sold users, and reseller wallet ledger.
