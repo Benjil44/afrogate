@@ -118,6 +118,7 @@ test('alerts page filters open and resolved history rows', async ({ page }) => {
 test('routes page shows route health score history', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="routes"]').click();
+  await page.getByRole('tab', { name: /History/ }).click();
 
   const historyPanel = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Route Health History' }),
@@ -127,6 +128,7 @@ test('routes page shows route health score history', async ({ page }) => {
   await expect(historyPanel.getByText('Frankfurt WG gaming')).toBeVisible();
   await expect(historyPanel.getByText(/synthetic probes only/)).toBeVisible();
 
+  await page.getByRole('tab', { name: /Canary/ }).click();
   const canaryPanel = page.locator('section').filter({
     has: page.getByRole('heading', { name: 'Route Canary Rollout' }),
   }).last();
@@ -146,14 +148,17 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByText('Payment provider adapters')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Card' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Bank transfer' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Telegram Operations' })).toBeVisible();
-  await expect(page.getByText('Usage link')).toBeVisible();
-  await expect(page.getByText('Delivery candidates')).toBeVisible();
 
   await page.getByLabel('Reward MB').fill('150');
   await page.getByRole('button', { name: 'Save reward settings' }).click();
   await expect(page.getByText('Reward settings saved.')).toBeVisible();
 
+  await page.getByRole('tab', { name: /Telegram/ }).click();
+  await expect(page.getByRole('heading', { name: 'Telegram Operations' })).toBeVisible();
+  await expect(page.getByText('Usage link')).toBeVisible();
+  await expect(page.getByText('Delivery candidates')).toBeVisible();
+
+  await page.getByRole('tab', { name: /Customers/ }).click();
   await expect(page.getByRole('heading', { name: 'Customer limit manager' })).toBeVisible();
   await page.getByLabel('Display name').fill('VIP gamer');
   await page.getByLabel('Telegram username').fill('vip_gamer');
@@ -164,6 +169,7 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByText('Customer account saved.')).toBeVisible();
   await expect(page.getByRole('cell', { name: /VIP gamer/ })).toBeVisible();
 
+  await page.getByRole('tab', { name: /Panel import/ }).click();
   await expect(page.getByRole('heading', { name: 'Current panel import' })).toBeVisible();
   await page.getByLabel('Current panel payload JSON').fill(JSON.stringify({
     users: [
@@ -313,6 +319,7 @@ test('settings page saves tenant branding', async ({ page }) => {
   await page.locator('[data-view="settings"]').click();
 
   await expect(page.getByRole('heading', { name: 'WireGuard and system setup' })).toBeVisible();
+  await page.getByRole('tab', { name: /Branding/ }).click();
   await expect(page.getByRole('heading', { name: 'Tenant Branding' })).toBeVisible();
   await expect(page.getByLabel('Brand name')).toHaveValue('AfroGate Pro');
 
@@ -331,6 +338,7 @@ test('users page shows RBAC permission matrix', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'User management' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Admin Users' })).toBeVisible();
   await expect(page.getByText('database', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: /Permissions/ }).click();
   await expect(page.getByRole('heading', { name: 'Role Permissions' })).toBeVisible();
   await expect(page.getByText('Deny by default')).toBeVisible();
   await expect(page.getByText('Server credential write')).toBeVisible();

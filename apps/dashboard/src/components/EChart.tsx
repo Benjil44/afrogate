@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { BarChart, LineChart, type BarSeriesOption, type LineSeriesOption } from 'echarts/charts';
+import { BarChart, LineChart, PieChart, type BarSeriesOption, type LineSeriesOption, type PieSeriesOption } from 'echarts/charts';
 import {
   DataZoomComponent,
   GridComponent,
@@ -21,6 +21,7 @@ use([
   LegendComponent,
   LineChart,
   BarChart,
+  PieChart,
   MarkLineComponent,
   TooltipComponent,
 ]);
@@ -31,6 +32,7 @@ export type AfroChartOption = ComposeOption<
   | GridComponentOption
   | LegendComponentOption
   | LineSeriesOption
+  | PieSeriesOption
   | TooltipComponentOption
 >;
 

@@ -271,3 +271,19 @@
 - [x] Per-agent token rotation.
 - [x] Database least-privilege roles.
 - [x] Loaded latency and bufferbloat monitoring.
+
+## UI/UX Refactor Track
+
+Progress: 9 / 11 complete (81.8%), 2 remaining.
+
+- [x] Create dedicated UI/UX implementation checklist.
+- [x] Add reusable dashboard tabs.
+- [x] Add reusable dashboard table primitive.
+- [x] Add dashboard donut/circle chart support.
+- [x] Convert Users page into Admin users/Permissions tabs.
+- [x] Convert Routes page into Overview/Policy/Canary/History tabs.
+- [x] Convert Billing page into Catalog/Customers/Panel Import/Telegram/Orders tabs.
+- [x] Convert Settings page into Route/WireGuard/Protocols/Branding/Telegram tabs.
+- [x] Move admin users, billing customer accounts, and payment orders onto the shared table primitive.
+- [ ] Run full browser UI audit across all dashboard pages after the tab refactor.
+- [ ] Continue migrating Audit Logs, tunnels, and reseller wallet/sold-user tables to the shared table primitive.

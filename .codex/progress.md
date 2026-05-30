@@ -2342,3 +2342,34 @@ Repository remote is ready:
 
 - Main checklist has no unchecked items.
 - Continue release-readiness QA with deeper mutable admin/client workflows, production install checks, backup drills, and real deployment validation before selling to customers.
+
+## 2026-05-30 UI/UX Tabbed Admin Refactor
+
+### Completed
+
+- Created `.codex/uiuxchecklist.md` as the dedicated UI/UX implementation checklist for the screenshot-driven refactor.
+- Added a reusable dashboard tab primitive for long admin surfaces and a reusable dashboard table primitive for dense operational tables.
+- Added ECharts pie/donut support and a Dashboard operational-mix panel with donut charts for server health, alert severity, and outbound route quality.
+- Converted Users into Admin users and Permissions tabs while keeping Add user at the table level.
+- Converted Routes into Overview, Policy, Canary, and History tabs to separate tunnel, policy, rollout, and historical data.
+- Converted Billing into Catalog, Customers, Panel Import, Telegram, and Orders tabs so reward settings, customer limits, current-panel tools, Telegram operations, and payment orders no longer form one long scroll.
+- Converted Settings into Route, WireGuard, Protocols, Branding, and Telegram tabs while keeping route intelligence beside route controls and isolating Telegram setup from protocol/route controls.
+- Migrated the admin users table plus Billing customer accounts and payment orders to the shared table primitive.
+- Added English/Persian typed translation keys for the new tabs and dashboard donut chart labels.
+- UI/UX checklist is now `31 / 40` complete, or `77.5%` complete with `9` remaining audit/refinement items.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build --workspaces --if-present`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran full `npm run test:e2e`; 18 tests passed after updating the tab-aware dashboard tests.
+
+### Remaining
+
+- Run full browser UI audit across all dashboard pages at mobile, tablet, desktop, and 1920x1080 second-LCD widths.
+- Continue migrating remaining repeated tables, including Audit Logs, tunnel lists, and reseller wallet/sold-user tables, to the shared table primitive.
+- Review Settings route-decision/load-balancing cards for remaining badge overlap after the tab layout.

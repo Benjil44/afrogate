@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.113.3 - 2026-05-30
+
+- Added reusable dashboard tabs and a shared table primitive for dense admin UX surfaces.
+- Added dashboard donut/circle ECharts support plus an operational-mix panel for server health, alert severity, and route quality.
+- Converted Users, Routes, Billing, and Settings into workflow tabs to reduce long scrolling and separate high-density admin tasks.
+- Migrated admin users, billing customer accounts, and payment orders to the shared table primitive.
+- Added `.codex/uiuxchecklist.md` to track the screenshot-driven UI/UX refactor.
+
 ## 0.113.2 - 2026-05-30
 
 - Changed the seller Users page so the sold-users table remains its own section with an Add user action in the table header.

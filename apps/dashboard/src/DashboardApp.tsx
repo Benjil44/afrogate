@@ -207,8 +207,27 @@ type ActiveView = 'dashboard' | 'servers' | 'users' | 'audit' | 'backups' | 'bil
 type AlertStatusFilter = 'open' | 'resolved';
 type AlertSeverityFilter = 'all' | Tone;
 type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
+type SettingsTab = 'route' | 'wireguard' | 'protocols' | 'branding' | 'telegram';
+type BillingTab = 'catalog' | 'customers' | 'panelImport' | 'telegram' | 'orders';
+type RoutesTab = 'overview' | 'policy' | 'canary' | 'history';
+type UsersTab = 'adminUsers' | 'permissions';
 type AfroIcon = ComponentType<{ size?: number; className?: string }>;
 type AdminSessionHook = ReturnType<typeof useAdminSession>;
+
+interface DashboardTabItem<T extends string> {
+  id: T;
+  label: string;
+  meta?: string;
+  disabled?: boolean;
+}
+
+interface DataTableColumn<Row> {
+  key: string;
+  header: string;
+  render: (row: Row) => ReactNode;
+  alignRight?: boolean;
+  className?: string;
+}
 
 interface MetricCardData {
   label: string;
@@ -1390,7 +1409,7 @@ function DashboardPage({
 }) {
   return (
     <>
-      <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(300px,0.42fr)_minmax(0,1fr)]">
+      <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(280px,0.34fr)_minmax(0,0.92fr)_minmax(280px,0.38fr)]">
         <section className="grid gap-2 sm:grid-cols-2" aria-label={t.aria.summary}>
           {summary.map((item) => (
             <MetricCard item={item} key={item.label} />
@@ -1405,6 +1424,7 @@ function DashboardPage({
           t={t}
           onRangeChange={onRangeChange}
         />
+        <DashboardOverviewChartsPanel alerts={alerts} format={format} outbounds={outbounds} servers={servers} t={t} />
       </section>
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
@@ -1476,6 +1496,88 @@ function HealthChartPanel({
         ) : (
           <DataStateEmpty emptyMessage={t.operationalData.noHealthSamples} state={dataState} t={t} />
         )}
+      </div>
+    </section>
+  );
+}
+
+function DashboardOverviewChartsPanel({
+  alerts,
+  format,
+  outbounds,
+  servers,
+  t,
+}: {
+  alerts: AlertRowData[];
+  format: DashboardFormatters;
+  outbounds: OutboundRowData[];
+  servers: ServerRowData[];
+  t: DashboardStrings;
+}) {
+  const serverCounts = countTones(servers.map((server) => getHealthTone(server.score)));
+  const alertCounts = countTones(alerts.map((alert) => alert.severity));
+  const outboundCounts = countTones(outbounds.map((outbound) => outbound.statusTone));
+  const serverOption = useMemo(
+    () => createDonutChartOption([
+      { name: t.dashboardCharts.healthy, value: serverCounts.good, color: '#238a4b' },
+      { name: t.dashboardCharts.watch, value: serverCounts.warning, color: '#c27a1a' },
+      { name: t.dashboardCharts.critical, value: serverCounts.critical, color: '#b91c1c' },
+      { name: t.dashboardCharts.unknown, value: serverCounts.neutral, color: '#7c8b93' },
+    ], format),
+    [format, serverCounts.critical, serverCounts.good, serverCounts.neutral, serverCounts.warning, t],
+  );
+  const alertOption = useMemo(
+    () => createDonutChartOption([
+      { name: t.dashboardCharts.critical, value: alertCounts.critical, color: '#b91c1c' },
+      { name: t.dashboardCharts.warning, value: alertCounts.warning, color: '#c27a1a' },
+      { name: t.dashboardCharts.other, value: alertCounts.good + alertCounts.neutral, color: '#2764a8' },
+    ], format),
+    [alertCounts.critical, alertCounts.good, alertCounts.neutral, alertCounts.warning, format, t],
+  );
+  const outboundOption = useMemo(
+    () => createDonutChartOption([
+      { name: t.dashboardCharts.healthy, value: outboundCounts.good, color: '#238a4b' },
+      { name: t.dashboardCharts.watch, value: outboundCounts.warning, color: '#c27a1a' },
+      { name: t.dashboardCharts.critical, value: outboundCounts.critical, color: '#b91c1c' },
+      { name: t.dashboardCharts.unknown, value: outboundCounts.neutral, color: '#7c8b93' },
+    ], format),
+    [format, outboundCounts.critical, outboundCounts.good, outboundCounts.neutral, outboundCounts.warning, t],
+  );
+
+  const chartCards = [
+    {
+      ariaLabel: t.dashboardCharts.serverHealth,
+      label: t.dashboardCharts.serverHealth,
+      option: serverOption,
+      value: t.dashboardCharts.count(format.integer(servers.length)),
+    },
+    {
+      ariaLabel: t.dashboardCharts.alertSeverity,
+      label: t.dashboardCharts.alertSeverity,
+      option: alertOption,
+      value: t.dashboardCharts.count(format.integer(countActiveAlertRows(alerts))),
+    },
+    {
+      ariaLabel: t.dashboardCharts.routeQuality,
+      label: t.dashboardCharts.routeQuality,
+      option: outboundOption,
+      value: t.dashboardCharts.count(format.integer(outbounds.length)),
+    },
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.panels.operationalMix} icon={Gauge} meta={t.dashboardCharts.scanFirst} />
+      <div className="mt-2 grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+        {chartCards.map((card) => (
+          <div className="grid min-h-[82px] grid-cols-[72px_minmax(0,1fr)] items-center gap-2 rounded-md border border-afro-line bg-white px-2 py-1.5" key={card.label}>
+            <EChart ariaLabel={card.ariaLabel} className="h-[68px] w-[72px]" option={card.option} />
+            <div className="min-w-0">
+              <strong className="block truncate text-[13px] text-afro-ink">{card.label}</strong>
+              <span className="block truncate text-[12px] font-bold text-afro-muted">{card.value}</span>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -2695,6 +2797,7 @@ function UsersPage({
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [permissionPolicy, setPermissionPolicy] = useState<AdminPermissionsResponse | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [activeUsersTab, setActiveUsersTab] = useState<UsersTab>('adminUsers');
   const canManageUsers = canManageAdminUsers(session);
 
   const loadUsers = useMemo(() => async (signal?: AbortSignal) => {
@@ -2804,10 +2907,88 @@ function UsersPage({
       setError(t.userManagement.errors.save);
     }
   };
+  const userTabs: Array<DashboardTabItem<UsersTab>> = [
+    { id: 'adminUsers', label: t.tabs.adminUsers, meta: isLoading ? t.dataStatus.loading : format.integer(users.length) },
+    { id: 'permissions', label: t.tabs.permissions, meta: permissionPolicy ? format.integer(permissionPolicy.permissions.length) : t.dataStatus.loading },
+  ];
+  const userTableColumns: Array<DataTableColumn<AdminUserSummary>> = [
+    {
+      key: 'username',
+      header: t.userManagement.username,
+      render: (user) => (
+        <>
+          <strong className="block text-afro-ink">{user.username}</strong>
+          <span className="text-[12px] text-afro-muted">{format.time(new Date(user.updatedAt), false)}</span>
+        </>
+      ),
+    },
+    { key: 'role', header: t.userManagement.role, render: (user) => user.role },
+    {
+      key: 'status',
+      header: t.userManagement.status,
+      render: (user) => (
+        <StatusBadge tone={user.status === 'active' ? 'good' : 'warning'}>
+          {t.userManagement[user.status]}
+        </StatusBadge>
+      ),
+    },
+    { key: 'source', header: t.userManagement.source, render: (user) => t.userManagement[user.source] },
+    {
+      key: 'protection',
+      header: t.userManagement.protection,
+      render: (user) => (
+        <StatusBadge tone={user.isSuperAdmin ? 'critical' : user.canDelete ? 'neutral' : 'warning'}>
+          {user.isSuperAdmin ? t.userManagement.protected : user.canDelete ? t.userManagement.managed : t.userManagement.protected}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: t.tables.actions,
+      render: (user) => (
+        <div className="flex min-w-[260px] flex-wrap justify-end gap-1.5">
+          <button
+            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-ink disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canManageUsers || !user.canDisable}
+            onClick={() => void handleToggleStatus(user)}
+            type="button"
+          >
+            {user.status === 'active' ? t.actions.disable : t.actions.enable}
+          </button>
+          <button
+            className="min-h-8 rounded-md border border-[#f0b7b7] bg-white px-2 text-[12px] font-bold text-[#b91c1c] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canManageUsers || !user.canDelete}
+            onClick={() => void handleDeleteUser(user)}
+            type="button"
+          >
+            {t.actions.delete}
+          </button>
+          <input
+            className="min-h-8 w-28 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-2 disabled:opacity-45"
+            disabled={!canManageUsers || !user.canChangePassword}
+            onChange={(event) => setPasswordDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
+            placeholder={t.userManagement.newPassword}
+            type="password"
+            value={passwordDrafts[user.id] ?? ''}
+          />
+          <button
+            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canManageUsers || !user.canChangePassword || !passwordDrafts[user.id]}
+            onClick={() => void handleChangePassword(user)}
+            type="button"
+          >
+            {t.actions.savePassword}
+          </button>
+        </div>
+      ),
+      alignRight: true,
+    },
+  ];
 
   return (
     <section className="mt-0 grid gap-3">
-      {isCreateFormOpen ? (
+      <DashboardTabs activeTab={activeUsersTab} ariaLabel={t.tabs.usersSections} onChange={setActiveUsersTab} tabs={userTabs} />
+      {activeUsersTab === 'adminUsers' && isCreateFormOpen ? (
         <section className={panelClass}>
           <div className="flex min-h-9 items-center justify-between gap-3 border-b border-afro-line pb-2">
             <PanelHeadingContent title={t.panels.createUser} meta={t.panels.protectedAccess} />
@@ -2869,6 +3050,7 @@ function UsersPage({
         </section>
       ) : null}
 
+      {activeUsersTab === 'adminUsers' ? (
       <section className={panelClass}>
         <div className="flex min-h-9 flex-col gap-2 border-b border-afro-line pb-2 sm:flex-row sm:items-center sm:justify-between">
           <PanelHeadingContent
@@ -2891,89 +3073,11 @@ function UsersPage({
           {!isLoading && users.length === 0 && !error ? (
             <PanelState detail={t.panelStates.emptyDetail} kind="empty" title={t.operationalData.noUsers} />
           ) : null}
-          {users.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] border-collapse">
-                <thead>
-                  <tr>
-                    {[
-                      t.userManagement.username,
-                      t.userManagement.role,
-                      t.userManagement.status,
-                      t.userManagement.source,
-                      t.userManagement.protection,
-                      t.tables.actions,
-                    ].map((heading) => (
-                      <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id}>
-                      <TableCell>
-                        <strong className="block text-afro-ink">{user.username}</strong>
-                        <span className="text-[12px] text-afro-muted">{format.time(new Date(user.updatedAt), false)}</span>
-                      </TableCell>
-                      <TableCell>{user.role}</TableCell>
-                      <TableCell>
-                        <StatusBadge tone={user.status === 'active' ? 'good' : 'warning'}>
-                          {t.userManagement[user.status]}
-                        </StatusBadge>
-                      </TableCell>
-                      <TableCell>{t.userManagement[user.source]}</TableCell>
-                      <TableCell>
-                        <StatusBadge tone={user.isSuperAdmin ? 'critical' : user.canDelete ? 'neutral' : 'warning'}>
-                          {user.isSuperAdmin ? t.userManagement.protected : user.canDelete ? t.userManagement.managed : t.userManagement.protected}
-                        </StatusBadge>
-                      </TableCell>
-                      <td className="border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0">
-                        <div className="flex min-w-[260px] flex-wrap gap-1.5">
-                          <button
-                            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-ink disabled:cursor-not-allowed disabled:opacity-45"
-                            disabled={!canManageUsers || !user.canDisable}
-                            onClick={() => void handleToggleStatus(user)}
-                            type="button"
-                          >
-                            {user.status === 'active' ? t.actions.disable : t.actions.enable}
-                          </button>
-                          <button
-                            className="min-h-8 rounded-md border border-[#f0b7b7] bg-white px-2 text-[12px] font-bold text-[#b91c1c] disabled:cursor-not-allowed disabled:opacity-45"
-                            disabled={!canManageUsers || !user.canDelete}
-                            onClick={() => void handleDeleteUser(user)}
-                            type="button"
-                          >
-                            {t.actions.delete}
-                          </button>
-                          <input
-                            className="min-h-8 w-28 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-2 disabled:opacity-45"
-                            disabled={!canManageUsers || !user.canChangePassword}
-                            onChange={(event) => setPasswordDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
-                            placeholder={t.userManagement.newPassword}
-                            type="password"
-                            value={passwordDrafts[user.id] ?? ''}
-                          />
-                          <button
-                            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
-                            disabled={!canManageUsers || !user.canChangePassword || !passwordDrafts[user.id]}
-                            onClick={() => void handleChangePassword(user)}
-                            type="button"
-                          >
-                            {t.actions.savePassword}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
+          {users.length > 0 ? <DataTable columns={userTableColumns} minWidth="880px" rowKey={(user) => user.id} rows={users} /> : null}
         </div>
       </section>
-      <RolePermissionsPanel format={format} policy={permissionPolicy} error={permissionError} t={t} />
+      ) : null}
+      {activeUsersTab === 'permissions' ? <RolePermissionsPanel format={format} policy={permissionPolicy} error={permissionError} t={t} /> : null}
     </section>
   );
 }
@@ -4556,6 +4660,7 @@ function BillingPage({
   const [isSyncingCurrentPanelUsage, setIsSyncingCurrentPanelUsage] = useState(false);
   const [isExportingClientConfigs, setIsExportingClientConfigs] = useState(false);
   const [isChargingCurrentPanelVolume, setIsChargingCurrentPanelVolume] = useState(false);
+  const [activeBillingTab, setActiveBillingTab] = useState<BillingTab>('catalog');
   const isResellerSession = session.actor.role === 'reseller';
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
   const canManageCustomerAccounts = canManageBilling || isResellerSession;
@@ -5016,6 +5121,14 @@ function BillingPage({
     }
   };
 
+  const billingTabs: Array<DashboardTabItem<BillingTab>> = [
+    { id: 'catalog', label: t.tabs.billingCatalog, meta: t.billing.packagesLoaded(format.integer(packages.length)) },
+    { id: 'customers', label: t.tabs.billingCustomers, meta: t.billing.accountsLoaded(format.integer(accounts.length)) },
+    { id: 'panelImport', label: t.tabs.billingPanelImport, meta: t.billing.currentPanelReadOnly },
+    { id: 'telegram', label: t.tabs.billingTelegram, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
+    { id: 'orders', label: t.tabs.billingOrders, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
+  ];
+
   return (
     <section className="mt-0 grid gap-3">
       {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
@@ -5058,7 +5171,16 @@ function BillingPage({
         />
       ) : null}
 
-      <section className="grid gap-3 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)]">
+      {!isResellerSession ? (
+        <DashboardTabs
+          activeTab={activeBillingTab}
+          ariaLabel={t.tabs.billingSections}
+          onChange={setActiveBillingTab}
+          tabs={billingTabs}
+        />
+      ) : null}
+
+      <section className={`grid gap-3 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)] ${!isResellerSession && activeBillingTab !== 'catalog' ? 'hidden' : ''}`}>
         {!isResellerSession ? (
         <section className={panelClass}>
           <PanelHeading
@@ -5114,7 +5236,7 @@ function BillingPage({
         />
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)]">
+      <section className={`grid gap-3 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)] ${!isResellerSession && activeBillingTab !== 'customers' ? 'hidden' : ''}`}>
         <CustomerAccountEditorPanel
           accounts={accounts}
           canManageBilling={canManageCustomerAccounts}
@@ -5133,38 +5255,44 @@ function BillingPage({
       </section>
       {!isResellerSession ? (
         <>
-          <CurrentPanelImportPreviewPanel
-            accounts={accounts}
-            canManageBilling={canManageBilling}
-            clientConfigExportJson={clientConfigExportJson}
-            currentPanelForm={currentPanelForm}
-            currentPanelMessage={currentPanelMessage}
-            currentPanelPreview={currentPanelPreview}
-            format={format}
-            isExportingClientConfigs={isExportingClientConfigs}
-            isChargingCurrentPanelVolume={isChargingCurrentPanelVolume}
-            isImportingCurrentPanel={isImportingCurrentPanel}
-            isPreviewingCurrentPanel={isPreviewingCurrentPanel}
-            isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
-            onFormChange={setCurrentPanelForm}
-            onExportClientConfigs={handleExportClientConfigs}
-            onChargeCurrentPanelVolume={handleChargeCurrentPanelVolume}
-            onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
-            onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
-            onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
-            t={t}
-          />
-          <TelegramBotOperationsPanel
-            accounts={accounts}
-            canViewTelegramOperations={canViewTelegramOperations}
-            format={format}
-            paymentOrders={paymentOrders}
-            telegramBotSettings={telegramBotSettings}
-            t={t}
-          />
+          <div className={activeBillingTab === 'panelImport' ? '' : 'hidden'}>
+            <CurrentPanelImportPreviewPanel
+              accounts={accounts}
+              canManageBilling={canManageBilling}
+              clientConfigExportJson={clientConfigExportJson}
+              currentPanelForm={currentPanelForm}
+              currentPanelMessage={currentPanelMessage}
+              currentPanelPreview={currentPanelPreview}
+              format={format}
+              isExportingClientConfigs={isExportingClientConfigs}
+              isChargingCurrentPanelVolume={isChargingCurrentPanelVolume}
+              isImportingCurrentPanel={isImportingCurrentPanel}
+              isPreviewingCurrentPanel={isPreviewingCurrentPanel}
+              isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
+              onFormChange={setCurrentPanelForm}
+              onExportClientConfigs={handleExportClientConfigs}
+              onChargeCurrentPanelVolume={handleChargeCurrentPanelVolume}
+              onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
+              onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
+              onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
+              t={t}
+            />
+          </div>
+          <div className={activeBillingTab === 'telegram' ? '' : 'hidden'}>
+            <TelegramBotOperationsPanel
+              accounts={accounts}
+              canViewTelegramOperations={canViewTelegramOperations}
+              format={format}
+              paymentOrders={paymentOrders}
+              telegramBotSettings={telegramBotSettings}
+              t={t}
+            />
+          </div>
         </>
       ) : null}
-      <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
+      <div className={isResellerSession || activeBillingTab === 'orders' ? '' : 'hidden'}>
+        <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
+      </div>
     </section>
   );
 }
@@ -6274,46 +6402,53 @@ function PaymentOrdersPanel({
   paymentOrders: AdminPaymentOrderSummary[];
   t: DashboardStrings;
 }) {
+  const visiblePaymentOrders = paymentOrders.slice(0, 10);
+  const paymentOrderColumns: Array<DataTableColumn<AdminPaymentOrderSummary>> = [
+    {
+      key: 'customer',
+      header: t.billing.customer,
+      render: (order) => (
+        <>
+          <strong className="block text-afro-ink">{order.customerDisplayName || order.customerTelegramUsername || order.customerAccountId.slice(0, 8)}</strong>
+          <span className="text-[12px] text-afro-muted">{format.time(new Date(order.createdAt), false)}</span>
+        </>
+      ),
+    },
+    { key: 'package', header: t.billing.packageName, render: (order) => order.packageName },
+    { key: 'amount', header: t.billing.amount, render: (order) => `${format.integer(order.amount)} ${format.label(order.currency)}` },
+    { key: 'provider', header: t.billing.provider, render: (order) => format.label(order.provider) },
+    {
+      key: 'status',
+      header: t.billing.status,
+      render: (order) => <StatusBadge tone={billingStatusTone(order.status)}>{format.label(order.status)}</StatusBadge>,
+    },
+    {
+      key: 'allocation',
+      header: t.billing.allocation,
+      render: (order) => {
+        const allocationStatus = order.allocationStatus ?? 'not_applicable';
+
+        return (
+          <StatusBadge tone={billingStatusTone(allocationStatus)}>
+            {format.label(allocationStatus)}
+          </StatusBadge>
+        );
+      },
+    },
+  ];
+
   return (
     <section className={panelClass}>
       <PanelHeading title={t.billing.paymentOrders} icon={CreditCard} meta={t.billing.ordersLoaded(format.integer(paymentOrders.length))} />
       <div className="mt-2 grid gap-2">
         {paymentOrders.length === 0 ? <EmptyState message={t.billing.noPaymentOrders} /> : null}
         {paymentOrders.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse">
-              <thead>
-                <tr>
-                  {[t.billing.customer, t.billing.packageName, t.billing.amount, t.billing.provider, t.billing.status, t.billing.allocation].map((heading) => (
-                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paymentOrders.slice(0, 10).map((order) => (
-                  <tr key={order.id}>
-                    <TableCell>
-                      <strong className="block text-afro-ink">{order.customerDisplayName || order.customerTelegramUsername || order.customerAccountId.slice(0, 8)}</strong>
-                      <span className="text-[12px] text-afro-muted">{format.time(new Date(order.createdAt), false)}</span>
-                    </TableCell>
-                    <TableCell>{order.packageName}</TableCell>
-                    <TableCell>{`${format.integer(order.amount)} ${format.label(order.currency)}`}</TableCell>
-                    <TableCell>{format.label(order.provider)}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={billingStatusTone(order.status)}>{format.label(order.status)}</StatusBadge>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge tone={billingStatusTone(order.allocationStatus ?? 'not_applicable')}>
-                        {format.label(order.allocationStatus ?? 'not_applicable')}
-                      </StatusBadge>
-                    </TableCell>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={paymentOrderColumns}
+            minWidth="760px"
+            rowKey={(order) => order.id}
+            rows={visiblePaymentOrders}
+          />
         ) : null}
       </div>
     </section>
@@ -6463,44 +6598,51 @@ function CustomerAccountsPanel({
   format: DashboardFormatters;
   t: DashboardStrings;
 }) {
+  const visibleAccounts = accounts.slice(0, 10);
+  const customerAccountColumns: Array<DataTableColumn<AdminCustomerAccountSummary>> = [
+    {
+      key: 'customer',
+      header: t.billing.customer,
+      render: (account) => (
+        <>
+          <strong className="block text-afro-ink">
+            {account.displayName || account.telegramUsername || account.telegramId || account.id.slice(0, 8)}
+          </strong>
+          <span className="text-[12px] text-afro-muted">{format.time(new Date(account.updatedAt), false)}</span>
+        </>
+      ),
+    },
+    {
+      key: 'clients',
+      header: t.billing.clients,
+      render: (account) => `${format.integer(account.activeClientCount)} / ${format.integer(account.clientCount)}`,
+    },
+    { key: 'usedQuota', header: t.billing.usedQuota, render: (account) => format.bytes(account.usedBytes) },
+    {
+      key: 'remaining',
+      header: t.billing.remaining,
+      render: (account) => account.remainingBytes === null || account.remainingBytes === undefined ? t.billing.unlimited : format.bytes(account.remainingBytes),
+    },
+    { key: 'quotaScope', header: t.billing.quotaScope, render: (account) => format.label(account.quotaScope) },
+    {
+      key: 'status',
+      header: t.billing.status,
+      render: (account) => <StatusBadge tone={billingStatusTone(account.status)}>{format.label(account.status)}</StatusBadge>,
+    },
+  ];
+
   return (
     <section className={panelClass}>
       <PanelHeading title={t.billing.customerAccounts} icon={UserRound} meta={t.billing.accountsLoaded(format.integer(accounts.length))} />
       <div className="mt-2 grid gap-2">
         {accounts.length === 0 ? <EmptyState message={t.billing.noCustomerAccounts} /> : null}
         {accounts.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse">
-              <thead>
-                <tr>
-                  {[t.billing.customer, t.billing.clients, t.billing.usedQuota, t.billing.remaining, t.billing.quotaScope, t.billing.status].map((heading) => (
-                    <th className="border-b border-afro-line px-2 py-1.5 text-left text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0" key={heading}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {accounts.slice(0, 10).map((account) => (
-                  <tr key={account.id}>
-                    <TableCell>
-                      <strong className="block text-afro-ink">
-                        {account.displayName || account.telegramUsername || account.telegramId || account.id.slice(0, 8)}
-                      </strong>
-                      <span className="text-[12px] text-afro-muted">{format.time(new Date(account.updatedAt), false)}</span>
-                    </TableCell>
-                    <TableCell>{`${format.integer(account.activeClientCount)} / ${format.integer(account.clientCount)}`}</TableCell>
-                    <TableCell>{format.bytes(account.usedBytes)}</TableCell>
-                    <TableCell>{account.remainingBytes === null || account.remainingBytes === undefined ? t.billing.unlimited : format.bytes(account.remainingBytes)}</TableCell>
-                    <TableCell>{format.label(account.quotaScope)}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={billingStatusTone(account.status)}>{format.label(account.status)}</StatusBadge>
-                    </TableCell>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={customerAccountColumns}
+            minWidth="720px"
+            rowKey={(account) => account.id}
+            rows={visibleAccounts}
+          />
         ) : null}
       </div>
     </section>
@@ -6723,6 +6865,7 @@ function RoutesPage({
   const [routeCanaryState, setRouteCanaryState] = useState<DataState>('loading');
   const [routeHealthHistory, setRouteHealthHistory] = useState<AdminRouteHealthHistoryResponse | null>(null);
   const [routeHealthHistoryState, setRouteHealthHistoryState] = useState<DataState>('loading');
+  const [activeRoutesTab, setActiveRoutesTab] = useState<RoutesTab>('overview');
 
   useEffect(() => {
     if (tunnels.length === 0) {
@@ -6775,53 +6918,74 @@ function RoutesPage({
   const selectedTunnelSummary = selectedTunnelRow?.id
     ? tunnelSummaries.find((tunnel) => tunnel.id === selectedTunnelRow.id) ?? null
     : null;
+  const routeTabs: Array<DashboardTabItem<RoutesTab>> = [
+    { id: 'overview', label: t.tabs.routesOverview, meta: t.panels.links(format.integer(tunnels.length)) },
+    { id: 'policy', label: t.tabs.routesPolicy, meta: t.panels.priorityFailover },
+    { id: 'canary', label: t.tabs.routesCanary, meta: routeCanaryStatus ? routeSwitchOrchestrationActionLabel(routeCanaryStatus.recommendedAction, t) : t.routeCanary.learning },
+    { id: 'history', label: t.tabs.routesHistory, meta: routeHealthHistory ? t.routeHealthHistory.points(format.integer(routeHealthHistory.points.length)) : t.routeHealthHistory.learning },
+  ];
 
   return (
-    <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <TunnelPanel
-        dataState={tunnelDataState}
-        emptyMessage={tunnelDataState === 'loading' ? t.dataStatus.loading : t.operationalData.noTunnels}
-        format={format}
-        onSelectTunnel={setSelectedTunnelKey}
-        selectedTunnelKey={selectedTunnelKey}
-        t={t}
-        tunnels={tunnels}
-      />
-      <TunnelDetailPanel
-        format={format}
-        sessionToken={sessionToken}
-        tunnel={selectedTunnelSummary}
-        tunnelDataState={tunnelDataState}
-        tunnelRow={selectedTunnelRow}
-        t={t}
-      />
-      <OutboundsPanel
-        dataState={dataState}
-        emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noOutbounds}
-        format={format}
-        outbounds={outbounds}
-        t={t}
-      />
-      <RoutePolicyPanel format={format} outbounds={outbounds} session={session} sessionToken={sessionToken} t={t} />
-      <RouteCanaryPanel
-        dataState={routeCanaryState}
-        format={format}
-        status={routeCanaryStatus}
-        t={t}
-      />
-      <RouteHealthHistoryPanel
-        dataState={routeHealthHistoryState}
-        format={format}
-        history={routeHealthHistory}
-        t={t}
-      />
-      <FailoverPanel
-        dataState={dataState}
-        emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noFailoverEvents}
-        events={failoverRows}
-        format={format}
-        t={t}
-      />
+    <section className="mt-3 grid gap-3">
+      <DashboardTabs activeTab={activeRoutesTab} ariaLabel={t.tabs.routesSections} onChange={setActiveRoutesTab} tabs={routeTabs} />
+      {activeRoutesTab === 'overview' ? (
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <TunnelPanel
+            dataState={tunnelDataState}
+            emptyMessage={tunnelDataState === 'loading' ? t.dataStatus.loading : t.operationalData.noTunnels}
+            format={format}
+            onSelectTunnel={setSelectedTunnelKey}
+            selectedTunnelKey={selectedTunnelKey}
+            t={t}
+            tunnels={tunnels}
+          />
+          <TunnelDetailPanel
+            format={format}
+            sessionToken={sessionToken}
+            tunnel={selectedTunnelSummary}
+            tunnelDataState={tunnelDataState}
+            tunnelRow={selectedTunnelRow}
+            t={t}
+          />
+        </section>
+      ) : null}
+      {activeRoutesTab === 'policy' ? (
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <OutboundsPanel
+            dataState={dataState}
+            emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noOutbounds}
+            format={format}
+            outbounds={outbounds}
+            t={t}
+          />
+          <RoutePolicyPanel format={format} outbounds={outbounds} session={session} sessionToken={sessionToken} t={t} />
+        </section>
+      ) : null}
+      {activeRoutesTab === 'canary' ? (
+        <RouteCanaryPanel
+          dataState={routeCanaryState}
+          format={format}
+          status={routeCanaryStatus}
+          t={t}
+        />
+      ) : null}
+      {activeRoutesTab === 'history' ? (
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <RouteHealthHistoryPanel
+            dataState={routeHealthHistoryState}
+            format={format}
+            history={routeHealthHistory}
+            t={t}
+          />
+          <FailoverPanel
+            dataState={dataState}
+            emptyMessage={dataState === 'loading' ? t.dataStatus.loading : t.operationalData.noFailoverEvents}
+            events={failoverRows}
+            format={format}
+            t={t}
+          />
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -7677,6 +7841,7 @@ function SettingsPage({
     alertsEnabled: false,
     commandsEnabled: false,
   });
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('route');
   const [privateKeyAccepted, setPrivateKeyAccepted] = useState(false);
   const [privateKeySecretRef, setPrivateKeySecretRef] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -8548,10 +8713,47 @@ function SettingsPage({
     setValidationMessage(null);
   };
 
+  const settingsTabs: Array<DashboardTabItem<SettingsTab>> = [
+    {
+      id: 'route',
+      label: t.tabs.settingsRoute,
+      meta: routeMode === 'automatic' ? t.settings.automatic : t.settings.manual,
+    },
+    {
+      id: 'wireguard',
+      label: t.tabs.settingsWireGuard,
+      meta: format.integer(wireGuardCandidates.length),
+    },
+    {
+      id: 'protocols',
+      label: t.tabs.settingsProtocols,
+      meta: format.integer(persistedProtocolSetups.length),
+    },
+    {
+      id: 'branding',
+      label: t.tabs.settingsBranding,
+      meta: tenantBrandForm.publicBrandingEnabled ? t.settings.enabled : t.settings.disabled,
+    },
+    {
+      id: 'telegram',
+      label: t.tabs.settingsTelegram,
+      meta: telegramBotSettings?.hasBotToken ? t.settings.configured : t.settings.pending,
+    },
+  ];
+  const settingsHasSideRail = activeSettingsTab === 'route' || activeSettingsTab === 'wireguard' || activeSettingsTab === 'protocols';
+
   return (
-    <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+    <section className="mt-3 grid gap-3">
+      <DashboardTabs
+        activeTab={activeSettingsTab}
+        ariaLabel={t.tabs.settingsSections}
+        onChange={setActiveSettingsTab}
+        tabs={settingsTabs}
+      />
+
+      <section className={settingsHasSideRail ? 'grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]' : 'grid gap-3'}>
       <section className="grid gap-3">
-        <section className={panelClass}>
+        <section className={`${panelClass} ${activeSettingsTab === 'route' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.routeControl} icon={ArrowDownUp} meta={t.settings.smartRoute} />
           <div className="mt-3 grid gap-3">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -8737,7 +8939,7 @@ function SettingsPage({
           </div>
         </section>
 
-        <section className={panelClass}>
+        <section className={`${panelClass} ${activeSettingsTab === 'branding' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.tenantBranding} icon={Palette} meta={canManageTenantBranding ? t.settings.adminReady : t.settings.adminOnly} />
           <form className="mt-3 grid gap-3" onSubmit={(event) => { event.preventDefault(); void saveTenantBranding(); }}>
             <div className="grid gap-2 md:grid-cols-3">
@@ -8915,7 +9117,7 @@ function SettingsPage({
           </form>
         </section>
 
-        <section className={panelClass}>
+        <section className={`${panelClass} ${activeSettingsTab === 'telegram' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.telegramBotSetup} icon={Bot} meta={canManageTelegramBot ? t.settings.superadminReady : t.settings.superadminOnly} />
           <div className="mt-3 grid gap-3">
             <div className="grid gap-2 md:grid-cols-2">
@@ -9021,7 +9223,7 @@ function SettingsPage({
           </div>
         </section>
 
-        <section className={panelClass}>
+        <section className={`${panelClass} ${activeSettingsTab === 'protocols' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.protocolFactory} icon={Plus} meta={canCreateProtocols ? t.settings.superadminReady : t.settings.superadminOnly} />
           <div className="mt-3 grid gap-3">
             <div>
@@ -9184,7 +9386,7 @@ function SettingsPage({
           </div>
         </section>
 
-        <section className={panelClass}>
+        <section className={`${panelClass} ${activeSettingsTab === 'wireguard' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.wireguardSetup} icon={SettingsIcon} meta={t.settings.guidedSetup} />
           <form className="mt-3 grid gap-3" onSubmit={handleSubmit}>
             <div className="grid gap-2 md:grid-cols-3">
@@ -9231,8 +9433,8 @@ function SettingsPage({
         </section>
       </section>
 
-      <section className="grid gap-3">
-        <section className={panelClass}>
+      <section className={`grid gap-3 ${settingsHasSideRail ? '' : 'hidden'}`}>
+        <section className={`${panelClass} ${activeSettingsTab === 'wireguard' || activeSettingsTab === 'protocols' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.setupReadiness} icon={ShieldCheck} meta={t.settings.secretSafe} />
           <div className="mt-2 grid gap-2">
             {readinessRows.map(([label, value, tone]) => (
@@ -9244,7 +9446,7 @@ function SettingsPage({
           </div>
         </section>
 
-        <section className={panelClass}>
+        <section className={`${panelClass} ${activeSettingsTab === 'wireguard' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.wireguardHealth} icon={Gauge} meta={t.settings.healthChecked} />
           <div className="mt-2 grid gap-2">
             {wireGuardCandidates.map((candidate) => (
@@ -9277,24 +9479,28 @@ function SettingsPage({
           </div>
         </section>
 
-        <RouteIntelligencePanel analytics={routeQualityAnalytics} format={format} t={t} />
+        <div className={activeSettingsTab === 'route' ? '' : 'hidden'}>
+          <RouteIntelligencePanel analytics={routeQualityAnalytics} format={format} t={t} />
+        </div>
 
-        <RouteDecisionPreviewPanel
-          eventDetail={routeDecisionEventDetail}
-          events={routeDecisionEvents}
-          format={format}
-          isApplying={isDecisionApplying}
-          isEventDetailLoading={isDecisionEventDetailLoading}
-          isRecording={isDecisionRecording}
-          onApply={() => void applyDecisionAssignment()}
-          onInspectEvent={(eventId) => void inspectDecisionEvent(eventId)}
-          onRecord={() => void recordDecisionEvent()}
-          preview={routeDecisionPreview}
-          switchExecution={routeDecisionSwitchExecution}
-          t={t}
-        />
+        <div className={activeSettingsTab === 'route' ? '' : 'hidden'}>
+          <RouteDecisionPreviewPanel
+            eventDetail={routeDecisionEventDetail}
+            events={routeDecisionEvents}
+            format={format}
+            isApplying={isDecisionApplying}
+            isEventDetailLoading={isDecisionEventDetailLoading}
+            isRecording={isDecisionRecording}
+            onApply={() => void applyDecisionAssignment()}
+            onInspectEvent={(eventId) => void inspectDecisionEvent(eventId)}
+            onRecord={() => void recordDecisionEvent()}
+            preview={routeDecisionPreview}
+            switchExecution={routeDecisionSwitchExecution}
+            t={t}
+          />
+        </div>
 
-        <section className={panelClass}>
+        <section className={`${panelClass} ${activeSettingsTab === 'wireguard' || activeSettingsTab === 'protocols' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.setupPreview} icon={Route} meta={t.settings.noSecretEcho} />
           <div className="mt-2 grid gap-2">
             {previewRows.map(([label, value]) => (
@@ -9306,6 +9512,7 @@ function SettingsPage({
           </div>
         </section>
       </section>
+    </section>
     </section>
   );
 }
@@ -12792,6 +12999,86 @@ function PanelHeadingContent({ title, meta, titleId }: { title: string; meta?: s
   );
 }
 
+function DashboardTabs<T extends string>({
+  activeTab,
+  ariaLabel,
+  onChange,
+  tabs,
+}: {
+  activeTab: T;
+  ariaLabel: string;
+  onChange: (tab: T) => void;
+  tabs: Array<DashboardTabItem<T>>;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-md border border-afro-line bg-afro-panel p-1" role="presentation">
+      <div aria-label={ariaLabel} className="grid min-w-max grid-flow-col gap-1" role="tablist">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+
+          return (
+            <button
+              aria-selected={isActive}
+              className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded px-3 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-45 ${isActive ? 'bg-afro-sidebar text-white shadow-sm' : 'bg-white text-afro-muted hover:text-afro-ink'}`}
+              disabled={tab.disabled}
+              key={tab.id}
+              onClick={() => onChange(tab.id)}
+              role="tab"
+              title={tab.meta ? `${tab.label} / ${tab.meta}` : tab.label}
+              type="button"
+            >
+              <span className="whitespace-nowrap">{tab.label}</span>
+              {tab.meta ? <span className="rounded-full bg-black/10 px-1.5 text-[11px]">{tab.meta}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DataTable<Row>({
+  columns,
+  minWidth = '760px',
+  rowKey,
+  rows,
+}: {
+  columns: Array<DataTableColumn<Row>>;
+  minWidth?: string;
+  rowKey: (row: Row) => string;
+  rows: Row[];
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse" style={{ minWidth }}>
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th
+                className={`border-b border-afro-line px-2 py-1.5 text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0 ${column.alignRight ? 'text-right' : 'text-left'} ${column.className ?? ''}`}
+                key={column.key}
+              >
+                {column.header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={rowKey(row)}>
+              {columns.map((column) => (
+                <TableCell alignRight={column.alignRight} key={column.key}>
+                  {column.render(row)}
+                </TableCell>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function TableCell({ children, alignRight = false }: { children: ReactNode; alignRight?: boolean }) {
   const alignmentClass = alignRight ? 'text-right' : 'text-left';
   const tooltip = primitiveTooltip(children);
@@ -13228,6 +13515,45 @@ function createHealthChartOption(
   };
 }
 
+function createDonutChartOption(
+  rows: Array<{ color: string; name: string; value: number }>,
+  format: DashboardFormatters,
+): AfroChartOption {
+  const data = rows.filter((row) => row.value > 0);
+  const effectiveData = data.length > 0
+    ? data
+    : [{ color: '#dce4e8', name: '-', value: 1 }];
+
+  return {
+    color: effectiveData.map((row) => row.color),
+    textStyle: {
+      fontFamily: format.fontFamily,
+    },
+    tooltip: {
+      trigger: 'item',
+      valueFormatter: (value) => format.integer(Number(value)),
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['58%', '82%'],
+        center: ['50%', '50%'],
+        avoidLabelOverlap: true,
+        label: {
+          show: false,
+        },
+        labelLine: {
+          show: false,
+        },
+        data: effectiveData.map((row) => ({
+          name: row.name,
+          value: row.value,
+        })),
+      },
+    ],
+  };
+}
+
 function createFallbackTimeseries(
   servers: ServerRowData[],
   range: MetricsTimeRange,
@@ -13334,6 +13660,23 @@ function getWireGuardScoreTone(score: number): Tone {
   if (score >= 70) return 'neutral';
   if (score >= 50) return 'warning';
   return 'critical';
+}
+
+function getHealthTone(score: number): Tone {
+  if (score >= 80) return 'good';
+  if (score >= 60) return 'neutral';
+  if (score >= 40) return 'warning';
+  return 'critical';
+}
+
+function countTones(tones: Tone[]): Record<Tone, number> {
+  return tones.reduce<Record<Tone, number>>(
+    (counts, tone) => ({
+      ...counts,
+      [tone]: counts[tone] + 1,
+    }),
+    { good: 0, neutral: 0, warning: 0, critical: 0 },
+  );
 }
 
 function serverAccessReady(server: ServerRowData): boolean {
