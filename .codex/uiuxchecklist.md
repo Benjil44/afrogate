@@ -1,6 +1,6 @@
 # AfroGate UI/UX Implementation Checklist
 
-Progress: 36 / 40 complete (90.0%), 4 remaining.
+Progress: 40 / 40 complete (100.0%), 0 remaining.
 
 ## Baseline
 
@@ -9,7 +9,7 @@ Progress: 36 / 40 complete (90.0%), 4 remaining.
 - [x] Choose checklist location: `.codex/uiuxchecklist.md`.
 - [x] Run browser review after each slice at desktop and mobile widths.
 - [x] Keep English/Persian labels in the typed dashboard translation layer.
-- [ ] Keep every operational page free of horizontal overflow.
+- [x] Keep every operational page free of horizontal overflow.
 - [x] Keep repeated tables on the shared table primitive.
 
 ## Shared UI Primitives
@@ -22,9 +22,9 @@ Progress: 36 / 40 complete (90.0%), 4 remaining.
 ## Dashboard
 
 - [x] Add donut/circle charts for server health, alert severity, and outbound route quality.
-- [ ] Reduce duplicated Dashboard lists where the same data is already available on Servers/Routes/Alerts.
+- [x] Reduce duplicated Dashboard lists where the same data is already available on Servers/Routes/Alerts.
 - [x] Keep the health timeline for history, but avoid making it the only visual chart.
-- [ ] Reduce blank space at desktop widths.
+- [x] Reduce blank space at desktop widths.
 - [x] Preserve the second-LCD NOC target.
 
 ## Settings
@@ -34,7 +34,7 @@ Progress: 36 / 40 complete (90.0%), 4 remaining.
 - [x] Keep WireGuard setup, health, readiness, and safe preview together.
 - [x] Keep Protocol Factory and protocol apply status together.
 - [x] Keep Telegram setup isolated from route/protocol controls.
-- [ ] Remove badge/pill overlap in decision and load-balancing panels.
+- [x] Remove badge/pill overlap in decision and load-balancing panels.
 
 ## Billing
 

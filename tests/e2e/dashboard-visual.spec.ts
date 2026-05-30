@@ -56,6 +56,52 @@ test.describe('dashboard dense layout visual captures', () => {
   }
 });
 
+test.describe('dashboard all-page horizontal overflow audit', () => {
+  for (const viewport of [
+    { name: 'mobile', size: { width: 390, height: 844 } },
+    { name: 'desktop', size: { width: 1440, height: 900 } },
+  ]) {
+    test(`${viewport.name} pages keep document width stable`, async ({ page }) => {
+      await loadSignedInDashboard(page, viewport.size);
+
+      const auditView = async (view: string, heading: string) => {
+        await page.locator(`[data-view="${view}"]`).click();
+        await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+        await expectNoDocumentHorizontalOverflow(page);
+      };
+      const auditTab = async (name: RegExp) => {
+        await page.getByRole('tab', { name }).click();
+        await expectNoDocumentHorizontalOverflow(page);
+      };
+
+      await auditView('dashboard', 'Network operations display');
+      await auditView('servers', 'Server management');
+      await auditView('users', 'User management');
+      await auditTab(/Permissions/);
+      await auditView('audit', 'Audit logs');
+      await auditView('backups', 'Backups');
+      await auditTab(/Backup readiness/);
+      await auditTab(/Restore runbook/);
+      await auditView('billing', 'Usage and billing');
+      await auditTab(/Customers/);
+      await auditTab(/Panel import/);
+      await auditTab(/Telegram/);
+      await auditTab(/Orders/);
+      await auditView('reports', 'Reports and analysis');
+      await auditView('routes', 'Routes and failover');
+      await auditTab(/Policy/);
+      await auditTab(/Canary/);
+      await auditTab(/History/);
+      await auditView('alerts', 'Alerts and delivery');
+      await auditView('settings', 'WireGuard and system setup');
+      await auditTab(/WireGuard/);
+      await auditTab(/Protocols/);
+      await auditTab(/Branding/);
+      await auditTab(/Telegram/);
+    });
+  }
+});
+
 test('dashboard supports kiosk display mode', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
 
@@ -348,6 +394,16 @@ test('users page shows RBAC permission matrix', async ({ page }) => {
   await expect(page.getByText('Server credential write')).toBeVisible();
   await expect(page.getByText('adminUsers:write')).toBeVisible();
 });
+
+async function expectNoDocumentHorizontalOverflow(page: Page): Promise<void> {
+  const horizontalOverflow = await page.evaluate(() =>
+    Math.max(
+      document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      document.body.scrollWidth - document.body.clientWidth,
+    ),
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+}
 
 async function loadSignedInDashboard(
   page: Page,

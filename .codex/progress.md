@@ -2427,3 +2427,31 @@ Repository remote is ready:
 
 - Run the full browser UI audit across all dashboard pages after the tab/table refactor.
 - Finish Dashboard duplicate-list/blank-space cleanup, Settings badge overlap, and any remaining horizontal-overflow findings.
+
+## 2026-05-30 UI/UX Checklist Completion
+
+### Completed
+
+- Capped the Dashboard NOC alert list to the highest-priority compact rows so the full Alerts page remains the detailed incident surface and desktop dashboard height is reduced.
+- Tightened shared `StatusBadge` and `MetricPill` behavior plus Settings route-decision/load-balancing grids so long labels truncate inside their cells instead of overlapping neighboring badges/cards.
+- Added `overflow-x-hidden` to the dashboard content shell while preserving table/tab-local horizontal scrolling where it is intentional.
+- Added a Playwright all-page horizontal-overflow audit that visits every dashboard sidebar page plus major workflow tabs at mobile and desktop widths.
+- Updated `.codex/uiuxchecklist.md` to `40 / 40` complete, or `100.0%` complete with `0` remaining UI/UX refinement items.
+- Updated the focused UI/UX refactor track to `11 / 11` complete, or `100.0%` complete.
+- Bumped AfroGate to `0.113.6` and updated `CHANGELOG.md`.
+
+### Verification
+
+- Ran `npm run version:check`.
+- Ran `npm run typecheck`.
+- Ran `npm run build`.
+- Ran `npm run secrets:check`.
+- Ran `npm audit --audit-level=moderate`; zero vulnerabilities found.
+- Ran `npm run contrast:check`.
+- Ran focused `npm run test:e2e -- tests/e2e/dashboard-visual.spec.ts --grep "horizontal overflow audit"`; 2 tests passed.
+- Ran full `npm run test:e2e`; 20 tests passed.
+- Ran `git diff --check`; only existing LF-to-CRLF conversion warnings were reported.
+
+### Remaining
+
+- UI/UX checklist is complete. Next work should move to real deployment/readiness validation, production onboarding, and deeper mutable workflow QA before customer sales.

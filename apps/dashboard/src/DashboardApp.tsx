@@ -960,7 +960,7 @@ function AuthenticatedDashboard({
         />
       )}
 
-      <section className="min-w-0 max-w-full p-3 md:p-4 lg:h-screen lg:overflow-y-auto">
+      <section className="min-w-0 max-w-full overflow-x-hidden p-3 md:p-4 lg:h-screen lg:overflow-y-auto">
         <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-0.5 text-[11px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
@@ -1642,6 +1642,7 @@ function AlertsPanel({
   t: DashboardStrings;
 }) {
   const activeAlertCount = countActiveAlertRows(alerts);
+  const visibleAlerts = alerts.slice(0, 4);
 
   return (
     <section className={panelClass}>
@@ -1649,7 +1650,7 @@ function AlertsPanel({
       <div className="mt-2 grid gap-2">
         {alerts.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
         {alerts.length === 0 ? <DataStateEmpty emptyMessage={t.alerts.noOpenAlerts} state={dataState} t={t} /> : null}
-        {alerts.map((alert) => (
+        {visibleAlerts.map((alert) => (
           <div className="grid min-h-[42px] grid-cols-[1fr_auto] items-center gap-2 rounded-md border border-afro-line p-2" key={alert.id}>
             <div className="min-w-0">
               <strong className="block truncate">{alert.title}</strong>
@@ -9864,7 +9865,7 @@ function RouteDecisionProfileRecommendationList({
           {selectedProfile ? routeScoreProfileLabel(selectedProfile, t) : t.settings.unknownProfile}
         </span>
       </div>
-      <div className="grid gap-1.5 md:grid-cols-2">
+      <div className="grid gap-1.5 md:grid-cols-[repeat(2,minmax(0,1fr))]">
         {recommendations.length === 0 ? <EmptyState message={t.settings.noProfileRecommendations} /> : null}
         {recommendations.map((recommendation) => {
           const isSelected = recommendation.profile === selectedProfile;
@@ -9888,7 +9889,7 @@ function RouteDecisionProfileRecommendationList({
                   </StatusBadge>
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-1.5">
                 <MetricPill icon={ArrowDownUp} label={t.settings.routeDecisionCandidateDelta} value={delta} />
                 <MetricPill icon={Route} label={t.settings.usableCandidates} value={format.integer(recommendation.candidateCount)} />
               </div>
@@ -9935,7 +9936,7 @@ function RouteDecisionLoadBalancingCard({
         </span>
       </div>
 
-      <div className="grid gap-1.5 sm:grid-cols-3">
+      <div className="grid gap-1.5 sm:grid-cols-[repeat(3,minmax(0,1fr))]">
         <MetricPill
           icon={Route}
           label={t.settings.loadBalancingPrimary}
@@ -9953,7 +9954,7 @@ function RouteDecisionLoadBalancingCard({
         />
       </div>
 
-      <div className="grid gap-1.5 md:grid-cols-2">
+      <div className="grid gap-1.5 md:grid-cols-[repeat(2,minmax(0,1fr))]">
         {loadBalancing.candidates.length === 0 ? <EmptyState message={t.settings.loadBalancingNoCandidates} /> : null}
         {loadBalancing.candidates.map((candidate) => (
           <div className="grid gap-1 rounded-md border border-afro-line px-2.5 py-2" key={candidate.id}>
@@ -9968,7 +9969,7 @@ function RouteDecisionLoadBalancingCard({
                 {routeLoadBalancingRiskLabel(candidate.riskLevel, t)}
               </StatusBadge>
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-1.5">
               <MetricPill icon={ArrowDownUp} label={t.settings.loadBalancingWeight} value={format.percent(candidate.weightPercent)} />
               <MetricPill icon={Gauge} label={t.settings.loadBalancingAdjustedScore} value={format.integer(candidate.adjustedScore)} />
               <MetricPill icon={ShieldCheck} label={t.settings.loadBalancingProfileScore} value={format.integer(candidate.profileScore)} />
@@ -10023,7 +10024,7 @@ function RouteDecisionSessionSafetyCard({
         </span>
       </div>
 
-      <div className="grid gap-1.5 sm:grid-cols-4">
+      <div className="grid gap-1.5 sm:grid-cols-[repeat(4,minmax(0,1fr))]">
         <MetricPill
           icon={LockKeyhole}
           label={t.settings.sessionSafetyStickyTtl}
@@ -12849,7 +12850,7 @@ function StatusBadge({
   return (
     <span
       aria-label={ariaLabel ?? tooltip}
-      className={`inline-flex min-h-[22px] items-center rounded-full border px-1.5 text-[11px] font-bold ${toneClass}`}
+      className={`inline-flex min-h-[22px] max-w-full min-w-0 items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-full border px-1.5 text-[11px] font-bold ${toneClass}`}
       title={tooltip}
     >
       {children}
@@ -12963,11 +12964,11 @@ function MetricPill({ icon: Icon, label, value }: { icon: AfroIcon; label: strin
   return (
     <span
       aria-label={`${label} ${value}`}
-      className="inline-flex min-h-[19px] min-w-[80px] shrink-0 items-center justify-center gap-1 rounded-full bg-[#f4f7f8] px-1.5 py-0.5 text-[11px] font-bold leading-tight text-afro-ink"
+      className="inline-flex min-h-[19px] min-w-[64px] max-w-full items-center justify-center gap-1 rounded-full bg-[#f4f7f8] px-1.5 py-0.5 text-[11px] font-bold leading-tight text-afro-ink"
       title={`${label} ${value}`}
     >
       <Icon className="shrink-0 text-afro-muted" size={12} />
-      <span className="whitespace-nowrap">{value}</span>
+      <span className="min-w-0 truncate">{value}</span>
     </span>
   );
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.113.6 - 2026-05-30
+
+- Finished the screenshot-driven UI/UX checklist by capping duplicated Dashboard alert rows, tightening shared badges/pills, and adding a content-shell overflow guard.
+- Added a Playwright all-page horizontal-overflow audit across every dashboard sidebar page and major workflow tab at mobile and desktop widths.
+- Updated `.codex/uiuxchecklist.md` and the focused UI/UX refactor track to 100.0% complete.
+
 ## 0.113.5 - 2026-05-30
 
 - Converted the Backups page into Monitor, Readiness, and Restore runbook workflow tabs to reduce long scrolling and keep restore planning separate from status monitoring.

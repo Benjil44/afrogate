@@ -266,3 +266,5 @@
 - Dashboard page-level table markup should stay centralized in the shared `DataTable` primitive; raw `<table>` markup belongs only inside that primitive unless a future component has a strong accessibility reason.
 - Dashboard overview charts can use ECharts donut/pie series for scan-first status summaries alongside the existing health timeline; chart labels must stay in the typed English/Persian translation layer.
 - Reports should use compact chart cards for operational mix/risk summaries when data exists, not only text metric pills.
+- The Dashboard NOC view should show only the highest-priority compact alert rows; the full Alerts page remains the detailed incident list.
+- Dashboard all-page UI audits should check every sidebar page and major workflow tab at mobile and desktop widths for document-level horizontal overflow.
