@@ -287,3 +287,59 @@ Progress: 11 / 11 complete (100.0%), 0 remaining.
 - [x] Move admin users, billing customer accounts, and payment orders onto the shared table primitive.
 - [x] Run full browser UI audit across all dashboard pages after the tab refactor.
 - [x] Continue migrating Audit Logs, tunnels, and reseller wallet/sold-user tables to the shared table primitive.
+
+## Phase 6: Release Readiness & Security Hardening
+
+Added 2026-06-01 after a full backend/frontend/security/firewall audit. Every feature
+checklist above is complete, but these items are required before a real paid customer
+rollout and before treating the system as "cannot be hacked". Verified facts:
+typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
+`npm audit` clean, firewall/Nginx hardening samples are strong.
+
+### Automated test coverage (highest priority)
+
+- [ ] Add backend unit/integration tests. There are currently **0** backend `*.spec.ts` files; all auth, RBAC, billing, wallet, quota allocation, payment, and reseller-scoping logic (~19k lines of services) is only exercised by mocked UI smoke tests.
+- [ ] Test auth: timing-safe password/token compare, session signature/expiry verification, default-credential rejection, legacy-token fallback.
+- [ ] Test RBAC: every role × permission combination, and confirm a route missing `@Roles`/`@Permissions` still cannot be reached by low-privilege roles.
+- [ ] Test reseller own-scope enforcement (`ensureCustomerAccountBelongsToReseller`, `ensureClientConfigBelongsToReseller`) against cross-tenant IDOR attempts.
+- [ ] Test client-token scoping: a client token can only read/modify its own config/quota.
+- [ ] Test wallet/quota math: top-up, package debit, allocation idempotency, no double-credit, no negative balances.
+- [ ] Add an automated security-regression test that asserts every `@Controller('admin')` route declares `@Roles`.
+
+### Web hardening
+
+- [ ] Add a Content-Security-Policy header to the Nginx samples (currently missing; HSTS/nosniff/X-Frame-Options/Referrer-Policy/Permissions-Policy are present).
+- [ ] Make backend CORS fail-closed: `main.ts` falls back to `origin: true` (reflect any origin) when `CORS_ORIGIN` is unset; require an explicit allowlist in production.
+- [ ] Consider app-layer security headers (helmet) as defense-in-depth in case the app is ever exposed without Nginx.
+- [ ] Confirm `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS=true` is set in production so per-IP rate limits use the real client IP behind Nginx.
+
+### Injection & input-security testing (to implement after the dashboard split)
+
+2026-06-01 static review found no obvious injection holes (no XSS sinks; SQL is fully
+parameterized with `$N`; interpolated SQL identifiers are hardcoded literals; global
+`ValidationPipe({ whitelist: true })` is on). These tasks turn that review into tested,
+enforced guarantees and cover the one high-risk path the review could not fully verify.
+
+- [ ] XSS: add tests/lint rule asserting no `dangerouslySetInnerHTML`/`innerHTML`/`eval` in dashboard + client apps; add the Content-Security-Policy header (see Web hardening) and verify it blocks inline script.
+- [ ] XSS: fuzz user-controlled strings that render in the UI (display names, Telegram usernames, notes, server/tunnel names, alert messages) and confirm they render escaped.
+- [ ] SQL injection: add a regression test that feeds quote/`;`/`--`/`OR 1=1` payloads through representative admin + client endpoints and asserts parameterized handling (no error leakage, no data exfil).
+- [ ] **Command injection (highest severity):** dedicated audit + tests of the protocol-apply shell/SSH command builder (`shellToken`, `safePathSegment`, `safeUnitName`, `configPath`, `port`); prove the allowlist + escaping reject metacharacters/path traversal, and keep it disabled-by-default behind feature flags + superadmin.
+- [ ] SSRF: review the shared outbound HTTP client (Telegram/PayPal/rewarded-ad webhooks, health probes) for user-controllable URLs; restrict to expected hosts/schemes and keep egress on the proxy path.
+- [ ] Auth/JWT tampering: tests that a forged/expired/alg-swapped session token and a tampered client/agent token are all rejected.
+- [ ] Webhook forgery: tests that PayPal, rewarded-ad, and Telegram webhooks reject bad/missing signatures and replayed timestamps.
+- [ ] Rate-limit/DoS: tests that login, webhook, and client endpoints enforce limits; verify request body size caps (Nginx `client_max_body_size` + backend payload limits).
+- [ ] Add an SAST/dependency step (e.g. CodeQL or `semgrep`) to CI alongside the existing secret scan + `npm audit`.
+
+### Code structure / maintainability (UI/UX)
+
+- [ ] Split `apps/dashboard/src/DashboardApp.tsx` (was **14,862 lines**). In progress on branch `refactor/split-large-files`: extracted `dashboard-types`, `formatters`, `chart-options`, `mappers`, `tone`, `route-labels`, `labels`, `ui-classes` (down to ~12.1k lines as of 2026-06-01). Remaining: shared `components/` primitives, then per-page `pages/` modules.
+- [ ] Split `apps/backend/src/operations/operations.service.ts` (**10,273 lines**) and `apps/backend/src/billing/billing.service.ts` (**8,523 lines**) into focused services.
+- [ ] Keep `apps/dashboard/src/i18n.ts` (3,510 lines) maintainable (consider per-namespace splitting).
+
+### Release / deployment validation
+
+- [ ] Run a real Ubuntu install drill from `docs/enterprise-deployment-guide.md` (systemd + Nginx + private PostgreSQL + least-privilege roles).
+- [ ] Run an encrypted backup + restore drill end-to-end (restore engine is intentionally a read-only stub today).
+- [ ] Load/scale test toward the 10,000-user target; current automated coverage proves correctness on tiny datasets only.
+- [ ] Commission an independent penetration test of the deployed stack before paid customer rollout.
+- [ ] Document and rehearse agent-token and secret rotation in production.

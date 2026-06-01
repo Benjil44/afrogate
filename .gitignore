@@ -13,6 +13,9 @@ secrets/
 *.log
 logs/
 tmp/
+
+# Git worktrees
+.claude/worktrees/
 temp/
 
 # Node / frontend

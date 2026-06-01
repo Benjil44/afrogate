@@ -2455,3 +2455,27 @@ Repository remote is ready:
 ### Remaining
 
 - UI/UX checklist is complete. Next work should move to real deployment/readiness validation, production onboarding, and deeper mutable workflow QA before customer sales.
+
+## 2026-06-01 Full Audit (backend + frontend + security + firewall)
+
+### Reviewed (no code changed in this pass)
+
+- Confirmed every feature checklist (main 245/245, UI/UX 40/40, sidebar pages, refactor track) is complete in the files.
+- Verified the build/test state directly, not from notes: `npm run typecheck` passes, `npm run build --workspaces` passes, `npm run test:e2e` = 20/20 passing.
+- Audited backend authn/authz: `AdminTokenGuard` authenticates via signed-session/legacy-token (throws on invalid), `RolesGuard` enforces `@Roles`/`@Permissions`. Confirmed every route in `operations.controller.ts` and `billing.controller.ts` declares explicit `@Roles`. Auth uses scrypt hashes, HMAC-signed sessions with expiry, timing-safe compares, and refuses default/placeholder credentials.
+- Audited multi-tenant isolation: reseller endpoints resolve the reseller from `actor.id` and enforce ownership via `ensureCustomerAccountBelongsToReseller`/`ensureClientConfigBelongsToReseller`; client endpoints scope to the token's own `clientConfigId`. No IDOR found in the reviewed paths.
+- Audited frontend: session token in `sessionStorage` (not localStorage); no `dangerouslySetInnerHTML`, `innerHTML`, or `eval` sinks.
+- Audited infra: UFW sample is default-deny inbound with SSH restricted to `ADMIN_CIDR` and internal ports (4000/7000/5432/6379) denied; Nginx samples have HSTS, nosniff, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, dotfile deny, and login/API rate-limit zones.
+
+### Gaps found (now tracked under checklist "Phase 6: Release Readiness & Security Hardening")
+
+- No backend automated tests at all (0 `*.spec.ts`); all security/billing/wallet/quota logic is untested by code.
+- `DashboardApp.tsx` is 14,862 lines; `operations.service.ts` 10,273; `billing.service.ts` 8,523 — large monoliths, a maintainability/UX risk.
+- Nginx samples have no Content-Security-Policy header.
+- `main.ts` CORS falls back to `origin: true` when `CORS_ORIGIN` is unset (should fail-closed in prod).
+- No real deployment drill, backup/restore drill, load test, or independent penetration test yet.
+
+### Next
+
+- Decide scope for splitting the large files into smaller modules (user requested smallest-possible files).
+- Begin backend test coverage for auth/RBAC/reseller-scope/wallet as the highest-value hardening.
