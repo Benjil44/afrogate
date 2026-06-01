@@ -199,196 +199,40 @@ import {
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { EChart, type AfroChartOption } from './components/EChart';
 import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } from './i18n';
+import type {
+  ActiveView,
+  AfroIcon,
+  AlertRowData,
+  AlertSeverityFilter,
+  AlertStatusFilter,
+  BackupsTab,
+  BillingTab,
+  DataState,
+  DataTableColumn,
+  DashboardTabItem,
+  MetricCardData,
+  NavItemData,
+  OutboundRowData,
+  PanelStateKind,
+  ProtocolSetupDraft,
+  RouteFailoverRowData,
+  RoutesTab,
+  ServerEditTab,
+  ServerRowData,
+  SettingsTab,
+  SidebarAlertState,
+  TableCellAlign,
+  TelegramBotSettingsForm,
+  TenantBrandSettingsForm,
+  Tone,
+  TrafficTotals,
+  TunnelRowData,
+  UsersTab,
+  WireGuardHealthCandidate,
+  WireGuardSetupDraft,
+} from './dashboard-types';
 
-type Tone = 'good' | 'neutral' | 'warning' | 'critical';
-type DataState = 'loading' | 'live' | 'stale' | 'fallback';
-type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-type ActiveView = 'dashboard' | 'servers' | 'users' | 'audit' | 'backups' | 'billing' | 'reports' | 'routes' | 'alerts' | 'settings';
-type AlertStatusFilter = 'open' | 'resolved';
-type AlertSeverityFilter = 'all' | Tone;
-type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
-type SettingsTab = 'route' | 'wireguard' | 'protocols' | 'branding' | 'telegram';
-type BillingTab = 'catalog' | 'customers' | 'panelImport' | 'telegram' | 'orders';
-type BackupsTab = 'monitor' | 'readiness' | 'restore';
-type RoutesTab = 'overview' | 'policy' | 'canary' | 'history';
-type UsersTab = 'adminUsers' | 'permissions';
-type AfroIcon = ComponentType<{ size?: number; className?: string }>;
 type AdminSessionHook = ReturnType<typeof useAdminSession>;
-
-interface DashboardTabItem<T extends string> {
-  id: T;
-  label: string;
-  meta?: string;
-  disabled?: boolean;
-}
-
-type TableCellAlign = 'left' | 'center' | 'right';
-
-interface DataTableColumn<Row> {
-  key: string;
-  header: string;
-  render: (row: Row) => ReactNode;
-  align?: TableCellAlign;
-  alignRight?: boolean;
-  className?: string;
-}
-
-interface MetricCardData {
-  label: string;
-  value: string;
-  tone: Tone;
-}
-
-interface TrafficTotals {
-  downloadBps: number | null;
-  uploadBps: number | null;
-}
-
-interface ServerRowData {
-  id: string;
-  externalId?: string;
-  name: string;
-  meta: string;
-  status?: string;
-  role?: string | null;
-  region?: string | null;
-  tags?: string[];
-  cpu: number | null;
-  ram: number | null;
-  diskFree: number | null;
-  storages: StorageVolumeMetric[];
-  networkInterfaces: NetworkInterfaceMetric[];
-  wireGuardInterfaces: WireGuardInterfaceMetric[];
-  routeProbes: RouteProbeMetric[];
-  inboundBps: number | null;
-  outboundBps: number | null;
-  pingMs: number | null;
-  jitterMs: number | null;
-  packetLossPercent: number | null;
-  score: number;
-  observedAt?: string;
-  accessProfile?: AdminServerSummary['accessProfile'];
-  outboundCount?: number;
-  openAlertCount?: number;
-  updatedAt?: string;
-  source?: 'admin' | 'metrics' | 'sample';
-}
-
-interface TunnelRowData {
-  id?: string;
-  name: string;
-  operator: string;
-  ping: number | null;
-  jitter: number | null;
-  loss: number | null;
-  score: number;
-  type?: string;
-  serverLabel?: string | null;
-  routeGroup?: string;
-  status?: string;
-  lockable?: boolean;
-  localInterfaceName?: string | null;
-  interfaceName?: string | null;
-  remoteEndpoint?: string | null;
-  updatedAt?: string;
-}
-
-interface OutboundRowData {
-  id: string;
-  name: string;
-  type: string;
-  priority: number;
-  statusText: string;
-  statusTone: Tone;
-  latencyMs: number | null;
-  mode: string;
-  usageMultiplier: number;
-  serverLabel?: string | null;
-}
-
-interface RouteFailoverRowData {
-  id: string;
-  title: string;
-  detail: string;
-  tone: Tone;
-  createdAt?: string;
-}
-
-interface AlertRowData {
-  id: string;
-  title: string;
-  source: string;
-  severity: Tone;
-  message?: string;
-  status?: string;
-  lastSeenAt?: string;
-  resolvedAt?: string | null;
-  isPlaceholder?: boolean;
-}
-
-interface WireGuardSetupDraft {
-  serverName: string;
-  interfaceName: string;
-  routeGroup: string;
-  addressCidr: string;
-  listenPort: string;
-  privateKey: string;
-  peerPublicKey: string;
-  endpoint: string;
-  allowedIps: string;
-  persistentKeepalive: string;
-  healthTarget: string;
-}
-
-type WireGuardHealthCandidate = Omit<AdminWireGuardCandidate, 'source'> & {
-  source: AdminWireGuardCandidate['source'] | 'sample';
-};
-
-interface ProtocolSetupDraft {
-  name: string;
-  protocol: ProtocolKind;
-  profile: ProtocolProfile;
-  port: string;
-  routeGroup: string;
-  targetServerId: string;
-}
-
-interface TelegramBotSettingsForm {
-  botToken: string;
-  webhookSecret: string;
-  alertChatId: string;
-  allowedAdminChatIds: string;
-  alertsEnabled: boolean;
-  commandsEnabled: boolean;
-}
-
-interface TenantBrandSettingsForm {
-  tenantSlug: string;
-  displayName: string;
-  legalName: string;
-  supportEmail: string;
-  supportTelegram: string;
-  supportUrl: string;
-  logoUrl: string;
-  dashboardTitle: string;
-  clientAppTitle: string;
-  primaryColor: string;
-  accentColor: string;
-  publicBrandingEnabled: boolean;
-  clientSupportMessage: string;
-}
-
-interface NavItemData {
-  id: ActiveView;
-  labelKey: ActiveView;
-  icon: AfroIcon;
-}
-
-interface SidebarAlertState {
-  tone: 'warning' | 'critical';
-  countLabel: string;
-}
-
 type DashboardFormatters = ReturnType<typeof createDashboardFormatters>;
 
 const refreshIntervalMs = 10_000;
