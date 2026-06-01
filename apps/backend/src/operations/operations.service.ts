@@ -77,6 +77,7 @@ import type {
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
+import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
@@ -7097,18 +7098,18 @@ export class OperationsService {
   ): AdminRouteDecisionApplyDryRunCommand[] {
     if (!candidate || candidate.source !== 'outbound') return [];
 
-    const interfaceName = this.safeWireGuardInterfaceName(candidate.interfaceName, candidate.id);
+    const interfaceName = safeWireGuardInterfaceName(candidate.interfaceName, candidate.id);
     const currentInterfaceName = currentCandidate?.source === 'outbound'
-      ? this.safeWireGuardInterfaceName(currentCandidate.interfaceName, currentCandidate.id)
+      ? safeWireGuardInterfaceName(currentCandidate.interfaceName, currentCandidate.id)
       : null;
-    const routeTable = this.safeRouteTableName(candidate.routeGroup);
-    const mark = this.routeMarkHex(candidate.routeGroup);
+    const routeTable = safeRouteTableName(candidate.routeGroup);
+    const mark = routeMarkHex(candidate.routeGroup);
 
     const commands: AdminRouteDecisionApplyDryRunCommand[] = [
       {
         id: 'precheck-interface',
         kind: 'precheck',
-        command: `ip link show dev ${this.shellToken(interfaceName)}`,
+        command: `ip link show dev ${shellToken(interfaceName)}`,
         requiresRoot: false,
         dataPlaneMutation: false,
         secretSafe: true,
@@ -7116,7 +7117,7 @@ export class OperationsService {
       {
         id: 'precheck-wireguard',
         kind: 'precheck',
-        command: `wg show ${this.shellToken(interfaceName)} latest-handshakes`,
+        command: `wg show ${shellToken(interfaceName)} latest-handshakes`,
         requiresRoot: false,
         dataPlaneMutation: false,
         secretSafe: true,
@@ -7124,7 +7125,7 @@ export class OperationsService {
       {
         id: 'precheck-current-table',
         kind: 'precheck',
-        command: `ip route show table ${this.shellToken(routeTable)}`,
+        command: `ip route show table ${shellToken(routeTable)}`,
         requiresRoot: false,
         dataPlaneMutation: false,
         secretSafe: true,
@@ -7140,7 +7141,7 @@ export class OperationsService {
       {
         id: 'switch-route-table',
         kind: 'switch',
-        command: `ip route replace default dev ${this.shellToken(interfaceName)} table ${this.shellToken(routeTable)}`,
+        command: `ip route replace default dev ${shellToken(interfaceName)} table ${shellToken(routeTable)}`,
         requiresRoot: true,
         dataPlaneMutation: true,
         secretSafe: true,
@@ -7148,7 +7149,7 @@ export class OperationsService {
       {
         id: 'switch-policy-rule',
         kind: 'switch',
-        command: `ip rule replace fwmark ${mark} table ${this.shellToken(routeTable)} priority 1060`,
+        command: `ip rule replace fwmark ${mark} table ${shellToken(routeTable)} priority 1060`,
         requiresRoot: true,
         dataPlaneMutation: true,
         secretSafe: true,
@@ -7167,7 +7168,7 @@ export class OperationsService {
       commands.push({
         id: 'rollback-previous-route',
         kind: 'rollback',
-        command: `ip route replace default dev ${this.shellToken(currentInterfaceName)} table ${this.shellToken(routeTable)}`,
+        command: `ip route replace default dev ${shellToken(currentInterfaceName)} table ${shellToken(routeTable)}`,
         requiresRoot: true,
         dataPlaneMutation: true,
         secretSafe: true,
@@ -7182,7 +7183,7 @@ export class OperationsService {
   ): AdminRouteDecisionApplyDryRunConfigChange[] {
     if (!candidate || candidate.source !== 'outbound') return [];
 
-    const routeTable = this.safeRouteTableName(candidate.routeGroup);
+    const routeTable = safeRouteTableName(candidate.routeGroup);
 
     return [
       {
@@ -7194,9 +7195,9 @@ export class OperationsService {
       },
       {
         id: 'afrogate-assignment-record',
-        filePath: `/etc/afrogate/routes/${this.safePathSegment(candidate.routeGroup)}/default.json`,
+        filePath: `/etc/afrogate/routes/${safePathSegment(candidate.routeGroup)}/default.json`,
         action: 'update',
-        description: `Record selected outbound ${candidate.id} and interface ${this.safeWireGuardInterfaceName(candidate.interfaceName, candidate.id)}`,
+        description: `Record selected outbound ${candidate.id} and interface ${safeWireGuardInterfaceName(candidate.interfaceName, candidate.id)}`,
         secretSafe: true,
       },
     ];
@@ -8014,33 +8015,6 @@ export class OperationsService {
     return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
   }
 
-  private safeWireGuardInterfaceName(value: string | null | undefined, id: string): string {
-    const normalized = value?.trim();
-    if (normalized && /^[a-zA-Z0-9_.:-]{1,32}$/.test(normalized)) return normalized;
-
-    return `wg-afro-${id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'route'}`;
-  }
-
-  private safeRouteTableName(routeGroup: string): string {
-    return `afrogate_${this.safePathSegment(routeGroup)}`;
-  }
-
-  private safePathSegment(value: string): string {
-    const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
-    return normalized || 'main';
-  }
-
-  private routeMarkHex(routeGroup: string): string {
-    let hash = 0;
-    for (const char of routeGroup) hash = (hash * 31 + char.charCodeAt(0)) & 0xffff;
-
-    return `0x${(0xa000 | hash).toString(16)}`;
-  }
-
-  private shellToken(value: string): string {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
-  }
-
   private assertSuperadmin(actor: AuthActor | undefined): void {
     if (actor?.role === 'superadmin' || actor?.isSuperAdmin) return;
 
@@ -8647,7 +8621,7 @@ export class OperationsService {
     const startedAt = new Date().toISOString();
     const unitName = this.safeProtocolUnitName(setup);
     const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
-    const stagedConfigPath = `/var/lib/afrogate/protocols/${this.safePathSegment(unitName)}.rendered`;
+    const stagedConfigPath = `/var/lib/afrogate/protocols/${safePathSegment(unitName)}.rendered`;
     const steps: ProtocolServerApplyExecutionCommandResult[] = [];
     let tempDir: string | null = null;
     let dataPlaneMutationExecuted = false;
@@ -8739,13 +8713,13 @@ export class OperationsService {
       const stageDirCommand = plan.commands.find((item) => item.id.endsWith(':config-stage-dir'));
       const stageDirResult = stageDirCommand
         ? await runCommand(stageDirCommand)
-        : await runInternalCommand('config-stage-dir', 'config', `mkdir -p ${this.shellToken(stageDir)}`, false);
+        : await runInternalCommand('config-stage-dir', 'config', `mkdir -p ${shellToken(stageDir)}`, false);
       if (stageDirResult.status === 'failed') return finish('failed');
 
       const targetDirCommand = plan.commands.find((item) => item.id.endsWith(':config-target-dir'));
       const targetDirResult = targetDirCommand
         ? await runCommand(targetDirCommand)
-        : await runInternalCommand('config-target-dir', 'config', `mkdir -p ${this.shellToken(configDir)}`, false);
+        : await runInternalCommand('config-target-dir', 'config', `mkdir -p ${shellToken(configDir)}`, false);
       if (targetDirResult.status === 'failed') return finish('failed');
 
       const uploadResult = await this.runProtocolServerApplyScp(
@@ -8764,7 +8738,7 @@ export class OperationsService {
       const existingConfig = await runInternalCommand(
         'config-existing',
         'config',
-        `test -f ${this.shellToken(configPath)}`,
+        `test -f ${shellToken(configPath)}`,
         false,
         10,
         { allowFailure: true },
@@ -8793,7 +8767,7 @@ export class OperationsService {
         : await runInternalCommand(
             'config-install',
             'config',
-            `install -m 600 ${this.shellToken(stagedConfigPath)} ${this.shellToken(configPath)}`,
+            `install -m 600 ${shellToken(stagedConfigPath)} ${shellToken(configPath)}`,
             true,
           );
       if (installResult.status === 'failed') return finish('failed');
@@ -9670,7 +9644,7 @@ export class OperationsService {
     unitName: string,
   ): AdminProtocolServerApplyPlanSummary['commands'] {
     const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
-    const stagedPath = `/var/lib/afrogate/protocols/${this.safePathSegment(unitName)}.rendered`;
+    const stagedPath = `/var/lib/afrogate/protocols/${safePathSegment(unitName)}.rendered`;
     const configDir = this.posixDirname(configPath);
     const command = (
       idSuffix: string,
@@ -9693,10 +9667,10 @@ export class OperationsService {
       command('preflight-systemctl', 'preflight', 'command -v systemctl', false, false),
     ];
     const configPrepare = [
-      command('config-stage-dir', 'config', `mkdir -p ${this.shellToken('/var/lib/afrogate/protocols')}`, true, false),
-      command('config-target-dir', 'config', `mkdir -p ${this.shellToken(configDir)}`, true, false),
-      command('config-backup', 'rollback', `cp ${this.shellToken(configPath)} ${this.shellToken(`${configPath}.afrogate.bak`)}`, true, true),
-      command('config-install', 'config', `install -m 600 ${this.shellToken(stagedPath)} ${this.shellToken(configPath)}`, true, true),
+      command('config-stage-dir', 'config', `mkdir -p ${shellToken('/var/lib/afrogate/protocols')}`, true, false),
+      command('config-target-dir', 'config', `mkdir -p ${shellToken(configDir)}`, true, false),
+      command('config-backup', 'rollback', `cp ${shellToken(configPath)} ${shellToken(`${configPath}.afrogate.bak`)}`, true, true),
+      command('config-install', 'config', `install -m 600 ${shellToken(stagedPath)} ${shellToken(configPath)}`, true, true),
     ];
 
     switch (setup.protocol) {
@@ -9706,11 +9680,11 @@ export class OperationsService {
           command('package-wireguard-wg', 'package', 'command -v wg', false, false),
           command('package-wireguard-wg-quick', 'package', 'command -v wg-quick', false, false),
           ...configPrepare,
-          command('config-wireguard-check', 'config', `wg-quick strip ${this.shellToken(configPath)}`, true, false),
-          command('service-wireguard-status', 'service', `systemctl status wg-quick@${this.shellToken(unitName)}`, false, false),
-          command('service-wireguard-reload', 'service', `systemctl reload-or-restart wg-quick@${this.shellToken(unitName)}`, true, true),
-          command('health-wireguard', 'health', `wg show ${this.shellToken(unitName)}`, true, false),
-          command('rollback-wireguard', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+          command('config-wireguard-check', 'config', `wg-quick strip ${shellToken(configPath)}`, true, false),
+          command('service-wireguard-status', 'service', `systemctl status wg-quick@${shellToken(unitName)}`, false, false),
+          command('service-wireguard-reload', 'service', `systemctl reload-or-restart wg-quick@${shellToken(unitName)}`, true, true),
+          command('health-wireguard', 'health', `wg show ${shellToken(unitName)}`, true, false),
+          command('rollback-wireguard', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       case 'vless':
         return [
@@ -9718,11 +9692,11 @@ export class OperationsService {
           command('package-vless-sing-box', 'package', 'command -v sing-box', false, false),
           command('package-vless-xray', 'package', 'command -v xray', false, false),
           ...configPrepare,
-          command('config-vless-check', 'config', `sing-box check -c ${this.shellToken(configPath)}`, true, false),
+          command('config-vless-check', 'config', `sing-box check -c ${shellToken(configPath)}`, true, false),
           command('service-vless-status', 'service', 'systemctl status sing-box', false, false),
           command('service-vless-reload', 'service', 'systemctl reload-or-restart sing-box', true, true),
-          command('health-vless', 'health', `test -S /run/afrogate/${this.safePathSegment(unitName)}.sock`, true, false),
-          command('rollback-vless', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+          command('health-vless', 'health', `test -S /run/afrogate/${safePathSegment(unitName)}.sock`, true, false),
+          command('rollback-vless', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       case 'l2tp':
         return [
@@ -9730,12 +9704,12 @@ export class OperationsService {
           command('package-l2tp-ipsec', 'package', 'command -v ipsec', false, false),
           command('package-l2tp-xl2tpd', 'package', 'command -v xl2tpd', false, false),
           ...configPrepare,
-          command('config-l2tp-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
+          command('config-l2tp-check', 'config', `test -f ${shellToken(configPath)}`, true, false),
           command('service-l2tp-status', 'service', 'systemctl status strongswan-starter xl2tpd', false, false),
           command('service-l2tp-reload', 'service', 'systemctl reload-or-restart strongswan-starter xl2tpd', true, true),
           command('health-l2tp-ipsec', 'health', 'ipsec status', true, false),
           command('health-l2tp-control', 'health', 'xl2tpd-control status', true, false),
-          command('rollback-l2tp', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+          command('rollback-l2tp', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       case 'ikev2':
         return [
@@ -9743,19 +9717,19 @@ export class OperationsService {
           command('package-ikev2-ipsec', 'package', 'command -v ipsec', false, false),
           command('package-ikev2-swanctl', 'package', 'command -v swanctl', false, false),
           ...configPrepare,
-          command('config-ikev2-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
+          command('config-ikev2-check', 'config', `test -f ${shellToken(configPath)}`, true, false),
           command('service-ikev2-status', 'service', 'systemctl status strongswan-starter', false, false),
           command('service-ikev2-reload', 'service', 'systemctl reload-or-restart strongswan-starter', true, true),
           command('health-ikev2-ipsec', 'health', 'ipsec statusall', true, false),
           command('health-ikev2-swanctl', 'health', 'swanctl --list-sas', true, false),
-          command('rollback-ikev2', 'rollback', `cp ${this.shellToken(`${configPath}.afrogate.bak`)} ${this.shellToken(configPath)}`, true, true),
+          command('rollback-ikev2', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       default:
         return [
           ...base,
           command('package-custom', 'package', 'test -d /etc/afrogate', false, false),
           ...configPrepare,
-          command('config-custom-check', 'config', `test -f ${this.shellToken(configPath)}`, true, false),
+          command('config-custom-check', 'config', `test -f ${shellToken(configPath)}`, true, false),
           command('health-custom', 'health', 'true', false, false),
         ];
     }
@@ -9766,7 +9740,7 @@ export class OperationsService {
     unitName: string,
   ): AdminProtocolServerApplyPlanSummary['configChanges'] {
     const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
-    const stagedPath = `/var/lib/afrogate/protocols/${this.safePathSegment(unitName)}.rendered`;
+    const stagedPath = `/var/lib/afrogate/protocols/${safePathSegment(unitName)}.rendered`;
 
     return [
       {
@@ -9797,7 +9771,7 @@ export class OperationsService {
   }
 
   private protocolServerApplyConfigPath(protocol: string, unitName: string): string {
-    const safeUnitName = this.safeConfigFileName(unitName);
+    const safeUnitName = safeConfigFileName(unitName);
 
     switch (protocol) {
       case 'wireguard':
@@ -9813,12 +9787,6 @@ export class OperationsService {
     }
   }
 
-  private safeConfigFileName(value: string): string {
-    const normalized = value.trim().replace(/[^a-zA-Z0-9_.:-]+/g, '-').replace(/^-+|-+$/g, '');
-
-    return normalized || 'main';
-  }
-
   private protocolRequiresServerSecret(protocol: string): boolean {
     return protocol === 'wireguard' || protocol === 'vless' || protocol === 'l2tp' || protocol === 'ikev2';
   }
@@ -9831,11 +9799,11 @@ export class OperationsService {
     const config = this.asRecord(setup.config);
 
     if (setup.protocol === 'wireguard') {
-      return this.safeWireGuardInterfaceName(this.stringFromConfig(config.interfaceName), setup.id);
+      return safeWireGuardInterfaceName(this.stringFromConfig(config.interfaceName), setup.id);
     }
 
     const suffix = setup.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'route';
-    const prefix = this.safePathSegment(`${setup.protocol}-${setup.name}`).slice(0, 36).replace(/-+$/g, '');
+    const prefix = safePathSegment(`${setup.protocol}-${setup.name}`).slice(0, 36).replace(/-+$/g, '');
 
     return `${prefix || setup.protocol}-${suffix}`;
   }
