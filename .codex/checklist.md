@@ -299,8 +299,8 @@ typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
 ### Automated test coverage (highest priority)
 
 - [x] Set up a backend test runner (done 2026-06-02: Node's built-in `node:test` with TS type-stripping, no new deps; `npm run test:backend`, wired into CI). Test files live in `apps/backend/test/`.
-- [~] Add backend unit/integration tests. First suite added (`bearer-token`, `rbac` — 25 tests). Still pending: billing, wallet, quota allocation, payment, and reseller-scoping service logic.
-- [~] Test auth: token parsing + timing-safe compare done (`bearer-token.test.ts`). Still pending: scrypt password hash/verify and session signature/expiry — these are private helpers inside the decorated `AuthService`; extract them into a non-decorated `security/password.ts` + `security/session-token.ts` to make them unit-testable.
+- [~] Add backend unit/integration tests. 41 tests across `bearer-token`, `rbac`, `password`, `session-token`. Still pending: billing, wallet, quota allocation, payment, and reseller-scoping service logic.
+- [x] Test auth crypto: token parsing + timing-safe compare (`bearer-token.test.ts`), scrypt password hash/verify (`password.test.ts`), and session-token sign/parse/tamper-rejection (`session-token.test.ts`). Done 2026-06-02 by extracting the previously-private `AuthService` crypto into non-decorated `security/password.ts` + `security/session-token.ts`. Still pending: full `login()`/session-expiry path through `AuthService` (needs DI mocks) and default-credential rejection.
 - [x] Test RBAC: role × permission matrix covered (`rbac.test.ts`) for superadmin/owner wildcard, admin (no `adminUsers:write`), supervisor/support/auditor read scopes, reseller own-scope, and `getEffectiveRolePermissions`. (Still want a route-level guard regression test — see below.)
 - [ ] Test reseller own-scope enforcement (`ensureCustomerAccountBelongsToReseller`, `ensureClientConfigBelongsToReseller`) against cross-tenant IDOR attempts.
 - [ ] Test client-token scoping: a client token can only read/modify its own config/quota.

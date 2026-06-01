@@ -25,21 +25,25 @@ import {
   roleHasPermission,
   roleInheritsAllPermissions,
 } from '@afrogate/shared';
-import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import type { AuthActor } from '../security/auth-request';
 import { secureTokenEquals } from '../security/bearer-token';
+import { hashPassword, verifyScryptPassword } from '../security/password';
+import {
+  SESSION_VERSION,
+  constantTimeStringEquals,
+  parseSessionPayload,
+  signPayload,
+  type AdminSessionPayload,
+} from '../security/session-token';
 
 const DEFAULT_ADMIN_TOKEN = 'change-me-admin-token';
 const DEFAULT_SESSION_SECRET = 'change-me-long-random-secret';
 const DEFAULT_SUPERADMIN_PASSWORD = 'change-me-superadmin-password';
-const SESSION_VERSION = 1;
-const SCRYPT_N = 16384;
-const SCRYPT_R = 8;
-const SCRYPT_P = 1;
 
 const SUPPORTED_ADMIN_ROLES = new Set<Role>(['superadmin', 'owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller']);
 const NON_SUPERADMIN_ROLES = new Set<Role>(['owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller']);
@@ -87,16 +91,6 @@ interface AdminUserRow {
   lastLoginAt: Date | string | null;
 }
 
-interface AdminSessionPayload {
-  v: number;
-  sub: string;
-  username: string;
-  role: Role;
-  type: 'admin';
-  isSuperAdmin?: boolean;
-  iat: number;
-  exp: number;
-}
 
 @Injectable()
 export class AuthService {
@@ -895,77 +889,6 @@ function serializeDatabaseTimestamp(value: Date | string): string {
   return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
 }
 
-function signPayload(encodedPayload: string, secret: string): string {
-  return createHmac('sha256', secret).update(encodedPayload).digest('base64url');
-}
-
-function hashPassword(passwordInput: string): string {
-  const salt = randomBytes(16);
-  const hash = scryptSync(passwordInput, salt, 32, {
-    N: SCRYPT_N,
-    r: SCRYPT_R,
-    p: SCRYPT_P,
-    maxmem: 64 * 1024 * 1024,
-  });
-
-  return `scrypt$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
-}
-
-function constantTimeStringEquals(actual: string, expected: string): boolean {
-  const actualBuffer = Buffer.from(actual);
-  const expectedBuffer = Buffer.from(expected);
-
-  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
-}
-
-function parseSessionPayload(encodedPayload: string): AdminSessionPayload | null {
-  try {
-    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as Partial<AdminSessionPayload>;
-
-    if (
-      typeof payload.v !== 'number'
-      || typeof payload.sub !== 'string'
-      || typeof payload.username !== 'string'
-      || typeof payload.role !== 'string'
-      || payload.type !== 'admin'
-      || typeof payload.iat !== 'number'
-      || typeof payload.exp !== 'number'
-    ) {
-      return null;
-    }
-
-    return payload as AdminSessionPayload;
-  } catch {
-    return null;
-  }
-}
-
-function verifyScryptPassword(passwordInput: string, storedHash: string): boolean {
-  const parts = storedHash.split('$');
-  if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
-
-  const [, nValue, rValue, pValue, saltValue, hashValue] = parts;
-  const N = Number(nValue);
-  const r = Number(rValue);
-  const p = Number(pValue);
-
-  if (!Number.isInteger(N) || !Number.isInteger(r) || !Number.isInteger(p)) return false;
-
-  try {
-    const salt = Buffer.from(saltValue, 'base64url');
-    const expectedHash = Buffer.from(hashValue, 'base64url');
-    const actualHash = scryptSync(passwordInput, salt, expectedHash.length, {
-      N,
-      r,
-      p,
-      maxmem: 64 * 1024 * 1024,
-    });
-
-    return expectedHash.length === actualHash.length && timingSafeEqual(actualHash, expectedHash);
-  } catch {
-    return false;
-  }
-}
 
 function isStoredAdminUser(value: unknown): value is StoredAdminUser {
   if (!value || typeof value !== 'object') return false;
