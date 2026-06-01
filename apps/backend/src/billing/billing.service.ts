@@ -64,6 +64,7 @@ import type {
 } from '@afrogate/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
+import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { hashClientToken } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -2036,8 +2037,8 @@ export class BillingService {
       const volumePackage = await this.getVolumePackageRowForUpdate(executor, dto.volumePackageId);
       if (volumePackage.status !== 'active') throw new BadRequestException('Volume package is not active');
 
-      if (customerAccountId) await this.ensureCustomerAccountBelongsToReseller(executor, customerAccountId, resellerAccountId);
-      if (clientConfigId) await this.ensureClientConfigBelongsToReseller(executor, clientConfigId, resellerAccountId, customerAccountId);
+      if (customerAccountId) await ensureCustomerAccountBelongsToReseller(executor, customerAccountId, resellerAccountId);
+      if (clientConfigId) await ensureClientConfigBelongsToReseller(executor, clientConfigId, resellerAccountId, customerAccountId);
 
       const quote = this.calculateResellerPackageQuote(reseller, volumePackage);
       if (volumePackage.currency !== reseller.currency) {
@@ -2299,7 +2300,7 @@ export class BillingService {
     actor: AuthActor | undefined,
   ): Promise<AdminCustomerAccountDetail> {
     const reseller = await this.getResellerAccountRowForActor(actor);
-    await this.ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
+    await ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
     this.assertResellerCustomerPayload(dto);
 
     return this.updateCustomerAccount(id, {
@@ -4650,56 +4651,13 @@ export class BillingService {
     return result.rows[0];
   }
 
-  private async ensureCustomerAccountBelongsToReseller(
-    executor: DatabaseQueryExecutor,
-    customerAccountId: string,
-    resellerAccountId: string,
-  ): Promise<void> {
-    const result = await executor.query<{ resellerAccountId: string | null }>(
-      'SELECT reseller_account_id AS "resellerAccountId" FROM customer_accounts WHERE id = $1 FOR SHARE',
-      [customerAccountId],
-    );
-    const row = result.rows[0];
-    if (!row) throw new NotFoundException('Customer account not found');
-    if (row.resellerAccountId !== resellerAccountId) {
-      throw new BadRequestException('Customer account does not belong to this reseller');
-    }
-  }
-
-  private async ensureClientConfigBelongsToReseller(
-    executor: DatabaseQueryExecutor,
-    clientConfigId: string,
-    resellerAccountId: string,
-    customerAccountId: string | null,
-  ): Promise<void> {
-    const result = await executor.query<{ customerAccountId: string; resellerAccountId: string | null }>(
-      `
-        SELECT
-          cc.customer_account_id AS "customerAccountId",
-          ca.reseller_account_id AS "resellerAccountId"
-        FROM client_configs cc
-        JOIN customer_accounts ca ON ca.id = cc.customer_account_id
-        WHERE cc.id = $1
-        FOR SHARE OF cc, ca
-      `,
-      [clientConfigId],
-    );
-    const row = result.rows[0];
-    if (!row) throw new NotFoundException('Client config not found');
-    if (customerAccountId && row.customerAccountId !== customerAccountId) {
-      throw new BadRequestException('Client config does not belong to the selected customer account');
-    }
-    if (row.resellerAccountId !== resellerAccountId) {
-      throw new BadRequestException('Client config does not belong to this reseller');
-    }
-  }
 
   private async prepareExistingResellerSaleCustomer(
     executor: DatabaseQueryExecutor,
     customerAccountId: string,
     resellerAccountId: string,
   ): Promise<string> {
-    await this.ensureCustomerAccountBelongsToReseller(executor, customerAccountId, resellerAccountId);
+    await ensureCustomerAccountBelongsToReseller(executor, customerAccountId, resellerAccountId);
     return customerAccountId;
   }
 
