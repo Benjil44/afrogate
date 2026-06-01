@@ -326,8 +326,8 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 - [x] SQL injection: `static-injection-guards.test.ts` asserts parameterized SQL only — no value interpolation on placeholder lines (allows index builders + no-arg `*Sql()` fragment builders) and no string-concatenated SQL in backend services.
 - [ ] **Command injection (highest severity):** dedicated audit + tests of the protocol-apply shell/SSH command builder (`shellToken`, `safePathSegment`, `safeUnitName`, `configPath`, `port`); prove the allowlist + escaping reject metacharacters/path traversal, and keep it disabled-by-default behind feature flags + superadmin.
 - [ ] SSRF: review the shared outbound HTTP client (Telegram/PayPal/rewarded-ad webhooks, health probes) for user-controllable URLs; restrict to expected hosts/schemes and keep egress on the proxy path.
-- [ ] Auth/JWT tampering: tests that a forged/expired/alg-swapped session token and a tampered client/agent token are all rejected.
-- [ ] Webhook forgery: tests that PayPal, rewarded-ad, and Telegram webhooks reject bad/missing signatures and replayed timestamps.
+- [~] Auth/JWT tampering: covered session-token forgery/tamper (cannot re-sign without the secret) and payload validation (`session-token.test.ts`) plus client-token scope enforcement (`client-token.test.ts`). The session model uses a fixed HMAC scheme (no `alg` field, so alg-swap is N/A); expiry check + agent-token rejection live in the decorated AuthService/guards and remain to cover via a guard-level harness.
+- [~] Webhook forgery: rewarded-ad webhook fully covered (`rewarded-ad-webhook.crypto.test.ts`) — HMAC signature match, payload-tamper and wrong-secret rejection, replayed/stale-timestamp rejection, and canonical-JSON key-order independence. PayPal (external `verifyWebhook` adapter) and Telegram (secret-token header) verification remain.
 - [ ] Rate-limit/DoS: tests that login, webhook, and client endpoints enforce limits; verify request body size caps (Nginx `client_max_body_size` + backend payload limits).
 - [ ] Add an SAST/dependency step (e.g. CodeQL or `semgrep`) to CI alongside the existing secret scan + `npm audit`.
 
