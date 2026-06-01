@@ -11,6 +11,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "pretypecheck": "npm --workspace @afrogate/shared run build",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm --workspace @afrogate/shared run build",
+    "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \"test/**/*.test.ts\"",
     "lint": "echo \"backend lint not configured yet\""
   },
   "dependencies": {

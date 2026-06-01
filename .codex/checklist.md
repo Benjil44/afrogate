@@ -298,9 +298,10 @@ typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
 
 ### Automated test coverage (highest priority)
 
-- [ ] Add backend unit/integration tests. There are currently **0** backend `*.spec.ts` files; all auth, RBAC, billing, wallet, quota allocation, payment, and reseller-scoping logic (~19k lines of services) is only exercised by mocked UI smoke tests.
-- [ ] Test auth: timing-safe password/token compare, session signature/expiry verification, default-credential rejection, legacy-token fallback.
-- [ ] Test RBAC: every role × permission combination, and confirm a route missing `@Roles`/`@Permissions` still cannot be reached by low-privilege roles.
+- [x] Set up a backend test runner (done 2026-06-02: Node's built-in `node:test` with TS type-stripping, no new deps; `npm run test:backend`, wired into CI). Test files live in `apps/backend/test/`.
+- [~] Add backend unit/integration tests. First suite added (`bearer-token`, `rbac` — 25 tests). Still pending: billing, wallet, quota allocation, payment, and reseller-scoping service logic.
+- [~] Test auth: token parsing + timing-safe compare done (`bearer-token.test.ts`). Still pending: scrypt password hash/verify and session signature/expiry — these are private helpers inside the decorated `AuthService`; extract them into a non-decorated `security/password.ts` + `security/session-token.ts` to make them unit-testable.
+- [x] Test RBAC: role × permission matrix covered (`rbac.test.ts`) for superadmin/owner wildcard, admin (no `adminUsers:write`), supervisor/support/auditor read scopes, reseller own-scope, and `getEffectiveRolePermissions`. (Still want a route-level guard regression test — see below.)
 - [ ] Test reseller own-scope enforcement (`ensureCustomerAccountBelongsToReseller`, `ensureClientConfigBelongsToReseller`) against cross-tenant IDOR attempts.
 - [ ] Test client-token scoping: a client token can only read/modify its own config/quota.
 - [ ] Test wallet/quota math: top-up, package debit, allocation idempotency, no double-credit, no negative balances.

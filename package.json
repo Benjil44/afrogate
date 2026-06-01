@@ -21,6 +21,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "contrast:check": "node scripts/check-dashboard-contrast.mjs",
     "secrets:check": "node scripts/check-secrets.mjs",
+    "test:backend": "npm --workspace @afrogate/backend run test",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "version:patch": "node scripts/bump-version.mjs patch",
