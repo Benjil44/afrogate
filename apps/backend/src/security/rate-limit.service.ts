@@ -1,19 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { RateLimitOptions } from './rate-limit.decorator';
+import {
+  compactRateLimitEntries,
+  consumeRateLimit,
+  type RateLimitDecision,
+  type RateLimitEntry,
+} from './rate-limit-window';
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-export interface RateLimitDecision {
-  allowed: boolean;
-  limit: number;
-  remaining: number;
-  resetAt: number;
-  retryAfterSeconds: number;
-}
+export type { RateLimitDecision } from './rate-limit-window';
 
 @Injectable()
 export class RateLimitService {
@@ -31,42 +26,9 @@ export class RateLimitService {
 
   consume(key: string, options: RateLimitOptions): RateLimitDecision {
     const now = Date.now();
-    const current = this.entries.get(key);
-    const entry =
-      current && current.resetAt > now
-        ? current
-        : {
-            count: 0,
-            resetAt: now + options.windowMs,
-          };
-
-    entry.count += 1;
-    this.entries.set(key, entry);
-    this.compact(now);
-
-    const remaining = Math.max(options.max - entry.count, 0);
-    return {
-      allowed: entry.count <= options.max,
-      limit: options.max,
-      remaining,
-      resetAt: entry.resetAt,
-      retryAfterSeconds: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)),
-    };
-  }
-
-  private compact(now: number): void {
-    if (this.entries.size <= this.maxKeys()) return;
-
-    for (const [key, entry] of this.entries) {
-      if (entry.resetAt <= now) this.entries.delete(key);
-    }
-
-    const maxKeys = this.maxKeys();
-    while (this.entries.size > maxKeys) {
-      const oldestKey = this.entries.keys().next().value as string | undefined;
-      if (!oldestKey) break;
-      this.entries.delete(oldestKey);
-    }
+    const decision = consumeRateLimit(this.entries, key, options, now);
+    compactRateLimitEntries(this.entries, now, this.maxKeys());
+    return decision;
   }
 
   private maxKeys(): number {

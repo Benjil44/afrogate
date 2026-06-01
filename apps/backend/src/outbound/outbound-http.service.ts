@@ -4,6 +4,7 @@ import * as http from 'node:http';
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http';
 import * as https from 'node:https';
 import * as tls from 'node:tls';
+import { assertAllowedOutboundUrl } from './outbound-url-policy';
 
 export type OutboundHttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -54,10 +55,7 @@ export class OutboundHttpService {
   }
 
   async request(url: string, options: OutboundHttpRequestOptions = {}): Promise<OutboundHttpResponse> {
-    const target = new URL(url);
-    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
-      throw new Error('Outbound HTTP target must use http or https');
-    }
+    const target = assertAllowedOutboundUrl(url);
 
     const request = this.normalizeRequest(options);
     const proxyUrl = this.getProxyUrl();
