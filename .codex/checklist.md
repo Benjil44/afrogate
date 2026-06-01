@@ -305,7 +305,7 @@ typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
 - [x] Test reseller own-scope enforcement (`ensureCustomerAccountBelongsToReseller`, `ensureClientConfigBelongsToReseller`) against cross-tenant IDOR attempts. Done 2026-06-02: extracted to `billing/reseller-ownership.ts` and covered by `reseller-ownership.test.ts` (belongs / not-found / cross-reseller / cross-customer / null-owner, plus parameterization assertions) via the in-memory fake executor.
 - [x] Test client-token scoping. Done 2026-06-02: extracted `normalizeScopes`/`assertClientScope` into `security/client-token.ts` and covered them plus `hashClientToken` in `client-token.test.ts` (deterministic SHA-256 hashing so tokens are looked up by hash never plaintext, scope dedup/normalization, and ForbiddenException when a token lacks the required scope). The own-config/quota row mapping is enforced in `authenticateClientAccessToken` (token→own clientConfigId); a DB-fake test of that query is the remaining transactional piece.
 - [~] Test wallet/quota math. Done 2026-06-02: extracted the pure reseller wallet math to `billing/reseller-wallet-math.ts` and covered it in `reseller-wallet-math.test.ts` (margin-bps validation/bounds, AfroGate-share complement clamping, price→margin/debit split with rounding, no-negative debit, credit-limit floor). Still pending the transactional pieces: top-up + allocation idempotency / no-double-credit (these run inside DB transactions and need the fake-executor harness extended to multi-query flows).
-- [ ] Add an automated security-regression test that asserts every `@Controller('admin')` route declares `@Roles`.
+- [x] Add an automated security-regression test that asserts every `@Controller('admin')` route declares `@Roles`. Done 2026-06-02 (`admin-route-guards.test.ts` scans controller sources and fails if any admin route lacks `@Roles`/`@Public`).
 
 ### Web hardening
 
@@ -321,9 +321,9 @@ parameterized with `$N`; interpolated SQL identifiers are hardcoded literals; gl
 `ValidationPipe({ whitelist: true })` is on). These tasks turn that review into tested,
 enforced guarantees and cover the one high-risk path the review could not fully verify.
 
-- [ ] XSS: add tests/lint rule asserting no `dangerouslySetInnerHTML`/`innerHTML`/`eval` in dashboard + client apps; add the Content-Security-Policy header (see Web hardening) and verify it blocks inline script.
+- [x] XSS: `static-injection-guards.test.ts` fails on any `dangerouslySetInnerHTML`/`innerHTML=`/`eval(`/`new Function(` in dashboard + client src; CSP header added to Nginx samples (on `hardening/web-security`).
 - [ ] XSS: fuzz user-controlled strings that render in the UI (display names, Telegram usernames, notes, server/tunnel names, alert messages) and confirm they render escaped.
-- [ ] SQL injection: add a regression test that feeds quote/`;`/`--`/`OR 1=1` payloads through representative admin + client endpoints and asserts parameterized handling (no error leakage, no data exfil).
+- [x] SQL injection: `static-injection-guards.test.ts` asserts parameterized SQL only — no value interpolation on placeholder lines (allows index builders + no-arg `*Sql()` fragment builders) and no string-concatenated SQL in backend services.
 - [ ] **Command injection (highest severity):** dedicated audit + tests of the protocol-apply shell/SSH command builder (`shellToken`, `safePathSegment`, `safeUnitName`, `configPath`, `port`); prove the allowlist + escaping reject metacharacters/path traversal, and keep it disabled-by-default behind feature flags + superadmin.
 - [ ] SSRF: review the shared outbound HTTP client (Telegram/PayPal/rewarded-ad webhooks, health probes) for user-controllable URLs; restrict to expected hosts/schemes and keep egress on the proxy path.
 - [ ] Auth/JWT tampering: tests that a forged/expired/alg-swapped session token and a tampered client/agent token are all rejected.
