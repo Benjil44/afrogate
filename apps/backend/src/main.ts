@@ -9,12 +9,33 @@ async function bootstrap() {
   const host = process.env.HOST ?? '127.0.0.1';
 
   app.setGlobalPrefix('api');
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN
-      ?.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean) ?? true,
+
+  // App-layer security headers — defense in depth if the API is ever exposed
+  // without the hardened Nginx layer. The API only returns JSON, so a strict
+  // CSP plus framing/sniffing protections are safe here.
+  app.use((_req: unknown, res: { setHeader: (name: string, value: string) => void }, next: () => void) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    next();
   });
+
+  // Fail closed: never reflect arbitrary origins. With no explicit allowlist we
+  // disable cross-origin requests (same-origin only, e.g. behind Nginx in prod).
+  const corsOrigins = process.env.CORS_ORIGIN
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (!corsOrigins || corsOrigins.length === 0) {
+    console.warn('CORS_ORIGIN is not set; cross-origin requests are disabled (same-origin only). Set CORS_ORIGIN for local dev.');
+  }
+  app.enableCors({
+    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : false,
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

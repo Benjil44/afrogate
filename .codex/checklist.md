@@ -309,10 +309,10 @@ typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
 
 ### Web hardening
 
-- [ ] Add a Content-Security-Policy header to the Nginx samples (currently missing; HSTS/nosniff/X-Frame-Options/Referrer-Policy/Permissions-Policy are present).
-- [ ] Make backend CORS fail-closed: `main.ts` falls back to `origin: true` (reflect any origin) when `CORS_ORIGIN` is unset; require an explicit allowlist in production.
-- [ ] Consider app-layer security headers (helmet) as defense-in-depth in case the app is ever exposed without Nginx.
-- [ ] Confirm `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS=true` is set in production so per-IP rate limits use the real client IP behind Nginx.
+- [x] Add a Content-Security-Policy header to the Nginx samples (done on `hardening/web-security`: CSP added to `infra/ubuntu/nginx.conf.sample` and `infra/docker/nginx.conf.sample`).
+- [x] Make backend CORS fail-closed: `main.ts` uses the explicit `CORS_ORIGIN` allowlist and falls back to `origin: false` (same-origin only) with a warning when unset.
+- [x] Added app-layer security headers in `main.ts` (no new dependency): nosniff, X-Frame-Options DENY, Referrer-Policy, Cross-Origin-Resource-Policy, X-Permitted-Cross-Domain-Policies, and a strict `default-src none` CSP for the JSON API — defense in depth if exposed without Nginx.
+- [x] Documented `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS` production guidance in `.env.example` (set true behind Nginx so per-IP limits use the real client IP).
 
 ### Injection & input-security testing (to implement after the dashboard split)
 
@@ -329,7 +329,7 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 - [~] Auth/JWT tampering: covered session-token forgery/tamper (cannot re-sign without the secret) and payload validation (`session-token.test.ts`) plus client-token scope enforcement (`client-token.test.ts`). The session model uses a fixed HMAC scheme (no `alg` field, so alg-swap is N/A); expiry check + agent-token rejection live in the decorated AuthService/guards and remain to cover via a guard-level harness.
 - [~] Webhook forgery: rewarded-ad webhook fully covered (`rewarded-ad-webhook.crypto.test.ts`) — HMAC signature match, payload-tamper and wrong-secret rejection, replayed/stale-timestamp rejection, and canonical-JSON key-order independence. PayPal (external `verifyWebhook` adapter) and Telegram (secret-token header) verification remain.
 - [ ] Rate-limit/DoS: tests that login, webhook, and client endpoints enforce limits; verify request body size caps (Nginx `client_max_body_size` + backend payload limits).
-- [ ] Add an SAST/dependency step (e.g. CodeQL or `semgrep`) to CI alongside the existing secret scan + `npm audit`.
+- [x] Added CodeQL SAST workflow (`.github/workflows/codeql.yml`, `security-extended` queries) alongside the existing secret scan + `npm audit`.
 
 ### Code structure / maintainability (UI/UX)
 
