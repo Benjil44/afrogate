@@ -9,11 +9,17 @@ async function bootstrap() {
   const host = process.env.HOST ?? '127.0.0.1';
 
   app.setGlobalPrefix('api');
+  const corsOrigins = process.env.CORS_ORIGIN
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (!corsOrigins || corsOrigins.length === 0) {
+    // Fail closed: never reflect arbitrary origins. With no explicit allowlist we
+    // disable cross-origin requests (same-origin only, e.g. behind Nginx in prod).
+    console.warn('CORS_ORIGIN is not set; cross-origin requests are disabled (same-origin only). Set CORS_ORIGIN for local dev.');
+  }
   app.enableCors({
-    origin: process.env.CORS_ORIGIN
-      ?.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean) ?? true,
+    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : false,
   });
   app.useGlobalPipes(
     new ValidationPipe({

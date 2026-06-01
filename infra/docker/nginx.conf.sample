@@ -20,6 +20,9 @@ server {
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy no-referrer always;
     add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+    # Content-Security-Policy: static SPA talking only to same-origin /api.
+    # 'unsafe-inline' style is required by current inline-style usage; review before tightening.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
 
     location = /api/auth/login {
         limit_req zone=afrogate_login burst=5 nodelay;

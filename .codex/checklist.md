@@ -308,8 +308,8 @@ typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
 
 ### Web hardening
 
-- [ ] Add a Content-Security-Policy header to the Nginx samples (currently missing; HSTS/nosniff/X-Frame-Options/Referrer-Policy/Permissions-Policy are present).
-- [ ] Make backend CORS fail-closed: `main.ts` falls back to `origin: true` (reflect any origin) when `CORS_ORIGIN` is unset; require an explicit allowlist in production.
+- [x] Add a Content-Security-Policy header to the Nginx samples (done 2026-06-02: added `Content-Security-Policy` to `infra/ubuntu/nginx.conf.sample` and `infra/docker/nginx.conf.sample`; `style-src` keeps `'unsafe-inline'` for current inline styles, review before tightening).
+- [x] Make backend CORS fail-closed: `main.ts` now uses the explicit `CORS_ORIGIN` allowlist and falls back to `origin: false` (same-origin only) with a warning when unset, instead of reflecting any origin.
 - [ ] Consider app-layer security headers (helmet) as defense-in-depth in case the app is ever exposed without Nginx.
 - [ ] Confirm `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS=true` is set in production so per-IP rate limits use the real client IP behind Nginx.
 
