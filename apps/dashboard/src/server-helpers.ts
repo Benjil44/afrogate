@@ -1,4 +1,4 @@
-import type { RouteProbeMetric, WireGuardInterfaceMetric } from '@afrogate/shared';
+import type { RouteProbeMetric, ServerAccessMethod, ServerBootstrapState, ServerCredentialKind, WireGuardInterfaceMetric } from '@afrogate/shared';
 import type { Tone } from './dashboard-types';
 import type { DashboardFormatters } from './formatters';
 import type { DashboardStrings } from './i18n';
@@ -112,4 +112,25 @@ export function formatWireGuardHandshake(
   return typeof item.latestHandshakeAgeSeconds === 'number'
     ? t.serverEdit.values.latestHandshakeAge(format.durationSeconds(item.latestHandshakeAgeSeconds))
     : t.serverEdit.values.noHandshake;
+}
+
+export function isServerAccessMethod(value: unknown): value is ServerAccessMethod {
+  return value === 'ssh_key' ||
+    value === 'temporary_root_password' ||
+    value === 'temporary_root_key' ||
+    value === 'existing_admin_key';
+}
+
+export function isServerBootstrapState(value: unknown): value is ServerBootstrapState {
+  return value === 'not_started' ||
+    value === 'pending' ||
+    value === 'installed' ||
+    value === 'failed' ||
+    value === 'revoked';
+}
+
+export function isServerCredentialKind(value: unknown): value is ServerCredentialKind {
+  return value === 'ssh_private_key' ||
+    value === 'ssh_password' ||
+    value === 'api_token';
 }
