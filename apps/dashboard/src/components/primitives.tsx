@@ -12,7 +12,7 @@ import type {
 } from '../dashboard-types';
 import { clamp, type DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
-import { mutedTextClass } from '../ui-classes';
+import { mutedTextClass, panelClass } from '../ui-classes';
 
 export function primitiveTooltip(value: ReactNode): string | undefined {
   if (typeof value === 'string' || typeof value === 'number') return String(value);
@@ -354,5 +354,16 @@ export function TableCell({ align, alignRight = false, children }: { align?: Tab
     <td className={`border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`} title={tooltip}>
       {children}
     </td>
+  );
+}
+
+export function BackupMetricCard({ label, tone, value }: { label: string; tone: Tone; value: string }) {
+  return (
+    <div className={panelClass}>
+      <span className={mutedTextClass}>{label}</span>
+      <strong className={`mt-1 block truncate text-[18px] leading-tight ${tone === 'critical' ? 'text-[#b91c1c]' : tone === 'warning' ? 'text-[#9a5b00]' : 'text-afro-ink'}`} title={value}>
+        {value}
+      </strong>
+    </div>
   );
 }
