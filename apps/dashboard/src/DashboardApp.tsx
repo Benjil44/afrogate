@@ -132,7 +132,7 @@ import {
   X,
 } from 'lucide-react';
 import rootPackage from '../../../package.json';
-import { useAdminSession } from './auth';
+import { useAdminSession, type AdminSessionHook } from './auth';
 import {
   createAdminCustomerAccount,
   createAdminResellerPackageSale,
@@ -207,6 +207,7 @@ import { ServersPage } from './pages/ServersPage';
 import { RoutesPage } from './pages/RoutesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BillingPage, ResellerDashboardPage, ResellerUsersPage } from './pages/BillingReseller';
+import { AdminLoginPage } from './pages/AdminLoginPage';
 import { canViewAdminUsers, canViewAuditLogs, canViewBackupStatus, canViewReports } from './session-access';
 import { EChart, type AfroChartOption } from './components/EChart';
 import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } from './i18n';
@@ -452,6 +453,7 @@ import {
   RouteIntelligencePanel,
 } from './components/route-decision';
 import { KioskToggleButton, LanguageButton, Sidebar } from './components/Sidebar';
+import { SystemResourceHeader } from './components/SystemResourceHeader';
 import { appVersion, resellerNavViews } from './app-config';
 import { SettingsInput, SettingsSelect } from './components/settings-form';
 import {
@@ -480,7 +482,6 @@ import {
   wireGuardTone,
 } from './server-helpers';
 
-type AdminSessionHook = ReturnType<typeof useAdminSession>;
 
 const refreshIntervalMs = 10_000;
 
@@ -1077,219 +1078,7 @@ function AuthenticatedDashboard({
   );
 }
 
-function AdminLoginPage({
-  auth,
-  format,
-  isRtl,
-  language,
-  nextLanguage,
-  onLanguageChange,
-  t,
-}: {
-  auth: AdminSessionHook;
-  format: DashboardFormatters;
-  isRtl: boolean;
-  language: DashboardLanguage;
-  nextLanguage: DashboardLanguage;
-  onLanguageChange: (language: DashboardLanguage) => void;
-  t: DashboardStrings;
-}) {
-  const [username, setUsername] = useState('superadmin');
-  const [password, setPassword] = useState('');
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const isChecking = auth.status === 'checking';
-  const errorMessage = auth.errorCode ? t.auth.errors[auth.errorCode] : null;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    void auth.signIn({ username, password });
-  };
-
-  return (
-    <main
-      className="grid min-h-screen place-items-center overflow-x-hidden bg-afro-page px-4 py-6 text-afro-ink"
-      dir={isRtl ? 'rtl' : 'ltr'}
-      lang={language}
-    >
-      <section className="w-full max-w-[420px] rounded-md border border-afro-line bg-afro-panel p-4 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="mb-1 text-[11px] font-bold uppercase text-afro-teal">{t.auth.eyebrow}</p>
-            <h1 className="text-[22px] leading-tight font-bold">{t.auth.title}</h1>
-          </div>
-          <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} variant="light" />
-        </div>
-
-        <form className="mt-4 grid gap-3" onSubmit={handleSubmit}>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{t.auth.username}</span>
-            <span className="relative">
-              <UserRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-afro-muted" size={16} />
-              <input
-                autoComplete="username"
-                className="min-h-11 w-full rounded-md border border-afro-line bg-white px-10 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
-                dir="ltr"
-                disabled={isChecking}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder={t.auth.usernamePlaceholder}
-                required
-                type="text"
-                value={username}
-              />
-            </span>
-          </label>
-
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{t.auth.password}</span>
-            <span className="relative">
-              <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-afro-muted" size={16} />
-              <input
-                autoComplete="current-password"
-                autoFocus
-                className="min-h-11 w-full rounded-md border border-afro-line bg-white px-10 text-sm font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
-                dir="ltr"
-                disabled={isChecking}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder={t.auth.passwordPlaceholder}
-                required
-                type={isPasswordVisible ? 'text' : 'password'}
-                value={password}
-              />
-              <button
-                aria-label={isPasswordVisible ? t.auth.hidePassword : t.auth.showPassword}
-                className="absolute right-2 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-afro-muted hover:bg-[#f4f7f8] hover:text-afro-ink disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={isChecking}
-                onClick={() => setIsPasswordVisible((current) => !current)}
-                title={isPasswordVisible ? t.auth.hidePassword : t.auth.showPassword}
-                type="button"
-              >
-                {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </span>
-          </label>
-
-          {errorMessage ? (
-            <div className="rounded-md border border-[#f0b7b7] bg-[#fff1f1] px-3 py-2 text-[13px] font-bold text-[#b91c1c]">
-              {errorMessage}
-            </div>
-          ) : null}
-
-          <button
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-70"
-            disabled={isChecking}
-            type="submit"
-          >
-            <LogIn size={17} />
-            {isChecking ? t.auth.signingIn : t.auth.signIn}
-          </button>
-        </form>
-
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-afro-line pt-3 text-[12px] text-afro-muted">
-          <span>{isChecking ? t.auth.checking : t.auth.mfaReady}</span>
-          <span className="font-bold text-afro-ink">v{appVersion}</span>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function SystemResourceHeader({
-  format,
-  servers,
-  t,
-  trafficTotals,
-}: {
-  format: DashboardFormatters;
-  servers: ServerRowData[];
-  t: DashboardStrings;
-  trafficTotals: TrafficTotals;
-}) {
-  const cpuAverage = averagePercent(servers.map((server) => server.cpu));
-  const ramAverage = averagePercent(servers.map((server) => server.ram));
-  const storages = servers.flatMap((server) =>
-    server.storages.map((storage) => ({
-      ...storage,
-      serverName: server.name,
-    })),
-  );
-  const lowestStorage = storages.reduce<number | null>((lowest, storage) => {
-    if (typeof storage.freePercent !== 'number') return lowest;
-    return lowest === null ? storage.freePercent : Math.min(lowest, storage.freePercent);
-  }, null);
-
-  return (
-    <section className="mt-2.5" aria-label={t.aria.systemResources}>
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5 xl:gap-2">
-        <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={format.percent(cpuAverage)} />
-        <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={format.percent(ramAverage)} />
-        <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={format.percent(lowestStorage)} />
-        <ResourceStat icon={Download} label={t.resources.download} tone="neutral" value={format.bytesPerSecond(trafficTotals.downloadBps)} />
-        <ResourceStat icon={Upload} label={t.resources.upload} tone="neutral" value={format.bytesPerSecond(trafficTotals.uploadBps)} />
-      </div>
-
-      <div className="mt-2 overflow-x-auto rounded-md border border-afro-line bg-afro-panel">
-        <div className="grid auto-cols-[minmax(138px,1fr)] grid-flow-col gap-1.5 p-1.5 sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-2 xl:grid-cols-3">
-          {storages.map((storage) => {
-            const serverName = format.label(storage.serverName);
-            const freePercent = format.percent(storage.freePercent ?? null);
-            const storageTooltip = `${serverName} ${storage.path} ${freePercent}`;
-
-            return (
-              <div
-                aria-label={storageTooltip}
-                className="min-w-0 rounded-md border border-afro-line px-2 py-1"
-                key={`${storage.serverName}-${storage.path}`}
-                title={storageTooltip}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <strong className="min-w-0 truncate text-[13px]" title={serverName}>{serverName}</strong>
-                  <StatusBadge title={freePercent} tone={getStorageTone(storage.freePercent ?? null)}>
-                    {freePercent}
-                  </StatusBadge>
-                </div>
-                <div className={`${mutedTextClass} truncate`} title={storage.path}>{storage.path}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ResourceStat({
-  icon: Icon,
-  label,
-  tone,
-  value,
-}: {
-  icon: AfroIcon;
-  label: string;
-  tone: Tone;
-  value: string;
-}) {
-  const borderClass = {
-    good: 'border-t-afro-green',
-    neutral: 'border-t-afro-blue',
-    warning: 'border-t-[#c27a1a]',
-    critical: 'border-t-[#b91c1c]',
-  }[tone];
-  const tooltip = `${label} ${value}`;
-
-  return (
-    <div
-      aria-label={tooltip}
-      className={`grid min-h-[50px] gap-0.5 rounded-md border border-t-[3px] border-afro-line bg-afro-panel px-2 py-1.5 sm:min-h-[54px] sm:gap-1 sm:border-t-4 sm:p-2 ${borderClass}`}
-      title={tooltip}
-    >
-      <div className="flex min-w-0 items-center justify-between gap-1.5">
-        <span className="min-w-0 truncate text-[11px] text-afro-muted sm:text-[12px]" title={label}>{label}</span>
-        <Icon className="shrink-0" size={15} />
-      </div>
-      <strong className="min-w-0 truncate text-[15px] leading-tight sm:text-[17px]" title={value}>{value}</strong>
-    </div>
-  );
-}
 
 function ActivePage({
   activeView,
