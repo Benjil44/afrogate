@@ -227,3 +227,9 @@ export function useWallClock(format: DashboardFormatters): string {
 
   return format.time(now);
 }
+
+export function normalizeNullableText(value: string): string | null {
+  const trimmedValue = value.trim();
+
+  return trimmedValue ? trimmedValue : null;
+}
