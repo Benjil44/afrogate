@@ -2,8 +2,8 @@
 
 ## 0.114.0 - 2026-06-02
 
-- Added the first backend automated test suite using Node's built-in `node:test` runner (no new dependencies), wired into CI: 64 tests across bearer-token parsing/constant-time compare, the RBAC role×permission matrix, scrypt password hashing, session-token sign/parse/tamper-rejection, reseller own-scope IDOR guards, and reseller wallet/margin math.
-- Extracted previously-untestable, security-critical logic into focused modules: `security/password.ts`, `security/session-token.ts`, `billing/reseller-ownership.ts`, and `billing/reseller-wallet-math.ts` (behavior-preserving).
+- Added the first backend automated test suite using Node's built-in `node:test` runner (no new dependencies), wired into CI: 74 tests across bearer-token parsing/constant-time compare, the RBAC role x permission matrix, scrypt password hashing, session-token sign/parse/tamper-rejection, reseller own-scope IDOR guards, reseller wallet/margin math, and client-token hashing/scope enforcement.
+- Extracted previously-untestable, security-critical logic into focused modules: `security/password.ts`, `security/session-token.ts`, `security/client-token.ts` (scope helpers), `billing/reseller-ownership.ts`, and `billing/reseller-wallet-math.ts` (behavior-preserving).
 - Hardened web security: backend CORS now fails closed (explicit `CORS_ORIGIN` allowlist, otherwise same-origin only) instead of reflecting any origin, and the Nginx samples add a Content-Security-Policy header.
 - Recorded the 2026-06-01 backend/frontend/security/firewall audit in `.codex` and opened a "Phase 6: Release Readiness & Security Hardening" checklist (including injection-testing tasks).
 

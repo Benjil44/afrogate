@@ -73,7 +73,7 @@ import {
   walletCanCoverDebit,
 } from './reseller-wallet-math';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
-import { hashClientToken } from '../security/client-token';
+import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { TelegramAlertService, type TelegramMessageSendResult } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
@@ -3501,7 +3501,7 @@ export class BillingService {
         clientConfigId: row.clientConfigId,
         customerAccountId: row.customerAccountId,
         tokenId: row.id,
-        scopes: this.normalizeScopes(row.scopes),
+        scopes: normalizeScopes(row.scopes),
         clientStatus: row.clientStatus,
         accountStatus: row.accountStatus,
       };
@@ -3902,7 +3902,7 @@ export class BillingService {
   }
 
   async getClientRewardedAdStatus(actor: ClientAuthActor): Promise<ClientRewardedAdStatus> {
-    this.assertClientScope(actor, 'client:read');
+    assertClientScope(actor, 'client:read');
     const today = this.currentUtcDay();
     const [settings, watchedToday] = await Promise.all([
       this.getRewardedAdSettings(),
@@ -3916,7 +3916,7 @@ export class BillingService {
     actor: ClientAuthActor,
     dto: ClaimRewardedAdDto,
   ): Promise<ClientRewardedAdClaimResponse> {
-    this.assertClientScope(actor, 'reward:claim');
+    assertClientScope(actor, 'reward:claim');
     if (!['active', 'limited'].includes(actor.clientStatus)) {
       throw new ForbiddenException('Rewarded ad grants are not available for this client status');
     }
@@ -3986,7 +3986,7 @@ export class BillingService {
     actor: ClientAuthActor,
     routeGroupInput?: string,
   ): Promise<ClientRoutePreferenceSummary> {
-    this.assertClientScope(actor, 'client:read');
+    assertClientScope(actor, 'client:read');
     const preference = await this.getClientRoutePreference(actor.clientConfigId, routeGroupInput);
     return this.mapClientRoutePreferenceForClient(preference);
   }
@@ -3995,7 +3995,7 @@ export class BillingService {
     actor: ClientAuthActor,
     dto: UpdateOwnClientRoutePreferenceDto,
   ): Promise<ClientRoutePreferenceSummary> {
-    this.assertClientScope(actor, 'route:write');
+    assertClientScope(actor, 'route:write');
     if (!['active', 'limited'].includes(actor.clientStatus)) {
       throw new ForbiddenException('Client route preference cannot be changed for this client status');
     }
@@ -4041,7 +4041,7 @@ export class BillingService {
     actor: ClientAuthActor,
     routeGroupInput?: string,
   ): Promise<ClientRouteOptionsResponse> {
-    this.assertClientScope(actor, 'client:read');
+    assertClientScope(actor, 'client:read');
     const routeGroup = this.normalizeRouteGroup(routeGroupInput);
     const result = await this.database.query<ClientRouteOptionOutboundRow>(
       `
@@ -4138,7 +4138,7 @@ export class BillingService {
     actor: ClientAuthActor,
     routeGroupInput?: string,
   ): Promise<ClientSubscriptionResponse> {
-    this.assertClientScope(actor, 'client:read');
+    assertClientScope(actor, 'client:read');
     const routeGroup = this.normalizeRouteGroup(routeGroupInput);
     const routeOptions = await this.listClientRouteOptions(actor, routeGroup);
     const chargedRemainingBytes = await this.getClientChargedRemainingBytes(actor);
@@ -6743,7 +6743,7 @@ export class BillingService {
       id: row.id,
       clientConfigId: row.clientConfigId,
       name: row.name,
-      scopes: this.normalizeScopes(row.scopes),
+      scopes: normalizeScopes(row.scopes),
       status: row.revokedAt ? 'revoked' : 'active',
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
@@ -6795,17 +6795,6 @@ export class BillingService {
       lastDetectedAt: row.lastDetectedAt ?? null,
       updatedAt: row.updatedAt ?? null,
     };
-  }
-
-  private assertClientScope(actor: ClientAuthActor, scope: string): void {
-    if (!actor.scopes.includes(scope)) {
-      throw new ForbiddenException('Client token does not allow this action');
-    }
-  }
-
-  private normalizeScopes(value: unknown): string[] {
-    if (!Array.isArray(value)) return [];
-    return [...new Set(value.filter((scope): scope is string => typeof scope === 'string' && scope.length > 0))];
   }
 
   private normalizeRewardedAdProvider(value: string | null | undefined, fallback: string): string {
