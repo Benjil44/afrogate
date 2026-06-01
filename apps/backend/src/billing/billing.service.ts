@@ -65,6 +65,13 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
+import {
+  DEFAULT_RESELLER_MARGIN_BPS,
+  afroGateShareBps,
+  computeResellerSaleAmounts,
+  normalizeResellerMarginBps,
+  walletCanCoverDebit,
+} from './reseller-wallet-math';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { hashClientToken } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -125,9 +132,6 @@ const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
 const MAX_REWARDED_AD_REWARD_BYTES = 10 * BYTES_PER_GB;
 const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
-const DEFAULT_RESELLER_MARGIN_BPS = 2500;
-const MAX_RESELLER_MARGIN_BPS = 8000;
-const BASIS_POINTS = 10000;
 const CURRENT_PANEL_IMPORTABLE_STATUSES = new Set(['active', 'limited', 'disabled', 'expired']);
 const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = new Set<CurrentPanelVolumeChargeScope>([
   'account_quota',
@@ -1859,7 +1863,7 @@ export class BillingService {
             this.normalizeNullableString(dto.contactName),
             this.normalizeTelegramUsername(dto.telegramUsername),
             dto.status !== undefined ? this.normalizeResellerStatus(dto.status) : 'active',
-            this.normalizeResellerMarginBps(dto.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS),
+            normalizeResellerMarginBps(dto.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS),
             dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : settings.currency,
             this.normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0),
             this.normalizeNullableString(dto.notes),
@@ -4492,7 +4496,7 @@ export class BillingService {
     }
     if (dto.status !== undefined) add('status', 'status', this.normalizeResellerStatus(dto.status));
     if (dto.sellerMarginBps !== undefined) {
-      add('sellerMarginBps', 'seller_margin_bps', this.normalizeResellerMarginBps(dto.sellerMarginBps, existing.sellerMarginBps));
+      add('sellerMarginBps', 'seller_margin_bps', normalizeResellerMarginBps(dto.sellerMarginBps, existing.sellerMarginBps));
     }
     if (dto.currency !== undefined) {
       const currency = this.normalizeCurrency(dto.currency);
@@ -5296,7 +5300,7 @@ export class BillingService {
 
   private mapResellerAccount(row: ResellerAccountRow): AdminResellerAccountSummary {
     const sellerMarginBps = Number(row.sellerMarginBps ?? DEFAULT_RESELLER_MARGIN_BPS);
-    const afroGateShareBps = Math.max(BASIS_POINTS - sellerMarginBps, 0);
+    const afroGateShareBpsValue = afroGateShareBps(sellerMarginBps);
     const balanceAmount = this.numberFromBigInt(row.balanceAmount) ?? 0;
     const creditLimitAmount = this.numberFromBigInt(row.creditLimitAmount) ?? 0;
 
@@ -5309,8 +5313,8 @@ export class BillingService {
       status: row.status,
       sellerMarginBps,
       sellerMarginPercent: sellerMarginBps / 100,
-      afroGateShareBps,
-      afroGateSharePercent: afroGateShareBps / 100,
+      afroGateShareBps: afroGateShareBpsValue,
+      afroGateSharePercent: afroGateShareBpsValue / 100,
       currency: row.currency,
       balanceAmount,
       creditLimitAmount,
@@ -7895,15 +7899,14 @@ export class BillingService {
     volumePackage: VolumePackageRow,
   ): AdminResellerPackageQuote {
     const customerPriceAmount = this.numberFromBigInt(volumePackage.totalPrice) ?? 0;
-    const sellerMarginBps = this.normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
-    const sellerMarginAmount = Math.round((customerPriceAmount * sellerMarginBps) / BASIS_POINTS);
-    const walletDebitAmount = Math.max(customerPriceAmount - sellerMarginAmount, 0);
+    const sellerMarginBps = normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
+    const { sellerMarginAmount, walletDebitAmount } = computeResellerSaleAmounts(customerPriceAmount, sellerMarginBps);
     const balanceBeforeAmount = this.numberFromBigInt(reseller.balanceAmount) ?? 0;
     const creditLimitAmount = this.numberFromBigInt(reseller.creditLimitAmount) ?? 0;
     const balanceAfterAmount = balanceBeforeAmount - walletDebitAmount;
     const currencyMatches = reseller.currency === volumePackage.currency;
     const canDebit = currencyMatches && reseller.status === 'active' && volumePackage.status === 'active'
-      && balanceAfterAmount + creditLimitAmount >= 0;
+      && walletCanCoverDebit(balanceAfterAmount, creditLimitAmount);
     const blockedReason = canDebit
       ? null
       : !currencyMatches
@@ -8127,13 +8130,6 @@ export class BillingService {
     return normalized;
   }
 
-  private normalizeResellerMarginBps(value: number | null | undefined, fallback: number): number {
-    const normalized = value ?? fallback;
-    if (!Number.isInteger(normalized) || normalized < 0 || normalized > MAX_RESELLER_MARGIN_BPS) {
-      throw new BadRequestException('Reseller seller margin must be an integer between 0 and 8000 basis points');
-    }
-    return normalized;
-  }
 
   private normalizeMoneyAmount(value: number | null | undefined, fieldName: string, fallback?: number): number {
     const normalized = value ?? fallback;

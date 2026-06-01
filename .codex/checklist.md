@@ -304,7 +304,7 @@ typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
 - [x] Test RBAC: role × permission matrix covered (`rbac.test.ts`) for superadmin/owner wildcard, admin (no `adminUsers:write`), supervisor/support/auditor read scopes, reseller own-scope, and `getEffectiveRolePermissions`. (Still want a route-level guard regression test — see below.)
 - [x] Test reseller own-scope enforcement (`ensureCustomerAccountBelongsToReseller`, `ensureClientConfigBelongsToReseller`) against cross-tenant IDOR attempts. Done 2026-06-02: extracted to `billing/reseller-ownership.ts` and covered by `reseller-ownership.test.ts` (belongs / not-found / cross-reseller / cross-customer / null-owner, plus parameterization assertions) via the in-memory fake executor.
 - [ ] Test client-token scoping: a client token can only read/modify its own config/quota.
-- [ ] Test wallet/quota math: top-up, package debit, allocation idempotency, no double-credit, no negative balances.
+- [~] Test wallet/quota math. Done 2026-06-02: extracted the pure reseller wallet math to `billing/reseller-wallet-math.ts` and covered it in `reseller-wallet-math.test.ts` (margin-bps validation/bounds, AfroGate-share complement clamping, price→margin/debit split with rounding, no-negative debit, credit-limit floor). Still pending the transactional pieces: top-up + allocation idempotency / no-double-credit (these run inside DB transactions and need the fake-executor harness extended to multi-query flows).
 - [ ] Add an automated security-regression test that asserts every `@Controller('admin')` route declares `@Roles`.
 
 ### Web hardening
