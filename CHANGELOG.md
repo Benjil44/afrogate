@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.5 - 2026-06-02
+
+- Covered PayPal and Telegram webhook verification: extracted the PayPal verify-request/response logic (`billing/paypal-webhook-verify.ts`) and Telegram secret-token constant-time match (`telegram/telegram-webhook-secret.ts`) and added 11 tests. All three webhook verifiers (rewarded-ad/PayPal/Telegram) are now tested; backend suite now 187 tests.
+
 ## 0.114.4 - 2026-06-02
 
 - Extracted rewarded-ad/subscription/public-endpoint normalizers and the gb-to-bytes helper from BillingService into billing-normalizers.ts / quota-math.ts; backend suite now 176 tests.
