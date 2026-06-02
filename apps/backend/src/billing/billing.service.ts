@@ -72,6 +72,7 @@ import {
   normalizeResellerMarginBps,
   walletCanCoverDebit,
 } from './reseller-wallet-math';
+import { MAX_SAFE_BYTES, computeAllocatedQuotaLimitBytes } from './quota-math';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -131,7 +132,6 @@ const DEFAULT_REWARDED_AD_DAILY_LIMIT = 20;
 const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
 const MAX_REWARDED_AD_REWARD_BYTES = 10 * BYTES_PER_GB;
 const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
-const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 const CURRENT_PANEL_IMPORTABLE_STATUSES = new Set(['active', 'limited', 'disabled', 'expired']);
 const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = new Set<CurrentPanelVolumeChargeScope>([
   'account_quota',
@@ -1271,10 +1271,7 @@ export class BillingService {
 
         const quotaLimitBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
         const usedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
-        const quotaLimitAfterBytes = (quotaLimitBeforeBytes ?? usedBytes) + volumeBytes;
-        if (!Number.isSafeInteger(quotaLimitAfterBytes) || quotaLimitAfterBytes > MAX_SAFE_BYTES) {
-          throw new BadRequestException('Allocated quota would exceed the safe byte limit');
-        }
+        const quotaLimitAfterBytes = computeAllocatedQuotaLimitBytes(quotaLimitBeforeBytes, usedBytes, volumeBytes);
 
         const allocation = await this.insertPaymentOrderAllocation(
           executor,
