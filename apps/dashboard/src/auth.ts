@@ -120,3 +120,5 @@ function clearAdminSessionToken(): void {
     // Nothing to clear when sessionStorage is unavailable.
   }
 }
+
+export type AdminSessionHook = ReturnType<typeof useAdminSession>;
