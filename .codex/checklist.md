@@ -334,7 +334,7 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 ### Code structure / maintainability (UI/UX)
 
 - [x] Split `apps/dashboard/src/DashboardApp.tsx` 14,862 -> ~1,294 lines (~91%) on `refactor/split-large-files`: extracted types/formatters/mappers/tone/labels/route-labels/route-helpers/server-helpers/chart-options/ui-classes/session-access plus `components/` (primitives, panels, dashboard-panels, route-decision, protocol-apply, settings-form, Sidebar, SystemResourceHeader) and `pages/` (all pages). Root orchestrator remains in DashboardApp.tsx.
-- [~] Split the large backend services. Extracting focused, tested modules: `operations/command-safety.ts` + `operations/route-scoring.ts` (probe/MTU scoring + scoring utils); `billing/reseller-ownership.ts`, `billing/reseller-wallet-math.ts`, `billing/quota-math.ts`, `billing/rewarded-ad-webhook.crypto.ts`; `security/password.ts`, `security/session-token.ts`. operations.service.ts/billing.service.ts are progressively shrinking; full domain split is ongoing structural work.
+- [~] Split the large backend services. Extracting focused, tested modules: `operations/command-safety.ts`, `operations/route-scoring.ts`; `billing/reseller-ownership.ts`, `billing/reseller-wallet-math.ts`, `billing/quota-math.ts`, `billing/rewarded-ad-webhook.crypto.ts`, `billing/billing-normalizers.ts`; `security/password.ts`, `security/session-token.ts`. operations.service.ts ~10.1k and billing.service.ts ~8.4k and shrinking; full domain split is ongoing.
 - [~] `apps/dashboard/src/i18n.ts` remains a single typed English/Persian translation object (type-safe, one source of truth). Per-namespace file splitting is optional polish and not yet done.
 
 ### Release / deployment validation

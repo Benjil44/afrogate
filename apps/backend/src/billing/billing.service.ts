@@ -73,6 +73,7 @@ import {
   walletCanCoverDebit,
 } from './reseller-wallet-math';
 import { MAX_SAFE_BYTES, computeAllocatedQuotaLimitBytes } from './quota-math';
+import { normalizeCurrency, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizeResellerStatus, normalizeSlug, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue } from './billing-normalizers';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -690,7 +691,7 @@ export class BillingService {
   ): Promise<AdminBillingSettingsSummary> {
     const settings = await this.database.transaction(async (executor) => {
       const current = await this.getBillingSettingsRow(executor, true);
-      const currency = dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : current.currency;
+      const currency = dto.currency !== undefined ? normalizeCurrency(dto.currency) : current.currency;
       const pricePerGb = dto.pricePerGb ?? this.numberFromBigInt(current.pricePerGb) ?? 0;
 
       const result = await executor.query<BillingSettingsRow>(
@@ -856,10 +857,10 @@ export class BillingService {
       const packageId = await this.database.transaction(async (executor) => {
         const settings = await this.getBillingSettingsRow(executor);
         const pricePerGb = dto.pricePerGb ?? this.numberFromBigInt(settings.pricePerGb) ?? 0;
-        const currency = dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : settings.currency;
+        const currency = dto.currency !== undefined ? normalizeCurrency(dto.currency) : settings.currency;
         const volumeBytes = this.gbToBytes(dto.volumeGb);
         const totalPrice = dto.totalPrice ?? this.calculateTotalPrice(dto.volumeGb, pricePerGb);
-        const slug = this.normalizeSlug(dto.slug ?? dto.name);
+        const slug = normalizeSlug(dto.slug ?? dto.name);
         const name = dto.name.trim();
         if (!name) throw new BadRequestException('Volume package name is required');
 
@@ -882,7 +883,7 @@ export class BillingService {
             currency,
             dto.status ?? 'active',
             dto.sortOrder ?? 1000,
-            this.normalizeNullableString(dto.notes),
+            normalizeNullableString(dto.notes),
             actor?.id ?? null,
           ],
         );
@@ -954,7 +955,7 @@ export class BillingService {
     }
 
     if (filters.provider?.trim()) {
-      values.push(this.normalizeProvider(filters.provider));
+      values.push(normalizeProvider(filters.provider));
       where.push(`provider = $${values.length}`);
     }
 
@@ -992,10 +993,10 @@ export class BillingService {
         const name = dto.name.trim();
         if (!name) throw new BadRequestException('Payment method name is required');
 
-        const provider = this.normalizeProvider(dto.provider ?? 'manual');
+        const provider = normalizeProvider(dto.provider ?? 'manual');
         const checkoutMode = dto.checkoutMode ?? this.defaultCheckoutMode(provider);
-        const currency = dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : 'toman';
-        const slug = this.normalizeSlug(dto.slug ?? name);
+        const currency = dto.currency !== undefined ? normalizeCurrency(dto.currency) : 'toman';
+        const slug = normalizeSlug(dto.slug ?? name);
         const minAmount = dto.minAmount ?? null;
         const maxAmount = dto.maxAmount ?? null;
         this.assertAmountRange(minAmount, maxAmount);
@@ -1021,7 +1022,7 @@ export class BillingService {
             dto.sortOrder ?? 1000,
             dto.supportsAutoCapture ?? provider === 'paypal',
             this.stringifyPublicRecord(dto.publicConfig ?? {}, 'Payment method public config'),
-            this.normalizeNullableString(dto.instructions),
+            normalizeNullableString(dto.instructions),
             actor?.id ?? null,
           ],
         );
@@ -1108,7 +1109,7 @@ export class BillingService {
     }
 
     if (filters.provider?.trim()) {
-      values.push(this.normalizeProvider(filters.provider));
+      values.push(normalizeProvider(filters.provider));
       where.push(`po.provider = $${values.length}`);
     }
 
@@ -1154,9 +1155,9 @@ export class BillingService {
         if (volumePackage.status !== 'active') throw new BadRequestException('Volume package is not active');
         this.assertPaymentMethodAccepts(paymentMethod, volumePackage.currency, this.numberFromBigInt(volumePackage.totalPrice) ?? 0);
 
-        const providerOrderId = this.normalizeNullableString(dto.providerOrderId);
-        const checkoutUrl = this.normalizeNullableString(dto.checkoutUrl);
-        const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+        const providerOrderId = normalizeNullableString(dto.providerOrderId);
+        const checkoutUrl = normalizeNullableString(dto.checkoutUrl);
+        const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
         const expiresAt = this.parseOptionalDate(dto.expiresAt, 'expiresAt');
         const metadata = dto.metadata ?? {};
         const amount = this.numberFromBigInt(volumePackage.totalPrice) ?? 0;
@@ -1196,7 +1197,7 @@ export class BillingService {
             idempotencyKey,
             expiresAt,
             this.stringifyPublicRecord(metadata, 'Payment order metadata'),
-            this.normalizeNullableString(dto.notes),
+            normalizeNullableString(dto.notes),
             actor?.id ?? null,
           ],
         );
@@ -1251,7 +1252,7 @@ export class BillingService {
           };
         }
 
-        const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey) ?? `payment_order:${id}`;
+        const idempotencyKey = normalizeNullableString(dto.idempotencyKey) ?? `payment_order:${id}`;
         const existingForKey = await this.getPaymentOrderAllocationByIdempotencyForUpdate(executor, idempotencyKey);
         if (existingForKey) {
           if (existingForKey.paymentOrderId !== id) {
@@ -1538,7 +1539,7 @@ export class BillingService {
           throw new BadRequestException('PayPal capture can only be run for pending payment orders');
         }
 
-        const providerOrderId = this.normalizeNullableString(dto.providerOrderId) ?? existing.providerOrderId;
+        const providerOrderId = normalizeNullableString(dto.providerOrderId) ?? existing.providerOrderId;
         if (!providerOrderId) throw new BadRequestException('PayPal provider order id is required before capture');
         if (existing.providerOrderId && existing.providerOrderId !== providerOrderId) {
           throw new BadRequestException('PayPal provider order id does not match the payment order');
@@ -1760,14 +1761,14 @@ export class BillingService {
           `,
           [
             status,
-            dto.providerOrderId !== undefined ? this.normalizeNullableString(dto.providerOrderId) : existing.providerOrderId,
-            dto.providerCaptureId !== undefined ? this.normalizeNullableString(dto.providerCaptureId) : existing.providerCaptureId,
-            dto.checkoutUrl !== undefined ? this.normalizeNullableString(dto.checkoutUrl) : existing.checkoutUrl,
+            dto.providerOrderId !== undefined ? normalizeNullableString(dto.providerOrderId) : existing.providerOrderId,
+            dto.providerCaptureId !== undefined ? normalizeNullableString(dto.providerCaptureId) : existing.providerCaptureId,
+            dto.checkoutUrl !== undefined ? normalizeNullableString(dto.checkoutUrl) : existing.checkoutUrl,
             paidAt,
             failedAt,
             refundedAt,
             this.stringifyPublicRecord(metadata, 'Payment order metadata'),
-            dto.notes !== undefined ? this.normalizeNullableString(dto.notes) : existing.notes,
+            dto.notes !== undefined ? normalizeNullableString(dto.notes) : existing.notes,
             id,
           ],
         );
@@ -1781,7 +1782,7 @@ export class BillingService {
             fromStatus: existing.status,
             toStatus: status,
             provider: existing.provider,
-            providerOrderId: dto.providerOrderId !== undefined ? this.normalizeNullableString(dto.providerOrderId) : existing.providerOrderId,
+            providerOrderId: dto.providerOrderId !== undefined ? normalizeNullableString(dto.providerOrderId) : existing.providerOrderId,
           },
           executor,
         );
@@ -1799,7 +1800,7 @@ export class BillingService {
     const where: string[] = [];
 
     if (filters.status?.trim()) {
-      values.push(this.normalizeResellerStatus(filters.status));
+      values.push(normalizeResellerStatus(filters.status));
       where.push(`ra.status = $${values.length}`);
     }
 
@@ -1839,8 +1840,8 @@ export class BillingService {
     try {
       const resellerId = await this.database.transaction(async (executor) => {
         const settings = await this.getBillingSettingsRow(executor);
-        const adminUserId = this.normalizeNullableString(dto.adminUserId);
-        const displayName = this.normalizeNullableString(dto.displayName);
+        const adminUserId = normalizeNullableString(dto.adminUserId);
+        const displayName = normalizeNullableString(dto.displayName);
         if (!adminUserId) throw new BadRequestException('Reseller admin user is required');
         if (!displayName) throw new BadRequestException('Reseller display name is required');
 
@@ -1857,13 +1858,13 @@ export class BillingService {
           [
             adminUserId,
             displayName,
-            this.normalizeNullableString(dto.contactName),
-            this.normalizeTelegramUsername(dto.telegramUsername),
-            dto.status !== undefined ? this.normalizeResellerStatus(dto.status) : 'active',
+            normalizeNullableString(dto.contactName),
+            normalizeTelegramUsername(dto.telegramUsername),
+            dto.status !== undefined ? normalizeResellerStatus(dto.status) : 'active',
             normalizeResellerMarginBps(dto.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS),
-            dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : settings.currency,
-            this.normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0),
-            this.normalizeNullableString(dto.notes),
+            dto.currency !== undefined ? normalizeCurrency(dto.currency) : settings.currency,
+            normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0),
+            normalizeNullableString(dto.notes),
             actor?.id ?? null,
           ],
         );
@@ -1944,10 +1945,10 @@ export class BillingService {
     dto: TopUpResellerWalletDto,
     actor: AuthActor | undefined,
   ): Promise<AdminResellerWalletActionResponse> {
-    const amount = this.normalizeMoneyAmount(dto.amount, 'amount');
+    const amount = normalizeMoneyAmount(dto.amount, 'amount');
     if (amount <= 0) throw new BadRequestException('Reseller wallet top-up amount must be positive');
-    const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
-    const sourceId = this.normalizeNullableString(dto.sourceId);
+    const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
+    const sourceId = normalizeNullableString(dto.sourceId);
 
     const ledgerEntry = await this.database.transaction(async (executor) => {
       if (idempotencyKey) {
@@ -1977,7 +1978,7 @@ export class BillingService {
         volumePackageId: null,
         customerAccountId: null,
         clientConfigId: null,
-        notes: this.normalizeNullableString(dto.notes),
+        notes: normalizeNullableString(dto.notes),
         metadata: dto.metadata ?? {},
         actor,
       });
@@ -2009,10 +2010,10 @@ export class BillingService {
     dto: DebitResellerWalletForPackageDto,
     actor: AuthActor | undefined,
   ): Promise<AdminResellerWalletActionResponse> {
-    const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
-    const sourceId = this.normalizeNullableString(dto.sourceId);
-    const customerAccountId = this.normalizeNullableString(dto.customerAccountId);
-    const clientConfigId = this.normalizeNullableString(dto.clientConfigId);
+    const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
+    const sourceId = normalizeNullableString(dto.sourceId);
+    const customerAccountId = normalizeNullableString(dto.customerAccountId);
+    const clientConfigId = normalizeNullableString(dto.clientConfigId);
 
     const ledgerEntry = await this.database.transaction(async (executor) => {
       if (idempotencyKey) {
@@ -2059,7 +2060,7 @@ export class BillingService {
         volumePackageId: dto.volumePackageId,
         customerAccountId,
         clientConfigId,
-        notes: this.normalizeNullableString(dto.notes),
+        notes: normalizeNullableString(dto.notes),
         metadata: dto.metadata ?? {},
         actor,
       });
@@ -2129,8 +2130,8 @@ export class BillingService {
     actor: AuthActor | undefined,
   ): Promise<AdminResellerPackageSaleResponse> {
     const currentReseller = await this.getResellerAccountRowForActor(actor);
-    const requestedCustomerAccountId = this.normalizeNullableString(dto.customerAccountId);
-    const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+    const requestedCustomerAccountId = normalizeNullableString(dto.customerAccountId);
+    const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
     try {
       const saleState = await this.database.transaction(async (executor) => {
       if (idempotencyKey) {
@@ -2198,7 +2199,7 @@ export class BillingService {
         customerAccountId,
         idempotencyKey,
         metadata: dto.metadata ?? {},
-        notes: this.normalizeNullableString(dto.notes),
+        notes: normalizeNullableString(dto.notes),
         quote,
         volumePackage,
       });
@@ -2245,7 +2246,7 @@ export class BillingService {
           quotaLimitBeforeBytes,
           resellerPackageSale: true,
         },
-        notes: this.normalizeNullableString(dto.notes),
+        notes: normalizeNullableString(dto.notes),
         source: 'client_sale',
         sourceId: paymentOrderId,
         volumePackageId: dto.volumePackageId,
@@ -2407,10 +2408,10 @@ export class BillingService {
           [
             dto.customerAccountId,
             candidate.label.trim(),
-            this.normalizeProtocol(candidate.protocol),
-            this.normalizeNullableString(candidate.externalPanel),
-            this.normalizeNullableString(candidate.externalPanelUserId),
-            this.normalizeNullableString(candidate.externalPanelConfigId),
+            normalizeProtocol(candidate.protocol),
+            normalizeNullableString(candidate.externalPanel),
+            normalizeNullableString(candidate.externalPanelUserId),
+            normalizeNullableString(candidate.externalPanelConfigId),
             candidate.deviceLimit ?? null,
             candidate.quotaBytes ?? null,
             candidate.status,
@@ -2632,7 +2633,7 @@ export class BillingService {
       const clientConfigIds = this.normalizeCurrentPanelChargeClientIds(dto.clientConfigIds ?? []);
       const shouldChargeAccount = scope === 'account_quota' || scope === 'account_and_selected_clients';
       const shouldChargeClients = scope === 'selected_clients' || scope === 'account_and_selected_clients';
-      const idempotencyKey = this.normalizeNullableString(dto.idempotencyKey);
+      const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
 
       if (scope === 'account_quota' && clientConfigIds.length > 0) {
         throw new BadRequestException('Client config ids require a selected-client charge scope');
@@ -2725,7 +2726,7 @@ export class BillingService {
             customerAccountId: dto.customerAccountId,
             idempotencyKey,
             metadata: dto.metadata ?? {},
-            notes: this.normalizeNullableString(dto.notes),
+            notes: normalizeNullableString(dto.notes),
             volumeBytes,
           },
           actor,
@@ -2837,7 +2838,7 @@ export class BillingService {
     try {
       const paidNumberHash = this.hashPaidNumberIfPresent(dto.paidNumber);
       const result = await this.database.transaction(async (executor) => {
-        const resellerAccountId = this.normalizeNullableString(dto.resellerAccountId);
+        const resellerAccountId = normalizeNullableString(dto.resellerAccountId);
         if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
 
         const insertResult = await executor.query<{ id: string }>(
@@ -2852,16 +2853,16 @@ export class BillingService {
           `,
           [
             resellerAccountId,
-            this.normalizeNullableString(dto.displayName),
-            this.normalizeNullableString(dto.telegramId),
-            this.normalizeTelegramUsername(dto.telegramUsername),
+            normalizeNullableString(dto.displayName),
+            normalizeNullableString(dto.telegramId),
+            normalizeTelegramUsername(dto.telegramUsername),
             paidNumberHash,
             dto.status ?? 'active',
             dto.quotaScope ?? 'account_shared',
             dto.quotaLimitBytes ?? null,
             dto.perClientLimitBytes ?? null,
             dto.usedBytes ?? 0,
-            this.normalizeNullableString(dto.notes),
+            normalizeNullableString(dto.notes),
           ],
         );
         const id = insertResult.rows[0].id;
@@ -2872,7 +2873,7 @@ export class BillingService {
           'customer_account',
           id,
           {
-            hasTelegramId: Boolean(this.normalizeNullableString(dto.telegramId)),
+            hasTelegramId: Boolean(normalizeNullableString(dto.telegramId)),
             hasPaidNumberHash: Boolean(paidNumberHash),
             quotaScope: dto.quotaScope ?? 'account_shared',
             quotaLimitBytes: dto.quotaLimitBytes ?? null,
@@ -2897,7 +2898,7 @@ export class BillingService {
     dto: UpdateCustomerAccountDto,
     actor: AuthActor | undefined,
   ): Promise<AdminCustomerAccountDetail> {
-    if (dto.clearPaidNumber && this.normalizeNullableString(dto.paidNumber)) {
+    if (dto.clearPaidNumber && normalizeNullableString(dto.paidNumber)) {
       throw new BadRequestException('Use either paidNumber or clearPaidNumber, not both');
     }
 
@@ -2948,15 +2949,15 @@ export class BillingService {
           [
             customerAccountId,
             dto.label.trim(),
-            this.normalizeProtocol(dto.protocol),
-            this.normalizeNullableString(dto.externalPanel),
-            this.normalizeNullableString(dto.externalPanelUserId),
-            this.normalizeNullableString(dto.externalPanelConfigId),
+            normalizeProtocol(dto.protocol),
+            normalizeNullableString(dto.externalPanel),
+            normalizeNullableString(dto.externalPanelUserId),
+            normalizeNullableString(dto.externalPanelConfigId),
             dto.deviceLimit ?? null,
             dto.quotaLimitBytes ?? null,
             dto.usedBytes ?? 0,
             dto.status ?? 'active',
-            this.normalizeNullableString(dto.notes),
+            normalizeNullableString(dto.notes),
           ],
         );
         const id = result.rows[0].id;
@@ -2968,8 +2969,8 @@ export class BillingService {
           id,
           {
             customerAccountId,
-            protocol: this.normalizeProtocol(dto.protocol),
-            hasExternalPanelConfigId: Boolean(this.normalizeNullableString(dto.externalPanelConfigId)),
+            protocol: normalizeProtocol(dto.protocol),
+            hasExternalPanelConfigId: Boolean(normalizeNullableString(dto.externalPanelConfigId)),
             quotaLimitBytes: dto.quotaLimitBytes ?? null,
             deviceLimit: dto.deviceLimit ?? null,
           },
@@ -3187,7 +3188,7 @@ export class BillingService {
   ): Promise<IssuedClientAccessTokenSummary> {
     const token = this.createClientAccessToken();
     const tokenHash = hashClientToken(token);
-    const nameInput = this.normalizeNullableString(dto.name);
+    const nameInput = normalizeNullableString(dto.name);
 
     const created = await this.database.transaction(async (executor) => {
       const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
@@ -3325,7 +3326,7 @@ export class BillingService {
   ): Promise<AdminClientSubscriptionCredentialSummary> {
     const secretMaterial = this.normalizeClientSubscriptionSecretMaterial(dto.secretMaterial);
     const publicMetadata = this.normalizeClientSubscriptionPublicMetadata(dto.publicMetadata);
-    const name = this.normalizeNullableString(dto.name);
+    const name = normalizeNullableString(dto.name);
     const credentialId = await this.database.transaction(async (executor) => {
       const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
       const outbound = await this.getOutboundForSubscriptionCredential(executor, dto.outboundId);
@@ -3548,8 +3549,8 @@ export class BillingService {
     telegramId?: string | null;
     telegramUsername?: string | null;
   }): Promise<TelegramBotAccountLookup> {
-    const telegramId = this.normalizeNullableString(input.telegramId);
-    const telegramUsername = this.normalizeTelegramUsername(input.telegramUsername);
+    const telegramId = normalizeNullableString(input.telegramId);
+    const telegramUsername = normalizeTelegramUsername(input.telegramUsername);
 
     if (telegramId) {
       const result = await this.database.query<CustomerAccountRow>(
@@ -3594,7 +3595,7 @@ export class BillingService {
     duplicate: boolean,
     actor: AuthActor | undefined,
   ): Promise<AdminTelegramPurchaseFulfillmentSummary> {
-    const telegramChatId = this.normalizeNullableString(account.telegramId);
+    const telegramChatId = normalizeNullableString(account.telegramId);
     const base: AdminTelegramPurchaseFulfillmentSummary = {
       paymentOrderId: paymentOrder.id,
       customerAccountId: account.id,
@@ -3829,7 +3830,7 @@ export class BillingService {
   private async telegramUsageStatusLink(): Promise<string | null> {
     try {
       const settings = await this.telegramConfig.getSettingsSummary();
-      const username = this.normalizeNullableString(settings.botUsername)?.replace(/^@+/, '');
+      const username = normalizeNullableString(settings.botUsername)?.replace(/^@+/, '');
       if (!settings.commandsEnabled || !username) return null;
       return `https://t.me/${username}?start=status`;
     } catch {
@@ -4091,7 +4092,7 @@ export class BillingService {
         minUsageMultiplier: Number.POSITIVE_INFINITY,
       };
       const rank = this.clientRouteHealthRank(row.healthStatus);
-      const usageMultiplier = this.normalizeUsageMultiplier(row.usageMultiplier);
+      const usageMultiplier = normalizeUsageMultiplier(row.usageMultiplier);
       current.total += 1;
       current.healthy += row.healthStatus === 'healthy' ? 1 : 0;
       current.minUsageMultiplier = Math.min(current.minUsageMultiplier, usageMultiplier);
@@ -4123,7 +4124,7 @@ export class BillingService {
         region: row.region,
         healthStatus: row.healthStatus,
         available: row.enabled && !row.maintenanceMode && row.healthStatus !== 'critical',
-        usageMultiplier: this.normalizeUsageMultiplier(row.usageMultiplier),
+        usageMultiplier: normalizeUsageMultiplier(row.usageMultiplier),
         chargeLabel: this.usageMultiplierLabel(row.usageMultiplier),
         usableBytesAtMultiplier: this.bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
         subscriptionEndpoint: this.publicSubscriptionEndpoint(row, chargedRemainingBytes),
@@ -4483,20 +4484,20 @@ export class BillingService {
     };
 
     if (dto.displayName !== undefined) {
-      const displayName = this.normalizeNullableString(dto.displayName);
+      const displayName = normalizeNullableString(dto.displayName);
       if (!displayName) throw new BadRequestException('Reseller display name is required');
       add('displayName', 'display_name', displayName);
     }
-    if (dto.contactName !== undefined) add('contactName', 'contact_name', this.normalizeNullableString(dto.contactName));
+    if (dto.contactName !== undefined) add('contactName', 'contact_name', normalizeNullableString(dto.contactName));
     if (dto.telegramUsername !== undefined) {
-      add('telegramUsername', 'telegram_username', this.normalizeTelegramUsername(dto.telegramUsername));
+      add('telegramUsername', 'telegram_username', normalizeTelegramUsername(dto.telegramUsername));
     }
-    if (dto.status !== undefined) add('status', 'status', this.normalizeResellerStatus(dto.status));
+    if (dto.status !== undefined) add('status', 'status', normalizeResellerStatus(dto.status));
     if (dto.sellerMarginBps !== undefined) {
       add('sellerMarginBps', 'seller_margin_bps', normalizeResellerMarginBps(dto.sellerMarginBps, existing.sellerMarginBps));
     }
     if (dto.currency !== undefined) {
-      const currency = this.normalizeCurrency(dto.currency);
+      const currency = normalizeCurrency(dto.currency);
       if (currency !== existing.currency) {
         const ledgerCount = await executor.query<{ count: string }>(
           'SELECT COUNT(*)::text AS count FROM reseller_wallet_ledger WHERE reseller_account_id = $1',
@@ -4509,9 +4510,9 @@ export class BillingService {
       add('currency', 'currency', currency);
     }
     if (dto.creditLimitAmount !== undefined) {
-      add('creditLimitAmount', 'credit_limit_amount', this.normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0));
+      add('creditLimitAmount', 'credit_limit_amount', normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0));
     }
-    if (dto.notes !== undefined) add('notes', 'notes', this.normalizeNullableString(dto.notes));
+    if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
 
     if (!setClauses.length) return fields;
 
@@ -4670,7 +4671,7 @@ export class BillingService {
   ): Promise<string> {
     if (!dto) throw new BadRequestException('Customer account payload is required for a new reseller package sale');
     this.assertResellerCustomerPayload(dto);
-    const requestedResellerAccountId = this.normalizeNullableString(dto.resellerAccountId);
+    const requestedResellerAccountId = normalizeNullableString(dto.resellerAccountId);
     if (requestedResellerAccountId && requestedResellerAccountId !== resellerAccountId) {
       throw new BadRequestException('Reseller package sale customer must belong to the current reseller');
     }
@@ -4681,9 +4682,9 @@ export class BillingService {
       throw new BadRequestException('New reseller package sale customers cannot start with used volume');
     }
 
-    const displayName = this.normalizeNullableString(dto.displayName);
-    const telegramId = this.normalizeNullableString(dto.telegramId);
-    const telegramUsername = this.normalizeTelegramUsername(dto.telegramUsername);
+    const displayName = normalizeNullableString(dto.displayName);
+    const telegramId = normalizeNullableString(dto.telegramId);
+    const telegramUsername = normalizeTelegramUsername(dto.telegramUsername);
     if (!displayName && !telegramId && !telegramUsername) {
       throw new BadRequestException('New reseller package sale requires a customer display name or Telegram identity');
     }
@@ -4706,7 +4707,7 @@ export class BillingService {
         dto.status ?? 'active',
         dto.quotaScope ?? 'account_shared',
         dto.perClientLimitBytes ?? null,
-        this.normalizeNullableString(dto.notes),
+        normalizeNullableString(dto.notes),
       ],
     );
     const customerAccountId = insertResult.rows[0].id;
@@ -4827,15 +4828,15 @@ export class BillingService {
       `,
       [
         name,
-        dto.slug !== undefined ? this.normalizeSlug(dto.slug) : existing.slug,
+        dto.slug !== undefined ? normalizeSlug(dto.slug) : existing.slug,
         dto.volumeGb !== undefined ? this.gbToBytes(dto.volumeGb) : existingVolumeBytes,
         dto.durationDays !== undefined ? dto.durationDays : existing.durationDays,
         pricePerGb,
         totalPrice,
-        dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : existing.currency,
+        dto.currency !== undefined ? normalizeCurrency(dto.currency) : existing.currency,
         dto.status ?? existing.status,
         dto.sortOrder ?? existing.sortOrder,
-        dto.notes !== undefined ? this.normalizeNullableString(dto.notes) : existing.notes,
+        dto.notes !== undefined ? normalizeNullableString(dto.notes) : existing.notes,
         id,
       ],
     );
@@ -4892,7 +4893,7 @@ export class BillingService {
     const name = dto.name !== undefined ? dto.name.trim() : existing.name;
     if (!name) throw new BadRequestException('Payment method name is required');
 
-    const provider = dto.provider !== undefined ? this.normalizeProvider(dto.provider) : existing.provider;
+    const provider = dto.provider !== undefined ? normalizeProvider(dto.provider) : existing.provider;
     const checkoutMode = dto.checkoutMode ?? (dto.provider !== undefined ? this.defaultCheckoutMode(provider) : existing.checkoutMode);
     const minAmount = dto.minAmount !== undefined ? dto.minAmount : this.numberFromBigInt(existing.minAmount);
     const maxAmount = dto.maxAmount !== undefined ? dto.maxAmount : this.numberFromBigInt(existing.maxAmount);
@@ -4920,17 +4921,17 @@ export class BillingService {
       `,
       [
         name,
-        dto.slug !== undefined ? this.normalizeSlug(dto.slug) : existing.slug,
+        dto.slug !== undefined ? normalizeSlug(dto.slug) : existing.slug,
         provider,
         checkoutMode,
-        dto.currency !== undefined ? this.normalizeCurrency(dto.currency) : existing.currency,
+        dto.currency !== undefined ? normalizeCurrency(dto.currency) : existing.currency,
         minAmount,
         maxAmount,
         dto.status ?? existing.status,
         dto.sortOrder ?? existing.sortOrder,
         supportsAutoCapture,
         this.stringifyPublicRecord(dto.publicConfig ?? existing.publicConfig ?? {}, 'Payment method public config'),
-        dto.instructions !== undefined ? this.normalizeNullableString(dto.instructions) : existing.instructions,
+        dto.instructions !== undefined ? normalizeNullableString(dto.instructions) : existing.instructions,
         id,
       ],
     );
@@ -5712,10 +5713,10 @@ export class BillingService {
     candidate: CurrentPanelImportCandidate,
   ): Promise<string[]> {
     const reasonCodes: string[] = [];
-    const status = this.normalizeNullableString(candidate.status) ?? 'unknown';
-    const externalPanel = this.normalizeNullableString(candidate.externalPanel);
-    const externalPanelUserId = this.normalizeNullableString(candidate.externalPanelUserId);
-    const externalPanelConfigId = this.normalizeNullableString(candidate.externalPanelConfigId);
+    const status = normalizeNullableString(candidate.status) ?? 'unknown';
+    const externalPanel = normalizeNullableString(candidate.externalPanel);
+    const externalPanelUserId = normalizeNullableString(candidate.externalPanelUserId);
+    const externalPanelConfigId = normalizeNullableString(candidate.externalPanelConfigId);
 
     if (!candidate.label.trim()) reasonCodes.push('missing_label');
     if (!CURRENT_PANEL_IMPORTABLE_STATUSES.has(status)) reasonCodes.push('unsupported_status');
@@ -5782,9 +5783,9 @@ export class BillingService {
     customerAccountId: string,
     candidate: CurrentPanelImportCandidate,
   ): Promise<{ client: ClientConfigRow | null; reasonCodes: string[] }> {
-    const externalPanel = this.normalizeNullableString(candidate.externalPanel);
-    const externalPanelConfigId = this.normalizeNullableString(candidate.externalPanelConfigId);
-    const externalPanelUserId = this.normalizeNullableString(candidate.externalPanelUserId);
+    const externalPanel = normalizeNullableString(candidate.externalPanel);
+    const externalPanelConfigId = normalizeNullableString(candidate.externalPanelConfigId);
+    const externalPanelUserId = normalizeNullableString(candidate.externalPanelUserId);
 
     if (!externalPanel) return { client: null, reasonCodes: ['missing_external_panel'] };
     if (!externalPanelConfigId && !externalPanelUserId) return { client: null, reasonCodes: ['missing_external_identity'] };
@@ -5972,7 +5973,7 @@ export class BillingService {
     targetUsedBytes: number,
     clientConfigId: string,
   ): string {
-    const externalPanel = this.normalizeNullableString(candidate.externalPanel) ?? 'unknown_panel';
+    const externalPanel = normalizeNullableString(candidate.externalPanel) ?? 'unknown_panel';
     const identity = candidate.externalPanelConfigId ?? candidate.externalPanelUserId ?? clientConfigId;
     const normalizedIdentity = identity.replace(/\s+/g, '_').slice(0, 150);
     return `current_panel_usage_sync:${panelKind}:${externalPanel}:${normalizedIdentity}:${targetUsedBytes}`;
@@ -6084,7 +6085,7 @@ export class BillingService {
     const outbound = result.rows[0];
     if (!outbound) throw new BadRequestException('Rated outbound was not found');
 
-    const multiplier = this.normalizeUsageMultiplier(outbound.usageMultiplier);
+    const multiplier = normalizeUsageMultiplier(outbound.usageMultiplier);
     const usedBytesDelta = input.rawUsedBytesDelta * multiplier;
     if (!Number.isSafeInteger(usedBytesDelta) || usedBytesDelta > MAX_SAFE_BYTES) {
       throw new BadRequestException('Rated usage exceeds the safe billing limit');
@@ -6236,8 +6237,8 @@ export class BillingService {
         throw new BadRequestException('Rewarded ad provider does not match active settings');
       }
 
-      const adSessionId = this.normalizeNullableString(input.adSessionId);
-      const idempotencyKey = this.normalizeNullableString(input.idempotencyKey) ?? adSessionId;
+      const adSessionId = normalizeNullableString(input.adSessionId);
+      const idempotencyKey = normalizeNullableString(input.idempotencyKey) ?? adSessionId;
       if (!idempotencyKey) {
         throw new BadRequestException('Rewarded ad claim requires an idempotency key or ad session id');
       }
@@ -6795,14 +6796,14 @@ export class BillingService {
   }
 
   private normalizeRewardedAdProvider(value: string | null | undefined, fallback: string): string {
-    const normalized = this.normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
+    const normalized = normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
     const provider = normalized || fallback || DEFAULT_REWARDED_AD_PROVIDER;
     if (!provider || provider.length > 80) throw new BadRequestException('Rewarded ad provider is invalid');
     return provider;
   }
 
   private normalizeRewardedAdSettingsToken(value: string | null | undefined, label: string): string {
-    const normalized = this.normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
+    const normalized = normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
     if (!normalized || normalized.length > 80) throw new BadRequestException(`${label} is invalid`);
     return normalized;
   }
@@ -6897,7 +6898,7 @@ export class BillingService {
       countryCode: row.countryCode,
       region: row.region,
       healthStatus: row.healthStatus,
-      usageMultiplier: this.normalizeUsageMultiplier(row.usageMultiplier),
+      usageMultiplier: normalizeUsageMultiplier(row.usageMultiplier),
       chargeLabel: this.usageMultiplierLabel(row.usageMultiplier),
       address,
       host,
@@ -7395,11 +7396,11 @@ export class BillingService {
   private bytesAtMultiplier(chargedRemainingBytes: number | null, multiplierValue: number | string | null | undefined): number | null {
     if (chargedRemainingBytes === null) return null;
 
-    return Math.floor(chargedRemainingBytes / this.normalizeUsageMultiplier(multiplierValue));
+    return Math.floor(chargedRemainingBytes / normalizeUsageMultiplier(multiplierValue));
   }
 
   private usageMultiplierLabel(multiplierValue: number | string | null | undefined): string {
-    return `x${this.normalizeUsageMultiplier(multiplierValue)}`;
+    return `x${normalizeUsageMultiplier(multiplierValue)}`;
   }
 
   private minNullableBytes(values: Array<number | null | undefined>): number | null {
@@ -7425,14 +7426,14 @@ export class BillingService {
     };
 
     if (dto.resellerAccountId !== undefined) {
-      const resellerAccountId = this.normalizeNullableString(dto.resellerAccountId);
+      const resellerAccountId = normalizeNullableString(dto.resellerAccountId);
       if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
       add('resellerAccountId', 'reseller_account_id', resellerAccountId);
     }
-    if (dto.displayName !== undefined) add('displayName', 'display_name', this.normalizeNullableString(dto.displayName));
-    if (dto.telegramId !== undefined) add('telegramId', 'telegram_id', this.normalizeNullableString(dto.telegramId));
+    if (dto.displayName !== undefined) add('displayName', 'display_name', normalizeNullableString(dto.displayName));
+    if (dto.telegramId !== undefined) add('telegramId', 'telegram_id', normalizeNullableString(dto.telegramId));
     if (dto.telegramUsername !== undefined) {
-      add('telegramUsername', 'telegram_username', this.normalizeTelegramUsername(dto.telegramUsername));
+      add('telegramUsername', 'telegram_username', normalizeTelegramUsername(dto.telegramUsername));
     }
     if (dto.paidNumber !== undefined) add('paidNumberHash', 'paid_number_hash', this.hashPaidNumberIfPresent(dto.paidNumber));
     if (dto.clearPaidNumber) add('paidNumberHash', 'paid_number_hash', null);
@@ -7443,7 +7444,7 @@ export class BillingService {
       add('perClientLimitBytes', 'per_client_limit_bytes', dto.perClientLimitBytes);
     }
     if (dto.usedBytes !== undefined) add('usedBytes', 'used_bytes', dto.usedBytes);
-    if (dto.notes !== undefined) add('notes', 'notes', this.normalizeNullableString(dto.notes));
+    if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
 
     if (!setClauses.length) return fields;
 
@@ -7477,19 +7478,19 @@ export class BillingService {
     };
 
     if (dto.label !== undefined) add('label', 'label', dto.label.trim());
-    if (dto.protocol !== undefined) add('protocol', 'protocol', this.normalizeProtocol(dto.protocol));
-    if (dto.externalPanel !== undefined) add('externalPanel', 'external_panel', this.normalizeNullableString(dto.externalPanel));
+    if (dto.protocol !== undefined) add('protocol', 'protocol', normalizeProtocol(dto.protocol));
+    if (dto.externalPanel !== undefined) add('externalPanel', 'external_panel', normalizeNullableString(dto.externalPanel));
     if (dto.externalPanelUserId !== undefined) {
-      add('externalPanelUserId', 'external_panel_user_id', this.normalizeNullableString(dto.externalPanelUserId));
+      add('externalPanelUserId', 'external_panel_user_id', normalizeNullableString(dto.externalPanelUserId));
     }
     if (dto.externalPanelConfigId !== undefined) {
-      add('externalPanelConfigId', 'external_panel_config_id', this.normalizeNullableString(dto.externalPanelConfigId));
+      add('externalPanelConfigId', 'external_panel_config_id', normalizeNullableString(dto.externalPanelConfigId));
     }
     if (dto.deviceLimit !== undefined) add('deviceLimit', 'device_limit', dto.deviceLimit);
     if (dto.quotaLimitBytes !== undefined) add('quotaLimitBytes', 'quota_limit_bytes', dto.quotaLimitBytes);
     if (dto.usedBytes !== undefined) add('usedBytes', 'used_bytes', dto.usedBytes);
     if (dto.status !== undefined) add('status', 'status', dto.status);
-    if (dto.notes !== undefined) add('notes', 'notes', this.normalizeNullableString(dto.notes));
+    if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
 
     if (!setClauses.length) return fields;
 
@@ -7679,7 +7680,7 @@ export class BillingService {
         : existing?.preferredExitCountryCode ?? null;
     const preferredOutboundId =
       dto.preferredOutboundId !== undefined
-        ? this.normalizeNullableString(dto.preferredOutboundId)
+        ? normalizeNullableString(dto.preferredOutboundId)
         : existing?.preferredOutboundId ?? null;
     const scoreProfile = dto.scoreProfile ?? existing?.scoreProfile ?? 'balanced';
     const routeLocked = dto.routeLocked ?? (mode === 'outbound' ? true : dto.mode ? false : existing?.routeLocked ?? false);
@@ -7749,13 +7750,13 @@ export class BillingService {
   }
 
   private normalizeRouteGroup(value: string | undefined): string {
-    const normalized = this.normalizeNullableString(value) ?? 'main';
+    const normalized = normalizeNullableString(value) ?? 'main';
     if (normalized.length > 80) throw new BadRequestException('routeGroup is too long');
     return normalized;
   }
 
   private normalizeCountryCode(value: string | null | undefined): string | null {
-    const normalized = this.normalizeNullableString(value)?.toUpperCase() ?? null;
+    const normalized = normalizeNullableString(value)?.toUpperCase() ?? null;
     if (!normalized) return null;
     if (!/^[A-Z]{2}$/.test(normalized)) {
       throw new BadRequestException('Country code must use two-letter ISO format, such as IR or DE');
@@ -7764,7 +7765,7 @@ export class BillingService {
   }
 
   private normalizeDetectionSource(value: string | null | undefined): string | null {
-    const normalized = this.normalizeNullableString(value);
+    const normalized = normalizeNullableString(value);
     if (!normalized) return null;
     if (!['client_app', 'edge_ip', 'admin', 'unknown'].includes(normalized)) {
       throw new BadRequestException('Invalid country detection source');
@@ -7788,7 +7789,7 @@ export class BillingService {
   }
 
   private normalizeClientSubscriptionCredentialProtocol(value: string | null | undefined): string {
-    const normalized = this.normalizeSubscriptionProtocol(this.normalizeNullableString(value) ?? '');
+    const normalized = this.normalizeSubscriptionProtocol(normalizeNullableString(value) ?? '');
     if (!CLIENT_SUBSCRIPTION_PROTOCOLS.has(normalized)) {
       throw new BadRequestException('Client subscription credential protocol is not supported');
     }
@@ -7866,16 +7867,16 @@ export class BillingService {
       rawUsedBytesDelta,
       usedBytesDelta: rawUsedBytesDelta,
       usageMultiplier: 1,
-      ratedOutboundId: this.normalizeNullableString(dto.outboundId),
+      ratedOutboundId: normalizeNullableString(dto.outboundId),
       ratedOutboundName: null,
       rxBytes,
       txBytes,
       observedAt,
       windowStart,
       windowEnd,
-      idempotencyKey: this.normalizeNullableString(dto.idempotencyKey),
-      externalReference: this.normalizeNullableString(dto.externalReference),
-      notes: this.normalizeNullableString(dto.notes),
+      idempotencyKey: normalizeNullableString(dto.idempotencyKey),
+      externalReference: normalizeNullableString(dto.externalReference),
+      notes: normalizeNullableString(dto.notes),
       metadata,
     };
   }
@@ -7949,7 +7950,7 @@ export class BillingService {
   }
 
   private assertResellerCustomerPayload(dto: CreateCustomerAccountDto | UpdateCustomerAccountDto): void {
-    if (this.normalizeNullableString(dto.paidNumber)) {
+    if (normalizeNullableString(dto.paidNumber)) {
       throw new BadRequestException('Reseller customer flows cannot store paid numbers');
     }
     if ('clearPaidNumber' in dto && dto.clearPaidNumber) {
@@ -7958,13 +7959,13 @@ export class BillingService {
   }
 
   private normalizeClientUsageSource(value: string | undefined): string {
-    const normalized = this.normalizeNullableString(value)?.toLowerCase() ?? 'admin';
+    const normalized = normalizeNullableString(value)?.toLowerCase() ?? 'admin';
     if (!CLIENT_USAGE_EVENT_SOURCES.has(normalized)) throw new BadRequestException('Invalid client usage source');
     return normalized;
   }
 
   private normalizeClientUsageDirection(value: string | undefined): string {
-    const normalized = this.normalizeNullableString(value)?.toLowerCase() ?? 'combined';
+    const normalized = normalizeNullableString(value)?.toLowerCase() ?? 'combined';
     if (!CLIENT_USAGE_DIRECTIONS.has(normalized)) throw new BadRequestException('Invalid client usage direction');
     return normalized;
   }
@@ -7993,7 +7994,7 @@ export class BillingService {
   }
 
   private normalizeCurrentPanelVolumeChargeScope(value: string | null | undefined): CurrentPanelVolumeChargeScope {
-    const normalized = this.normalizeNullableString(value) ?? 'account_quota';
+    const normalized = normalizeNullableString(value) ?? 'account_quota';
     if (!CURRENT_PANEL_VOLUME_CHARGE_SCOPES.has(normalized as CurrentPanelVolumeChargeScope)) {
       throw new BadRequestException('Invalid current panel volume charge scope');
     }
@@ -8031,13 +8032,13 @@ export class BillingService {
   }
 
   private normalizeJsonStringArray(value: unknown): string[] {
-    const parsed = this.parseJsonValue(value);
+    const parsed = parseJsonValue(value);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item): item is string => typeof item === 'string');
   }
 
   private normalizeCurrentPanelClientQuotaChanges(value: unknown): CurrentPanelVolumeChargeClientQuotaChange[] {
-    const parsed = this.parseJsonValue(value);
+    const parsed = parseJsonValue(value);
     if (!Array.isArray(parsed)) return [];
 
     return parsed.flatMap((item) => {
@@ -8055,25 +8056,8 @@ export class BillingService {
     });
   }
 
-  private parseJsonValue(value: unknown): unknown {
-    if (typeof value !== 'string') return value;
-    try {
-      return JSON.parse(value);
-    } catch {
-      return null;
-    }
-  }
-
-  private normalizeUsageMultiplier(value: number | string | null | undefined): number {
-    const normalized = Number(value ?? 1);
-    if (!Number.isInteger(normalized) || normalized < 1 || normalized > 100) {
-      throw new BadRequestException('Usage multiplier must be an integer between 1 and 100');
-    }
-    return normalized;
-  }
-
   private hashPaidNumberIfPresent(value: string | null | undefined): string | null {
-    const normalized = this.normalizePaidNumber(value);
+    const normalized = normalizePaidNumber(value);
     if (!normalized) return null;
 
     const key = process.env.AFROGATE_IDENTITY_HASH_KEY?.trim() || process.env.AFROGATE_SECRETS_KEY?.trim();
@@ -8086,68 +8070,6 @@ export class BillingService {
     return `hmac-sha256:${createHmac('sha256', key).update(normalized, 'utf8').digest('hex')}`;
   }
 
-  private normalizePaidNumber(value: string | null | undefined): string | null {
-    const normalized = this.normalizeNullableString(value)?.replace(/[\s().-]+/g, '') ?? null;
-    return normalized || null;
-  }
-
-  private normalizeTelegramUsername(value: string | null | undefined): string | null {
-    const normalized = this.normalizeNullableString(value)?.replace(/^@+/, '') ?? null;
-    return normalized || null;
-  }
-
-  private normalizeProtocol(value: string | null | undefined): string {
-    return this.normalizeNullableString(value)?.toLowerCase() ?? 'custom';
-  }
-
-  private normalizeCurrency(value: string): string {
-    const normalized = value.trim().toLowerCase();
-    if (!/^[a-z][a-z0-9_-]{0,15}$/.test(normalized)) {
-      throw new BadRequestException('Currency must use letters, numbers, underscore, or dash');
-    }
-    return normalized;
-  }
-
-  private normalizeResellerStatus(value: string): string {
-    const normalized = value.trim().toLowerCase();
-    if (!['active', 'suspended', 'disabled'].includes(normalized)) {
-      throw new BadRequestException('Invalid reseller account status');
-    }
-    return normalized;
-  }
-
-
-  private normalizeMoneyAmount(value: number | null | undefined, fieldName: string, fallback?: number): number {
-    const normalized = value ?? fallback;
-    if (normalized === undefined || !Number.isSafeInteger(normalized) || normalized < 0) {
-      throw new BadRequestException(`${fieldName} must be a safe non-negative integer`);
-    }
-    return normalized;
-  }
-
-  private normalizeSlug(value: string): string {
-    const slug = value
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-    if (!slug) throw new BadRequestException('Volume package slug is required');
-    return slug;
-  }
-
-  private normalizeProvider(value: string): string {
-    const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
-    if (!normalized) throw new BadRequestException('Payment provider is required');
-    if (normalized.length > 40) throw new BadRequestException('Payment provider is too long');
-    return normalized;
-  }
-
-  private normalizeNullableString(value: string | null | undefined): string | null {
-    if (typeof value !== 'string') return null;
-    const trimmed = value.trim();
-    return trimmed || null;
-  }
 
   private gbToBytes(value: number): number {
     return value * BYTES_PER_GB;
