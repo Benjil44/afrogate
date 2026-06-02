@@ -72,6 +72,7 @@ import { asRecord, stringFromRecord } from './record-utils';
 import { assertAmountRange, assertNoSecretLikeKeys, assertPaymentOrderStatusTransition, stringifyPublicRecord } from './payment-validators';
 import { assertPayPalPaymentOrder, extractPayPalWebhookCaptureId, extractPayPalWebhookOrderId, mergePayPalMetadata, payPalWebhookPaymentUpdate } from './paypal-webhook';
 import { endpointHostPort, firstCredentialList, firstCredentialString, firstSafeEndpointNumber, subscriptionEndpointTarget } from './subscription-sanitizers';
+import { DEFAULT_REWARDED_AD_PROVIDER, assertRewardedAdSettingsLimits, normalizeRewardedAdProvider } from './rewarded-ad';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -133,12 +134,9 @@ import {
 } from './payment-provider-adapters';
 import { RewardedAdWebhookService, type RewardedAdWebhookSignatureHeaders } from './rewarded-ad-webhook.service';
 
-const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
 const DEFAULT_REWARDED_AD_REWARD_BYTES = 100 * 1024 ** 2;
 const DEFAULT_REWARDED_AD_DAILY_LIMIT = 20;
 const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
-const MAX_REWARDED_AD_REWARD_BYTES = 10 * BYTES_PER_GB;
-const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 const CURRENT_PANEL_IMPORTABLE_STATUSES = new Set(['active', 'limited', 'disabled', 'expired']);
 const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = new Set<CurrentPanelVolumeChargeScope>([
   'account_quota',
@@ -765,7 +763,7 @@ export class BillingService {
         dto.verificationMode !== undefined
           ? normalizeRewardedAdSettingsToken(dto.verificationMode, 'Rewarded ad verification mode')
           : current.verificationMode || DEFAULT_REWARDED_AD_VERIFICATION_MODE;
-      this.assertRewardedAdSettingsLimits(rewardBytes, dailyLimit);
+      assertRewardedAdSettingsLimits(rewardBytes, dailyLimit);
 
       const result = await executor.query<RewardedAdSettingsRow>(
         `
@@ -6223,7 +6221,7 @@ export class BillingService {
         throw new ForbiddenException('Rewarded ad signed webhooks are not enabled');
       }
 
-      const provider = this.normalizeRewardedAdProvider(input.provider, settings.provider);
+      const provider = normalizeRewardedAdProvider(input.provider, settings.provider);
       if (input.strictProviderMatch && provider !== settings.provider) {
         throw new BadRequestException('Rewarded ad provider does not match active settings');
       }
@@ -6784,22 +6782,6 @@ export class BillingService {
       lastDetectedAt: row.lastDetectedAt ?? null,
       updatedAt: row.updatedAt ?? null,
     };
-  }
-
-  private normalizeRewardedAdProvider(value: string | null | undefined, fallback: string): string {
-    const normalized = normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
-    const provider = normalized || fallback || DEFAULT_REWARDED_AD_PROVIDER;
-    if (!provider || provider.length > 80) throw new BadRequestException('Rewarded ad provider is invalid');
-    return provider;
-  }
-
-  private assertRewardedAdSettingsLimits(rewardBytes: number, dailyLimit: number): void {
-    if (!Number.isSafeInteger(rewardBytes) || rewardBytes <= 0 || rewardBytes > MAX_REWARDED_AD_REWARD_BYTES) {
-      throw new BadRequestException('Rewarded ad reward amount is outside the allowed range');
-    }
-    if (!Number.isInteger(dailyLimit) || dailyLimit < 0 || dailyLimit > MAX_REWARDED_AD_DAILY_LIMIT) {
-      throw new BadRequestException('Rewarded ad daily limit is outside the allowed range');
-    }
   }
 
   private createClientAccessToken(): string {

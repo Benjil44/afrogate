@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.12 - 2026-06-02
+
+- Peeled the rewarded-ad helpers (`normalizeRewardedAdProvider`, `assertRewardedAdSettingsLimits`) and their bounds constants (`DEFAULT_REWARDED_AD_PROVIDER`, `MAX_REWARDED_AD_REWARD_BYTES`, `MAX_REWARDED_AD_DAILY_LIMIT`) out of BillingService into `billing/rewarded-ad.ts`; the shared default-provider constant is re-imported by the service. Added 7 tests (provider slugification/fallback/length, reward/daily-limit bounds); backend suite now 278 tests.
+
 ## 0.114.11 - 2026-06-02
 
 - Peeled the subscription-config sanitizers (`sanitizeSubscriptionConfigValue`, `scalarCredentialValue`, `firstCredentialString`, `firstCredentialList`, `endpointHostPort`, `firstSafeEndpointNumber`, `parseSubscriptionAddress`, `subscriptionEndpointTarget`) out of BillingService into `billing/subscription-sanitizers.ts`; rewrote 27 callsites. Added 18 tests, including explicit CR/LF/NUL injection-rejection coverage for the credential/endpoint guards and IPv6/scheme address parsing; backend suite now 271 tests. (`firstSafeEndpointString` stays in the service as it depends on `normalizePublicEndpointValue`.)
