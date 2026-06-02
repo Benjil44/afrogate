@@ -67,6 +67,8 @@ import { DatabaseService, type DatabaseQueryExecutor } from '../database/databas
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
 import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './allocation-idempotency';
 import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableBytes, numberFromBigInt, remainingBytes, throwConflictIfUniqueViolation } from './billing-math';
+import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from './date-utils';
+import { asRecord, stringFromRecord } from './record-utils';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -1159,7 +1161,7 @@ export class BillingService {
         const providerOrderId = normalizeNullableString(dto.providerOrderId);
         const checkoutUrl = normalizeNullableString(dto.checkoutUrl);
         const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
-        const expiresAt = this.parseOptionalDate(dto.expiresAt, 'expiresAt');
+        const expiresAt = parseOptionalDate(dto.expiresAt, 'expiresAt');
         const metadata = dto.metadata ?? {};
         const amount = numberFromBigInt(volumePackage.totalPrice) ?? 0;
         const volumeBytes = numberFromBigInt(volumePackage.volumeBytes) ?? 0;
@@ -1597,15 +1599,15 @@ export class BillingService {
     headers: PayPalWebhookSignatureHeaders,
     payload: Record<string, unknown>,
   ): Promise<PayPalWebhookHandlerResponse> {
-    const webhookPayload = this.asRecord(payload);
+    const webhookPayload = asRecord(payload);
     if (!webhookPayload) throw new BadRequestException('PayPal webhook body must be an object');
 
     const verified = await this.paypal.verifyWebhook(headers, webhookPayload);
     const eventType = verified.eventType;
-    const resource = this.asRecord(webhookPayload.resource);
+    const resource = asRecord(webhookPayload.resource);
     const providerOrderId = this.extractPayPalWebhookOrderId(eventType, resource);
     const providerCaptureId = this.extractPayPalWebhookCaptureId(eventType, resource);
-    const providerResourceStatus = this.stringFromRecord(resource, 'status');
+    const providerResourceStatus = stringFromRecord(resource, 'status');
 
     if (!providerOrderId) {
       await this.audit.record(undefined, 'payment_order.paypal_webhook_ignored', 'payment_order', null, {
@@ -3887,7 +3889,7 @@ export class BillingService {
 
   async getClientRewardedAdStatus(actor: ClientAuthActor): Promise<ClientRewardedAdStatus> {
     assertClientScope(actor, 'client:read');
-    const today = this.currentUtcDay();
+    const today = currentUtcDay();
     const [settings, watchedToday] = await Promise.all([
       this.getRewardedAdSettings(),
       this.countRewardedAdGrants(actor.clientConfigId, today),
@@ -6205,7 +6207,7 @@ export class BillingService {
     requiredVerificationModes?: string[];
     strictProviderMatch?: boolean;
   }): Promise<RewardedAdGrantCreateState> {
-    const today = this.currentUtcDay();
+    const today = currentUtcDay();
 
     return this.database.transaction(async (executor) => {
       const settings = await this.getRewardedAdSettings(executor);
@@ -6695,7 +6697,7 @@ export class BillingService {
       dailyLimit,
       watchedToday,
       remainingToday: Math.max(dailyLimit - watchedToday, 0),
-      nextResetAt: this.nextUtcResetAt(),
+      nextResetAt: nextUtcResetAt(),
       provider: settings.provider || DEFAULT_REWARDED_AD_PROVIDER,
       verificationMode: settings.verificationMode || DEFAULT_REWARDED_AD_VERIFICATION_MODE,
     };
@@ -6706,7 +6708,7 @@ export class BillingService {
       id: row.id,
       customerAccountId: row.customerAccountId,
       clientConfigId: row.clientConfigId,
-      grantDay: this.formatGrantDay(row.grantDay),
+      grantDay: formatGrantDay(row.grantDay),
       dailyGrantNumber: row.dailyGrantNumber,
       provider: row.provider,
       adSessionId: row.adSessionId,
@@ -6748,7 +6750,7 @@ export class BillingService {
       protocol: row.protocol,
       name: row.name,
       status: row.revokedAt ? 'revoked' : row.status,
-      publicMetadata: this.asRecord(row.publicMetadata) ?? {},
+      publicMetadata: asRecord(row.publicMetadata) ?? {},
       hasSecretMaterial: true,
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
@@ -6797,21 +6799,6 @@ export class BillingService {
     }
   }
 
-  private currentUtcDay(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  private nextUtcResetAt(): string {
-    const now = new Date();
-    const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-    return reset.toISOString();
-  }
-
-  private formatGrantDay(value: string | Date): string {
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
-    return value.slice(0, 10);
-  }
-
   private createClientAccessToken(): string {
     return `afg_client_${randomBytes(32).toString('base64url')}`;
   }
@@ -6842,7 +6829,7 @@ export class BillingService {
     row: ClientRouteOptionOutboundRow,
     chargedRemainingBytes: number | null,
   ): ClientSubscriptionEndpointSummary | null {
-    const config = this.asRecord(row.config) ?? {};
+    const config = asRecord(row.config) ?? {};
     const address = this.firstSafeEndpointString(config, [
       'subscriptionAddress',
       'clientAddress',
@@ -7022,7 +7009,7 @@ export class BillingService {
       };
     }
 
-    const publicMetadata = this.asRecord(credential.publicMetadata) ?? {};
+    const publicMetadata = asRecord(credential.publicMetadata) ?? {};
     if (protocol === 'wireguard') {
       return this.renderWireGuardClientConfig(endpoint, secretMaterial, publicMetadata);
     }
@@ -7721,7 +7708,7 @@ export class BillingService {
   }
 
   private normalizeClientSubscriptionSecretMaterial(value: unknown): Record<string, unknown> {
-    const record = this.asRecord(value);
+    const record = asRecord(value);
     if (!record) throw new BadRequestException('secretMaterial must be an object');
 
     const normalized = normalizeFlatCredentialRecord(record, 'secretMaterial');
@@ -7733,7 +7720,7 @@ export class BillingService {
   private normalizeClientSubscriptionPublicMetadata(
     value: Record<string, unknown> | null | undefined,
   ): Record<string, unknown> {
-    const record = value === null || value === undefined ? {} : this.asRecord(value);
+    const record = value === null || value === undefined ? {} : asRecord(value);
     if (!record) throw new BadRequestException('publicMetadata must be an object');
 
     const normalized = normalizeFlatCredentialRecord(record, 'publicMetadata');
@@ -7775,9 +7762,9 @@ export class BillingService {
     const direction = this.normalizeClientUsageDirection(
       dto.direction ?? (rxBytes !== null && txBytes === null ? 'rx' : txBytes !== null && rxBytes === null ? 'tx' : 'combined'),
     );
-    const observedAt = this.parseOptionalDate(dto.observedAt, 'observedAt') ?? new Date();
-    const windowStart = this.parseOptionalDate(dto.windowStart, 'windowStart');
-    const windowEnd = this.parseOptionalDate(dto.windowEnd, 'windowEnd');
+    const observedAt = parseOptionalDate(dto.observedAt, 'observedAt') ?? new Date();
+    const windowStart = parseOptionalDate(dto.windowStart, 'windowStart');
+    const windowEnd = parseOptionalDate(dto.windowEnd, 'windowEnd');
     if (windowStart && windowEnd && windowEnd.getTime() < windowStart.getTime()) {
       throw new BadRequestException('windowEnd must be greater than or equal to windowStart');
     }
@@ -7989,7 +7976,7 @@ export class BillingService {
     patch: Record<string, unknown>,
   ): Record<string, unknown> {
     const current = existing ?? {};
-    const currentPayPal = this.asRecord(current.paypal) ?? {};
+    const currentPayPal = asRecord(current.paypal) ?? {};
     const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
 
     return {
@@ -8006,8 +7993,8 @@ export class BillingService {
     prepared: PreparedPaymentProviderCheckout,
   ): Record<string, unknown> {
     const current = existing ?? {};
-    const currentAdapters = this.asRecord(current.paymentProviderAdapters) ?? {};
-    const currentProvider = this.asRecord(currentAdapters[prepared.provider]) ?? {};
+    const currentAdapters = asRecord(current.paymentProviderAdapters) ?? {};
+    const currentProvider = asRecord(currentAdapters[prepared.provider]) ?? {};
 
     return {
       ...current,
@@ -8071,13 +8058,13 @@ export class BillingService {
     eventType: string | null,
     resource: Record<string, unknown> | null,
   ): string | null {
-    const supplementary = this.asRecord(resource?.supplementary_data);
-    const relatedIds = this.asRecord(supplementary?.related_ids);
-    const relatedOrderId = this.stringFromRecord(relatedIds, 'order_id');
+    const supplementary = asRecord(resource?.supplementary_data);
+    const relatedIds = asRecord(supplementary?.related_ids);
+    const relatedOrderId = stringFromRecord(relatedIds, 'order_id');
     if (relatedOrderId) return relatedOrderId;
 
     if (eventType?.startsWith('CHECKOUT.ORDER.')) {
-      return this.stringFromRecord(resource, 'id');
+      return stringFromRecord(resource, 'id');
     }
 
     return null;
@@ -8088,17 +8075,7 @@ export class BillingService {
     resource: Record<string, unknown> | null,
   ): string | null {
     if (!eventType?.startsWith('PAYMENT.CAPTURE.')) return null;
-    return this.stringFromRecord(resource, 'id');
-  }
-
-  private stringFromRecord(record: Record<string, unknown> | null | undefined, key: string): string | null {
-    const value = record?.[key];
-    return typeof value === 'string' && value.trim() ? value.trim() : null;
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-    return value as Record<string, unknown>;
+    return stringFromRecord(resource, 'id');
   }
 
   private assertPaymentOrderStatusTransition(currentStatus: string, nextStatus: string): void {
@@ -8120,13 +8097,6 @@ export class BillingService {
     if (minAmount !== null && maxAmount !== null && maxAmount < minAmount) {
       throw new BadRequestException('Payment method max amount must be greater than or equal to min amount');
     }
-  }
-
-  private parseOptionalDate(value: string | null | undefined, fieldName: string): Date | null {
-    if (!value) return null;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) throw new BadRequestException(`${fieldName} must be a valid date`);
-    return date;
   }
 
   private stringifyPublicRecord(value: Record<string, unknown>, context: string): string {

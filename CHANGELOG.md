@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.8 - 2026-06-02
+
+- Peeled the date/day helpers (`currentUtcDay`, `nextUtcResetAt`, `formatGrantDay`, `parseOptionalDate` — now with an injectable `now` for testability) into `billing/date-utils.ts` and the record accessors (`asRecord`, `stringFromRecord`) into `billing/record-utils.ts`; rewrote 24 callsites. Added 12 tests; backend suite now 228 tests.
+
 ## 0.114.7 - 2026-06-02
 
 - Peeled the pure money/byte math helpers out of BillingService into `billing/billing-math.ts` (`calculateTotalPrice`, `defaultCheckoutMode`, `remainingBytes`, `numberFromBigInt`, `minNullableBytes`, `isErrorWithCode`, `throwConflictIfUniqueViolation`) and co-located the usage-multiplier helpers (`bytesAtMultiplier`, `usageMultiplierLabel`) with `normalizeUsageMultiplier` in `billing-normalizers.ts`; rewrote 134 callsites. Added 16 tests; backend suite now 216 tests.
