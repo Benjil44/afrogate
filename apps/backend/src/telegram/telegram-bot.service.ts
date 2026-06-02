@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { timingSafeEqual } from 'crypto';
+import { telegramWebhookSecretMatches } from './telegram-webhook-secret';
 import type {
   TelegramBotAccountSummary,
   TelegramBotCommandName,
@@ -45,11 +45,7 @@ export class TelegramBotService {
 
   async isWebhookSecretValid(value: string | undefined): Promise<boolean> {
     const expected = await this.webhookSecret();
-    if (!expected || !value) return false;
-
-    const expectedBuffer = Buffer.from(expected);
-    const valueBuffer = Buffer.from(value);
-    return expectedBuffer.length === valueBuffer.length && timingSafeEqual(expectedBuffer, valueBuffer);
+    return telegramWebhookSecretMatches(expected, value);
   }
 
   async handleUpdate(payload: unknown): Promise<TelegramBotWebhookResponse> {

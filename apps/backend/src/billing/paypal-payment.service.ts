@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OutboundHttpService } from '../outbound/outbound-http.service';
+import { buildPayPalSignatureVerificationRequest, interpretPayPalVerificationResponse } from './paypal-webhook-verify';
 
 export interface CreatePayPalCheckoutInput {
   paymentOrderId: string;
@@ -205,38 +206,17 @@ export class PayPalPaymentService {
   ): Promise<VerifiedPayPalWebhook> {
     const paypal = this.requirePayPalConfig(true);
     const accessToken = await this.getAccessToken(paypal);
-    const authAlgo = this.requireHeader(headers.authAlgo, 'PAYPAL-AUTH-ALGO');
-    const certUrl = this.requireHeader(headers.certUrl, 'PAYPAL-CERT-URL');
-    const transmissionId = this.requireHeader(headers.transmissionId, 'PAYPAL-TRANSMISSION-ID');
-    const transmissionSig = this.requireHeader(headers.transmissionSig, 'PAYPAL-TRANSMISSION-SIG');
-    const transmissionTime = this.requireHeader(headers.transmissionTime, 'PAYPAL-TRANSMISSION-TIME');
-
     const response = await this.requestJson<PayPalWebhookVerificationResponse>(
       paypal,
       accessToken,
       '/v1/notifications/verify-webhook-signature',
       'POST',
-      {
-        auth_algo: authAlgo,
-        cert_url: certUrl,
-        transmission_id: transmissionId,
-        transmission_sig: transmissionSig,
-        transmission_time: transmissionTime,
-        webhook_id: paypal.webhookId,
-        webhook_event: webhookEvent,
-      },
+      buildPayPalSignatureVerificationRequest(headers, paypal.webhookId as string, webhookEvent),
       {},
       'verify PayPal webhook signature',
     );
 
-    if (response.verification_status !== 'SUCCESS') {
-      throw new UnauthorizedException('PayPal webhook signature verification failed');
-    }
-
-    return {
-      eventId: this.stringProperty(webhookEvent, 'id'),
-      eventType: this.stringProperty(webhookEvent, 'event_type'),
-    };
+    return interpretPayPalVerificationResponse(response.verification_status, webhookEvent);
   }
 
   private requirePayPalConfig(requireWebhookId: boolean): PayPalRuntimeConfig {
