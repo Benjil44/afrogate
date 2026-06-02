@@ -72,8 +72,8 @@ import {
   normalizeResellerMarginBps,
   walletCanCoverDebit,
 } from './reseller-wallet-math';
-import { MAX_SAFE_BYTES, computeAllocatedQuotaLimitBytes } from './quota-math';
-import { normalizeCurrency, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizeResellerStatus, normalizeSlug, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue } from './billing-normalizers';
+import { MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
+import { normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizeResellerStatus, normalizeRouteGroup, normalizeSlug, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue } from './billing-normalizers';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -2188,7 +2188,7 @@ export class BillingService {
       if (volumeBytes <= 0) throw new BadRequestException('Package volume must be positive');
       const quotaLimitBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
       const usedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
-      const quotaLimitAfterBytes = this.addPositiveBytes(
+      const quotaLimitAfterBytes = addPositiveBytes(
         quotaLimitBeforeBytes ?? usedBytes,
         volumeBytes,
         'Reseller sale quota would exceed the safe byte limit',
@@ -2388,7 +2388,7 @@ export class BillingService {
           continue;
         }
 
-        const usedBytes = this.normalizeOptionalUsageBytes(candidate.usedBytes ?? null, 'usedBytes') ?? 0;
+        const usedBytes = normalizeOptionalUsageBytes(candidate.usedBytes ?? null, 'usedBytes') ?? 0;
         const result = await executor.query<{ id: string }>(
           `
             INSERT INTO client_configs (
@@ -2516,7 +2516,7 @@ export class BillingService {
       const syncObservedAt = new Date(preview.generatedAt);
 
       for (const candidate of preview.candidates) {
-        const panelUsedBytes = this.normalizeOptionalUsageBytes(candidate.usedBytes ?? null, 'usedBytes');
+        const panelUsedBytes = normalizeOptionalUsageBytes(candidate.usedBytes ?? null, 'usedBytes');
         if (panelUsedBytes === null) {
           skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, ['missing_used_bytes']));
           continue;
@@ -2629,7 +2629,7 @@ export class BillingService {
   ): Promise<AdminCurrentPanelVolumeChargeResponse> {
     try {
       const scope = this.normalizeCurrentPanelVolumeChargeScope(dto.scope);
-      const volumeBytes = this.normalizePositiveByteDelta(dto.volumeBytesDelta, 'volumeBytesDelta');
+      const volumeBytes = normalizePositiveByteDelta(dto.volumeBytesDelta, 'volumeBytesDelta');
       const clientConfigIds = this.normalizeCurrentPanelChargeClientIds(dto.clientConfigIds ?? []);
       const shouldChargeAccount = scope === 'account_quota' || scope === 'account_and_selected_clients';
       const shouldChargeClients = scope === 'selected_clients' || scope === 'account_and_selected_clients';
@@ -2664,7 +2664,7 @@ export class BillingService {
         const accountQuotaBeforeBytes = shouldChargeAccount ? this.numberFromBigInt(account.quotaLimitBytes) : null;
         const accountUsedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
         const accountQuotaAfterBytes = shouldChargeAccount
-          ? this.addPositiveBytes(accountQuotaBeforeBytes ?? accountUsedBytes, volumeBytes, 'Charged account quota would exceed the safe byte limit')
+          ? addPositiveBytes(accountQuotaBeforeBytes ?? accountUsedBytes, volumeBytes, 'Charged account quota would exceed the safe byte limit')
           : null;
         const clientQuotaChanges: CurrentPanelVolumeChargeClientQuotaChange[] = [];
 
@@ -2679,7 +2679,7 @@ export class BillingService {
 
             const clientQuotaBeforeBytes = this.numberFromBigInt(client.quotaLimitBytes);
             const clientUsedBytes = this.numberFromBigInt(client.usedBytes) ?? 0;
-            const clientQuotaAfterBytes = this.addPositiveBytes(
+            const clientQuotaAfterBytes = addPositiveBytes(
               clientQuotaBeforeBytes ?? perClientLimitBytes ?? clientUsedBytes,
               volumeBytes,
               'Charged client quota would exceed the safe byte limit',
@@ -3998,7 +3998,7 @@ export class BillingService {
       throw new ForbiddenException('Client route preference cannot be changed for this client status');
     }
 
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
     const existing = await this.getClientRoutePreference(actor.clientConfigId, routeGroup);
     if (!existing.allowClientOverride) {
       throw new ForbiddenException('Client route override is disabled for this config');
@@ -4040,7 +4040,7 @@ export class BillingService {
     routeGroupInput?: string,
   ): Promise<ClientRouteOptionsResponse> {
     assertClientScope(actor, 'client:read');
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
     const result = await this.database.query<ClientRouteOptionOutboundRow>(
       `
         SELECT
@@ -4137,7 +4137,7 @@ export class BillingService {
     routeGroupInput?: string,
   ): Promise<ClientSubscriptionResponse> {
     assertClientScope(actor, 'client:read');
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
     const routeOptions = await this.listClientRouteOptions(actor, routeGroup);
     const chargedRemainingBytes = await this.getClientChargedRemainingBytes(actor);
     const credentialRows = await this.getActiveClientSubscriptionCredentialRows(actor.clientConfigId, routeGroup);
@@ -4167,7 +4167,7 @@ export class BillingService {
     clientConfigId: string,
     routeGroupInput?: string,
   ): Promise<AdminClientRoutePreferenceSummary> {
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
     const result = await this.database.query<ClientRoutePreferenceRow>(
       this.clientRoutePreferenceSelectSql(true),
       [clientConfigId, routeGroup],
@@ -4185,7 +4185,7 @@ export class BillingService {
     dto: UpsertClientRoutePreferenceDto,
     actor: AuditActor | undefined,
   ): Promise<AdminClientRoutePreferenceSummary> {
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
 
     await this.database.transaction(async (executor) => {
       const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
@@ -5443,7 +5443,7 @@ export class BillingService {
       volumeBytesDelta: this.numberFromBigInt(row.volumeBytesDelta) ?? 0,
       accountQuotaLimitBeforeBytes: this.numberFromBigInt(row.accountQuotaBeforeBytes),
       accountQuotaLimitAfterBytes: this.numberFromBigInt(row.accountQuotaAfterBytes),
-      clientConfigIds: this.normalizeJsonStringArray(row.clientConfigIds),
+      clientConfigIds: normalizeJsonStringArray(row.clientConfigIds),
       clientQuotaChanges: this.normalizeCurrentPanelClientQuotaChanges(row.clientQuotaChanges),
       externalPanelWriteStatus: row.externalPanelWriteStatus,
       idempotencyKey: row.idempotencyKey,
@@ -7668,15 +7668,15 @@ export class BillingService {
     const mode = dto.mode ?? existing?.mode ?? 'auto';
     const detectedCountryCode =
       dto.detectedCountryCode !== undefined
-        ? this.normalizeCountryCode(dto.detectedCountryCode)
+        ? normalizeCountryCode(dto.detectedCountryCode)
         : existing?.detectedCountryCode ?? null;
     const detectedCountrySource =
       dto.detectedCountrySource !== undefined
-        ? this.normalizeDetectionSource(dto.detectedCountrySource)
+        ? normalizeDetectionSource(dto.detectedCountrySource)
         : existing?.detectedCountrySource ?? null;
     const preferredExitCountryCode =
       dto.preferredExitCountryCode !== undefined
-        ? this.normalizeCountryCode(dto.preferredExitCountryCode)
+        ? normalizeCountryCode(dto.preferredExitCountryCode)
         : existing?.preferredExitCountryCode ?? null;
     const preferredOutboundId =
       dto.preferredOutboundId !== undefined
@@ -7749,30 +7749,6 @@ export class BillingService {
     );
   }
 
-  private normalizeRouteGroup(value: string | undefined): string {
-    const normalized = normalizeNullableString(value) ?? 'main';
-    if (normalized.length > 80) throw new BadRequestException('routeGroup is too long');
-    return normalized;
-  }
-
-  private normalizeCountryCode(value: string | null | undefined): string | null {
-    const normalized = normalizeNullableString(value)?.toUpperCase() ?? null;
-    if (!normalized) return null;
-    if (!/^[A-Z]{2}$/.test(normalized)) {
-      throw new BadRequestException('Country code must use two-letter ISO format, such as IR or DE');
-    }
-    return normalized;
-  }
-
-  private normalizeDetectionSource(value: string | null | undefined): string | null {
-    const normalized = normalizeNullableString(value);
-    if (!normalized) return null;
-    if (!['client_app', 'edge_ip', 'admin', 'unknown'].includes(normalized)) {
-      throw new BadRequestException('Invalid country detection source');
-    }
-    return normalized;
-  }
-
   private mapClientScoreProfileToProtocol(scoreProfile: string): string {
     if (['gaming', 'tcp', 'udp', 'quic', 'dns', 'wireguard'].includes(scoreProfile)) return scoreProfile;
     return 'balanced';
@@ -7839,9 +7815,9 @@ export class BillingService {
 
   private normalizeClientUsageEventInput(dto: CreateClientUsageEventDto): NormalizedClientUsageEventInput {
     const source = this.normalizeClientUsageSource(dto.source);
-    const rxBytes = this.normalizeOptionalUsageBytes(dto.rxBytes, 'rxBytes');
-    const txBytes = this.normalizeOptionalUsageBytes(dto.txBytes, 'txBytes');
-    const explicitDelta = this.normalizeOptionalUsageBytes(dto.usedBytesDelta, 'usedBytesDelta');
+    const rxBytes = normalizeOptionalUsageBytes(dto.rxBytes, 'rxBytes');
+    const txBytes = normalizeOptionalUsageBytes(dto.txBytes, 'txBytes');
+    const explicitDelta = normalizeOptionalUsageBytes(dto.usedBytesDelta, 'usedBytesDelta');
 
     if (explicitDelta === null && rxBytes === null && txBytes === null) {
       throw new BadRequestException('usedBytesDelta, rxBytes, or txBytes is required');
@@ -7970,29 +7946,6 @@ export class BillingService {
     return normalized;
   }
 
-  private normalizeOptionalUsageBytes(value: number | null | undefined, fieldName: string): number | null {
-    if (value === null || value === undefined) return null;
-    if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SAFE_BYTES) {
-      throw new BadRequestException(`${fieldName} must be a safe non-negative integer`);
-    }
-    return value;
-  }
-
-  private normalizePositiveByteDelta(value: number | null | undefined, fieldName: string): number {
-    if (!Number.isSafeInteger(value) || value === null || value === undefined || value <= 0 || value > MAX_SAFE_BYTES) {
-      throw new BadRequestException(`${fieldName} must be a safe positive integer`);
-    }
-    return value;
-  }
-
-  private addPositiveBytes(baseBytes: number, deltaBytes: number, errorMessage: string): number {
-    const nextBytes = baseBytes + deltaBytes;
-    if (!Number.isSafeInteger(nextBytes) || nextBytes > MAX_SAFE_BYTES) {
-      throw new BadRequestException(errorMessage);
-    }
-    return nextBytes;
-  }
-
   private normalizeCurrentPanelVolumeChargeScope(value: string | null | undefined): CurrentPanelVolumeChargeScope {
     const normalized = normalizeNullableString(value) ?? 'account_quota';
     if (!CURRENT_PANEL_VOLUME_CHARGE_SCOPES.has(normalized as CurrentPanelVolumeChargeScope)) {
@@ -8015,7 +7968,7 @@ export class BillingService {
     },
   ): void {
     const existingVolumeBytes = this.numberFromBigInt(row.volumeBytesDelta) ?? 0;
-    const existingClientConfigIds = this.normalizeJsonStringArray(row.clientConfigIds).sort();
+    const existingClientConfigIds = normalizeJsonStringArray(row.clientConfigIds).sort();
     const requestedClientConfigIds = request.clientConfigIds.slice().sort();
     const sameClientConfigIds =
       existingClientConfigIds.length === requestedClientConfigIds.length &&
@@ -8029,12 +7982,6 @@ export class BillingService {
     ) {
       throw new ConflictException('Current panel volume charge idempotency key already belongs to another request');
     }
-  }
-
-  private normalizeJsonStringArray(value: unknown): string[] {
-    const parsed = parseJsonValue(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === 'string');
   }
 
   private normalizeCurrentPanelClientQuotaChanges(value: unknown): CurrentPanelVolumeChargeClientQuotaChange[] {

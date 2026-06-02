@@ -89,3 +89,37 @@ export function normalizeProvider(value: string): string {
   if (normalized.length > 40) throw new BadRequestException('Payment provider is too long');
   return normalized;
 }
+
+/** Route group identifier, defaulting to 'main'; max 80 chars. */
+export function normalizeRouteGroup(value: string | undefined): string {
+  const normalized = normalizeNullableString(value) ?? 'main';
+  if (normalized.length > 80) throw new BadRequestException('routeGroup is too long');
+  return normalized;
+}
+
+/** Two-letter ISO country code (uppercased), or null. */
+export function normalizeCountryCode(value: string | null | undefined): string | null {
+  const normalized = normalizeNullableString(value)?.toUpperCase() ?? null;
+  if (!normalized) return null;
+  if (!/^[A-Z]{2}$/.test(normalized)) {
+    throw new BadRequestException('Country code must use two-letter ISO format, such as IR or DE');
+  }
+  return normalized;
+}
+
+/** Country-detection source from a fixed set, or null. */
+export function normalizeDetectionSource(value: string | null | undefined): string | null {
+  const normalized = normalizeNullableString(value);
+  if (!normalized) return null;
+  if (!['client_app', 'edge_ip', 'admin', 'unknown'].includes(normalized)) {
+    throw new BadRequestException('Invalid country detection source');
+  }
+  return normalized;
+}
+
+/** Parse a JSON value into an array of strings (drops non-strings). */
+export function normalizeJsonStringArray(value: unknown): string[] {
+  const parsed = parseJsonValue(value);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((item): item is string => typeof item === 'string');
+}

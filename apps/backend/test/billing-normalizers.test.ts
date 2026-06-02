@@ -13,6 +13,10 @@ import {
   normalizeTelegramUsername,
   normalizeUsageMultiplier,
   parseJsonValue,
+  normalizeRouteGroup,
+  normalizeCountryCode,
+  normalizeDetectionSource,
+  normalizeJsonStringArray,
 } from '../src/billing/billing-normalizers.ts';
 
 describe('normalizeNullableString', () => {
@@ -107,5 +111,44 @@ describe('normalizeProvider', () => {
   it('rejects empty or overly long providers', () => {
     assert.throws(() => normalizeProvider('!!!'), BadRequestException);
     assert.throws(() => normalizeProvider('a'.repeat(41)), BadRequestException);
+  });
+});
+
+describe("normalizeRouteGroup", () => {
+  it("defaults to main and rejects over-long groups", () => {
+    assert.equal(normalizeRouteGroup(undefined), "main");
+    assert.equal(normalizeRouteGroup("  gaming  "), "gaming");
+    assert.throws(() => normalizeRouteGroup("x".repeat(81)), BadRequestException);
+  });
+});
+
+describe("normalizeCountryCode", () => {
+  it("uppercases valid two-letter codes, null when empty", () => {
+    assert.equal(normalizeCountryCode("ir"), "IR");
+    assert.equal(normalizeCountryCode(null), null);
+  });
+  it("rejects non-ISO codes", () => {
+    assert.throws(() => normalizeCountryCode("iran"), BadRequestException);
+    assert.throws(() => normalizeCountryCode("1R"), BadRequestException);
+  });
+});
+
+describe("normalizeDetectionSource", () => {
+  it("accepts known sources, null when empty", () => {
+    assert.equal(normalizeDetectionSource("client_app"), "client_app");
+    assert.equal(normalizeDetectionSource(null), null);
+  });
+  it("rejects unknown sources", () => {
+    assert.throws(() => normalizeDetectionSource("gps"), BadRequestException);
+  });
+});
+
+describe("normalizeJsonStringArray", () => {
+  it("parses a JSON array and keeps only strings", () => {
+    assert.deepEqual(normalizeJsonStringArray(JSON.stringify(["a", 1, "b", null])), ["a", "b"]);
+  });
+  it("returns [] for non-array / bad JSON", () => {
+    assert.deepEqual(normalizeJsonStringArray("not json"), []);
+    assert.deepEqual(normalizeJsonStringArray("{}"), []);
   });
 });

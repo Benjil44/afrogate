@@ -19,3 +19,29 @@ export function computeAllocatedQuotaLimitBytes(
   }
   return after;
 }
+
+/** Optional usage byte count: null passthrough, else a safe non-negative integer. */
+export function normalizeOptionalUsageBytes(value: number | null | undefined, fieldName: string): number | null {
+  if (value === null || value === undefined) return null;
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SAFE_BYTES) {
+    throw new BadRequestException(`${fieldName} must be a safe non-negative integer`);
+  }
+  return value;
+}
+
+/** A required, safe, strictly-positive byte delta. */
+export function normalizePositiveByteDelta(value: number | null | undefined, fieldName: string): number {
+  if (!Number.isSafeInteger(value) || value === null || value === undefined || value <= 0 || value > MAX_SAFE_BYTES) {
+    throw new BadRequestException(`${fieldName} must be a safe positive integer`);
+  }
+  return value;
+}
+
+/** Add a positive delta to a base byte count, guarding against unsafe overflow. */
+export function addPositiveBytes(baseBytes: number, deltaBytes: number, errorMessage: string): number {
+  const nextBytes = baseBytes + deltaBytes;
+  if (!Number.isSafeInteger(nextBytes) || nextBytes > MAX_SAFE_BYTES) {
+    throw new BadRequestException(errorMessage);
+  }
+  return nextBytes;
+}
