@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   SESSION_VERSION,
   constantTimeStringEquals,
+  isSessionExpired,
   parseSessionPayload,
   signPayload,
   type AdminSessionPayload,
@@ -84,5 +85,22 @@ describe('end-to-end sign + verify + parse flow', () => {
     // attacker edits the payload (e.g. escalates role) but cannot forge the signature without the secret
     const tampered = encode({ ...validPayload, role: 'superadmin', sub: 'attacker' });
     assert.equal(constantTimeStringEquals(signPayload(tampered, secret), signature), false);
+  });
+});
+
+describe('isSessionExpired', () => {
+  const now = 1_700_000_000;
+  const at = (exp) => ({ ...validPayload, exp });
+
+  it('is false for a token whose exp is in the future', () => {
+    assert.equal(isSessionExpired(at(now + 3600), now), false);
+  });
+
+  it('is true for an expired token', () => {
+    assert.equal(isSessionExpired(at(now - 1), now), true);
+  });
+
+  it('treats exp exactly equal to now as expired', () => {
+    assert.equal(isSessionExpired(at(now), now), true);
   });
 });

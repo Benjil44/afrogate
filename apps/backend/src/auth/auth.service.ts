@@ -36,6 +36,7 @@ import { hashPassword, verifyScryptPassword } from '../security/password';
 import {
   SESSION_VERSION,
   constantTimeStringEquals,
+  isSessionExpired,
   parseSessionPayload,
   signPayload,
   type AdminSessionPayload,
@@ -402,7 +403,7 @@ export class AuthService {
     const payload = parseSessionPayload(encodedPayload);
     if (!payload || payload.v !== SESSION_VERSION || payload.type !== 'admin') return null;
     if (!SUPPORTED_ADMIN_ROLES.has(payload.role)) return null;
-    if (payload.exp <= Math.floor(Date.now() / 1000)) return null;
+    if (isSessionExpired(payload)) return null;
 
     return {
       id: payload.sub,

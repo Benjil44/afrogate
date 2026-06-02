@@ -19,6 +19,12 @@ export function signPayload(encodedPayload: string, secret: string): string {
   return createHmac('sha256', secret).update(encodedPayload).digest('base64url');
 }
 
+
+/** True when the session payload exp (unix seconds) is at or before now. */
+export function isSessionExpired(payload: AdminSessionPayload, nowSeconds: number = Math.floor(Date.now() / 1000)): boolean {
+  return payload.exp <= nowSeconds;
+}
+
 /** Constant-time string comparison; false when lengths differ (never throws). */
 export function constantTimeStringEquals(actual: string, expected: string): boolean {
   const actualBuffer = Buffer.from(actual);
