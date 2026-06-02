@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.11 - 2026-06-02
+
+- Peeled the subscription-config sanitizers (`sanitizeSubscriptionConfigValue`, `scalarCredentialValue`, `firstCredentialString`, `firstCredentialList`, `endpointHostPort`, `firstSafeEndpointNumber`, `parseSubscriptionAddress`, `subscriptionEndpointTarget`) out of BillingService into `billing/subscription-sanitizers.ts`; rewrote 27 callsites. Added 18 tests, including explicit CR/LF/NUL injection-rejection coverage for the credential/endpoint guards and IPv6/scheme address parsing; backend suite now 271 tests. (`firstSafeEndpointString` stays in the service as it depends on `normalizePublicEndpointValue`.)
+
 ## 0.114.10 - 2026-06-02
 
 - Peeled the PayPal webhook helpers (`payPalWebhookPaymentUpdate` status machine, `assertPayPalPaymentOrder`, `extractPayPalWebhookOrderId`, `extractPayPalWebhookCaptureId`, `mergePayPalMetadata`) out of BillingService into a self-contained `billing/paypal-webhook.ts`; rewrote 8 callsites. Added 15 tests covering the full capture/refund state machine (incl. idempotent already-paid and ignored non-pending paths) and id extraction; backend suite now 253 tests.
