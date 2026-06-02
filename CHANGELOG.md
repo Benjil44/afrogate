@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.1 - 2026-06-02
+
+- Extracted the pure route probe-scoring engine (probe/MTU scoring + scoring utilities) from OperationsService into `operations/route-scoring.ts` and covered it with 15 unit tests; backend test suite now 143 tests.
+
 ## 0.114.0 - 2026-06-02
 
 - Split the 14,862-line `apps/dashboard/src/DashboardApp.tsx` monolith into ~30 focused modules (`pages/`, `components/`, and shared type/formatter/mapper/label/tone helpers); the root file is now ~1,294 lines. Pure structural refactor with the dashboard e2e suite unchanged (20/20).
