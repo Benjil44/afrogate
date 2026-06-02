@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.4 - 2026-06-02
+
+- Extracted rewarded-ad/subscription/public-endpoint normalizers and the gb-to-bytes helper from BillingService into billing-normalizers.ts / quota-math.ts; backend suite now 176 tests.
+
 ## 0.114.3 - 2026-06-02
 
 - Extracted more pure helpers (route/country/detection/JSON-array normalizers, usage-byte validators) from BillingService into billing-normalizers.ts / quota-math.ts with 12 new tests; backend suite now 171 tests.
