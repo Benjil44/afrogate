@@ -74,6 +74,7 @@ import { assertPayPalPaymentOrder, extractPayPalWebhookCaptureId, extractPayPalW
 import { endpointHostPort, firstCredentialList, firstCredentialString, firstSafeEndpointNumber, renderIkev2ClientProfile, renderL2tpClientProfile, renderVlessClientUri, renderWireGuardClientConfig, subscriptionConfigFormat, subscriptionEndpointTarget, subscriptionPublicProfile, subscriptionSecretMissingFields, type ClientSubscriptionCredentialRenderResult } from './subscription-sanitizers';
 import { DEFAULT_REWARDED_AD_PROVIDER, assertRewardedAdSettingsLimits, normalizeRewardedAdProvider } from './rewarded-ad';
 import { clientRouteAssignmentKey, clientRouteHealthRank, mapClientScoreProfileToProtocol, mapClientScoreProfileToSpeed } from './client-route-mapping';
+import { normalizeClientUsageDirection, normalizeClientUsageSource, normalizeCurrentPanelChargeClientIds, normalizeCurrentPanelVolumeChargeScope } from './usage-normalizers';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -139,21 +140,6 @@ const DEFAULT_REWARDED_AD_REWARD_BYTES = 100 * 1024 ** 2;
 const DEFAULT_REWARDED_AD_DAILY_LIMIT = 20;
 const DEFAULT_REWARDED_AD_VERIFICATION_MODE = 'client_callback_mvp';
 const CURRENT_PANEL_IMPORTABLE_STATUSES = new Set(['active', 'limited', 'disabled', 'expired']);
-const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = new Set<CurrentPanelVolumeChargeScope>([
-  'account_quota',
-  'selected_clients',
-  'account_and_selected_clients',
-]);
-const CLIENT_USAGE_EVENT_SOURCES = new Set([
-  'admin',
-  'agent',
-  'panel_sync',
-  'payment_adjustment',
-  'manual_adjustment',
-  'client_report',
-  'unknown',
-]);
-const CLIENT_USAGE_DIRECTIONS = new Set(['rx', 'tx', 'combined']);
 const CLIENT_SUBSCRIPTION_PROTOCOLS = new Set(['wireguard', 'vless', 'l2tp', 'ikev2']);
 const CLIENT_SUBSCRIPTION_SECRET_MAX_BYTES = 16_000;
 const CLIENT_SUBSCRIPTION_PUBLIC_METADATA_MAX_BYTES = 4_000;
@@ -2610,9 +2596,9 @@ export class BillingService {
     actor: AuthActor | undefined,
   ): Promise<AdminCurrentPanelVolumeChargeResponse> {
     try {
-      const scope = this.normalizeCurrentPanelVolumeChargeScope(dto.scope);
+      const scope = normalizeCurrentPanelVolumeChargeScope(dto.scope);
       const volumeBytes = normalizePositiveByteDelta(dto.volumeBytesDelta, 'volumeBytesDelta');
-      const clientConfigIds = this.normalizeCurrentPanelChargeClientIds(dto.clientConfigIds ?? []);
+      const clientConfigIds = normalizeCurrentPanelChargeClientIds(dto.clientConfigIds ?? []);
       const shouldChargeAccount = scope === 'account_quota' || scope === 'account_and_selected_clients';
       const shouldChargeClients = scope === 'selected_clients' || scope === 'account_and_selected_clients';
       const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
@@ -3008,7 +2994,7 @@ export class BillingService {
     const where = ['client_config_id = $1'];
 
     if (filters.source?.trim()) {
-      values.push(this.normalizeClientUsageSource(filters.source));
+      values.push(normalizeClientUsageSource(filters.source));
       where.push(`source = $${values.length}`);
     }
 
@@ -7386,7 +7372,7 @@ export class BillingService {
   }
 
   private normalizeClientUsageEventInput(dto: CreateClientUsageEventDto): NormalizedClientUsageEventInput {
-    const source = this.normalizeClientUsageSource(dto.source);
+    const source = normalizeClientUsageSource(dto.source);
     const rxBytes = normalizeOptionalUsageBytes(dto.rxBytes, 'rxBytes');
     const txBytes = normalizeOptionalUsageBytes(dto.txBytes, 'txBytes');
     const explicitDelta = normalizeOptionalUsageBytes(dto.usedBytesDelta, 'usedBytesDelta');
@@ -7396,7 +7382,7 @@ export class BillingService {
     }
 
     const rawUsedBytesDelta = explicitDelta ?? (rxBytes ?? 0) + (txBytes ?? 0);
-    const direction = this.normalizeClientUsageDirection(
+    const direction = normalizeClientUsageDirection(
       dto.direction ?? (rxBytes !== null && txBytes === null ? 'rx' : txBytes !== null && rxBytes === null ? 'tx' : 'combined'),
     );
     const observedAt = parseOptionalDate(dto.observedAt, 'observedAt') ?? new Date();
@@ -7504,30 +7490,6 @@ export class BillingService {
     if ('clearPaidNumber' in dto && dto.clearPaidNumber) {
       throw new BadRequestException('Reseller customer flows cannot change paid numbers');
     }
-  }
-
-  private normalizeClientUsageSource(value: string | undefined): string {
-    const normalized = normalizeNullableString(value)?.toLowerCase() ?? 'admin';
-    if (!CLIENT_USAGE_EVENT_SOURCES.has(normalized)) throw new BadRequestException('Invalid client usage source');
-    return normalized;
-  }
-
-  private normalizeClientUsageDirection(value: string | undefined): string {
-    const normalized = normalizeNullableString(value)?.toLowerCase() ?? 'combined';
-    if (!CLIENT_USAGE_DIRECTIONS.has(normalized)) throw new BadRequestException('Invalid client usage direction');
-    return normalized;
-  }
-
-  private normalizeCurrentPanelVolumeChargeScope(value: string | null | undefined): CurrentPanelVolumeChargeScope {
-    const normalized = normalizeNullableString(value) ?? 'account_quota';
-    if (!CURRENT_PANEL_VOLUME_CHARGE_SCOPES.has(normalized as CurrentPanelVolumeChargeScope)) {
-      throw new BadRequestException('Invalid current panel volume charge scope');
-    }
-    return normalized as CurrentPanelVolumeChargeScope;
-  }
-
-  private normalizeCurrentPanelChargeClientIds(value: string[]): string[] {
-    return Array.from(new Set(value.map((id) => id.trim()).filter(Boolean))).sort();
   }
 
   private assertCurrentPanelVolumeChargeDuplicateMatches(
