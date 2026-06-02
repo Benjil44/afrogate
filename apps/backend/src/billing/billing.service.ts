@@ -65,6 +65,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
+import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './allocation-idempotency';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -1243,27 +1244,12 @@ export class BillingService {
         }
 
         const existingForOrder = await this.getPaymentOrderAllocationByOrderIdForUpdate(executor, id);
-        if (existingForOrder) {
-          return {
-            allocation: existingForOrder,
-            customerAccountId: existingForOrder.customerAccountId,
-            duplicate: true,
-          };
-        }
-
-        const idempotencyKey = normalizeNullableString(dto.idempotencyKey) ?? `payment_order:${id}`;
-        const existingForKey = await this.getPaymentOrderAllocationByIdempotencyForUpdate(executor, idempotencyKey);
-        if (existingForKey) {
-          if (existingForKey.paymentOrderId !== id) {
-            throw new ConflictException('Payment order allocation idempotency key already belongs to another order');
-          }
-
-          return {
-            allocation: existingForKey,
-            customerAccountId: existingForKey.customerAccountId,
-            duplicate: true,
-          };
-        }
+        const idempotencyKey = resolveAllocationIdempotencyKey(dto.idempotencyKey, id);
+        const existingForKey = existingForOrder
+          ? null
+          : await this.getPaymentOrderAllocationByIdempotencyForUpdate(executor, idempotencyKey);
+        const existingAllocation = resolveExistingAllocation(existingForOrder, existingForKey, id);
+        if (existingAllocation) return existingAllocation;
 
         const account = await this.getCustomerAccountRowForUpdate(executor, paymentOrder.customerAccountId);
         const volumeBytes = this.numberFromBigInt(paymentOrder.volumeBytes) ?? 0;
