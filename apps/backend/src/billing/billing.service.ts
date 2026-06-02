@@ -69,6 +69,7 @@ import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './al
 import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableBytes, numberFromBigInt, remainingBytes, throwConflictIfUniqueViolation } from './billing-math';
 import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from './date-utils';
 import { asRecord, stringFromRecord } from './record-utils';
+import { assertAmountRange, assertNoSecretLikeKeys, assertPaymentOrderStatusTransition, stringifyPublicRecord } from './payment-validators';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -1002,7 +1003,7 @@ export class BillingService {
         const slug = normalizeSlug(dto.slug ?? name);
         const minAmount = dto.minAmount ?? null;
         const maxAmount = dto.maxAmount ?? null;
-        this.assertAmountRange(minAmount, maxAmount);
+        assertAmountRange(minAmount, maxAmount);
 
         const result = await executor.query<{ id: string }>(
           `
@@ -1024,7 +1025,7 @@ export class BillingService {
             dto.status ?? 'active',
             dto.sortOrder ?? 1000,
             dto.supportsAutoCapture ?? provider === 'paypal',
-            this.stringifyPublicRecord(dto.publicConfig ?? {}, 'Payment method public config'),
+            stringifyPublicRecord(dto.publicConfig ?? {}, 'Payment method public config'),
             normalizeNullableString(dto.instructions),
             actor?.id ?? null,
           ],
@@ -1199,7 +1200,7 @@ export class BillingService {
             checkoutUrl,
             idempotencyKey,
             expiresAt,
-            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            stringifyPublicRecord(metadata, 'Payment order metadata'),
             normalizeNullableString(dto.notes),
             actor?.id ?? null,
           ],
@@ -1388,7 +1389,7 @@ export class BillingService {
           [
             providerCheckout.paymentReference,
             providerCheckout.checkoutUrl,
-            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            stringifyPublicRecord(metadata, 'Payment order metadata'),
             id,
           ],
         );
@@ -1475,7 +1476,7 @@ export class BillingService {
           [
             checkout.providerOrderId,
             checkout.checkoutUrl,
-            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            stringifyPublicRecord(metadata, 'Payment order metadata'),
             id,
           ],
         );
@@ -1560,7 +1561,7 @@ export class BillingService {
             capture.providerOrderId,
             capture.providerCaptureId,
             now,
-            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            stringifyPublicRecord(metadata, 'Payment order metadata'),
             id,
           ],
         );
@@ -1656,7 +1657,7 @@ export class BillingService {
 
       const providerCaptureChanged = nextProviderCaptureId !== existing.providerCaptureId;
       if (paymentUpdate.nextStatus !== existing.status) {
-        this.assertPaymentOrderStatusTransition(existing.status, paymentUpdate.nextStatus);
+        assertPaymentOrderStatusTransition(existing.status, paymentUpdate.nextStatus);
       }
 
       if (paymentUpdate.shouldUpdate || providerCaptureChanged) {
@@ -1678,7 +1679,7 @@ export class BillingService {
             paymentUpdate.nextStatus === 'paid' && existing.status !== 'paid' ? now : existing.paidAt,
             paymentUpdate.nextStatus === 'failed' && existing.status !== 'failed' ? now : existing.failedAt,
             paymentUpdate.nextStatus === 'refunded' && existing.status !== 'refunded' ? now : existing.refundedAt,
-            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            stringifyPublicRecord(metadata, 'Payment order metadata'),
             existing.id,
           ],
         );
@@ -1724,7 +1725,7 @@ export class BillingService {
       await this.database.transaction(async (executor) => {
         const existing = await this.getPaymentOrderRowForUpdate(executor, id);
         const status = dto.status;
-        this.assertPaymentOrderStatusTransition(existing.status, status);
+        assertPaymentOrderStatusTransition(existing.status, status);
 
         const now = new Date();
         const paidAt = status === 'paid' && existing.status !== 'paid' ? now : existing.paidAt;
@@ -1755,7 +1756,7 @@ export class BillingService {
             paidAt,
             failedAt,
             refundedAt,
-            this.stringifyPublicRecord(metadata, 'Payment order metadata'),
+            stringifyPublicRecord(metadata, 'Payment order metadata'),
             dto.notes !== undefined ? normalizeNullableString(dto.notes) : existing.notes,
             id,
           ],
@@ -4628,7 +4629,7 @@ export class BillingService {
         input.clientConfigId,
         input.idempotencyKey,
         input.notes,
-        this.stringifyPublicRecord(input.metadata, 'Reseller wallet metadata'),
+        stringifyPublicRecord(input.metadata, 'Reseller wallet metadata'),
         input.actor?.id ?? null,
       ],
     );
@@ -4768,7 +4769,7 @@ export class BillingService {
         input.volumePackage.currency,
         providerOrderId,
         orderIdempotencyKey,
-        this.stringifyPublicRecord(metadata, 'Reseller package sale payment metadata'),
+        stringifyPublicRecord(metadata, 'Reseller package sale payment metadata'),
         input.notes,
         input.actor?.id ?? null,
       ],
@@ -4887,7 +4888,7 @@ export class BillingService {
     const maxAmount = dto.maxAmount !== undefined ? dto.maxAmount : numberFromBigInt(existing.maxAmount);
     const supportsAutoCapture =
       dto.supportsAutoCapture ?? (dto.provider !== undefined && provider === 'paypal' ? true : existing.supportsAutoCapture);
-    this.assertAmountRange(minAmount, maxAmount);
+    assertAmountRange(minAmount, maxAmount);
 
     await executor.query(
       `
@@ -4918,7 +4919,7 @@ export class BillingService {
         dto.status ?? existing.status,
         dto.sortOrder ?? existing.sortOrder,
         supportsAutoCapture,
-        this.stringifyPublicRecord(dto.publicConfig ?? existing.publicConfig ?? {}, 'Payment method public config'),
+        stringifyPublicRecord(dto.publicConfig ?? existing.publicConfig ?? {}, 'Payment method public config'),
         dto.instructions !== undefined ? normalizeNullableString(dto.instructions) : existing.instructions,
         id,
       ],
@@ -5115,7 +5116,7 @@ export class BillingService {
         input.quotaLimitBeforeBytes,
         input.quotaLimitAfterBytes,
         input.idempotencyKey,
-        this.stringifyPublicRecord(input.metadata, 'Payment order allocation metadata'),
+        stringifyPublicRecord(input.metadata, 'Payment order allocation metadata'),
         actor?.id ?? null,
       ],
     );
@@ -5186,7 +5187,7 @@ export class BillingService {
         JSON.stringify(input.clientQuotaChanges),
         input.idempotencyKey,
         input.notes,
-        this.stringifyPublicRecord(input.metadata, 'Current panel volume charge metadata'),
+        stringifyPublicRecord(input.metadata, 'Current panel volume charge metadata'),
         actor?.id ?? null,
       ],
     );
@@ -6156,7 +6157,7 @@ export class BillingService {
         input.idempotencyKey,
         input.externalReference,
         input.notes,
-        this.stringifyPublicRecord(input.metadata, 'Usage event metadata'),
+        stringifyPublicRecord(input.metadata, 'Usage event metadata'),
         actor?.id ?? null,
       ],
     );
@@ -6531,7 +6532,7 @@ export class BillingService {
         input.clientQuotaBeforeBytes,
         input.clientQuotaAfterBytes,
         input.verificationMode,
-        this.stringifyPublicRecord(input.metadata, 'Rewarded ad metadata'),
+        stringifyPublicRecord(input.metadata, 'Rewarded ad metadata'),
       ],
     );
 
@@ -7729,7 +7730,7 @@ export class BillingService {
         throw new BadRequestException(`publicMetadata contains unsupported non-secret field "${key}"`);
       }
     }
-    this.assertNoSecretLikeKeys(normalized, 'Client subscription public metadata');
+    assertNoSecretLikeKeys(normalized, 'Client subscription public metadata');
     this.assertJsonSize(normalized, CLIENT_SUBSCRIPTION_PUBLIC_METADATA_MAX_BYTES, 'publicMetadata');
     return normalized;
   }
@@ -7770,7 +7771,7 @@ export class BillingService {
     }
 
     const metadata = dto.metadata ?? {};
-    this.assertNoSecretLikeKeys(metadata, 'Usage event metadata');
+    assertNoSecretLikeKeys(metadata, 'Usage event metadata');
 
     return {
       source,
@@ -8076,45 +8077,6 @@ export class BillingService {
   ): string | null {
     if (!eventType?.startsWith('PAYMENT.CAPTURE.')) return null;
     return stringFromRecord(resource, 'id');
-  }
-
-  private assertPaymentOrderStatusTransition(currentStatus: string, nextStatus: string): void {
-    if (currentStatus === nextStatus) return;
-
-    const allowed: Record<string, string[]> = {
-      pending: ['paid', 'failed'],
-      paid: ['refunded'],
-      failed: [],
-      refunded: [],
-    };
-
-    if (!allowed[currentStatus]?.includes(nextStatus)) {
-      throw new BadRequestException(`Payment order cannot move from ${currentStatus} to ${nextStatus}`);
-    }
-  }
-
-  private assertAmountRange(minAmount: number | null, maxAmount: number | null): void {
-    if (minAmount !== null && maxAmount !== null && maxAmount < minAmount) {
-      throw new BadRequestException('Payment method max amount must be greater than or equal to min amount');
-    }
-  }
-
-  private stringifyPublicRecord(value: Record<string, unknown>, context: string): string {
-    this.assertNoSecretLikeKeys(value, context);
-    return JSON.stringify(value);
-  }
-
-  private assertNoSecretLikeKeys(value: unknown, context: string, path = 'metadata'): void {
-    if (!value || typeof value !== 'object') return;
-
-    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-      if (/(secret|token|password|private[_-]?key|client[_-]?secret|webhook[_-]?secret|credential)/i.test(key)) {
-        throw new BadRequestException(`${context} must not contain secret-like key "${path}.${key}"`);
-      }
-      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-        this.assertNoSecretLikeKeys(nested, context, `${path}.${key}`);
-      }
-    }
   }
 
 }

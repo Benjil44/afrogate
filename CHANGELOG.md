@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.9 - 2026-06-02
+
+- Peeled the payment-order/metadata validators (`assertPaymentOrderStatusTransition`, `assertAmountRange`, `assertNoSecretLikeKeys`, `stringifyPublicRecord`) out of BillingService into `billing/payment-validators.ts`; rewrote 20 callsites. Added 10 tests covering the status machine, amount bounds, and recursive secret-like-key rejection; backend suite now 238 tests.
+
 ## 0.114.8 - 2026-06-02
 
 - Peeled the date/day helpers (`currentUtcDay`, `nextUtcResetAt`, `formatGrantDay`, `parseOptionalDate` — now with an injectable `now` for testability) into `billing/date-utils.ts` and the record accessors (`asRecord`, `stringFromRecord`) into `billing/record-utils.ts`; rewrote 24 callsites. Added 12 tests; backend suite now 228 tests.
