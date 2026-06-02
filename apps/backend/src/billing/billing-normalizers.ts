@@ -26,6 +26,20 @@ export function normalizeUsageMultiplier(value: number | string | null | undefin
   return normalized;
 }
 
+/** Charged bytes divided down by the usage multiplier (floored); null passes through. */
+export function bytesAtMultiplier(
+  chargedRemainingBytes: number | null,
+  multiplierValue: number | string | null | undefined,
+): number | null {
+  if (chargedRemainingBytes === null) return null;
+  return Math.floor(chargedRemainingBytes / normalizeUsageMultiplier(multiplierValue));
+}
+
+/** Human label for a usage multiplier, e.g. `x3`. */
+export function usageMultiplierLabel(multiplierValue: number | string | null | undefined): string {
+  return `x${normalizeUsageMultiplier(multiplierValue)}`;
+}
+
 /** Strip spaces/punctuation from a paid number, or null. */
 export function normalizePaidNumber(value: string | null | undefined): string | null {
   const normalized = normalizeNullableString(value)?.replace(/[\s().-]+/g, '') ?? null;

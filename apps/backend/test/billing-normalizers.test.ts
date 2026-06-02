@@ -12,6 +12,8 @@ import {
   normalizeSlug,
   normalizeTelegramUsername,
   normalizeUsageMultiplier,
+  bytesAtMultiplier,
+  usageMultiplierLabel,
   parseJsonValue,
   normalizeRouteGroup,
   normalizeCountryCode,
@@ -47,6 +49,27 @@ describe('normalizeUsageMultiplier', () => {
   });
   it('rejects out-of-range or non-integer multipliers', () => {
     for (const v of [0, 101, 2.5, 'abc']) assert.throws(() => normalizeUsageMultiplier(v as never), BadRequestException);
+  });
+});
+
+describe('bytesAtMultiplier', () => {
+  it('floors charged bytes divided by the multiplier', () => {
+    assert.equal(bytesAtMultiplier(1000, 3), 333);
+    assert.equal(bytesAtMultiplier(1000, 1), 1000);
+    assert.equal(bytesAtMultiplier(1000, undefined), 1000);
+  });
+  it('passes through null charged bytes', () => {
+    assert.equal(bytesAtMultiplier(null, 3), null);
+  });
+  it('rejects an invalid multiplier via the underlying validator', () => {
+    assert.throws(() => bytesAtMultiplier(1000, 0), BadRequestException);
+  });
+});
+
+describe('usageMultiplierLabel', () => {
+  it('formats the normalized multiplier with an x prefix', () => {
+    assert.equal(usageMultiplierLabel(3), 'x3');
+    assert.equal(usageMultiplierLabel(undefined), 'x1');
   });
 });
 

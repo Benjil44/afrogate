@@ -66,6 +66,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
 import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './allocation-idempotency';
+import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableBytes, numberFromBigInt, remainingBytes, throwConflictIfUniqueViolation } from './billing-math';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -74,7 +75,7 @@ import {
   walletCanCoverDebit,
 } from './reseller-wallet-math';
 import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, gbToBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
-import { normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue } from './billing-normalizers';
+import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -692,7 +693,7 @@ export class BillingService {
     const settings = await this.database.transaction(async (executor) => {
       const current = await this.getBillingSettingsRow(executor, true);
       const currency = dto.currency !== undefined ? normalizeCurrency(dto.currency) : current.currency;
-      const pricePerGb = dto.pricePerGb ?? this.numberFromBigInt(current.pricePerGb) ?? 0;
+      const pricePerGb = dto.pricePerGb ?? numberFromBigInt(current.pricePerGb) ?? 0;
 
       const result = await executor.query<BillingSettingsRow>(
         `
@@ -749,7 +750,7 @@ export class BillingService {
 
       if (!changedFields.length) return current;
 
-      const rewardBytes = dto.rewardBytes ?? this.numberFromBigInt(current.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+      const rewardBytes = dto.rewardBytes ?? numberFromBigInt(current.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
       const dailyLimit = dto.dailyLimit ?? current.dailyLimit;
       const provider =
         dto.provider !== undefined
@@ -856,10 +857,10 @@ export class BillingService {
     try {
       const packageId = await this.database.transaction(async (executor) => {
         const settings = await this.getBillingSettingsRow(executor);
-        const pricePerGb = dto.pricePerGb ?? this.numberFromBigInt(settings.pricePerGb) ?? 0;
+        const pricePerGb = dto.pricePerGb ?? numberFromBigInt(settings.pricePerGb) ?? 0;
         const currency = dto.currency !== undefined ? normalizeCurrency(dto.currency) : settings.currency;
         const volumeBytes = gbToBytes(dto.volumeGb);
-        const totalPrice = dto.totalPrice ?? this.calculateTotalPrice(dto.volumeGb, pricePerGb);
+        const totalPrice = dto.totalPrice ?? calculateTotalPrice(dto.volumeGb, pricePerGb);
         const slug = normalizeSlug(dto.slug ?? dto.name);
         const name = dto.name.trim();
         if (!name) throw new BadRequestException('Volume package name is required');
@@ -910,7 +911,7 @@ export class BillingService {
 
       return this.getVolumePackage(packageId);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Volume package slug already exists');
+      throwConflictIfUniqueViolation(error, 'Volume package slug already exists');
       throw error;
     }
   }
@@ -940,7 +941,7 @@ export class BillingService {
 
       return this.getVolumePackage(id);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Volume package slug already exists');
+      throwConflictIfUniqueViolation(error, 'Volume package slug already exists');
       throw error;
     }
   }
@@ -994,7 +995,7 @@ export class BillingService {
         if (!name) throw new BadRequestException('Payment method name is required');
 
         const provider = normalizeProvider(dto.provider ?? 'manual');
-        const checkoutMode = dto.checkoutMode ?? this.defaultCheckoutMode(provider);
+        const checkoutMode = dto.checkoutMode ?? defaultCheckoutMode(provider);
         const currency = dto.currency !== undefined ? normalizeCurrency(dto.currency) : 'toman';
         const slug = normalizeSlug(dto.slug ?? name);
         const minAmount = dto.minAmount ?? null;
@@ -1048,7 +1049,7 @@ export class BillingService {
 
       return this.getPaymentMethod(methodId);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment method slug already exists');
+      throwConflictIfUniqueViolation(error, 'Payment method slug already exists');
       throw error;
     }
   }
@@ -1079,7 +1080,7 @@ export class BillingService {
 
       return this.getPaymentMethod(id);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment method slug already exists');
+      throwConflictIfUniqueViolation(error, 'Payment method slug already exists');
       throw error;
     }
   }
@@ -1153,16 +1154,16 @@ export class BillingService {
         const paymentMethod = await this.getPaymentMethodRowForUpdate(executor, dto.paymentMethodId);
 
         if (volumePackage.status !== 'active') throw new BadRequestException('Volume package is not active');
-        this.assertPaymentMethodAccepts(paymentMethod, volumePackage.currency, this.numberFromBigInt(volumePackage.totalPrice) ?? 0);
+        this.assertPaymentMethodAccepts(paymentMethod, volumePackage.currency, numberFromBigInt(volumePackage.totalPrice) ?? 0);
 
         const providerOrderId = normalizeNullableString(dto.providerOrderId);
         const checkoutUrl = normalizeNullableString(dto.checkoutUrl);
         const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
         const expiresAt = this.parseOptionalDate(dto.expiresAt, 'expiresAt');
         const metadata = dto.metadata ?? {};
-        const amount = this.numberFromBigInt(volumePackage.totalPrice) ?? 0;
-        const volumeBytes = this.numberFromBigInt(volumePackage.volumeBytes) ?? 0;
-        const pricePerGb = this.numberFromBigInt(volumePackage.pricePerGb) ?? 0;
+        const amount = numberFromBigInt(volumePackage.totalPrice) ?? 0;
+        const volumeBytes = numberFromBigInt(volumePackage.volumeBytes) ?? 0;
+        const pricePerGb = numberFromBigInt(volumePackage.pricePerGb) ?? 0;
 
         const result = await executor.query<{ id: string }>(
           `
@@ -1226,7 +1227,7 @@ export class BillingService {
 
       return this.getPaymentOrder(orderId);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment order idempotency or provider order already exists');
+      throwConflictIfUniqueViolation(error, 'Payment order idempotency or provider order already exists');
       throw error;
     }
   }
@@ -1252,11 +1253,11 @@ export class BillingService {
         if (existingAllocation) return existingAllocation;
 
         const account = await this.getCustomerAccountRowForUpdate(executor, paymentOrder.customerAccountId);
-        const volumeBytes = this.numberFromBigInt(paymentOrder.volumeBytes) ?? 0;
+        const volumeBytes = numberFromBigInt(paymentOrder.volumeBytes) ?? 0;
         if (volumeBytes <= 0) throw new BadRequestException('Payment order volume must be positive before allocation');
 
-        const quotaLimitBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
-        const usedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+        const quotaLimitBeforeBytes = numberFromBigInt(account.quotaLimitBytes);
+        const usedBytes = numberFromBigInt(account.usedBytes) ?? 0;
         const quotaLimitAfterBytes = computeAllocatedQuotaLimitBytes(quotaLimitBeforeBytes, usedBytes, volumeBytes);
 
         const allocation = await this.insertPaymentOrderAllocation(
@@ -1327,7 +1328,7 @@ export class BillingService {
         telegramFulfillment,
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment order allocation already exists');
+      throwConflictIfUniqueViolation(error, 'Payment order allocation already exists');
       throw error;
     }
   }
@@ -1353,7 +1354,7 @@ export class BillingService {
             id: existing.id,
             packageName: existing.packageName,
             packageSlug: existing.packageSlug,
-            amount: this.numberFromBigInt(existing.amount) ?? 0,
+            amount: numberFromBigInt(existing.amount) ?? 0,
             currency: existing.currency,
             provider: existing.provider,
             providerOrderId: existing.providerOrderId,
@@ -1418,7 +1419,7 @@ export class BillingService {
         action: 'provider_checkout_prepared',
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
+      throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
       throw error;
     }
   }
@@ -1449,7 +1450,7 @@ export class BillingService {
         const checkout = await this.paypal.createCheckout({
           paymentOrderId: id,
           packageName: existing.packageName,
-          amount: this.numberFromBigInt(existing.amount) ?? 0,
+          amount: numberFromBigInt(existing.amount) ?? 0,
           currency: existing.currency,
           returnUrl: dto.returnUrl,
           cancelUrl: dto.cancelUrl,
@@ -1499,7 +1500,7 @@ export class BillingService {
         action,
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
+      throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
       throw error;
     }
   }
@@ -1587,7 +1588,7 @@ export class BillingService {
         action,
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
+      throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
       throw error;
     }
   }
@@ -1775,7 +1776,7 @@ export class BillingService {
 
       return this.getPaymentOrder(id);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
+      throwConflictIfUniqueViolation(error, 'Payment order provider order already exists');
       throw error;
     }
   }
@@ -1874,7 +1875,7 @@ export class BillingService {
 
       return this.getResellerAccount(resellerId);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Reseller account already exists for this admin user');
+      throwConflictIfUniqueViolation(error, 'Reseller account already exists for this admin user');
       throw error;
     }
   }
@@ -1976,7 +1977,7 @@ export class BillingService {
         {
           ledgerEntryId: entry.id,
           amount,
-          balanceAfterAmount: this.numberFromBigInt(entry.balanceAfterAmount) ?? 0,
+          balanceAfterAmount: numberFromBigInt(entry.balanceAfterAmount) ?? 0,
         },
         executor,
       );
@@ -2007,7 +2008,7 @@ export class BillingService {
           this.assertResellerWalletDuplicateMatches(existing, {
             resellerAccountId,
             entryType: 'sale_debit',
-            amount: this.numberFromBigInt(existing.amount) ?? 0,
+            amount: numberFromBigInt(existing.amount) ?? 0,
             source: 'client_sale',
             sourceId,
             volumePackageId: dto.volumePackageId,
@@ -2062,7 +2063,7 @@ export class BillingService {
           clientConfigId,
           walletDebitAmount: quote.walletDebitAmount,
           sellerMarginBps: quote.sellerMarginBps,
-          balanceAfterAmount: this.numberFromBigInt(entry.balanceAfterAmount) ?? 0,
+          balanceAfterAmount: numberFromBigInt(entry.balanceAfterAmount) ?? 0,
         },
         executor,
       );
@@ -2169,10 +2170,10 @@ export class BillingService {
         ? await this.prepareExistingResellerSaleCustomer(executor, requestedCustomerAccountId, reseller.id)
         : await this.createResellerSaleCustomer(executor, dto.customerAccount, reseller.id, actor);
       const account = await this.getCustomerAccountRowForUpdate(executor, customerAccountId);
-      const volumeBytes = this.numberFromBigInt(volumePackage.volumeBytes) ?? 0;
+      const volumeBytes = numberFromBigInt(volumePackage.volumeBytes) ?? 0;
       if (volumeBytes <= 0) throw new BadRequestException('Package volume must be positive');
-      const quotaLimitBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
-      const usedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+      const quotaLimitBeforeBytes = numberFromBigInt(account.quotaLimitBytes);
+      const usedBytes = numberFromBigInt(account.usedBytes) ?? 0;
       const quotaLimitAfterBytes = addPositiveBytes(
         quotaLimitBeforeBytes ?? usedBytes,
         volumeBytes,
@@ -2276,7 +2277,7 @@ export class BillingService {
         reseller: await this.getResellerAccount(currentReseller.id),
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Reseller package sale already exists');
+      throwConflictIfUniqueViolation(error, 'Reseller package sale already exists');
       throw error;
     }
   }
@@ -2514,7 +2515,7 @@ export class BillingService {
         }
 
         matchedCount += 1;
-        const currentUsedBytes = this.numberFromBigInt(match.client.usedBytes) ?? 0;
+        const currentUsedBytes = numberFromBigInt(match.client.usedBytes) ?? 0;
         if (panelUsedBytes <= currentUsedBytes) {
           skippedCandidates.push(this.mapSkippedCurrentPanelCandidate(candidate, ['panel_usage_not_ahead']));
           continue;
@@ -2646,15 +2647,15 @@ export class BillingService {
         }
 
         const account = await this.getCustomerAccountRowForUpdate(executor, dto.customerAccountId);
-        const accountQuotaBeforeBytes = shouldChargeAccount ? this.numberFromBigInt(account.quotaLimitBytes) : null;
-        const accountUsedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+        const accountQuotaBeforeBytes = shouldChargeAccount ? numberFromBigInt(account.quotaLimitBytes) : null;
+        const accountUsedBytes = numberFromBigInt(account.usedBytes) ?? 0;
         const accountQuotaAfterBytes = shouldChargeAccount
           ? addPositiveBytes(accountQuotaBeforeBytes ?? accountUsedBytes, volumeBytes, 'Charged account quota would exceed the safe byte limit')
           : null;
         const clientQuotaChanges: CurrentPanelVolumeChargeClientQuotaChange[] = [];
 
         if (shouldChargeClients) {
-          const perClientLimitBytes = this.numberFromBigInt(account.perClientLimitBytes);
+          const perClientLimitBytes = numberFromBigInt(account.perClientLimitBytes);
 
           for (const clientConfigId of clientConfigIds) {
             const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
@@ -2662,8 +2663,8 @@ export class BillingService {
               throw new BadRequestException('Client config must belong to the selected customer account');
             }
 
-            const clientQuotaBeforeBytes = this.numberFromBigInt(client.quotaLimitBytes);
-            const clientUsedBytes = this.numberFromBigInt(client.usedBytes) ?? 0;
+            const clientQuotaBeforeBytes = numberFromBigInt(client.quotaLimitBytes);
+            const clientUsedBytes = numberFromBigInt(client.usedBytes) ?? 0;
             const clientQuotaAfterBytes = addPositiveBytes(
               clientQuotaBeforeBytes ?? perClientLimitBytes ?? clientUsedBytes,
               volumeBytes,
@@ -2765,7 +2766,7 @@ export class BillingService {
         warnings: Array.from(warnings).sort(),
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Current panel volume charge already exists');
+      throwConflictIfUniqueViolation(error, 'Current panel volume charge already exists');
       throw error;
     }
   }
@@ -2873,7 +2874,7 @@ export class BillingService {
 
       return this.getCustomerAccount(result);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Customer account identity already exists');
+      throwConflictIfUniqueViolation(error, 'Customer account identity already exists');
       throw error;
     }
   }
@@ -2907,7 +2908,7 @@ export class BillingService {
 
       return this.getCustomerAccount(id);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Customer account identity already exists');
+      throwConflictIfUniqueViolation(error, 'Customer account identity already exists');
       throw error;
     }
   }
@@ -2967,7 +2968,7 @@ export class BillingService {
 
       return this.getClientConfig(clientId);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Client config external identity already exists');
+      throwConflictIfUniqueViolation(error, 'Client config external identity already exists');
       throw error;
     }
   }
@@ -2997,7 +2998,7 @@ export class BillingService {
 
       return this.getClientConfig(id);
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Client config external identity already exists');
+      throwConflictIfUniqueViolation(error, 'Client config external identity already exists');
       throw error;
     }
   }
@@ -3499,11 +3500,11 @@ export class BillingService {
       this.getClientPortalRow(actor),
       this.getClientOwnedRoutePreference(actor),
     ]);
-    const accountQuotaLimitBytes = this.numberFromBigInt(profile.accountQuotaLimitBytes);
-    const accountUsedBytes = this.numberFromBigInt(profile.accountUsedBytes) ?? 0;
-    const perClientLimitBytes = this.numberFromBigInt(profile.perClientLimitBytes);
-    const clientQuotaLimitBytes = this.numberFromBigInt(profile.clientQuotaLimitBytes);
-    const clientUsedBytes = this.numberFromBigInt(profile.clientUsedBytes) ?? 0;
+    const accountQuotaLimitBytes = numberFromBigInt(profile.accountQuotaLimitBytes);
+    const accountUsedBytes = numberFromBigInt(profile.accountUsedBytes) ?? 0;
+    const perClientLimitBytes = numberFromBigInt(profile.perClientLimitBytes);
+    const clientQuotaLimitBytes = numberFromBigInt(profile.clientQuotaLimitBytes);
+    const clientUsedBytes = numberFromBigInt(profile.clientUsedBytes) ?? 0;
     const effectiveQuotaLimitBytes = clientQuotaLimitBytes ?? perClientLimitBytes;
 
     return {
@@ -3514,7 +3515,7 @@ export class BillingService {
         quotaScope: profile.quotaScope,
         quotaLimitBytes: accountQuotaLimitBytes,
         usedBytes: accountUsedBytes,
-        remainingBytes: this.remainingBytes(accountQuotaLimitBytes, accountUsedBytes),
+        remainingBytes: remainingBytes(accountQuotaLimitBytes, accountUsedBytes),
       },
       clientConfig: {
         id: profile.clientConfigId,
@@ -3523,7 +3524,7 @@ export class BillingService {
         deviceLimit: profile.deviceLimit,
         effectiveQuotaLimitBytes,
         usedBytes: clientUsedBytes,
-        remainingBytes: this.remainingBytes(effectiveQuotaLimitBytes, clientUsedBytes),
+        remainingBytes: remainingBytes(effectiveQuotaLimitBytes, clientUsedBytes),
         status: profile.clientStatus,
       },
       routePreference,
@@ -3927,7 +3928,7 @@ export class BillingService {
         duplicate: claimState.duplicate,
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Rewarded ad grant already exists');
+      throwConflictIfUniqueViolation(error, 'Rewarded ad grant already exists');
       throw error;
     }
   }
@@ -3960,7 +3961,7 @@ export class BillingService {
         duplicate: grantState.duplicate,
       };
     } catch (error) {
-      this.throwConflictIfUniqueViolation(error, 'Rewarded ad grant already exists');
+      throwConflictIfUniqueViolation(error, 'Rewarded ad grant already exists');
       throw error;
     }
   }
@@ -4110,8 +4111,8 @@ export class BillingService {
         healthStatus: row.healthStatus,
         available: row.enabled && !row.maintenanceMode && row.healthStatus !== 'critical',
         usageMultiplier: normalizeUsageMultiplier(row.usageMultiplier),
-        chargeLabel: this.usageMultiplierLabel(row.usageMultiplier),
-        usableBytesAtMultiplier: this.bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
+        chargeLabel: usageMultiplierLabel(row.usageMultiplier),
+        usableBytesAtMultiplier: bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
         subscriptionEndpoint: this.publicSubscriptionEndpoint(row, chargedRemainingBytes),
       })),
     };
@@ -4580,8 +4581,8 @@ export class BillingService {
       throw new BadRequestException('Reseller wallet amount must be a non-zero safe integer');
     }
 
-    const balanceBeforeAmount = this.numberFromBigInt(reseller.balanceAmount) ?? 0;
-    const creditLimitAmount = this.numberFromBigInt(reseller.creditLimitAmount) ?? 0;
+    const balanceBeforeAmount = numberFromBigInt(reseller.balanceAmount) ?? 0;
+    const creditLimitAmount = numberFromBigInt(reseller.creditLimitAmount) ?? 0;
     const balanceAfterAmount = balanceBeforeAmount + input.amount;
     if (!Number.isSafeInteger(balanceAfterAmount)) {
       throw new BadRequestException('Reseller wallet balance would exceed the safe money range');
@@ -4758,9 +4759,9 @@ export class BillingService {
         input.volumePackage.id,
         input.volumePackage.name,
         input.volumePackage.slug,
-        this.numberFromBigInt(input.volumePackage.volumeBytes) ?? 0,
+        numberFromBigInt(input.volumePackage.volumeBytes) ?? 0,
         input.volumePackage.durationDays,
-        this.numberFromBigInt(input.volumePackage.pricePerGb) ?? 0,
+        numberFromBigInt(input.volumePackage.pricePerGb) ?? 0,
         input.quote.customerPriceAmount,
         input.volumePackage.currency,
         providerOrderId,
@@ -4781,13 +4782,13 @@ export class BillingService {
     dto: UpdateVolumePackageDto,
   ): Promise<string[]> {
     const fields = Object.keys(dto);
-    const existingVolumeBytes = this.numberFromBigInt(existing.volumeBytes) ?? 0;
-    const existingPricePerGb = this.numberFromBigInt(existing.pricePerGb) ?? 0;
-    const existingTotalPrice = this.numberFromBigInt(existing.totalPrice) ?? 0;
+    const existingVolumeBytes = numberFromBigInt(existing.volumeBytes) ?? 0;
+    const existingPricePerGb = numberFromBigInt(existing.pricePerGb) ?? 0;
+    const existingTotalPrice = numberFromBigInt(existing.totalPrice) ?? 0;
     const volumeGb = dto.volumeGb ?? existingVolumeBytes / BYTES_PER_GB;
     const pricePerGb = dto.pricePerGb ?? existingPricePerGb;
     const shouldRecalculateTotal = dto.totalPrice === undefined && (dto.volumeGb !== undefined || dto.pricePerGb !== undefined);
-    const totalPrice = dto.totalPrice ?? (shouldRecalculateTotal ? this.calculateTotalPrice(volumeGb, pricePerGb) : existingTotalPrice);
+    const totalPrice = dto.totalPrice ?? (shouldRecalculateTotal ? calculateTotalPrice(volumeGb, pricePerGb) : existingTotalPrice);
 
     if (shouldRecalculateTotal) fields.push('totalPrice');
     if (!fields.length) return fields;
@@ -4879,9 +4880,9 @@ export class BillingService {
     if (!name) throw new BadRequestException('Payment method name is required');
 
     const provider = dto.provider !== undefined ? normalizeProvider(dto.provider) : existing.provider;
-    const checkoutMode = dto.checkoutMode ?? (dto.provider !== undefined ? this.defaultCheckoutMode(provider) : existing.checkoutMode);
-    const minAmount = dto.minAmount !== undefined ? dto.minAmount : this.numberFromBigInt(existing.minAmount);
-    const maxAmount = dto.maxAmount !== undefined ? dto.maxAmount : this.numberFromBigInt(existing.maxAmount);
+    const checkoutMode = dto.checkoutMode ?? (dto.provider !== undefined ? defaultCheckoutMode(provider) : existing.checkoutMode);
+    const minAmount = dto.minAmount !== undefined ? dto.minAmount : numberFromBigInt(existing.minAmount);
+    const maxAmount = dto.maxAmount !== undefined ? dto.maxAmount : numberFromBigInt(existing.maxAmount);
     const supportsAutoCapture =
       dto.supportsAutoCapture ?? (dto.provider !== undefined && provider === 'paypal' ? true : existing.supportsAutoCapture);
     this.assertAmountRange(minAmount, maxAmount);
@@ -5234,7 +5235,7 @@ export class BillingService {
     return {
       settingKey: row.settingKey,
       currency: row.currency,
-      pricePerGb: this.numberFromBigInt(row.pricePerGb) ?? 0,
+      pricePerGb: numberFromBigInt(row.pricePerGb) ?? 0,
       updatedBy: row.updatedBy,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -5242,7 +5243,7 @@ export class BillingService {
   }
 
   private mapAdminRewardedAdSettings(row: RewardedAdSettingsRow): AdminRewardedAdSettingsSummary {
-    const rewardBytes = this.numberFromBigInt(row.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+    const rewardBytes = numberFromBigInt(row.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
 
     return {
       settingKey: row.settingKey,
@@ -5259,7 +5260,7 @@ export class BillingService {
   }
 
   private mapVolumePackage(row: VolumePackageRow): AdminVolumePackageSummary {
-    const volumeBytes = this.numberFromBigInt(row.volumeBytes) ?? 0;
+    const volumeBytes = numberFromBigInt(row.volumeBytes) ?? 0;
     const volumeGb = volumeBytes / BYTES_PER_GB;
 
     return {
@@ -5269,8 +5270,8 @@ export class BillingService {
       volumeBytes,
       volumeGb,
       durationDays: row.durationDays,
-      pricePerGb: this.numberFromBigInt(row.pricePerGb) ?? 0,
-      totalPrice: this.numberFromBigInt(row.totalPrice) ?? 0,
+      pricePerGb: numberFromBigInt(row.pricePerGb) ?? 0,
+      totalPrice: numberFromBigInt(row.totalPrice) ?? 0,
       currency: row.currency,
       status: row.status,
       sortOrder: row.sortOrder,
@@ -5284,8 +5285,8 @@ export class BillingService {
   private mapResellerAccount(row: ResellerAccountRow): AdminResellerAccountSummary {
     const sellerMarginBps = Number(row.sellerMarginBps ?? DEFAULT_RESELLER_MARGIN_BPS);
     const afroGateShareBpsValue = afroGateShareBps(sellerMarginBps);
-    const balanceAmount = this.numberFromBigInt(row.balanceAmount) ?? 0;
-    const creditLimitAmount = this.numberFromBigInt(row.creditLimitAmount) ?? 0;
+    const balanceAmount = numberFromBigInt(row.balanceAmount) ?? 0;
+    const creditLimitAmount = numberFromBigInt(row.creditLimitAmount) ?? 0;
 
     return {
       id: row.id,
@@ -5318,9 +5319,9 @@ export class BillingService {
       id: row.id,
       resellerAccountId: row.resellerAccountId,
       entryType: row.entryType,
-      amount: this.numberFromBigInt(row.amount) ?? 0,
-      balanceBeforeAmount: this.numberFromBigInt(row.balanceBeforeAmount) ?? 0,
-      balanceAfterAmount: this.numberFromBigInt(row.balanceAfterAmount) ?? 0,
+      amount: numberFromBigInt(row.amount) ?? 0,
+      balanceBeforeAmount: numberFromBigInt(row.balanceBeforeAmount) ?? 0,
+      balanceAfterAmount: numberFromBigInt(row.balanceAfterAmount) ?? 0,
       currency: row.currency,
       source: row.source,
       sourceId: row.sourceId,
@@ -5346,8 +5347,8 @@ export class BillingService {
       provider: row.provider,
       checkoutMode: row.checkoutMode,
       currency: row.currency,
-      minAmount: this.numberFromBigInt(row.minAmount),
-      maxAmount: this.numberFromBigInt(row.maxAmount),
+      minAmount: numberFromBigInt(row.minAmount),
+      maxAmount: numberFromBigInt(row.maxAmount),
       status: row.status,
       sortOrder: row.sortOrder,
       supportsAutoCapture: row.supportsAutoCapture,
@@ -5360,7 +5361,7 @@ export class BillingService {
   }
 
   private mapPaymentOrder(row: PaymentOrderRow): AdminPaymentOrderSummary {
-    const volumeBytes = this.numberFromBigInt(row.volumeBytes) ?? 0;
+    const volumeBytes = numberFromBigInt(row.volumeBytes) ?? 0;
 
     return {
       id: row.id,
@@ -5376,8 +5377,8 @@ export class BillingService {
       volumeBytes,
       volumeGb: volumeBytes / BYTES_PER_GB,
       durationDays: row.durationDays,
-      pricePerGb: this.numberFromBigInt(row.pricePerGb) ?? 0,
-      amount: this.numberFromBigInt(row.amount) ?? 0,
+      pricePerGb: numberFromBigInt(row.pricePerGb) ?? 0,
+      amount: numberFromBigInt(row.amount) ?? 0,
       currency: row.currency,
       status: row.status,
       provider: row.provider,
@@ -5392,8 +5393,8 @@ export class BillingService {
       allocationStatus: row.allocationStatus ?? 'not_applicable',
       allocationId: row.allocationId ?? null,
       allocatedAt: row.allocatedAt?.toISOString() ?? null,
-      allocatedVolumeBytes: this.numberFromBigInt(row.allocatedVolumeBytes),
-      allocationDelaySeconds: this.numberFromBigInt(row.allocationDelaySeconds) ?? 0,
+      allocatedVolumeBytes: numberFromBigInt(row.allocatedVolumeBytes),
+      allocationDelaySeconds: numberFromBigInt(row.allocationDelaySeconds) ?? 0,
       metadata: row.metadata ?? {},
       notes: row.notes,
       createdBy: row.createdBy,
@@ -5408,9 +5409,9 @@ export class BillingService {
       paymentOrderId: row.paymentOrderId,
       customerAccountId: row.customerAccountId,
       allocationScope: row.allocationScope,
-      volumeBytesDelta: this.numberFromBigInt(row.volumeBytesDelta) ?? 0,
-      quotaLimitBeforeBytes: this.numberFromBigInt(row.quotaLimitBeforeBytes),
-      quotaLimitAfterBytes: this.numberFromBigInt(row.quotaLimitAfterBytes) ?? 0,
+      volumeBytesDelta: numberFromBigInt(row.volumeBytesDelta) ?? 0,
+      quotaLimitBeforeBytes: numberFromBigInt(row.quotaLimitBeforeBytes),
+      quotaLimitAfterBytes: numberFromBigInt(row.quotaLimitAfterBytes) ?? 0,
       idempotencyKey: row.idempotencyKey,
       metadata: row.metadata ?? {},
       createdBy: row.createdBy,
@@ -5425,9 +5426,9 @@ export class BillingService {
       id: row.id,
       customerAccountId: row.customerAccountId,
       scope: row.chargeScope,
-      volumeBytesDelta: this.numberFromBigInt(row.volumeBytesDelta) ?? 0,
-      accountQuotaLimitBeforeBytes: this.numberFromBigInt(row.accountQuotaBeforeBytes),
-      accountQuotaLimitAfterBytes: this.numberFromBigInt(row.accountQuotaAfterBytes),
+      volumeBytesDelta: numberFromBigInt(row.volumeBytesDelta) ?? 0,
+      accountQuotaLimitBeforeBytes: numberFromBigInt(row.accountQuotaBeforeBytes),
+      accountQuotaLimitAfterBytes: numberFromBigInt(row.accountQuotaAfterBytes),
       clientConfigIds: normalizeJsonStringArray(row.clientConfigIds),
       clientQuotaChanges: this.normalizeCurrentPanelClientQuotaChanges(row.clientQuotaChanges),
       externalPanelWriteStatus: row.externalPanelWriteStatus,
@@ -5446,13 +5447,13 @@ export class BillingService {
       clientConfigId: row.clientConfigId,
       source: row.source,
       direction: row.direction,
-      usedBytesDelta: this.numberFromBigInt(row.usedBytesDelta) ?? 0,
-      rawUsedBytesDelta: this.numberFromBigInt(row.rawUsedBytesDelta),
+      usedBytesDelta: numberFromBigInt(row.usedBytesDelta) ?? 0,
+      rawUsedBytesDelta: numberFromBigInt(row.rawUsedBytesDelta),
       usageMultiplier: row.usageMultiplier,
       ratedOutboundId: row.ratedOutboundId,
       ratedOutboundName: row.ratedOutboundName,
-      rxBytes: this.numberFromBigInt(row.rxBytes),
-      txBytes: this.numberFromBigInt(row.txBytes),
+      rxBytes: numberFromBigInt(row.rxBytes),
+      txBytes: numberFromBigInt(row.txBytes),
       observedAt: row.observedAt.toISOString(),
       windowStart: row.windowStart?.toISOString() ?? null,
       windowEnd: row.windowEnd?.toISOString() ?? null,
@@ -5520,7 +5521,7 @@ export class BillingService {
       [row.customerAccountId],
     );
 
-    return this.mapClientConfig(row, this.numberFromBigInt(accountResult.rows[0]?.perClientLimitBytes ?? null));
+    return this.mapClientConfig(row, numberFromBigInt(accountResult.rows[0]?.perClientLimitBytes ?? null));
   }
 
   private async listClientConfigs(
@@ -6278,19 +6279,19 @@ export class BillingService {
         throw new BadRequestException('Rewarded ad daily limit reached');
       }
 
-      const rewardBytes = this.numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+      const rewardBytes = numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
       if (rewardBytes <= 0) throw new BadRequestException('Rewarded ad reward amount must be positive');
 
-      const accountQuotaBeforeBytes = this.numberFromBigInt(account.quotaLimitBytes);
-      const accountUsedBytes = this.numberFromBigInt(account.usedBytes) ?? 0;
+      const accountQuotaBeforeBytes = numberFromBigInt(account.quotaLimitBytes);
+      const accountUsedBytes = numberFromBigInt(account.usedBytes) ?? 0;
       const accountQuotaAfterBytes = (accountQuotaBeforeBytes ?? accountUsedBytes) + rewardBytes;
       if (!Number.isSafeInteger(accountQuotaAfterBytes) || accountQuotaAfterBytes > MAX_SAFE_BYTES) {
         throw new BadRequestException('Rewarded ad account quota would exceed the safe byte limit');
       }
 
-      const clientQuotaBeforeBytes = this.numberFromBigInt(client.quotaLimitBytes);
-      const perClientLimitBytes = this.numberFromBigInt(account.perClientLimitBytes);
-      const clientUsedBytes = this.numberFromBigInt(client.usedBytes) ?? 0;
+      const clientQuotaBeforeBytes = numberFromBigInt(client.quotaLimitBytes);
+      const perClientLimitBytes = numberFromBigInt(account.perClientLimitBytes);
+      const clientUsedBytes = numberFromBigInt(client.usedBytes) ?? 0;
       const shouldCreditClientQuota =
         account.quotaScope === 'per_client' || clientQuotaBeforeBytes !== null || perClientLimitBytes !== null;
       const clientQuotaAfterBytes = shouldCreditClientQuota
@@ -6685,7 +6686,7 @@ export class BillingService {
   }
 
   private mapClientRewardedAdStatus(settings: RewardedAdSettingsRow, watchedToday: number): ClientRewardedAdStatus {
-    const rewardBytes = this.numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
+    const rewardBytes = numberFromBigInt(settings.rewardBytes) ?? DEFAULT_REWARDED_AD_REWARD_BYTES;
     const dailyLimit = Math.max(settings.dailyLimit, 0);
 
     return {
@@ -6710,11 +6711,11 @@ export class BillingService {
       provider: row.provider,
       adSessionId: row.adSessionId,
       idempotencyKey: row.idempotencyKey,
-      rewardBytes: this.numberFromBigInt(row.rewardBytes) ?? 0,
-      accountQuotaBeforeBytes: this.numberFromBigInt(row.accountQuotaBeforeBytes),
-      accountQuotaAfterBytes: this.numberFromBigInt(row.accountQuotaAfterBytes) ?? 0,
-      clientQuotaBeforeBytes: this.numberFromBigInt(row.clientQuotaBeforeBytes),
-      clientQuotaAfterBytes: this.numberFromBigInt(row.clientQuotaAfterBytes),
+      rewardBytes: numberFromBigInt(row.rewardBytes) ?? 0,
+      accountQuotaBeforeBytes: numberFromBigInt(row.accountQuotaBeforeBytes),
+      accountQuotaAfterBytes: numberFromBigInt(row.accountQuotaAfterBytes) ?? 0,
+      clientQuotaBeforeBytes: numberFromBigInt(row.clientQuotaBeforeBytes),
+      clientQuotaAfterBytes: numberFromBigInt(row.clientQuotaAfterBytes),
       verificationMode: row.verificationMode,
       metadata: row.metadata ?? {},
       createdAt: row.createdAt.toISOString(),
@@ -6824,16 +6825,16 @@ export class BillingService {
 
   private async getClientChargedRemainingBytes(actor: ClientAuthActor): Promise<number | null> {
     const profile = await this.getClientPortalRow(actor);
-    const accountQuotaLimitBytes = this.numberFromBigInt(profile.accountQuotaLimitBytes);
-    const accountUsedBytes = this.numberFromBigInt(profile.accountUsedBytes) ?? 0;
-    const perClientLimitBytes = this.numberFromBigInt(profile.perClientLimitBytes);
-    const clientQuotaLimitBytes = this.numberFromBigInt(profile.clientQuotaLimitBytes);
-    const clientUsedBytes = this.numberFromBigInt(profile.clientUsedBytes) ?? 0;
+    const accountQuotaLimitBytes = numberFromBigInt(profile.accountQuotaLimitBytes);
+    const accountUsedBytes = numberFromBigInt(profile.accountUsedBytes) ?? 0;
+    const perClientLimitBytes = numberFromBigInt(profile.perClientLimitBytes);
+    const clientQuotaLimitBytes = numberFromBigInt(profile.clientQuotaLimitBytes);
+    const clientUsedBytes = numberFromBigInt(profile.clientUsedBytes) ?? 0;
     const effectiveClientQuotaLimitBytes = clientQuotaLimitBytes ?? perClientLimitBytes;
 
-    return this.minNullableBytes([
-      this.remainingBytes(accountQuotaLimitBytes, accountUsedBytes),
-      this.remainingBytes(effectiveClientQuotaLimitBytes, clientUsedBytes),
+    return minNullableBytes([
+      remainingBytes(accountQuotaLimitBytes, accountUsedBytes),
+      remainingBytes(effectiveClientQuotaLimitBytes, clientUsedBytes),
     ]);
   }
 
@@ -6878,13 +6879,13 @@ export class BillingService {
       region: row.region,
       healthStatus: row.healthStatus,
       usageMultiplier: normalizeUsageMultiplier(row.usageMultiplier),
-      chargeLabel: this.usageMultiplierLabel(row.usageMultiplier),
+      chargeLabel: usageMultiplierLabel(row.usageMultiplier),
       address,
       host,
       port,
       transport,
       updatedAt: row.updatedAt.toISOString(),
-      usableBytesAtMultiplier: this.bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
+      usableBytesAtMultiplier: bytesAtMultiplier(chargedRemainingBytes, row.usageMultiplier),
     };
   }
 
@@ -7357,23 +7358,6 @@ export class BillingService {
     return null;
   }
 
-  private bytesAtMultiplier(chargedRemainingBytes: number | null, multiplierValue: number | string | null | undefined): number | null {
-    if (chargedRemainingBytes === null) return null;
-
-    return Math.floor(chargedRemainingBytes / normalizeUsageMultiplier(multiplierValue));
-  }
-
-  private usageMultiplierLabel(multiplierValue: number | string | null | undefined): string {
-    return `x${normalizeUsageMultiplier(multiplierValue)}`;
-  }
-
-  private minNullableBytes(values: Array<number | null | undefined>): number | null {
-    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-    if (!finiteValues.length) return null;
-
-    return Math.min(...finiteValues);
-  }
-
   private async updateCustomerAccountFields(
     executor: DatabaseQueryExecutor,
     id: string,
@@ -7473,9 +7457,9 @@ export class BillingService {
   }
 
   private mapCustomerAccount(row: CustomerAccountRow): AdminCustomerAccountSummary {
-    const quotaLimitBytes = this.numberFromBigInt(row.quotaLimitBytes);
-    const perClientLimitBytes = this.numberFromBigInt(row.perClientLimitBytes);
-    const usedBytes = this.numberFromBigInt(row.usedBytes) ?? 0;
+    const quotaLimitBytes = numberFromBigInt(row.quotaLimitBytes);
+    const perClientLimitBytes = numberFromBigInt(row.perClientLimitBytes);
+    const usedBytes = numberFromBigInt(row.usedBytes) ?? 0;
 
     return {
       id: row.id,
@@ -7490,7 +7474,7 @@ export class BillingService {
       quotaLimitBytes,
       perClientLimitBytes,
       usedBytes,
-      remainingBytes: this.remainingBytes(quotaLimitBytes, usedBytes),
+      remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
       notes: row.notes,
@@ -7500,8 +7484,8 @@ export class BillingService {
   }
 
   private mapTelegramBotAccount(row: CustomerAccountRow): TelegramBotAccountSummary {
-    const quotaLimitBytes = this.numberFromBigInt(row.quotaLimitBytes);
-    const usedBytes = this.numberFromBigInt(row.usedBytes) ?? 0;
+    const quotaLimitBytes = numberFromBigInt(row.quotaLimitBytes);
+    const usedBytes = numberFromBigInt(row.usedBytes) ?? 0;
 
     return {
       id: row.id,
@@ -7510,7 +7494,7 @@ export class BillingService {
       quotaScope: row.quotaScope,
       quotaLimitBytes,
       usedBytes,
-      remainingBytes: this.remainingBytes(quotaLimitBytes, usedBytes),
+      remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
     };
@@ -7520,8 +7504,8 @@ export class BillingService {
     row: ClientConfigRow,
     defaultPerClientLimitBytes: number | null,
   ): AdminClientConfigSummary {
-    const quotaLimitBytes = this.numberFromBigInt(row.quotaLimitBytes);
-    const usedBytes = this.numberFromBigInt(row.usedBytes) ?? 0;
+    const quotaLimitBytes = numberFromBigInt(row.quotaLimitBytes);
+    const usedBytes = numberFromBigInt(row.usedBytes) ?? 0;
     const effectiveQuotaLimitBytes = quotaLimitBytes ?? defaultPerClientLimitBytes;
 
     return {
@@ -7536,7 +7520,7 @@ export class BillingService {
       quotaLimitBytes,
       effectiveQuotaLimitBytes,
       usedBytes,
-      remainingBytes: this.remainingBytes(effectiveQuotaLimitBytes, usedBytes),
+      remainingBytes: remainingBytes(effectiveQuotaLimitBytes, usedBytes),
       status: row.status,
       notes: row.notes,
       routePreference: this.mapClientRoutePreferenceFromClientRow(row),
@@ -7825,11 +7809,11 @@ export class BillingService {
     reseller: ResellerAccountRow,
     volumePackage: VolumePackageRow,
   ): AdminResellerPackageQuote {
-    const customerPriceAmount = this.numberFromBigInt(volumePackage.totalPrice) ?? 0;
+    const customerPriceAmount = numberFromBigInt(volumePackage.totalPrice) ?? 0;
     const sellerMarginBps = normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
     const { sellerMarginAmount, walletDebitAmount } = computeResellerSaleAmounts(customerPriceAmount, sellerMarginBps);
-    const balanceBeforeAmount = this.numberFromBigInt(reseller.balanceAmount) ?? 0;
-    const creditLimitAmount = this.numberFromBigInt(reseller.creditLimitAmount) ?? 0;
+    const balanceBeforeAmount = numberFromBigInt(reseller.balanceAmount) ?? 0;
+    const creditLimitAmount = numberFromBigInt(reseller.creditLimitAmount) ?? 0;
     const balanceAfterAmount = balanceBeforeAmount - walletDebitAmount;
     const currencyMatches = reseller.currency === volumePackage.currency;
     const canDebit = currencyMatches && reseller.status === 'active' && volumePackage.status === 'active'
@@ -7874,7 +7858,7 @@ export class BillingService {
       clientConfigId: string | null;
     },
   ): void {
-    const amount = this.numberFromBigInt(row.amount) ?? 0;
+    const amount = numberFromBigInt(row.amount) ?? 0;
     if (
       row.resellerAccountId !== expected.resellerAccountId ||
       row.entryType !== expected.entryType ||
@@ -7931,7 +7915,7 @@ export class BillingService {
       clientConfigIds: string[];
     },
   ): void {
-    const existingVolumeBytes = this.numberFromBigInt(row.volumeBytesDelta) ?? 0;
+    const existingVolumeBytes = numberFromBigInt(row.volumeBytesDelta) ?? 0;
     const existingClientConfigIds = normalizeJsonStringArray(row.clientConfigIds).sort();
     const requestedClientConfigIds = request.clientConfigIds.slice().sort();
     const sameClientConfigIds =
@@ -7956,12 +7940,12 @@ export class BillingService {
       if (!item || typeof item !== 'object') return [];
       const record = item as Record<string, unknown>;
       const clientConfigId = typeof record.clientConfigId === 'string' ? record.clientConfigId : null;
-      const quotaLimitAfterBytes = this.numberFromBigInt(record.quotaLimitAfterBytes as string | number | null | undefined);
+      const quotaLimitAfterBytes = numberFromBigInt(record.quotaLimitAfterBytes as string | number | null | undefined);
       if (!clientConfigId || quotaLimitAfterBytes === null) return [];
 
       return [{
         clientConfigId,
-        quotaLimitBeforeBytes: this.numberFromBigInt(record.quotaLimitBeforeBytes as string | number | null | undefined),
+        quotaLimitBeforeBytes: numberFromBigInt(record.quotaLimitBeforeBytes as string | number | null | undefined),
         quotaLimitAfterBytes,
       }];
     });
@@ -7982,22 +7966,14 @@ export class BillingService {
   }
 
 
-  private calculateTotalPrice(volumeGb: number, pricePerGb: number): number {
-    return volumeGb * pricePerGb;
-  }
-
-  private defaultCheckoutMode(provider: string): string {
-    return provider === 'paypal' ? 'hosted_redirect' : 'manual';
-  }
-
   private assertPaymentMethodAccepts(method: PaymentMethodRow, currency: string, amount: number): void {
     if (method.status !== 'active') throw new BadRequestException('Payment method is not active');
     if (method.currency !== currency) {
       throw new BadRequestException('Payment method currency does not match the package currency');
     }
 
-    const minAmount = this.numberFromBigInt(method.minAmount);
-    const maxAmount = this.numberFromBigInt(method.maxAmount);
+    const minAmount = numberFromBigInt(method.minAmount);
+    const maxAmount = numberFromBigInt(method.maxAmount);
     if (minAmount !== null && amount < minAmount) throw new BadRequestException('Payment order amount is below method minimum');
     if (maxAmount !== null && amount > maxAmount) throw new BadRequestException('Payment order amount is above method maximum');
   }
@@ -8171,26 +8147,6 @@ export class BillingService {
     }
   }
 
-  private remainingBytes(limitBytes: number | null, usedBytes: number): number | null {
-    if (limitBytes === null) return null;
-    return Math.max(limitBytes - usedBytes, 0);
-  }
-
-  private numberFromBigInt(value: string | number | null | undefined): number | null {
-    if (value === null || value === undefined) return null;
-    const numberValue = Number(value);
-    return Number.isFinite(numberValue) ? numberValue : null;
-  }
-
-  private throwConflictIfUniqueViolation(error: unknown, message: string): void {
-    if (this.isErrorWithCode(error) && error.code === '23505') {
-      throw new ConflictException(message);
-    }
-  }
-
-  private isErrorWithCode(error: unknown): error is { code: string } {
-    return typeof error === 'object' && error !== null && 'code' in error;
-  }
 }
 
 function normalizeFlatCredentialRecord(value: Record<string, unknown>, context: string): Record<string, unknown> {

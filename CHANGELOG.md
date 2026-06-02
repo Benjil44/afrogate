@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.7 - 2026-06-02
+
+- Peeled the pure money/byte math helpers out of BillingService into `billing/billing-math.ts` (`calculateTotalPrice`, `defaultCheckoutMode`, `remainingBytes`, `numberFromBigInt`, `minNullableBytes`, `isErrorWithCode`, `throwConflictIfUniqueViolation`) and co-located the usage-multiplier helpers (`bytesAtMultiplier`, `usageMultiplierLabel`) with `normalizeUsageMultiplier` in `billing-normalizers.ts`; rewrote 134 callsites. Added 16 tests; backend suite now 216 tests.
+
 ## 0.114.6 - 2026-06-02
 
 - Set up a reusable DB-integration test harness (`test/helpers/fake-db.ts`: scripted in-memory `DatabaseQueryExecutor` recording every SQL + bound params, a fake `transaction()` runner, and a `uniqueViolation()` thrower) and extracted the allocation idempotency decision (`billing/allocation-idempotency.ts`: `resolveAllocationIdempotencyKey` + `resolveExistingAllocation` — guarantees no double-credit and rejects a key reused across orders). Wired it into `allocatePaymentOrder` and covered it plus harness-driven IDOR/ownership flows with 13 tests; backend suite now 200 tests.
