@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.17 - 2026-06-02
+
+- Split the 3,500-line `apps/dashboard/src/i18n.ts` by language into `i18n.en.ts` (source of truth) and `i18n.fa.ts` (typed `: DashboardStrings`, so en/fa key parity is now compiler-enforced); `i18n.ts` is now a 45-line composer that keeps the same public API (`dashboardTranslations`, `DashboardStrings`, `DashboardLanguage`, `useDashboardLanguage`). Dashboard typecheck + build pass. Closes the i18n-split checklist item.
+
 ## 0.114.16 - 2026-06-02
 
 - Began the OperationsService split: peeled 13 pure route-metric/normalizer helpers (`averageMetric`, `minimumMetric`, `maximumMetric`, `calculateHandshakePenalty`, `mapWireGuardTelemetryStatus`, `numberFromConfig`, `extractEndpoint`, `extractLoadPercent`, `normalizeRouteDecisionCountryCode`, `clientConfigIdFromRouteAssignmentKey`, `normalizeRouteGroup`, `normalizeAssignmentKey`, `defaultSpeedProfileForProtocol`) into `operations/route-metrics.ts`; rewrote 54 callsites. Added 16 tests; backend suite now 320 tests. `operations.service.ts` down to ~9.25k.
