@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.16 - 2026-06-02
+
+- Began the OperationsService split: peeled 13 pure route-metric/normalizer helpers (`averageMetric`, `minimumMetric`, `maximumMetric`, `calculateHandshakePenalty`, `mapWireGuardTelemetryStatus`, `numberFromConfig`, `extractEndpoint`, `extractLoadPercent`, `normalizeRouteDecisionCountryCode`, `clientConfigIdFromRouteAssignmentKey`, `normalizeRouteGroup`, `normalizeAssignmentKey`, `defaultSpeedProfileForProtocol`) into `operations/route-metrics.ts`; rewrote 54 callsites. Added 16 tests; backend suite now 320 tests. `operations.service.ts` down to ~9.25k.
+
 ## 0.114.15 - 2026-06-02
 
 - Peeled the usage/charge-scope normalizers (`normalizeClientUsageSource`, `normalizeClientUsageDirection`, `normalizeCurrentPanelVolumeChargeScope`, `normalizeCurrentPanelChargeClientIds`) and their three allow-list `Set` constants out of BillingService into `billing/usage-normalizers.ts`; rewrote 5 callsites. Added 7 tests (allow-list enforcement, defaulting, dedup/sort); backend suite now 304 tests.

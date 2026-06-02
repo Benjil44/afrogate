@@ -79,6 +79,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
 import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, loadedLatencyDeltaFromProbe, roundMetric, thresholdPenalty } from './route-scoring';
+import { averageMetric, calculateHandshakePenalty, clientConfigIdFromRouteAssignmentKey, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig } from './route-metrics';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
@@ -1612,7 +1613,7 @@ export class OperationsService {
   }
 
   async getSettings(routeGroupInput?: string): Promise<AdminSettingsResponse> {
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
     const routeSettings = await this.getRouteSettings(routeGroup);
 
     return {
@@ -1626,7 +1627,7 @@ export class OperationsService {
     routeGroupInput?: string,
     rangeHours = 168,
   ): Promise<AdminRouteQualityAnalyticsResponse> {
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
     const minimumSamples = this.minimumRouteAnalyticsSamples(rangeHours);
     const windows = await this.listRouteQualityWindows(routeGroup, rangeHours);
 
@@ -1645,7 +1646,7 @@ export class OperationsService {
     rangeHours = 168,
     limit = 48,
   ): Promise<AdminRouteHealthHistoryResponse> {
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
     let points: RouteHealthHistoryPoint[] = [];
 
     try {
@@ -1669,8 +1670,8 @@ export class OperationsService {
     routeGroupInput?: string,
     assignmentKeyInput?: string,
   ): Promise<AdminRouteDecisionPreviewResponse> {
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
-    const assignmentKey = this.normalizeAssignmentKey(assignmentKeyInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
+    const assignmentKey = normalizeAssignmentKey(assignmentKeyInput);
     const [routeSettings, assignment, clientPreferenceRow] = await Promise.all([
       this.getRouteSettings(routeGroup),
       this.getRouteAssignment(routeGroup, assignmentKey),
@@ -1940,7 +1941,7 @@ export class OperationsService {
     routeGroup: string,
     assignmentKey: string,
   ): Promise<ClientRouteDecisionPreferenceRow | null> {
-    const clientConfigId = this.clientConfigIdFromRouteAssignmentKey(assignmentKey);
+    const clientConfigId = clientConfigIdFromRouteAssignmentKey(assignmentKey);
     if (!clientConfigId) return null;
 
     const result = await this.database.query<ClientRouteDecisionPreferenceRow>(
@@ -2034,8 +2035,8 @@ export class OperationsService {
     }
 
     const reasonCodes = new Set<string>(['client_route_preference']);
-    const preferredCountry = this.normalizeRouteDecisionCountryCode(preference.preferredExitCountryCode);
-    const detectedCountry = this.normalizeRouteDecisionCountryCode(preference.detectedCountryCode);
+    const preferredCountry = normalizeRouteDecisionCountryCode(preference.preferredExitCountryCode);
+    const detectedCountry = normalizeRouteDecisionCountryCode(preference.detectedCountryCode);
     const preferredCountryCandidates = preferredCountry
       ? candidates.managedHealthyCandidates.filter((candidate) => this.routeDecisionCandidateCountry(candidate) === preferredCountry)
       : [];
@@ -2103,9 +2104,9 @@ export class OperationsService {
       routeGroup: preference.routeGroup,
       assignmentKey,
       mode: preference.mode,
-      detectedCountryCode: this.normalizeRouteDecisionCountryCode(preference.detectedCountryCode),
+      detectedCountryCode: normalizeRouteDecisionCountryCode(preference.detectedCountryCode),
       detectedCountrySource: preference.detectedCountrySource,
-      preferredExitCountryCode: this.normalizeRouteDecisionCountryCode(preference.preferredExitCountryCode),
+      preferredExitCountryCode: normalizeRouteDecisionCountryCode(preference.preferredExitCountryCode),
       preferredOutboundId: preference.preferredOutboundId,
       preferredOutboundName: preference.preferredOutboundName,
       scoreProfile: this.normalizeRouteScoreProfile(preference.scoreProfile) ?? 'balanced',
@@ -2166,8 +2167,8 @@ export class OperationsService {
     routeGroupInput?: string,
     assignmentKeyInput?: string,
   ): Promise<AdminRouteAssignmentSummary> {
-    const routeGroup = this.normalizeRouteGroup(routeGroupInput);
-    const assignmentKey = this.normalizeAssignmentKey(assignmentKeyInput);
+    const routeGroup = normalizeRouteGroup(routeGroupInput);
+    const assignmentKey = normalizeAssignmentKey(assignmentKeyInput);
     const routeSettings = await this.getRouteSettings(routeGroup);
     const assignment = await this.getRouteAssignment(routeGroup, assignmentKey);
 
@@ -2178,14 +2179,14 @@ export class OperationsService {
     dto: UpsertRouteAssignmentDto,
     actor: AuthActor | undefined,
   ): Promise<AdminRouteAssignmentSummary> {
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
-    const assignmentKey = this.normalizeAssignmentKey(dto.assignmentKey);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
+    const assignmentKey = normalizeAssignmentKey(dto.assignmentKey);
     const assignmentLabel = dto.assignmentLabel?.trim() || null;
     const currentOutboundId = dto.currentOutboundId ?? null;
     let lockedOutboundId = dto.lockedOutboundId ?? null;
     const routeLocked = dto.routeLocked ?? false;
     const protocolProfile = dto.protocolProfile ?? 'balanced';
-    const speedProfile = dto.speedProfile ?? this.defaultSpeedProfileForProtocol(protocolProfile);
+    const speedProfile = dto.speedProfile ?? defaultSpeedProfileForProtocol(protocolProfile);
     const hysteresisScoreDelta = dto.hysteresisScoreDelta ?? 15;
     const cooldownSeconds = dto.cooldownSeconds ?? 180;
 
@@ -2265,8 +2266,8 @@ export class OperationsService {
     dto: RecordRouteDecisionPreviewDto,
     actor: AuthActor | undefined,
   ): Promise<RecordRouteDecisionPreviewResponse> {
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
-    const assignmentKey = this.normalizeAssignmentKey(dto.assignmentKey);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
+    const assignmentKey = normalizeAssignmentKey(dto.assignmentKey);
     const preview = await this.getRouteDecisionPreview(routeGroup, assignmentKey);
     const eventId = randomUUID();
     const fromOutboundId = preview.currentCandidate?.source === 'outbound' ? preview.currentCandidate.id : null;
@@ -2402,8 +2403,8 @@ export class OperationsService {
       throw new BadRequestException('Only assignmentOnly route decision apply mode is currently supported');
     }
 
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
-    const assignmentKey = this.normalizeAssignmentKey(dto.assignmentKey);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
+    const assignmentKey = normalizeAssignmentKey(dto.assignmentKey);
     const preview = await this.getRouteDecisionPreview(routeGroup, assignmentKey);
     const toOutboundId = preview.recommendedCandidate?.source === 'outbound' ? preview.recommendedCandidate.id : null;
     const fromOutboundId = preview.currentCandidate?.source === 'outbound' ? preview.currentCandidate.id : null;
@@ -2520,7 +2521,7 @@ export class OperationsService {
           toOutboundId,
           preview.autoRouteEnabled,
           selectedScoreProfile,
-          this.defaultSpeedProfileForProtocol(selectedScoreProfile),
+          defaultSpeedProfileForProtocol(selectedScoreProfile),
           preview.hysteresisScoreDelta,
           preview.cooldownSeconds,
           cooldownUntil,
@@ -2571,8 +2572,8 @@ export class OperationsService {
   async listRouteDecisionEvents(
     filters: { routeGroup?: string; assignmentKey?: string; limit?: number } = {},
   ): Promise<AdminRouteDecisionEventSummary[]> {
-    const routeGroup = filters.routeGroup ? this.normalizeRouteGroup(filters.routeGroup) : undefined;
-    const assignmentKey = filters.assignmentKey ? this.normalizeAssignmentKey(filters.assignmentKey) : undefined;
+    const routeGroup = filters.routeGroup ? normalizeRouteGroup(filters.routeGroup) : undefined;
+    const assignmentKey = filters.assignmentKey ? normalizeAssignmentKey(filters.assignmentKey) : undefined;
     const result = await this.database.query<RouteDecisionEventRow>(
       `
         SELECT
@@ -2657,7 +2658,7 @@ export class OperationsService {
   ): Promise<AdminSecretRefSummary> {
     this.assertSuperadmin(actor);
 
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
     const name = dto.name.trim();
     const secret = dto.secret.trim();
 
@@ -2722,7 +2723,7 @@ export class OperationsService {
     this.assertSuperadmin(actor);
     this.assertSafeConfig(dto.config);
 
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
     const protocolSetupId = await this.database.transaction(async (executor) => {
       const secretRef = dto.secretRef?.trim() || null;
       const targetServerId = dto.targetServerId?.trim() || null;
@@ -2783,7 +2784,7 @@ export class OperationsService {
 
     const provisioned = await this.database.transaction(async (executor) => {
       const setup = await this.getProtocolSetupForUpdate(executor, id);
-      const routeGroup = this.normalizeRouteGroup(setup.routeGroup);
+      const routeGroup = normalizeRouteGroup(setup.routeGroup);
 
       if (setup.provisionedOutboundId) {
         const existing = await executor.query<{ id: string }>('SELECT id FROM outbounds WHERE id = $1', [
@@ -3197,7 +3198,7 @@ export class OperationsService {
   async listProtocolApplyEvents(
     filters: { protocolSetupId?: string; routeGroup?: string; limit?: number } = {},
   ): Promise<AdminProtocolServerApplyEventSummary[]> {
-    const routeGroup = filters.routeGroup ? this.normalizeRouteGroup(filters.routeGroup) : undefined;
+    const routeGroup = filters.routeGroup ? normalizeRouteGroup(filters.routeGroup) : undefined;
     const result = await this.database.query<ProtocolApplyEventRow>(
       `
         SELECT
@@ -3278,9 +3279,9 @@ export class OperationsService {
     dto: UpsertRouteSettingsDto,
     actor: AuthActor | undefined,
   ): Promise<AdminRouteSettingsSummary> {
-    const routeGroup = this.normalizeRouteGroup(dto.routeGroup);
+    const routeGroup = normalizeRouteGroup(dto.routeGroup);
     const protocolProfile = dto.protocolProfile ?? 'balanced';
-    const speedProfile = dto.speedProfile ?? this.defaultSpeedProfileForProtocol(protocolProfile);
+    const speedProfile = dto.speedProfile ?? defaultSpeedProfileForProtocol(protocolProfile);
 
     await this.database.transaction(async (executor) => {
       if (dto.selectedOutboundId) await this.ensureRouteOutboundCandidate(executor, dto.selectedOutboundId, routeGroup);
@@ -5306,7 +5307,7 @@ export class OperationsService {
     const scoreResult = this.calculateRouteProfileScores(
       {
         baseScore,
-        healthStatus: this.mapWireGuardTelemetryStatus(item.status),
+        healthStatus: mapWireGuardTelemetryStatus(item.status),
         latencyMs: routeProbeSummary.latencyMs,
         jitterMs: routeProbeSummary.jitterMs,
         packetLossPercent: routeProbeSummary.packetLossPercent,
@@ -5325,7 +5326,7 @@ export class OperationsService {
       name: `${row.serverHostname || row.serverExternalId} / ${item.name}`,
       endpoint: row.serverHostname || row.serverExternalId,
       routeGroup,
-      healthStatus: this.mapWireGuardTelemetryStatus(item.status),
+      healthStatus: mapWireGuardTelemetryStatus(item.status),
       score: scoreResult.selectedScore,
       selectedScoreProfile: scoreResult.selectedProfile,
       profileScores: scoreResult.profileScores,
@@ -5347,7 +5348,7 @@ export class OperationsService {
       loadPercent: null,
       serverExternalId: row.serverExternalId,
       serverHostname: row.serverHostname,
-      serverCountry: this.normalizeRouteDecisionCountryCode(row.serverCountry),
+      serverCountry: normalizeRouteDecisionCountryCode(row.serverCountry),
       serverRegion: row.serverRegion,
       interfaceName: item.name,
       peerCount: item.peerCount,
@@ -5362,19 +5363,19 @@ export class OperationsService {
 
   private mapWireGuardCandidate(row: WireGuardCandidateRow, settings: RouteScoringContext): AdminWireGuardCandidate {
     const config = this.asRecord(row.config);
-    const loadPercent = this.extractLoadPercent(config, row.weight);
+    const loadPercent = extractLoadPercent(config, row.weight);
     const routeProbes = this.getRouteProbes(row.serverMetricRaw);
     const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
     const configuredMtuBytes =
-      this.numberFromConfig(config.mtu) ??
-      this.numberFromConfig(config.mtuBytes) ??
-      this.numberFromConfig(config.interfaceMtu);
+      numberFromConfig(config.mtu) ??
+      numberFromConfig(config.mtuBytes) ??
+      numberFromConfig(config.interfaceMtu);
     const bufferbloat = this.assessRouteBufferbloat({
       latencyMs: row.latencyMs ?? routeProbeSummary.latencyMs,
       jitterMs: row.jitterMs ?? routeProbeSummary.jitterMs,
       loadPercent,
-      loadedLatencyMs: this.numberFromConfig(config.loadedLatencyMs) ?? routeProbeSummary.loadedLatencyMs,
-      loadedLatencyDeltaMs: this.numberFromConfig(config.loadedLatencyDeltaMs) ?? routeProbeSummary.loadedLatencyDeltaMs,
+      loadedLatencyMs: numberFromConfig(config.loadedLatencyMs) ?? routeProbeSummary.loadedLatencyMs,
+      loadedLatencyDeltaMs: numberFromConfig(config.loadedLatencyDeltaMs) ?? routeProbeSummary.loadedLatencyDeltaMs,
     });
     const mtu = this.assessRouteMtu({ routeProbes, configuredMtuBytes });
     const scoreResult = this.calculateRouteProfileScores(
@@ -5398,7 +5399,7 @@ export class OperationsService {
     return {
       id: row.id,
       name: row.name,
-      endpoint: this.extractEndpoint(config),
+      endpoint: extractEndpoint(config),
       routeGroup: row.routeGroup,
       healthStatus: row.healthStatus,
       score: scoreResult.selectedScore,
@@ -5422,7 +5423,7 @@ export class OperationsService {
       loadPercent,
       serverExternalId: row.serverExternalId,
       serverHostname: row.serverHostname,
-      serverCountry: this.normalizeRouteDecisionCountryCode(row.serverCountry),
+      serverCountry: normalizeRouteDecisionCountryCode(row.serverCountry),
       serverRegion: row.serverRegion,
       interfaceName: this.stringFromConfig(config.interfaceName),
       peerCount: null,
@@ -7465,7 +7466,7 @@ export class OperationsService {
     const loadPercent = signals.loadPercent;
     const handshakePenalty = signals.latestHandshakeAgeSeconds === undefined
       ? 0
-      : this.calculateHandshakePenalty(signals.latestHandshakeAgeSeconds);
+      : calculateHandshakePenalty(signals.latestHandshakeAgeSeconds);
     const loadedLatencyPenalty = this.calculateLoadedLatencyPenalty(signals);
     const stableBase = baseScore
       - thresholdPenalty(packetLossPercent, 0.2, 28)
@@ -7619,39 +7620,15 @@ export class OperationsService {
     const mtuProbes = routeProbes.filter((probe) => String(probe.protocol).toLowerCase() === 'mtu');
 
     return {
-      latencyMs: this.averageMetric(routeProbes.map((probe) => probe.latencyMs)),
-      jitterMs: this.averageMetric(routeProbes.map((probe) => probe.jitterMs)),
-      packetLossPercent: this.averageMetric(routeProbes.map((probe) => probe.packetLossPercent)),
-      loadedLatencyMs: this.averageMetric(routeProbes.map((probe) => probe.loadedLatencyMs)),
-      loadedLatencyDeltaMs: this.averageMetric(routeProbes.map((probe) => loadedLatencyDeltaFromProbe(probe))),
-      pathMtuBytes: this.minimumMetric(mtuProbes.map((probe) => probe.pathMtuBytes)),
-      recommendedTunnelMtuBytes: this.minimumMetric(mtuProbes.map((probe) => probe.recommendedTunnelMtuBytes)),
-      configuredMtuBytes: this.maximumMetric(mtuProbes.map((probe) => probe.configuredMtuBytes)),
+      latencyMs: averageMetric(routeProbes.map((probe) => probe.latencyMs)),
+      jitterMs: averageMetric(routeProbes.map((probe) => probe.jitterMs)),
+      packetLossPercent: averageMetric(routeProbes.map((probe) => probe.packetLossPercent)),
+      loadedLatencyMs: averageMetric(routeProbes.map((probe) => probe.loadedLatencyMs)),
+      loadedLatencyDeltaMs: averageMetric(routeProbes.map((probe) => loadedLatencyDeltaFromProbe(probe))),
+      pathMtuBytes: minimumMetric(mtuProbes.map((probe) => probe.pathMtuBytes)),
+      recommendedTunnelMtuBytes: minimumMetric(mtuProbes.map((probe) => probe.recommendedTunnelMtuBytes)),
+      configuredMtuBytes: maximumMetric(mtuProbes.map((probe) => probe.configuredMtuBytes)),
     };
-  }
-
-  private averageMetric(values: Array<number | null | undefined>): number | null {
-    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-
-    if (!finiteValues.length) return null;
-
-    return Math.round((finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length) * 10) / 10;
-  }
-
-  private minimumMetric(values: Array<number | null | undefined>): number | null {
-    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-
-    if (!finiteValues.length) return null;
-
-    return Math.round(Math.min(...finiteValues));
-  }
-
-  private maximumMetric(values: Array<number | null | undefined>): number | null {
-    const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-
-    if (!finiteValues.length) return null;
-
-    return Math.round(Math.max(...finiteValues));
   }
 
   private getRouteProbes(raw: Partial<ServerMetricSnapshot> | null | undefined): RouteProbeMetric[] {
@@ -7742,7 +7719,7 @@ export class OperationsService {
     if (signals.latestHandshakeAgeSeconds !== undefined) {
       pushReason(
         'wireguardHandshake',
-        this.calculateHandshakePenalty(signals.latestHandshakeAgeSeconds),
+        calculateHandshakePenalty(signals.latestHandshakeAgeSeconds),
         signals.latestHandshakeAgeSeconds,
         180,
       );
@@ -7789,27 +7766,12 @@ export class OperationsService {
     const inactivePeerPenalty = item.peerCount > 0
       ? ((item.peerCount - item.activePeerCount) / item.peerCount) * 25
       : 0;
-    const handshakePenalty = this.calculateHandshakePenalty(item.latestHandshakeAgeSeconds ?? null);
+    const handshakePenalty = calculateHandshakePenalty(item.latestHandshakeAgeSeconds ?? null);
     const serverPenalty = typeof serverHealthScore === 'number' && serverHealthScore < 60
       ? (60 - serverHealthScore) / 2
       : 0;
 
     return Math.round(clamp(baseScore - inactivePeerPenalty - handshakePenalty - serverPenalty, 0, 100));
-  }
-
-  private calculateHandshakePenalty(ageSeconds: number | null): number {
-    if (ageSeconds === null) return 18;
-    if (ageSeconds <= 180) return 0;
-
-    return Math.min(35, (ageSeconds - 180) / 12);
-  }
-
-  private mapWireGuardTelemetryStatus(status: string): string {
-    if (status === 'up') return 'healthy';
-    if (status === 'degraded') return 'degraded';
-    if (status === 'down') return 'critical';
-
-    return 'unknown';
   }
 
   private isWireGuardInterfaceMetric(value: unknown): value is WireGuardInterfaceMetric {
@@ -7823,52 +7785,8 @@ export class OperationsService {
     );
   }
 
-  private extractEndpoint(config: Record<string, unknown>): string | null {
-    for (const key of ['endpoint', 'healthEndpoint', 'targetEndpoint']) {
-      const value = config[key];
-      if (typeof value === 'string' && value.trim()) return value.trim();
-    }
-
-    const host = ['healthHost', 'host', 'targetHost']
-      .map((key) => config[key])
-      .find((value): value is string => typeof value === 'string' && Boolean(value.trim()));
-    const port = ['healthPort', 'port', 'targetPort']
-      .map((key) => config[key])
-      .find((value): value is string | number => typeof value === 'number' || typeof value === 'string');
-
-    return host ? `${host}${port ? `:${port}` : ''}` : null;
-  }
-
-  private extractLoadPercent(config: Record<string, unknown>, weight: number): number | null {
-    for (const key of ['loadPercent', 'load', 'saturationPercent']) {
-      const value = this.numberFromConfig(config[key]);
-      if (value !== null) return Math.round(clamp(value, 0, 100));
-    }
-
-    if (weight <= 0) return null;
-
-    return Math.round(clamp(100 - Math.min(weight, 100), 0, 100));
-  }
-
-  private numberFromConfig(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string' && value.trim()) {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-
-    return null;
-  }
-
   private routeDecisionCandidateCountry(candidate: AdminWireGuardCandidate): string | null {
-    return this.normalizeRouteDecisionCountryCode(candidate.serverCountry);
-  }
-
-  private normalizeRouteDecisionCountryCode(value: string | null | undefined): string | null {
-    const normalized = value?.trim().toUpperCase();
-    if (!normalized) return null;
-
-    return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+    return normalizeRouteDecisionCountryCode(candidate.serverCountry);
   }
 
   private normalizeRouteScoreProfile(value: string | null | undefined): RouteScoreProfile | null {
@@ -7878,49 +7796,6 @@ export class OperationsService {
     return this.routeDecisionScoreProfiles().includes(normalized as RouteScoreProfile)
       ? (normalized as RouteScoreProfile)
       : null;
-  }
-
-  private clientConfigIdFromRouteAssignmentKey(assignmentKey: string): string | null {
-    const prefix = 'client_config:';
-    if (!assignmentKey.startsWith(prefix)) return null;
-
-    const clientConfigId = assignmentKey.slice(prefix.length);
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientConfigId)
-      ? clientConfigId
-      : null;
-  }
-
-  private normalizeRouteGroup(input: string | undefined): string {
-    const routeGroup = input?.trim() || 'main';
-
-    if (!/^[a-z][a-z0-9_-]{0,79}$/i.test(routeGroup)) {
-      throw new BadRequestException('routeGroup must be simple text');
-    }
-
-    return routeGroup;
-  }
-
-  private normalizeAssignmentKey(input: string | undefined): string {
-    const assignmentKey = input?.trim() || 'default';
-
-    if (!/^[a-z][a-z0-9_.:-]{0,119}$/i.test(assignmentKey)) {
-      throw new BadRequestException('assignmentKey must be simple text');
-    }
-
-    return assignmentKey;
-  }
-
-  private defaultSpeedProfileForProtocol(protocolProfile: string): string {
-    if (
-      protocolProfile === 'balanced' ||
-      protocolProfile === 'highSpeed' ||
-      protocolProfile === 'highSecurity' ||
-      protocolProfile === 'gaming'
-    ) {
-      return protocolProfile;
-    }
-
-    return 'balanced';
   }
 
   private configFlag(name: string, fallback: boolean): boolean {
@@ -8860,11 +8735,11 @@ export class OperationsService {
     const config = this.asRecord(setup.config);
     const privateKey = secret.value.trim();
     const addressCidr = this.stringFromConfig(config.addressCidr);
-    const listenPort = this.numberFromConfig(config.listenPort) ?? setup.port;
+    const listenPort = numberFromConfig(config.listenPort) ?? setup.port;
     const peerPublicKey = this.stringFromConfig(config.peerPublicKey);
     const allowedIps = this.stringFromConfig(config.allowedIps);
     const endpoint = this.stringFromConfig(config.endpoint);
-    const persistentKeepalive = this.numberFromConfig(config.persistentKeepalive);
+    const persistentKeepalive = numberFromConfig(config.persistentKeepalive);
 
     if (secret.kind !== 'wireguardPrivateKey' || !privateKey || !addressCidr || !peerPublicKey || !allowedIps) {
       throw new ConflictException('WireGuard protocol apply material is incomplete');
@@ -9731,7 +9606,7 @@ export class OperationsService {
 
     if (endpointTarget) {
       if (!this.stringFromConfig(config.healthHost)) config.healthHost = endpointTarget.host;
-      if (this.numberFromConfig(config.healthPort) === null) config.healthPort = endpointTarget.port;
+      if (numberFromConfig(config.healthPort) === null) config.healthPort = endpointTarget.port;
     }
 
     return {
