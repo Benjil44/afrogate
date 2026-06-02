@@ -71,7 +71,7 @@ import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from
 import { asRecord, stringFromRecord } from './record-utils';
 import { assertAmountRange, assertNoSecretLikeKeys, assertPaymentOrderStatusTransition, stringifyPublicRecord } from './payment-validators';
 import { assertPayPalPaymentOrder, extractPayPalWebhookCaptureId, extractPayPalWebhookOrderId, mergePayPalMetadata, payPalWebhookPaymentUpdate } from './paypal-webhook';
-import { endpointHostPort, firstCredentialList, firstCredentialString, firstSafeEndpointNumber, subscriptionEndpointTarget } from './subscription-sanitizers';
+import { endpointHostPort, firstCredentialList, firstCredentialString, firstSafeEndpointNumber, renderIkev2ClientProfile, renderL2tpClientProfile, renderVlessClientUri, renderWireGuardClientConfig, subscriptionConfigFormat, subscriptionEndpointTarget, subscriptionPublicProfile, subscriptionSecretMissingFields, type ClientSubscriptionCredentialRenderResult } from './subscription-sanitizers';
 import { DEFAULT_REWARDED_AD_PROVIDER, assertRewardedAdSettingsLimits, normalizeRewardedAdProvider } from './rewarded-ad';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
@@ -321,14 +321,6 @@ interface ClientSubscriptionCredentialRow {
   revokedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-}
-
-interface ClientSubscriptionCredentialRenderResult {
-  status: 'rendered' | 'blocked_secret_unavailable' | 'blocked_secret_invalid';
-  uri?: string | null;
-  configText?: string | null;
-  missingFields: string[];
-  warnings: string[];
 }
 
 interface ClientPortalRow {
@@ -6867,7 +6859,7 @@ export class BillingService {
   ): ClientSubscriptionConfigLinkSummary {
     const endpoint = outbound.subscriptionEndpoint ?? null;
     const protocol = normalizeSubscriptionProtocol(outbound.type);
-    const format = this.subscriptionConfigFormat(protocol);
+    const format = subscriptionConfigFormat(protocol);
     const supported = ['wireguard', 'vless', 'l2tp', 'ikev2'].includes(protocol);
     const hasPublicEndpoint = Boolean(endpoint?.address || endpoint?.host);
     const base = {
@@ -6897,7 +6889,7 @@ export class BillingService {
       return {
         ...base,
         renderStatus: 'unsupported_protocol',
-        profile: endpoint ? this.subscriptionPublicProfile(protocol, outbound, endpoint) : undefined,
+        profile: endpoint ? subscriptionPublicProfile(protocol, outbound, endpoint) : undefined,
         missingFields: [],
         warnings: ['unsupported_protocol'],
         requiresClientSecret: false,
@@ -6918,8 +6910,8 @@ export class BillingService {
       return {
         ...base,
         renderStatus: 'blocked_secret_required',
-        profile: this.subscriptionPublicProfile(protocol, outbound, endpoint),
-        missingFields: this.subscriptionSecretMissingFields(protocol),
+        profile: subscriptionPublicProfile(protocol, outbound, endpoint),
+        missingFields: subscriptionSecretMissingFields(protocol),
         warnings: ['per_client_secret_credential_required'],
         requiresClientSecret: true,
       };
@@ -6931,7 +6923,7 @@ export class BillingService {
         ...base,
         credentialId: credential.id,
         renderStatus: rendered.status,
-        profile: this.subscriptionPublicProfile(protocol, outbound, endpoint),
+        profile: subscriptionPublicProfile(protocol, outbound, endpoint),
         missingFields: rendered.missingFields,
         warnings: rendered.warnings,
         requiresClientSecret: true,
@@ -6945,28 +6937,12 @@ export class BillingService {
       configText: rendered.configText,
       credentialId: credential.id,
       renderedAt: new Date().toISOString(),
-      profile: this.subscriptionPublicProfile(protocol, outbound, endpoint),
+      profile: subscriptionPublicProfile(protocol, outbound, endpoint),
       missingFields: [],
       warnings: ['contains_authenticated_client_secret_material'],
       requiresClientSecret: false,
       sensitive: true,
     };
-  }
-
-  private subscriptionConfigFormat(protocol: string): string {
-    if (protocol === 'wireguard') return 'wireguard-profile';
-    if (protocol === 'vless') return 'vless-uri';
-    if (protocol === 'l2tp') return 'l2tp-profile';
-    if (protocol === 'ikev2') return 'ikev2-profile';
-    return 'manual-profile';
-  }
-
-  private subscriptionSecretMissingFields(protocol: string): string[] {
-    if (protocol === 'wireguard') return ['client_private_key', 'client_public_key', 'peer_public_key'];
-    if (protocol === 'vless') return ['client_uuid'];
-    if (protocol === 'l2tp') return ['username', 'password_or_psk'];
-    if (protocol === 'ikev2') return ['client_identity_or_certificate'];
-    return [];
   }
 
   private renderClientSubscriptionCredential(
@@ -6996,251 +6972,22 @@ export class BillingService {
 
     const publicMetadata = asRecord(credential.publicMetadata) ?? {};
     if (protocol === 'wireguard') {
-      return this.renderWireGuardClientConfig(endpoint, secretMaterial, publicMetadata);
+      return renderWireGuardClientConfig(endpoint, secretMaterial, publicMetadata);
     }
     if (protocol === 'vless') {
-      return this.renderVlessClientUri(outbound, endpoint, secretMaterial, publicMetadata);
+      return renderVlessClientUri(outbound, endpoint, secretMaterial, publicMetadata);
     }
     if (protocol === 'l2tp') {
-      return this.renderL2tpClientProfile(endpoint, secretMaterial, publicMetadata);
+      return renderL2tpClientProfile(endpoint, secretMaterial, publicMetadata);
     }
     if (protocol === 'ikev2') {
-      return this.renderIkev2ClientProfile(endpoint, secretMaterial, publicMetadata);
+      return renderIkev2ClientProfile(endpoint, secretMaterial, publicMetadata);
     }
 
     return {
       status: 'blocked_secret_invalid',
       missingFields: [],
       warnings: ['unsupported_protocol'],
-    };
-  }
-
-  private renderVlessClientUri(
-    outbound: ClientRouteOptionsResponse['outbounds'][number],
-    endpoint: ClientSubscriptionEndpointSummary,
-    secretMaterial: Record<string, unknown>,
-    publicMetadata: Record<string, unknown>,
-  ): ClientSubscriptionCredentialRenderResult {
-    const target = subscriptionEndpointTarget(endpoint);
-    const uuid = firstCredentialString([secretMaterial], ['clientUuid', 'uuid', 'clientId', 'id'], 80);
-    const missingFields: string[] = [];
-
-    if (!target.host) missingFields.push('public_host');
-    if (!target.port) missingFields.push('public_port');
-    if (!uuid || !isUuidValue(uuid)) missingFields.push('client_uuid');
-
-    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
-
-    const network =
-      firstCredentialString([publicMetadata, secretMaterial], ['transport', 'network', 'type'], 32) ??
-      endpoint.transport ??
-      'tcp';
-    const encryption = firstCredentialString([publicMetadata, secretMaterial], ['encryption'], 32) ?? 'none';
-    const params = new URLSearchParams();
-    params.set('type', network);
-    params.set('encryption', encryption);
-
-    for (const [key, queryName, maxLength] of [
-      ['security', 'security', 32],
-      ['sni', 'sni', 160],
-      ['serverName', 'sni', 160],
-      ['flow', 'flow', 80],
-      ['path', 'path', 180],
-      ['hostHeader', 'host', 160],
-      ['serviceName', 'serviceName', 160],
-      ['headerType', 'headerType', 64],
-      ['fingerprint', 'fp', 64],
-      ['alpn', 'alpn', 80],
-    ] as const) {
-      const value = firstCredentialString([publicMetadata, secretMaterial], [key], maxLength);
-      if (value) params.set(queryName, value);
-    }
-
-    const targetHost = target.host as string;
-    const targetPort = target.port as number;
-    const host = targetHost.includes(':') && !targetHost.startsWith('[') ? `[${targetHost}]` : targetHost;
-    const label = encodeURIComponent(outbound.name || 'AfroGate');
-    return {
-      status: 'rendered',
-      uri: `vless://${uuid}@${host}:${targetPort}?${params.toString()}#${label}`,
-      configText: null,
-      missingFields: [],
-      warnings: [],
-    };
-  }
-
-  private renderWireGuardClientConfig(
-    endpoint: ClientSubscriptionEndpointSummary,
-    secretMaterial: Record<string, unknown>,
-    publicMetadata: Record<string, unknown>,
-  ): ClientSubscriptionCredentialRenderResult {
-    const target = subscriptionEndpointTarget(endpoint);
-    const privateKey = firstCredentialString([secretMaterial], ['clientPrivateKey', 'privateKey'], 2048);
-    const address = firstCredentialList([secretMaterial], ['clientAddress', 'address', 'addressCidr'], 256);
-    const peerPublicKey = firstCredentialString(
-      [publicMetadata, secretMaterial],
-      ['peerPublicKey', 'serverPublicKey', 'publicKey'],
-      2048,
-    );
-    const missingFields: string[] = [];
-
-    if (!target.authority) missingFields.push('public_endpoint');
-    if (!privateKey) missingFields.push('client_private_key');
-    if (!address) missingFields.push('client_address');
-    if (!peerPublicKey) missingFields.push('peer_public_key');
-
-    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
-
-    const dns = firstCredentialList([secretMaterial, publicMetadata], ['dns', 'clientDns'], 256);
-    const allowedIps =
-      firstCredentialList([secretMaterial, publicMetadata], ['allowedIps', 'allowedIPs'], 512) ??
-      '0.0.0.0/0, ::/0';
-    const mtu = firstCredentialString([secretMaterial, publicMetadata], ['mtu'], 16);
-    const presharedKey = firstCredentialString(
-      [secretMaterial],
-      ['presharedKey', 'preSharedKey', 'psk'],
-      2048,
-    );
-    const keepalive = firstCredentialString(
-      [secretMaterial, publicMetadata],
-      ['persistentKeepalive', 'keepalive'],
-      16,
-    );
-
-    const lines = [
-      '[Interface]',
-      `PrivateKey = ${privateKey}`,
-      `Address = ${address}`,
-      dns ? `DNS = ${dns}` : null,
-      mtu ? `MTU = ${mtu}` : null,
-      '',
-      '[Peer]',
-      `PublicKey = ${peerPublicKey}`,
-      presharedKey ? `PresharedKey = ${presharedKey}` : null,
-      `AllowedIPs = ${allowedIps}`,
-      `Endpoint = ${target.authority}`,
-      keepalive ? `PersistentKeepalive = ${keepalive}` : null,
-    ].filter((line): line is string => line !== null);
-
-    return {
-      status: 'rendered',
-      uri: null,
-      configText: lines.join('\n'),
-      missingFields: [],
-      warnings: [],
-    };
-  }
-
-  private renderL2tpClientProfile(
-    endpoint: ClientSubscriptionEndpointSummary,
-    secretMaterial: Record<string, unknown>,
-    publicMetadata: Record<string, unknown>,
-  ): ClientSubscriptionCredentialRenderResult {
-    const target = subscriptionEndpointTarget(endpoint);
-    const username = firstCredentialString([secretMaterial], ['username', 'user'], 256);
-    const password = firstCredentialString([secretMaterial], ['password', 'clientPassword'], 2048);
-    const psk = firstCredentialString([secretMaterial], ['preSharedKey', 'presharedKey', 'ipsecPsk', 'psk'], 2048);
-    const missingFields: string[] = [];
-
-    if (!target.authority) missingFields.push('public_endpoint');
-    if (!username) missingFields.push('username');
-    if (!password) missingFields.push('password');
-    if (!psk) missingFields.push('ipsec_psk');
-
-    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
-
-    const remoteId = firstCredentialString([publicMetadata, secretMaterial], ['remoteId', 'serverId'], 256);
-    const lines = [
-      'Protocol: L2TP/IPsec',
-      `Server: ${target.authority}`,
-      remoteId ? `Remote ID: ${remoteId}` : null,
-      `Username: ${username}`,
-      `Password: ${password}`,
-      `PreSharedKey: ${psk}`,
-    ].filter((line): line is string => line !== null);
-
-    return {
-      status: 'rendered',
-      uri: null,
-      configText: lines.join('\n'),
-      missingFields: [],
-      warnings: [],
-    };
-  }
-
-  private renderIkev2ClientProfile(
-    endpoint: ClientSubscriptionEndpointSummary,
-    secretMaterial: Record<string, unknown>,
-    publicMetadata: Record<string, unknown>,
-  ): ClientSubscriptionCredentialRenderResult {
-    const target = subscriptionEndpointTarget(endpoint);
-    const identity = firstCredentialString(
-      [secretMaterial],
-      ['identity', 'clientIdentity', 'localId', 'username'],
-      256,
-    );
-    const username = firstCredentialString([secretMaterial], ['username', 'user'], 256);
-    const password = firstCredentialString([secretMaterial], ['password', 'eapPassword'], 2048);
-    const certificate = firstCredentialString(
-      [secretMaterial],
-      ['certificateAlias', 'certificateRef', 'clientCertificate'],
-      4096,
-    );
-    const missingFields: string[] = [];
-
-    if (!target.authority) missingFields.push('public_endpoint');
-    if (!identity && !username) missingFields.push('client_identity');
-    if (!password && !certificate) missingFields.push('client_auth_material');
-
-    if (missingFields.length) return this.invalidSubscriptionCredential(missingFields);
-
-    const remoteId =
-      firstCredentialString([publicMetadata, secretMaterial], ['remoteId', 'serverId'], 256) ??
-      target.host ??
-      null;
-    const lines = [
-      'Protocol: IKEv2',
-      `Server: ${target.authority}`,
-      remoteId ? `Remote ID: ${remoteId}` : null,
-      identity ? `Local ID: ${identity}` : null,
-      username ? `Username: ${username}` : null,
-      password ? `Password: ${password}` : null,
-      certificate ? `Certificate: ${certificate}` : null,
-    ].filter((line): line is string => line !== null);
-
-    return {
-      status: 'rendered',
-      uri: null,
-      configText: lines.join('\n'),
-      missingFields: [],
-      warnings: [],
-    };
-  }
-
-  private invalidSubscriptionCredential(missingFields: string[]): ClientSubscriptionCredentialRenderResult {
-    return {
-      status: 'blocked_secret_invalid',
-      missingFields,
-      warnings: ['stored_client_secret_material_incomplete'],
-    };
-  }
-
-  private subscriptionPublicProfile(
-    protocol: string,
-    outbound: ClientRouteOptionsResponse['outbounds'][number],
-    endpoint: ClientSubscriptionEndpointSummary,
-  ): Record<string, string | number | boolean | null> {
-    return {
-      protocol,
-      outboundId: outbound.id,
-      routeGroup: outbound.routeGroup,
-      endpoint: endpoint.address ?? endpointHostPort(endpoint),
-      host: endpoint.host ?? null,
-      port: endpoint.port ?? null,
-      transport: endpoint.transport ?? null,
-      countryCode: endpoint.countryCode ?? null,
-      usageMultiplier: endpoint.usageMultiplier,
-      secretSafe: true,
     };
   }
 
@@ -7955,9 +7702,5 @@ function stableStringifyRecord(value: Record<string, unknown>): string {
       return result;
     }, {});
   return JSON.stringify(ordered);
-}
-
-function isUuidValue(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 

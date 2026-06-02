@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.13 - 2026-06-02
+
+- Peeled the subscription config renderers (`renderVlessClientUri`, `renderWireGuardClientConfig`, `renderL2tpClientProfile`, `renderIkev2ClientProfile`, `subscriptionConfigFormat`, `subscriptionSecretMissingFields`, `subscriptionPublicProfile`, `invalidSubscriptionCredential`, `isUuidValue`) and the `ClientSubscriptionCredentialRenderResult` type out of BillingService, co-locating them with their sanitizer dependencies in `billing/subscription-sanitizers.ts`; rewrote 10 callsites. The impure `renderClientSubscriptionCredential` (secret-vault decrypt) stays in the service and now calls the extracted renderers. Added 14 tests covering VLESS URI/IPv6 bracketing, WireGuard/L2TP/IKEv2 profiles, missing-field handling, and CRLF-injection rejection through the renderers; backend suite now 292 tests.
+
 ## 0.114.12 - 2026-06-02
 
 - Peeled the rewarded-ad helpers (`normalizeRewardedAdProvider`, `assertRewardedAdSettingsLimits`) and their bounds constants (`DEFAULT_REWARDED_AD_PROVIDER`, `MAX_REWARDED_AD_REWARD_BYTES`, `MAX_REWARDED_AD_DAILY_LIMIT`) out of BillingService into `billing/rewarded-ad.ts`; the shared default-provider constant is re-imported by the service. Added 7 tests (provider slugification/fallback/length, reward/daily-limit bounds); backend suite now 278 tests.
