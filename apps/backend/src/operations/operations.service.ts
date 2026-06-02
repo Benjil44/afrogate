@@ -80,6 +80,7 @@ import { DatabaseService, type DatabaseQueryExecutor } from '../database/databas
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
 import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, loadedLatencyDeltaFromProbe, roundMetric, thresholdPenalty } from './route-scoring';
 import { averageMetric, calculateHandshakePenalty, clientConfigIdFromRouteAssignmentKey, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig } from './route-metrics';
+import { isBestRouteQualityWindow, isDegradedRouteQualityWindow, minimumRouteAnalyticsSamples, nextRouteQualityWindowStart, routeQualityConfidence, routeQualityPredictionLookaheadHours } from './route-quality';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
@@ -1628,7 +1629,7 @@ export class OperationsService {
     rangeHours = 168,
   ): Promise<AdminRouteQualityAnalyticsResponse> {
     const routeGroup = normalizeRouteGroup(routeGroupInput);
-    const minimumSamples = this.minimumRouteAnalyticsSamples(rangeHours);
+    const minimumSamples = minimumRouteAnalyticsSamples(rangeHours);
     const windows = await this.listRouteQualityWindows(routeGroup, rangeHours);
 
     return {
@@ -5143,10 +5144,10 @@ export class OperationsService {
     rangeHours: number,
   ): RouteQualityRecommendation[] {
     const qualifiedWindows = windows.filter((window) => window.sampleCount >= minimumSamples);
-    const degradedCandidates = qualifiedWindows.filter((window) => this.isDegradedRouteQualityWindow(window));
+    const degradedCandidates = qualifiedWindows.filter((window) => isDegradedRouteQualityWindow(window));
     const upcomingDegradedWindows = degradedCandidates
       .map((window) => {
-        const nextWindowAt = this.nextRouteQualityWindowStart(window);
+        const nextWindowAt = nextRouteQualityWindowStart(window);
         if (!nextWindowAt) return null;
 
         const startsInMinutes = Math.max(0, Math.round((nextWindowAt.getTime() - Date.now()) / 60_000));
@@ -5155,7 +5156,7 @@ export class OperationsService {
       .filter((item): item is { window: RouteQualityWindowSummary; nextWindowAt: Date; startsInMinutes: number } => {
         if (!item) return false;
 
-        return item.startsInMinutes <= this.routeQualityPredictionLookaheadHours() * 60;
+        return item.startsInMinutes <= routeQualityPredictionLookaheadHours() * 60;
       })
       .sort(
         (left, right) =>
@@ -5175,7 +5176,7 @@ export class OperationsService {
         ),
       );
     const bestWindows = qualifiedWindows
-      .filter((window) => this.isBestRouteQualityWindow(window))
+      .filter((window) => isBestRouteQualityWindow(window))
       .sort((left, right) => right.averageScore - left.averageScore || right.sampleCount - left.sampleCount)
       .slice(0, 3)
       .map((window) => this.mapRouteQualityRecommendation('bestWindow', window, minimumSamples, rangeHours));
@@ -5228,7 +5229,7 @@ export class OperationsService {
       startsInMinutes: startsInMinutes ?? null,
       averageScore: window.averageScore,
       sampleCount: window.sampleCount,
-      confidence: this.routeQualityConfidence(window.sampleCount, minimumSamples, rangeHours),
+      confidence: routeQualityConfidence(window.sampleCount, minimumSamples, rangeHours),
       reason:
         kind === 'bestWindow'
           ? 'strongHistoricalWindow'
@@ -5236,55 +5237,6 @@ export class OperationsService {
             ? 'upcomingDegradedHistoricalWindow'
             : 'degradedHistoricalWindow',
     };
-  }
-
-  private isBestRouteQualityWindow(window: RouteQualityWindowSummary): boolean {
-    return window.averageScore >= 78 && window.degradedSamplePercent <= 25;
-  }
-
-  private isDegradedRouteQualityWindow(window: RouteQualityWindowSummary): boolean {
-    return window.averageScore < 60 || window.degradedSamplePercent >= 35;
-  }
-
-  private nextRouteQualityWindowStart(window: RouteQualityWindowSummary, now = new Date()): Date | null {
-    if (window.dayOfWeek === null || window.dayOfWeek === undefined) return null;
-    if (!Number.isFinite(window.dayOfWeek) || !Number.isFinite(window.hourOfDay)) return null;
-
-    const dayOfWeek = ((Math.trunc(window.dayOfWeek) % 7) + 7) % 7;
-    const hourOfDay = ((Math.trunc(window.hourOfDay) % 24) + 24) % 24;
-    const candidate = new Date(now);
-    candidate.setMilliseconds(0);
-    candidate.setSeconds(0);
-    candidate.setMinutes(0);
-    candidate.setHours(hourOfDay);
-    candidate.setDate(candidate.getDate() + ((dayOfWeek - candidate.getDay() + 7) % 7));
-
-    if (now.getTime() >= candidate.getTime() + 60 * 60 * 1000) {
-      candidate.setDate(candidate.getDate() + 7);
-    }
-
-    return candidate;
-  }
-
-  private routeQualityPredictionLookaheadHours(): number {
-    const value = Number(process.env.AFROGATE_ROUTE_QUALITY_PREDICTION_LOOKAHEAD_HOURS ?? 8);
-    if (!Number.isInteger(value)) return 8;
-
-    return Math.min(168, Math.max(1, value));
-  }
-
-  private routeQualityConfidence(sampleCount: number, minimumSamples: number, rangeHours: number): 'low' | 'medium' | 'high' {
-    if (sampleCount >= minimumSamples * 4 && rangeHours >= 168) return 'high';
-    if (sampleCount >= minimumSamples * 2) return 'medium';
-
-    return 'low';
-  }
-
-  private minimumRouteAnalyticsSamples(rangeHours: number): number {
-    if (rangeHours >= 720) return 8;
-    if (rangeHours >= 168) return 4;
-
-    return 2;
   }
 
   private mapWireGuardTelemetryCandidate(

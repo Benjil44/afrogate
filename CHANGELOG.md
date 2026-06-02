@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.18 - 2026-06-02
+
+- Continued the OperationsService split: peeled the route-quality analytics helpers (`isBestRouteQualityWindow`, `isDegradedRouteQualityWindow`, `nextRouteQualityWindowStart`, `routeQualityPredictionLookaheadHours`, `routeQualityConfidence`, `minimumRouteAnalyticsSamples`) into `operations/route-quality.ts`; rewrote 6 callsites. Added 9 tests (incl. weekday/hour recurrence + next-week rollover and env clamping); backend suite now 329 tests.
+
 ## 0.114.17 - 2026-06-02
 
 - Split the 3,500-line `apps/dashboard/src/i18n.ts` by language into `i18n.en.ts` (source of truth) and `i18n.fa.ts` (typed `: DashboardStrings`, so en/fa key parity is now compiler-enforced); `i18n.ts` is now a 45-line composer that keeps the same public API (`dashboardTranslations`, `DashboardStrings`, `DashboardLanguage`, `useDashboardLanguage`). Dashboard typecheck + build pass. Closes the i18n-split checklist item.
