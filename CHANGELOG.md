@@ -2,6 +2,7 @@
 
 ## 0.114.0 - 2026-06-02
 
+- Split the 14,862-line `apps/dashboard/src/DashboardApp.tsx` monolith into ~30 focused modules (`pages/`, `components/`, and shared type/formatter/mapper/label/tone helpers); the root file is now ~1,294 lines. Pure structural refactor with the dashboard e2e suite unchanged (20/20).
 - Added the first backend automated test suite using Node's built-in `node:test` runner (no new dependencies), wired into CI: 74 tests across bearer-token parsing/constant-time compare, the RBAC role x permission matrix, scrypt password hashing, session-token sign/parse/tamper-rejection, reseller own-scope IDOR guards, reseller wallet/margin math, and client-token hashing/scope enforcement.
 - Extracted previously-untestable, security-critical logic into focused modules: `security/password.ts`, `security/session-token.ts`, `security/client-token.ts` (scope helpers), `billing/reseller-ownership.ts`, and `billing/reseller-wallet-math.ts` (behavior-preserving).
 - Hardened web security: backend CORS now fails closed (explicit `CORS_ORIGIN` allowlist, otherwise same-origin only) instead of reflecting any origin, and the Nginx samples add a Content-Security-Policy header.
