@@ -78,6 +78,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
+import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, loadedLatencyDeltaFromProbe, roundMetric, thresholdPenalty } from './route-scoring';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
@@ -5088,12 +5089,12 @@ export class OperationsService {
       hourOfDay: Number(row.hourOfDay),
       dayOfWeek: row.dayOfWeek === null || row.dayOfWeek === undefined ? null : Number(row.dayOfWeek),
       sampleCount: Number(row.sampleCount),
-      averageScore: this.roundMetric(row.averageScore, 1) ?? 0,
-      averageLatencyMs: this.roundMetric(row.averageLatencyMs, 1),
-      averageJitterMs: this.roundMetric(row.averageJitterMs, 1),
-      averagePacketLossPercent: this.roundMetric(row.averagePacketLossPercent, 2),
-      degradedSamplePercent: this.roundMetric(row.degradedSamplePercent, 1) ?? 0,
-      criticalSamplePercent: this.roundMetric(row.criticalSamplePercent, 1) ?? 0,
+      averageScore: roundMetric(row.averageScore, 1) ?? 0,
+      averageLatencyMs: roundMetric(row.averageLatencyMs, 1),
+      averageJitterMs: roundMetric(row.averageJitterMs, 1),
+      averagePacketLossPercent: roundMetric(row.averagePacketLossPercent, 2),
+      degradedSamplePercent: roundMetric(row.degradedSamplePercent, 1) ?? 0,
+      criticalSamplePercent: roundMetric(row.criticalSamplePercent, 1) ?? 0,
     };
   }
 
@@ -5110,12 +5111,12 @@ export class OperationsService {
       protocol: row.protocol,
       scoreProfile: row.scoreProfile,
       sampleCount: Number(row.sampleCount),
-      averageScore: this.roundMetric(row.averageScore, 1) ?? 0,
-      averageLatencyMs: this.roundMetric(row.averageLatencyMs, 1),
-      averageJitterMs: this.roundMetric(row.averageJitterMs, 1),
-      averagePacketLossPercent: this.roundMetric(row.averagePacketLossPercent, 2),
-      degradedSamplePercent: this.roundMetric(row.degradedSamplePercent, 1) ?? 0,
-      criticalSamplePercent: this.roundMetric(row.criticalSamplePercent, 1) ?? 0,
+      averageScore: roundMetric(row.averageScore, 1) ?? 0,
+      averageLatencyMs: roundMetric(row.averageLatencyMs, 1),
+      averageJitterMs: roundMetric(row.averageJitterMs, 1),
+      averagePacketLossPercent: roundMetric(row.averagePacketLossPercent, 2),
+      degradedSamplePercent: roundMetric(row.degradedSamplePercent, 1) ?? 0,
+      criticalSamplePercent: roundMetric(row.criticalSamplePercent, 1) ?? 0,
       healthStatus: this.routeHealthHistoryStatus(row),
     };
   }
@@ -5283,13 +5284,6 @@ export class OperationsService {
     if (rangeHours >= 168) return 4;
 
     return 2;
-  }
-
-  private roundMetric(value: number | null | undefined, digits: number): number | null {
-    if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
-
-    const multiplier = 10 ** digits;
-    return Math.round(Number(value) * multiplier) / multiplier;
   }
 
   private mapWireGuardTelemetryCandidate(
@@ -5757,10 +5751,10 @@ export class OperationsService {
     if (healthStatus === 'critical' || healthStatus === 'down') penalty += 100;
     if (healthStatus === 'degraded') penalty += 12;
     if (healthStatus === 'unknown') penalty += 6;
-    penalty += this.thresholdPenalty(candidate.packetLossPercent, packetLossThreshold, 18);
-    penalty += this.thresholdPenalty(candidate.jitterMs, jitterThreshold, 0.7);
-    penalty += this.thresholdPenalty(candidate.latencyMs, latencyThreshold, 0.05);
-    penalty += this.thresholdPenalty(candidate.loadPercent, profile === 'gaming' ? 60 : 72, 0.3);
+    penalty += thresholdPenalty(candidate.packetLossPercent, packetLossThreshold, 18);
+    penalty += thresholdPenalty(candidate.jitterMs, jitterThreshold, 0.7);
+    penalty += thresholdPenalty(candidate.latencyMs, latencyThreshold, 0.05);
+    penalty += thresholdPenalty(candidate.loadPercent, profile === 'gaming' ? 60 : 72, 0.3);
 
     if (candidate.bufferbloatSeverity === 'high') penalty += 24;
     if (candidate.bufferbloatSeverity === 'medium') penalty += 12;
@@ -7268,8 +7262,8 @@ export class OperationsService {
     loadedLatencyMs?: number | null;
     loadedLatencyDeltaMs?: number | null;
   }): RouteBufferbloatAssessment {
-    const loadedLatencyMs = this.roundMetric(input.loadedLatencyMs, 1);
-    const loadedLatencyDeltaMs = this.roundMetric(
+    const loadedLatencyMs = roundMetric(input.loadedLatencyMs, 1);
+    const loadedLatencyDeltaMs = roundMetric(
       input.loadedLatencyDeltaMs ??
         (
           loadedLatencyMs !== null && input.latencyMs !== null
@@ -7334,7 +7328,7 @@ export class OperationsService {
   }): RouteMtuAssessment {
     const mtuProbes = input.routeProbes.filter((probe) => String(probe.protocol).toLowerCase() === 'mtu');
     const summary = this.summarizeRouteProbes(mtuProbes);
-    const configuredMtuBytes = this.roundMetric(input.configuredMtuBytes ?? summary.configuredMtuBytes, 0);
+    const configuredMtuBytes = roundMetric(input.configuredMtuBytes ?? summary.configuredMtuBytes, 0);
     const pathMtuBytes = summary.pathMtuBytes;
     const recommendedTunnelMtuBytes = summary.recommendedTunnelMtuBytes ?? (
       pathMtuBytes !== null ? Math.max(576, pathMtuBytes - 80) : null
@@ -7461,7 +7455,7 @@ export class OperationsService {
       };
     }
 
-    const baseScore = this.clamp(signals.baseScore, 0, 100);
+    const baseScore = clamp(signals.baseScore, 0, 100);
     const serverPenalty = signals.serverHealthScore !== null && signals.serverHealthScore !== undefined && signals.serverHealthScore < 60
       ? (60 - signals.serverHealthScore) / 2
       : 0;
@@ -7474,28 +7468,28 @@ export class OperationsService {
       : this.calculateHandshakePenalty(signals.latestHandshakeAgeSeconds);
     const loadedLatencyPenalty = this.calculateLoadedLatencyPenalty(signals);
     const stableBase = baseScore
-      - this.thresholdPenalty(packetLossPercent, 0.2, 28)
-      - this.thresholdPenalty(jitterMs, 8, 1.15)
-      - this.thresholdPenalty(latencyMs, 100, 0.08)
+      - thresholdPenalty(packetLossPercent, 0.2, 28)
+      - thresholdPenalty(jitterMs, 8, 1.15)
+      - thresholdPenalty(latencyMs, 100, 0.08)
       - loadedLatencyPenalty * 0.8
       - serverPenalty;
     const throughputBase = baseScore
-      - this.thresholdPenalty(loadPercent, 70, 0.65)
-      - this.thresholdPenalty(packetLossPercent, 1, 24)
-      - this.thresholdPenalty(jitterMs, 35, 0.7)
+      - thresholdPenalty(loadPercent, 70, 0.65)
+      - thresholdPenalty(packetLossPercent, 1, 24)
+      - thresholdPenalty(jitterMs, 35, 0.7)
       - loadedLatencyPenalty * 0.3
       - serverPenalty;
     const balancedBase = baseScore
-      - this.thresholdPenalty(packetLossPercent, 1, 12)
-      - this.thresholdPenalty(jitterMs, 25, 0.45)
-      - this.thresholdPenalty(latencyMs, 140, 0.05)
+      - thresholdPenalty(packetLossPercent, 1, 12)
+      - thresholdPenalty(jitterMs, 25, 0.45)
+      - thresholdPenalty(latencyMs, 140, 0.05)
       - loadedLatencyPenalty * 0.45
       - serverPenalty;
     const gamingBase = baseScore
-      - this.thresholdPenalty(packetLossPercent, 0.1, 36)
-      - this.thresholdPenalty(jitterMs, 6, 1.35)
-      - this.thresholdPenalty(latencyMs, 85, 0.11)
-      - this.thresholdPenalty(loadPercent, 65, 0.35)
+      - thresholdPenalty(packetLossPercent, 0.1, 36)
+      - thresholdPenalty(jitterMs, 6, 1.35)
+      - thresholdPenalty(latencyMs, 85, 0.11)
+      - thresholdPenalty(loadPercent, 65, 0.35)
       - loadedLatencyPenalty * 1.15
       - serverPenalty
       - handshakePenalty * 0.35;
@@ -7505,10 +7499,10 @@ export class OperationsService {
       stability: this.applyProbeScore(stableBase, signals.routeProbes, this.protocolsForScoreProfile('stability'), 0.34),
       throughput: this.applyProbeScore(throughputBase, signals.routeProbes, this.protocolsForScoreProfile('throughput'), 0.2),
       gaming: this.applyProbeScore(gamingBase, signals.routeProbes, this.protocolsForScoreProfile('gaming'), 0.46),
-      tcp: this.applyProbeScore(balancedBase - this.thresholdPenalty(latencyMs, 100, 0.08), signals.routeProbes, ['tcp'], 0.42),
+      tcp: this.applyProbeScore(balancedBase - thresholdPenalty(latencyMs, 100, 0.08), signals.routeProbes, ['tcp'], 0.42),
       udp: this.applyProbeScore(stableBase, signals.routeProbes, ['udp', 'wireguard'], 0.42),
       quic: this.applyProbeScore(stableBase, signals.routeProbes, ['quic', 'udp'], 0.42),
-      dns: this.applyProbeScore(balancedBase - this.thresholdPenalty(latencyMs, 80, 0.08), signals.routeProbes, ['dns'], 0.45),
+      dns: this.applyProbeScore(balancedBase - thresholdPenalty(latencyMs, 80, 0.08), signals.routeProbes, ['dns'], 0.45),
       wireguard: this.applyProbeScore(baseScore - handshakePenalty - serverPenalty, signals.routeProbes, ['wireguard', 'udp'], 0.32),
     });
     const selectedProfile = this.selectRouteScoreProfile(settings);
@@ -7550,7 +7544,7 @@ export class OperationsService {
   }
 
   private roundRouteScore(value: number): number {
-    return Math.round(this.clamp(value, 0, 100));
+    return Math.round(clamp(value, 0, 100));
   }
 
   private selectRouteScoreProfile(settings: RouteScoringContext): RouteScoreProfile {
@@ -7605,68 +7599,11 @@ export class OperationsService {
     protocols: string[],
     probeWeight: number,
   ): number {
-    const probeScore = this.calculateProtocolProbeScore(routeProbes, protocols);
+    const probeScore = calculateProtocolProbeScore(routeProbes, protocols);
 
     if (probeScore === null) return baseScore;
 
     return baseScore * (1 - probeWeight) + probeScore * probeWeight;
-  }
-
-  private calculateProtocolProbeScore(routeProbes: RouteProbeMetric[], protocols: string[]): number | null {
-    const protocolSet = new Set(protocols);
-    const scores = routeProbes
-      .filter((probe) => protocolSet.has(String(probe.protocol).toLowerCase()))
-      .map((probe) => this.calculateSingleProbeScore(probe));
-
-    if (!scores.length) return null;
-
-    const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-    const worst = Math.min(...scores);
-
-    return average * 0.65 + worst * 0.35;
-  }
-
-  private calculateSingleProbeScore(probe: RouteProbeMetric): number {
-    const protocol = String(probe.protocol).toLowerCase();
-    if (protocol === 'mtu') return this.calculateMtuProbeScore(probe);
-
-    const statusScore = {
-      healthy: 100,
-      degraded: 72,
-      critical: 20,
-      unknown: 55,
-    }[String(probe.status).toLowerCase()] ?? 55;
-    const latencyThreshold = protocol === 'dns' ? 80 : protocol === 'tcp' ? 100 : 70;
-    const jitterThreshold = protocol === 'tcp' || protocol === 'dns' ? 25 : 10;
-    const lossMultiplier = protocol === 'tcp' || protocol === 'dns' ? 16 : 24;
-    const loadedLatencyDeltaMs = this.loadedLatencyDeltaFromProbe(probe);
-    const score = statusScore
-      - this.thresholdPenalty(probe.latencyMs ?? null, latencyThreshold, 0.09)
-      - this.thresholdPenalty(probe.jitterMs ?? null, jitterThreshold, 1)
-      - this.thresholdPenalty(probe.packetLossPercent ?? null, 0, lossMultiplier)
-      - this.thresholdPenalty(loadedLatencyDeltaMs, 30, 0.18);
-
-    return this.clamp(score, 0, 100);
-  }
-
-  private calculateMtuProbeScore(probe: RouteProbeMetric): number {
-    const statusScore = {
-      healthy: 100,
-      degraded: 68,
-      critical: 20,
-      unknown: 55,
-    }[String(probe.status).toLowerCase()] ?? 55;
-    const pathMtu = this.roundMetric(probe.pathMtuBytes, 0);
-    const recommendedTunnelMtu = this.roundMetric(probe.recommendedTunnelMtuBytes, 0);
-    const configuredMtu = this.roundMetric(probe.configuredMtuBytes, 0);
-    const configuredOverRecommended = configuredMtu !== null && recommendedTunnelMtu !== null
-      ? Math.max(0, configuredMtu - recommendedTunnelMtu)
-      : 0;
-    const pathMtuPenalty = pathMtu === null ? 0 : this.thresholdPenalty(1280 - pathMtu, 0, 0.16);
-    const recommendedPenalty = recommendedTunnelMtu === null ? 0 : this.thresholdPenalty(1280 - recommendedTunnelMtu, 0, 0.2);
-    const configuredPenalty = Math.min(35, configuredOverRecommended * 0.18);
-
-    return this.clamp(statusScore - pathMtuPenalty - recommendedPenalty - configuredPenalty, 0, 100);
   }
 
   private summarizeRouteProbes(routeProbes: RouteProbeMetric[]): {
@@ -7686,27 +7623,11 @@ export class OperationsService {
       jitterMs: this.averageMetric(routeProbes.map((probe) => probe.jitterMs)),
       packetLossPercent: this.averageMetric(routeProbes.map((probe) => probe.packetLossPercent)),
       loadedLatencyMs: this.averageMetric(routeProbes.map((probe) => probe.loadedLatencyMs)),
-      loadedLatencyDeltaMs: this.averageMetric(routeProbes.map((probe) => this.loadedLatencyDeltaFromProbe(probe))),
+      loadedLatencyDeltaMs: this.averageMetric(routeProbes.map((probe) => loadedLatencyDeltaFromProbe(probe))),
       pathMtuBytes: this.minimumMetric(mtuProbes.map((probe) => probe.pathMtuBytes)),
       recommendedTunnelMtuBytes: this.minimumMetric(mtuProbes.map((probe) => probe.recommendedTunnelMtuBytes)),
       configuredMtuBytes: this.maximumMetric(mtuProbes.map((probe) => probe.configuredMtuBytes)),
     };
-  }
-
-  private loadedLatencyDeltaFromProbe(probe: RouteProbeMetric): number | null {
-    if (typeof probe.loadedLatencyDeltaMs === 'number' && Number.isFinite(probe.loadedLatencyDeltaMs)) {
-      return probe.loadedLatencyDeltaMs;
-    }
-    if (
-      typeof probe.loadedLatencyMs === 'number' &&
-      Number.isFinite(probe.loadedLatencyMs) &&
-      typeof probe.latencyMs === 'number' &&
-      Number.isFinite(probe.latencyMs)
-    ) {
-      return probe.loadedLatencyMs - probe.latencyMs;
-    }
-
-    return null;
   }
 
   private averageMetric(values: Array<number | null | undefined>): number | null {
@@ -7780,11 +7701,11 @@ export class OperationsService {
     const jitterThreshold = selectedProfile === 'gaming' ? 8 : strictLossProfile ? 10 : 25;
     const latencyThreshold = selectedProfile === 'gaming' ? 90 : selectedProfile === 'dns' ? 80 : selectedProfile === 'tcp' ? 100 : 120;
     const loadThreshold = selectedProfile === 'gaming' ? 65 : 70;
-    const selectedProbeScore = this.calculateProtocolProbeScore(
+    const selectedProbeScore = calculateProtocolProbeScore(
       signals.routeProbes,
       this.protocolsForScoreProfile(selectedProfile),
     );
-    const selectedMtuScore = this.calculateProtocolProbeScore(signals.routeProbes, ['mtu']);
+    const selectedMtuScore = calculateProtocolProbeScore(signals.routeProbes, ['mtu']);
     const loadedLatencyAssessment = this.assessRouteBufferbloat({
       latencyMs: signals.latencyMs,
       jitterMs: signals.jitterMs,
@@ -7796,11 +7717,11 @@ export class OperationsService {
     pushReason('healthStatus', healthImpact);
     pushReason(
       'packetLoss',
-      this.thresholdPenalty(signals.packetLossPercent, lossThreshold, 20),
+      thresholdPenalty(signals.packetLossPercent, lossThreshold, 20),
       signals.packetLossPercent,
       lossThreshold,
     );
-    pushReason('jitter', this.thresholdPenalty(signals.jitterMs, jitterThreshold, 0.8), signals.jitterMs, jitterThreshold);
+    pushReason('jitter', thresholdPenalty(signals.jitterMs, jitterThreshold, 0.8), signals.jitterMs, jitterThreshold);
     pushReason(
       'loadedLatency',
       this.calculateLoadedLatencyPenalty(signals),
@@ -7810,13 +7731,13 @@ export class OperationsService {
     );
     pushReason(
       'latency',
-      this.thresholdPenalty(signals.latencyMs, latencyThreshold, 0.06),
+      thresholdPenalty(signals.latencyMs, latencyThreshold, 0.06),
       signals.latencyMs,
       latencyThreshold,
     );
-    pushReason('load', this.thresholdPenalty(signals.loadPercent, loadThreshold, 0.55), signals.loadPercent, loadThreshold);
+    pushReason('load', thresholdPenalty(signals.loadPercent, loadThreshold, 0.55), signals.loadPercent, loadThreshold);
     if (signals.serverHealthScore !== null && signals.serverHealthScore !== undefined) {
-      pushReason('serverHealth', this.thresholdPenalty(60 - signals.serverHealthScore, 0, 0.5), signals.serverHealthScore, 60);
+      pushReason('serverHealth', thresholdPenalty(60 - signals.serverHealthScore, 0, 0.5), signals.serverHealthScore, 60);
     }
     if (signals.latestHandshakeAgeSeconds !== undefined) {
       pushReason(
@@ -7829,23 +7750,17 @@ export class OperationsService {
     if (selectedProbeScore !== null) {
       pushReason(
         'routeProbe',
-        this.thresholdPenalty(80 - selectedProbeScore, 0, 1),
+        thresholdPenalty(80 - selectedProbeScore, 0, 1),
         Math.round(selectedProbeScore * 10) / 10,
         80,
         this.protocolsForScoreProfile(selectedProfile).join(','),
       );
     }
     if (selectedMtuScore !== null) {
-      pushReason('mtu', this.thresholdPenalty(85 - selectedMtuScore, 0, 0.8), selectedMtuScore, 85, 'path-mtu');
+      pushReason('mtu', thresholdPenalty(85 - selectedMtuScore, 0, 0.8), selectedMtuScore, 85, 'path-mtu');
     }
 
     return reasons.sort((left, right) => right.impact - left.impact).slice(0, 6);
-  }
-
-  private thresholdPenalty(value: number | null | undefined, threshold: number, multiplier: number): number {
-    if (value === null || value === undefined || !Number.isFinite(value)) return 0;
-
-    return Math.max(0, value - threshold) * multiplier;
   }
 
   private calculateWireGuardScore(row: WireGuardCandidateRow): number {
@@ -7861,7 +7776,7 @@ export class OperationsService {
     const jitterPenalty = row.jitterMs === null ? 0 : Math.max(0, (row.jitterMs - 10) / 2);
     const lossPenalty = row.packetLossPercent === null ? 0 : row.packetLossPercent * 18;
 
-    return Math.round(this.clamp(baseScore - latencyPenalty - jitterPenalty - lossPenalty, 0, 100));
+    return Math.round(clamp(baseScore - latencyPenalty - jitterPenalty - lossPenalty, 0, 100));
   }
 
   private calculateWireGuardTelemetryScore(item: WireGuardInterfaceMetric, serverHealthScore: number | null): number {
@@ -7879,7 +7794,7 @@ export class OperationsService {
       ? (60 - serverHealthScore) / 2
       : 0;
 
-    return Math.round(this.clamp(baseScore - inactivePeerPenalty - handshakePenalty - serverPenalty, 0, 100));
+    return Math.round(clamp(baseScore - inactivePeerPenalty - handshakePenalty - serverPenalty, 0, 100));
   }
 
   private calculateHandshakePenalty(ageSeconds: number | null): number {
@@ -7927,12 +7842,12 @@ export class OperationsService {
   private extractLoadPercent(config: Record<string, unknown>, weight: number): number | null {
     for (const key of ['loadPercent', 'load', 'saturationPercent']) {
       const value = this.numberFromConfig(config[key]);
-      if (value !== null) return Math.round(this.clamp(value, 0, 100));
+      if (value !== null) return Math.round(clamp(value, 0, 100));
     }
 
     if (weight <= 0) return null;
 
-    return Math.round(this.clamp(100 - Math.min(weight, 100), 0, 100));
+    return Math.round(clamp(100 - Math.min(weight, 100), 0, 100));
   }
 
   private numberFromConfig(value: unknown): number | null {
@@ -8019,10 +7934,6 @@ export class OperationsService {
     if (actor?.role === 'superadmin' || actor?.isSuperAdmin) return;
 
     throw new ForbiddenException('Only superadmin can create protocol setup drafts');
-  }
-
-  private clamp(value: number, min: number, max: number): number {
-    return Math.min(max, Math.max(min, value));
   }
 
   private async ensureServerExists(executor: DatabaseQueryExecutor, id: string): Promise<void> {
