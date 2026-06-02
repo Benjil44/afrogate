@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.10 - 2026-06-02
+
+- Peeled the PayPal webhook helpers (`payPalWebhookPaymentUpdate` status machine, `assertPayPalPaymentOrder`, `extractPayPalWebhookOrderId`, `extractPayPalWebhookCaptureId`, `mergePayPalMetadata`) out of BillingService into a self-contained `billing/paypal-webhook.ts`; rewrote 8 callsites. Added 15 tests covering the full capture/refund state machine (incl. idempotent already-paid and ignored non-pending paths) and id extraction; backend suite now 253 tests.
+
 ## 0.114.9 - 2026-06-02
 
 - Peeled the payment-order/metadata validators (`assertPaymentOrderStatusTransition`, `assertAmountRange`, `assertNoSecretLikeKeys`, `stringifyPublicRecord`) out of BillingService into `billing/payment-validators.ts`; rewrote 20 callsites. Added 10 tests covering the status machine, amount bounds, and recursive secret-like-key rejection; backend suite now 238 tests.

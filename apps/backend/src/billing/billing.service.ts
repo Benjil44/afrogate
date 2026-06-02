@@ -70,6 +70,7 @@ import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableB
 import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from './date-utils';
 import { asRecord, stringFromRecord } from './record-utils';
 import { assertAmountRange, assertNoSecretLikeKeys, assertPaymentOrderStatusTransition, stringifyPublicRecord } from './payment-validators';
+import { assertPayPalPaymentOrder, extractPayPalWebhookCaptureId, extractPayPalWebhookOrderId, mergePayPalMetadata, payPalWebhookPaymentUpdate } from './paypal-webhook';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -1437,7 +1438,7 @@ export class BillingService {
 
       await this.database.transaction(async (executor) => {
         const existing = await this.getPaymentOrderRowForUpdate(executor, id);
-        this.assertPayPalPaymentOrder(existing);
+        assertPayPalPaymentOrder(existing);
         if (existing.status !== 'pending') {
           throw new BadRequestException('PayPal checkout can only be created for pending payment orders');
         }
@@ -1459,7 +1460,7 @@ export class BillingService {
           cancelUrl: dto.cancelUrl,
           idempotencyKey: dto.idempotencyKey ?? existing.idempotencyKey,
         });
-        const metadata = this.mergePayPalMetadata(existing.metadata, {
+        const metadata = mergePayPalMetadata(existing.metadata, {
           providerOrderStatus: checkout.providerStatus,
           checkoutCreatedAt: new Date().toISOString(),
         });
@@ -1518,7 +1519,7 @@ export class BillingService {
 
       await this.database.transaction(async (executor) => {
         const existing = await this.getPaymentOrderRowForUpdate(executor, id);
-        this.assertPayPalPaymentOrder(existing);
+        assertPayPalPaymentOrder(existing);
 
         if (existing.status === 'paid') {
           action = 'already_paid';
@@ -1540,7 +1541,7 @@ export class BillingService {
           idempotencyKey: dto.idempotencyKey ?? existing.idempotencyKey,
         });
         const now = new Date();
-        const metadata = this.mergePayPalMetadata(existing.metadata, {
+        const metadata = mergePayPalMetadata(existing.metadata, {
           providerOrderStatus: capture.providerStatus,
           providerCaptureStatus: capture.providerCaptureStatus,
           capturedAt: now.toISOString(),
@@ -1606,8 +1607,8 @@ export class BillingService {
     const verified = await this.paypal.verifyWebhook(headers, webhookPayload);
     const eventType = verified.eventType;
     const resource = asRecord(webhookPayload.resource);
-    const providerOrderId = this.extractPayPalWebhookOrderId(eventType, resource);
-    const providerCaptureId = this.extractPayPalWebhookCaptureId(eventType, resource);
+    const providerOrderId = extractPayPalWebhookOrderId(eventType, resource);
+    const providerCaptureId = extractPayPalWebhookCaptureId(eventType, resource);
     const providerResourceStatus = stringFromRecord(resource, 'status');
 
     if (!providerOrderId) {
@@ -1645,9 +1646,9 @@ export class BillingService {
       }
 
       const now = new Date();
-      const paymentUpdate = this.payPalWebhookPaymentUpdate(existing, eventType);
+      const paymentUpdate = payPalWebhookPaymentUpdate(existing, eventType);
       const nextProviderCaptureId = providerCaptureId ?? existing.providerCaptureId;
-      const metadata = this.mergePayPalMetadata(existing.metadata, {
+      const metadata = mergePayPalMetadata(existing.metadata, {
         lastWebhookEventId: verified.eventId,
         lastWebhookEventType: eventType,
         lastWebhookReceivedAt: now.toISOString(),
@@ -7966,29 +7967,6 @@ export class BillingService {
     if (maxAmount !== null && amount > maxAmount) throw new BadRequestException('Payment order amount is above method maximum');
   }
 
-  private assertPayPalPaymentOrder(order: PaymentOrderRow): void {
-    if (order.provider !== 'paypal') {
-      throw new BadRequestException('Payment order provider must be paypal');
-    }
-  }
-
-  private mergePayPalMetadata(
-    existing: Record<string, unknown> | null | undefined,
-    patch: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const current = existing ?? {};
-    const currentPayPal = asRecord(current.paypal) ?? {};
-    const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
-
-    return {
-      ...current,
-      paypal: {
-        ...currentPayPal,
-        ...cleanPatch,
-      },
-    };
-  }
-
   private mergePaymentProviderAdapterMetadata(
     existing: Record<string, unknown> | null | undefined,
     prepared: PreparedPaymentProviderCheckout,
@@ -8012,71 +7990,6 @@ export class BillingService {
         },
       },
     };
-  }
-
-  private payPalWebhookPaymentUpdate(
-    existing: PaymentOrderRow,
-    eventType: string | null,
-  ): { nextStatus: string; action: string; shouldUpdate: boolean } {
-    if (eventType === 'CHECKOUT.ORDER.APPROVED') {
-      return { nextStatus: existing.status, action: 'approval_recorded', shouldUpdate: true };
-    }
-
-    if (eventType === 'PAYMENT.CAPTURE.PENDING') {
-      return { nextStatus: existing.status, action: 'capture_pending_recorded', shouldUpdate: true };
-    }
-
-    if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
-      if (existing.status === 'paid') return { nextStatus: existing.status, action: 'already_paid', shouldUpdate: true };
-      if (existing.status !== 'pending') {
-        return { nextStatus: existing.status, action: `ignored_${existing.status}`, shouldUpdate: false };
-      }
-      return { nextStatus: 'paid', action: 'marked_paid', shouldUpdate: true };
-    }
-
-    if (
-      eventType === 'PAYMENT.CAPTURE.DENIED' ||
-      eventType === 'PAYMENT.CAPTURE.DECLINED' ||
-      eventType === 'PAYMENT.CAPTURE.FAILED'
-    ) {
-      if (existing.status !== 'pending') {
-        return { nextStatus: existing.status, action: `ignored_${existing.status}`, shouldUpdate: false };
-      }
-      return { nextStatus: 'failed', action: 'marked_failed', shouldUpdate: true };
-    }
-
-    if (eventType === 'PAYMENT.CAPTURE.REFUNDED' || eventType === 'PAYMENT.CAPTURE.REVERSED') {
-      if (existing.status !== 'paid') {
-        return { nextStatus: existing.status, action: `ignored_${existing.status}`, shouldUpdate: false };
-      }
-      return { nextStatus: 'refunded', action: 'marked_refunded', shouldUpdate: true };
-    }
-
-    return { nextStatus: existing.status, action: 'ignored', shouldUpdate: false };
-  }
-
-  private extractPayPalWebhookOrderId(
-    eventType: string | null,
-    resource: Record<string, unknown> | null,
-  ): string | null {
-    const supplementary = asRecord(resource?.supplementary_data);
-    const relatedIds = asRecord(supplementary?.related_ids);
-    const relatedOrderId = stringFromRecord(relatedIds, 'order_id');
-    if (relatedOrderId) return relatedOrderId;
-
-    if (eventType?.startsWith('CHECKOUT.ORDER.')) {
-      return stringFromRecord(resource, 'id');
-    }
-
-    return null;
-  }
-
-  private extractPayPalWebhookCaptureId(
-    eventType: string | null,
-    resource: Record<string, unknown> | null,
-  ): string | null {
-    if (!eventType?.startsWith('PAYMENT.CAPTURE.')) return null;
-    return stringFromRecord(resource, 'id');
   }
 
 }
