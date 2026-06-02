@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.20 - 2026-06-03
+
+- Continued the OperationsService split: peeled the route-scoring helpers (`roundRouteScore`, `createUniformRouteScores`, `roundRouteScores`, `isProtocolSpecificScoreProfile`, `protocolsForScoreProfile`, `calculateWireGuardScore`, `calculateWireGuardTelemetryScore`) into `operations/route-metrics.ts` (co-located with `calculateHandshakePenalty` to avoid a cross-module import; row inputs typed structurally); rewrote 13 callsites. Added 9 tests covering the WireGuard scoring math (health/latency/jitter/loss penalties, telemetry peer/handshake/server penalties); backend suite now 338 tests.
+
 ## 0.114.19 - 2026-06-03
 
 - Turned the scriptable release-readiness drills into bundled, self-verifying one-command scripts under `scripts/drills/`: `verify-install.sh` (health, security headers, loopback-only internal ports), `backup-restore-drill.sh` (dump+encrypt → restore to scratch → row-count parity + encryption-at-rest check; destructive to the scratch DB only), and `verify-rotation.sh` (confirms a rotated agent token: old rejected, new accepted at `/api/agents/heartbeat`). All pass `bash -n`; the runbooks (§1/§2/§5) and the checklist now reference them. Execution still requires a live host (the install/backup/rotation drills) or an external auditor (pen test) — the scripts de-risk and standardize that operator-run execution.

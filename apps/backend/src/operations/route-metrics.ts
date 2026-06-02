@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import type { RouteProfileScores, RouteScoreProfile } from '@afrogate/shared';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -126,4 +127,109 @@ export function defaultSpeedProfileForProtocol(protocolProfile: string): string 
     return protocolProfile;
   }
   return 'balanced';
+}
+
+export interface WireGuardScoreInput {
+  enabled: boolean;
+  maintenanceMode: boolean;
+  healthStatus: string;
+  latencyMs: number | null;
+  jitterMs: number | null;
+  packetLossPercent: number | null;
+}
+
+export interface WireGuardTelemetryScoreInput {
+  status: string;
+  peerCount: number;
+  activePeerCount: number;
+  latestHandshakeAgeSeconds?: number | null;
+}
+
+/** Rounds a route score and clamps it into [0, 100]. */
+export function roundRouteScore(value: number): number {
+  return Math.round(clamp(value, 0, 100));
+}
+
+/** Builds a RouteProfileScores object with the same score for every profile. */
+export function createUniformRouteScores(score: number): RouteProfileScores {
+  return {
+    balanced: score,
+    stability: score,
+    throughput: score,
+    gaming: score,
+    tcp: score,
+    udp: score,
+    quic: score,
+    dns: score,
+    wireguard: score,
+  };
+}
+
+/** Rounds+clamps every profile score in a RouteProfileScores object. */
+export function roundRouteScores(scores: RouteProfileScores): RouteProfileScores {
+  return {
+    balanced: roundRouteScore(scores.balanced),
+    stability: roundRouteScore(scores.stability),
+    throughput: roundRouteScore(scores.throughput),
+    gaming: roundRouteScore(scores.gaming),
+    tcp: roundRouteScore(scores.tcp),
+    udp: roundRouteScore(scores.udp),
+    quic: roundRouteScore(scores.quic),
+    dns: roundRouteScore(scores.dns),
+    wireguard: roundRouteScore(scores.wireguard),
+  };
+}
+
+/** True when the value is a protocol-specific score profile (tcp/udp/quic/dns/wireguard). */
+export function isProtocolSpecificScoreProfile(value: string): value is RouteScoreProfile {
+  return value === 'tcp' || value === 'udp' || value === 'quic' || value === 'dns' || value === 'wireguard';
+}
+
+/** Ordered list of probe protocols that contribute to a given score profile. */
+export function protocolsForScoreProfile(profile: RouteScoreProfile): string[] {
+  switch (profile) {
+    case 'tcp':
+      return ['tcp', 'mtu'];
+    case 'udp':
+      return ['udp', 'wireguard', 'mtu'];
+    case 'quic':
+      return ['quic', 'udp', 'mtu'];
+    case 'dns':
+      return ['dns', 'mtu'];
+    case 'wireguard':
+      return ['wireguard', 'udp', 'mtu'];
+    case 'gaming':
+      return ['udp', 'quic', 'wireguard', 'tcp', 'mtu'];
+    default:
+      return ['tcp', 'udp', 'quic', 'dns', 'wireguard', 'mtu'];
+  }
+}
+
+/** Health/latency/jitter/loss score for a WireGuard candidate row (0 when disabled/in maintenance). */
+export function calculateWireGuardScore(row: WireGuardScoreInput): number {
+  if (!row.enabled || row.maintenanceMode) return 0;
+
+  const baseScore =
+    ({ healthy: 90, degraded: 68, critical: 35, unknown: 55 } as Record<string, number>)[row.healthStatus] ?? 55;
+  const latencyPenalty = row.latencyMs === null ? 0 : Math.max(0, (row.latencyMs - 50) / 4);
+  const jitterPenalty = row.jitterMs === null ? 0 : Math.max(0, (row.jitterMs - 10) / 2);
+  const lossPenalty = row.packetLossPercent === null ? 0 : row.packetLossPercent * 18;
+
+  return Math.round(clamp(baseScore - latencyPenalty - jitterPenalty - lossPenalty, 0, 100));
+}
+
+/** Telemetry-based WireGuard interface score (status, inactive peers, handshake age, server health). */
+export function calculateWireGuardTelemetryScore(
+  item: WireGuardTelemetryScoreInput,
+  serverHealthScore: number | null,
+): number {
+  const baseScore =
+    ({ up: 92, degraded: 72, down: 20, unknown: 52 } as Record<string, number>)[item.status] ?? 52;
+  const inactivePeerPenalty =
+    item.peerCount > 0 ? ((item.peerCount - item.activePeerCount) / item.peerCount) * 25 : 0;
+  const handshakePenalty = calculateHandshakePenalty(item.latestHandshakeAgeSeconds ?? null);
+  const serverPenalty =
+    typeof serverHealthScore === 'number' && serverHealthScore < 60 ? (60 - serverHealthScore) / 2 : 0;
+
+  return Math.round(clamp(baseScore - inactivePeerPenalty - handshakePenalty - serverPenalty, 0, 100));
 }

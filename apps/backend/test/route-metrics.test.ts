@@ -4,10 +4,14 @@ import { BadRequestException } from '@nestjs/common';
 import {
   averageMetric,
   calculateHandshakePenalty,
+  calculateWireGuardScore,
+  calculateWireGuardTelemetryScore,
   clientConfigIdFromRouteAssignmentKey,
+  createUniformRouteScores,
   defaultSpeedProfileForProtocol,
   extractEndpoint,
   extractLoadPercent,
+  isProtocolSpecificScoreProfile,
   mapWireGuardTelemetryStatus,
   maximumMetric,
   minimumMetric,
@@ -15,6 +19,9 @@ import {
   normalizeRouteDecisionCountryCode,
   normalizeRouteGroup,
   numberFromConfig,
+  protocolsForScoreProfile,
+  roundRouteScore,
+  roundRouteScores,
 } from '../src/operations/route-metrics.ts';
 
 describe('averageMetric / minimumMetric / maximumMetric', () => {
@@ -134,5 +141,79 @@ describe('defaultSpeedProfileForProtocol', () => {
       assert.equal(defaultSpeedProfileForProtocol(p), p);
     }
     assert.equal(defaultSpeedProfileForProtocol('weird'), 'balanced');
+  });
+});
+
+describe('roundRouteScore / createUniformRouteScores / roundRouteScores', () => {
+  it('rounds and clamps a single score to [0, 100]', () => {
+    assert.equal(roundRouteScore(42.4), 42);
+    assert.equal(roundRouteScore(-5), 0);
+    assert.equal(roundRouteScore(150), 100);
+  });
+
+  it('builds a uniform score map across all profiles', () => {
+    const s = createUniformRouteScores(70);
+    assert.deepEqual(s, {
+      balanced: 70, stability: 70, throughput: 70, gaming: 70,
+      tcp: 70, udp: 70, quic: 70, dns: 70, wireguard: 70,
+    });
+  });
+
+  it('rounds+clamps every profile in a score map', () => {
+    const s = roundRouteScores(createUniformRouteScores(120.6));
+    assert.equal(s.balanced, 100);
+    assert.equal(s.wireguard, 100);
+  });
+});
+
+describe('isProtocolSpecificScoreProfile / protocolsForScoreProfile', () => {
+  it('identifies protocol-specific profiles', () => {
+    for (const p of ['tcp', 'udp', 'quic', 'dns', 'wireguard']) {
+      assert.equal(isProtocolSpecificScoreProfile(p), true);
+    }
+    assert.equal(isProtocolSpecificScoreProfile('balanced'), false);
+    assert.equal(isProtocolSpecificScoreProfile('gaming'), false);
+  });
+
+  it('returns the protocol probe set for a profile, defaulting to all', () => {
+    assert.deepEqual(protocolsForScoreProfile('tcp'), ['tcp', 'mtu']);
+    assert.deepEqual(protocolsForScoreProfile('gaming'), ['udp', 'quic', 'wireguard', 'tcp', 'mtu']);
+    assert.deepEqual(protocolsForScoreProfile('balanced'), ['tcp', 'udp', 'quic', 'dns', 'wireguard', 'mtu']);
+  });
+});
+
+describe('calculateWireGuardScore', () => {
+  const base = { enabled: true, maintenanceMode: false, healthStatus: 'healthy', latencyMs: null, jitterMs: null, packetLossPercent: null };
+
+  it('returns 0 when disabled or in maintenance', () => {
+    assert.equal(calculateWireGuardScore({ ...base, enabled: false }), 0);
+    assert.equal(calculateWireGuardScore({ ...base, maintenanceMode: true }), 0);
+  });
+
+  it('scores healthy candidates high and applies latency/jitter/loss penalties', () => {
+    assert.equal(calculateWireGuardScore(base), 90);
+    assert.equal(calculateWireGuardScore({ ...base, healthStatus: 'critical' }), 35);
+    assert.equal(calculateWireGuardScore({ ...base, healthStatus: 'mystery' }), 55); // default
+    // 90 - (250-50)/4 = 90 - 50 = 40
+    assert.equal(calculateWireGuardScore({ ...base, latencyMs: 250 }), 40);
+    // heavy loss floors at 0
+    assert.equal(calculateWireGuardScore({ ...base, packetLossPercent: 10 }), 0);
+  });
+});
+
+describe('calculateWireGuardTelemetryScore', () => {
+  const up = { status: 'up', peerCount: 10, activePeerCount: 10, latestHandshakeAgeSeconds: 0 };
+
+  it('scores a fully-active up interface high', () => {
+    assert.equal(calculateWireGuardTelemetryScore(up, 100), 92);
+  });
+
+  it('penalizes inactive peers, stale handshake, and a weak server', () => {
+    // half peers inactive: 92 - 0.5*25 = 79.5 -> 80
+    assert.equal(calculateWireGuardTelemetryScore({ ...up, activePeerCount: 5 }, 100), 80);
+    // unknown handshake age adds an 18 penalty: 92 - 18 = 74
+    assert.equal(calculateWireGuardTelemetryScore({ ...up, latestHandshakeAgeSeconds: null }, 100), 74);
+    // weak server (score 40): 92 - (60-40)/2 = 92 - 10 = 82
+    assert.equal(calculateWireGuardTelemetryScore(up, 40), 82);
   });
 });

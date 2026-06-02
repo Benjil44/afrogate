@@ -79,7 +79,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
 import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, loadedLatencyDeltaFromProbe, roundMetric, thresholdPenalty } from './route-scoring';
-import { averageMetric, calculateHandshakePenalty, clientConfigIdFromRouteAssignmentKey, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig } from './route-metrics';
+import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, isProtocolSpecificScoreProfile, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores } from './route-metrics';
 import { isBestRouteQualityWindow, isDegradedRouteQualityWindow, minimumRouteAnalyticsSamples, nextRouteQualityWindowStart, routeQualityConfidence, routeQualityPredictionLookaheadHours } from './route-quality';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -2002,7 +2002,7 @@ export class OperationsService {
         speedProfile: 'gaming',
       };
     }
-    if (this.isProtocolSpecificScoreProfile(scoreProfile)) {
+    if (isProtocolSpecificScoreProfile(scoreProfile)) {
       return {
         ...scoringContext,
         protocolProfile: scoreProfile,
@@ -5247,7 +5247,7 @@ export class OperationsService {
   ): AdminWireGuardCandidate {
     const routeProbes = this.getRouteProbes(row.metricRaw);
     const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
-    const baseScore = this.calculateWireGuardTelemetryScore(item, row.healthScore);
+    const baseScore = calculateWireGuardTelemetryScore(item, row.healthScore);
     const bufferbloat = this.assessRouteBufferbloat({
       latencyMs: routeProbeSummary.latencyMs,
       jitterMs: routeProbeSummary.jitterMs,
@@ -5332,7 +5332,7 @@ export class OperationsService {
     const mtu = this.assessRouteMtu({ routeProbes, configuredMtuBytes });
     const scoreResult = this.calculateRouteProfileScores(
       {
-        baseScore: this.calculateWireGuardScore(row),
+        baseScore: calculateWireGuardScore(row),
         healthStatus: row.healthStatus,
         latencyMs: row.latencyMs,
         jitterMs: row.jitterMs,
@@ -5580,7 +5580,7 @@ export class OperationsService {
         return {
           candidate,
           profileScore,
-          adjustedScore: this.roundRouteScore(profileScore - riskPenalty),
+          adjustedScore: roundRouteScore(profileScore - riskPenalty),
           riskPenalty,
         };
       })
@@ -7397,7 +7397,7 @@ export class OperationsService {
 
   private calculateRouteProfileScores(signals: RouteScoreSignals, settings: RouteScoringContext): RouteScoreResult {
     if (signals.enabled === false || signals.maintenanceMode) {
-      const profileScores = this.createUniformRouteScores(0);
+      const profileScores = createUniformRouteScores(0);
       const selectedProfile = this.selectRouteScoreProfile(settings);
 
       return {
@@ -7447,11 +7447,11 @@ export class OperationsService {
       - serverPenalty
       - handshakePenalty * 0.35;
 
-    const profileScores = this.roundRouteScores({
-      balanced: this.applyProbeScore(balancedBase, signals.routeProbes, this.protocolsForScoreProfile('balanced'), 0.22),
-      stability: this.applyProbeScore(stableBase, signals.routeProbes, this.protocolsForScoreProfile('stability'), 0.34),
-      throughput: this.applyProbeScore(throughputBase, signals.routeProbes, this.protocolsForScoreProfile('throughput'), 0.2),
-      gaming: this.applyProbeScore(gamingBase, signals.routeProbes, this.protocolsForScoreProfile('gaming'), 0.46),
+    const profileScores = roundRouteScores({
+      balanced: this.applyProbeScore(balancedBase, signals.routeProbes, protocolsForScoreProfile('balanced'), 0.22),
+      stability: this.applyProbeScore(stableBase, signals.routeProbes, protocolsForScoreProfile('stability'), 0.34),
+      throughput: this.applyProbeScore(throughputBase, signals.routeProbes, protocolsForScoreProfile('throughput'), 0.2),
+      gaming: this.applyProbeScore(gamingBase, signals.routeProbes, protocolsForScoreProfile('gaming'), 0.46),
       tcp: this.applyProbeScore(balancedBase - thresholdPenalty(latencyMs, 100, 0.08), signals.routeProbes, ['tcp'], 0.42),
       udp: this.applyProbeScore(stableBase, signals.routeProbes, ['udp', 'wireguard'], 0.42),
       quic: this.applyProbeScore(stableBase, signals.routeProbes, ['quic', 'udp'], 0.42),
@@ -7468,42 +7468,10 @@ export class OperationsService {
     };
   }
 
-  private createUniformRouteScores(score: number): RouteProfileScores {
-    return {
-      balanced: score,
-      stability: score,
-      throughput: score,
-      gaming: score,
-      tcp: score,
-      udp: score,
-      quic: score,
-      dns: score,
-      wireguard: score,
-    };
-  }
-
-  private roundRouteScores(scores: RouteProfileScores): RouteProfileScores {
-    return {
-      balanced: this.roundRouteScore(scores.balanced),
-      stability: this.roundRouteScore(scores.stability),
-      throughput: this.roundRouteScore(scores.throughput),
-      gaming: this.roundRouteScore(scores.gaming),
-      tcp: this.roundRouteScore(scores.tcp),
-      udp: this.roundRouteScore(scores.udp),
-      quic: this.roundRouteScore(scores.quic),
-      dns: this.roundRouteScore(scores.dns),
-      wireguard: this.roundRouteScore(scores.wireguard),
-    };
-  }
-
-  private roundRouteScore(value: number): number {
-    return Math.round(clamp(value, 0, 100));
-  }
-
   private selectRouteScoreProfile(settings: RouteScoringContext): RouteScoreProfile {
     const protocolProfile = settings.protocolProfile;
 
-    if (this.isProtocolSpecificScoreProfile(protocolProfile)) return protocolProfile;
+    if (isProtocolSpecificScoreProfile(protocolProfile)) return protocolProfile;
     if (protocolProfile === 'gaming' || settings.speedProfile === 'gaming') return 'gaming';
     if (
       settings.loadBalanceStrategy === 'stability' ||
@@ -7521,29 +7489,6 @@ export class OperationsService {
     }
 
     return 'balanced';
-  }
-
-  private isProtocolSpecificScoreProfile(value: string): value is RouteScoreProfile {
-    return value === 'tcp' || value === 'udp' || value === 'quic' || value === 'dns' || value === 'wireguard';
-  }
-
-  private protocolsForScoreProfile(profile: RouteScoreProfile): string[] {
-    switch (profile) {
-      case 'tcp':
-        return ['tcp', 'mtu'];
-      case 'udp':
-        return ['udp', 'wireguard', 'mtu'];
-      case 'quic':
-        return ['quic', 'udp', 'mtu'];
-      case 'dns':
-        return ['dns', 'mtu'];
-      case 'wireguard':
-        return ['wireguard', 'udp', 'mtu'];
-      case 'gaming':
-        return ['udp', 'quic', 'wireguard', 'tcp', 'mtu'];
-      default:
-        return ['tcp', 'udp', 'quic', 'dns', 'wireguard', 'mtu'];
-    }
   }
 
   private applyProbeScore(
@@ -7632,7 +7577,7 @@ export class OperationsService {
     const loadThreshold = selectedProfile === 'gaming' ? 65 : 70;
     const selectedProbeScore = calculateProtocolProbeScore(
       signals.routeProbes,
-      this.protocolsForScoreProfile(selectedProfile),
+      protocolsForScoreProfile(selectedProfile),
     );
     const selectedMtuScore = calculateProtocolProbeScore(signals.routeProbes, ['mtu']);
     const loadedLatencyAssessment = this.assessRouteBufferbloat({
@@ -7682,7 +7627,7 @@ export class OperationsService {
         thresholdPenalty(80 - selectedProbeScore, 0, 1),
         Math.round(selectedProbeScore * 10) / 10,
         80,
-        this.protocolsForScoreProfile(selectedProfile).join(','),
+        protocolsForScoreProfile(selectedProfile).join(','),
       );
     }
     if (selectedMtuScore !== null) {
@@ -7690,40 +7635,6 @@ export class OperationsService {
     }
 
     return reasons.sort((left, right) => right.impact - left.impact).slice(0, 6);
-  }
-
-  private calculateWireGuardScore(row: WireGuardCandidateRow): number {
-    if (!row.enabled || row.maintenanceMode) return 0;
-
-    const baseScore = {
-      healthy: 90,
-      degraded: 68,
-      critical: 35,
-      unknown: 55,
-    }[row.healthStatus] ?? 55;
-    const latencyPenalty = row.latencyMs === null ? 0 : Math.max(0, (row.latencyMs - 50) / 4);
-    const jitterPenalty = row.jitterMs === null ? 0 : Math.max(0, (row.jitterMs - 10) / 2);
-    const lossPenalty = row.packetLossPercent === null ? 0 : row.packetLossPercent * 18;
-
-    return Math.round(clamp(baseScore - latencyPenalty - jitterPenalty - lossPenalty, 0, 100));
-  }
-
-  private calculateWireGuardTelemetryScore(item: WireGuardInterfaceMetric, serverHealthScore: number | null): number {
-    const baseScore = {
-      up: 92,
-      degraded: 72,
-      down: 20,
-      unknown: 52,
-    }[item.status] ?? 52;
-    const inactivePeerPenalty = item.peerCount > 0
-      ? ((item.peerCount - item.activePeerCount) / item.peerCount) * 25
-      : 0;
-    const handshakePenalty = calculateHandshakePenalty(item.latestHandshakeAgeSeconds ?? null);
-    const serverPenalty = typeof serverHealthScore === 'number' && serverHealthScore < 60
-      ? (60 - serverHealthScore) / 2
-      : 0;
-
-    return Math.round(clamp(baseScore - inactivePeerPenalty - handshakePenalty - serverPenalty, 0, 100));
   }
 
   private isWireGuardInterfaceMetric(value: unknown): value is WireGuardInterfaceMetric {
