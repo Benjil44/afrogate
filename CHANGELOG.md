@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.14 - 2026-06-02
+
+- Peeled the zero-dependency client-route mapping helpers (`clientRouteHealthRank`, `mapClientScoreProfileToProtocol`, `mapClientScoreProfileToSpeed`, `clientRouteAssignmentKey`) out of BillingService into `billing/client-route-mapping.ts`; rewrote 8 callsites. Added 5 tests; backend suite now 297 tests.
+
 ## 0.114.13 - 2026-06-02
 
 - Peeled the subscription config renderers (`renderVlessClientUri`, `renderWireGuardClientConfig`, `renderL2tpClientProfile`, `renderIkev2ClientProfile`, `subscriptionConfigFormat`, `subscriptionSecretMissingFields`, `subscriptionPublicProfile`, `invalidSubscriptionCredential`, `isUuidValue`) and the `ClientSubscriptionCredentialRenderResult` type out of BillingService, co-locating them with their sanitizer dependencies in `billing/subscription-sanitizers.ts`; rewrote 10 callsites. The impure `renderClientSubscriptionCredential` (secret-vault decrypt) stays in the service and now calls the extracted renderers. Added 14 tests covering VLESS URI/IPv6 bracketing, WireGuard/L2TP/IKEv2 profiles, missing-field handling, and CRLF-injection rejection through the renderers; backend suite now 292 tests.

@@ -73,6 +73,7 @@ import { assertAmountRange, assertNoSecretLikeKeys, assertPaymentOrderStatusTran
 import { assertPayPalPaymentOrder, extractPayPalWebhookCaptureId, extractPayPalWebhookOrderId, mergePayPalMetadata, payPalWebhookPaymentUpdate } from './paypal-webhook';
 import { endpointHostPort, firstCredentialList, firstCredentialString, firstSafeEndpointNumber, renderIkev2ClientProfile, renderL2tpClientProfile, renderVlessClientUri, renderWireGuardClientConfig, subscriptionConfigFormat, subscriptionEndpointTarget, subscriptionPublicProfile, subscriptionSecretMissingFields, type ClientSubscriptionCredentialRenderResult } from './subscription-sanitizers';
 import { DEFAULT_REWARDED_AD_PROVIDER, assertRewardedAdSettingsLimits, normalizeRewardedAdProvider } from './rewarded-ad';
+import { clientRouteAssignmentKey, clientRouteHealthRank, mapClientScoreProfileToProtocol, mapClientScoreProfileToSpeed } from './client-route-mapping';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afroGateShareBps,
@@ -4072,7 +4073,7 @@ export class BillingService {
         bestHealthStatus: 'unknown',
         minUsageMultiplier: Number.POSITIVE_INFINITY,
       };
-      const rank = this.clientRouteHealthRank(row.healthStatus);
+      const rank = clientRouteHealthRank(row.healthStatus);
       const usageMultiplier = normalizeUsageMultiplier(row.usageMultiplier);
       current.total += 1;
       current.healthy += row.healthStatus === 'healthy' ? 1 : 0;
@@ -4242,7 +4243,7 @@ export class BillingService {
           clientConfigId,
           customerAccountId: client.customerAccountId,
           routeGroup,
-          assignmentKey: this.clientRouteAssignmentKey(clientConfigId),
+          assignmentKey: clientRouteAssignmentKey(clientConfigId),
           mode: patch.mode,
           scoreProfile: patch.scoreProfile,
           detectedCountryStored: Boolean(patch.detectedCountryCode),
@@ -6780,13 +6781,6 @@ export class BillingService {
     return `afg_client_${randomBytes(32).toString('base64url')}`;
   }
 
-  private clientRouteHealthRank(status: string): number {
-    if (status === 'healthy') return 0;
-    if (status === 'degraded') return 1;
-    if (status === 'unknown') return 2;
-    return 3;
-  }
-
   private async getClientChargedRemainingBytes(actor: ClientAuthActor): Promise<number | null> {
     const profile = await this.getClientPortalRow(actor);
     const accountQuotaLimitBytes = numberFromBigInt(profile.accountQuotaLimitBytes);
@@ -7180,7 +7174,7 @@ export class BillingService {
       clientConfigId: row.clientConfigId,
       customerAccountId: row.customerAccountId,
       routeGroup: row.routeGroup,
-      assignmentKey: this.clientRouteAssignmentKey(row.clientConfigId),
+      assignmentKey: clientRouteAssignmentKey(row.clientConfigId),
       mode: row.mode,
       detectedCountryCode: row.detectedCountryCode,
       detectedCountrySource: row.detectedCountrySource,
@@ -7207,7 +7201,7 @@ export class BillingService {
       clientConfigId: row.id,
       customerAccountId: row.customerAccountId,
       routeGroup: row.routePreferenceRouteGroup,
-      assignmentKey: this.clientRouteAssignmentKey(row.id),
+      assignmentKey: clientRouteAssignmentKey(row.id),
       mode: row.routePreferenceMode,
       detectedCountryCode: row.routePreferenceDetectedCountryCode ?? null,
       detectedCountrySource: row.routePreferenceDetectedCountrySource ?? null,
@@ -7235,7 +7229,7 @@ export class BillingService {
       clientConfigId: row.id,
       customerAccountId: row.customerAccountId,
       routeGroup,
-      assignmentKey: this.clientRouteAssignmentKey(row.id),
+      assignmentKey: clientRouteAssignmentKey(row.id),
       mode: 'auto',
       detectedCountryCode: null,
       detectedCountrySource: null,
@@ -7304,11 +7298,11 @@ export class BillingService {
     routeGroup: string,
     preference: ClientRoutePreferencePatch,
   ): Promise<void> {
-    const assignmentKey = this.clientRouteAssignmentKey(client.id);
+    const assignmentKey = clientRouteAssignmentKey(client.id);
     const currentOutboundId = preference.mode === 'outbound' ? preference.preferredOutboundId : null;
     const lockedOutboundId = preference.routeLocked ? preference.preferredOutboundId : null;
-    const protocolProfile = this.mapClientScoreProfileToProtocol(preference.scoreProfile);
-    const speedProfile = this.mapClientScoreProfileToSpeed(preference.scoreProfile);
+    const protocolProfile = mapClientScoreProfileToProtocol(preference.scoreProfile);
+    const speedProfile = mapClientScoreProfileToSpeed(preference.scoreProfile);
 
     await executor.query(
       `
@@ -7340,21 +7334,6 @@ export class BillingService {
         speedProfile,
       ],
     );
-  }
-
-  private mapClientScoreProfileToProtocol(scoreProfile: string): string {
-    if (['gaming', 'tcp', 'udp', 'quic', 'dns', 'wireguard'].includes(scoreProfile)) return scoreProfile;
-    return 'balanced';
-  }
-
-  private mapClientScoreProfileToSpeed(scoreProfile: string): string {
-    if (scoreProfile === 'throughput') return 'highSpeed';
-    if (scoreProfile === 'gaming') return 'gaming';
-    return 'balanced';
-  }
-
-  private clientRouteAssignmentKey(clientConfigId: string): string {
-    return `client_config:${clientConfigId}`;
   }
 
   private normalizeClientSubscriptionCredentialProtocol(value: string | null | undefined): string {
