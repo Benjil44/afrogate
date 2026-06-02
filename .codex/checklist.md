@@ -339,8 +339,8 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 
 ### Release / deployment validation
 
-- [~] Ubuntu install drill runbook prepared (`docs/release-readiness-runbooks.md` §1) with verification steps; **execution needs a live host** (cannot be run in CI/by agent).
-- [~] Encrypted backup + restore drill runbook prepared (`docs/release-readiness-runbooks.md` §2); **execution needs a live host/DB**.
+- [~] Ubuntu install drill runbook (`docs/release-readiness-runbooks.md` §1) + bundled self-verifier `scripts/drills/verify-install.sh` (health, security headers, loopback-only ports; `bash -n` clean); **execution needs a live host** (cannot be run in CI/by agent).
+- [~] Encrypted backup + restore drill runbook (`docs/release-readiness-runbooks.md` §2) + bundled `scripts/drills/backup-restore-drill.sh` (dump+encrypt → restore to scratch → row-count parity + encryption check; destructive to scratch only; `bash -n` clean); **execution needs a live host/DB**.
 - [~] Load/scale test prepared: k6 starter `scripts/loadtest/afrogate-smoke.js` + plan (`docs/release-readiness-runbooks.md` §3); **execution needs a deployed host + k6**.
 - [~] Penetration-test scope & readiness package prepared (`docs/release-readiness-runbooks.md` §4) referencing the threat models; **needs an external auditor** to execute.
-- [~] Agent-token & secret-rotation runbook documented (`docs/release-readiness-runbooks.md` §5); **rehearsal needs a staging environment**.
+- [~] Agent-token & secret-rotation runbook (`docs/release-readiness-runbooks.md` §5) + bundled verifier `scripts/drills/verify-rotation.sh` (confirms old agent token rejected / new accepted at the heartbeat endpoint; `bash -n` clean); **rehearsal needs a staging environment**.

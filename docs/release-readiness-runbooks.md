@@ -24,14 +24,16 @@ on a clean Ubuntu host.
    `AFROGATE_SECRETS_KEY`, `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS=true`).
 6. Install the systemd unit (`infra/ubuntu/afrogate-backend.service.sample`) and
    the Nginx site (`infra/ubuntu/nginx.conf.sample`); reload both.
-7. **Verify:**
-   - `curl -fsS https://<host>/api/health` returns ok.
+7. **Verify** — run the bundled verifier (health + security headers + loopback-only ports):
+   ```
+   BASE_URL=https://<host> scripts/drills/verify-install.sh             # from a second machine
+   BASE_URL=https://<host> HOST_LOCAL=1 scripts/drills/verify-install.sh # on the host (adds port checks)
+   ```
+   Then confirm manually:
    - Dashboard loads over HTTPS; login works with the superadmin account.
-   - Security headers present: `curl -sI https://<host>/ | grep -iE 'content-security-policy|strict-transport|x-frame-options'`.
-   - Internal ports closed: `ss -ltnp` shows 7000/5432 bound to 127.0.0.1 only; UFW denies them externally.
    - Data-plane/protocol-apply live flags are **off** by default.
 
-Exit criteria: all verify checks pass from a second machine.
+Exit criteria: `verify-install.sh` exits 0 from a second machine and the manual checks pass.
 
 ---
 
@@ -40,17 +42,20 @@ Exit criteria: all verify checks pass from a second machine.
 Goal: prove a backup can be restored into a fresh database. (The in-app restore
 engine is intentionally a read-only stub; backup/restore is operator-run.)
 
-1. Take an encrypted dump:
-   `pg_dump "$DATABASE_URL" | gpg --symmetric --cipher-algo AES256 > afrogate-$(date +%F).sql.gpg`.
-2. Store off-host; record the backup-status JSON the dashboard reads.
-3. Restore into a scratch database:
-   `gpg -d afrogate-*.sql.gpg | psql "$SCRATCH_DATABASE_URL"`.
-4. **Verify:** row counts for `admin_users`, `customer_accounts`, `client_configs`,
-   `payment_orders`, `reseller_wallet_ledger` match the source; app boots against
-   the scratch DB and login + a guarded read work.
-5. Confirm the dump file is unreadable without the key (`gpg -d` fails without passphrase).
+Run the bundled drill (dump+encrypt → restore to scratch → row-count parity +
+encryption check). **Destructive to the scratch DB only; the source is read-only.**
+```
+DATABASE_URL=postgres://...source... \
+SCRATCH_DATABASE_URL=postgres://...scratch-OVERWRITTEN... \
+BACKUP_PASSPHRASE=... \
+  scripts/drills/backup-restore-drill.sh
+```
+It verifies row counts for `admin_users`, `customer_accounts`, `client_configs`,
+`payment_orders`, `reseller_wallet_ledger` and that the artifact cannot be decrypted
+with a wrong passphrase. Then confirm manually that the app boots against the scratch
+DB and that login + a guarded read work.
 
-Exit criteria: restored DB is functionally identical and the artifact is encrypted at rest.
+Exit criteria: `backup-restore-drill.sh` exits 0 and the restored DB serves the app.
 
 ---
 
@@ -93,10 +98,16 @@ Exit criteria: report received; criticals/highs remediated and re-tested.
 
 Goal: rehearse rotation without downtime.
 
-- **Agent tokens:** call the guarded rotate endpoint (revokes active tokens for a
-  server, issues one new one-time plaintext token stored only as a SHA-256 hash),
-  update the agent's `AFROGATE_AGENT_TOKEN`, confirm metrics ingest resumes and
-  the old token is rejected.
+- **Agent tokens:** call the guarded rotate endpoint
+  (`POST /api/agents/:serverId/tokens/rotate` — revokes active tokens for a server,
+  issues one new one-time plaintext token stored only as a SHA-256 hash), update the
+  agent's `AFROGATE_AGENT_TOKEN`, then verify with the bundled checker:
+  ```
+  BASE_URL=https://<host> OLD_AGENT_TOKEN=... NEW_AGENT_TOKEN=... \
+    scripts/drills/verify-rotation.sh
+  ```
+  (confirms the old token is rejected and the new one authenticates at the
+  heartbeat endpoint).
 - **Session secret (`ADMIN_SESSION_SECRET`):** rotating invalidates existing
   sessions (all admins must re-login) — schedule in a maintenance window.
 - **Secrets key (`AFROGATE_SECRETS_KEY`):** re-encrypt `secret_records`/
