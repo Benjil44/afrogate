@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.2 - 2026-06-02
+
+- Extracted 11 pure billing validators/normalizers from BillingService into `billing/billing-normalizers.ts` with 16 unit tests; backend suite now 159 tests.
+
 ## 0.114.1 - 2026-06-02
 
 - Extracted the pure route probe-scoring engine (probe/MTU scoring + scoring utilities) from OperationsService into `operations/route-scoring.ts` and covered it with 15 unit tests; backend test suite now 143 tests.
