@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.21 - 2026-06-03
+
+- Continued the OperationsService split: peeled the bufferbloat assessment cluster (`assessRouteBufferbloat`, `routeBufferbloatSeverity`, `routeBufferbloatRecommendation`) and its `RouteBufferbloatAssessment` type into `operations/route-bufferbloat.ts` (local `roundMetric` to stay self-contained); rewrote 4 callsites. Added 7 tests covering delta-based vs load-based severity tiers, the unknown case, and delta derivation/rounding; backend suite now 345 tests.
+
 ## 0.114.20 - 2026-06-03
 
 - Continued the OperationsService split: peeled the route-scoring helpers (`roundRouteScore`, `createUniformRouteScores`, `roundRouteScores`, `isProtocolSpecificScoreProfile`, `protocolsForScoreProfile`, `calculateWireGuardScore`, `calculateWireGuardTelemetryScore`) into `operations/route-metrics.ts` (co-located with `calculateHandshakePenalty` to avoid a cross-module import; row inputs typed structurally); rewrote 13 callsites. Added 9 tests covering the WireGuard scoring math (health/latency/jitter/loss penalties, telemetry peer/handshake/server penalties); backend suite now 338 tests.

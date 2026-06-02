@@ -81,6 +81,7 @@ import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, 
 import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, loadedLatencyDeltaFromProbe, roundMetric, thresholdPenalty } from './route-scoring';
 import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, isProtocolSpecificScoreProfile, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores } from './route-metrics';
 import { isBestRouteQualityWindow, isDegradedRouteQualityWindow, minimumRouteAnalyticsSamples, nextRouteQualityWindowStart, routeQualityConfidence, routeQualityPredictionLookaheadHours } from './route-quality';
+import { assessRouteBufferbloat, routeBufferbloatRecommendation, routeBufferbloatSeverity, type RouteBufferbloatAssessment } from './route-bufferbloat';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
@@ -566,13 +567,6 @@ interface RouteScoreSignals {
   latestHandshakeAgeSeconds?: number | null;
   enabled?: boolean;
   maintenanceMode?: boolean;
-}
-
-interface RouteBufferbloatAssessment {
-  loadedLatencyMs: number | null;
-  loadedLatencyDeltaMs: number | null;
-  severity: RouteBufferbloatSeverity;
-  recommendation: RouteBufferbloatRecommendation;
 }
 
 interface RouteMtuAssessment {
@@ -5248,7 +5242,7 @@ export class OperationsService {
     const routeProbes = this.getRouteProbes(row.metricRaw);
     const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
     const baseScore = calculateWireGuardTelemetryScore(item, row.healthScore);
-    const bufferbloat = this.assessRouteBufferbloat({
+    const bufferbloat = assessRouteBufferbloat({
       latencyMs: routeProbeSummary.latencyMs,
       jitterMs: routeProbeSummary.jitterMs,
       loadPercent: null,
@@ -5322,7 +5316,7 @@ export class OperationsService {
       numberFromConfig(config.mtu) ??
       numberFromConfig(config.mtuBytes) ??
       numberFromConfig(config.interfaceMtu);
-    const bufferbloat = this.assessRouteBufferbloat({
+    const bufferbloat = assessRouteBufferbloat({
       latencyMs: row.latencyMs ?? routeProbeSummary.latencyMs,
       jitterMs: row.jitterMs ?? routeProbeSummary.jitterMs,
       loadPercent,
@@ -7208,73 +7202,6 @@ export class OperationsService {
     );
   }
 
-  private assessRouteBufferbloat(input: {
-    latencyMs: number | null;
-    jitterMs: number | null;
-    loadPercent: number | null;
-    loadedLatencyMs?: number | null;
-    loadedLatencyDeltaMs?: number | null;
-  }): RouteBufferbloatAssessment {
-    const loadedLatencyMs = roundMetric(input.loadedLatencyMs, 1);
-    const loadedLatencyDeltaMs = roundMetric(
-      input.loadedLatencyDeltaMs ??
-        (
-          loadedLatencyMs !== null && input.latencyMs !== null
-            ? loadedLatencyMs - input.latencyMs
-            : null
-        ),
-      1,
-    );
-    const severity = this.routeBufferbloatSeverity({
-      latencyMs: input.latencyMs,
-      jitterMs: input.jitterMs,
-      loadPercent: input.loadPercent,
-      loadedLatencyDeltaMs,
-    });
-
-    return {
-      loadedLatencyMs,
-      loadedLatencyDeltaMs,
-      severity,
-      recommendation: this.routeBufferbloatRecommendation(severity),
-    };
-  }
-
-  private routeBufferbloatSeverity(input: {
-    latencyMs: number | null;
-    jitterMs: number | null;
-    loadPercent: number | null;
-    loadedLatencyDeltaMs: number | null;
-  }): RouteBufferbloatSeverity {
-    if (input.loadedLatencyDeltaMs !== null) {
-      if (input.loadedLatencyDeltaMs >= 150) return 'high';
-      if (input.loadedLatencyDeltaMs >= 75) return 'medium';
-      if (input.loadedLatencyDeltaMs >= 30) return 'low';
-
-      return 'none';
-    }
-
-    if (input.loadPercent === null) return 'unknown';
-    if (input.loadPercent >= 85 && ((input.latencyMs ?? 0) >= 140 || (input.jitterMs ?? 0) >= 35)) return 'high';
-    if (input.loadPercent >= 75 && ((input.latencyMs ?? 0) >= 110 || (input.jitterMs ?? 0) >= 25)) return 'medium';
-    if (input.loadPercent >= 65 && ((input.latencyMs ?? 0) >= 90 || (input.jitterMs ?? 0) >= 15)) return 'low';
-
-    return 'none';
-  }
-
-  private routeBufferbloatRecommendation(severity: RouteBufferbloatSeverity): RouteBufferbloatRecommendation {
-    switch (severity) {
-      case 'high':
-        return 'avoidUnderLoad';
-      case 'medium':
-        return 'sqmRecommended';
-      case 'low':
-        return 'watch';
-      default:
-        return 'none';
-    }
-  }
-
   private assessRouteMtu(input: {
     routeProbes: RouteProbeMetric[];
     configuredMtuBytes?: number | null;
@@ -7374,7 +7301,7 @@ export class OperationsService {
   }
 
   private calculateLoadedLatencyPenalty(signals: RouteScoreSignals): number {
-    const assessment = this.assessRouteBufferbloat({
+    const assessment = assessRouteBufferbloat({
       latencyMs: signals.latencyMs,
       jitterMs: signals.jitterMs,
       loadPercent: signals.loadPercent,
@@ -7580,7 +7507,7 @@ export class OperationsService {
       protocolsForScoreProfile(selectedProfile),
     );
     const selectedMtuScore = calculateProtocolProbeScore(signals.routeProbes, ['mtu']);
-    const loadedLatencyAssessment = this.assessRouteBufferbloat({
+    const loadedLatencyAssessment = assessRouteBufferbloat({
       latencyMs: signals.latencyMs,
       jitterMs: signals.jitterMs,
       loadPercent: signals.loadPercent,
