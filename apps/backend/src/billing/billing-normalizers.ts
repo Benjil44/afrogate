@@ -123,3 +123,27 @@ export function normalizeJsonStringArray(value: unknown): string[] {
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((item): item is string => typeof item === 'string');
 }
+
+/** Rewarded-ad settings token: lowercased, [a-z0-9_.:-], max 80 chars. */
+export function normalizeRewardedAdSettingsToken(value: string | null | undefined, label: string): string {
+  const normalized = normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
+  if (!normalized || normalized.length > 80) throw new BadRequestException(`${label} is invalid`);
+  return normalized;
+}
+
+/** Subscription protocol, lowercased; maps the local-proxy alias to vless. */
+export function normalizeSubscriptionProtocol(type: string): string {
+  const normalized = type.trim().toLowerCase();
+  if (normalized === 'vless-local-proxy') return 'vless';
+  return normalized;
+}
+
+/** A safe public endpoint string (no quotes/brackets/secret-like words), or null. */
+export function normalizePublicEndpointValue(value: string): string | null {
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 160) return null;
+  const blockedChars = ['@', '<', '>', '"', "'", '`', '\\'];
+  if ([...normalized].some((ch) => blockedChars.includes(ch))) return null;
+  if (/(secret|token|password|private[_-]?key|credential)/i.test(normalized)) return null;
+  return normalized;
+}

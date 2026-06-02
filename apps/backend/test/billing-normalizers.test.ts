@@ -17,6 +17,9 @@ import {
   normalizeCountryCode,
   normalizeDetectionSource,
   normalizeJsonStringArray,
+  normalizeRewardedAdSettingsToken,
+  normalizeSubscriptionProtocol,
+  normalizePublicEndpointValue,
 } from '../src/billing/billing-normalizers.ts';
 
 describe('normalizeNullableString', () => {
@@ -150,5 +153,33 @@ describe("normalizeJsonStringArray", () => {
   it("returns [] for non-array / bad JSON", () => {
     assert.deepEqual(normalizeJsonStringArray("not json"), []);
     assert.deepEqual(normalizeJsonStringArray("{}"), []);
+  });
+});
+
+describe("normalizeRewardedAdSettingsToken", () => {
+  it("lowercases and sanitizes, rejects empty/too-long", () => {
+    assert.equal(normalizeRewardedAdSettingsToken("My Provider!", "provider"), "my_provider_");
+    assert.throws(() => normalizeRewardedAdSettingsToken("", "provider"), BadRequestException);
+    assert.throws(() => normalizeRewardedAdSettingsToken("a".repeat(81), "provider"), BadRequestException);
+  });
+});
+
+describe("normalizeSubscriptionProtocol", () => {
+  it("lowercases and maps the local-proxy alias to vless", () => {
+    assert.equal(normalizeSubscriptionProtocol("VLESS"), "vless");
+    assert.equal(normalizeSubscriptionProtocol("vless-local-proxy"), "vless");
+    assert.equal(normalizeSubscriptionProtocol("WireGuard"), "wireguard");
+  });
+});
+
+describe("normalizePublicEndpointValue", () => {
+  it("accepts a clean endpoint", () => {
+    assert.equal(normalizePublicEndpointValue(" de.example.com:443 "), "de.example.com:443");
+  });
+  it("rejects quotes/brackets/backslash and secret-like words", () => {
+    assert.equal(normalizePublicEndpointValue("a<b"), null);
+    assert.equal(normalizePublicEndpointValue(`x${String.fromCharCode(92)}y`), null);
+    assert.equal(normalizePublicEndpointValue("my-secret-host"), null);
+    assert.equal(normalizePublicEndpointValue("a".repeat(161)), null);
   });
 });

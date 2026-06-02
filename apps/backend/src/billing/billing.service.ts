@@ -72,8 +72,8 @@ import {
   normalizeResellerMarginBps,
   walletCanCoverDebit,
 } from './reseller-wallet-math';
-import { MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
-import { normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizeResellerStatus, normalizeRouteGroup, normalizeSlug, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue } from './billing-normalizers';
+import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, gbToBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
+import { normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue } from './billing-normalizers';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { SecretVaultService } from '../security/secret-vault.service';
@@ -126,7 +126,6 @@ import {
 } from './payment-provider-adapters';
 import { RewardedAdWebhookService, type RewardedAdWebhookSignatureHeaders } from './rewarded-ad-webhook.service';
 
-const BYTES_PER_GB = 1024 ** 3;
 const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
 const DEFAULT_REWARDED_AD_REWARD_BYTES = 100 * 1024 ** 2;
 const DEFAULT_REWARDED_AD_DAILY_LIMIT = 20;
@@ -753,11 +752,11 @@ export class BillingService {
       const dailyLimit = dto.dailyLimit ?? current.dailyLimit;
       const provider =
         dto.provider !== undefined
-          ? this.normalizeRewardedAdSettingsToken(dto.provider, 'Rewarded ad provider')
+          ? normalizeRewardedAdSettingsToken(dto.provider, 'Rewarded ad provider')
           : current.provider || DEFAULT_REWARDED_AD_PROVIDER;
       const verificationMode =
         dto.verificationMode !== undefined
-          ? this.normalizeRewardedAdSettingsToken(dto.verificationMode, 'Rewarded ad verification mode')
+          ? normalizeRewardedAdSettingsToken(dto.verificationMode, 'Rewarded ad verification mode')
           : current.verificationMode || DEFAULT_REWARDED_AD_VERIFICATION_MODE;
       this.assertRewardedAdSettingsLimits(rewardBytes, dailyLimit);
 
@@ -858,7 +857,7 @@ export class BillingService {
         const settings = await this.getBillingSettingsRow(executor);
         const pricePerGb = dto.pricePerGb ?? this.numberFromBigInt(settings.pricePerGb) ?? 0;
         const currency = dto.currency !== undefined ? normalizeCurrency(dto.currency) : settings.currency;
-        const volumeBytes = this.gbToBytes(dto.volumeGb);
+        const volumeBytes = gbToBytes(dto.volumeGb);
         const totalPrice = dto.totalPrice ?? this.calculateTotalPrice(dto.volumeGb, pricePerGb);
         const slug = normalizeSlug(dto.slug ?? dto.name);
         const name = dto.name.trim();
@@ -3331,7 +3330,7 @@ export class BillingService {
       const client = await this.getClientConfigRowForUpdate(executor, clientConfigId);
       const outbound = await this.getOutboundForSubscriptionCredential(executor, dto.outboundId);
       const protocol = this.normalizeClientSubscriptionCredentialProtocol(
-        dto.protocol ?? this.normalizeSubscriptionProtocol(outbound.type),
+        dto.protocol ?? normalizeSubscriptionProtocol(outbound.type),
       );
       const credentialId = randomUUID();
       const encrypted = this.secretVault.encryptJson(
@@ -3819,7 +3818,7 @@ export class BillingService {
     return (
       configLinks.find(
         (link) =>
-          this.normalizeSubscriptionProtocol(link.type) === 'vless' &&
+          normalizeSubscriptionProtocol(link.type) === 'vless' &&
           link.renderStatus === 'rendered' &&
           typeof link.uri === 'string' &&
           link.uri.trim().startsWith('vless://'),
@@ -4155,7 +4154,7 @@ export class BillingService {
           .map((outbound) => outbound.subscriptionEndpoint)
           .filter((endpoint): endpoint is ClientSubscriptionEndpointSummary => Boolean(endpoint)),
         configLinks: routeOptions.outbounds.map((outbound) => {
-          const protocol = this.normalizeSubscriptionProtocol(outbound.type);
+          const protocol = normalizeSubscriptionProtocol(outbound.type);
           const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
           return this.subscriptionConfigLink(outbound, credential);
         }),
@@ -4829,7 +4828,7 @@ export class BillingService {
       [
         name,
         dto.slug !== undefined ? normalizeSlug(dto.slug) : existing.slug,
-        dto.volumeGb !== undefined ? this.gbToBytes(dto.volumeGb) : existingVolumeBytes,
+        dto.volumeGb !== undefined ? gbToBytes(dto.volumeGb) : existingVolumeBytes,
         dto.durationDays !== undefined ? dto.durationDays : existing.durationDays,
         pricePerGb,
         totalPrice,
@@ -6802,12 +6801,6 @@ export class BillingService {
     return provider;
   }
 
-  private normalizeRewardedAdSettingsToken(value: string | null | undefined, label: string): string {
-    const normalized = normalizeNullableString(value)?.toLowerCase().replace(/[^a-z0-9_.:-]/g, '_');
-    if (!normalized || normalized.length > 80) throw new BadRequestException(`${label} is invalid`);
-    return normalized;
-  }
-
   private assertRewardedAdSettingsLimits(rewardBytes: number, dailyLimit: number): void {
     if (!Number.isSafeInteger(rewardBytes) || rewardBytes <= 0 || rewardBytes > MAX_REWARDED_AD_REWARD_BYTES) {
       throw new BadRequestException('Rewarded ad reward amount is outside the allowed range');
@@ -6914,7 +6907,7 @@ export class BillingService {
     credential: ClientSubscriptionCredentialRow | null,
   ): ClientSubscriptionConfigLinkSummary {
     const endpoint = outbound.subscriptionEndpoint ?? null;
-    const protocol = this.normalizeSubscriptionProtocol(outbound.type);
+    const protocol = normalizeSubscriptionProtocol(outbound.type);
     const format = this.subscriptionConfigFormat(protocol);
     const supported = ['wireguard', 'vless', 'l2tp', 'ikev2'].includes(protocol);
     const hasPublicEndpoint = Boolean(endpoint?.address || endpoint?.host);
@@ -6999,12 +6992,6 @@ export class BillingService {
       requiresClientSecret: false,
       sensitive: true,
     };
-  }
-
-  private normalizeSubscriptionProtocol(type: string): string {
-    const normalized = type.trim().toLowerCase();
-    if (normalized === 'vless-local-proxy') return 'vless';
-    return normalized;
   }
 
   private subscriptionConfigFormat(protocol: string): string {
@@ -7366,7 +7353,7 @@ export class BillingService {
     for (const key of keys) {
       const value = config[key];
       const normalized = typeof value === 'string' || typeof value === 'number'
-        ? this.normalizePublicEndpointValue(String(value))
+        ? normalizePublicEndpointValue(String(value))
         : null;
       if (normalized) return normalized;
     }
@@ -7382,15 +7369,6 @@ export class BillingService {
     }
 
     return null;
-  }
-
-  private normalizePublicEndpointValue(value: string): string | null {
-    const normalized = value.trim();
-    if (!normalized || normalized.length > 160) return null;
-    if (/[@<>"'`\\]/.test(normalized)) return null;
-    if (/(secret|token|password|private[_-]?key|credential)/i.test(normalized)) return null;
-
-    return normalized;
   }
 
   private bytesAtMultiplier(chargedRemainingBytes: number | null, multiplierValue: number | string | null | undefined): number | null {
@@ -7765,7 +7743,7 @@ export class BillingService {
   }
 
   private normalizeClientSubscriptionCredentialProtocol(value: string | null | undefined): string {
-    const normalized = this.normalizeSubscriptionProtocol(normalizeNullableString(value) ?? '');
+    const normalized = normalizeSubscriptionProtocol(normalizeNullableString(value) ?? '');
     if (!CLIENT_SUBSCRIPTION_PROTOCOLS.has(normalized)) {
       throw new BadRequestException('Client subscription credential protocol is not supported');
     }
@@ -8017,10 +7995,6 @@ export class BillingService {
     return `hmac-sha256:${createHmac('sha256', key).update(normalized, 'utf8').digest('hex')}`;
   }
 
-
-  private gbToBytes(value: number): number {
-    return value * BYTES_PER_GB;
-  }
 
   private calculateTotalPrice(volumeGb: number, pricePerGb: number): number {
     return volumeGb * pricePerGb;

@@ -45,3 +45,10 @@ export function addPositiveBytes(baseBytes: number, deltaBytes: number, errorMes
   }
   return nextBytes;
 }
+
+export const BYTES_PER_GB = 1024 ** 3;
+
+/** Converts gigabytes to bytes. */
+export function gbToBytes(value: number): number {
+  return value * BYTES_PER_GB;
+}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BadRequestException } from '@nestjs/common';
-import { MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from '../src/billing/quota-math.ts';
+import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, gbToBytes, computeAllocatedQuotaLimitBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from '../src/billing/quota-math.ts';
 
 describe('computeAllocatedQuotaLimitBytes', () => {
   it('treats a null limit as the used-byte baseline so a top-up grants only the purchased volume', () => {
@@ -55,5 +55,13 @@ describe("addPositiveBytes", () => {
   });
   it("throws on unsafe overflow", () => {
     assert.throws(() => addPositiveBytes(MAX_SAFE_BYTES, 1, "overflow"), BadRequestException);
+  });
+});
+
+describe("gbToBytes", () => {
+  it("converts gigabytes to bytes", () => {
+    assert.equal(gbToBytes(1), BYTES_PER_GB);
+    assert.equal(gbToBytes(2), 2 * 1024 ** 3);
+    assert.equal(gbToBytes(0), 0);
   });
 });
