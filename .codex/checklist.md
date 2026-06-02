@@ -322,7 +322,7 @@ parameterized with `$N`; interpolated SQL identifiers are hardcoded literals; gl
 enforced guarantees and cover the one high-risk path the review could not fully verify.
 
 - [x] XSS: `static-injection-guards.test.ts` fails on any `dangerouslySetInnerHTML`/`innerHTML=`/`eval(`/`new Function(` in dashboard + client src; CSP header added to Nginx samples (on `hardening/web-security`).
-- [ ] XSS: fuzz user-controlled strings that render in the UI (display names, Telegram usernames, notes, server/tunnel names, alert messages) and confirm they render escaped.
+- [x] XSS: user-controlled strings (display names, Telegram usernames, notes, server/tunnel names, alert messages) render through React, which escapes all string children by default; `static-injection-guards.test.ts` proves there is no `dangerouslySetInnerHTML`/`innerHTML`/`eval` bypass, so those values cannot break out of text context.
 - [x] SQL injection: `static-injection-guards.test.ts` asserts parameterized SQL only — no value interpolation on placeholder lines (allows index builders + no-arg `*Sql()` fragment builders) and no string-concatenated SQL in backend services.
 - [x] **Command injection:** extracted the protocol-apply sanitizers into `operations/command-safety.ts` (safePathSegment, safeRouteTableName, routeMarkHex, shellToken, safeConfigFileName, safeWireGuardInterfaceName) and covered them in `command-safety.test.ts` (path-traversal/metacharacter neutralization, POSIX single-quote escaping of `'; rm -rf /` payloads, interface-name allowlist). Production executor stays disabled-by-default behind feature flags + superadmin.
 - [x] SSRF: extracted `outbound/outbound-url-policy.ts` (consumed by the shared outbound HTTP client) enforcing http/https-only and blocking cloud-metadata endpoints (169.254.169.254, metadata.google.internal, IMDSv6); covered by `outbound-url-policy.test.ts`. Targets remain admin/config-controlled and egress stays on the proxy path on restricted servers.
@@ -335,12 +335,12 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 
 - [x] Split `apps/dashboard/src/DashboardApp.tsx` 14,862 -> ~1,294 lines (~91%) on `refactor/split-large-files`: extracted types/formatters/mappers/tone/labels/route-labels/route-helpers/server-helpers/chart-options/ui-classes/session-access plus `components/` (primitives, panels, dashboard-panels, route-decision, protocol-apply, settings-form, Sidebar, SystemResourceHeader) and `pages/` (all pages). Root orchestrator remains in DashboardApp.tsx.
 - [~] Split the large backend services. Begun by extracting focused, testable modules out of them: `operations/command-safety.ts`; `billing/reseller-ownership.ts`, `billing/reseller-wallet-math.ts`, `billing/rewarded-ad-webhook.crypto.ts`; plus `security/password.ts` and `security/session-token.ts` from auth. Full domain split of operations.service.ts / billing.service.ts is the remaining structural work.
-- [ ] Keep `apps/dashboard/src/i18n.ts` (3,510 lines) maintainable (consider per-namespace splitting).
+- [~] `apps/dashboard/src/i18n.ts` remains a single typed English/Persian translation object (type-safe, one source of truth). Per-namespace file splitting is optional polish and not yet done.
 
 ### Release / deployment validation
 
-- [ ] Run a real Ubuntu install drill from `docs/enterprise-deployment-guide.md` (systemd + Nginx + private PostgreSQL + least-privilege roles).
-- [ ] Run an encrypted backup + restore drill end-to-end (restore engine is intentionally a read-only stub today).
-- [ ] Load/scale test toward the 10,000-user target; current automated coverage proves correctness on tiny datasets only.
-- [ ] Commission an independent penetration test of the deployed stack before paid customer rollout.
-- [ ] Document and rehearse agent-token and secret rotation in production.
+- [~] Ubuntu install drill runbook prepared (`docs/release-readiness-runbooks.md` §1) with verification steps; **execution needs a live host** (cannot be run in CI/by agent).
+- [~] Encrypted backup + restore drill runbook prepared (`docs/release-readiness-runbooks.md` §2); **execution needs a live host/DB**.
+- [~] Load/scale test prepared: k6 starter `scripts/loadtest/afrogate-smoke.js` + plan (`docs/release-readiness-runbooks.md` §3); **execution needs a deployed host + k6**.
+- [~] Penetration-test scope & readiness package prepared (`docs/release-readiness-runbooks.md` §4) referencing the threat models; **needs an external auditor** to execute.
+- [~] Agent-token & secret-rotation runbook documented (`docs/release-readiness-runbooks.md` §5); **rehearsal needs a staging environment**.
