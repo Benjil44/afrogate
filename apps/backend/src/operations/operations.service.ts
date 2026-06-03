@@ -83,6 +83,7 @@ import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calc
 import { isBestRouteQualityWindow, isDegradedRouteQualityWindow, minimumRouteAnalyticsSamples, nextRouteQualityWindowStart, routeQualityConfidence, routeQualityPredictionLookaheadHours } from './route-quality';
 import { assessRouteBufferbloat, routeBufferbloatRecommendation, routeBufferbloatSeverity, type RouteBufferbloatAssessment } from './route-bufferbloat';
 import { normalizeAlertStatusParam, normalizeLimitParam, normalizeRangeHoursParam, normalizeSimpleTextParam, normalizeUuidParam } from './request-normalizers';
+import { describeRouteDecisionTimelineDetail, incidentSeverityFromAlert, routeDecisionTimelineSeverity } from './timeline-severity';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
@@ -3586,7 +3587,7 @@ export class OperationsService {
       events.push({
         id: `${row.id}:opened`,
         kind: 'alert_opened',
-        severity: this.incidentSeverityFromAlert(row.severity),
+        severity: incidentSeverityFromAlert(row.severity),
         title: row.title,
         detail: row.message,
         sourceType: row.sourceType,
@@ -3625,9 +3626,9 @@ export class OperationsService {
     return {
       id: `route-decision:${row.id}`,
       kind,
-      severity: this.routeDecisionTimelineSeverity(row, reasonCodes),
+      severity: routeDecisionTimelineSeverity(row, reasonCodes),
       title: kind === 'route_assignment' ? 'Route assignment applied' : 'Route decision recorded',
-      detail: this.describeRouteDecisionTimelineDetail(row, reasonCodes),
+      detail: describeRouteDecisionTimelineDetail(row, reasonCodes),
       sourceType: 'route_decision',
       sourceId: row.assignmentKey,
       sourceLabel: row.routeGroup,
@@ -3653,40 +3654,6 @@ export class OperationsService {
         applied: Boolean(row.appliedAt),
       },
     };
-  }
-
-  private incidentSeverityFromAlert(severity: string): AdminIncidentTimelineEvent['severity'] {
-    if (severity === 'critical') return 'critical';
-    if (severity === 'warning') return 'warning';
-
-    return 'info';
-  }
-
-  private routeDecisionTimelineSeverity(
-    row: RouteDecisionEventRow,
-    reasonCodes: string[],
-  ): AdminIncidentTimelineEvent['severity'] {
-    const changedRoute = Boolean(row.fromOutboundId && row.toOutboundId && row.fromOutboundId !== row.toOutboundId);
-    const healthConcern = reasonCodes.some((reason) =>
-      ['unhealthy', 'packetLoss', 'jitter', 'latency', 'critical', 'emergency'].some((fragment) =>
-        reason.toLowerCase().includes(fragment.toLowerCase()),
-      ),
-    );
-
-    return changedRoute || healthConcern || row.decisionState === 'switchRecommended' ? 'warning' : 'info';
-  }
-
-  private describeRouteDecisionTimelineDetail(row: RouteDecisionEventRow, reasonCodes: string[]): string {
-    const fromOutbound = row.fromOutboundName ?? row.fromOutboundId ?? 'none';
-    const toOutbound = row.toOutboundName ?? row.toOutboundId ?? null;
-    const routeChange = toOutbound && fromOutbound !== toOutbound ? `${fromOutbound} -> ${toOutbound}` : toOutbound;
-    const reasons = reasonCodes.slice(0, 3).join(', ');
-
-    if (routeChange && reasons) return `${routeChange} / ${reasons}`;
-    if (routeChange) return routeChange;
-    if (reasons) return reasons;
-
-    return row.decisionState;
   }
 
   private async getRouteDecisionEvent(id: string): Promise<AdminRouteDecisionEventSummary> {

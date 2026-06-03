@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.23 - 2026-06-03
+
+- Continued the OperationsService split: peeled the incident/route-decision timeline severity + detail mappers (`incidentSeverityFromAlert`, `routeDecisionTimelineSeverity`, `describeRouteDecisionTimelineDetail`) into `operations/timeline-severity.ts` (structural row type); rewrote 3 callsites. Added 10 tests; backend suite now 365 tests.
+
 ## 0.114.22 - 2026-06-03
 
 - Extracted the OperationsService request/query-input validators into `operations/request-normalizers.ts` (`normalizeLimitParam`, `normalizeRangeHoursParam`, `normalizeUuidParam`, `normalizeAlertStatusParam`, `normalizeSimpleTextParam`); the service's public methods now delegate, so all controller callers are unchanged. Added 10 tests covering bounds/defaults, UUID validation, and the simple-text/alert-status allowlists; backend suite now 355 tests.
