@@ -55,3 +55,6 @@ Thumbs.db
 *.sqlite
 *.db
 /backups/
+
+# Local VPS deployment brief (contains server IP/operational details; not for git)
+docs/vps-deployment-brief.md
