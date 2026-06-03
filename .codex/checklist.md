@@ -339,6 +339,7 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 
 ### Release / deployment validation
 
+- [ ] **Live VPS production deployment (operator has a VPS as of 2026-06-03).** Target OS: **Ubuntu 24.04 LTS** (native path per `infra/ubuntu/README.md` + `docs/enterprise-deployment-guide.md`: Node 22, PostgreSQL, Nginx). Sequence once the VPS IP/specs are provided: provision → base packages + `afrogate` service user → clone to `/opt/afrogate` + `npm ci` + build → least-privilege DB roles + migrations → `/etc/afrogate/afrogate.env` secrets → systemd unit + Nginx TLS site + UFW → run `scripts/drills/verify-install.sh`. This unblocks the install/backup/rotation drills below (they can now be executed for real).
 - [~] Ubuntu install drill runbook (`docs/release-readiness-runbooks.md` §1) + bundled self-verifier `scripts/drills/verify-install.sh` (health, security headers, loopback-only ports; `bash -n` clean); **execution needs a live host** (cannot be run in CI/by agent).
 - [~] Encrypted backup + restore drill runbook (`docs/release-readiness-runbooks.md` §2) + bundled `scripts/drills/backup-restore-drill.sh` (dump+encrypt → restore to scratch → row-count parity + encryption check; destructive to scratch only; `bash -n` clean); **execution needs a live host/DB**.
 - [~] Load/scale test prepared: k6 starter `scripts/loadtest/afrogate-smoke.js` + plan (`docs/release-readiness-runbooks.md` §3); **execution needs a deployed host + k6**.
