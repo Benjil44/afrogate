@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.25 - 2026-06-03
+
+- Continued the OperationsService split: consolidated the route-probe guards + aggregation (`isRecord`, `isRouteProbeMetric`, `getRouteProbes`, `summarizeRouteProbes`) into `operations/route-metrics.ts` (inlined `loadedLatencyDeltaFromProbe`; `isRecord` now shared, replacing 6 service callsites); rewrote 10 callsites and dropped the now-unused route-scoring import. Added 6 tests (untrusted-probe validation, MTU min/max, averaged latency/jitter/loss); backend suite now 371 tests.
+
 ## 0.114.24 - 2026-06-03
 
 - Made the load/scale test realistic: `scripts/loadtest/afrogate-smoke.js` now models the three real control-plane traffic classes (client subscription polls / agent heartbeats / admin reads) as weighted, token-gated, env-tunable (`PEAK_CLIENTS/PEAK_AGENTS/PEAK_ADMINS`) k6 scenarios with per-class thresholds. Expanded runbook §3 with the capacity model (this backend is the control plane, not the VPN data path — 10k users ≠ 10k requests here) and tuning levers (multi-process behind Nginx, `DATABASE_POOL_MAX`/PgBouncer, shared rate-limit store for multi-instance, hot-read caching). No app code change.

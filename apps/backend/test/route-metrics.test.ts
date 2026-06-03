@@ -11,7 +11,10 @@ import {
   defaultSpeedProfileForProtocol,
   extractEndpoint,
   extractLoadPercent,
+  getRouteProbes,
   isProtocolSpecificScoreProfile,
+  isRecord,
+  isRouteProbeMetric,
   mapWireGuardTelemetryStatus,
   maximumMetric,
   minimumMetric,
@@ -22,6 +25,7 @@ import {
   protocolsForScoreProfile,
   roundRouteScore,
   roundRouteScores,
+  summarizeRouteProbes,
 } from '../src/operations/route-metrics.ts';
 
 describe('averageMetric / minimumMetric / maximumMetric', () => {
@@ -215,5 +219,70 @@ describe('calculateWireGuardTelemetryScore', () => {
     assert.equal(calculateWireGuardTelemetryScore({ ...up, latestHandshakeAgeSeconds: null }, 100), 74);
     // weak server (score 40): 92 - (60-40)/2 = 92 - 10 = 82
     assert.equal(calculateWireGuardTelemetryScore(up, 40), 82);
+  });
+});
+
+describe('isRecord', () => {
+  it('accepts plain objects, rejects null/arrays/primitives', () => {
+    assert.equal(isRecord({ a: 1 }), true);
+    assert.equal(isRecord(null), false);
+    assert.equal(isRecord([1, 2]), false);
+    assert.equal(isRecord('x'), false);
+    assert.equal(isRecord(7), false);
+  });
+});
+
+describe('isRouteProbeMetric', () => {
+  it('requires protocol/target/status strings', () => {
+    assert.equal(isRouteProbeMetric({ protocol: 'tcp', target: 'h', status: 'ok' }), true);
+    assert.equal(isRouteProbeMetric({ protocol: 'tcp', target: 'h' }), false);
+    assert.equal(isRouteProbeMetric({ protocol: 1, target: 'h', status: 'ok' }), false);
+    assert.equal(isRouteProbeMetric(null), false);
+  });
+});
+
+describe('getRouteProbes', () => {
+  it('returns [] for missing/invalid input and filters out malformed probes', () => {
+    assert.deepEqual(getRouteProbes(null), []);
+    assert.deepEqual(getRouteProbes({}), []);
+    const raw = {
+      routeProbes: [
+        { protocol: 'tcp', target: 'h', status: 'ok' },
+        { protocol: 'bad' }, // dropped
+        'nope', // dropped
+      ],
+    } as never;
+    assert.equal(getRouteProbes(raw).length, 1);
+  });
+});
+
+describe('summarizeRouteProbes', () => {
+  it('averages latency/jitter/loss and derives MTU min/max', () => {
+    const probes = [
+      { protocol: 'tcp', target: 'h', status: 'ok', latencyMs: 10, jitterMs: 2, packetLossPercent: 0 },
+      { protocol: 'tcp', target: 'h', status: 'ok', latencyMs: 30, jitterMs: 4, packetLossPercent: 1 },
+      { protocol: 'mtu', target: 'h', status: 'ok', pathMtuBytes: 1400, recommendedTunnelMtuBytes: 1320, configuredMtuBytes: 1380 },
+      { protocol: 'mtu', target: 'h', status: 'ok', pathMtuBytes: 1380, recommendedTunnelMtuBytes: 1300, configuredMtuBytes: 1420 },
+    ] as never;
+    const s = summarizeRouteProbes(probes);
+    assert.equal(s.latencyMs, 20);
+    assert.equal(s.jitterMs, 3);
+    assert.equal(s.packetLossPercent, 0.5);
+    assert.equal(s.pathMtuBytes, 1380); // min
+    assert.equal(s.recommendedTunnelMtuBytes, 1300); // min
+    assert.equal(s.configuredMtuBytes, 1420); // max
+  });
+
+  it('derives loadedLatencyDelta from loadedLatency - latency when no explicit delta', () => {
+    const probes = [
+      { protocol: 'tcp', target: 'h', status: 'ok', latencyMs: 20, loadedLatencyMs: 120 },
+    ] as never;
+    assert.equal(summarizeRouteProbes(probes).loadedLatencyDeltaMs, 100);
+  });
+
+  it('returns nulls for an empty probe set', () => {
+    const s = summarizeRouteProbes([]);
+    assert.equal(s.latencyMs, null);
+    assert.equal(s.pathMtuBytes, null);
   });
 });

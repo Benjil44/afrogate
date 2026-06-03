@@ -78,8 +78,8 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
-import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, loadedLatencyDeltaFromProbe, roundMetric, thresholdPenalty } from './route-scoring';
-import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, isProtocolSpecificScoreProfile, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores } from './route-metrics';
+import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, roundMetric, thresholdPenalty } from './route-scoring';
+import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, getRouteProbes, isProtocolSpecificScoreProfile, isRecord, isRouteProbeMetric, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores, summarizeRouteProbes } from './route-metrics';
 import { isBestRouteQualityWindow, isDegradedRouteQualityWindow, minimumRouteAnalyticsSamples, nextRouteQualityWindowStart, routeQualityConfidence, routeQualityPredictionLookaheadHours } from './route-quality';
 import { assessRouteBufferbloat, routeBufferbloatRecommendation, routeBufferbloatSeverity, type RouteBufferbloatAssessment } from './route-bufferbloat';
 import { normalizeAlertStatusParam, normalizeLimitParam, normalizeRangeHoursParam, normalizeSimpleTextParam, normalizeUuidParam } from './request-normalizers';
@@ -5171,8 +5171,8 @@ export class OperationsService {
     routeGroup: string,
     settings: RouteScoringContext,
   ): AdminWireGuardCandidate {
-    const routeProbes = this.getRouteProbes(row.metricRaw);
-    const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
+    const routeProbes = getRouteProbes(row.metricRaw);
+    const routeProbeSummary = summarizeRouteProbes(routeProbes);
     const baseScore = calculateWireGuardTelemetryScore(item, row.healthScore);
     const bufferbloat = assessRouteBufferbloat({
       latencyMs: routeProbeSummary.latencyMs,
@@ -5242,8 +5242,8 @@ export class OperationsService {
   private mapWireGuardCandidate(row: WireGuardCandidateRow, settings: RouteScoringContext): AdminWireGuardCandidate {
     const config = this.asRecord(row.config);
     const loadPercent = extractLoadPercent(config, row.weight);
-    const routeProbes = this.getRouteProbes(row.serverMetricRaw);
-    const routeProbeSummary = this.summarizeRouteProbes(routeProbes);
+    const routeProbes = getRouteProbes(row.serverMetricRaw);
+    const routeProbeSummary = summarizeRouteProbes(routeProbes);
     const configuredMtuBytes =
       numberFromConfig(config.mtu) ??
       numberFromConfig(config.mtuBytes) ??
@@ -7139,7 +7139,7 @@ export class OperationsService {
     configuredMtuBytes?: number | null;
   }): RouteMtuAssessment {
     const mtuProbes = input.routeProbes.filter((probe) => String(probe.protocol).toLowerCase() === 'mtu');
-    const summary = this.summarizeRouteProbes(mtuProbes);
+    const summary = summarizeRouteProbes(mtuProbes);
     const configuredMtuBytes = roundMetric(input.configuredMtuBytes ?? summary.configuredMtuBytes, 0);
     const pathMtuBytes = summary.pathMtuBytes;
     const recommendedTunnelMtuBytes = summary.recommendedTunnelMtuBytes ?? (
@@ -7363,46 +7363,6 @@ export class OperationsService {
     return baseScore * (1 - probeWeight) + probeScore * probeWeight;
   }
 
-  private summarizeRouteProbes(routeProbes: RouteProbeMetric[]): {
-    latencyMs: number | null;
-    jitterMs: number | null;
-    packetLossPercent: number | null;
-    loadedLatencyMs: number | null;
-    loadedLatencyDeltaMs: number | null;
-    pathMtuBytes: number | null;
-    recommendedTunnelMtuBytes: number | null;
-    configuredMtuBytes: number | null;
-  } {
-    const mtuProbes = routeProbes.filter((probe) => String(probe.protocol).toLowerCase() === 'mtu');
-
-    return {
-      latencyMs: averageMetric(routeProbes.map((probe) => probe.latencyMs)),
-      jitterMs: averageMetric(routeProbes.map((probe) => probe.jitterMs)),
-      packetLossPercent: averageMetric(routeProbes.map((probe) => probe.packetLossPercent)),
-      loadedLatencyMs: averageMetric(routeProbes.map((probe) => probe.loadedLatencyMs)),
-      loadedLatencyDeltaMs: averageMetric(routeProbes.map((probe) => loadedLatencyDeltaFromProbe(probe))),
-      pathMtuBytes: minimumMetric(mtuProbes.map((probe) => probe.pathMtuBytes)),
-      recommendedTunnelMtuBytes: minimumMetric(mtuProbes.map((probe) => probe.recommendedTunnelMtuBytes)),
-      configuredMtuBytes: maximumMetric(mtuProbes.map((probe) => probe.configuredMtuBytes)),
-    };
-  }
-
-  private getRouteProbes(raw: Partial<ServerMetricSnapshot> | null | undefined): RouteProbeMetric[] {
-    if (!Array.isArray(raw?.routeProbes)) return [];
-
-    return raw.routeProbes.filter((probe): probe is RouteProbeMetric => this.isRouteProbeMetric(probe));
-  }
-
-  private isRouteProbeMetric(value: unknown): value is RouteProbeMetric {
-    if (!this.isRecord(value)) return false;
-
-    return (
-      typeof value.protocol === 'string' &&
-      typeof value.target === 'string' &&
-      typeof value.status === 'string'
-    );
-  }
-
   private buildRouteScoreReasons(signals: RouteScoreSignals, selectedProfile: RouteScoreProfile): RouteScoreReason[] {
     const reasons: RouteScoreReason[] = [];
     const pushReason = (
@@ -7497,7 +7457,7 @@ export class OperationsService {
   }
 
   private isWireGuardInterfaceMetric(value: unknown): value is WireGuardInterfaceMetric {
-    if (!this.isRecord(value)) return false;
+    if (!isRecord(value)) return false;
 
     return (
       typeof value.name === 'string' &&
@@ -9656,7 +9616,7 @@ export class OperationsService {
       return value.flatMap((item, index) => this.collectSensitiveConfigPaths(item, `${path}[${index}]`));
     }
 
-    if (!this.isRecord(value)) return [];
+    if (!isRecord(value)) return [];
 
     const paths: string[] = [];
 
@@ -9687,18 +9647,18 @@ export class OperationsService {
       }
 
       if (Array.isArray(value)) {
-        redacted[key] = value.map((item) => (this.isRecord(item) ? this.redactConfig(item) : item));
+        redacted[key] = value.map((item) => (isRecord(item) ? this.redactConfig(item) : item));
         continue;
       }
 
-      redacted[key] = this.isRecord(value) ? this.redactConfig(value) : value;
+      redacted[key] = isRecord(value) ? this.redactConfig(value) : value;
     }
 
     return redacted;
   }
 
   private asRecord(value: unknown): Record<string, unknown> {
-    return this.isRecord(value) ? value : {};
+    return isRecord(value) ? value : {};
   }
 
   private stringOrFallback(value: unknown, fallback: string): string {
@@ -9727,10 +9687,6 @@ export class OperationsService {
     const numericValue = Number(value);
 
     return Number.isFinite(numericValue) ? numericValue : null;
-  }
-
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private throwConflictIfUniqueViolation(error: unknown, message: string): void {

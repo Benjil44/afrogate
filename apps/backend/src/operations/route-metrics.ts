@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { RouteProfileScores, RouteScoreProfile } from '@afrogate/shared';
+import type { RouteProfileScores, RouteProbeMetric, RouteScoreProfile, ServerMetricSnapshot } from '@afrogate/shared';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -232,4 +232,63 @@ export function calculateWireGuardTelemetryScore(
     typeof serverHealthScore === 'number' && serverHealthScore < 60 ? (60 - serverHealthScore) / 2 : 0;
 
   return Math.round(clamp(baseScore - inactivePeerPenalty - handshakePenalty - serverPenalty, 0, 100));
+}
+
+/** Narrows an unknown value to a plain object record (rejects null/arrays/primitives). */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function loadedLatencyDeltaFromProbe(probe: RouteProbeMetric): number | null {
+  if (typeof probe.loadedLatencyDeltaMs === 'number' && Number.isFinite(probe.loadedLatencyDeltaMs)) {
+    return probe.loadedLatencyDeltaMs;
+  }
+  if (
+    typeof probe.loadedLatencyMs === 'number' &&
+    Number.isFinite(probe.loadedLatencyMs) &&
+    typeof probe.latencyMs === 'number' &&
+    Number.isFinite(probe.latencyMs)
+  ) {
+    return probe.loadedLatencyMs - probe.latencyMs;
+  }
+  return null;
+}
+
+/** Validates an untrusted value as a RouteProbeMetric (protocol/target/status strings). */
+export function isRouteProbeMetric(value: unknown): value is RouteProbeMetric {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.protocol === 'string' && typeof value.target === 'string' && typeof value.status === 'string'
+  );
+}
+
+/** Extracts the valid route probes from a (possibly untrusted) metric snapshot. */
+export function getRouteProbes(raw: Partial<ServerMetricSnapshot> | null | undefined): RouteProbeMetric[] {
+  if (!Array.isArray(raw?.routeProbes)) return [];
+  return raw.routeProbes.filter((probe): probe is RouteProbeMetric => isRouteProbeMetric(probe));
+}
+
+/** Aggregates a set of route probes into averaged latency/jitter/loss + MTU summary fields. */
+export function summarizeRouteProbes(routeProbes: RouteProbeMetric[]): {
+  latencyMs: number | null;
+  jitterMs: number | null;
+  packetLossPercent: number | null;
+  loadedLatencyMs: number | null;
+  loadedLatencyDeltaMs: number | null;
+  pathMtuBytes: number | null;
+  recommendedTunnelMtuBytes: number | null;
+  configuredMtuBytes: number | null;
+} {
+  const mtuProbes = routeProbes.filter((probe) => String(probe.protocol).toLowerCase() === 'mtu');
+
+  return {
+    latencyMs: averageMetric(routeProbes.map((probe) => probe.latencyMs)),
+    jitterMs: averageMetric(routeProbes.map((probe) => probe.jitterMs)),
+    packetLossPercent: averageMetric(routeProbes.map((probe) => probe.packetLossPercent)),
+    loadedLatencyMs: averageMetric(routeProbes.map((probe) => probe.loadedLatencyMs)),
+    loadedLatencyDeltaMs: averageMetric(routeProbes.map((probe) => loadedLatencyDeltaFromProbe(probe))),
+    pathMtuBytes: minimumMetric(mtuProbes.map((probe) => probe.pathMtuBytes)),
+    recommendedTunnelMtuBytes: minimumMetric(mtuProbes.map((probe) => probe.recommendedTunnelMtuBytes)),
+    configuredMtuBytes: maximumMetric(mtuProbes.map((probe) => probe.configuredMtuBytes)),
+  };
 }

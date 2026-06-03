@@ -1,6 +1,6 @@
 {
   "name": "@afrogate/shared",
-  "version": "0.114.24",
+  "version": "0.114.25",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
