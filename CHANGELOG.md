@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.24 - 2026-06-03
+
+- Made the load/scale test realistic: `scripts/loadtest/afrogate-smoke.js` now models the three real control-plane traffic classes (client subscription polls / agent heartbeats / admin reads) as weighted, token-gated, env-tunable (`PEAK_CLIENTS/PEAK_AGENTS/PEAK_ADMINS`) k6 scenarios with per-class thresholds. Expanded runbook §3 with the capacity model (this backend is the control plane, not the VPN data path — 10k users ≠ 10k requests here) and tuning levers (multi-process behind Nginx, `DATABASE_POOL_MAX`/PgBouncer, shared rate-limit store for multi-instance, hot-read caching). No app code change.
+
 ## 0.114.23 - 2026-06-03
 
 - Continued the OperationsService split: peeled the incident/route-decision timeline severity + detail mappers (`incidentSeverityFromAlert`, `routeDecisionTimelineSeverity`, `describeRouteDecisionTimelineDetail`) into `operations/timeline-severity.ts` (structural row type); rewrote 3 callsites. Added 10 tests; backend suite now 365 tests.

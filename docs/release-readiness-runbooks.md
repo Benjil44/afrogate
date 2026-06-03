@@ -62,17 +62,41 @@ Exit criteria: `backup-restore-drill.sh` exits 0 and the restored DB serves the 
 ## 3. Load / scale test toward 10,000 users  [needs live environment]
 
 Goal: confirm the control plane holds under target load (≈150 now → 10k future).
-A starter [k6](https://k6.io) script lives at `scripts/loadtest/afrogate-smoke.js`.
+
+**Capacity model — read this first.** This backend is the *control plane*, not the
+data path. VPN client traffic flows through the WireGuard/data-plane servers, so
+10,000 users does **not** mean 10,000 concurrent requests here. The three real
+traffic classes are: client subscription/quota polls (the 10k-user driver, but
+low frequency per client), agent heartbeats (one per managed server), and admin
+dashboard reads (a few operators). The [k6](https://k6.io) script
+`scripts/loadtest/afrogate-smoke.js` models all three as weighted scenarios:
 
 ```
-BASE_URL=https://<host> SESSION_TOKEN=<token> k6 run scripts/loadtest/afrogate-smoke.js
+BASE_URL=https://<host> \
+CLIENT_TOKEN=<client bearer> AGENT_TOKEN=<agent bearer> SESSION_TOKEN=<admin bearer> \
+PEAK_CLIENTS=500 PEAK_AGENTS=50 PEAK_ADMINS=10 \
+  k6 run scripts/loadtest/afrogate-smoke.js
 ```
 
-Watch: p95 latency on `/api/admin/*` reads, error rate, DB connections, CPU/RAM on
-the 4-core/4 GB baseline. Scale virtual users from 50 → 500 → target.
+Each class is skipped if its token is omitted. Scale `PEAK_*` toward the target.
+
+Watch: p95 latency per class, error rate, DB pool wait/exhaustion, CPU/RAM on the
+4-core/4 GB baseline.
+
+**Tuning levers (apply as load testing reveals limits):**
+- **Run multiple backend processes** behind Nginx — Node is single-threaded, so one
+  process uses one core. On a 4-core box run ~3–4 instances (systemd templated unit
+  or a process manager) load-balanced by Nginx. This is the biggest single lever.
+- **`DATABASE_POOL_MAX`** — default 5 per process; raise to ~10–20 under load, but keep
+  `pool_max × processes < PostgreSQL max_connections`. For many processes, front
+  PostgreSQL with **PgBouncer** (transaction pooling).
+- **Multi-instance state** — rate limiting and any in-memory cache are per-process.
+  Single host with Nginx sticky routing is fine; true horizontal scale-out needs a
+  shared store (e.g. Redis) for rate limits.
+- **Hot read caching** — add a short TTL on subscription/quota reads if they dominate.
 
 Exit criteria: p95 < 500 ms and error rate < 0.5 % at the intended concurrency,
-with DB pool not exhausted.
+with the DB pool not exhausted.
 
 ---
 
