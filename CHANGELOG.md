@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.22 - 2026-06-03
+
+- Extracted the OperationsService request/query-input validators into `operations/request-normalizers.ts` (`normalizeLimitParam`, `normalizeRangeHoursParam`, `normalizeUuidParam`, `normalizeAlertStatusParam`, `normalizeSimpleTextParam`); the service's public methods now delegate, so all controller callers are unchanged. Added 10 tests covering bounds/defaults, UUID validation, and the simple-text/alert-status allowlists; backend suite now 355 tests.
+
 ## 0.114.21 - 2026-06-03
 
 - Continued the OperationsService split: peeled the bufferbloat assessment cluster (`assessRouteBufferbloat`, `routeBufferbloatSeverity`, `routeBufferbloatRecommendation`) and its `RouteBufferbloatAssessment` type into `operations/route-bufferbloat.ts` (local `roundMetric` to stay self-contained); rewrote 4 callsites. Added 7 tests covering delta-based vs load-based severity tiers, the unknown case, and delta derivation/rounding; backend suite now 345 tests.

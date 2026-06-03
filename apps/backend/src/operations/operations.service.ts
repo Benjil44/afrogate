@@ -82,6 +82,7 @@ import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSinglePro
 import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, isProtocolSpecificScoreProfile, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores } from './route-metrics';
 import { isBestRouteQualityWindow, isDegradedRouteQualityWindow, minimumRouteAnalyticsSamples, nextRouteQualityWindowStart, routeQualityConfidence, routeQualityPredictionLookaheadHours } from './route-quality';
 import { assessRouteBufferbloat, routeBufferbloatRecommendation, routeBufferbloatSeverity, type RouteBufferbloatAssessment } from './route-bufferbloat';
+import { normalizeAlertStatusParam, normalizeLimitParam, normalizeRangeHoursParam, normalizeSimpleTextParam, normalizeUuidParam } from './request-normalizers';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
@@ -4426,63 +4427,27 @@ export class OperationsService {
   }
 
   normalizeLimit(input: string | undefined, fallback: number, max: number): number {
-    if (!input) return fallback;
-
-    const value = Number(input);
-    if (!Number.isInteger(value) || value < 1) {
-      throw new BadRequestException('Limit must be a positive integer');
-    }
-
-    return Math.min(value, max);
+    return normalizeLimitParam(input, fallback, max);
   }
 
   normalizeRouteAnalyticsRangeHours(input: string | undefined): number {
-    if (!input) return 168;
-
-    const value = Number(input);
-    if (!Number.isInteger(value) || value < 1) {
-      throw new BadRequestException('rangeHours must be a positive integer');
-    }
-
-    return Math.min(value, 2160);
+    return normalizeRangeHoursParam(input, 168, 2160);
   }
 
   normalizeIncidentTimelineRangeHours(input: string | undefined): number {
-    if (!input) return 24;
-
-    const value = Number(input);
-    if (!Number.isInteger(value) || value < 1) {
-      throw new BadRequestException('rangeHours must be a positive integer');
-    }
-
-    return Math.min(value, 2160);
+    return normalizeRangeHoursParam(input, 24, 2160);
   }
 
   normalizeUuidQuery(input: string | undefined, name: string): string | undefined {
-    if (!input) return undefined;
-
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input)) {
-      throw new BadRequestException(`${name} must be a UUID`);
-    }
-
-    return input;
+    return normalizeUuidParam(input, name);
   }
 
   private normalizeAlertStatus(input: string | undefined): string | undefined {
-    if (!input) return 'open';
-    if (input === 'open' || input === 'resolved') return input;
-
-    throw new BadRequestException('status must be open or resolved');
+    return normalizeAlertStatusParam(input);
   }
 
   private normalizeSimpleText(input: string | undefined, name: string): string | undefined {
-    if (!input) return undefined;
-
-    if (!/^[a-z][a-z0-9_-]{0,31}$/i.test(input)) {
-      throw new BadRequestException(`${name} must be a simple text filter`);
-    }
-
-    return input;
+    return normalizeSimpleTextParam(input, name);
   }
 
   private serverInventorySql(): string {
