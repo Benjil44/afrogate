@@ -1,7 +1,7 @@
 [project]
-name = "afrogate-agent"
+name = "afrows-agent"
 version = "0.1.0"
-description = "Lightweight AfroGate server monitoring agent."
+description = "Lightweight Afrows server monitoring agent."
 requires-python = ">=3.11"
 dependencies = []
 

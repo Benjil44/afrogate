@@ -1,4 +1,4 @@
-# AfroGate Native Client References
+# Afrows Native Client References
 
 This folder holds platform-specific implementation references for features that cannot be enforced by the React web client.
 

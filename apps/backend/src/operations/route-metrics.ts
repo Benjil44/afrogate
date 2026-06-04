@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { RouteProfileScores, RouteProbeMetric, RouteScoreProfile, ServerMetricSnapshot } from '@afrogate/shared';
+import type { RouteProfileScores, RouteProbeMetric, RouteScoreProfile, ServerMetricSnapshot } from '@afrows/shared';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);

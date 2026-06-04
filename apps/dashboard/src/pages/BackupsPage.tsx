@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Archive, ShieldCheck } from 'lucide-react';
-import type { AdminBackupRestoreCheckSummary, AdminBackupRestorePlanStepSummary, AdminBackupRestorePlanSummary, AdminBackupStatusSummary } from '@afrogate/shared';
+import type { AdminBackupRestoreCheckSummary, AdminBackupRestorePlanStepSummary, AdminBackupRestorePlanSummary, AdminBackupStatusSummary } from '@afrows/shared';
 import { fetchAdminBackupRestorePlan, fetchAdminBackupStatus } from '../api/admin';
 import { BackupMetricCard, DashboardTabs, DetailRow, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
 import type { BackupsTab, DashboardTabItem, DataState } from '../dashboard-types';
@@ -321,4 +321,4 @@ function BackupRestorePlanStepRow({ step, t }: { step: AdminBackupRestorePlanSte
       </StatusBadge>
     </div>
   );
-}
+}

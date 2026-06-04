@@ -1,11 +1,11 @@
 param(
-  [string]$PostgresPassword = "afrogate",
-  [string]$DatabaseName = "afrogate",
-  [string]$DatabaseOwner = "afrogate_owner",
-  [string]$DatabaseMigrator = "afrogate_migrator",
-  [string]$DatabaseMigratorPassword = "afrogate_migrator",
-  [string]$DatabaseUser = "afrogate_app",
-  [string]$DatabasePassword = "afrogate",
+  [string]$PostgresPassword = "afrows",
+  [string]$DatabaseName = "afrows",
+  [string]$DatabaseOwner = "afrows_owner",
+  [string]$DatabaseMigrator = "afrows_migrator",
+  [string]$DatabaseMigratorPassword = "afrows_migrator",
+  [string]$DatabaseUser = "afrows_app",
+  [string]$DatabasePassword = "afrows",
   [int]$Port = 5432,
   [switch]$SkipInstall,
   [switch]$WriteEnv
@@ -201,19 +201,19 @@ DATABASE_CONNECTION_TIMEOUT_MS=5000
 DATABASE_IDLE_TIMEOUT_MS=30000
 DATABASE_SSL=false
 DATABASE_SSL_REJECT_UNAUTHORIZED=true
-AFROGATE_AGENT_TOKEN=local-direct-agent-token
-AFROGATE_SUPERADMIN_USERNAME=superadmin
-AFROGATE_SUPERADMIN_PASSWORD=local-superadmin-pass-2026!
+AFROWS_AGENT_TOKEN=local-direct-agent-token
+AFROWS_SUPERADMIN_USERNAME=superadmin
+AFROWS_SUPERADMIN_PASSWORD=local-superadmin-pass-2026!
 ADMIN_SESSION_SECRET=local-direct-dev-session-secret-not-for-production
 ADMIN_SESSION_TTL_SECONDS=28800
-AFROGATE_ADMIN_USERS_FILE=tmp/admin-users.json
-AFROGATE_ADMIN_TOKEN=local-direct-admin-token
-AFROGATE_OUTBOUND_PROXY_URL=
+AFROWS_ADMIN_USERS_FILE=tmp/admin-users.json
+AFROWS_ADMIN_TOKEN=local-direct-admin-token
+AFROWS_OUTBOUND_PROXY_URL=
 VITE_API_BASE_URL=http://127.0.0.1:7000/api
-AFROGATE_AGENT_ID=local-dev-agent
-AFROGATE_API_URL=http://127.0.0.1:7000/api
-AFROGATE_PUSH_INTERVAL_SECONDS=10
-AFROGATE_AGENT_STATE_FILE=
+AFROWS_AGENT_ID=local-dev-agent
+AFROWS_API_URL=http://127.0.0.1:7000/api
+AFROWS_PUSH_INTERVAL_SECONDS=10
+AFROWS_AGENT_STATE_FILE=
 "@ | Set-Content -Path $envPath -Encoding UTF8
   }
 }
@@ -224,7 +224,7 @@ $env:DATABASE_URL = $databaseUrl
 $env:DATABASE_MIGRATION_URL = $migrationDatabaseUrl
 
 try {
-  npm --workspace @afrogate/backend run db:migrate
+  npm --workspace @afrows/backend run db:migrate
 } finally {
   if ($null -eq $previousDatabaseUrl) {
     Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue

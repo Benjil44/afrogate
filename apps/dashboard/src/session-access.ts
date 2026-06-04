@@ -1,4 +1,4 @@
-import type { AdminSessionResponse, Role } from '@afrogate/shared';
+import type { AdminSessionResponse, Role } from '@afrows/shared';
 
 export const managedAdminRoles: Role[] = ['owner', 'admin', 'supervisor', 'support', 'auditor', 'reseller'];
 

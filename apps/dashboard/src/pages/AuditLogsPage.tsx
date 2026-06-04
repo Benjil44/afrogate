@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { AdminAuditLogSummary } from '@afrogate/shared';
+import type { AdminAuditLogSummary } from '@afrows/shared';
 import { fetchAdminAuditLogs } from '../api/admin';
 import { DataTable, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
 import type { DataState, DataTableColumn } from '../dashboard-types';
@@ -196,4 +196,4 @@ function formatAuditMetadata(metadata: Record<string, unknown>, emptyLabel: stri
   if (serialized.length <= 240) return serialized;
 
   return `${serialized.slice(0, 240)}...`;
-}
+}

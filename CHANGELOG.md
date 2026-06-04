@@ -2,12 +2,12 @@
 
 ## 0.114.27 - 2026-06-04
 
-- Added automatic in-place version refresh so open dashboards pick up a new deploy without a manual page reload. The backend `/api/health` now reports the running monorepo `version` (resolved once at module load by walking up to the root `afrogate` package.json). A new `VersionWatcher` component polls `/api/health` every 30s, and when the deployed version differs from the bundle it was built with, it shows a bottom banner (EN/FA) and auto-reloads after 4s — guarded by a `sessionStorage` key to prevent reload loops while versions converge.
+- Added automatic in-place version refresh so open dashboards pick up a new deploy without a manual page reload. The backend `/api/health` now reports the running monorepo `version` (resolved once at module load by walking up to the root `afrows` package.json). A new `VersionWatcher` component polls `/api/health` every 30s, and when the deployed version differs from the bundle it was built with, it shows a bottom banner (EN/FA) and auto-reloads after 4s — guarded by a `sessionStorage` key to prevent reload loops while versions converge.
 
 ## 0.114.26 - 2026-06-04
 
 - Made the dashboard show honest data instead of baked-in demo values. The demo `fallbackServers`/`tunnels`/`outbounds`, sample failover rows, and chart fallback now render only under `import.meta.env.DEV`, so production builds display real API data — and the true empty state when nothing has reported in — instead of phantom "connected" servers. Replaced the hardcoded `150` active-users figure (in both the summary and capacity panel) with a real `countActiveUsers()` derived from connected WireGuard peer counts (`0` when no servers report).
-- Added a dependency-free dev orchestrator: root `npm run dev` (`scripts/dev-all.mjs`) builds `@afrogate/shared` once then runs its `tsc --watch` plus the backend/dashboard/client dev servers together with labeled output and clean shutdown; added a `dev` watch script to `@afrogate/shared` so cross-package edits propagate live.
+- Added a dependency-free dev orchestrator: root `npm run dev` (`scripts/dev-all.mjs`) builds `@afrows/shared` once then runs its `tsc --watch` plus the backend/dashboard/client dev servers together with labeled output and clean shutdown; added a `dev` watch script to `@afrows/shared` so cross-package edits propagate live.
 
 ## 0.114.25 - 2026-06-03
 
@@ -15,7 +15,7 @@
 
 ## 0.114.24 - 2026-06-03
 
-- Made the load/scale test realistic: `scripts/loadtest/afrogate-smoke.js` now models the three real control-plane traffic classes (client subscription polls / agent heartbeats / admin reads) as weighted, token-gated, env-tunable (`PEAK_CLIENTS/PEAK_AGENTS/PEAK_ADMINS`) k6 scenarios with per-class thresholds. Expanded runbook §3 with the capacity model (this backend is the control plane, not the VPN data path — 10k users ≠ 10k requests here) and tuning levers (multi-process behind Nginx, `DATABASE_POOL_MAX`/PgBouncer, shared rate-limit store for multi-instance, hot-read caching). No app code change.
+- Made the load/scale test realistic: `scripts/loadtest/afrows-smoke.js` now models the three real control-plane traffic classes (client subscription polls / agent heartbeats / admin reads) as weighted, token-gated, env-tunable (`PEAK_CLIENTS/PEAK_AGENTS/PEAK_ADMINS`) k6 scenarios with per-class thresholds. Expanded runbook §3 with the capacity model (this backend is the control plane, not the VPN data path — 10k users ≠ 10k requests here) and tuning levers (multi-process behind Nginx, `DATABASE_POOL_MAX`/PgBouncer, shared rate-limit store for multi-instance, hot-read caching). No app code change.
 
 ## 0.114.23 - 2026-06-03
 
@@ -168,7 +168,7 @@
 ## 0.111.0 - 2026-05-30
 
 - Added wallet-gated reseller package sales from the representative workspace.
-- Reseller sales now create or renew owned customers, credit package quota, record a paid `reseller_wallet` order/allocation, and atomically debit AfroGate's share from the reseller wallet.
+- Reseller sales now create or renew owned customers, credit package quota, record a paid `reseller_wallet` order/allocation, and atomically debit Afrows's share from the reseller wallet.
 - Added a Billing-page sale panel and Playwright coverage for reseller package sales.
 
 ## 0.110.0 - 2026-05-30
@@ -274,13 +274,13 @@
 
 ## 0.98.0 - 2026-05-29
 
-- Added guarded `POST /api/admin/current-panels/charge-volume` for audited local AfroGate quota top-ups from the current-panel migration workflow.
+- Added guarded `POST /api/admin/current-panels/charge-volume` for audited local Afrows quota top-ups from the current-panel migration workflow.
 - Added the `quota_charge_events` ledger with optional idempotency, non-secret metadata, account quota deltas, selected-client quota change metadata, and explicit external-panel write status.
 - Added Billing page controls to charge selected-customer GB locally with bilingual labels while keeping live external-panel quota writes disabled and explicit.
 
 ## 0.97.0 - 2026-05-29
 
-- Added guarded `GET /api/admin/customer-accounts/:id/client-configs/export` for sanitized account-scoped AfroGate client config export.
+- Added guarded `GET /api/admin/customer-accounts/:id/client-configs/export` for sanitized account-scoped Afrows client config export.
 - Added Billing page controls to export selected-customer configs as read-only JSON and show exported counts with bilingual labels.
 - Kept export secret-safe: no subscription credentials, secret-bearing config material, raw panel payloads, paid numbers, client tokens, or external-panel API calls.
 
@@ -292,7 +292,7 @@
 
 ## 0.95.0 - 2026-05-29
 
-- Added guarded `POST /api/admin/current-panels/import-configs` to import sanitized, non-duplicate current-panel candidates into AfroGate client configs.
+- Added guarded `POST /api/admin/current-panels/import-configs` to import sanitized, non-duplicate current-panel candidates into Afrows client configs.
 - Recorded panel-reported used bytes as idempotent `panel_sync` baseline usage events so imported account/client counters stay ledger-backed.
 - Added Billing page controls to select a customer, import previewed configs, show import results, and keep the flow bilingual and raw-payload-free.
 
@@ -377,7 +377,7 @@
 
 ## 0.81.1 - 2026-05-29
 
-- Added repository-scoped security and privacy threat models for AfroGate's backend, dashboard, client app, agent, provider integrations, and route/data-plane boundaries.
+- Added repository-scoped security and privacy threat models for Afrows's backend, dashboard, client app, agent, provider integrations, and route/data-plane boundaries.
 - Documented privacy invariants around no traffic-content storage, no user destination history, write-only paid-number handling, and client/admin API separation.
 - Linked the threat models from the security policy and repository structure docs for future implementation review.
 
@@ -427,7 +427,7 @@
 
 - Added a PayPal provider adapter for hosted checkout creation, approved-order capture, and verified webhooks.
 - Added guarded admin PayPal checkout/capture APIs plus a public webhook endpoint that verifies PayPal signature headers before payment state changes.
-- Kept PayPal credentials in `AFROGATE_PAYPAL_*` deployment settings and routed PayPal API calls through the shared outbound HTTP client.
+- Kept PayPal credentials in `AFROWS_PAYPAL_*` deployment settings and routed PayPal API calls through the shared outbound HTTP client.
 
 ## 0.73.0 - 2026-05-28
 
@@ -437,7 +437,7 @@
 
 ## 0.72.0 - 2026-05-28
 
-- Added the separate `@afrogate/client` mobile-first VPN client app on local port `4100`.
+- Added the separate `@afrows/client` mobile-first VPN client app on local port `4100`.
 - Added client token login, remaining-volume display, route mode controls, country/server selection, and score profile selection.
 - Kept client app labels bilingual and separate from the admin dashboard UX.
 
@@ -475,7 +475,7 @@
 
 - Added the customer-account and client-config PostgreSQL foundation for Phase 2 billing.
 - Added guarded admin APIs to manage customer accounts, multi-client configs, shared GB quota, and optional per-client caps.
-- Added write-only paid-number HMAC storage with deployment guidance for `AFROGATE_IDENTITY_HASH_KEY`.
+- Added write-only paid-number HMAC storage with deployment guidance for `AFROWS_IDENTITY_HASH_KEY`.
 
 ## 0.65.0 - 2026-05-28
 
@@ -722,7 +722,7 @@
 ## 0.34.0 - 2026-05-26
 
 - Added route apply adapter readiness metadata to decision preview apply plans for the future WireGuard policy-routing adapter.
-- Added disabled-by-default `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false` configuration and surfaced the feature-flag state in Settings.
+- Added disabled-by-default `AFROWS_ROUTE_DATA_PLANE_APPLY_ENABLED=false` configuration and surfaced the feature-flag state in Settings.
 - Kept the adapter implementation marked missing and `dataPlaneReady = false` until a real audited server-side apply adapter exists.
 
 ## 0.33.0 - 2026-05-26
@@ -803,7 +803,7 @@
 
 ## 0.21.0 - 2026-05-25
 
-- Added opt-in Python agent ping/jitter/packet-loss probes driven by configured synthetic targets in `AFROGATE_PING_TARGETS`.
+- Added opt-in Python agent ping/jitter/packet-loss probes driven by configured synthetic targets in `AFROWS_PING_TARGETS`.
 - Kept route-quality probing privacy-safe: empty target configuration sends null route-quality metrics and never probes user destinations.
 - Wired the probe values through the existing metrics ingest, health scoring, alert engine thresholds, and dashboard route-quality displays.
 
@@ -864,7 +864,7 @@
 
 ## 0.12.0 - 2026-05-24
 
-- Added a shared backend outbound HTTP client for Telegram/API calls, including optional localhost HTTP proxy routing through `AFROGATE_OUTBOUND_PROXY_URL`.
+- Added a shared backend outbound HTTP client for Telegram/API calls, including optional localhost HTTP proxy routing through `AFROWS_OUTBOUND_PROXY_URL`.
 - Added disabled-by-default Telegram critical-alert delivery for open critical backend alerts when bot token and alert chat environment values are configured.
 - Added best-effort audit rows for Telegram alert send/failure outcomes without committing or exposing Telegram secrets.
 
@@ -896,8 +896,8 @@
 
 ## 0.9.2 - 2026-05-24
 
-- Added a Windows local PostgreSQL setup script that creates the `afrogate` role/database and runs migrations.
-- Documented why development should use PostgreSQL instead of SQLite for AfroGate.
+- Added a Windows local PostgreSQL setup script that creates the `afrows` role/database and runs migrations.
+- Documented why development should use PostgreSQL instead of SQLite for Afrows.
 - Added a root `db:setup:local` script for repeatable local database setup.
 
 ## 0.9.1 - 2026-05-24
@@ -916,7 +916,7 @@
 
 - Added an admin-guarded agent registration endpoint at `POST /api/agents/register`.
 - Agent registration now upserts the server inventory row and returns a one-time plaintext agent token while storing only its SHA-256 hash.
-- Metrics ingest now accepts non-revoked database-issued agent tokens with `metrics:write` scope, while keeping `AFROGATE_AGENT_TOKEN` as a legacy fallback.
+- Metrics ingest now accepts non-revoked database-issued agent tokens with `metrics:write` scope, while keeping `AFROWS_AGENT_TOKEN` as a legacy fallback.
 
 ## 0.7.0 - 2026-05-24
 
@@ -948,7 +948,7 @@
 - Added guarded admin-user management APIs under `/api/admin/users` for listing, creating, disabling/enabling, deleting, and changing passwords for managed admin users.
 - Preserved the bootstrap `superadmin` account as protected and immutable from normal user-management actions.
 - Added `supervisor` as a managed admin-user role with read-oriented dashboard access.
-- Added a local ignored admin-user store at `AFROGATE_ADMIN_USERS_FILE` so managed admin accounts persist without committing secrets.
+- Added a local ignored admin-user store at `AFROWS_ADMIN_USERS_FILE` so managed admin accounts persist without committing secrets.
 
 ## 0.5.1 - 2026-05-23
 
@@ -1049,6 +1049,6 @@
 
 ## 0.2.0 - 2026-05-23
 
-- Added AfroGate versioning workflow with SemVer scripts, changelog policy, version consistency checks, and a local Codex plugin/skill.
+- Added Afrows versioning workflow with SemVer scripts, changelog policy, version consistency checks, and a local Codex plugin/skill.
 - Added the dashboard sidebar version footer sourced from root `package.json`.
 - Captured current MVP foundation state after monitoring storage, ECharts dashboard, system resources, sidebar pages, admin guard foundation, control-plane egress, and outbound-management planning.

@@ -1,4 +1,4 @@
-# رودمپ و بک‌لاگ AfroGate
+# رودمپ و بک‌لاگ Afrows
 
 ## فاز 0: آماده‌سازی
 
@@ -77,7 +77,7 @@
 - cooldown/hysteresis برای جلوگیری از route flapping.
 - نمایش reason انتخاب مسیر.
 - Per-client route preferences and a separate mobile-first client app for automatic country detection, preferred exit country, explicit server/outbound choice, subscription refresh metadata, and secret-safe protocol config readiness without exposing admin controls.
-- Native/client per-app VPN split tunneling now has local app selection, native profile export, Android include-only `VpnService` enforcement reference, and an iOS managed-profile boundary so selected apps such as Instagram, Telegram, and WhatsApp can use AfroGate where native enforcement is available while other apps keep normal internet unless the client explicitly includes them.
+- Native/client per-app VPN split tunneling now has local app selection, native profile export, Android include-only `VpnService` enforcement reference, and an iOS managed-profile boundary so selected apps such as Instagram, Telegram, and WhatsApp can use Afrows where native enforcement is available while other apps keep normal internet unless the client explicitly includes them.
 - Adaptive MTU diagnostics now use optional synthetic DF/path-MTU probes to recommend safer tunnel MTU values for mobile/VPN routes, while keeping automatic MTU changes blocked for active sessions unless future session-safety gates allow them.
 - Route health score history now appears on the Routes page from compact hourly synthetic-probe summaries, so admins can review recent score, latency, jitter, and packet-loss history without inspecting user traffic or applying route changes.
 - Route canary rollout status now appears on the Routes page through guarded `GET /api/admin/route-canary/status`, showing new-session canary readiness, rollback thresholds, session protection, and assignment-only/data-plane-disabled boundaries without moving traffic.
@@ -86,10 +86,10 @@
 
 - خواندن users از Marzban/X-UI.
 - sync مصرف حجم.
-- عملیات شارژ volume از AfroGate به سیستم فعلی.
+- عملیات شارژ volume از Afrows به سیستم فعلی.
 - import/export config.
 - Encrypted per-client subscription config renderer exists for client-owned WireGuard, VLESS, L2TP, and IKEv2 material; panel import/provisioning still needs to feed it safely.
-- Current implementation note: admins can now paste/export current-panel user/config payloads into the Billing page, preview them through guarded `POST /api/admin/current-panels/import-preview`, import sanitized non-duplicate configs through guarded `POST /api/admin/current-panels/import-configs`, reconcile later panel counters through guarded `POST /api/admin/current-panels/sync-usage`, locally charge AfroGate account volume through guarded `POST /api/admin/current-panels/charge-volume`, and export local AfroGate client config summaries through guarded `GET /api/admin/customer-accounts/:id/client-configs/export`. Import writes AfroGate client configs and idempotent baseline `panel_sync` usage events; usage sync records only positive idempotent `panel_sync` deltas for existing matched configs and never overwrites counters downward; local charge writes `quota_charge_events`, increases AfroGate quota, and reports that external-panel write was not executed; export excludes subscription credentials and secret-bearing config material. Live external-panel quota writes, scheduled external-panel sync, and external-panel-native config export remain future work.
+- Current implementation note: admins can now paste/export current-panel user/config payloads into the Billing page, preview them through guarded `POST /api/admin/current-panels/import-preview`, import sanitized non-duplicate configs through guarded `POST /api/admin/current-panels/import-configs`, reconcile later panel counters through guarded `POST /api/admin/current-panels/sync-usage`, locally charge Afrows account volume through guarded `POST /api/admin/current-panels/charge-volume`, and export local Afrows client config summaries through guarded `GET /api/admin/customer-accounts/:id/client-configs/export`. Import writes Afrows client configs and idempotent baseline `panel_sync` usage events; usage sync records only positive idempotent `panel_sync` deltas for existing matched configs and never overwrites counters downward; local charge writes `quota_charge_events`, increases Afrows quota, and reports that external-panel write was not executed; export excludes subscription credentials and secret-bearing config material. Live external-panel quota writes, scheduled external-panel sync, and external-panel-native config export remain future work.
 
 ## فاز 5: Enterprise Foundation
 

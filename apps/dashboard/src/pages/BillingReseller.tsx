@@ -1,7 +1,7 @@
 import { createResellerSalesStats, createResellerSalesTrendOption, createResellerUsageMixOption, isCompletedResellerSaleOrder, resellerCustomerName, type ResellerSalesStats } from '../reseller-charts';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Activity, Bot, CreditCard, Gauge, Gift, Inbox, Plus, ShieldCheck, Upload, UserRound, WifiOff, X } from 'lucide-react';
-import type { AdminBillingSettingsSummary, AdminClientConfigsExportResponse, AdminCurrentPanelImportConfigsResponse, AdminCurrentPanelImportPreviewResponse, AdminCurrentPanelUsageSyncResponse, AdminCurrentPanelVolumeChargeResponse, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CurrentPanelKind, CustomerAccountStatus, CustomerQuotaScope } from '@afrogate/shared';
+import type { AdminBillingSettingsSummary, AdminClientConfigsExportResponse, AdminCurrentPanelImportConfigsResponse, AdminCurrentPanelImportPreviewResponse, AdminCurrentPanelUsageSyncResponse, AdminCurrentPanelVolumeChargeResponse, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CurrentPanelKind, CustomerAccountStatus, CustomerQuotaScope } from '@afrows/shared';
 import { chargeAdminCurrentPanelVolume, createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, importAdminCurrentPanelConfigs, previewAdminCurrentPanelImport, syncAdminCurrentPanelUsage, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { DashboardTabs, DataStateNotice, DataTable, EmptyState, MetricCard, MetricPill, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
@@ -435,7 +435,7 @@ function ResellerSalesSummaryPanel({
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         <MetricPill icon={CreditCard} label={t.reseller.salesAmount} value={formatMoneyAmount(stats.totalSalesAmount, stats.currency, format)} />
         <MetricPill icon={Inbox} label={t.reseller.soldVolume} value={format.bytes(stats.soldBytes)} />
-        <MetricPill icon={ShieldCheck} label={t.reseller.afroGateDebited} value={formatMoneyAmount(stats.afroGateShareAmount, stats.currency, format)} />
+        <MetricPill icon={ShieldCheck} label={t.reseller.afrowsDebited} value={formatMoneyAmount(stats.afrowsShareAmount, stats.currency, format)} />
         <MetricPill icon={UserRound} label={t.reseller.estimatedSellerMargin} value={formatMoneyAmount(stats.sellerMarginAmount, stats.currency, format)} />
         <MetricPill icon={Activity} label={t.reseller.orders} value={format.integer(stats.orderCount)} />
         <MetricPill icon={Gauge} label={t.reseller.activeCustomers} value={format.integer(stats.activeCustomerCount)} />
@@ -1369,8 +1369,8 @@ function ResellerWorkspacePanel({
     },
     {
       icon: Inbox,
-      label: t.billing.afroGateShare,
-      value: `${format.integer(reseller.afroGateSharePercent)}%`,
+      label: t.billing.afrowsShare,
+      value: `${format.integer(reseller.afrowsSharePercent)}%`,
     },
   ] : [];
   const walletLedgerColumns: Array<DataTableColumn<AdminResellerWalletLedgerEntry>> = [
@@ -2432,4 +2432,4 @@ function formatGbInput(value: number | null): string {
   const rounded = Math.round(gigabytes * 100) / 100;
 
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-}
+}

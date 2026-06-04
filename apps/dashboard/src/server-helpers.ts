@@ -1,4 +1,4 @@
-import type { RouteProbeMetric, ServerAccessMethod, ServerBootstrapState, ServerCredentialKind, WireGuardInterfaceMetric } from '@afrogate/shared';
+import type { RouteProbeMetric, ServerAccessMethod, ServerBootstrapState, ServerCredentialKind, WireGuardInterfaceMetric } from '@afrows/shared';
 import type { Tone } from './dashboard-types';
 import type { DashboardFormatters } from './formatters';
 import type { DashboardStrings } from './i18n';
@@ -133,4 +133,4 @@ export function isServerCredentialKind(value: unknown): value is ServerCredentia
   return value === 'ssh_private_key' ||
     value === 'ssh_password' ||
     value === 'api_token';
-}
+}

@@ -58,25 +58,25 @@ export class SecretVaultService {
   }
 
   private getEncryptionKey(): Buffer {
-    const raw = process.env.AFROGATE_SECRETS_KEY?.trim();
+    const raw = process.env.AFROWS_SECRETS_KEY?.trim();
 
     if (!raw) {
-      throw new ServiceUnavailableException('AFROGATE_SECRETS_KEY is required before storing secrets');
+      throw new ServiceUnavailableException('AFROWS_SECRETS_KEY is required before storing secrets');
     }
 
     const key = decodeKey(raw);
     if (key.length !== 32) {
-      throw new ServiceUnavailableException('AFROGATE_SECRETS_KEY must decode to exactly 32 bytes');
+      throw new ServiceUnavailableException('AFROWS_SECRETS_KEY must decode to exactly 32 bytes');
     }
 
     return key;
   }
 
   private getKeyId(): string {
-    const keyId = process.env.AFROGATE_SECRETS_KEY_ID?.trim() || 'local-v1';
+    const keyId = process.env.AFROWS_SECRETS_KEY_ID?.trim() || 'local-v1';
 
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(keyId)) {
-      throw new ServiceUnavailableException('AFROGATE_SECRETS_KEY_ID must use only letters, numbers, underscore, and dash');
+      throw new ServiceUnavailableException('AFROWS_SECRETS_KEY_ID must use only letters, numbers, underscore, and dash');
     }
 
     return keyId;

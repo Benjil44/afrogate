@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bell, Clock, Route, ScrollText, Server } from 'lucide-react';
-import type { AdminIncidentTimelineResponse } from '@afrogate/shared';
+import type { AdminIncidentTimelineResponse } from '@afrows/shared';
 import { fetchAdminAlerts, fetchIncidentTimeline } from '../api/admin';
 import { DataStateEmpty, DataStateNotice, DataTable, MetricPill, PanelHeading, StatusBadge } from '../components/primitives';
 import type { AlertRowData, AlertSeverityFilter, AlertStatusFilter, DataState, DataTableColumn, Tone } from '../dashboard-types';
@@ -264,4 +264,4 @@ export function AlertsPage({
       </div>
     </section>
   );
-}
+}

@@ -1,4 +1,4 @@
-import type { ClientRouteOptionsResponse, ClientSubscriptionEndpointSummary } from '@afrogate/shared';
+import type { ClientRouteOptionsResponse, ClientSubscriptionEndpointSummary } from '@afrows/shared';
 
 export interface ClientSubscriptionCredentialRenderResult {
   status: 'rendered' | 'blocked_secret_unavailable' | 'blocked_secret_invalid';
@@ -231,7 +231,7 @@ export function renderVlessClientUri(
   const targetHost = target.host as string;
   const targetPort = target.port as number;
   const host = targetHost.includes(':') && !targetHost.startsWith('[') ? `[${targetHost}]` : targetHost;
-  const label = encodeURIComponent(outbound.name || 'AfroGate');
+  const label = encodeURIComponent(outbound.name || 'Afrows');
   return {
     status: 'rendered',
     uri: `vless://${uuid}@${host}:${targetPort}?${params.toString()}#${label}`,

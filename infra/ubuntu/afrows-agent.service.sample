@@ -1,24 +1,24 @@
 [Unit]
-Description=AfroGate Monitoring Agent
+Description=Afrows Monitoring Agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/afrogate
-EnvironmentFile=/etc/afrogate/agent.env
+WorkingDirectory=/opt/afrows
+EnvironmentFile=/etc/afrows/agent.env
 ExecStart=/usr/bin/python3 apps/agent/run.py
 Restart=on-failure
 RestartSec=5
-User=afrogate-agent
-Group=afrogate-agent
-StateDirectory=afrogate-agent
+User=afrows-agent
+Group=afrows-agent
+StateDirectory=afrows-agent
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/afrogate-agent
+ReadWritePaths=/var/lib/afrows-agent
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictSUIDSGID=true
 

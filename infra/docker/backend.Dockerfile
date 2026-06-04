@@ -10,8 +10,8 @@ COPY packages/shared/package.json packages/shared/package.json
 RUN npm ci
 
 COPY . .
-RUN npm --workspace @afrogate/shared run build
-RUN npm --workspace @afrogate/backend run build
+RUN npm --workspace @afrows/shared run build
+RUN npm --workspace @afrows/backend run build
 
 FROM node:22-bookworm-slim AS production-deps
 WORKDIR /app
@@ -20,7 +20,7 @@ COPY package.json package-lock.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY apps/dashboard/package.json apps/dashboard/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN npm ci --omit=dev --workspace @afrogate/backend --workspace @afrogate/shared --include-workspace-root=false
+RUN npm ci --omit=dev --workspace @afrows/backend --workspace @afrows/shared --include-workspace-root=false
 
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
@@ -39,7 +39,7 @@ COPY --from=build --chown=node:node /app/apps/backend/scripts ./apps/backend/scr
 COPY --from=build --chown=node:node /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build --chown=node:node /app/infra/postgres ./infra/postgres
 
-RUN mkdir -p /var/lib/afrogate && chown -R node:node /app /var/lib/afrogate
+RUN mkdir -p /var/lib/afrows && chown -R node:node /app /var/lib/afrows
 
 USER node
 EXPOSE 7000

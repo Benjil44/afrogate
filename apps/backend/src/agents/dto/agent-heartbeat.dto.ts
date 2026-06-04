@@ -1,5 +1,5 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
-import type { AgentHeartbeatRequest } from '@afrogate/shared';
+import type { AgentHeartbeatRequest } from '@afrows/shared';
 
 export class AgentHeartbeatDto implements AgentHeartbeatRequest {
   @IsOptional()

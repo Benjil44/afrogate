@@ -1,4 +1,4 @@
-import type { AdminIncidentTimelineEvent } from '@afrogate/shared';
+import type { AdminIncidentTimelineEvent } from '@afrows/shared';
 
 type TimelineSeverity = AdminIncidentTimelineEvent['severity'];
 

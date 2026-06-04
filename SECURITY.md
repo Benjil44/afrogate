@@ -1,6 +1,6 @@
 # Security Policy
 
-AfroGate is built for privacy, safety, and resilient access. Stable internet is not a luxury feature; for many people it is part of work, speech, learning, safety, and the future.
+Afrows is built for privacy, safety, and resilient access. Stable internet is not a luxury feature; for many people it is part of work, speech, learning, safety, and the future.
 
 ## Security Principles
 

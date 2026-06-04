@@ -1,6 +1,6 @@
 import { SetMetadata } from '@nestjs/common';
 
-export const RATE_LIMIT_METADATA_KEY = 'afrogate:rate-limit';
+export const RATE_LIMIT_METADATA_KEY = 'afrows:rate-limit';
 
 export interface RateLimitOptions {
   key: string;

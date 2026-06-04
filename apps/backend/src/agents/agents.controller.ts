@@ -1,5 +1,5 @@
 import { Body, Controller, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
-import type { AgentRegistrationResponse, AgentTokenRotationResponse } from '@afrogate/shared';
+import type { AgentRegistrationResponse, AgentTokenRotationResponse } from '@afrows/shared';
 import { AdminTokenGuard } from '../security/admin-token.guard';
 import type { RequestWithAuth } from '../security/auth-request';
 import { Roles } from '../security/roles.decorator';

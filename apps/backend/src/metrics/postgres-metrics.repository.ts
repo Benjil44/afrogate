@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import type { MetricTimeseriesPoint, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrogate/shared';
+import type { MetricTimeseriesPoint, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrows/shared';
 import { DatabaseService } from '../database/database.service';
 import { serverMetrics, servers } from '../database/schema';
 import { MetricsRepository, MetricsTimeseriesQuery } from './metrics.repository';

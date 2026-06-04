@@ -46,7 +46,7 @@ import type {
   AdminResellerWorkspaceResponse,
   AdminVolumePackageSummary,
   AdminVolumePackagesResponse,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import type { RequestWithAuth } from '../security/auth-request';
 import { AdminTokenGuard } from '../security/admin-token.guard';
 import { Permissions, Roles } from '../security/roles.decorator';

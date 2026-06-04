@@ -1,6 +1,6 @@
-# AfroGate
+# Afrows
 
-AfroGate is planned as a privacy-conscious traffic, routing, billing, and monitoring platform for VPN/proxy infrastructure.
+Afrows is planned as a privacy-conscious traffic, routing, billing, and monitoring platform for VPN/proxy infrastructure.
 
 The first milestone is an MVP monitoring dashboard that helps operate Iran/Germany servers, WireGuard tunnels, Telegram-based users, volume billing, and automatic route health decisions.
 
@@ -41,13 +41,13 @@ Install dependencies when you are ready to run the apps:
 
 ```powershell
 npm install
-npm --workspace @afrogate/backend run db:migrate
+npm --workspace @afrows/backend run db:migrate
 npm run dev:backend
 npm run dev:dashboard
 python apps/agent/run.py --once
 ```
 
-Fixed local ports are dashboard `4000` and backend `7000`; Vite is configured with `strictPort` so duplicate frontend servers do not move AfroGate onto random ports.
+Fixed local ports are dashboard `4000` and backend `7000`; Vite is configured with `strictPort` so duplicate frontend servers do not move Afrows onto random ports.
 
 Version after each meaningful implementation section:
 
@@ -56,7 +56,7 @@ npm run version:patch
 npm run version:check
 ```
 
-The backend expects `DATABASE_URL` and a real `AFROGATE_AGENT_TOKEN` before accepting agent metrics. The dashboard reads `VITE_API_BASE_URL` and falls back to local sample data when the API is unavailable.
+The backend expects `DATABASE_URL` and a real `AFROWS_AGENT_TOKEN` before accepting agent metrics. The dashboard reads `VITE_API_BASE_URL` and falls back to local sample data when the API is unavailable.
 
 Browser smoke tests use Playwright:
 
@@ -64,7 +64,7 @@ Browser smoke tests use Playwright:
 npm run test:e2e
 ```
 
-Restricted servers can route AfroGate Telegram/API calls through a local egress proxy with `AFROGATE_OUTBOUND_PROXY_URL`; see [control-plane egress](docs/control-plane-egress.md).
+Restricted servers can route Afrows Telegram/API calls through a local egress proxy with `AFROWS_OUTBOUND_PROXY_URL`; see [control-plane egress](docs/control-plane-egress.md).
 
 ## MVP Direction
 

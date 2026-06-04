@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Cpu, HardDrive, MemoryStick, Server, ShieldCheck } from 'lucide-react';
-import type { AdminServerDetail, AdminServerInterfaceSummary, AdminSessionResponse, AdminTunnelSummary, ServerAccessMethod, ServerBootstrapState, ServerCredentialKind } from '@afrogate/shared';
+import type { AdminServerDetail, AdminServerInterfaceSummary, AdminSessionResponse, AdminTunnelSummary, ServerAccessMethod, ServerBootstrapState, ServerCredentialKind } from '@afrows/shared';
 import { fetchAdminServer, fetchAdminServerInterfaces, fetchAdminTunnels, storeAdminServerCredential, updateAdminServer } from '../api/admin';
 import { DataStateEmpty, DataStateNotice, DetailRow, EmptyState, PanelHeading, StatusBadge, UsageBar } from '../components/primitives';
 import type { DataState, ServerEditTab, ServerRowData } from '../dashboard-types';
@@ -385,7 +385,7 @@ function ServerAccessTab({
   const canManageAccess = server.source === 'admin' && ['superadmin', 'owner', 'admin'].includes(session.actor.role);
   const [address, setAddress] = useState(profile?.address ?? server.externalId ?? server.name);
   const [sshPort, setSshPort] = useState(String(profile?.sshPort ?? 22));
-  const [username, setUsername] = useState(profile?.username ?? 'afrogate');
+  const [username, setUsername] = useState(profile?.username ?? 'afrows');
   const [accessMethod, setAccessMethod] = useState<ServerAccessMethod>(
     isServerAccessMethod(profile?.accessMethod) ? profile.accessMethod : 'ssh_key',
   );
@@ -405,7 +405,7 @@ function ServerAccessTab({
   useEffect(() => {
     setAddress(profile?.address ?? server.externalId ?? server.name);
     setSshPort(String(profile?.sshPort ?? 22));
-    setUsername(profile?.username ?? 'afrogate');
+    setUsername(profile?.username ?? 'afrows');
     setAccessMethod(isServerAccessMethod(profile?.accessMethod) ? profile.accessMethod : 'ssh_key');
     setBootstrapState(isServerBootstrapState(profile?.bootstrapState) ? profile.bootstrapState : 'not_started');
     setNotes(profile?.notes ?? '');
@@ -511,7 +511,7 @@ function ServerAccessTab({
 
   return (
     <div className="grid gap-3">
-      <DetailRow label={t.accessRows.defaultUser}>{profile?.username ?? 'afrogate'}</DetailRow>
+      <DetailRow label={t.accessRows.defaultUser}>{profile?.username ?? 'afrows'}</DetailRow>
       <DetailRow label={t.accessRows.accessMethod}>{profile?.accessMethod ?? t.accessRows.sshKey}</DetailRow>
       <DetailRow label={t.serverEdit.labels.sshPort}>{profile?.sshPort ?? 22}</DetailRow>
       <DetailRow label={t.accessRows.rootPassword}>{t.accessRows.bootstrapOnly}</DetailRow>
@@ -825,4 +825,4 @@ function ServerAuditTab({
       <DetailRow label={t.serverEdit.labels.secretPolicy}>{t.serverEdit.values.secretsHidden}</DetailRow>
     </div>
   );
-}
+}

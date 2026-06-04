@@ -7,7 +7,7 @@ import type {
   ClientRoutePreferenceResponse,
   ClientSubscriptionResponse,
   UpdateClientRoutePreferenceRequest,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 
 export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:7000/api';
 

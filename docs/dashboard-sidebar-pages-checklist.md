@@ -119,7 +119,7 @@ The sidebar must map to real operational pages, not placeholder anchors. Each pa
 - [x] Usage/Billing read-only current-panel import preview for Marzban/X-UI/Sanayi/generic exports.
 - [x] Usage/Billing controlled current-panel config import into client configs with baseline usage events.
 - [x] Usage/Billing controlled current-panel usage sync from later panel exports into append-only usage events.
-- [x] Usage/Billing audited local current-panel volume charge into AfroGate quota.
+- [x] Usage/Billing audited local current-panel volume charge into Afrows quota.
 - [x] Usage/Billing sanitized client-config export for selected customer accounts.
 - [x] Usage/Billing payment provider adapter readiness for PayPal, card, crypto, bank transfer, and local gateways.
 - [x] Signed rewarded-ad provider webhook adapter with idempotent quota crediting.

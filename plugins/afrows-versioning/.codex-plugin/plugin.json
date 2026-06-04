@@ -1,0 +1,40 @@
+{
+  "name": "afrows-versioning",
+  "version": "0.114.27",
+  "description": "Versioning workflow for Afrows implementation sessions.",
+  "author": {
+    "name": "Afrows",
+    "email": "versioning@afrows.local",
+    "url": "https://github.com/Benjil44/afrows"
+  },
+  "homepage": "https://github.com/Benjil44/afrows",
+  "repository": "https://github.com/Benjil44/afrows",
+  "license": "UNLICENSED",
+  "keywords": [
+    "afrows",
+    "versioning",
+    "semver",
+    "changelog"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Afrows Versioning",
+    "shortDescription": "Keep Afrows versions and changelog aligned with implementation work.",
+    "longDescription": "Guides agents to bump SemVer, update the changelog, and keep sidebar version display current after meaningful implementation sections.",
+    "developerName": "Afrows",
+    "category": "Productivity",
+    "capabilities": [
+      "Write",
+      "Workflow"
+    ],
+    "websiteURL": "https://github.com/Benjil44/afrows",
+    "privacyPolicyURL": "https://github.com/Benjil44/afrows",
+    "termsOfServiceURL": "https://github.com/Benjil44/afrows",
+    "defaultPrompt": [
+      "Bump Afrows version for this implementation section.",
+      "Check whether this change requires a version bump.",
+      "Update changelog and package versions after the current section."
+    ],
+    "brandColor": "#0f8f83"
+  }
+}

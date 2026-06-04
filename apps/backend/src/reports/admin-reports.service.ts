@@ -10,7 +10,7 @@ import type {
   AdminReportServerSummary,
   AdminRouteQualityAnalyticsResponse,
   AdminServerSummary,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { BackupStatusService } from '../backups/backup-status.service';
 import { OperationsService } from '../operations/operations.service';
 

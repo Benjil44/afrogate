@@ -1,5 +1,5 @@
 import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
-import type { AgentHeartbeatResponse } from '@afrogate/shared';
+import type { AgentHeartbeatResponse } from '@afrows/shared';
 import { AgentTokenGuard } from '../security/agent-token.guard';
 import type { RequestWithAuth } from '../security/auth-request';
 import { AgentHeartbeatDto } from './dto/agent-heartbeat.dto';

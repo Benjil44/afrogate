@@ -17,14 +17,14 @@ import type {
   Role,
   UpdateAdminUserPasswordRequest,
   UpdateAdminUserRequest,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import {
   ADMIN_PERMISSION_DEFINITIONS,
   ADMIN_ROLE_ORDER,
   getEffectiveRolePermissions,
   roleHasPermission,
   roleInheritsAllPermissions,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -309,9 +309,9 @@ export class AuthService {
   }
 
   private async loadAdminAccounts(): Promise<AdminAccountConfig[]> {
-    const superAdminUsername = normalizeUsername(process.env.AFROGATE_SUPERADMIN_USERNAME) ?? 'superadmin';
-    const superAdminPassword = normalizeSecret(process.env.AFROGATE_SUPERADMIN_PASSWORD);
-    const superAdminPasswordHash = normalizeSecret(process.env.AFROGATE_SUPERADMIN_PASSWORD_HASH);
+    const superAdminUsername = normalizeUsername(process.env.AFROWS_SUPERADMIN_USERNAME) ?? 'superadmin';
+    const superAdminPassword = normalizeSecret(process.env.AFROWS_SUPERADMIN_PASSWORD);
+    const superAdminPasswordHash = normalizeSecret(process.env.AFROWS_SUPERADMIN_PASSWORD_HASH);
     const now = new Date().toISOString();
 
     if ((!superAdminPassword && !superAdminPasswordHash) || superAdminPassword === DEFAULT_SUPERADMIN_PASSWORD) {
@@ -333,9 +333,9 @@ export class AuthService {
       },
     ];
 
-    const adminUsername = normalizeUsername(process.env.AFROGATE_ADMIN_USERNAME);
-    const adminPassword = normalizeSecret(process.env.AFROGATE_ADMIN_PASSWORD);
-    const adminPasswordHash = normalizeSecret(process.env.AFROGATE_ADMIN_PASSWORD_HASH);
+    const adminUsername = normalizeUsername(process.env.AFROWS_ADMIN_USERNAME);
+    const adminPassword = normalizeSecret(process.env.AFROWS_ADMIN_PASSWORD);
+    const adminPasswordHash = normalizeSecret(process.env.AFROWS_ADMIN_PASSWORD_HASH);
 
     if (adminUsername && (adminPassword || adminPasswordHash)) {
       accounts.push({
@@ -343,7 +343,7 @@ export class AuthService {
         username: adminUsername,
         password: adminPassword,
         passwordHash: adminPasswordHash,
-        role: this.resolveNonSuperAdminRole(process.env.AFROGATE_ADMIN_ROLE),
+        role: this.resolveNonSuperAdminRole(process.env.AFROWS_ADMIN_ROLE),
         isSuperAdmin: false,
         status: 'active',
         source: 'env',
@@ -417,17 +417,17 @@ export class AuthService {
   }
 
   private verifyLegacyAdminToken(token: string): AuthActor | null {
-    const expectedToken = normalizeSecret(process.env.AFROGATE_ADMIN_TOKEN);
+    const expectedToken = normalizeSecret(process.env.AFROWS_ADMIN_TOKEN);
 
     if (!expectedToken || expectedToken === DEFAULT_ADMIN_TOKEN || !secureTokenEquals(token, expectedToken)) {
       return null;
     }
 
-    const role = this.resolveAdminRole(process.env.AFROGATE_ADMIN_ROLE);
+    const role = this.resolveAdminRole(process.env.AFROWS_ADMIN_ROLE);
 
     return {
-      id: process.env.AFROGATE_ADMIN_ID ?? 'bootstrap-admin',
-      username: process.env.AFROGATE_ADMIN_USERNAME ?? 'bootstrap-admin',
+      id: process.env.AFROWS_ADMIN_ID ?? 'bootstrap-admin',
+      username: process.env.AFROWS_ADMIN_USERNAME ?? 'bootstrap-admin',
       role,
       type: 'admin',
       isSuperAdmin: role === 'superadmin',
@@ -436,9 +436,9 @@ export class AuthService {
 
   private hasConfiguredAuth(): boolean {
     const hasSessionSecret = Boolean(this.resolveSessionSecretOrNull());
-    const hasSuperAdminPassword = Boolean(normalizeSecret(process.env.AFROGATE_SUPERADMIN_PASSWORD))
-      || Boolean(normalizeSecret(process.env.AFROGATE_SUPERADMIN_PASSWORD_HASH));
-    const legacyToken = normalizeSecret(process.env.AFROGATE_ADMIN_TOKEN);
+    const hasSuperAdminPassword = Boolean(normalizeSecret(process.env.AFROWS_SUPERADMIN_PASSWORD))
+      || Boolean(normalizeSecret(process.env.AFROWS_SUPERADMIN_PASSWORD_HASH));
+    const legacyToken = normalizeSecret(process.env.AFROWS_ADMIN_TOKEN);
 
     return (hasSessionSecret && hasSuperAdminPassword) || Boolean(legacyToken && legacyToken !== DEFAULT_ADMIN_TOKEN);
   }
@@ -612,7 +612,7 @@ export class AuthService {
 
   private async loadDatabaseManagedUsers(): Promise<StoredAdminUser[]> {
     let rows = await this.queryDatabaseManagedUserRows();
-    if (rows.length === 0 && !this.attemptedLegacyFileImport && process.env.AFROGATE_ADMIN_USERS_IMPORT_FILE !== 'false') {
+    if (rows.length === 0 && !this.attemptedLegacyFileImport && process.env.AFROWS_ADMIN_USERS_IMPORT_FILE !== 'false') {
       this.attemptedLegacyFileImport = true;
       const importedCount = await this.importLegacyFileUsersToDatabase();
       if (importedCount > 0) {
@@ -804,11 +804,11 @@ export class AuthService {
   }
 
   private getManagedUsersFilePath(): string {
-    return resolve(process.env.AFROGATE_ADMIN_USERS_FILE ?? 'tmp/admin-users.json');
+    return resolve(process.env.AFROWS_ADMIN_USERS_FILE ?? 'tmp/admin-users.json');
   }
 
   private getManagedUsersStore(): 'database' | 'file' {
-    const configuredStore = process.env.AFROGATE_ADMIN_USERS_STORE?.trim().toLowerCase();
+    const configuredStore = process.env.AFROWS_ADMIN_USERS_STORE?.trim().toLowerCase();
     if (configuredStore && ADMIN_USERS_STORE_DATABASE_VALUES.has(configuredStore)) return 'database';
     if (configuredStore && ADMIN_USERS_STORE_FILE_VALUES.has(configuredStore)) return 'file';
 

@@ -14,7 +14,7 @@ def push_metrics(
     body = json.dumps(payload).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "afrogate-agent/0.1.0",
+        "User-Agent": "afrows-agent/0.1.0",
     }
 
     if token:
@@ -42,7 +42,7 @@ def push_heartbeat(
     }).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "afrogate-agent/0.1.0",
+        "User-Agent": "afrows-agent/0.1.0",
     }
 
     if token:

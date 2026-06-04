@@ -1,4 +1,4 @@
-import type { MetricsTimeRange, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrogate/shared';
+import type { MetricsTimeRange, ServerMetricSnapshot, ServerMetricTimeseries } from '@afrows/shared';
 
 export const METRICS_REPOSITORY = Symbol('METRICS_REPOSITORY');
 

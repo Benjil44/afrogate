@@ -74,7 +74,7 @@ import type {
   StoreServerCredentialResponse,
   WireGuardInterfaceMetric,
   HealthState,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
@@ -6919,7 +6919,7 @@ export class OperationsService {
     candidate: AdminWireGuardCandidate | null,
     currentCandidate: AdminWireGuardCandidate | null,
   ): AdminRouteDecisionApplyAdapterSummary {
-    const enabled = this.configFlag('AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED', false);
+    const enabled = this.configFlag('AFROWS_ROUTE_DATA_PLANE_APPLY_ENABLED', false);
     const outboundType = candidate?.source === 'outbound' ? 'wireguard' : null;
     const supportedOutboundTypes = ['wireguard'];
     const supportedProtocols = ['wireguard'];
@@ -7006,7 +7006,7 @@ export class OperationsService {
       {
         id: 'drain-route-mark',
         kind: 'drain',
-        command: `nft list table inet afrogate`,
+        command: `nft list table inet afrows`,
         requiresRoot: true,
         dataPlaneMutation: false,
         secretSafe: true,
@@ -7061,14 +7061,14 @@ export class OperationsService {
     return [
       {
         id: 'iproute-table',
-        filePath: '/etc/iproute2/rt_tables.d/afrogate.conf',
+        filePath: '/etc/iproute2/rt_tables.d/afrows.conf',
         action: 'update',
         description: `Ensure route table entry for ${routeTable}`,
         secretSafe: true,
       },
       {
-        id: 'afrogate-assignment-record',
-        filePath: `/etc/afrogate/routes/${safePathSegment(candidate.routeGroup)}/default.json`,
+        id: 'afrows-assignment-record',
+        filePath: `/etc/afrows/routes/${safePathSegment(candidate.routeGroup)}/default.json`,
         action: 'update',
         description: `Record selected outbound ${candidate.id} and interface ${safeWireGuardInterfaceName(candidate.interfaceName, candidate.id)}`,
         secretSafe: true,
@@ -7610,12 +7610,12 @@ export class OperationsService {
 
   private buildProtocolServerApplyPlan(setup: ProtocolServerApplySource): AdminProtocolServerApplyPlanSummary {
     const config = this.asRecord(setup.config);
-    const featureFlagEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED', false);
+    const featureFlagEnabled = this.configFlag('AFROWS_PROTOCOL_SERVER_APPLY_ENABLED', false);
     const outboundId = setup.provisionedOutboundId ?? null;
     const hasOutbound = Boolean(outboundId);
     const requiresSecret = this.protocolRequiresServerSecret(setup.protocol);
     const hasSecretRef = this.protocolSetupHasSecretRef(setup);
-    const protocolSecretDecryptEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED', false);
+    const protocolSecretDecryptEnabled = this.configFlag('AFROWS_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED', false);
     const requiresServerAccess = true;
     const targetServerId = setup.targetServerId ?? null;
     const hasTargetServer = Boolean(targetServerId);
@@ -7810,8 +7810,8 @@ export class OperationsService {
   }): AdminProtocolServerApplyAdapterSummary {
     const supportedProtocols = ['wireguard', 'vless', 'l2tp', 'ikev2'];
     const protocolSupported = supportedProtocols.includes(input.setup.protocol);
-    const liveExecutionEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED', false);
-    const credentialDecryptEnabled = this.configFlag('AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED', false);
+    const liveExecutionEnabled = this.configFlag('AFROWS_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED', false);
+    const credentialDecryptEnabled = this.configFlag('AFROWS_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED', false);
     const implemented = protocolSupported;
     const accessMethodSupported =
       !input.requiresServerAccess ||
@@ -8089,7 +8089,7 @@ export class OperationsService {
     const startedAt = new Date().toISOString();
     const unitName = this.safeProtocolUnitName(setup);
     const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
-    const stagedConfigPath = `/var/lib/afrogate/protocols/${safePathSegment(unitName)}.rendered`;
+    const stagedConfigPath = `/var/lib/afrows/protocols/${safePathSegment(unitName)}.rendered`;
     const steps: ProtocolServerApplyExecutionCommandResult[] = [];
     let tempDir: string | null = null;
     let dataPlaneMutationExecuted = false;
@@ -8131,7 +8131,7 @@ export class OperationsService {
       const renderedConfig = this.renderProtocolServerConfig(setup, unitName, secret);
       this.assertRenderedProtocolServerConfig(renderedConfig);
 
-      tempDir = await mkdtemp(join(tmpdir(), 'afrogate-protocol-apply-'));
+      tempDir = await mkdtemp(join(tmpdir(), 'afrows-protocol-apply-'));
       const keyPath = join(tempDir, 'id_ed25519');
       const configFilePath = join(tempDir, 'protocol.rendered');
       await writeFile(keyPath, this.normalizePrivateKey(access.privateKey), { encoding: 'utf8' });
@@ -9112,7 +9112,7 @@ export class OperationsService {
     unitName: string,
   ): AdminProtocolServerApplyPlanSummary['commands'] {
     const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
-    const stagedPath = `/var/lib/afrogate/protocols/${safePathSegment(unitName)}.rendered`;
+    const stagedPath = `/var/lib/afrows/protocols/${safePathSegment(unitName)}.rendered`;
     const configDir = this.posixDirname(configPath);
     const command = (
       idSuffix: string,
@@ -9131,13 +9131,13 @@ export class OperationsService {
       timeoutSeconds: this.protocolServerApplyCommandTimeout(kind),
     });
     const base = [
-      command('preflight-user', 'preflight', 'id -u afrogate', false, false),
+      command('preflight-user', 'preflight', 'id -u afrows', false, false),
       command('preflight-systemctl', 'preflight', 'command -v systemctl', false, false),
     ];
     const configPrepare = [
-      command('config-stage-dir', 'config', `mkdir -p ${shellToken('/var/lib/afrogate/protocols')}`, true, false),
+      command('config-stage-dir', 'config', `mkdir -p ${shellToken('/var/lib/afrows/protocols')}`, true, false),
       command('config-target-dir', 'config', `mkdir -p ${shellToken(configDir)}`, true, false),
-      command('config-backup', 'rollback', `cp ${shellToken(configPath)} ${shellToken(`${configPath}.afrogate.bak`)}`, true, true),
+      command('config-backup', 'rollback', `cp ${shellToken(configPath)} ${shellToken(`${configPath}.afrows.bak`)}`, true, true),
       command('config-install', 'config', `install -m 600 ${shellToken(stagedPath)} ${shellToken(configPath)}`, true, true),
     ];
 
@@ -9152,7 +9152,7 @@ export class OperationsService {
           command('service-wireguard-status', 'service', `systemctl status wg-quick@${shellToken(unitName)}`, false, false),
           command('service-wireguard-reload', 'service', `systemctl reload-or-restart wg-quick@${shellToken(unitName)}`, true, true),
           command('health-wireguard', 'health', `wg show ${shellToken(unitName)}`, true, false),
-          command('rollback-wireguard', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
+          command('rollback-wireguard', 'rollback', `cp ${shellToken(`${configPath}.afrows.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       case 'vless':
         return [
@@ -9163,8 +9163,8 @@ export class OperationsService {
           command('config-vless-check', 'config', `sing-box check -c ${shellToken(configPath)}`, true, false),
           command('service-vless-status', 'service', 'systemctl status sing-box', false, false),
           command('service-vless-reload', 'service', 'systemctl reload-or-restart sing-box', true, true),
-          command('health-vless', 'health', `test -S /run/afrogate/${safePathSegment(unitName)}.sock`, true, false),
-          command('rollback-vless', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
+          command('health-vless', 'health', `test -S /run/afrows/${safePathSegment(unitName)}.sock`, true, false),
+          command('rollback-vless', 'rollback', `cp ${shellToken(`${configPath}.afrows.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       case 'l2tp':
         return [
@@ -9177,7 +9177,7 @@ export class OperationsService {
           command('service-l2tp-reload', 'service', 'systemctl reload-or-restart strongswan-starter xl2tpd', true, true),
           command('health-l2tp-ipsec', 'health', 'ipsec status', true, false),
           command('health-l2tp-control', 'health', 'xl2tpd-control status', true, false),
-          command('rollback-l2tp', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
+          command('rollback-l2tp', 'rollback', `cp ${shellToken(`${configPath}.afrows.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       case 'ikev2':
         return [
@@ -9190,12 +9190,12 @@ export class OperationsService {
           command('service-ikev2-reload', 'service', 'systemctl reload-or-restart strongswan-starter', true, true),
           command('health-ikev2-ipsec', 'health', 'ipsec statusall', true, false),
           command('health-ikev2-swanctl', 'health', 'swanctl --list-sas', true, false),
-          command('rollback-ikev2', 'rollback', `cp ${shellToken(`${configPath}.afrogate.bak`)} ${shellToken(configPath)}`, true, true),
+          command('rollback-ikev2', 'rollback', `cp ${shellToken(`${configPath}.afrows.bak`)} ${shellToken(configPath)}`, true, true),
         ];
       default:
         return [
           ...base,
-          command('package-custom', 'package', 'test -d /etc/afrogate', false, false),
+          command('package-custom', 'package', 'test -d /etc/afrows', false, false),
           ...configPrepare,
           command('config-custom-check', 'config', `test -f ${shellToken(configPath)}`, true, false),
           command('health-custom', 'health', 'true', false, false),
@@ -9208,7 +9208,7 @@ export class OperationsService {
     unitName: string,
   ): AdminProtocolServerApplyPlanSummary['configChanges'] {
     const configPath = this.protocolServerApplyConfigPath(setup.protocol, unitName);
-    const stagedPath = `/var/lib/afrogate/protocols/${safePathSegment(unitName)}.rendered`;
+    const stagedPath = `/var/lib/afrows/protocols/${safePathSegment(unitName)}.rendered`;
 
     return [
       {
@@ -9230,7 +9230,7 @@ export class OperationsService {
       {
         id: `${setup.id}:config-rollback`,
         kind: 'rollback',
-        filePath: `${configPath}.afrogate.bak`,
+        filePath: `${configPath}.afrows.bak`,
         action: 'create',
         dataPlaneMutation: true,
         secretSafe: true,
@@ -9245,13 +9245,13 @@ export class OperationsService {
       case 'wireguard':
         return `/etc/wireguard/${safeUnitName}.conf`;
       case 'vless':
-        return `/etc/sing-box/afrogate-${safeUnitName}.json`;
+        return `/etc/sing-box/afrows-${safeUnitName}.json`;
       case 'l2tp':
-        return `/etc/ipsec.d/afrogate-${safeUnitName}.conf`;
+        return `/etc/ipsec.d/afrows-${safeUnitName}.conf`;
       case 'ikev2':
-        return `/etc/swanctl/conf.d/afrogate-${safeUnitName}.conf`;
+        return `/etc/swanctl/conf.d/afrows-${safeUnitName}.conf`;
       default:
-        return `/etc/afrogate/protocols/${safeUnitName}.conf`;
+        return `/etc/afrows/protocols/${safeUnitName}.conf`;
     }
   }
 
@@ -9299,7 +9299,7 @@ export class OperationsService {
       provisioningMode: 'control-plane-draft',
       serverApplyState: 'planning-only',
       serverApplyPlanVersion: 1,
-      serverApplyFeatureFlag: 'AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED',
+      serverApplyFeatureFlag: 'AFROWS_PROTOCOL_SERVER_APPLY_ENABLED',
       serverApplyDryRunOnly: true,
       serverApplyTargetServerId: setup.targetServerId ?? null,
       serverApplyTargetServerLabel: setup.targetServerLabel ?? null,
@@ -9440,7 +9440,7 @@ export class OperationsService {
         serverId,
         profile.address,
         profile.sshPort ?? 22,
-        profile.username ?? 'afrogate',
+        profile.username ?? 'afrows',
         profile.accessMethod ?? 'ssh_key',
         profile.credentialRef ?? null,
         profile.bootstrapState ?? 'not_started',

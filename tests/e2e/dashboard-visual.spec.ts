@@ -253,7 +253,7 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
 
   await page.getByRole('button', { name: 'Export configs' }).click();
   await expect(page.getByText('1 configs exported.')).toBeVisible();
-  await expect(page.getByLabel('Exported config JSON')).toHaveValue(/afrogate_client_configs_export_v1/);
+  await expect(page.getByLabel('Exported config JSON')).toHaveValue(/afrows_client_configs_export_v1/);
 
   await page.getByLabel('Charge GB').fill('5');
   await page.getByRole('button', { name: 'Charge volume' }).click();
@@ -371,14 +371,14 @@ test('settings page saves tenant branding', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'WireGuard and system setup' })).toBeVisible();
   await page.getByRole('tab', { name: /Branding/ }).click();
   await expect(page.getByRole('heading', { name: 'Tenant Branding' })).toBeVisible();
-  await expect(page.getByLabel('Brand name')).toHaveValue('AfroGate Pro');
+  await expect(page.getByLabel('Brand name')).toHaveValue('Afrows Pro');
 
-  await page.getByLabel('Brand name').fill('AfroGate Elite');
-  await page.getByLabel('Support Telegram').fill('@afrogate_ops');
+  await page.getByLabel('Brand name').fill('Afrows Elite');
+  await page.getByLabel('Support Telegram').fill('@afrows_ops');
   await page.getByRole('button', { name: 'Save branding' }).click();
 
   await expect(page.getByText('Brand settings saved.')).toBeVisible();
-  await expect(page.getByText('AfroGate Elite')).toBeVisible();
+  await expect(page.getByText('Afrows Elite')).toBeVisible();
 });
 
 test('users page shows RBAC permission matrix', async ({ page }) => {
@@ -413,8 +413,8 @@ async function loadSignedInDashboard(
   await mockDashboardApi(page, options);
   await page.setViewportSize(size);
   await page.addInitScript((sessionToken) => {
-    window.localStorage.setItem('afrogate.dashboard.language', 'en');
-    window.sessionStorage.setItem('afrogate.dashboard.adminSessionToken', sessionToken);
+    window.localStorage.setItem('afrows.dashboard.language', 'en');
+    window.sessionStorage.setItem('afrows.dashboard.adminSessionToken', sessionToken);
   }, visualSessionToken);
 
   await page.goto('/');
@@ -900,10 +900,10 @@ async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}
             alertChatIdSource: 'database',
             alertsEnabled: true,
             allowedAdminChatIds: ['123456789'],
-            botFirstName: 'AfroGate Demo',
+            botFirstName: 'Afrows Demo',
             botId: 987654321,
             botTokenSource: 'database',
-            botUsername: 'afrogate_demo_bot',
+            botUsername: 'afrows_demo_bot',
             commandsEnabled: true,
             hasBotToken: true,
             hasWebhookSecret: true,
@@ -1099,7 +1099,7 @@ async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}
             },
           ],
           customerAccountId: 'account-created',
-          exportFormat: 'afrogate_client_configs_export_v1',
+          exportFormat: 'afrows_client_configs_export_v1',
           generatedAt: fixedNow,
           warnings: ['sanitized_config_export_no_secrets', 'subscription_credentials_not_included', 'raw_panel_payload_not_included'],
         });
@@ -1250,8 +1250,8 @@ function resellerWorkspaceResponse() {
     reseller: {
       activeCustomerAccountCount: 1,
       adminUserId: 'admin-reseller-visual',
-      afroGateShareBps: 7500,
-      afroGateSharePercent: 75,
+      afrowsShareBps: 7500,
+      afrowsSharePercent: 75,
       availableBalanceAmount: 4_000_000,
       balanceAmount: 4_000_000,
       contactName: 'Tehran Shop Owner',
@@ -1403,8 +1403,8 @@ function resellerPackageSaleResponse(payload: {
     reseller: {
       activeCustomerAccountCount: 2,
       adminUserId: 'admin-reseller-visual',
-      afroGateShareBps: 7500,
-      afroGateSharePercent: 75,
+      afrowsShareBps: 7500,
+      afrowsSharePercent: 75,
       availableBalanceAmount: 3_250_000,
       balanceAmount: 3_250_000,
       contactName: 'Tehran Shop Owner',
@@ -1646,7 +1646,7 @@ function auditLogRows() {
 function backupStatusRow() {
   return {
     artifacts: ['postgres', 'config', 'secrets'],
-    destinationLabel: 's3://afrogate-prod/daily',
+    destinationLabel: 's3://afrows-prod/daily',
     destinationType: 's3',
     durationSeconds: 42,
     encrypted: true,
@@ -1725,18 +1725,18 @@ function tenantBrandingRow(patch: Partial<{
 }> = {}) {
   return {
     accentColor: patch.accentColor ?? '#0E9F8F',
-    clientAppTitle: patch.clientAppTitle ?? 'AfroGate Mobile',
+    clientAppTitle: patch.clientAppTitle ?? 'Afrows Mobile',
     clientSupportMessage: patch.clientSupportMessage ?? 'Message support for route issues.',
     createdAt: fixedNow,
-    dashboardTitle: patch.dashboardTitle ?? 'AfroGate Ops',
-    displayName: patch.displayName ?? 'AfroGate Pro',
-    legalName: patch.legalName ?? 'AfroGate Labs',
+    dashboardTitle: patch.dashboardTitle ?? 'Afrows Ops',
+    displayName: patch.displayName ?? 'Afrows Pro',
+    legalName: patch.legalName ?? 'Afrows Labs',
     logoUrl: patch.logoUrl ?? null,
     primaryColor: patch.primaryColor ?? '#176B87',
     publicBrandingEnabled: patch.publicBrandingEnabled ?? true,
     settingKey: 'default',
     supportEmail: patch.supportEmail ?? 'support@example.com',
-    supportTelegram: patch.supportTelegram ?? '@afrogate_support',
+    supportTelegram: patch.supportTelegram ?? '@afrows_support',
     supportUrl: patch.supportUrl ?? 'https://example.com/support',
     tenantSlug: patch.tenantSlug ?? 'default',
     updatedAt: fixedNow,

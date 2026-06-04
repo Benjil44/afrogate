@@ -1,5 +1,5 @@
 import { Eye, Network, Route, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
-import type { AdminProtocolServerApplyAdapterSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolServerApplyPlanSummary, AdminProtocolServerApplyPreflightSummary } from '@afrogate/shared';
+import type { AdminProtocolServerApplyAdapterSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolServerApplyPlanSummary, AdminProtocolServerApplyPreflightSummary } from '@afrows/shared';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 import { protocolApplyAdapterStatusLabel, protocolApplyGateKindLabel, protocolApplyGateStatusLabel, protocolApplyRunnerModeLabel, protocolServerApplyEventStatusLabel, protocolServerApplyModeLabel, protocolServerApplyStatusLabel, protocolServerApplyStepLabel } from '../labels';
@@ -496,4 +496,4 @@ export function ProtocolServerApplySecretBadges({
       </StatusBadge>
     </div>
   );
-}
+}

@@ -1,6 +1,6 @@
 # Optional Docker Compose Deployment
 
-Docker is optional for AfroGate. The native Ubuntu path in `infra/ubuntu` remains the first production-style deployment because it uses fewer moving parts on small VPS machines. Use this folder when repeatable container builds are more important than native service simplicity.
+Docker is optional for Afrows. The native Ubuntu path in `infra/ubuntu` remains the first production-style deployment because it uses fewer moving parts on small VPS machines. Use this folder when repeatable container builds are more important than native service simplicity.
 
 The sample Compose stack runs:
 
@@ -28,19 +28,19 @@ Copy-Item compose.env.sample compose.env
 
 Edit `compose.env` and set:
 
-- `AFROGATE_POSTGRES_PASSWORD`
-- `AFROGATE_SUPERADMIN_PASSWORD` or, for production, `AFROGATE_SUPERADMIN_PASSWORD_HASH`; admin authentication is rejected when both are empty.
+- `AFROWS_POSTGRES_PASSWORD`
+- `AFROWS_SUPERADMIN_PASSWORD` or, for production, `AFROWS_SUPERADMIN_PASSWORD_HASH`; admin authentication is rejected when both are empty.
 - `ADMIN_SESSION_SECRET`
-- `AFROGATE_SECRETS_KEY`
+- `AFROWS_SECRETS_KEY`
 - `CORS_ORIGIN` if the public URL is not `http://127.0.0.1:8080`
 
-Use URL-safe characters for `AFROGATE_POSTGRES_PASSWORD` because it is embedded in `DATABASE_URL`.
+Use URL-safe characters for `AFROWS_POSTGRES_PASSWORD` because it is embedded in `DATABASE_URL`.
 
 Build the images, start PostgreSQL, run migrations, then start the stack:
 
 ```powershell
 docker compose --env-file compose.env -f docker-compose.sample.yml up --build -d postgres
-docker compose --env-file compose.env -f docker-compose.sample.yml run --rm backend npm --workspace @afrogate/backend run db:migrate
+docker compose --env-file compose.env -f docker-compose.sample.yml run --rm backend npm --workspace @afrows/backend run db:migrate
 docker compose --env-file compose.env -f docker-compose.sample.yml up -d
 ```
 
@@ -57,7 +57,7 @@ The dashboard is available at `http://127.0.0.1:8080` unless you place a TLS rev
 - Keep `compose.env` private and outside git.
 - Keep PostgreSQL and backend private to the Compose network.
 - Do not publish `5432`, `7000`, or local control-plane proxy ports.
-- Keep `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false` and keep all protocol apply live/decrypt flags disabled until server access profiles, SSH private-key credential storage, rollback behavior, and service health checks are audited for the target fleet.
+- Keep `AFROWS_ROUTE_DATA_PLANE_APPLY_ENABLED=false` and keep all protocol apply live/decrypt flags disabled until server access profiles, SSH private-key credential storage, rollback behavior, and service health checks are audited for the target fleet.
 - Prefer database-issued agent tokens from the admin registration API instead of a shared fallback token.
 - Back up the PostgreSQL volume before migrations once real data exists.
 - For public deployment, terminate HTTPS at a host reverse proxy and forward to `127.0.0.1:8080`, or replace the sample Nginx config with a TLS-ready one.
@@ -66,7 +66,7 @@ The dashboard is available at `http://127.0.0.1:8080` unless you place a TLS rev
 
 ```powershell
 docker compose --env-file compose.env -f docker-compose.sample.yml build
-docker compose --env-file compose.env -f docker-compose.sample.yml run --rm backend npm --workspace @afrogate/backend run db:migrate
+docker compose --env-file compose.env -f docker-compose.sample.yml run --rm backend npm --workspace @afrows/backend run db:migrate
 docker compose --env-file compose.env -f docker-compose.sample.yml up -d
 ```
 

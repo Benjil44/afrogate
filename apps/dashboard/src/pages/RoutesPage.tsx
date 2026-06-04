@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowDownUp, Clock, Gauge, Network, Route, ShieldCheck } from 'lucide-react';
-import type { AdminRouteAssignmentSummary, AdminRouteCanaryStatusResponse, AdminRouteHealthHistoryResponse, AdminSessionResponse, AdminTunnelSummary } from '@afrogate/shared';
+import type { AdminRouteAssignmentSummary, AdminRouteCanaryStatusResponse, AdminRouteHealthHistoryResponse, AdminSessionResponse, AdminTunnelSummary } from '@afrows/shared';
 import { fetchAdminTunnel, fetchRouteAssignment, fetchRouteCanaryStatus, fetchRouteHealthHistory, updateAdminRouteAssignment } from '../api/admin';
 import { OutboundsPanel } from '../components/dashboard-panels';
 import { TunnelPanel, tunnelRowKey } from '../components/panels';
@@ -697,4 +697,4 @@ function FailoverPanel({
       </div>
     </section>
   );
-}
+}

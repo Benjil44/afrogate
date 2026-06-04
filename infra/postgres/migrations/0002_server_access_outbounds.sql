@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS server_access_profiles (
   server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   address text NOT NULL,
   ssh_port integer NOT NULL DEFAULT 22,
-  username text NOT NULL DEFAULT 'afrogate',
+  username text NOT NULL DEFAULT 'afrows',
   access_method text NOT NULL DEFAULT 'ssh_key',
   credential_ref text,
   bootstrap_state text NOT NULL DEFAULT 'not_started',

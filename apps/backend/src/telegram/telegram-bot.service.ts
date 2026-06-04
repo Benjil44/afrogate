@@ -4,7 +4,7 @@ import type {
   TelegramBotAccountSummary,
   TelegramBotCommandName,
   TelegramBotWebhookResponse,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { BillingService } from '../billing/billing.service';
 import { TelegramAlertService } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from './telegram-bot-config.service';
@@ -89,14 +89,14 @@ export class TelegramBotService {
 
     if (lookup.status === 'ambiguous') {
       return [
-        'Your Telegram username matches more than one AfroGate account.',
+        'Your Telegram username matches more than one Afrows account.',
         'Ask support to link your numeric Telegram id before account details are shown.',
       ].join('\n');
     }
 
     if (lookup.status === 'not_found') {
       return [
-        'No linked AfroGate account was found.',
+        'No linked Afrows account was found.',
         'Ask support to link your Telegram id or username to your account.',
       ].join('\n');
     }
@@ -105,7 +105,7 @@ export class TelegramBotService {
   }
 
   private accountStatusReply(account: TelegramBotAccountSummary, command: LinkedTelegramBotCommandName): string {
-    const title = command === 'quota' ? 'AfroGate quota' : 'AfroGate account status';
+    const title = command === 'quota' ? 'Afrows quota' : 'Afrows account status';
     const accountName = account.displayName?.trim() || 'Linked account';
     const quotaLine =
       account.quotaLimitBytes === null || account.quotaLimitBytes === undefined
@@ -124,7 +124,7 @@ export class TelegramBotService {
 
   private helpReply(): string {
     return [
-      'AfroGate account bot',
+      'Afrows account bot',
       'Commands:',
       '/status - account status and linked clients',
       '/quota - remaining account data',

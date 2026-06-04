@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AdminAlertSummary } from '@afrogate/shared';
+import type { AdminAlertSummary } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { OperationsService } from '../operations/operations.service';
 import { TelegramAlertService } from './telegram-alert.service';
@@ -94,15 +94,15 @@ export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
   }
 
   private intervalMs(): number {
-    return this.configSeconds('AFROGATE_ALERT_DELIVERY_INTERVAL_SECONDS', 10, 5) * 1000;
+    return this.configSeconds('AFROWS_ALERT_DELIVERY_INTERVAL_SECONDS', 10, 5) * 1000;
   }
 
   private cooldownMs(): number {
-    return this.configSeconds('AFROGATE_TELEGRAM_ALERT_COOLDOWN_SECONDS', 300, 30) * 1000;
+    return this.configSeconds('AFROWS_TELEGRAM_ALERT_COOLDOWN_SECONDS', 300, 30) * 1000;
   }
 
   private batchLimit(): number {
-    return this.configInteger('AFROGATE_ALERT_DELIVERY_BATCH_SIZE', 20, 1, 100);
+    return this.configInteger('AFROWS_ALERT_DELIVERY_BATCH_SIZE', 20, 1, 100);
   }
 
   private configSeconds(name: string, fallback: number, minimum: number): number {

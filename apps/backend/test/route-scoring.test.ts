@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { RouteProbeMetric } from '@afrogate/shared';
+import type { RouteProbeMetric } from '@afrows/shared';
 import {
   calculateMtuProbeScore,
   calculateProtocolProbeScore,

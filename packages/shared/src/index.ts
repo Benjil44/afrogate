@@ -813,8 +813,8 @@ export interface AdminResellerAccountSummary {
   status: ResellerAccountStatus | string;
   sellerMarginBps: number;
   sellerMarginPercent: number;
-  afroGateShareBps: number;
-  afroGateSharePercent: number;
+  afrowsShareBps: number;
+  afrowsSharePercent: number;
   currency: string;
   balanceAmount: number;
   creditLimitAmount: number;
@@ -931,7 +931,7 @@ export interface CreateResellerPackageSaleRequest {
 export interface AdminClientConfigsExportResponse {
   customerAccountId: string;
   generatedAt: string;
-  exportFormat: 'afrogate_client_configs_export_v1';
+  exportFormat: 'afrows_client_configs_export_v1';
   configCount: number;
   configs: AdminClientConfigSummary[];
   warnings: string[];

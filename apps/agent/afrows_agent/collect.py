@@ -50,7 +50,7 @@ UNIX_PACKET_PATTERN = re.compile(
 )
 SAFE_PING_TARGET_PATTERN = re.compile(r"[A-Za-z0-9_.:\-\[\]]{1,253}")
 SAFE_ROUTE_HOST_PATTERN = re.compile(r"[A-Za-z0-9_.:\-\[\]]{1,253}")
-ROUTE_PROBE_PAYLOAD = b"afrogate-route-probe\n"
+ROUTE_PROBE_PAYLOAD = b"afrows-route-probe\n"
 
 
 def collect_metrics(
@@ -1215,4 +1215,4 @@ def _state_path(state_file: str | None) -> Path:
     if state_file:
         return Path(state_file)
 
-    return Path(tempfile.gettempdir()) / "afrogate-agent-state.json"
+    return Path(tempfile.gettempdir()) / "afrows-agent-state.json"

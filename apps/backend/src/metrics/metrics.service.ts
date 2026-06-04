@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { MetricsTimeRange, MetricsTimeseriesResponse, ServerMetricSnapshot } from '@afrogate/shared';
+import type { MetricsTimeRange, MetricsTimeseriesResponse, ServerMetricSnapshot } from '@afrows/shared';
 import { MetricsIngestDto } from './dto/metrics-ingest.dto';
 import { METRICS_REPOSITORY, MetricsRepository } from './metrics.repository';
 

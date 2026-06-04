@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { AlertTriangle, ArrowDownUp, Gauge, Network, ShieldCheck } from 'lucide-react';
-import type { AdminBackupStatusSummary, MetricsTimeRange, ServerMetricTimeseries } from '@afrogate/shared';
+import type { AdminBackupStatusSummary, MetricsTimeRange, ServerMetricTimeseries } from '@afrows/shared';
 import { createDonutChartOption, createHealthChartOption } from '../chart-options';
 import type { AlertRowData, DataState, OutboundRowData, ServerRowData, Tone, TrafficTotals } from '../dashboard-types';
 import { timeRanges, type DashboardFormatters } from '../formatters';

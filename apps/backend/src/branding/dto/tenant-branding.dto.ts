@@ -1,5 +1,5 @@
 import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
-import type { UpdateTenantBrandSettingsRequest } from '@afrogate/shared';
+import type { UpdateTenantBrandSettingsRequest } from '@afrows/shared';
 
 export class UpdateTenantBrandingDto implements UpdateTenantBrandSettingsRequest {
   @IsOptional()

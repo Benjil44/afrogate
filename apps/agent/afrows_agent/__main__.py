@@ -10,7 +10,7 @@ from .config import load_config
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the AfroGate monitoring agent.")
+    parser = argparse.ArgumentParser(description="Run the Afrows monitoring agent.")
     parser.add_argument("--once", action="store_true", help="Collect and push one payload.")
     args = parser.parse_args()
 

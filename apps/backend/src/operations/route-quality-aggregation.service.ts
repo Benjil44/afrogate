@@ -17,7 +17,7 @@ export class RouteQualityAggregationService implements OnModuleInit, OnModuleDes
 
   onModuleInit(): void {
     if (!process.env.DATABASE_URL) return;
-    if (!this.configFlag('AFROGATE_ROUTE_QUALITY_AGGREGATION_ENABLED', true)) return;
+    if (!this.configFlag('AFROWS_ROUTE_QUALITY_AGGREGATION_ENABLED', true)) return;
 
     this.timer = setInterval(() => void this.aggregateRecent(), this.intervalMs());
     this.timer.unref?.();
@@ -227,11 +227,11 @@ export class RouteQualityAggregationService implements OnModuleInit, OnModuleDes
   }
 
   private intervalMs(): number {
-    return this.configInteger('AFROGATE_ROUTE_QUALITY_AGGREGATION_INTERVAL_SECONDS', 300, 60, 86400) * 1000;
+    return this.configInteger('AFROWS_ROUTE_QUALITY_AGGREGATION_INTERVAL_SECONDS', 300, 60, 86400) * 1000;
   }
 
   private lookbackHours(): number {
-    return this.configInteger('AFROGATE_ROUTE_QUALITY_AGGREGATION_LOOKBACK_HOURS', 48, 1, 2160);
+    return this.configInteger('AFROWS_ROUTE_QUALITY_AGGREGATION_LOOKBACK_HOURS', 48, 1, 2160);
   }
 
   private configFlag(name: string, fallback: boolean): boolean {

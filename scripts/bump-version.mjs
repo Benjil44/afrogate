@@ -32,7 +32,7 @@ for (const pluginManifestPath of pluginManifestPaths) {
 updatePackageLock(nextVersion);
 fs.writeFileSync(path.join(repoRoot, 'VERSION'), `${nextVersion}\n`, 'utf8');
 
-console.log(`AfroGate version updated: ${currentVersion} -> ${nextVersion}`);
+console.log(`Afrows version updated: ${currentVersion} -> ${nextVersion}`);
 
 function resolveNextVersion(version, target) {
   if (/^\d+\.\d+\.\d+$/.test(target)) return target;
@@ -105,7 +105,7 @@ function updateInternalDependencies(packageJson, version) {
     if (!dependencies) continue;
 
     for (const dependencyName of Object.keys(dependencies)) {
-      if (dependencyName.startsWith('@afrogate/')) {
+      if (dependencyName.startsWith('@afrows/')) {
         dependencies[dependencyName] = version;
       }
     }

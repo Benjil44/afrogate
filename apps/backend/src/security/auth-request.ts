@@ -1,4 +1,4 @@
-import type { Role } from '@afrogate/shared';
+import type { Role } from '@afrows/shared';
 
 export interface AuditActor {
   id: string;

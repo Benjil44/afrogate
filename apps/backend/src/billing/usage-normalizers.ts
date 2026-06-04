@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { CurrentPanelVolumeChargeScope } from '@afrogate/shared';
+import type { CurrentPanelVolumeChargeScope } from '@afrows/shared';
 
 export const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = new Set<CurrentPanelVolumeChargeScope>([
   'account_quota',

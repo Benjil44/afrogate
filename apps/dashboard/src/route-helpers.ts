@@ -1,4 +1,4 @@
-import type { RouteHealthHistoryPoint, RouteQualityRecommendation } from '@afrogate/shared';
+import type { RouteHealthHistoryPoint, RouteQualityRecommendation } from '@afrows/shared';
 import type { WireGuardHealthCandidate } from './dashboard-types';
 import type { DashboardFormatters } from './formatters';
 import type { DashboardStrings } from './i18n';
@@ -147,4 +147,4 @@ export function formatRouteStartsIn(minutes: number | null, format: DashboardFor
   if (minutes <= 0) return format.durationMinutes(0);
 
   return format.durationMinutes(minutes);
-}
+}

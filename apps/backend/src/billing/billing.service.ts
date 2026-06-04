@@ -61,7 +61,7 @@ import type {
   ClientRewardedAdStatus,
   RewardedAdWebhookHandlerResponse,
   PayPalWebhookHandlerResponse,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
@@ -77,7 +77,7 @@ import { clientRouteAssignmentKey, clientRouteHealthRank, mapClientScoreProfileT
 import { normalizeClientUsageDirection, normalizeClientUsageSource, normalizeCurrentPanelChargeClientIds, normalizeCurrentPanelVolumeChargeScope } from './usage-normalizers';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
-  afroGateShareBps,
+  afrowsShareBps,
   computeResellerSaleAmounts,
   normalizeResellerMarginBps,
   walletCanCoverDebit,
@@ -2780,7 +2780,7 @@ export class BillingService {
     const account = await this.getCustomerAccount(id);
     await this.audit.record(actor, 'client_configs.export', 'customer_account', id, {
       configCount: account.clientConfigs.length,
-      exportFormat: 'afrogate_client_configs_export_v1',
+      exportFormat: 'afrows_client_configs_export_v1',
       hasExternalPanelRefs: account.clientConfigs.some((config) => Boolean(config.externalPanel)),
       subscriptionCredentialsIncluded: false,
     });
@@ -2789,7 +2789,7 @@ export class BillingService {
       configCount: account.clientConfigs.length,
       configs: account.clientConfigs,
       customerAccountId: id,
-      exportFormat: 'afrogate_client_configs_export_v1',
+      exportFormat: 'afrows_client_configs_export_v1',
       generatedAt: new Date().toISOString(),
       warnings: [
         'sanitized_config_export_no_secrets',
@@ -3824,7 +3824,7 @@ export class BillingService {
       : 'Usage/status: send /status to this bot.';
 
     return [
-      'AfroGate purchase is active',
+      'Afrows purchase is active',
       `Account: ${accountName}`,
       `Package: ${input.paymentOrder.packageName}`,
       `Added: ${this.formatTelegramBytes(input.allocation.volumeBytesDelta)}`,
@@ -5266,7 +5266,7 @@ export class BillingService {
 
   private mapResellerAccount(row: ResellerAccountRow): AdminResellerAccountSummary {
     const sellerMarginBps = Number(row.sellerMarginBps ?? DEFAULT_RESELLER_MARGIN_BPS);
-    const afroGateShareBpsValue = afroGateShareBps(sellerMarginBps);
+    const afrowsShareBpsValue = afrowsShareBps(sellerMarginBps);
     const balanceAmount = numberFromBigInt(row.balanceAmount) ?? 0;
     const creditLimitAmount = numberFromBigInt(row.creditLimitAmount) ?? 0;
 
@@ -5279,8 +5279,8 @@ export class BillingService {
       status: row.status,
       sellerMarginBps,
       sellerMarginPercent: sellerMarginBps / 100,
-      afroGateShareBps: afroGateShareBpsValue,
-      afroGateSharePercent: afroGateShareBpsValue / 100,
+      afrowsShareBps: afrowsShareBpsValue,
+      afrowsSharePercent: afrowsShareBpsValue / 100,
       currency: row.currency,
       balanceAmount,
       creditLimitAmount,
@@ -7541,10 +7541,10 @@ export class BillingService {
     const normalized = normalizePaidNumber(value);
     if (!normalized) return null;
 
-    const key = process.env.AFROGATE_IDENTITY_HASH_KEY?.trim() || process.env.AFROGATE_SECRETS_KEY?.trim();
+    const key = process.env.AFROWS_IDENTITY_HASH_KEY?.trim() || process.env.AFROWS_SECRETS_KEY?.trim();
     if (!key) {
       throw new ServiceUnavailableException(
-        'AFROGATE_IDENTITY_HASH_KEY or AFROGATE_SECRETS_KEY is required before storing paid numbers',
+        'AFROWS_IDENTITY_HASH_KEY or AFROWS_SECRETS_KEY is required before storing paid numbers',
       );
     }
 

@@ -1,4 +1,4 @@
-import type { RouteQualityWindowSummary } from '@afrogate/shared';
+import type { RouteQualityWindowSummary } from '@afrows/shared';
 
 /** A window is "best" when scores are high and degraded samples are few. */
 export function isBestRouteQualityWindow(window: RouteQualityWindowSummary): boolean {
@@ -33,7 +33,7 @@ export function nextRouteQualityWindowStart(window: RouteQualityWindowSummary, n
 
 /** Prediction look-ahead window in hours, from env, clamped to [1, 168]; defaults to 8. */
 export function routeQualityPredictionLookaheadHours(): number {
-  const value = Number(process.env.AFROGATE_ROUTE_QUALITY_PREDICTION_LOOKAHEAD_HOURS ?? 8);
+  const value = Number(process.env.AFROWS_ROUTE_QUALITY_PREDICTION_LOOKAHEAD_HOURS ?? 8);
   if (!Number.isInteger(value)) return 8;
   return Math.min(168, Math.max(1, value));
 }

@@ -1,4 +1,4 @@
-# AfroGate UI/UX Implementation Checklist
+# Afrows UI/UX Implementation Checklist
 
 Progress: 40 / 40 complete (100.0%), 0 remaining.
 

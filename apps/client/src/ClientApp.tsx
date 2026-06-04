@@ -12,7 +12,7 @@ import type {
   ClientSubscriptionSummary,
   RouteScoreProfile,
   UpdateClientRoutePreferenceRequest,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import {
   AlertTriangle,
   AppWindow,
@@ -61,9 +61,9 @@ import {
   type Language,
 } from './i18n';
 
-const languageStorageKey = 'afrogate.client.language';
-const tokenStorageKey = 'afrogate.client.token';
-const splitTunnelStoragePrefix = 'afrogate.client.splitTunnel.';
+const languageStorageKey = 'afrows.client.language';
+const tokenStorageKey = 'afrows.client.token';
+const splitTunnelStoragePrefix = 'afrows.client.splitTunnel.';
 const routeModes: ClientRoutePreferenceMode[] = ['auto', 'country', 'outbound'];
 const routeProfiles: RouteScoreProfile[] = [
   'balanced',

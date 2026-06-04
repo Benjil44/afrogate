@@ -75,7 +75,7 @@ import type {
   UpdateServerRequest,
   UpdateAdminUserPasswordRequest,
   UpdateAdminUserRequest,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { getApiBaseUrl } from './base';
 
 export type AdminAuthErrorCode = 'invalid' | 'unavailable' | 'network';

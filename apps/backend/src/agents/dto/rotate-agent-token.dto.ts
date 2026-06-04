@@ -1,5 +1,5 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
-import type { RotateAgentTokenRequest } from '@afrogate/shared';
+import type { RotateAgentTokenRequest } from '@afrows/shared';
 
 export class RotateAgentTokenDto implements RotateAgentTokenRequest {
   @IsOptional()

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { RouteQualityWindowSummary } from '@afrogate/shared';
+import type { RouteQualityWindowSummary } from '@afrows/shared';
 import {
   isBestRouteQualityWindow,
   isDegradedRouteQualityWindow,
@@ -54,7 +54,7 @@ describe('nextRouteQualityWindowStart', () => {
 });
 
 describe('routeQualityPredictionLookaheadHours', () => {
-  const KEY = 'AFROGATE_ROUTE_QUALITY_PREDICTION_LOOKAHEAD_HOURS';
+  const KEY = 'AFROWS_ROUTE_QUALITY_PREDICTION_LOOKAHEAD_HOURS';
 
   it('defaults to 8 when unset or non-integer', () => {
     const prev = process.env[KEY];

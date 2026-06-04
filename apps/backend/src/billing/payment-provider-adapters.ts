@@ -3,7 +3,7 @@ import type {
   AdminPaymentProviderAdapterSummary,
   PaymentProviderAdapterStatus,
   PaymentProviderSettlementMode,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 
 const PAYMENT_PROVIDER_ADAPTER_VERSION = 1;
 
@@ -121,7 +121,7 @@ export function prepareAdditionalPaymentProviderCheckout(
     throw new BadRequestException('Use the PayPal checkout adapter for PayPal payment orders');
   }
 
-  const paymentReference = normalizeExistingReference(input.order.providerOrderId) ?? `afrogate-${input.order.id}`;
+  const paymentReference = normalizeExistingReference(input.order.providerOrderId) ?? `afrows-${input.order.id}`;
 
   if (provider === 'card' || provider === 'local_gateway') {
     return prepareHostedGatewayCheckout(input, provider, paymentReference);
@@ -241,7 +241,7 @@ function buildHostedCheckoutUrl(
   }
 
   const params: Record<string, string> = {
-    afrogate_order_id: input.order.id,
+    afrows_order_id: input.order.id,
     amount: String(input.order.amount),
     currency: input.order.currency,
     package: input.order.packageSlug,

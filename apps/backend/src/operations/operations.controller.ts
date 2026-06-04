@@ -53,7 +53,7 @@ import type {
   RecordRouteDecisionPreviewResponse,
   RequestProtocolServerApplyResponse,
   RouteFailoverEventsResponse,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { BackupStatusService } from '../backups/backup-status.service';
 import { AuthService } from '../auth/auth.service';

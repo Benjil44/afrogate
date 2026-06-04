@@ -1,4 +1,4 @@
-# Review before applying to /etc/sysctl.d/99-afrogate-network.conf.
+# Review before applying to /etc/sysctl.d/99-afrows-network.conf.
 # These are conservative defaults for forwarding hosts. Tune per server.
 
 net.ipv4.ip_forward = 1

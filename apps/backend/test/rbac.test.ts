@@ -5,7 +5,7 @@ import {
   getEffectiveRolePermissions,
   roleHasPermission,
   roleInheritsAllPermissions,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 
 describe('roleInheritsAllPermissions', () => {
   it('is true only for superadmin and owner', () => {

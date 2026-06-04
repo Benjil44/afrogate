@@ -1,14 +1,14 @@
 {
-  "name": "afrogate-local",
+  "name": "afrows-local",
   "interface": {
-    "displayName": "AfroGate Local Plugins"
+    "displayName": "Afrows Local Plugins"
   },
   "plugins": [
     {
-      "name": "afrogate-versioning",
+      "name": "afrows-versioning",
       "source": {
         "source": "local",
-        "path": "./plugins/afrogate-versioning"
+        "path": "./plugins/afrows-versioning"
       },
       "policy": {
         "installation": "AVAILABLE",

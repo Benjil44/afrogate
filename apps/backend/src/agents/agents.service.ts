@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AgentHeartbeatResponse, AgentRegistrationResponse, AgentTokenRotationResponse } from '@afrogate/shared';
+import type { AgentHeartbeatResponse, AgentRegistrationResponse, AgentTokenRotationResponse } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { hashAgentToken } from '../security/agent-token';

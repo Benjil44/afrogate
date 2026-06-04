@@ -1,8 +1,8 @@
-# AfroGate Agent Controller
+# Afrows Agent Controller
 
 ## Mission
 
-Build AfroGate as a privacy-conscious monitoring, routing, billing, and operations platform for VPN/proxy infrastructure.
+Build Afrows as a privacy-conscious monitoring, routing, billing, and operations platform for VPN/proxy infrastructure.
 
 The first executable milestone is a dashboard-first monitoring MVP. It should later grow into an enterprise-grade branded panel that can reduce dependence on Marzban/X-UI/other panels over time.
 
@@ -24,14 +24,14 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Keep WireGuard telemetry privacy-safe: collect tunnel/peer health from the local `wg` command when available, send peer public-key fingerprints only, and never persist or return raw WireGuard private keys, preshared keys, or full public keys.
 - Treat agent-sourced WireGuard route candidates as live health signals for admin selection, not as applied routes, until a managed outbound or audited server-side apply step links them to real routing state.
 - Optional route-probe metadata must stay non-secret and operational only: route group, outbound key/name/id, operator, and score profile are allowed; user destinations, user IP history, credentials, and traffic contents are not.
-- Treat username/password admin login as the dashboard-facing auth path; `AFROGATE_ADMIN_TOKEN` is only a legacy direct API/bootstrap fallback.
+- Treat username/password admin login as the dashboard-facing auth path; `AFROWS_ADMIN_TOKEN` is only a legacy direct API/bootstrap fallback.
 - Preserve the permanent `superadmin` account invariant in future user-management work: normal admins must not remove, disable, or change it.
 - Treat managed dashboard roles as `owner`, `admin`, `supervisor`, `support`, and `auditor`; `supervisor` is read-oriented supervision, while superadmin remains the protected bootstrap root.
-- Store managed admin-user passwords as hashes only. Production/default managed users live in PostgreSQL `admin_users`; `AFROGATE_ADMIN_USERS_FILE` is only a legacy fallback/import source. Never place real passwords or admin-user runtime data in `.codex` or git.
+- Store managed admin-user passwords as hashes only. Production/default managed users live in PostgreSQL `admin_users`; `AFROWS_ADMIN_USERS_FILE` is only a legacy fallback/import source. Never place real passwords or admin-user runtime data in `.codex` or git.
 - Update `.codex/progress.md` after each session.
 - Update `.codex/checklist.md` when a task changes state.
 - Update `.codex/memory.md` only for durable decisions and facts.
-- For every meaningful implementation section, bump the AfroGate version, update `CHANGELOG.md`, run `npm run version:check`, and commit the version with the work.
+- For every meaningful implementation section, bump the Afrows version, update `CHANGELOG.md`, run `npm run version:check`, and commit the version with the work.
 
 ## Product Priorities
 
@@ -41,7 +41,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 4. Usage accounting by GB.
 5. Auto route with optional route lock.
 6. Integration with current Marzban/X-UI/other panel usage.
-7. Enterprise-ready Afrogate branded panel.
+7. Enterprise-ready Afrows branded panel.
 8. Reliability, observability, route intelligence, privacy, and enterprise-readiness enhancements from `docs/enhancement-approaches-fa.md`.
 9. Local-first implementation using the direction in `docs/implementation-start-plan-fa.md`.
 

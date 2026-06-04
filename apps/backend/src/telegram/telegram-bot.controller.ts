@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import type { TelegramBotWebhookResponse } from '@afrogate/shared';
+import type { TelegramBotWebhookResponse } from '@afrows/shared';
 import { RateLimit } from '../security/rate-limit.decorator';
 import { RateLimitGuard } from '../security/rate-limit.guard';
 import { TelegramBotService } from './telegram-bot.service';
@@ -25,7 +25,7 @@ export class TelegramBotController {
   async handleWebhook(
     @Body() payload: unknown,
     @Headers('x-telegram-bot-api-secret-token') telegramSecret?: string,
-    @Headers('x-afrogate-telegram-webhook-secret') afrogateSecret?: string,
+    @Headers('x-afrows-telegram-webhook-secret') afrowsSecret?: string,
   ): Promise<TelegramBotWebhookResponse> {
     if (!(await this.telegramBot.isWebhookEnabled())) {
       throw new NotFoundException('Telegram bot commands are disabled');
@@ -35,7 +35,7 @@ export class TelegramBotController {
       throw new ServiceUnavailableException('Telegram bot webhook is not configured');
     }
 
-    if (!(await this.telegramBot.isWebhookSecretValid(telegramSecret || afrogateSecret))) {
+    if (!(await this.telegramBot.isWebhookSecretValid(telegramSecret || afrowsSecret))) {
       throw new UnauthorizedException('Invalid Telegram webhook secret');
     }
 

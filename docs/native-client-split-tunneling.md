@@ -1,6 +1,6 @@
 # Native Client Per-App VPN Split Tunneling
 
-AfroGate per-app VPN selection is a native-client responsibility. The control plane may provide client-scoped route and subscription data, but installed-app inventories, traffic contents, destination history, and non-selected apps must stay off the backend.
+Afrows per-app VPN selection is a native-client responsibility. The control plane may provide client-scoped route and subscription data, but installed-app inventories, traffic contents, destination history, and non-selected apps must stay off the backend.
 
 ## Supported Boundary
 
@@ -11,7 +11,7 @@ AfroGate per-app VPN selection is a native-client responsibility. The control pl
 
 ## Default User Flow
 
-1. User signs in to the AfroGate client surface with a client token.
+1. User signs in to the Afrows client surface with a client token.
 2. User chooses `Selected apps` and keeps or changes apps such as Instagram, Telegram, WhatsApp, Chrome, Firefox, or YouTube.
 3. Native Android client applies the selected Android package names through the VPN service builder.
 4. Native iOS deployment uses a managed per-app VPN profile when available.

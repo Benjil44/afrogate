@@ -9,7 +9,7 @@ const COPY: Record<string, { msg: string; now: string }> = {
 
 const POLL_MS = 30_000;
 const AUTO_RELOAD_MS = 4_000;
-const RELOADED_KEY = 'afrogate.reloadedForVersion';
+const RELOADED_KEY = 'afrows.reloadedForVersion';
 
 /**
  * Polls /api/health for the deployed backend version and compares it to the

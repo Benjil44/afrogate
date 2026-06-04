@@ -1,4 +1,4 @@
-# AfroGate Checklist
+# Afrows Checklist
 
 ## Project Setup
 
@@ -8,13 +8,13 @@
 - [x] Add repository ignore rules.
 - [x] Initialize local git repository.
 - [x] Create initial local commit.
-- [x] Configure target `origin` URL for `Benjil44/afrogate`.
+- [x] Configure target `origin` URL for `Benjil44/afrows`.
 - [x] Add enhancement approach documentation.
 - [x] Keep repository local-first for now.
-- [x] Create remote repository named `afrogate`.
+- [x] Create remote repository named `afrows`.
 - [x] Push initial commits to GitHub.
 - [x] Add versioning policy, changelog, and VERSION tracking.
-- [x] Add local AfroGate versioning plugin and skill.
+- [x] Add local Afrows versioning plugin and skill.
 - [x] Show application version in dashboard sidebar.
 - [x] Add multilingual UI policy documentation.
 
@@ -32,7 +32,7 @@
 - [x] Add `.env.example`.
 - [x] Define database schema migration tool.
 - [x] Add local PostgreSQL setup script.
-- [x] Install local PostgreSQL, create the AfroGate development database, and run migrations.
+- [x] Install local PostgreSQL, create the Afrows development database, and run migrations.
 - [x] Add basic CI checks.
 - [x] Scaffold `apps/backend`.
 - [x] Scaffold `apps/dashboard`.
@@ -173,7 +173,7 @@
 - [x] Reseller account and wallet ledger schema.
 - [x] Guarded admin reseller wallet APIs for account listing, package quote, top-up, and package debit.
 - [x] Reseller-scoped dashboard/panel so each representative can manage only their own customers, orders, and wallet.
-- [x] Wallet-gated reseller client creation/renewal that automatically debits AfroGate share at sale time.
+- [x] Wallet-gated reseller client creation/renewal that automatically debits Afrows share at sale time.
 - [x] Reseller seller workspace sidebar with scoped Dashboard, Users, and Billing pages, sales charts, Users-page add-user dialog sale action, sold-users table, and wallet selling summary.
 - [x] PayPal checkout capture adapter and webhook verification.
 - [x] Paid payment order quota allocation.
@@ -189,7 +189,7 @@
 - [x] Client subscription refresh endpoint for updated safe server addresses.
 - [x] Telegram bot user commands.
 - [x] Superadmin Settings Telegram bot setup for BotFather token, webhook secret, allowed chat/admin IDs, and Telegram API connection test.
-- [x] Telegram bot onboarding and rotation guide that explains bot creation happens in Telegram BotFather, while AfroGate stores only encrypted/write-only token material.
+- [x] Telegram bot onboarding and rotation guide that explains bot creation happens in Telegram BotFather, while Afrows stores only encrypted/write-only token material.
 - [x] Telegram purchase fulfillment flow that sends one client-scoped VLESS config plus a private usage/status link after verified payment.
 
 ## Phase 3: Auto Route
@@ -228,13 +228,13 @@
 - [x] Per-client route preference model for auto country detection, preferred exit country, and explicit server/outbound choice.
 - [x] Route decision filtering by per-client preferred exit country and available country/server candidates.
 - [x] Mobile client UX for automatic route, country selection, and explicit server choice.
-- [x] Native client per-app VPN split tunneling profile with local app selection, Android include-only `VpnService` enforcement reference, and iOS managed-profile boundary so selected apps can use AfroGate where native enforcement is available while other apps stay on normal internet.
+- [x] Native client per-app VPN split tunneling profile with local app selection, Android include-only `VpnService` enforcement reference, and iOS managed-profile boundary so selected apps can use Afrows where native enforcement is available while other apps stay on normal internet.
 - [x] Adaptive MTU/fragmentation diagnostics and safe MTU recommendations for mobile/VPN routes, with no automatic mid-session change unless session-safety gates allow it.
 
 ## Phase 4: Current Panel Integration
 
 - [x] Read users from Marzban/X-UI/current panel.
-- [x] Controlled current-panel config import into AfroGate client configs with baseline usage events.
+- [x] Controlled current-panel config import into Afrows client configs with baseline usage events.
 - [x] Sync volume usage.
 - [x] Charge/update user volume.
 - [x] Import/export configs.
@@ -312,7 +312,7 @@ typecheck passes, production build passes, 20/20 Playwright UI smoke tests pass,
 - [x] Add a Content-Security-Policy header to the Nginx samples (done on `hardening/web-security`: CSP added to `infra/ubuntu/nginx.conf.sample` and `infra/docker/nginx.conf.sample`).
 - [x] Make backend CORS fail-closed: `main.ts` uses the explicit `CORS_ORIGIN` allowlist and falls back to `origin: false` (same-origin only) with a warning when unset.
 - [x] Added app-layer security headers in `main.ts` (no new dependency): nosniff, X-Frame-Options DENY, Referrer-Policy, Cross-Origin-Resource-Policy, X-Permitted-Cross-Domain-Policies, and a strict `default-src none` CSP for the JSON API — defense in depth if exposed without Nginx.
-- [x] Documented `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS` production guidance in `.env.example` (set true behind Nginx so per-IP limits use the real client IP).
+- [x] Documented `AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS` production guidance in `.env.example` (set true behind Nginx so per-IP limits use the real client IP).
 
 ### Injection & input-security testing (to implement after the dashboard split)
 
@@ -339,14 +339,14 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 
 ### Release / deployment validation
 
-- [x] **Live VPS production deployment — DONE 2026-06-04.** Deployed to operator's VPS (`94.74.145.199`, Ubuntu 24.04 LTS, 4 GB RAM, IP-only → self-signed TLS). Live at `https://94.74.145.199/`. Done over a heavily filtered Iranian network: Node 22 installed from tarball to `/usr/local` (apt/mirror blocked), dependencies installed offline from a PC-warmed Linux npm cache (`npm ci --offline`), least-privilege DB roles (`afrogate_owner`/`afrogate_migrator`/`afrogate_app`) + all migrations applied, secrets generated on-box in `/etc/afrogate/.secrets`, systemd `afrogate-backend` unit, Nginx self-signed TLS reverse proxy, UFW (22/80/443 allow, default deny). Deploy scripts (`deploy-afrogate.sh`, `update-afrogate.sh`, `sync.ps1`, `ufw-afrogate.sh`) are gitignored (server-specific, generate secrets on-box). **Superadmin password was exposed in chat → must be rotated on first login.**
-  - [x] Passwordless dev→VPS deploy loop: `sync.ps1` (PC) packages source, ships over SSH (ed25519 `afrogate_deploy` key), runs `update-afrogate.sh` on the box (extract → build with `VITE_API_BASE_URL=/api` → idempotent migrate → restart → health check). `.\sync.ps1` for code-only, `.\sync.ps1 -WithDeps` when `package-lock.json` changed (re-warms + ships the Linux npm cache).
+- [x] **Live VPS production deployment — DONE 2026-06-04.** Deployed to operator's VPS (`94.74.145.199`, Ubuntu 24.04 LTS, 4 GB RAM, IP-only → self-signed TLS). Live at `https://94.74.145.199/`. Done over a heavily filtered Iranian network: Node 22 installed from tarball to `/usr/local` (apt/mirror blocked), dependencies installed offline from a PC-warmed Linux npm cache (`npm ci --offline`), least-privilege DB roles (`afrows_owner`/`afrows_migrator`/`afrows_app`) + all migrations applied, secrets generated on-box in `/etc/afrows/.secrets`, systemd `afrows-backend` unit, Nginx self-signed TLS reverse proxy, UFW (22/80/443 allow, default deny). Deploy scripts (`deploy-afrows.sh`, `update-afrows.sh`, `sync.ps1`, `ufw-afrows.sh`) are gitignored (server-specific, generate secrets on-box). **Superadmin password was exposed in chat → must be rotated on first login.**
+  - [x] Passwordless dev→VPS deploy loop: `sync.ps1` (PC) packages source, ships over SSH (ed25519 `afrows_deploy` key), runs `update-afrows.sh` on the box (extract → build with `VITE_API_BASE_URL=/api` → idempotent migrate → restart → health check). `.\sync.ps1` for code-only, `.\sync.ps1 -WithDeps` when `package-lock.json` changed (re-warms + ships the Linux npm cache).
   - [x] Hot reload for local dev: root `npm run dev` (`scripts/dev-all.mjs`) runs shared `tsc --watch` + backend/dashboard/client dev servers together (Vite HMR on frontends, Nest watch on backend).
   - [x] Honest dashboard data: demo `fallbackServers`/`tunnels`/`outbounds`/failover/timeseries gated behind `import.meta.env.DEV`; real `countActiveUsers()` replaces the hardcoded `150`. Production shows real API data and true empty states.
   - [x] Auto-reload on deploy: `/api/health` reports the running version; dashboard `VersionWatcher` polls it and auto-reloads open tabs when a new version ships (v0.114.27).
 - [~] Ubuntu install drill runbook (`docs/release-readiness-runbooks.md` §1) + bundled self-verifier `scripts/drills/verify-install.sh` (health, security headers, loopback-only ports; `bash -n` clean); **execution needs a live host** (cannot be run in CI/by agent).
 - [~] Encrypted backup + restore drill runbook (`docs/release-readiness-runbooks.md` §2) + bundled `scripts/drills/backup-restore-drill.sh` (dump+encrypt → restore to scratch → row-count parity + encryption check; destructive to scratch only; `bash -n` clean); **execution needs a live host/DB**.
-- [~] Load/scale test prepared: k6 script `scripts/loadtest/afrogate-smoke.js` now models the three real traffic classes (client subscription polls / agent heartbeats / admin reads) as weighted, token-gated, env-tunable (`PEAK_*`) scenarios with per-class thresholds; plan + capacity model + tuning levers (multi-process behind Nginx, `DATABASE_POOL_MAX`/PgBouncer, shared rate-limit store, hot-read caching) in `docs/release-readiness-runbooks.md` §3. `node -c` clean. **Execution needs a deployed host + k6.**
+- [~] Load/scale test prepared: k6 script `scripts/loadtest/afrows-smoke.js` now models the three real traffic classes (client subscription polls / agent heartbeats / admin reads) as weighted, token-gated, env-tunable (`PEAK_*`) scenarios with per-class thresholds; plan + capacity model + tuning levers (multi-process behind Nginx, `DATABASE_POOL_MAX`/PgBouncer, shared rate-limit store, hot-read caching) in `docs/release-readiness-runbooks.md` §3. `node -c` clean. **Execution needs a deployed host + k6.**
 - [~] Penetration-test scope & readiness package prepared (`docs/release-readiness-runbooks.md` §4) referencing the threat models; **needs an external auditor** to execute.
 - [~] Agent-token & secret-rotation runbook (`docs/release-readiness-runbooks.md` §5) + bundled verifier `scripts/drills/verify-rotation.sh` (confirms old agent token rejected / new accepted at the heartbeat endpoint; `bash -n` clean); **rehearsal needs a staging environment**.
 
@@ -359,7 +359,7 @@ The drills above are now *executable* because there is a live host. Order roughl
 - [ ] Run the install self-verifier on the live box (`scripts/drills/verify-install.sh`): health, security headers, loopback-only ports.
 - [ ] Run the encrypted backup + restore drill against the live DB (`scripts/drills/backup-restore-drill.sh`); confirm row-count parity. Then schedule recurring encrypted backups (cron/systemd timer) + off-box copy.
 - [ ] Connect the first real server/agent: register it, ship the Python agent, confirm heartbeat + metrics + WireGuard telemetry flow into the dashboard (validates the honest-data path end to end).
-- [ ] Run the k6 load/scale smoke against the host (`scripts/loadtest/afrogate-smoke.js`) to validate the 4 GB capacity model before paid traffic.
+- [ ] Run the k6 load/scale smoke against the host (`scripts/loadtest/afrows-smoke.js`) to validate the 4 GB capacity model before paid traffic.
 - [ ] Rehearse agent-token + secret rotation on the live box (`scripts/drills/verify-rotation.sh`).
-- [ ] (Optional) GitHub Actions push-to-deploy so `git push` runs `update-afrogate.sh` on the VPS (the manual `sync.ps1` loop works today; this just removes the manual step).
+- [ ] (Optional) GitHub Actions push-to-deploy so `git push` runs `update-afrows.sh` on the VPS (the manual `sync.ps1` loop works today; this just removes the manual step).
 - [ ] (Optional) Set up log/uptime monitoring + a Telegram alert chat for the live host.
