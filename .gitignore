@@ -58,3 +58,20 @@ Thumbs.db
 
 # Local VPS deployment brief (contains server IP/operational details; not for git)
 docs/vps-deployment-brief.md
+
+# Proxy client binary (do not commit)
+Xray-linux-64.zip
+xray-pkg/
+
+# Local proxy config (contains VLESS credential) and unit
+xray-config.json
+xray.service
+
+# Node runtime tarball staged for VPS scp (not source)
+node-v22*-linux-x64.tar.xz
+afrogate-src.tar.gz
+afrogate-npmcache.tar.gz
+deploy-afrogate.sh
+ufw-afrogate.sh
+update-afrogate.sh
+sync.ps1

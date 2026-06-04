@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.114.26 - 2026-06-04
+
+- Made the dashboard show honest data instead of baked-in demo values. The demo `fallbackServers`/`tunnels`/`outbounds`, sample failover rows, and chart fallback now render only under `import.meta.env.DEV`, so production builds display real API data — and the true empty state when nothing has reported in — instead of phantom "connected" servers. Replaced the hardcoded `150` active-users figure (in both the summary and capacity panel) with a real `countActiveUsers()` derived from connected WireGuard peer counts (`0` when no servers report).
+- Added a dependency-free dev orchestrator: root `npm run dev` (`scripts/dev-all.mjs`) builds `@afrogate/shared` once then runs its `tsc --watch` plus the backend/dashboard/client dev servers together with labeled output and clean shutdown; added a `dev` watch script to `@afrogate/shared` so cross-package edits propagate live.
+
 ## 0.114.25 - 2026-06-03
 
 - Continued the OperationsService split: consolidated the route-probe guards + aggregation (`isRecord`, `isRouteProbeMetric`, `getRouteProbes`, `summarizeRouteProbes`) into `operations/route-metrics.ts` (inlined `loadedLatencyDeltaFromProbe`; `isRecord` now shared, replacing 6 service callsites); rewrote 10 callsites and dropped the now-unused route-scoring import. Added 6 tests (untrusted-probe validation, MTU min/max, averaged latency/jitter/loss); backend suite now 371 tests.

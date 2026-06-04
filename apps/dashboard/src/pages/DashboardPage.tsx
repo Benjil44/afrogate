@@ -2,6 +2,7 @@ import type { AdminBackupStatusSummary, MetricsTimeRange, ServerMetricTimeseries
 import { AlertsPanel, CapacityPanel, ControlPlanePanel, DashboardOverviewChartsPanel, HealthChartPanel, OutboundsPanel } from '../components/dashboard-panels';
 import { ServerPanel, TunnelPanel } from '../components/panels';
 import { MetricCard } from '../components/primitives';
+import { countActiveUsers } from '../mappers';
 import type { AlertRowData, DataState, MetricCardData, OutboundRowData, ServerRowData, TrafficTotals, TunnelRowData } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
@@ -73,9 +74,9 @@ export function DashboardPage({
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-3">
         <OutboundsPanel dataState={routeDataState} format={format} outbounds={outbounds} t={t} />
-        <CapacityPanel format={format} t={t} trafficTotals={trafficTotals} />
+        <CapacityPanel activeUsers={countActiveUsers(servers)} format={format} t={t} trafficTotals={trafficTotals} />
         <ControlPlanePanel backupDataState={backupDataState} backupStatus={backupStatus} format={format} t={t} />
       </section>
     </>
   );
-}
+}

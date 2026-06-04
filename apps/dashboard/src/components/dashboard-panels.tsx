@@ -230,9 +230,9 @@ export function AlertsPanel({
   );
 }
 
-export function CapacityPanel({ format, t, trafficTotals }: { format: DashboardFormatters; t: DashboardStrings; trafficTotals: TrafficTotals }) {
+export function CapacityPanel({ activeUsers, format, t, trafficTotals }: { activeUsers: number; format: DashboardFormatters; t: DashboardStrings; trafficTotals: TrafficTotals }) {
   const items = [
-    { label: t.capacity.usersOnline, value: format.integer(150) },
+    { label: t.capacity.usersOnline, value: format.integer(activeUsers) },
     { label: t.summary.downloadNow, value: format.bytesPerSecond(trafficTotals.downloadBps) },
     { label: t.summary.uploadNow, value: format.bytesPerSecond(trafficTotals.uploadBps) },
     { label: t.capacity.minTargetUser, value: format.bytesPerSecond(1024 * 1024) },
@@ -304,4 +304,4 @@ export function createBackupControlPlaneRow(
     value: backupStatusLabel(backupStatus.status, t),
     tone: backupStatusTone(backupStatus.status),
   };
-}
+}

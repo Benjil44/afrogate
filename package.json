@@ -1,6 +1,6 @@
 {
   "name": "afrogate",
-  "version": "0.114.25",
+  "version": "0.114.26",
   "private": true,
   "description": "AfroGate operations, monitoring, routing, and billing platform.",
   "workspaces": [
@@ -11,6 +11,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev": "node scripts/dev-all.mjs",
     "dev:backend": "npm --workspace @afrogate/backend run dev",
     "dev:dashboard": "npm --workspace @afrogate/dashboard run dev",
     "dev:client": "npm --workspace @afrogate/client run dev",

@@ -198,9 +198,10 @@ export function createSummary(
   format: DashboardFormatters,
 ): MetricCardData[] {
   const criticalAlerts = alerts.filter((alert) => !alert.isPlaceholder && alert.severity === 'critical').length;
+  const activeUsers = countActiveUsers(servers);
 
   return [
-    { label: t.summary.activeUsers, value: format.integer(150), tone: 'neutral' },
+    { label: t.summary.activeUsers, value: format.integer(activeUsers), tone: 'neutral' },
     { label: t.summary.downloadNow, value: format.bytesPerSecond(trafficTotals.downloadBps), tone: 'good' },
     { label: t.summary.uploadNow, value: format.bytesPerSecond(trafficTotals.uploadBps), tone: 'neutral' },
     { label: t.summary.criticalAlerts, value: format.integer(criticalAlerts), tone: criticalAlerts > 0 ? 'critical' : 'good' },
@@ -212,6 +213,19 @@ export function createTrafficTotals(servers: ServerRowData[]): TrafficTotals {
     downloadBps: sumNullable(servers.map((server) => server.inboundBps)),
     uploadBps: sumNullable(servers.map((server) => server.outboundBps)),
   };
+}
+
+/**
+ * Active users online = currently-connected WireGuard peers across all servers.
+ * Returns 0 when no servers report in, so the dashboard shows the honest state
+ * instead of a placeholder figure.
+ */
+export function countActiveUsers(servers: ServerRowData[]): number {
+  return servers.reduce(
+    (total, server) =>
+      total + server.wireGuardInterfaces.reduce((sum, wg) => sum + (wg.activePeerCount ?? 0), 0),
+    0,
+  );
 }
 
 export function createComputedAlertRows(servers: ServerRowData[], t: DashboardStrings): AlertRowData[] {

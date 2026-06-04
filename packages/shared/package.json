@@ -1,12 +1,13 @@
 {
   "name": "@afrogate/shared",
-  "version": "0.114.25",
+  "version": "0.114.26",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
