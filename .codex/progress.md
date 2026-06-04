@@ -2479,3 +2479,34 @@ Repository remote is ready:
 
 - Decide scope for splitting the large files into smaller modules (user requested smallest-possible files).
 - Begin backend test coverage for auth/RBAC/reseller-scope/wallet as the highest-value hardening.
+
+## 2026-06-04 Live VPS Deployment + Dev→VPS Sync Loop + Honest Data + Auto-Reload
+
+### Completed
+
+- **Deployed AfroGate live to the operator's VPS** (`94.74.145.199`, Ubuntu 24.04 LTS, 4 GB RAM, IP-only). Live at `https://94.74.145.199/` with self-signed TLS. Done over a heavily filtered Iranian network:
+  - Node 22 installed from the official tarball to `/usr/local` (apt + the `arvancloud.ir` mirror are unusable through the foreign proxy; the operator correctly diagnosed the `01proxy` mirror conflict — removed `/etc/apt/apt.conf.d/01proxy`).
+  - Dependencies installed **offline**: warmed a Linux npm cache on the PC (`npm ci --os=linux --cpu=x64 --libc=glibc --ignore-scripts`, isolated `~/afrogate-cache`), shipped it, ran `npm ci --offline --cache` on the box (the registry/VLESS path is too flaky for direct install).
+  - PostgreSQL least-privilege roles (`afrogate_owner` NOLOGIN, `afrogate_migrator` LOGIN+CREATE, `afrogate_app` LOGIN runtime); all 28 migrations applied.
+  - Secrets generated on-box in `/etc/afrogate/.secrets`; systemd `afrogate-backend` unit (127.0.0.1:7000); Nginx self-signed TLS reverse proxy on 443; UFW (22/80/443 allow, default deny).
+  - Deploy/ops scripts kept **gitignored** (server-specific, generate secrets on-box): `deploy-afrogate.sh`, `update-afrogate.sh`, `sync.ps1`, `ufw-afrogate.sh`.
+- **Passwordless dev→VPS deploy loop.** `sync.ps1` (PC) packages source (excludes node_modules/.git/secrets), ships over SSH (ed25519 `afrogate_deploy` key), and runs `update-afrogate.sh` on the box: extract → build with `VITE_API_BASE_URL=/api` → idempotent migrate → restart → health check (retries up to 20s). `.\sync.ps1` for code-only, `.\sync.ps1 -WithDeps` re-warms + ships the Linux npm cache when `package-lock.json` changed.
+- **Local hot reload** wired: root `npm run dev` (`scripts/dev-all.mjs`, dependency-free orchestrator) builds `@afrogate/shared` once then runs its `tsc --watch` plus the backend/dashboard/client dev servers together (Vite HMR on frontends, Nest watch on backend); added a `dev` watch script to `@afrogate/shared`.
+- **Honest dashboard data** (was showing 150 fake users / phantom "connected" servers on a fresh DB). Gated the demo `fallbackServers`/`tunnels`/`outbounds`, sample failover rows, and chart fallback behind `import.meta.env.DEV` so production renders real API data and true empty states; replaced the hardcoded `150` with a real `countActiveUsers()` derived from connected WireGuard peer counts (`0` when nothing reports). Shipped as `0.114.26`.
+- **Auto-reload on deploy** (`0.114.27`): backend `/api/health` now reports the running monorepo `version` (resolved by walking up to the root `afrogate` package.json at module load). New `VersionWatcher` dashboard component polls `/api/health` every 30s and, when the deployed version differs from the bundle it was built with, shows a bottom banner (EN/FA) and auto-reloads after 4s, guarded by a `sessionStorage` key to avoid reload loops. Wired into the `DashboardApp` main shell.
+- Updated `.codex/checklist.md`: marked the live VPS deployment item **done**, recorded the sync loop / hot reload / honest data / auto-reload sub-items, and added a new **Phase 7: Post-Deployment Operations** track. Seeded the previously-empty Claude memory store (`memory/`) with VPS deployment, sync-loop, filtered-network, secrets, and user-profile notes.
+
+### Verification
+
+- `npm --workspace @afrogate/dashboard run build` and `npm --workspace @afrogate/backend run build` pass locally (auto-reload wiring compiles clean).
+- `npm run version:check` passed at `0.114.27`; `npm run secrets:check` reports "Secret scan passed."
+- Committed `88e2660` and pushed to `origin/main`.
+- **Live deploy via `sync.ps1` succeeded (exit 0):** VPS rebuilt all workspaces, re-applied all 28 migrations idempotently, `nginx -t` OK + reloaded, and the backend health check returned `{"status":"ok","service":"afrogate-backend","version":"0.114.27",...}` — confirming the new version is live and the auto-reload backend half works. Open dashboard tabs still on `0.114.26` will now detect `0.114.27` and reload themselves.
+
+### Remaining (see checklist Phase 7)
+
+- Rotate the superadmin password on the live box (it was exposed in chat).
+- Add a real domain + Let's Encrypt TLS to replace the self-signed cert.
+- Run the live-host drills now that a host exists: install self-verifier, encrypted backup+restore (then schedule recurring off-box backups), agent-token/secret rotation, k6 load smoke.
+- Connect the first real server/agent to validate the honest-data path end to end.
+- Optional: GitHub Actions push-to-deploy to remove the manual `sync.ps1` step.
