@@ -76,3 +76,5 @@ ufw-afrows.sh
 update-afrows.sh
 sync.ps1
 setup-tls.sh
+migrate-to-afrows.sh
+cutover-afrows.ps1
