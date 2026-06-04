@@ -454,6 +454,7 @@ import {
 } from './components/route-decision';
 import { KioskToggleButton, LanguageButton, Sidebar } from './components/Sidebar';
 import { SystemResourceHeader } from './components/SystemResourceHeader';
+import { VersionWatcher } from './components/version-watcher';
 import { appVersion, resellerNavViews } from './app-config';
 import { SettingsInput, SettingsSelect } from './components/settings-form';
 import {
@@ -1000,6 +1001,7 @@ function AuthenticatedDashboard({
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
     >
+      <VersionWatcher language={language} />
       {isKioskMode ? null : (
         <Sidebar
           activeView={activeView}

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.27 - 2026-06-04
+
+- Added automatic in-place version refresh so open dashboards pick up a new deploy without a manual page reload. The backend `/api/health` now reports the running monorepo `version` (resolved once at module load by walking up to the root `afrogate` package.json). A new `VersionWatcher` component polls `/api/health` every 30s, and when the deployed version differs from the bundle it was built with, it shows a bottom banner (EN/FA) and auto-reloads after 4s — guarded by a `sessionStorage` key to prevent reload loops while versions converge.
+
 ## 0.114.26 - 2026-06-04
 
 - Made the dashboard show honest data instead of baked-in demo values. The demo `fallbackServers`/`tunnels`/`outbounds`, sample failover rows, and chart fallback now render only under `import.meta.env.DEV`, so production builds display real API data — and the true empty state when nothing has reported in — instead of phantom "connected" servers. Replaced the hardcoded `150` active-users figure (in both the summary and capacity panel) with a real `countActiveUsers()` derived from connected WireGuard peer counts (`0` when no servers report).
