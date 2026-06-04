@@ -6,7 +6,7 @@ import type {
   AdminTunnelSummary,
   RouteFailoverEventSummary,
   ServerMetricSnapshot,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import type {
   AlertRowData,
   MetricCardData,

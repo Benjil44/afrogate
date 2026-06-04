@@ -1,5 +1,5 @@
 import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
-import type { RegisterAgentRequest } from '@afrogate/shared';
+import type { RegisterAgentRequest } from '@afrows/shared';
 
 export class RegisterAgentDto implements RegisterAgentRequest {
   @IsString()

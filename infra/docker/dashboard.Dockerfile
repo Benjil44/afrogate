@@ -12,8 +12,8 @@ RUN npm ci
 COPY . .
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
-RUN npm --workspace @afrogate/shared run build
-RUN npm --workspace @afrogate/dashboard run build
+RUN npm --workspace @afrows/shared run build
+RUN npm --workspace @afrows/dashboard run build
 
 FROM nginx:1.27-alpine AS runtime
 

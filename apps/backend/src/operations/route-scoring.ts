@@ -1,4 +1,4 @@
-import type { RouteProbeMetric } from '@afrogate/shared';
+import type { RouteProbeMetric } from '@afrows/shared';
 
 /** Clamp a number into [min, max]. */
 export function clamp(value: number, min: number, max: number): number {

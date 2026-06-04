@@ -1,8 +1,8 @@
-# AfroGate Privacy Threat Model
+# Afrows Privacy Threat Model
 
 ## Overview
 
-AfroGate handles operational data for internet access infrastructure. The product must improve stability without becoming a traffic-inspection or identity-surveillance system. Privacy protection is a product requirement because route quality, billing, and support data can reveal sensitive facts about users even when packet contents are never stored.
+Afrows handles operational data for internet access infrastructure. The product must improve stability without becoming a traffic-inspection or identity-surveillance system. Privacy protection is a product requirement because route quality, billing, and support data can reveal sensitive facts about users even when packet contents are never stored.
 
 Primary privacy assets:
 
@@ -13,7 +13,7 @@ Primary privacy assets:
 - Public tenant branding: brand names, support contacts, logo URL, UI colors, and client support copy.
 - Secrets and credentials: admin sessions, one-time plaintext agent/client tokens at issuance, stored agent/client token hashes, Telegram/PayPal secrets, server credentials, and protocol private keys.
 
-AfroGate must not store user traffic content, user destination history, DNS query history from user traffic, per-user IP history for routing, decrypted server credentials in logs, or raw paid phone numbers in API responses or dashboard state.
+Afrows must not store user traffic content, user destination history, DNS query history from user traffic, per-user IP history for routing, decrypted server credentials in logs, or raw paid phone numbers in API responses or dashboard state.
 
 ## Threat Model, Trust Boundaries, and Assumptions
 
@@ -45,7 +45,7 @@ Privacy-sensitive inputs and stores:
 
 - Customer notes and display names may accidentally contain personal data; support/admin UI should discourage storing secrets or unnecessary identity details.
 - Telegram id/username links are useful for bot support, but bot replies must reveal only safe account/quota summaries to the linked user.
-- Paid phone numbers are accepted only as write-only input and stored as HMAC hashes with `AFROGATE_IDENTITY_HASH_KEY` or the deployment secrets key.
+- Paid phone numbers are accepted only as write-only input and stored as HMAC hashes with `AFROWS_IDENTITY_HASH_KEY` or the deployment secrets key.
 - Usage accounting and local quota-charge ledgers store byte counters, idempotency keys, compact non-secret metadata, and selected client ids when needed; they must not store packet captures, URLs, user destinations, raw panel exports, or subscription secrets.
 - Client country detection stores only coarse ISO country code, source, and timestamp; no client IP history is needed.
 - Per-app VPN split tunneling keeps app selection local to the client/native profile and may store only explicit client-scoped preference metadata; it must not collect installed-app inventories, non-selected apps, traffic contents, or destination history.
@@ -76,7 +76,7 @@ Realistic privacy failure stories:
 Out-of-scope or rejected product paths:
 
 - DPI, packet capture, browsing history, per-user DNS logging, and traffic-content classification are not acceptable routing inputs.
-- GPU-assisted analysis of user traffic is not an AfroGate privacy or performance strategy.
+- GPU-assisted analysis of user traffic is not an Afrows privacy or performance strategy.
 - Automatic mid-session route movement based on inferred application traffic is out of scope until explicit, privacy-safe, session-safe controls exist.
 
 ## Severity Calibration

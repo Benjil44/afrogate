@@ -1,4 +1,4 @@
-# معماری فنی پیشنهادی AfroGate MVP
+# معماری فنی پیشنهادی Afrows MVP
 
 ## خلاصه
 
@@ -6,7 +6,7 @@
 
 - Control Plane: API، داشبورد، احراز هویت، تنظیمات، billing، Telegram bot.
 - Monitoring Plane: agent روی سرورها، health checks، metrics، alerts.
-- Data Plane Integration: اتصال به Marzban/X-UI/پنل صنایی و بعداً provisioning اختصاصی AfroGate.
+- Data Plane Integration: اتصال به Marzban/X-UI/پنل صنایی و بعداً provisioning اختصاصی Afrows.
 
 ## اجزای اصلی
 
@@ -58,13 +58,13 @@ agent باید lightweight باشد و حتی با سرورهای 4 core / 4 GB 
 
 برای MVP دو مسیر ممکن است:
 
-- سریع و عملیاتی: Prometheus + Grafana-compatible metrics، اما داشبورد اصلی داخل AfroGate.
+- سریع و عملیاتی: Prometheus + Grafana-compatible metrics، اما داشبورد اصلی داخل Afrows.
 - محصولی‌تر: PostgreSQL/TimescaleDB برای time-series های اصلی.
 
 پیشنهاد MVP:
 
 - PostgreSQL برای داده‌های محصول، کاربران، billing، تنظیمات.
-- PostgreSQL runtime access uses `afrogate_app` through `DATABASE_URL`; migrations use `afrogate_migrator` through `DATABASE_MIGRATION_URL`; `afrogate_owner` stays a no-login ownership boundary.
+- PostgreSQL runtime access uses `afrows_app` through `DATABASE_URL`; migrations use `afrows_migrator` through `DATABASE_MIGRATION_URL`; `afrows_owner` stays a no-login ownership boundary.
 - TimescaleDB extension یا جدول‌های partition شده برای metrics مهم.
 - Redis برای queue، cache، و event های سریع.
 
@@ -135,7 +135,7 @@ Current implementation starts Phase 2 with `customer_accounts` instead of a sing
 - created_at
 - updated_at
 
-Current panel migration now starts with an adapter boundary. `POST /api/admin/current-panels/import-preview` accepts a pasted/exported Marzban, X-UI, Sanayi, or generic panel payload, normalizes user/config candidates into shared contracts, and returns only sanitized import-preview fields such as label, external ids, protocol, status, quota, usage, expiry, and reason codes. `POST /api/admin/current-panels/import-configs` is the controlled write step: it re-runs the same adapter server-side, imports non-duplicate candidates into AfroGate `client_configs`, and records panel-reported used bytes as idempotent `panel_sync` baseline usage events so account/client counters remain consistent. `POST /api/admin/current-panels/sync-usage` is the controlled reconciliation step: it re-runs the adapter against a fresh export, matches existing imported client configs, records only positive panel-counter deltas as idempotent `panel_sync` usage events, and skips missing, ambiguous, cross-account, duplicate, or non-advancing candidates. `POST /api/admin/current-panels/charge-volume` records an audited local quota top-up in `quota_charge_events` and increases AfroGate account quota, with optional selected-client quota support in the backend contract. `GET /api/admin/customer-accounts/:id/client-configs/export` exports sanitized AfroGate client config summaries in `afrogate_client_configs_export_v1` format for backup/migration review. These endpoints do not store raw panel payloads, call external panel APIs, expose subscription URLs/tokens, export subscription credentials or secret-bearing config material, overwrite counters downward, write live quota changes back to external panels, or mutate data-plane state; sensitive link-like identifiers are fingerprinted before they are returned or stored.
+Current panel migration now starts with an adapter boundary. `POST /api/admin/current-panels/import-preview` accepts a pasted/exported Marzban, X-UI, Sanayi, or generic panel payload, normalizes user/config candidates into shared contracts, and returns only sanitized import-preview fields such as label, external ids, protocol, status, quota, usage, expiry, and reason codes. `POST /api/admin/current-panels/import-configs` is the controlled write step: it re-runs the same adapter server-side, imports non-duplicate candidates into Afrows `client_configs`, and records panel-reported used bytes as idempotent `panel_sync` baseline usage events so account/client counters remain consistent. `POST /api/admin/current-panels/sync-usage` is the controlled reconciliation step: it re-runs the adapter against a fresh export, matches existing imported client configs, records only positive panel-counter deltas as idempotent `panel_sync` usage events, and skips missing, ambiguous, cross-account, duplicate, or non-advancing candidates. `POST /api/admin/current-panels/charge-volume` records an audited local quota top-up in `quota_charge_events` and increases Afrows account quota, with optional selected-client quota support in the backend contract. `GET /api/admin/customer-accounts/:id/client-configs/export` exports sanitized Afrows client config summaries in `afrows_client_configs_export_v1` format for backup/migration review. These endpoints do not store raw panel payloads, call external panel APIs, expose subscription URLs/tokens, export subscription credentials or secret-bearing config material, overwrite counters downward, write live quota changes back to external panels, or mutate data-plane state; sensitive link-like identifiers are fingerprinted before they are returned or stored.
 
 ### client_usage_events
 
@@ -162,7 +162,7 @@ Usage accounting is append-only and idempotent at the API boundary. Admin/panel-
 - created_by
 - created_at
 
-Recording a new non-duplicate usage event atomically increments both `client_configs.used_bytes` and `customer_accounts.used_bytes`, so remaining-volume responses stay cheap to read on low-resource VPS machines. Duplicate `(source, idempotency_key)` reports return the existing event and do not double-count usage. If an admin/panel/agent usage report includes a `rated_outbound_id`, AfroGate reads that outbound's `usage_multiplier` and stores both raw bytes and charged bytes. Example: `10 GB` observed on a `10x` high-cost route consumes `100 GB` from quota, so a client with `100 GB` remaining has about `10 GB` usable on that route.
+Recording a new non-duplicate usage event atomically increments both `client_configs.used_bytes` and `customer_accounts.used_bytes`, so remaining-volume responses stay cheap to read on low-resource VPS machines. Duplicate `(source, idempotency_key)` reports return the existing event and do not double-count usage. If an admin/panel/agent usage report includes a `rated_outbound_id`, Afrows reads that outbound's `usage_multiplier` and stores both raw bytes and charged bytes. Example: `10 GB` observed on a `10x` high-cost route consumes `100 GB` from quota, so a client with `100 GB` remaining has about `10 GB` usable on that route.
 
 ### client_route_preferences
 
@@ -186,11 +186,11 @@ Client VPN routing preferences are separate from admin/seller operations. Each c
 - created_at
 - updated_at
 
-The client route preference row stores no client IP history and no traffic destinations. When a preference is saved, AfroGate also maintains a matching `route_assignments` key like `client_config:<id>` so the route decision engine can evaluate the client separately from the global default assignment. Decision previews read this preference context and expose whether the preferred country or explicit outbound had a healthy managed candidate; if not, the preview falls back to the normal health and session-safety ranking with auditable reason codes instead of forcing an unstable route.
+The client route preference row stores no client IP history and no traffic destinations. When a preference is saved, Afrows also maintains a matching `route_assignments` key like `client_config:<id>` so the route decision engine can evaluate the client separately from the global default assignment. Decision previews read this preference context and expose whether the preferred country or explicit outbound had a healthy managed candidate; if not, the preview falls back to the normal health and session-safety ranking with auditable reason codes instead of forcing an unstable route.
 
 ### client_access_tokens
 
-Mobile/client API auth is separate from admin/seller auth. Admins can issue one-time plaintext tokens for a client config; AfroGate stores only a SHA-256 token hash:
+Mobile/client API auth is separate from admin/seller auth. Admins can issue one-time plaintext tokens for a client config; Afrows stores only a SHA-256 token hash:
 
 - id
 - client_config_id
@@ -208,7 +208,7 @@ The dashboard Usage/Billing page is the seller/admin surface for catalog, custom
 
 The first client app lives in `apps/client`. It is a mobile-first React/Vite/Tailwind surface on port `4100` for client-token login, remaining-volume display, rewarded-data claims, automatic/country/server route mode selection, subscription server refresh visibility, and route score profile selection. It consumes only `/api/client/*` and keeps labels in its own typed English/Persian translation layer.
 
-AfroGate now defines a native/client per-app split-tunneling profile. A client may choose an include-only set such as Instagram, Telegram, and WhatsApp through AfroGate while Chrome, Firefox, or other apps keep normal internet, or explicitly add Chrome while leaving Firefox outside the VPN. The web client keeps this selection local and can export a native profile; Android enforcement uses `VpnService.Builder.addAllowedApplication`, and iOS enforcement requires a managed per-app VPN profile path. This stays client-scoped; AfroGate should not collect installed-app inventories, non-selected apps, traffic contents, or destination history.
+Afrows now defines a native/client per-app split-tunneling profile. A client may choose an include-only set such as Instagram, Telegram, and WhatsApp through Afrows while Chrome, Firefox, or other apps keep normal internet, or explicitly add Chrome while leaving Firefox outside the VPN. The web client keeps this selection local and can export a native profile; Android enforcement uses `VpnService.Builder.addAllowedApplication`, and iOS enforcement requires a managed per-app VPN profile path. This stays client-scoped; Afrows should not collect installed-app inventories, non-selected apps, traffic contents, or destination history.
 
 ### telegram_bot_settings
 
@@ -217,7 +217,7 @@ Superadmin Settings now has a Telegram bot setup surface:
 - BotFather token and webhook secret are stored write-only through encrypted `secret_records` rows with `scope = telegram_bot`.
 - `telegram_bot_settings` stores only metadata: alert chat ID, allowed admin chat IDs, enabled flags, bot identity from `getMe`, last test status, and updated-by/updated-at.
 - Environment variables remain bootstrap/fallback values for existing deployments.
-- Telegram API tests use the shared outbound HTTP client and `AFROGATE_OUTBOUND_PROXY_URL` when configured.
+- Telegram API tests use the shared outbound HTTP client and `AFROWS_OUTBOUND_PROXY_URL` when configured.
 
 Telegram purchase fulfillment runs only after payment verification and quota allocation. The allocation response includes a secret-free fulfillment summary, and the bot sends at most one client-scoped VLESS config when the customer has a linked numeric Telegram chat id and exactly one enabled VLESS client with a rendered per-client subscription credential. The usage/status link is a private Telegram deep link to the linked-account status flow when bot commands and bot username are configured. This flow reuses the encrypted per-client subscription credential renderer; it must not expose admin data, raw outbound config JSON, server credentials, provider secrets, paid numbers, client tokens, or other clients' usage.
 
@@ -270,7 +270,7 @@ Guarded admin endpoints `GET /api/admin/rewarded-ads/settings` and `PATCH /api/a
 - metadata jsonb for non-secret claim context
 - created_at
 
-Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The client app can read the current reward status and submit an idempotent claim after an ad callback. That `client_callback_mvp` mode is suitable for MVP flow wiring only. Production-style crediting should use `POST /api/rewarded-ads/webhook`, where the ad SDK/provider backend sends `clientConfigId`, provider/session/idempotency fields, and non-secret reward metadata. AfroGate verifies `x-afrogate-ad-signature` as HMAC-SHA256 over `timestamp.canonicalJson(payload)` with `AFROGATE_REWARDED_AD_WEBHOOK_SECRET`, enforces `x-afrogate-ad-timestamp` freshness through `AFROGATE_REWARDED_AD_WEBHOOK_TOLERANCE_SECONDS`, and only accepts the callback when admin reward settings use `signed_webhook` or `provider_signed_webhook`. After verification, the backend locks the client/account, enforces the UTC daily cap, records one grant per idempotency/session key, increases account quota, and also increases the specific client quota when per-client caps are active.
+Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The client app can read the current reward status and submit an idempotent claim after an ad callback. That `client_callback_mvp` mode is suitable for MVP flow wiring only. Production-style crediting should use `POST /api/rewarded-ads/webhook`, where the ad SDK/provider backend sends `clientConfigId`, provider/session/idempotency fields, and non-secret reward metadata. Afrows verifies `x-afrows-ad-signature` as HMAC-SHA256 over `timestamp.canonicalJson(payload)` with `AFROWS_REWARDED_AD_WEBHOOK_SECRET`, enforces `x-afrows-ad-timestamp` freshness through `AFROWS_REWARDED_AD_WEBHOOK_TOLERANCE_SECONDS`, and only accepts the callback when admin reward settings use `signed_webhook` or `provider_signed_webhook`. After verification, the backend locks the client/account, enforces the UTC daily cap, records one grant per idempotency/session key, increases account quota, and also increases the specific client quota when per-client caps are active.
 
 ### packages
 
@@ -313,7 +313,7 @@ Rewarded ads are a quota-credit ledger, not a traffic-inspection feature. The cl
 - created_at
 - updated_at
 
-Payment provider secrets, including PayPal client secrets, webhook IDs, card gateway signing keys, crypto exchange API keys, and local gateway private keys, must not be stored in `public_config`. PayPal execution uses `AFROGATE_PAYPAL_*` deployment secrets and the backend outbound HTTP client. The generic card/local-gateway adapter reads only a non-secret hosted `checkoutUrl` from `public_config` and appends non-sensitive order/reference parameters. Bank-transfer and crypto adapters generate a payment reference and manual instructions from public merchant metadata. Any provider that needs signed requests, card-tokenization credentials, or automatic settlement callbacks must use deployment/encrypted secret storage before it can mark orders paid automatically.
+Payment provider secrets, including PayPal client secrets, webhook IDs, card gateway signing keys, crypto exchange API keys, and local gateway private keys, must not be stored in `public_config`. PayPal execution uses `AFROWS_PAYPAL_*` deployment secrets and the backend outbound HTTP client. The generic card/local-gateway adapter reads only a non-secret hosted `checkoutUrl` from `public_config` and appends non-sensitive order/reference parameters. Bank-transfer and crypto adapters generate a payment reference and manual instructions from public merchant metadata. Any provider that needs signed requests, card-tokenization credentials, or automatic settlement callbacks must use deployment/encrypted secret storage before it can mark orders paid automatically.
 
 ### payment_orders
 
@@ -372,7 +372,7 @@ Payment orders are the audit boundary between package selection and quota alloca
 - created_by
 - created_at
 
-`quota_charge_events` is the audited admin/manual top-up ledger for current-panel migration and support workflows. The current dashboard uses account-level charge only: it locks the customer account, treats a null quota limit as current used bytes before adding the top-up, updates AfroGate local quota, records an audit event, and returns `externalPanelWrite.attempted = false`. This is intentionally not a live write to Marzban/X-UI/Sanayi; external-panel quota sync needs a separate explicit adapter, feature flag, rollback, and audit design.
+`quota_charge_events` is the audited admin/manual top-up ledger for current-panel migration and support workflows. The current dashboard uses account-level charge only: it locks the customer account, treats a null quota limit as current used bytes before adding the top-up, updates Afrows local quota, records an audit event, and returns `externalPanelWrite.attempted = false`. This is intentionally not a live write to Marzban/X-UI/Sanayi; external-panel quota sync needs a separate explicit adapter, feature flag, rollback, and audit design.
 
 ### subscriptions
 
@@ -537,14 +537,14 @@ Protocol-aware route scoring:
   - weekly: 4 هفته
   - monthly: 3 ماه
 
-Backup status monitoring is read-only in the control plane. External backup jobs may write a compact local JSON status file configured by `AFROGATE_BACKUP_STATUS_FILE`; the guarded `GET /api/admin/backups/status` endpoint returns sanitized freshness, encryption, retention, artifact, destination-label, and restore-test readiness for the dashboard. The guarded `GET /api/admin/backups/restore-plan` endpoint derives a read-only restore readiness checklist and manual runbook from that sanitized status, including evidence blockers, warnings, intended artifact classes, safety notes, and non-executable steps. These endpoints must not return the status file path, decrypted secret material, object-store credentials, raw dumps, or any restore execution controls. Actual backup/restore execution remains a separate future audited engine.
+Backup status monitoring is read-only in the control plane. External backup jobs may write a compact local JSON status file configured by `AFROWS_BACKUP_STATUS_FILE`; the guarded `GET /api/admin/backups/status` endpoint returns sanitized freshness, encryption, retention, artifact, destination-label, and restore-test readiness for the dashboard. The guarded `GET /api/admin/backups/restore-plan` endpoint derives a read-only restore readiness checklist and manual runbook from that sanitized status, including evidence blockers, warnings, intended artifact classes, safety notes, and non-executable steps. These endpoints must not return the status file path, decrypted secret material, object-store credentials, raw dumps, or any restore execution controls. Actual backup/restore execution remains a separate future audited engine.
 
 ## امنیت عملیاتی
 
 - HTTPS/TLS اجباری.
 - JWT/session امن برای dashboard.
-- Telegram webhook secret: مسیر `POST /api/telegram/webhook` فقط با `AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED=true`، توکن bot، و header رسمی `x-telegram-bot-api-secret-token` فعال می‌شود و پاسخ‌های کاربر فقط وضعیت امن account/quota را نشان می‌دهند.
-- Telegram bot باید در خود Telegram و با BotFather ساخته شود؛ AfroGate اکنون wizard سوپراَدمن برای وارد کردن یک‌باره token، ذخیره encrypted/write-only، ثبت chat/admin idهای مجاز، webhook secret، و تست اتصال Telegram API فراهم می‌کند.
+- Telegram webhook secret: مسیر `POST /api/telegram/webhook` فقط با `AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED=true`، توکن bot، و header رسمی `x-telegram-bot-api-secret-token` فعال می‌شود و پاسخ‌های کاربر فقط وضعیت امن account/quota را نشان می‌دهند.
+- Telegram bot باید در خود Telegram و با BotFather ساخته شود؛ Afrows اکنون wizard سوپراَدمن برای وارد کردن یک‌باره token، ذخیره encrypted/write-only، ثبت chat/admin idهای مجاز، webhook secret، و تست اتصال Telegram API فراهم می‌کند.
 - API rate limiting برای endpoint های حساس عمومی مثل login، PayPal webhook، و Telegram webhook.
 - agent token per server.
 - rotation برای token ها از طریق endpoint محافظت‌شده `POST /api/agents/:serverId/tokens/rotate` انجام می‌شود: tokenهای فعال همان server revoke می‌شوند، token جدید فقط یک‌بار plaintext برمی‌گردد، در دیتابیس فقط hash ذخیره می‌شود، و audit event ثبت می‌شود.
@@ -557,7 +557,7 @@ Backup status monitoring is read-only in the control plane. External backup jobs
 
 - خواندن داده از Marzban/X-UI/پنل صنایی.
 - ساخت dashboard و alert مستقل.
-- وضعیت فعلی: پیش‌نمایش read-only، import کنترل‌شده کانفیگ‌ها، sync کنترل‌شده مصرف از export پنل فعلی، و export sanitized کانفیگ‌های AfroGate در Billing page فعال است؛ import فقط `client_configs` و usage baseline audit/idempotency را تغییر می‌دهد، sync فقط delta مثبت مصرف را به ledger اضافه می‌کند، و export هیچ credential یا secret-bearing config material برنمی‌گرداند.
+- وضعیت فعلی: پیش‌نمایش read-only، import کنترل‌شده کانفیگ‌ها، sync کنترل‌شده مصرف از export پنل فعلی، و export sanitized کانفیگ‌های Afrows در Billing page فعال است؛ import فقط `client_configs` و usage baseline audit/idempotency را تغییر می‌دهد، sync فقط delta مثبت مصرف را به ledger اضافه می‌کند، و export هیچ credential یا secret-bearing config material برنمی‌گرداند.
 
 مرحله دوم:
 
@@ -566,7 +566,7 @@ Backup status monitoring is read-only in the control plane. External backup jobs
 
 مرحله سوم:
 
-- جایگزینی تدریجی با provisioning اختصاصی AfroGate.
+- جایگزینی تدریجی با provisioning اختصاصی Afrows.
 - multi-server و multi-route کامل.
 
 ## تصمیم اجرایی اولیه

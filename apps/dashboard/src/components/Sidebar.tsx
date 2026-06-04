@@ -1,5 +1,5 @@
 import { Activity, Archive, Bell, CreditCard, Gauge, Languages, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Route, ScrollText, Server, Settings as SettingsIcon, ShieldCheck, UserRound } from 'lucide-react';
-import type { AdminSessionResponse } from '@afrogate/shared';
+import type { AdminSessionResponse } from '@afrows/shared';
 import { appVersion, resellerNavViews } from '../app-config';
 import type { ActiveView, NavItemData, SidebarAlertState } from '../dashboard-types';
 import { dashboardLanguageLabel } from '../formatters';
@@ -17,7 +17,7 @@ const navItems: NavItemData[] = [
   { id: 'routes', labelKey: 'routes', icon: Route },
   { id: 'alerts', labelKey: 'alerts', icon: Bell },
   { id: 'settings', labelKey: 'settings', icon: SettingsIcon },
-];
+];
 
 export function Sidebar({
   activeView,
@@ -62,7 +62,7 @@ export function Sidebar({
       <div className={`flex items-center justify-between gap-3 ${isCollapsed ? 'lg:justify-center' : 'lg:block'}`}>
         <div className={`flex h-10 items-center gap-2.5 text-xl font-bold ${isCollapsed ? 'lg:justify-center' : ''}`}>
           <ShieldCheck size={22} />
-          <span className={isCollapsed ? 'lg:sr-only' : ''}>AfroGate</span>
+          <span className={isCollapsed ? 'lg:sr-only' : ''}>Afrows</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-[#91a5a2] lg:hidden">
           <span>v{appVersion}</span>
@@ -95,7 +95,7 @@ export function Sidebar({
           <>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="font-bold text-[#c8d7d5]">AfroGate</div>
+                <div className="font-bold text-[#c8d7d5]">Afrows</div>
                 <div>v{appVersion}</div>
               </div>
               <div className="flex items-center gap-2">
@@ -269,4 +269,4 @@ export function LanguageButton({
       <span className="text-[11px] font-bold">{t.nextLanguageLabel}</span>
     </button>
   );
-}
+}

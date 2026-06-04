@@ -1,6 +1,6 @@
 # Multilingual UI Policy
 
-AfroGate dashboard and client surfaces support English and Persian from the first MVP stage.
+Afrows dashboard and client surfaces support English and Persian from the first MVP stage.
 
 ## Current Approach
 

@@ -69,9 +69,10 @@ xray.service
 
 # Node runtime tarball staged for VPS scp (not source)
 node-v22*-linux-x64.tar.xz
-afrogate-src.tar.gz
-afrogate-npmcache.tar.gz
-deploy-afrogate.sh
-ufw-afrogate.sh
-update-afrogate.sh
+afrows-src.tar.gz
+afrows-npmcache.tar.gz
+deploy-afrows.sh
+ufw-afrows.sh
+update-afrows.sh
 sync.ps1
+setup-tls.sh

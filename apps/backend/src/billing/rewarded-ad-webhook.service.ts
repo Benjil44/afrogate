@@ -31,14 +31,14 @@ export class RewardedAdWebhookService {
     headers: RewardedAdWebhookSignatureHeaders,
     payload: RewardedAdProviderWebhookDto,
   ): VerifiedRewardedAdWebhook {
-    const secret = this.config.get<string>('AFROGATE_REWARDED_AD_WEBHOOK_SECRET')?.trim();
+    const secret = this.config.get<string>('AFROWS_REWARDED_AD_WEBHOOK_SECRET')?.trim();
     if (!secret) {
       throw new ServiceUnavailableException('Rewarded ad webhook secret is not configured');
     }
 
     const timestamp = headers.timestamp?.trim() || payload.eventTimestamp?.trim();
     if (!timestamp) throw new UnauthorizedException('Rewarded ad webhook timestamp is required');
-    const toleranceSeconds = clampToleranceSeconds(this.config.get<string>('AFROGATE_REWARDED_AD_WEBHOOK_TOLERANCE_SECONDS'));
+    const toleranceSeconds = clampToleranceSeconds(this.config.get<string>('AFROWS_REWARDED_AD_WEBHOOK_TOLERANCE_SECONDS'));
     if (!isTimestampFresh(timestamp, toleranceSeconds)) {
       throw new UnauthorizedException('Rewarded ad webhook timestamp is invalid or outside the allowed window');
     }

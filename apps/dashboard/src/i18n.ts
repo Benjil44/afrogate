@@ -4,7 +4,7 @@ import { fa } from './i18n.fa';
 
 export type DashboardLanguage = 'en' | 'fa';
 
-const languageStorageKey = 'afrogate.dashboard.language';
+const languageStorageKey = 'afrows.dashboard.language';
 
 export const dashboardTranslations = {
   en,

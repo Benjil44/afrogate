@@ -220,29 +220,29 @@ export class PayPalPaymentService {
   }
 
   private requirePayPalConfig(requireWebhookId: boolean): PayPalRuntimeConfig {
-    if (!this.isEnabled(this.config.get<string>('AFROGATE_PAYPAL_ENABLED'))) {
+    if (!this.isEnabled(this.config.get<string>('AFROWS_PAYPAL_ENABLED'))) {
       throw new ServiceUnavailableException('PayPal integration is disabled');
     }
 
-    const clientId = this.config.get<string>('AFROGATE_PAYPAL_CLIENT_ID')?.trim();
-    const clientSecret = this.config.get<string>('AFROGATE_PAYPAL_CLIENT_SECRET')?.trim();
+    const clientId = this.config.get<string>('AFROWS_PAYPAL_CLIENT_ID')?.trim();
+    const clientSecret = this.config.get<string>('AFROWS_PAYPAL_CLIENT_SECRET')?.trim();
     if (!clientId || !clientSecret) {
       throw new ServiceUnavailableException('PayPal client id and client secret are required');
     }
 
-    const environment = this.config.get<string>('AFROGATE_PAYPAL_ENVIRONMENT')?.trim().toLowerCase() ?? 'sandbox';
-    const configuredBaseUrl = this.config.get<string>('AFROGATE_PAYPAL_API_BASE_URL')?.trim();
+    const environment = this.config.get<string>('AFROWS_PAYPAL_ENVIRONMENT')?.trim().toLowerCase() ?? 'sandbox';
+    const configuredBaseUrl = this.config.get<string>('AFROWS_PAYPAL_API_BASE_URL')?.trim();
     const baseUrl =
       configuredBaseUrl ||
       (environment === 'live' ? PayPalPaymentService.defaultLiveBaseUrl : PayPalPaymentService.defaultSandboxBaseUrl);
     const parsedBaseUrl = new URL(baseUrl);
     if (parsedBaseUrl.protocol !== 'https:') {
-      throw new ServiceUnavailableException('AFROGATE_PAYPAL_API_BASE_URL must use HTTPS');
+      throw new ServiceUnavailableException('AFROWS_PAYPAL_API_BASE_URL must use HTTPS');
     }
 
-    const webhookId = this.config.get<string>('AFROGATE_PAYPAL_WEBHOOK_ID')?.trim() || null;
+    const webhookId = this.config.get<string>('AFROWS_PAYPAL_WEBHOOK_ID')?.trim() || null;
     if (requireWebhookId && !webhookId) {
-      throw new ServiceUnavailableException('AFROGATE_PAYPAL_WEBHOOK_ID is required for PayPal webhooks');
+      throw new ServiceUnavailableException('AFROWS_PAYPAL_WEBHOOK_ID is required for PayPal webhooks');
     }
 
     return {
@@ -250,9 +250,9 @@ export class PayPalPaymentService {
       clientId,
       clientSecret,
       webhookId,
-      timeoutMs: this.parseTimeoutMs(this.config.get<string>('AFROGATE_PAYPAL_TIMEOUT_MS')),
-      returnUrl: this.config.get<string>('AFROGATE_PAYPAL_RETURN_URL')?.trim() || null,
-      cancelUrl: this.config.get<string>('AFROGATE_PAYPAL_CANCEL_URL')?.trim() || null,
+      timeoutMs: this.parseTimeoutMs(this.config.get<string>('AFROWS_PAYPAL_TIMEOUT_MS')),
+      returnUrl: this.config.get<string>('AFROWS_PAYPAL_RETURN_URL')?.trim() || null,
+      cancelUrl: this.config.get<string>('AFROWS_PAYPAL_CANCEL_URL')?.trim() || null,
     };
   }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CheckCircle2, LockKeyhole, Plus, UserRound } from 'lucide-react';
-import type { AdminPermissionId, AdminPermissionsResponse, AdminSessionResponse, AdminUserSummary, Role } from '@afrogate/shared';
+import type { AdminPermissionId, AdminPermissionsResponse, AdminSessionResponse, AdminUserSummary, Role } from '@afrows/shared';
 import { createAdminUser, deleteAdminUser, fetchAdminPermissions, fetchAdminUsers, updateAdminUser, updateAdminUserPassword } from '../api/admin';
 import { DashboardTabs, DataTable, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
 import type { DashboardTabItem, DataTableColumn, Tone, UsersTab } from '../dashboard-types';
@@ -408,4 +408,4 @@ function permissionRiskTone(risk: AdminPermissionsResponse['permissions'][number
   if (risk === 'medium') return 'neutral';
 
   return 'good';
-}
+}

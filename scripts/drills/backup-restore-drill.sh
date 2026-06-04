@@ -23,7 +23,7 @@ done
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-dump="$work/afrogate-$(date +%F).sql.gpg"
+dump="$work/afrows-$(date +%F).sql.gpg"
 
 echo "==> dump + encrypt (AES256)"
 pg_dump "$DATABASE_URL" \

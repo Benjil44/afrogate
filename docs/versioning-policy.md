@@ -1,6 +1,6 @@
 # Versioning Policy
 
-AfroGate uses one product version across the root package and every workspace package. The visible dashboard version is the same value as root `package.json`.
+Afrows uses one product version across the root package and every workspace package. The visible dashboard version is the same value as root `package.json`.
 
 ## SemVer Rules
 
@@ -33,7 +33,7 @@ The version script updates:
 - `VERSION`
 - root `package.json`
 - workspace package versions
-- internal `@afrogate/*` dependency versions
+- internal `@afrows/*` dependency versions
 - local plugin manifest versions
 - `package-lock.json`
 

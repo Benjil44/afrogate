@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { roleHasPermission, type AdminPermissionId, type Role } from '@afrogate/shared';
+import { roleHasPermission, type AdminPermissionId, type Role } from '@afrows/shared';
 import type { RequestWithAuth } from './auth-request';
 import { PERMISSIONS_KEY, ROLES_KEY } from './roles.decorator';
 

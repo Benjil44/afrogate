@@ -44,7 +44,7 @@ async function bootstrap() {
   );
 
   await app.listen(port, host);
-  console.log(`AfroGate backend listening on http://${host}:${port}/api`);
+  console.log(`Afrows backend listening on http://${host}:${port}/api`);
 }
 
 void bootstrap();

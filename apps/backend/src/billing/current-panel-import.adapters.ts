@@ -7,7 +7,7 @@ import type {
   CurrentPanelImportPreviewRequest,
   CurrentPanelKind,
   ProtocolKind,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 
 const CURRENT_PANEL_IMPORT_ADAPTER_VERSION = 'current-panel-import-preview-v1';
 const MAX_IMPORT_PREVIEW_ROWS = 100;

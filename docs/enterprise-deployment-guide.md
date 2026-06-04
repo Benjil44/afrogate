@@ -1,8 +1,8 @@
 # Enterprise Deployment Guide
 
-This guide is the production operating checklist for deploying AfroGate as an enterprise control plane. It favors the native Ubuntu path because it is predictable on low-resource VPS machines, with Docker Compose kept as an optional packaging path.
+This guide is the production operating checklist for deploying Afrows as an enterprise control plane. It favors the native Ubuntu path because it is predictable on low-resource VPS machines, with Docker Compose kept as an optional packaging path.
 
-AfroGate can be deployed for monitoring, billing, client subscription refresh, advisory routing, backups status, reports, Telegram operations, signed rewarded-ad provider callbacks, admin/client UX separation, local/native per-app VPN profile selection, and disabled-by-default live server-side protocol apply. Live data-plane route mutation, packaged native-client distribution, and provider-specific automatic settlement beyond the existing PayPal and generic/manual payment adapters are still separate implementation gates.
+Afrows can be deployed for monitoring, billing, client subscription refresh, advisory routing, backups status, reports, Telegram operations, signed rewarded-ad provider callbacks, admin/client UX separation, local/native per-app VPN profile selection, and disabled-by-default live server-side protocol apply. Live data-plane route mutation, packaged native-client distribution, and provider-specific automatic settlement beyond the existing PayPal and generic/manual payment adapters are still separate implementation gates.
 
 ## Production Topology
 
@@ -17,7 +17,7 @@ Internet
 Backend
   -> PostgreSQL on localhost/private network
   -> optional local outbound proxy for Telegram/provider API egress
-  -> encrypted secret storage with AFROGATE_SECRETS_KEY
+  -> encrypted secret storage with AFROWS_SECRETS_KEY
 
 Agents
   -> HTTPS /api metrics ingest using per-agent tokens
@@ -36,10 +36,10 @@ Do not publish backend `7000/tcp`, dashboard dev `4000/tcp`, client dev `4100/tc
 Before a production launch:
 
 - Choose a domain and enable HTTPS before real users log in.
-- Create separate PostgreSQL `afrogate_owner`, `afrogate_migrator`, and `afrogate_app` roles.
-- Store runtime secrets only in `/etc/afrogate/afrogate.env` or a deployment secret manager.
-- Use `AFROGATE_SUPERADMIN_PASSWORD_HASH`, not plaintext password, for production.
-- Generate and back up `ADMIN_SESSION_SECRET`, `AFROGATE_SECRETS_KEY`, and `AFROGATE_IDENTITY_HASH_KEY`.
+- Create separate PostgreSQL `afrows_owner`, `afrows_migrator`, and `afrows_app` roles.
+- Store runtime secrets only in `/etc/afrows/afrows.env` or a deployment secret manager.
+- Use `AFROWS_SUPERADMIN_PASSWORD_HASH`, not plaintext password, for production.
+- Generate and back up `ADMIN_SESSION_SECRET`, `AFROWS_SECRETS_KEY`, and `AFROWS_IDENTITY_HASH_KEY`.
 - Keep all route/protocol live-apply feature flags disabled until audited engines are implemented.
 - Confirm `npm run version:check`, `npm run typecheck`, `npm run build --workspaces --if-present`, `npm run secrets:check`, and `npm audit --audit-level=moderate` pass for the deployed revision.
 - Confirm the backup job writes sanitized backup status and restore tests are scheduled.
@@ -60,78 +60,78 @@ Node.js must satisfy the root `package.json` engine (`>=22`).
 Create service users and directories:
 
 ```bash
-sudo adduser --system --group --home /opt/afrogate afrogate
-sudo mkdir -p /opt/afrogate /etc/afrogate /var/lib/afrogate /var/log/afrogate
-sudo chown -R afrogate:afrogate /opt/afrogate /var/lib/afrogate /var/log/afrogate
-sudo chmod 0750 /etc/afrogate
+sudo adduser --system --group --home /opt/afrows afrows
+sudo mkdir -p /opt/afrows /etc/afrows /var/lib/afrows /var/log/afrows
+sudo chown -R afrows:afrows /opt/afrows /var/lib/afrows /var/log/afrows
+sudo chmod 0750 /etc/afrows
 ```
 
-Clone or deploy the repository to `/opt/afrogate`. Do not place `.env`, private keys, production config exports, Telegram tokens, PayPal credentials, server credentials, or raw customer data in the repository.
+Clone or deploy the repository to `/opt/afrows`. Do not place `.env`, private keys, production config exports, Telegram tokens, PayPal credentials, server credentials, or raw customer data in the repository.
 
 ## PostgreSQL
 
 Create the database roles:
 
 ```sql
-CREATE ROLE afrogate_owner NOLOGIN;
-CREATE ROLE afrogate_migrator WITH LOGIN PASSWORD 'replace-with-long-random-migration-password';
-CREATE ROLE afrogate_app WITH LOGIN PASSWORD 'replace-with-long-random-runtime-password';
-CREATE DATABASE afrogate OWNER afrogate_owner;
+CREATE ROLE afrows_owner NOLOGIN;
+CREATE ROLE afrows_migrator WITH LOGIN PASSWORD 'replace-with-long-random-migration-password';
+CREATE ROLE afrows_app WITH LOGIN PASSWORD 'replace-with-long-random-runtime-password';
+CREATE DATABASE afrows OWNER afrows_owner;
 ```
 
 Apply least-privilege grants:
 
 ```bash
-sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/least-privilege-roles.sql
+sudo -u postgres psql -d afrows -f /opt/afrows/infra/postgres/least-privilege-roles.sql
 ```
 
 Run migrations with the migrator role, then reapply/verify grants:
 
 ```bash
-cd /opt/afrogate
-DATABASE_MIGRATION_URL='postgresql://afrogate_migrator:...@127.0.0.1:5432/afrogate' \
-  npm --workspace @afrogate/backend run db:migrate
-sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/least-privilege-roles.sql
-sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/verify-least-privilege.sql
+cd /opt/afrows
+DATABASE_MIGRATION_URL='postgresql://afrows_migrator:...@127.0.0.1:5432/afrows' \
+  npm --workspace @afrows/backend run db:migrate
+sudo -u postgres psql -d afrows -f /opt/afrows/infra/postgres/least-privilege-roles.sql
+sudo -u postgres psql -d afrows -f /opt/afrows/infra/postgres/verify-least-privilege.sql
 ```
 
 PostgreSQL must listen only on localhost or a private interface. Public `5432/tcp` is a deployment failure.
 
 ## Runtime Environment
 
-Start from `infra/ubuntu/afrogate.env.sample` and write the real file to `/etc/afrogate/afrogate.env`.
+Start from `infra/ubuntu/afrows.env.sample` and write the real file to `/etc/afrows/afrows.env`.
 
 Required production values:
 
 - `HOST=127.0.0.1`
 - `PORT=7000`
 - `CORS_ORIGIN=https://your-domain.example`
-- `DATABASE_URL=postgresql://afrogate_app:...@127.0.0.1:5432/afrogate`
+- `DATABASE_URL=postgresql://afrows_app:...@127.0.0.1:5432/afrows`
 - `ADMIN_SESSION_SECRET=<long random value>`
-- `AFROGATE_SUPERADMIN_PASSWORD_HASH=<scrypt hash>`
-- `AFROGATE_SECRETS_KEY=<32-byte base64 secret>`
-- `AFROGATE_SECRETS_KEY_ID=production-v1`
-- `AFROGATE_IDENTITY_HASH_KEY=<separate long random value>`
-- `AFROGATE_ADMIN_USERS_STORE=database`
-- `AFROGATE_ADMIN_USERS_FILE=/var/lib/afrogate/admin-users.json` only when importing legacy local users into an empty `admin_users` table
-- `AFROGATE_BACKUP_STATUS_FILE=/var/lib/afrogate/backup-status.json`
-- `AFROGATE_REWARDED_AD_WEBHOOK_SECRET=<long random value>` when signed rewarded-ad callbacks are enabled
+- `AFROWS_SUPERADMIN_PASSWORD_HASH=<scrypt hash>`
+- `AFROWS_SECRETS_KEY=<32-byte base64 secret>`
+- `AFROWS_SECRETS_KEY_ID=production-v1`
+- `AFROWS_IDENTITY_HASH_KEY=<separate long random value>`
+- `AFROWS_ADMIN_USERS_STORE=database`
+- `AFROWS_ADMIN_USERS_FILE=/var/lib/afrows/admin-users.json` only when importing legacy local users into an empty `admin_users` table
+- `AFROWS_BACKUP_STATUS_FILE=/var/lib/afrows/backup-status.json`
+- `AFROWS_REWARDED_AD_WEBHOOK_SECRET=<long random value>` when signed rewarded-ad callbacks are enabled
 
 Production safety flags must stay disabled until audited implementations exist:
 
 ```bash
-AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false
-AFROGATE_PROTOCOL_SERVER_APPLY_ENABLED=false
-AFROGATE_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED=false
-AFROGATE_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED=false
-AFROGATE_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED=false
+AFROWS_ROUTE_DATA_PLANE_APPLY_ENABLED=false
+AFROWS_PROTOCOL_SERVER_APPLY_ENABLED=false
+AFROWS_PROTOCOL_SERVER_APPLY_LIVE_EXECUTOR_ENABLED=false
+AFROWS_PROTOCOL_SERVER_APPLY_SECRET_DECRYPT_ENABLED=false
+AFROWS_PROTOCOL_SERVER_APPLY_CREDENTIAL_DECRYPT_ENABLED=false
 ```
 
 Lock down the env file:
 
 ```bash
-sudo chown root:afrogate /etc/afrogate/afrogate.env
-sudo chmod 0640 /etc/afrogate/afrogate.env
+sudo chown root:afrows /etc/afrows/afrows.env
+sudo chmod 0640 /etc/afrows/afrows.env
 ```
 
 ## Build and Services
@@ -139,7 +139,7 @@ sudo chmod 0640 /etc/afrogate/afrogate.env
 Install and build:
 
 ```bash
-cd /opt/afrogate
+cd /opt/afrows
 npm ci
 VITE_API_BASE_URL=/api npm run build --workspaces --if-present
 ```
@@ -147,18 +147,18 @@ VITE_API_BASE_URL=/api npm run build --workspaces --if-present
 Install the backend service:
 
 ```bash
-sudo cp /opt/afrogate/infra/ubuntu/afrogate-backend.service.sample /etc/systemd/system/afrogate-backend.service
+sudo cp /opt/afrows/infra/ubuntu/afrows-backend.service.sample /etc/systemd/system/afrows-backend.service
 sudo systemctl daemon-reload
-sudo systemctl enable afrogate-backend
-sudo systemctl start afrogate-backend
+sudo systemctl enable afrows-backend
+sudo systemctl start afrows-backend
 curl -fsS http://127.0.0.1:7000/api/health
 ```
 
 Install Nginx:
 
 ```bash
-sudo cp /opt/afrogate/infra/ubuntu/nginx.conf.sample /etc/nginx/sites-available/afrogate
-sudo ln -s /etc/nginx/sites-available/afrogate /etc/nginx/sites-enabled/afrogate
+sudo cp /opt/afrows/infra/ubuntu/nginx.conf.sample /etc/nginx/sites-available/afrows
+sudo ln -s /etc/nginx/sites-available/afrows /etc/nginx/sites-enabled/afrows
 sudo nginx -t
 sudo systemctl reload nginx
 curl -fsS https://your-domain.example/api/health
@@ -194,7 +194,7 @@ Rules:
 - Configure synthetic TCP/UDP/QUIC/DNS targets you control or accept.
 - Do not use user destinations, DNS history, packet captures, or traffic-derived hosts as probe targets.
 - Keep route intelligence advisory until data-plane apply is audited.
-- For restricted servers, use `AFROGATE_OUTBOUND_PROXY_URL` only for control-plane API pushes or provider calls.
+- For restricted servers, use `AFROWS_OUTBOUND_PROXY_URL` only for control-plane API pushes or provider calls.
 
 ## Backup and Restore
 
@@ -210,7 +210,7 @@ Operational rules:
 
 - Encrypt backups before leaving the host.
 - Keep retention tiers, for example daily 7, weekly 4, monthly 3.
-- Write only sanitized status to `AFROGATE_BACKUP_STATUS_FILE`.
+- Write only sanitized status to `AFROWS_BACKUP_STATUS_FILE`.
 - Test restore into a separate environment before relying on a backup plan.
 - Use the dashboard Backups page for readiness and runbook visibility only; restore execution is not automated yet.
 
@@ -222,7 +222,7 @@ At minimum, monitor:
 - backend systemd status and restart count
 - PostgreSQL disk, connections, and backup freshness
 - Nginx 4xx/5xx and rate-limit spikes
-- open critical/warning alerts in AfroGate
+- open critical/warning alerts in Afrows
 - backup status and restore-test age
 - route-quality synthetic probe freshness
 - payment/webhook failures when billing is enabled
@@ -234,15 +234,15 @@ Use the Reports page for aggregate operational health only. It must not be treat
 Use a controlled update window:
 
 ```bash
-cd /opt/afrogate
+cd /opt/afrows
 git fetch --all --prune
 git checkout <target-release>
 npm ci
 VITE_API_BASE_URL=/api npm run build --workspaces --if-present
-DATABASE_MIGRATION_URL='postgresql://afrogate_migrator:...@127.0.0.1:5432/afrogate' \
-  npm --workspace @afrogate/backend run db:migrate
-sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/least-privilege-roles.sql
-sudo systemctl restart afrogate-backend
+DATABASE_MIGRATION_URL='postgresql://afrows_migrator:...@127.0.0.1:5432/afrows' \
+  npm --workspace @afrows/backend run db:migrate
+sudo -u postgres psql -d afrows -f /opt/afrows/infra/postgres/least-privilege-roles.sql
+sudo systemctl restart afrows-backend
 sudo nginx -t
 sudo systemctl reload nginx
 curl -fsS http://127.0.0.1:7000/api/health
@@ -258,11 +258,11 @@ Rollback needs both application and data compatibility.
 If no migration changed data:
 
 ```bash
-cd /opt/afrogate
+cd /opt/afrows
 git checkout <previous-good-release>
 npm ci
 VITE_API_BASE_URL=/api npm run build --workspaces --if-present
-sudo systemctl restart afrogate-backend
+sudo systemctl restart afrows-backend
 sudo systemctl reload nginx
 ```
 

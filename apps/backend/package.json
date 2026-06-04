@@ -1,22 +1,22 @@
 {
-  "name": "@afrogate/backend",
+  "name": "@afrows/backend",
   "version": "0.114.27",
   "private": true,
   "scripts": {
-    "predev": "npm --workspace @afrogate/shared run build",
+    "predev": "npm --workspace @afrows/shared run build",
     "dev": "nest start --watch",
-    "prebuild": "npm --workspace @afrogate/shared run build",
+    "prebuild": "npm --workspace @afrows/shared run build",
     "build": "nest build",
     "start": "node dist/main.js",
     "db:migrate": "node scripts/migrate.mjs",
-    "pretypecheck": "npm --workspace @afrogate/shared run build",
+    "pretypecheck": "npm --workspace @afrows/shared run build",
     "typecheck": "tsc --noEmit",
-    "pretest": "npm --workspace @afrogate/shared run build",
+    "pretest": "npm --workspace @afrows/shared run build",
     "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \"test/**/*.test.ts\"",
     "lint": "echo \"backend lint not configured yet\""
   },
   "dependencies": {
-    "@afrogate/shared": "0.114.27",
+    "@afrows/shared": "0.114.27",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",

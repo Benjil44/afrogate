@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { Role } from '@afrogate/shared';
+import type { Role } from '@afrows/shared';
 
 export const SESSION_VERSION = 1;
 

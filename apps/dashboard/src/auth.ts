@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AdminLoginRequest, AdminSessionResponse } from '@afrogate/shared';
+import type { AdminLoginRequest, AdminSessionResponse } from '@afrows/shared';
 import { AdminAuthError, type AdminAuthErrorCode, fetchAdminSession, loginAdmin } from './api/admin';
 
-const adminSessionTokenStorageKey = 'afrogate.dashboard.adminSessionToken';
-const legacyAdminTokenStorageKey = 'afrogate.dashboard.adminToken';
+const adminSessionTokenStorageKey = 'afrows.dashboard.adminSessionToken';
+const legacyAdminTokenStorageKey = 'afrows.dashboard.adminToken';
 
 type AdminAuthStatus = 'checking' | 'signedOut' | 'signedIn';
 

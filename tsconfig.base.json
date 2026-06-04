@@ -10,7 +10,7 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@afrogate/shared": [
+      "@afrows/shared": [
         "packages/shared/dist"
       ]
     }

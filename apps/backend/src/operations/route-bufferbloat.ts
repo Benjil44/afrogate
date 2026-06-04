@@ -1,4 +1,4 @@
-import type { RouteBufferbloatRecommendation, RouteBufferbloatSeverity } from '@afrogate/shared';
+import type { RouteBufferbloatRecommendation, RouteBufferbloatSeverity } from '@afrows/shared';
 
 export interface RouteBufferbloatAssessment {
   loadedLatencyMs: number | null;

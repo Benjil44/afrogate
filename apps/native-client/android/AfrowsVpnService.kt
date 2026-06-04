@@ -1,4 +1,4 @@
-package com.afrogate.client
+package com.afrows.client
 
 import android.content.pm.PackageManager
 import android.net.VpnService
@@ -14,7 +14,7 @@ data class SplitTunnelProfile(
   val selectedApps: List<SplitTunnelApp>,
 )
 
-class AfroGateVpnService : VpnService() {
+class AfrowsVpnService : VpnService() {
   fun applySplitTunnel(builder: Builder, profile: SplitTunnelProfile): List<String> {
     if (profile.mode != "selected_apps") return emptyList()
 

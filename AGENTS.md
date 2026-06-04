@@ -1,4 +1,4 @@
-# AfroGate Agent Instructions
+# Afrows Agent Instructions
 
 Before changing code or architecture in this repository, read these files first:
 
@@ -25,7 +25,7 @@ After each meaningful implementation session:
 - Update `.codex/progress.md` with what changed, what was verified, and what remains.
 - Update `.codex/memory.md` when a stable product or technical decision is made.
 - Update `.codex/checklist.md` when tasks move from pending to done.
-- Bump the AfroGate version, update `CHANGELOG.md`, and run `npm run version:check` for each meaningful implementation section.
+- Bump the Afrows version, update `CHANGELOG.md`, and run `npm run version:check` for each meaningful implementation section.
 - Keep dashboard user-facing labels in the typed multilingual layer instead of hardcoding English-only UI copy.
 - Keep privacy, safety, and human-rights requirements visible in every design decision.
 - Keep code clean, typed, and deduplicated.

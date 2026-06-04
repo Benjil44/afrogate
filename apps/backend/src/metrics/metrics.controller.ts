@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import type { LatestMetricsResponse, MetricsTimeseriesResponse, ServerMetricSnapshot } from '@afrogate/shared';
+import type { LatestMetricsResponse, MetricsTimeseriesResponse, ServerMetricSnapshot } from '@afrows/shared';
 import { AgentTokenGuard } from '../security/agent-token.guard';
 import { MetricsIngestDto } from './dto/metrics-ingest.dto';
 import { MetricsService } from './metrics.service';

@@ -87,7 +87,7 @@ import type {
   StorageVolumeMetric,
   WireGuardInterfaceMetric,
   RouteHealthHistoryPoint,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import {
   Activity,
   AlertTriangle,
@@ -622,8 +622,8 @@ const outbounds: OutboundRowData[] = import.meta.env.DEV ? [
 ] : [];
 
 
-const sidebarStorageKey = 'afrogate.dashboard.sidebar';
-const kioskStorageKey = 'afrogate.dashboard.kiosk';
+const sidebarStorageKey = 'afrows.dashboard.sidebar';
+const kioskStorageKey = 'afrows.dashboard.kiosk';
 
 function loadInitialSidebarCollapsed() {
   return window.localStorage.getItem(sidebarStorageKey) === 'collapsed';

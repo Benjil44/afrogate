@@ -3,7 +3,7 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool, type QueryResult, type QueryResultRow } from 'pg';
 import * as schema from './schema';
 
-export type AfroGateDatabase = NodePgDatabase<typeof schema>;
+export type AfrowsDatabase = NodePgDatabase<typeof schema>;
 
 export interface DatabaseQueryExecutor {
   query<T extends QueryResultRow = QueryResultRow>(
@@ -25,7 +25,7 @@ export class DatabaseService implements OnApplicationShutdown {
         : undefined,
   });
 
-  readonly db: AfroGateDatabase = drizzle(this.pool, { schema });
+  readonly db: AfrowsDatabase = drizzle(this.pool, { schema });
 
   query<T extends QueryResultRow = QueryResultRow>(
     text: string,

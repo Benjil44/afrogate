@@ -1,4 +1,4 @@
-import type { MetricsTimeRange, ServerMetricTimeseries } from '@afrogate/shared';
+import type { MetricsTimeRange, ServerMetricTimeseries } from '@afrows/shared';
 import type { AfroChartOption } from './components/EChart';
 import type { ServerRowData } from './dashboard-types';
 import { clamp, type DashboardFormatters } from './formatters';

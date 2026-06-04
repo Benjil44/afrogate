@@ -17,11 +17,11 @@ export class RateLimitService {
   constructor(private readonly config: ConfigService) {}
 
   isEnabled(): boolean {
-    return this.configFlag('AFROGATE_RATE_LIMIT_ENABLED', true);
+    return this.configFlag('AFROWS_RATE_LIMIT_ENABLED', true);
   }
 
   shouldTrustProxyHeaders(): boolean {
-    return this.configFlag('AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS', false);
+    return this.configFlag('AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS', false);
   }
 
   consume(key: string, options: RateLimitOptions): RateLimitDecision {
@@ -32,7 +32,7 @@ export class RateLimitService {
   }
 
   private maxKeys(): number {
-    const configured = Number(this.config.get<string>('AFROGATE_RATE_LIMIT_MAX_KEYS'));
+    const configured = Number(this.config.get<string>('AFROWS_RATE_LIMIT_MAX_KEYS'));
     return Number.isInteger(configured) && configured >= 100 ? configured : 5000;
   }
 

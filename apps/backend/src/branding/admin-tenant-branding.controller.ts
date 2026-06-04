@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
-import type { AdminTenantBrandSettingsResponse } from '@afrogate/shared';
+import type { AdminTenantBrandSettingsResponse } from '@afrows/shared';
 import type { RequestWithAuth } from '../security/auth-request';
 import { AdminTokenGuard } from '../security/admin-token.guard';
 import { Permissions, Roles } from '../security/roles.decorator';

@@ -66,7 +66,7 @@ export class OutboundHttpService {
 
     const proxy = new URL(proxyUrl);
     if (proxy.protocol !== 'http:') {
-      throw new Error('AFROGATE_OUTBOUND_PROXY_URL must point to an HTTP proxy');
+      throw new Error('AFROWS_OUTBOUND_PROXY_URL must point to an HTTP proxy');
     }
 
     return target.protocol === 'https:'
@@ -247,7 +247,7 @@ export class OutboundHttpService {
   }
 
   private getProxyUrl(): string | undefined {
-    const value = this.config.get<string>('AFROGATE_OUTBOUND_PROXY_URL')?.trim();
+    const value = this.config.get<string>('AFROWS_OUTBOUND_PROXY_URL')?.trim();
     return value || undefined;
   }
 

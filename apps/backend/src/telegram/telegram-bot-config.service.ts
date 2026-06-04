@@ -6,7 +6,7 @@ import type {
   AdminTelegramBotTestResponse,
   TelegramBotSettingsSecretSource,
   TelegramBotSettingsTestStatus,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { OutboundHttpService } from '../outbound/outbound-http.service';
@@ -194,7 +194,7 @@ export class TelegramBotConfigService {
     let botFirstName: string | null = null;
 
     try {
-      const botToken = await this.resolveSecretOrEnv(row, row?.botTokenSecretRef ?? null, 'telegramBotToken', 'AFROGATE_TELEGRAM_BOT_TOKEN');
+      const botToken = await this.resolveSecretOrEnv(row, row?.botTokenSecretRef ?? null, 'telegramBotToken', 'AFROWS_TELEGRAM_BOT_TOKEN');
 
       if (!botToken) {
         status = 'missingToken';
@@ -253,16 +253,16 @@ export class TelegramBotConfigService {
     const row = await this.getSettingsRow();
 
     return {
-      botToken: await this.resolveSecretOrEnv(row, row?.botTokenSecretRef ?? null, 'telegramBotToken', 'AFROGATE_TELEGRAM_BOT_TOKEN'),
+      botToken: await this.resolveSecretOrEnv(row, row?.botTokenSecretRef ?? null, 'telegramBotToken', 'AFROWS_TELEGRAM_BOT_TOKEN'),
       webhookSecret: await this.resolveSecretOrEnv(
         row,
         row?.webhookSecretRef ?? null,
         'telegramWebhookSecret',
-        'AFROGATE_TELEGRAM_WEBHOOK_SECRET',
+        'AFROWS_TELEGRAM_WEBHOOK_SECRET',
       ),
-      alertChatId: row?.alertChatId?.trim() || this.nonEmptyConfig('AFROGATE_TELEGRAM_ALERT_CHAT_ID'),
-      alertsEnabled: row ? row.alertsEnabled : this.configFlag('AFROGATE_TELEGRAM_ALERTS_ENABLED', false),
-      commandsEnabled: row ? row.commandsEnabled : this.configFlag('AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED', false),
+      alertChatId: row?.alertChatId?.trim() || this.nonEmptyConfig('AFROWS_TELEGRAM_ALERT_CHAT_ID'),
+      alertsEnabled: row ? row.alertsEnabled : this.configFlag('AFROWS_TELEGRAM_ALERTS_ENABLED', false),
+      commandsEnabled: row ? row.commandsEnabled : this.configFlag('AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED', false),
     };
   }
 
@@ -305,9 +305,9 @@ export class TelegramBotConfigService {
           input.status,
           input.errorCode,
           input.durationMs,
-          this.nonEmptyConfig('AFROGATE_TELEGRAM_ALERT_CHAT_ID') ?? null,
-          this.configFlag('AFROGATE_TELEGRAM_ALERTS_ENABLED', false),
-          this.configFlag('AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED', false),
+          this.nonEmptyConfig('AFROWS_TELEGRAM_ALERT_CHAT_ID') ?? null,
+          this.configFlag('AFROWS_TELEGRAM_ALERTS_ENABLED', false),
+          this.configFlag('AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED', false),
           input.actor?.username ?? input.actor?.id ?? null,
         ],
       );
@@ -475,9 +475,9 @@ export class TelegramBotConfigService {
   }
 
   private mapSettingsSummary(row: TelegramBotSettingsRow | null): AdminTelegramBotSettingsSummary {
-    const envBotToken = Boolean(this.nonEmptyConfig('AFROGATE_TELEGRAM_BOT_TOKEN'));
-    const envWebhookSecret = Boolean(this.nonEmptyConfig('AFROGATE_TELEGRAM_WEBHOOK_SECRET'));
-    const envAlertChatId = this.nonEmptyConfig('AFROGATE_TELEGRAM_ALERT_CHAT_ID');
+    const envBotToken = Boolean(this.nonEmptyConfig('AFROWS_TELEGRAM_BOT_TOKEN'));
+    const envWebhookSecret = Boolean(this.nonEmptyConfig('AFROWS_TELEGRAM_WEBHOOK_SECRET'));
+    const envAlertChatId = this.nonEmptyConfig('AFROWS_TELEGRAM_ALERT_CHAT_ID');
     const botTokenSource = this.secretSource(row?.botTokenSecretRef, envBotToken);
     const webhookSecretSource = this.secretSource(row?.webhookSecretRef, envWebhookSecret);
     const alertChatIdSource: TelegramBotSettingsSecretSource = row?.alertChatId
@@ -491,12 +491,12 @@ export class TelegramBotConfigService {
       botTokenSource,
       hasWebhookSecret: webhookSecretSource !== 'none',
       webhookSecretSource,
-      alertsEnabled: row ? row.alertsEnabled : this.configFlag('AFROGATE_TELEGRAM_ALERTS_ENABLED', false),
-      commandsEnabled: row ? row.commandsEnabled : this.configFlag('AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED', false),
+      alertsEnabled: row ? row.alertsEnabled : this.configFlag('AFROWS_TELEGRAM_ALERTS_ENABLED', false),
+      commandsEnabled: row ? row.commandsEnabled : this.configFlag('AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED', false),
       alertChatId: row?.alertChatId ?? envAlertChatId ?? null,
       alertChatIdSource,
       allowedAdminChatIds: this.chatIdsFromUnknown(row?.allowedAdminChatIds),
-      outboundProxyConfigured: Boolean(this.nonEmptyConfig('AFROGATE_OUTBOUND_PROXY_URL')),
+      outboundProxyConfigured: Boolean(this.nonEmptyConfig('AFROWS_OUTBOUND_PROXY_URL')),
       botId: row?.botId ?? null,
       botUsername: row?.botUsername ?? null,
       botFirstName: row?.botFirstName ?? null,
@@ -554,11 +554,11 @@ export class TelegramBotConfigService {
   }
 
   private apiBaseUrl(): string {
-    return this.config.get<string>('AFROGATE_TELEGRAM_API_BASE_URL')?.trim().replace(/\/+$/, '') || 'https://api.telegram.org';
+    return this.config.get<string>('AFROWS_TELEGRAM_API_BASE_URL')?.trim().replace(/\/+$/, '') || 'https://api.telegram.org';
   }
 
   private timeoutMs(): number {
-    const configured = Number(this.config.get<string>('AFROGATE_TELEGRAM_TIMEOUT_MS'));
+    const configured = Number(this.config.get<string>('AFROWS_TELEGRAM_TIMEOUT_MS'));
     return Number.isInteger(configured) && configured >= 1000 ? configured : 10000;
   }
 

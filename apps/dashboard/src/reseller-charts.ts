@@ -1,11 +1,11 @@
-import type { AdminCustomerAccountSummary, AdminPaymentOrderSummary, AdminResellerAccountSummary } from '@afrogate/shared';
+import type { AdminCustomerAccountSummary, AdminPaymentOrderSummary, AdminResellerAccountSummary } from '@afrows/shared';
 import type { AfroChartOption } from './components/EChart';
 import type { DashboardFormatters } from './formatters';
 import type { DashboardStrings } from './i18n';
 
 export type ResellerSalesStats = {
   activeCustomerCount: number;
-  afroGateShareAmount: number;
+  afrowsShareAmount: number;
   averageSoldGb: number;
   currency: string;
   lowQuotaCount: number;
@@ -25,8 +25,8 @@ export function createResellerSalesStats(
   const completedOrders = paymentOrders.filter(isCompletedResellerSaleOrder);
   const totalSalesAmount = completedOrders.reduce((sum, order) => sum + order.amount, 0);
   const soldBytes = completedOrders.reduce((sum, order) => sum + order.volumeBytes, 0);
-  const afroGateShareAmount = reseller
-    ? Math.round(totalSalesAmount * reseller.afroGateShareBps / 10_000)
+  const afrowsShareAmount = reseller
+    ? Math.round(totalSalesAmount * reseller.afrowsShareBps / 10_000)
     : 0;
   const remainingValues = accounts
     .map((account) => account.remainingBytes ?? null)
@@ -41,13 +41,13 @@ export function createResellerSalesStats(
 
   return {
     activeCustomerCount: accounts.filter((account) => account.status === 'active').length,
-    afroGateShareAmount,
+    afrowsShareAmount,
     averageSoldGb: completedOrders.length > 0 ? soldBytes / completedOrders.length / 1024 ** 3 : 0,
     currency: reseller?.currency ?? completedOrders[0]?.currency ?? 'IRR',
     lowQuotaCount,
     orderCount: completedOrders.length,
     remainingBytes: allRemainingKnown ? remainingValues.reduce((sum, value) => sum + value, 0) : null,
-    sellerMarginAmount: Math.max(totalSalesAmount - afroGateShareAmount, 0),
+    sellerMarginAmount: Math.max(totalSalesAmount - afrowsShareAmount, 0),
     soldBytes,
     totalSalesAmount,
     usedBytes: accounts.reduce((sum, account) => sum + account.usedBytes, 0),
@@ -298,4 +298,4 @@ export function localDateKey(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
-}
+}

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import type { AdminAuditLogSummary } from '@afrogate/shared';
+import type { AdminAuditLogSummary } from '@afrows/shared';
 import type { AuditActor } from '../security/auth-request';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 

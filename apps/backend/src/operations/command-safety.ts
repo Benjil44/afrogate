@@ -12,9 +12,9 @@ export function safePathSegment(value: string): string {
   return normalized || 'main';
 }
 
-/** Route table name derived from a route group, always `afrogate_<safe-segment>`. */
+/** Route table name derived from a route group, always `afrows_<safe-segment>`. */
 export function safeRouteTableName(routeGroup: string): string {
-  return `afrogate_${safePathSegment(routeGroup)}`;
+  return `afrows_${safePathSegment(routeGroup)}`;
 }
 
 /** Deterministic fwmark hex derived from the route group (no external input in commands). */

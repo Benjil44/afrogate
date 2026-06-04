@@ -1,7 +1,7 @@
 import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowDownUp, Bot, CheckCircle2, Clock, Gauge, LockKeyhole, Network, Palette, Plus, Route, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
-import type { AdminOutboundSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolSetupSummary, AdminRouteAssignmentSummary, AdminRouteDecisionEventDetail, AdminRouteDecisionEventSummary, AdminRouteDecisionPreviewResponse, AdminRouteDecisionSwitchExecutionSummary, AdminRouteQualityAnalyticsResponse, AdminSessionResponse, AdminSettingsResponse, AdminTelegramBotSettingsSummary, AdminTenantBrandSettingsSummary, AdminWireGuardCandidate, LoadBalanceStrategy, ProtocolKind, ProtocolProfile, RouteSelectionMode } from '@afrogate/shared';
+import type { AdminOutboundSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolSetupSummary, AdminRouteAssignmentSummary, AdminRouteDecisionEventDetail, AdminRouteDecisionEventSummary, AdminRouteDecisionPreviewResponse, AdminRouteDecisionSwitchExecutionSummary, AdminRouteQualityAnalyticsResponse, AdminSessionResponse, AdminSettingsResponse, AdminTelegramBotSettingsSummary, AdminTenantBrandSettingsSummary, AdminWireGuardCandidate, LoadBalanceStrategy, ProtocolKind, ProtocolProfile, RouteSelectionMode } from '@afrows/shared';
 import { applyRouteDecisionPreview, createAdminProtocolSetup, createAdminSettingsSecret, fetchAdminSettings, fetchAdminTelegramBotSettings, fetchAdminTenantBranding, fetchProtocolServerApplyEvent, fetchProtocolServerApplyEvents, fetchRouteAssignment, fetchRouteDecisionEvent, fetchRouteDecisionEvents, fetchRouteDecisionPreview, fetchRouteQualityAnalytics, provisionAdminProtocolSetup, recordAdminProtocolServerApplyDryRun, recordRouteDecisionPreview, requestAdminProtocolServerApply, testAdminTelegramBotConnection, updateAdminRouteAssignment, updateAdminRouteSettings, updateAdminTelegramBotSettings, updateAdminTenantBranding } from '../api/admin';
 import type { DashboardTabItem, DataState, ProtocolSetupDraft, ServerRowData, SettingsTab, TelegramBotSettingsForm, TenantBrandSettingsForm, Tone, WireGuardHealthCandidate, WireGuardSetupDraft } from '../dashboard-types';
 import { clamp, normalizeNullableText, type DashboardFormatters } from '../formatters';
@@ -386,7 +386,7 @@ export function SettingsPage({
   const selectedTargetServer = protocolTargetServers.find((server) => server.id === protocolDraft.targetServerId) ?? null;
   const selectedTargetServerAccessReady = selectedTargetServer ? serverAccessReady(selectedTargetServer) : false;
   const readinessRows: Array<[string, string, Tone]> = [
-    [t.settings.systemUser, 'afrogate', 'good'],
+    [t.settings.systemUser, 'afrows', 'good'],
     [t.settings.protocolCreation, canCreateProtocols ? t.settings.superadminReady : t.settings.superadminOnly, canCreateProtocols ? 'good' : 'warning'],
     [t.settings.protocolProfile, profileOptions.find(([value]) => value === protocolDraft.profile)?.[1] ?? t.settings.profileBalanced, 'neutral'],
     [t.settings.targetServer, selectedTargetServer ? selectedTargetServer.name : t.settings.noTargetServer, selectedTargetServer ? 'neutral' : 'warning'],
@@ -1824,7 +1824,7 @@ function extractEndpointFromConfig(config: Record<string, unknown>): string | nu
     .find((value): value is string | number => typeof value === 'number' || typeof value === 'string');
 
   return host ? `${host}${port ? `:${port}` : ''}` : null;
-}
+}
 
 const protocolDefaultPorts: Record<ProtocolKind, string> = {
   wireguard: '51820',
@@ -1836,10 +1836,10 @@ const protocolDefaultPorts: Record<ProtocolKind, string> = {
 function createEmptyTenantBrandForm(): TenantBrandSettingsForm {
   return {
     accentColor: '#0E9F8F',
-    clientAppTitle: 'AfroGate Client',
+    clientAppTitle: 'Afrows Client',
     clientSupportMessage: '',
-    dashboardTitle: 'AfroGate',
-    displayName: 'AfroGate',
+    dashboardTitle: 'Afrows',
+    displayName: 'Afrows',
     legalName: '',
     logoUrl: '',
     primaryColor: '#176B87',
@@ -1884,4 +1884,4 @@ function latestProtocolApplyEventsBySetupId(
 
     return items;
   }, {});
-}
+}

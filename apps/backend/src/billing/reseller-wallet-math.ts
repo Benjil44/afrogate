@@ -16,8 +16,8 @@ export function normalizeResellerMarginBps(value: number | null | undefined, fal
   return normalized;
 }
 
-/** AfroGate's share in basis points; never negative even if margin exceeds 100%. */
-export function afroGateShareBps(sellerMarginBps: number): number {
+/** Afrows's share in basis points; never negative even if margin exceeds 100%. */
+export function afrowsShareBps(sellerMarginBps: number): number {
   return Math.max(BASIS_POINTS - sellerMarginBps, 0);
 }
 
@@ -28,7 +28,7 @@ export interface ResellerSaleAmounts {
 
 /**
  * Splits a customer package price into the reseller's seller margin and the
- * amount debited from the reseller wallet (AfroGate's share). The wallet debit
+ * amount debited from the reseller wallet (Afrows's share). The wallet debit
  * never goes below zero.
  */
 export function computeResellerSaleAmounts(customerPriceAmount: number, sellerMarginBps: number): ResellerSaleAmounts {

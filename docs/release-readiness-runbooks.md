@@ -1,4 +1,4 @@
-# AfroGate Release-Readiness Runbooks
+# Afrows Release-Readiness Runbooks
 
 Operational runbooks for the Phase 6 release-validation items. These are the
 executable procedures; the steps that mutate a real server or require an
@@ -18,11 +18,11 @@ on a clean Ubuntu host.
    `psql -f infra/postgres/least-privilege-roles.sql` then verify with
    `infra/postgres/verify-least-privilege.sql`.
 4. Apply migrations with `DATABASE_MIGRATION_URL` (migrator role):
-   `npm --workspace @afrogate/backend run db:migrate`.
-5. Put secrets in `/etc/afrogate/afrogate.env` (set `CORS_ORIGIN`,
-   `ADMIN_SESSION_SECRET`, `AFROGATE_SUPERADMIN_PASSWORD(_HASH)`,
-   `AFROGATE_SECRETS_KEY`, `AFROGATE_RATE_LIMIT_TRUST_PROXY_HEADERS=true`).
-6. Install the systemd unit (`infra/ubuntu/afrogate-backend.service.sample`) and
+   `npm --workspace @afrows/backend run db:migrate`.
+5. Put secrets in `/etc/afrows/afrows.env` (set `CORS_ORIGIN`,
+   `ADMIN_SESSION_SECRET`, `AFROWS_SUPERADMIN_PASSWORD(_HASH)`,
+   `AFROWS_SECRETS_KEY`, `AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS=true`).
+6. Install the systemd unit (`infra/ubuntu/afrows-backend.service.sample`) and
    the Nginx site (`infra/ubuntu/nginx.conf.sample`); reload both.
 7. **Verify** — run the bundled verifier (health + security headers + loopback-only ports):
    ```
@@ -69,13 +69,13 @@ data path. VPN client traffic flows through the WireGuard/data-plane servers, so
 traffic classes are: client subscription/quota polls (the 10k-user driver, but
 low frequency per client), agent heartbeats (one per managed server), and admin
 dashboard reads (a few operators). The [k6](https://k6.io) script
-`scripts/loadtest/afrogate-smoke.js` models all three as weighted scenarios:
+`scripts/loadtest/afrows-smoke.js` models all three as weighted scenarios:
 
 ```
 BASE_URL=https://<host> \
 CLIENT_TOKEN=<client bearer> AGENT_TOKEN=<agent bearer> SESSION_TOKEN=<admin bearer> \
 PEAK_CLIENTS=500 PEAK_AGENTS=50 PEAK_ADMINS=10 \
-  k6 run scripts/loadtest/afrogate-smoke.js
+  k6 run scripts/loadtest/afrows-smoke.js
 ```
 
 Each class is skipped if its token is omitted. Scale `PEAK_*` toward the target.
@@ -102,7 +102,7 @@ with the DB pool not exhausted.
 
 ## 4. Independent penetration test  [needs external party]
 
-Goal: third-party validation before paid rollout. AfroGate cannot self-certify.
+Goal: third-party validation before paid rollout. Afrows cannot self-certify.
 
 Scope to hand the auditor:
 - Auth/session: login brute force + rate limits, session token forgery/expiry, role escalation across `owner/admin/supervisor/support/auditor/reseller`.
@@ -125,7 +125,7 @@ Goal: rehearse rotation without downtime.
 - **Agent tokens:** call the guarded rotate endpoint
   (`POST /api/agents/:serverId/tokens/rotate` — revokes active tokens for a server,
   issues one new one-time plaintext token stored only as a SHA-256 hash), update the
-  agent's `AFROGATE_AGENT_TOKEN`, then verify with the bundled checker:
+  agent's `AFROWS_AGENT_TOKEN`, then verify with the bundled checker:
   ```
   BASE_URL=https://<host> OLD_AGENT_TOKEN=... NEW_AGENT_TOKEN=... \
     scripts/drills/verify-rotation.sh
@@ -134,7 +134,7 @@ Goal: rehearse rotation without downtime.
   heartbeat endpoint).
 - **Session secret (`ADMIN_SESSION_SECRET`):** rotating invalidates existing
   sessions (all admins must re-login) — schedule in a maintenance window.
-- **Secrets key (`AFROGATE_SECRETS_KEY`):** re-encrypt `secret_records`/
+- **Secrets key (`AFROWS_SECRETS_KEY`):** re-encrypt `secret_records`/
   `server_credentials` with the new key id; keep the old key id available until
   re-encryption completes. Never remove an old key while ciphertext references it.
 - **Provider/webhook secrets:** update env, replay a signed test webhook, confirm

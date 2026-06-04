@@ -22,7 +22,7 @@ export class AgentTokenGuard implements CanActivate {
   constructor(private readonly database: DatabaseService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const expectedToken = process.env.AFROGATE_AGENT_TOKEN;
+    const expectedToken = process.env.AFROWS_AGENT_TOKEN;
     const legacyToken = expectedToken && expectedToken !== 'change-me-local-token' ? expectedToken : null;
     const hasLegacyToken = Boolean(legacyToken);
     const hasDatabaseTokens = Boolean(process.env.DATABASE_URL);
@@ -39,7 +39,7 @@ export class AgentTokenGuard implements CanActivate {
 
     if (legacyToken && secureTokenEquals(token, legacyToken)) {
       request.actor = {
-        id: process.env.AFROGATE_AGENT_ID ?? 'unknown-agent',
+        id: process.env.AFROWS_AGENT_ID ?? 'unknown-agent',
         role: 'agent',
         type: 'agent',
       };

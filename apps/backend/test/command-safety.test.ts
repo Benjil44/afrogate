@@ -30,8 +30,8 @@ describe('safePathSegment', () => {
 });
 
 describe('safeRouteTableName', () => {
-  it('always prefixes afrogate_ and a safe segment', () => {
-    assert.equal(safeRouteTableName('Iran/../edge'), 'afrogate_iran-edge');
+  it('always prefixes afrows_ and a safe segment', () => {
+    assert.equal(safeRouteTableName('Iran/../edge'), 'afrows_iran-edge');
     assert.doesNotMatch(safeRouteTableName('a; b'), /[^a-z0-9_-]/);
   });
 });

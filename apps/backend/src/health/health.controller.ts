@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 
 /**
  * Resolves the monorepo version once at module load by walking up from this
- * compiled file until it finds the root `afrogate` package.json. Exposed on
+ * compiled file until it finds the root `afrows` package.json. Exposed on
  * /api/health so clients can detect a new deployment and refresh themselves.
  */
 function resolveAppVersion(): string {
@@ -12,7 +12,7 @@ function resolveAppVersion(): string {
   for (let depth = 0; depth < 8; depth += 1) {
     try {
       const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-      if (pkg.name === 'afrogate' && typeof pkg.version === 'string') return pkg.version;
+      if (pkg.name === 'afrows' && typeof pkg.version === 'string') return pkg.version;
     } catch {
       // not here; keep walking up
     }
@@ -31,7 +31,7 @@ export class HealthController {
   getHealth() {
     return {
       status: 'ok',
-      service: 'afrogate-backend',
+      service: 'afrows-backend',
       version: appVersion,
       timestamp: new Date().toISOString(),
     };

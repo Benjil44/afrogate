@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
-import type { AdminLoginResponse } from '@afrogate/shared';
+import type { AdminLoginResponse } from '@afrows/shared';
 import { RateLimit } from '../security/rate-limit.decorator';
 import { RateLimitGuard } from '../security/rate-limit.guard';
 import { AuthService } from './auth.service';

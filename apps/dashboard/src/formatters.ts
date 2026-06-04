@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { MetricsTimeRange, StorageVolumeMetric } from '@afrogate/shared';
+import type { MetricsTimeRange, StorageVolumeMetric } from '@afrows/shared';
 import type { DashboardLanguage } from './i18n';
 
 export type DashboardFormatters = ReturnType<typeof createDashboardFormatters>;
@@ -52,7 +52,7 @@ export function createDashboardFormatters(language: DashboardLanguage) {
   const locale = isPersian ? 'fa-IR-u-nu-arabext' : 'en-US';
   const percentSign = isPersian ? '٪' : '%';
   const fontFamily = isPersian
-    ? '"AfroGate YekanBakh", Tahoma, Arial, sans-serif'
+    ? '"Afrows YekanBakh", Tahoma, Arial, sans-serif'
     : 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   const integerFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
   const decimalFormatter = new Intl.NumberFormat(locale, {
@@ -232,4 +232,4 @@ export function normalizeNullableText(value: string): string | null {
   const trimmedValue = value.trim();
 
   return trimmedValue ? trimmedValue : null;
-}
+}

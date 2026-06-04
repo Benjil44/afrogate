@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, Gauge } from 'lucide-react';
-import type { AdminBackupStatusSummary, AdminReportsSummaryResponse } from '@afrogate/shared';
+import type { AdminBackupStatusSummary, AdminReportsSummaryResponse } from '@afrows/shared';
 import { fetchAdminReportsSummary } from '../api/admin';
 import { createDonutChartOption } from '../chart-options';
 import { EChart } from '../components/EChart';
@@ -197,4 +197,4 @@ export function ReportsPage({
       ) : null}
     </section>
   );
-}
+}

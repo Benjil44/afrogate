@@ -8,7 +8,7 @@ import type {
   RouteProbeMetric,
   StorageVolumeMetric,
   WireGuardInterfaceMetric,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 
 export type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 export type DataState = 'loading' | 'live' | 'stale' | 'fallback';

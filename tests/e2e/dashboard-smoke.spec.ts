@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('dashboard renders on the fixed local frontend port', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page).toHaveTitle(/AfroGate Operations/);
+  await expect(page).toHaveTitle(/Afrows Operations/);
   await expect(page.locator('#root')).toBeVisible();
 
   await page.waitForFunction(() => {

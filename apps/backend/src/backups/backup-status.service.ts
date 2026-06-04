@@ -10,7 +10,7 @@ import type {
   AdminBackupStatusSummary,
   BackupRestoreCheckStatus,
   BackupJobStatus,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 
 type BackupStatusPayload = Record<string, unknown>;
 
@@ -28,18 +28,18 @@ const backupArtifactKeys = ['postgres', 'config', 'secrets'];
 export class BackupStatusService {
   async getStatus(): Promise<AdminBackupStatusSummary> {
     const now = new Date();
-    const statusFilePath = this.normalizeEnvString(process.env.AFROGATE_BACKUP_STATUS_FILE);
+    const statusFilePath = this.normalizeEnvString(process.env.AFROWS_BACKUP_STATUS_FILE);
     const monitoringEnabled = this.readBoolean(
-      process.env.AFROGATE_BACKUP_MONITORING_ENABLED,
+      process.env.AFROWS_BACKUP_MONITORING_ENABLED,
       Boolean(statusFilePath),
     );
-    const encryptionRequired = this.readBoolean(process.env.AFROGATE_BACKUP_ENCRYPTION_REQUIRED, true);
+    const encryptionRequired = this.readBoolean(process.env.AFROWS_BACKUP_ENCRYPTION_REQUIRED, true);
     const maxBackupAgeHours = this.readPositiveNumber(
-      process.env.AFROGATE_BACKUP_MAX_AGE_HOURS,
+      process.env.AFROWS_BACKUP_MAX_AGE_HOURS,
       DEFAULT_MAX_BACKUP_AGE_HOURS,
     );
     const restoreTestMaxAgeDays = this.readPositiveNumber(
-      process.env.AFROGATE_BACKUP_RESTORE_TEST_MAX_AGE_DAYS,
+      process.env.AFROWS_BACKUP_RESTORE_TEST_MAX_AGE_DAYS,
       DEFAULT_RESTORE_TEST_MAX_AGE_DAYS,
     );
     const retention = this.readRetention();
@@ -107,8 +107,8 @@ export class BackupStatusService {
       restoreTestMaxAgeDays,
       sizeBytes: this.readOptionalNumber(statusFile.payload?.sizeBytes),
       durationSeconds: this.readOptionalNumber(statusFile.payload?.durationSeconds),
-      destinationType: this.sanitizeDisplayValue(statusFile.payload?.destinationType ?? process.env.AFROGATE_BACKUP_DESTINATION_TYPE),
-      destinationLabel: this.sanitizeDisplayValue(statusFile.payload?.destinationLabel ?? process.env.AFROGATE_BACKUP_DESTINATION_LABEL),
+      destinationType: this.sanitizeDisplayValue(statusFile.payload?.destinationType ?? process.env.AFROWS_BACKUP_DESTINATION_TYPE),
+      destinationLabel: this.sanitizeDisplayValue(statusFile.payload?.destinationLabel ?? process.env.AFROWS_BACKUP_DESTINATION_LABEL),
       retention,
       artifacts,
       issues,
@@ -403,9 +403,9 @@ export class BackupStatusService {
 
   private readRetention(): AdminBackupRetentionSummary {
     return {
-      dailyDays: this.readPositiveNumber(process.env.AFROGATE_BACKUP_RETENTION_DAILY_DAYS, DEFAULT_BACKUP_RETENTION.dailyDays),
-      weeklyWeeks: this.readPositiveNumber(process.env.AFROGATE_BACKUP_RETENTION_WEEKLY_WEEKS, DEFAULT_BACKUP_RETENTION.weeklyWeeks),
-      monthlyMonths: this.readPositiveNumber(process.env.AFROGATE_BACKUP_RETENTION_MONTHLY_MONTHS, DEFAULT_BACKUP_RETENTION.monthlyMonths),
+      dailyDays: this.readPositiveNumber(process.env.AFROWS_BACKUP_RETENTION_DAILY_DAYS, DEFAULT_BACKUP_RETENTION.dailyDays),
+      weeklyWeeks: this.readPositiveNumber(process.env.AFROWS_BACKUP_RETENTION_WEEKLY_WEEKS, DEFAULT_BACKUP_RETENTION.weeklyWeeks),
+      monthlyMonths: this.readPositiveNumber(process.env.AFROWS_BACKUP_RETENTION_MONTHLY_MONTHS, DEFAULT_BACKUP_RETENTION.monthlyMonths),
     };
   }
 
@@ -414,7 +414,7 @@ export class BackupStatusService {
       ? value
       : typeof value === 'string'
         ? value.split(',')
-        : (process.env.AFROGATE_BACKUP_ARTIFACTS ?? '').split(',');
+        : (process.env.AFROWS_BACKUP_ARTIFACTS ?? '').split(',');
 
     return rawItems
       .map((item) => this.sanitizeDisplayValue(item))

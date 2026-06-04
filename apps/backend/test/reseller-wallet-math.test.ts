@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BadRequestException } from '@nestjs/common';
 import {
-  afroGateShareBps,
+  afrowsShareBps,
   computeResellerSaleAmounts,
   normalizeResellerMarginBps,
   walletCanCoverDebit,
@@ -30,20 +30,20 @@ describe('normalizeResellerMarginBps', () => {
   });
 });
 
-describe('afroGateShareBps', () => {
+describe('afrowsShareBps', () => {
   it('is the complement of the seller margin', () => {
-    assert.equal(afroGateShareBps(2500), 7500);
-    assert.equal(afroGateShareBps(0), 10000);
-    assert.equal(afroGateShareBps(10000), 0);
+    assert.equal(afrowsShareBps(2500), 7500);
+    assert.equal(afrowsShareBps(0), 10000);
+    assert.equal(afrowsShareBps(10000), 0);
   });
 
   it('never goes negative even past 100%', () => {
-    assert.equal(afroGateShareBps(12000), 0);
+    assert.equal(afrowsShareBps(12000), 0);
   });
 });
 
 describe('computeResellerSaleAmounts', () => {
-  it('splits price into seller margin and wallet debit (AfroGate share)', () => {
+  it('splits price into seller margin and wallet debit (Afrows share)', () => {
     assert.deepEqual(computeResellerSaleAmounts(10000, 2500), { sellerMarginAmount: 2500, walletDebitAmount: 7500 });
   });
 

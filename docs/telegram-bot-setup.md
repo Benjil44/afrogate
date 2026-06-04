@@ -1,6 +1,6 @@
 # Telegram Bot Setup
 
-Telegram bot creation happens inside Telegram with BotFather. AfroGate does not create bots itself and should never store a plaintext bot token outside encrypted secret storage or deployment secrets.
+Telegram bot creation happens inside Telegram with BotFather. Afrows does not create bots itself and should never store a plaintext bot token outside encrypted secret storage or deployment secrets.
 
 ## Superadmin Setup
 
@@ -17,7 +17,7 @@ The dashboard clears token fields after saving. API responses return readiness m
 
 - Database settings use encrypted `secret_records` with scope `telegram_bot`.
 - Environment variables remain a bootstrap/fallback path for existing deployments.
-- Telegram API calls use the shared outbound HTTP client and honor `AFROGATE_OUTBOUND_PROXY_URL`.
+- Telegram API calls use the shared outbound HTTP client and honor `AFROWS_OUTBOUND_PROXY_URL`.
 - User-command webhooks still require Telegram's `x-telegram-bot-api-secret-token` header.
 
 ## Rotation

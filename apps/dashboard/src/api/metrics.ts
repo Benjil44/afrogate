@@ -1,4 +1,4 @@
-import type { LatestMetricsResponse, MetricsTimeRange, MetricsTimeseriesResponse } from '@afrogate/shared';
+import type { LatestMetricsResponse, MetricsTimeRange, MetricsTimeseriesResponse } from '@afrows/shared';
 import { getApiBaseUrl } from './base';
 
 export async function fetchLatestMetrics(signal?: AbortSignal): Promise<LatestMetricsResponse> {

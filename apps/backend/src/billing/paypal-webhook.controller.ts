@@ -1,5 +1,5 @@
 import { Body, Controller, Headers, HttpCode, Post, UseGuards } from '@nestjs/common';
-import type { PayPalWebhookHandlerResponse } from '@afrogate/shared';
+import type { PayPalWebhookHandlerResponse } from '@afrows/shared';
 import { RateLimit } from '../security/rate-limit.decorator';
 import { RateLimitGuard } from '../security/rate-limit.guard';
 import { BillingService } from './billing.service';

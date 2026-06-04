@@ -2,17 +2,17 @@
 
 ## Current Local State
 
-- Local repository path: `D:\Projects\AfroGate`
+- Local repository path: `D:\Projects\Afrows`
 - Branch: `main`
 - Remote name: `origin`
-- Remote URL: `https://github.com/Benjil44/afrogate.git`
+- Remote URL: `https://github.com/Benjil44/afrows.git`
 
 ## Push Status
 
 The user created the repository and the initial push succeeded:
 
 ```powershell
-cd D:\Projects\AfroGate
+cd D:\Projects\Afrows
 git push -u origin main
 ```
 

@@ -1,4 +1,4 @@
-// AfroGate load test (k6). Phase 6 load/scale drill.
+// Afrows load test (k6). Phase 6 load/scale drill.
 //
 // Models the THREE real control-plane traffic classes (the data-plane VPN traffic
 // does NOT flow through this backend, so 10k users != 10k requests here):
@@ -10,7 +10,7 @@
 //   BASE_URL=https://host \
 //   CLIENT_TOKEN=<client bearer> AGENT_TOKEN=<agent bearer> SESSION_TOKEN=<admin bearer> \
 //   PEAK_CLIENTS=500 PEAK_AGENTS=50 PEAK_ADMINS=10 \
-//     k6 run scripts/loadtest/afrogate-smoke.js
+//     k6 run scripts/loadtest/afrows-smoke.js
 //
 // Scale PEAK_* toward the target and watch p95/error rate + the server's DB pool,
 // CPU, and RAM. Requires a deployed host and the k6 CLI.

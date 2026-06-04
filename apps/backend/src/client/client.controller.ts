@@ -6,7 +6,7 @@ import type {
   ClientRouteOptionsResponse,
   ClientRoutePreferenceResponse,
   ClientSubscriptionResponse,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 import { BillingService } from '../billing/billing.service';
 import { ClientTokenGuard } from '../security/client-token.guard';
 import type { ClientAuthActor, RequestWithClientAuth } from '../security/auth-request';

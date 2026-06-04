@@ -52,7 +52,7 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!process.env.DATABASE_URL) return;
-    if (!this.configFlag('AFROGATE_ALERT_ENGINE_ENABLED', true)) return;
+    if (!this.configFlag('AFROWS_ALERT_ENGINE_ENABLED', true)) return;
 
     this.timer = setInterval(() => void this.evaluateAlerts(), this.intervalMs());
     this.timer.unref?.();
@@ -154,7 +154,7 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         sourceType: 'server',
         sourceId: signal.externalId,
         title: 'Server heartbeat stale',
-        active: lastSeenAgeSeconds >= this.configInteger('AFROGATE_ALERT_STALE_SERVER_SECONDS', 90, 30, 86400),
+        active: lastSeenAgeSeconds >= this.configInteger('AFROWS_ALERT_STALE_SERVER_SECONDS', 90, 30, 86400),
         severity: 'critical',
         message: `Server ${label} has not checked in for ${lastSeenAgeSeconds} seconds.`,
       },
@@ -162,7 +162,7 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         sourceType: 'server',
         sourceId: signal.externalId,
         title: 'Server metrics stale',
-        active: latestMetricAgeSeconds >= this.configInteger('AFROGATE_ALERT_STALE_METRICS_SECONDS', 120, 30, 86400),
+        active: latestMetricAgeSeconds >= this.configInteger('AFROWS_ALERT_STALE_METRICS_SECONDS', 120, 30, 86400),
         severity: 'warning',
         message: signal.metricObservedAt
           ? `Server ${label} has no fresh metrics for ${latestMetricAgeSeconds} seconds.`
@@ -176,8 +176,8 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         metricLabel: 'CPU',
         value: signal.cpuPercent,
         unit: '%',
-        warningThreshold: this.configInteger('AFROGATE_ALERT_CPU_WARNING_PERCENT', 85, 1, 100),
-        criticalThreshold: this.configInteger('AFROGATE_ALERT_CPU_CRITICAL_PERCENT', 95, 1, 100),
+        warningThreshold: this.configInteger('AFROWS_ALERT_CPU_WARNING_PERCENT', 85, 1, 100),
+        criticalThreshold: this.configInteger('AFROWS_ALERT_CPU_CRITICAL_PERCENT', 95, 1, 100),
       }),
       this.thresholdCondition({
         sourceType: 'server_metric',
@@ -187,8 +187,8 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         metricLabel: 'RAM',
         value: signal.ramPercent,
         unit: '%',
-        warningThreshold: this.configInteger('AFROGATE_ALERT_RAM_WARNING_PERCENT', 85, 1, 100),
-        criticalThreshold: this.configInteger('AFROGATE_ALERT_RAM_CRITICAL_PERCENT', 95, 1, 100),
+        warningThreshold: this.configInteger('AFROWS_ALERT_RAM_WARNING_PERCENT', 85, 1, 100),
+        criticalThreshold: this.configInteger('AFROWS_ALERT_RAM_CRITICAL_PERCENT', 95, 1, 100),
       }),
       this.lowThresholdCondition({
         sourceType: 'server_disk',
@@ -198,8 +198,8 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         metricLabel: 'disk free',
         value: signal.diskFreePercent,
         unit: '%',
-        warningThreshold: this.configInteger('AFROGATE_ALERT_DISK_WARNING_FREE_PERCENT', 15, 1, 100),
-        criticalThreshold: this.configInteger('AFROGATE_ALERT_DISK_CRITICAL_FREE_PERCENT', 10, 1, 100),
+        warningThreshold: this.configInteger('AFROWS_ALERT_DISK_WARNING_FREE_PERCENT', 15, 1, 100),
+        criticalThreshold: this.configInteger('AFROWS_ALERT_DISK_CRITICAL_FREE_PERCENT', 10, 1, 100),
       }),
       this.thresholdCondition({
         sourceType: 'route_metric',
@@ -209,8 +209,8 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         metricLabel: 'ping',
         value: signal.pingMs,
         unit: ' ms',
-        warningThreshold: this.configInteger('AFROGATE_ALERT_PING_WARNING_MS', 100, 1, 60000),
-        criticalThreshold: this.configInteger('AFROGATE_ALERT_PING_CRITICAL_MS', 150, 1, 60000),
+        warningThreshold: this.configInteger('AFROWS_ALERT_PING_WARNING_MS', 100, 1, 60000),
+        criticalThreshold: this.configInteger('AFROWS_ALERT_PING_CRITICAL_MS', 150, 1, 60000),
       }),
       this.thresholdCondition({
         sourceType: 'route_metric',
@@ -220,8 +220,8 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         metricLabel: 'jitter',
         value: signal.jitterMs,
         unit: ' ms',
-        warningThreshold: this.configInteger('AFROGATE_ALERT_JITTER_WARNING_MS', 40, 1, 60000),
-        criticalThreshold: this.configInteger('AFROGATE_ALERT_JITTER_CRITICAL_MS', 80, 1, 60000),
+        warningThreshold: this.configInteger('AFROWS_ALERT_JITTER_WARNING_MS', 40, 1, 60000),
+        criticalThreshold: this.configInteger('AFROWS_ALERT_JITTER_CRITICAL_MS', 80, 1, 60000),
       }),
       this.thresholdCondition({
         sourceType: 'route_metric',
@@ -231,8 +231,8 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         metricLabel: 'packet loss',
         value: signal.packetLossPercent,
         unit: '%',
-        warningThreshold: this.configNumber('AFROGATE_ALERT_PACKET_LOSS_WARNING_PERCENT', 1, 0.1, 100),
-        criticalThreshold: this.configNumber('AFROGATE_ALERT_PACKET_LOSS_CRITICAL_PERCENT', 5, 0.1, 100),
+        warningThreshold: this.configNumber('AFROWS_ALERT_PACKET_LOSS_WARNING_PERCENT', 1, 0.1, 100),
+        criticalThreshold: this.configNumber('AFROWS_ALERT_PACKET_LOSS_CRITICAL_PERCENT', 5, 0.1, 100),
       }),
     ];
   }
@@ -350,11 +350,11 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
   }
 
   private intervalMs(): number {
-    return this.configInteger('AFROGATE_ALERT_ENGINE_INTERVAL_SECONDS', 10, 5, 3600) * 1000;
+    return this.configInteger('AFROWS_ALERT_ENGINE_INTERVAL_SECONDS', 10, 5, 3600) * 1000;
   }
 
   private batchSize(): number {
-    return this.configInteger('AFROGATE_ALERT_ENGINE_BATCH_SIZE', 100, 1, 1000);
+    return this.configInteger('AFROWS_ALERT_ENGINE_BATCH_SIZE', 100, 1, 1000);
   }
 
   private configInteger(name: string, fallback: number, minimum: number, maximum: number): number {

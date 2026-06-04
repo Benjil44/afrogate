@@ -3,7 +3,7 @@ import type {
   ClientRoutePreferenceMode,
   OutboundHealthStatus,
   RouteScoreProfile,
-} from '@afrogate/shared';
+} from '@afrows/shared';
 
 export type Language = 'en' | 'fa';
 
@@ -11,7 +11,7 @@ export const defaultLanguage: Language = 'en';
 
 export const translations = {
   en: {
-    appName: 'AfroGate',
+    appName: 'Afrows',
     clientSurface: 'Client',
     token: 'Client token',
     connect: 'Connect',
@@ -116,7 +116,7 @@ export const translations = {
     wireguard: 'WireGuard',
   },
   fa: {
-    appName: 'AfroGate',
+    appName: 'Afrows',
     clientSurface: 'کلاینت',
     token: 'توکن کلاینت',
     connect: 'اتصال',

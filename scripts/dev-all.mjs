@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Dependency-free dev orchestrator: runs the whole AfroGate stack with hot reload.
-//   - @afrogate/shared in tsc --watch (so cross-package edits propagate live)
+// Dependency-free dev orchestrator: runs the whole Afrows stack with hot reload.
+//   - @afrows/shared in tsc --watch (so cross-package edits propagate live)
 //   - backend (nest start --watch), dashboard + client (vite HMR)
 // Output from each process is line-prefixed and color-tagged. Ctrl+C stops all.
 import { spawn, spawnSync } from 'node:child_process';
@@ -8,12 +8,12 @@ import { spawn, spawnSync } from 'node:child_process';
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 const procs = [
-  { name: 'shared', color: '\x1b[35m', args: ['--workspace', '@afrogate/shared', 'run', 'dev'] },
+  { name: 'shared', color: '\x1b[35m', args: ['--workspace', '@afrows/shared', 'run', 'dev'] },
   // --ignore-scripts skips each app's `predev` (one-off shared build) so we don't
   // race four concurrent tsc writes into shared/dist; we build shared once below.
-  { name: 'backend', color: '\x1b[36m', args: ['--workspace', '@afrogate/backend', 'run', 'dev', '--ignore-scripts'] },
-  { name: 'dashboard', color: '\x1b[32m', args: ['--workspace', '@afrogate/dashboard', 'run', 'dev', '--ignore-scripts'] },
-  { name: 'client', color: '\x1b[33m', args: ['--workspace', '@afrogate/client', 'run', 'dev', '--ignore-scripts'] },
+  { name: 'backend', color: '\x1b[36m', args: ['--workspace', '@afrows/backend', 'run', 'dev', '--ignore-scripts'] },
+  { name: 'dashboard', color: '\x1b[32m', args: ['--workspace', '@afrows/dashboard', 'run', 'dev', '--ignore-scripts'] },
+  { name: 'client', color: '\x1b[33m', args: ['--workspace', '@afrows/client', 'run', 'dev', '--ignore-scripts'] },
 ];
 const RESET = '\x1b[0m';
 const width = Math.max(...procs.map((p) => p.name.length));
@@ -25,8 +25,8 @@ function log(name, color, chunk) {
   }
 }
 
-console.log('Building @afrogate/shared once before starting watchers...');
-const built = spawnSync(npm, ['--workspace', '@afrogate/shared', 'run', 'build'], { stdio: 'inherit' });
+console.log('Building @afrows/shared once before starting watchers...');
+const built = spawnSync(npm, ['--workspace', '@afrows/shared', 'run', 'build'], { stdio: 'inherit' });
 if (built.status !== 0) {
   console.error('Initial shared build failed; aborting.');
   process.exit(built.status ?? 1);

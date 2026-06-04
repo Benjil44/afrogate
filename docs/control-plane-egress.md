@@ -1,6 +1,6 @@
 # Control-Plane Egress
 
-Some Iran servers may not have direct access to Telegram or other external APIs. AfroGate treats this as a control-plane egress problem: admin, agent, bot, and API traffic can use a configured gateway without mixing that path with user data traffic.
+Some Iran servers may not have direct access to Telegram or other external APIs. Afrows treats this as a control-plane egress problem: admin, agent, bot, and API traffic can use a configured gateway without mixing that path with user data traffic.
 
 ## Goals
 
@@ -13,19 +13,19 @@ Some Iran servers may not have direct access to Telegram or other external APIs.
 ## Preferred Shape
 
 ```text
-AfroGate service -> localhost HTTP proxy -> VLESS/WireGuard/egress client -> Germany gateway -> Internet API
+Afrows service -> localhost HTTP proxy -> VLESS/WireGuard/egress client -> Germany gateway -> Internet API
 ```
 
-AfroGate should not parse or own VLESS configs directly in the first MVP. A local egress client such as sing-box or xray can own the VLESS details and expose a local HTTP CONNECT proxy, for example:
+Afrows should not parse or own VLESS configs directly in the first MVP. A local egress client such as sing-box or xray can own the VLESS details and expose a local HTTP CONNECT proxy, for example:
 
 ```text
 127.0.0.1:10809
 ```
 
-AfroGate services then use:
+Afrows services then use:
 
 ```text
-AFROGATE_OUTBOUND_PROXY_URL=http://127.0.0.1:10809
+AFROWS_OUTBOUND_PROXY_URL=http://127.0.0.1:10809
 ```
 
 This keeps the app implementation stable even if the underlying egress method changes from VLESS to WireGuard, HTTP CONNECT, or another private gateway.
@@ -34,7 +34,7 @@ This keeps the app implementation stable even if the underlying egress method ch
 
 ### App-Level Proxy
 
-Use this first. Only AfroGate services use the proxy. The rest of the server keeps its normal routing.
+Use this first. Only Afrows services use the proxy. The rest of the server keeps its normal routing.
 
 Good for:
 
@@ -56,24 +56,24 @@ Use this later when a whole service user or server namespace needs controlled ou
 
 Good for:
 
-- More strict operations where every AfroGate control-plane request must leave through Germany.
+- More strict operations where every Afrows control-plane request must leave through Germany.
 - Reducing app-specific proxy handling.
 - Adding a kill switch that blocks direct fallback.
 
 Security rules:
 
 - Prefer WireGuard or another authenticated private tunnel for gateway access.
-- Use policy routing for the AfroGate service user instead of changing all server traffic.
+- Use policy routing for the Afrows service user instead of changing all server traffic.
 - Keep database and private backend traffic on local/private routes.
 
 ## Implementation Notes
 
-- The Python agent already supports `AFROGATE_OUTBOUND_PROXY_URL` for HTTP/HTTPS API pushes.
-- The backend has a shared outbound HTTP client for Telegram, PayPal, and other external API calls. It uses direct HTTP/HTTPS by default and can route through `AFROGATE_OUTBOUND_PROXY_URL` when that value points to a localhost HTTP proxy.
-- Telegram critical-alert delivery can now be configured through the superadmin Settings Telegram bot setup. Environment variables such as `AFROGATE_TELEGRAM_ALERTS_ENABLED`, `AFROGATE_TELEGRAM_BOT_TOKEN`, `AFROGATE_TELEGRAM_ALERT_CHAT_ID`, `AFROGATE_TELEGRAM_BOT_COMMANDS_ENABLED`, and `AFROGATE_TELEGRAM_WEBHOOK_SECRET` remain bootstrap/fallback values for existing deployments.
-- Telegram bots must be created in Telegram through BotFather. AfroGate accepts the BotFather token once in superadmin Settings, stores it encrypted/write-only, captures allowed chat/admin IDs and the webhook secret, and tests Telegram API reachability through this shared outbound egress path.
+- The Python agent already supports `AFROWS_OUTBOUND_PROXY_URL` for HTTP/HTTPS API pushes.
+- The backend has a shared outbound HTTP client for Telegram, PayPal, and other external API calls. It uses direct HTTP/HTTPS by default and can route through `AFROWS_OUTBOUND_PROXY_URL` when that value points to a localhost HTTP proxy.
+- Telegram critical-alert delivery can now be configured through the superadmin Settings Telegram bot setup. Environment variables such as `AFROWS_TELEGRAM_ALERTS_ENABLED`, `AFROWS_TELEGRAM_BOT_TOKEN`, `AFROWS_TELEGRAM_ALERT_CHAT_ID`, `AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED`, and `AFROWS_TELEGRAM_WEBHOOK_SECRET` remain bootstrap/fallback values for existing deployments.
+- Telegram bots must be created in Telegram through BotFather. Afrows accepts the BotFather token once in superadmin Settings, stores it encrypted/write-only, captures allowed chat/admin IDs and the webhook secret, and tests Telegram API reachability through this shared outbound egress path.
 - Setup and rotation notes live in [`telegram-bot-setup.md`](telegram-bot-setup.md).
-- SOCKS/VLESS should be handled by a local client that exposes an HTTP proxy. This avoids adding protocol-specific code to AfroGate.
+- SOCKS/VLESS should be handled by a local client that exposes an HTTP proxy. This avoids adding protocol-specific code to Afrows.
 
 ## Monitoring
 
@@ -85,4 +85,4 @@ The egress path itself should become a monitored dependency:
 - outbound request failure rate stored in `outbound_health_checks`.
 - gateway health score.
 
-When egress fails, AfroGate should create a critical control-plane alert because user support, charging, and admin alerts may be delayed.
+When egress fails, Afrows should create a critical control-plane alert because user support, charging, and admin alerts may be delayed.

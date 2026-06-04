@@ -14,12 +14,12 @@ checkPackageLock(expectedVersion);
 checkChangelog(expectedVersion);
 
 if (failures.length > 0) {
-  console.error('AfroGate version check failed:');
+  console.error('Afrows version check failed:');
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log(`AfroGate version check passed: ${expectedVersion}`);
+console.log(`Afrows version check passed: ${expectedVersion}`);
 
 function checkVersionFile(version) {
   const versionPath = path.join(repoRoot, 'VERSION');
@@ -136,7 +136,7 @@ function checkInternalDependencies(packageJson, source, version) {
     if (!dependencies) continue;
 
     for (const [dependencyName, dependencyVersion] of Object.entries(dependencies)) {
-      if (dependencyName.startsWith('@afrogate/') && dependencyVersion !== version) {
+      if (dependencyName.startsWith('@afrows/') && dependencyVersion !== version) {
         failures.push(`${source} ${dependencyGroup}.${dependencyName} is ${dependencyVersion}, expected ${version}.`);
       }
     }

@@ -1,11 +1,11 @@
 # Ubuntu Deployment Notes
 
-This is the first production-style deployment path for AfroGate. Keep it native and boring for the MVP:
+This is the first production-style deployment path for Afrows. Keep it native and boring for the MVP:
 
 ```text
 Internet -> Nginx 80/443 -> static dashboard
 Internet -> Nginx 80/443 -> 127.0.0.1:7000 /api
-AfroGate backend -> local/private PostgreSQL
+Afrows backend -> local/private PostgreSQL
 Agents -> https://your-domain.example/api
 ```
 
@@ -15,10 +15,10 @@ Docker Compose can be added later for reproducible deployments. The native path 
 
 - Expose only `80/tcp` and `443/tcp` publicly through Nginx.
 - Keep backend `7000/tcp`, dashboard dev `4000/tcp`, PostgreSQL `5432/tcp`, Redis `6379/tcp`, and any local egress proxy bound to localhost or private networks.
-- Store production secrets only in `/etc/afrogate/*.env` or a deployment secret store, never in git.
-- Use a dedicated `afrogate` service user for the backend.
-- Keep `AFROGATE_ROUTE_DATA_PLANE_APPLY_ENABLED=false` and keep all protocol apply live/decrypt flags disabled until the operator has audited server access profiles, SSH private-key credential storage, rollback behavior, and service health checks for the target fleet.
-- Prefer database-issued agent tokens from `POST /api/agents/register`; use `AFROGATE_AGENT_TOKEN` only as a temporary legacy fallback.
+- Store production secrets only in `/etc/afrows/*.env` or a deployment secret store, never in git.
+- Use a dedicated `afrows` service user for the backend.
+- Keep `AFROWS_ROUTE_DATA_PLANE_APPLY_ENABLED=false` and keep all protocol apply live/decrypt flags disabled until the operator has audited server access profiles, SSH private-key credential storage, rollback behavior, and service health checks for the target fleet.
+- Prefer database-issued agent tokens from `POST /api/agents/register`; use `AFROWS_AGENT_TOKEN` only as a temporary legacy fallback.
 - Use Nginx rate limits for API/login paths and keep the backend behind Nginx.
 
 ## Host Layout
@@ -26,12 +26,12 @@ Docker Compose can be added later for reproducible deployments. The native path 
 Recommended paths:
 
 ```text
-/opt/afrogate                  repository checkout
-/etc/afrogate/afrogate.env     backend runtime environment, mode 0640
-/etc/afrogate/agent.env        optional agent runtime environment, mode 0640
-/var/lib/afrogate              backend state such as managed admin-user file
-/var/log/afrogate              backend logs if file logging is added later
-/var/lib/afrogate-agent        optional agent state
+/opt/afrows                  repository checkout
+/etc/afrows/afrows.env     backend runtime environment, mode 0640
+/etc/afrows/agent.env        optional agent runtime environment, mode 0640
+/var/lib/afrows              backend state such as managed admin-user file
+/var/log/afrows              backend logs if file logging is added later
+/var/lib/afrows-agent        optional agent state
 ```
 
 ## Base Packages
@@ -50,18 +50,18 @@ The root `package.json` requires Node.js `>=22`.
 ## Service Users
 
 ```bash
-sudo adduser --system --group --home /opt/afrogate afrogate
-sudo mkdir -p /opt/afrogate /etc/afrogate /var/lib/afrogate /var/log/afrogate
-sudo chown -R afrogate:afrogate /opt/afrogate /var/lib/afrogate /var/log/afrogate
-sudo chmod 0750 /etc/afrogate
+sudo adduser --system --group --home /opt/afrows afrows
+sudo mkdir -p /opt/afrows /etc/afrows /var/lib/afrows /var/log/afrows
+sudo chown -R afrows:afrows /opt/afrows /var/lib/afrows /var/log/afrows
+sudo chmod 0750 /etc/afrows
 ```
 
 If the monitoring agent runs on the same host:
 
 ```bash
-sudo adduser --system --group --home /var/lib/afrogate-agent afrogate-agent
-sudo mkdir -p /var/lib/afrogate-agent
-sudo chown -R afrogate-agent:afrogate-agent /var/lib/afrogate-agent
+sudo adduser --system --group --home /var/lib/afrows-agent afrows-agent
+sudo mkdir -p /var/lib/afrows-agent
+sudo chown -R afrows-agent:afrows-agent /var/lib/afrows-agent
 ```
 
 ## PostgreSQL
@@ -73,56 +73,56 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE ROLE afrogate_owner NOLOGIN;
-CREATE ROLE afrogate_migrator WITH LOGIN PASSWORD 'replace-with-long-random-migration-password';
-CREATE ROLE afrogate_app WITH LOGIN PASSWORD 'replace-with-long-random-runtime-password';
-CREATE DATABASE afrogate OWNER afrogate_owner;
+CREATE ROLE afrows_owner NOLOGIN;
+CREATE ROLE afrows_migrator WITH LOGIN PASSWORD 'replace-with-long-random-migration-password';
+CREATE ROLE afrows_app WITH LOGIN PASSWORD 'replace-with-long-random-runtime-password';
+CREATE DATABASE afrows OWNER afrows_owner;
 \q
 ```
 
 Apply the least-privilege grants from the repository checkout as `postgres`:
 
 ```bash
-sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/least-privilege-roles.sql
+sudo -u postgres psql -d afrows -f /opt/afrows/infra/postgres/least-privilege-roles.sql
 ```
 
 In production, also review `/etc/postgresql/*/main/postgresql.conf` and `pg_hba.conf` so PostgreSQL listens only on localhost or a private interface. Do not allow public `5432/tcp`.
 
-Apply migrations after dependencies are installed and `/etc/afrogate/afrogate.env` exists. Use the migrator role only for this shell, not for the long-running backend service:
+Apply migrations after dependencies are installed and `/etc/afrows/afrows.env` exists. Use the migrator role only for this shell, not for the long-running backend service:
 
 ```bash
 set -a
-. /etc/afrogate/afrogate.env
-DATABASE_MIGRATION_URL='postgresql://afrogate_migrator:replace-with-long-random-migration-password@127.0.0.1:5432/afrogate'
+. /etc/afrows/afrows.env
+DATABASE_MIGRATION_URL='postgresql://afrows_migrator:replace-with-long-random-migration-password@127.0.0.1:5432/afrows'
 set +a
-cd /opt/afrogate
-npm --workspace @afrogate/backend run db:migrate
-sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/least-privilege-roles.sql
-sudo -u postgres psql -d afrogate -f /opt/afrogate/infra/postgres/verify-least-privilege.sql
+cd /opt/afrows
+npm --workspace @afrows/backend run db:migrate
+sudo -u postgres psql -d afrows -f /opt/afrows/infra/postgres/least-privilege-roles.sql
+sudo -u postgres psql -d afrows -f /opt/afrows/infra/postgres/verify-least-privilege.sql
 ```
 
-The migrator role has database/schema `CREATE` for migrations and trusted extensions such as `pgcrypto`; the runtime `afrogate_app` role does not. If your PostgreSQL extension policy blocks migrator-created extensions, install `pgcrypto` once as `postgres` before running migrations.
+The migrator role has database/schema `CREATE` for migrations and trusted extensions such as `pgcrypto`; the runtime `afrows_app` role does not. If your PostgreSQL extension policy blocks migrator-created extensions, install `pgcrypto` once as `postgres` before running migrations.
 
 Back up the database before every migration once real data exists.
 
 ## Environment
 
-Use `infra/ubuntu/afrogate.env.sample` as a template for `/etc/afrogate/afrogate.env`.
+Use `infra/ubuntu/afrows.env.sample` as a template for `/etc/afrows/afrows.env`.
 
 Important production values:
 
 - `HOST=127.0.0.1`
 - `PORT=7000`
 - `CORS_ORIGIN=https://your-domain.example`
-- `DATABASE_URL=postgresql://afrogate_app:...@127.0.0.1:5432/afrogate`
+- `DATABASE_URL=postgresql://afrows_app:...@127.0.0.1:5432/afrows`
 - `DATABASE_MIGRATION_URL` should be set only for migration commands, or kept in a separate root-readable migration env file.
 - `ADMIN_SESSION_SECRET` must be long and random.
-- `AFROGATE_SUPERADMIN_PASSWORD_HASH` is preferred over plaintext password.
-- `AFROGATE_SECRETS_KEY` must decode to exactly 32 bytes and must be backed up securely.
-- `AFROGATE_IDENTITY_HASH_KEY` should be set for paid-number HMAC hashes; if it is unset, the backend falls back to `AFROGATE_SECRETS_KEY`.
-- `AFROGATE_ADMIN_USERS_STORE=database`
-- `AFROGATE_ADMIN_USERS_FILE=/var/lib/afrogate/admin-users.json` only when importing legacy local users into an empty `admin_users` table
-- `AFROGATE_OUTBOUND_PROXY_URL=http://127.0.0.1:10809` only when a local control-plane egress proxy exists.
+- `AFROWS_SUPERADMIN_PASSWORD_HASH` is preferred over plaintext password.
+- `AFROWS_SECRETS_KEY` must decode to exactly 32 bytes and must be backed up securely.
+- `AFROWS_IDENTITY_HASH_KEY` should be set for paid-number HMAC hashes; if it is unset, the backend falls back to `AFROWS_SECRETS_KEY`.
+- `AFROWS_ADMIN_USERS_STORE=database`
+- `AFROWS_ADMIN_USERS_FILE=/var/lib/afrows/admin-users.json` only when importing legacy local users into an empty `admin_users` table
+- `AFROWS_OUTBOUND_PROXY_URL=http://127.0.0.1:10809` only when a local control-plane egress proxy exists.
 
 Generate random values on the target host:
 
@@ -133,8 +133,8 @@ openssl rand -base64 32
 Keep the final env file private:
 
 ```bash
-sudo chown root:afrogate /etc/afrogate/afrogate.env
-sudo chmod 0640 /etc/afrogate/afrogate.env
+sudo chown root:afrows /etc/afrows/afrows.env
+sudo chmod 0640 /etc/afrows/afrows.env
 ```
 
 ## Build
@@ -142,7 +142,7 @@ sudo chmod 0640 /etc/afrogate/afrogate.env
 From the repository checkout:
 
 ```bash
-cd /opt/afrogate
+cd /opt/afrows
 npm ci
 VITE_API_BASE_URL=/api npm run build --workspaces --if-present
 ```
@@ -154,17 +154,17 @@ The dashboard is a static Vite build at `apps/dashboard/dist`. It does not need 
 Install the backend service sample:
 
 ```bash
-sudo cp /opt/afrogate/infra/ubuntu/afrogate-backend.service.sample /etc/systemd/system/afrogate-backend.service
+sudo cp /opt/afrows/infra/ubuntu/afrows-backend.service.sample /etc/systemd/system/afrows-backend.service
 sudo systemctl daemon-reload
-sudo systemctl enable afrogate-backend
-sudo systemctl start afrogate-backend
-sudo systemctl status afrogate-backend
+sudo systemctl enable afrows-backend
+sudo systemctl start afrows-backend
+sudo systemctl status afrows-backend
 ```
 
 Check logs:
 
 ```bash
-journalctl -u afrogate-backend -f
+journalctl -u afrows-backend -f
 ```
 
 Local health check:
@@ -175,11 +175,11 @@ curl -fsS http://127.0.0.1:7000/api/health
 
 ## Nginx
 
-Use `infra/ubuntu/nginx.conf.sample` as the starting site config. Replace `afrogate.example.com` and TLS certificate paths.
+Use `infra/ubuntu/nginx.conf.sample` as the starting site config. Replace `afrows.example.com` and TLS certificate paths.
 
 ```bash
-sudo cp /opt/afrogate/infra/ubuntu/nginx.conf.sample /etc/nginx/sites-available/afrogate
-sudo ln -s /etc/nginx/sites-available/afrogate /etc/nginx/sites-enabled/afrogate
+sudo cp /opt/afrows/infra/ubuntu/nginx.conf.sample /etc/nginx/sites-available/afrows
+sudo ln -s /etc/nginx/sites-available/afrows /etc/nginx/sites-enabled/afrows
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -209,13 +209,13 @@ Expected public exposure:
 
 ## Optional Agent Service
 
-On monitored nodes, use `infra/ubuntu/afrogate-agent.service.sample` and `infra/ubuntu/agent.env.sample`.
+On monitored nodes, use `infra/ubuntu/afrows-agent.service.sample` and `infra/ubuntu/agent.env.sample`.
 
 Keep the final agent env file private:
 
 ```bash
-sudo chown root:afrogate-agent /etc/afrogate/agent.env
-sudo chmod 0640 /etc/afrogate/agent.env
+sudo chown root:afrows-agent /etc/afrows/agent.env
+sudo chmod 0640 /etc/afrows/agent.env
 ```
 
 Agent rules:
@@ -223,20 +223,20 @@ Agent rules:
 - Use a token created through the admin agent registration API when available.
 - Configure only synthetic probe targets you control or accept.
 - Do not use user destinations or traffic-derived hosts as probe targets.
-- Use `AFROGATE_OUTBOUND_PROXY_URL` only for control-plane API pushes when the node cannot reach the backend directly.
+- Use `AFROWS_OUTBOUND_PROXY_URL` only for control-plane API pushes when the node cannot reach the backend directly.
 
 ## Update Flow
 
 ```bash
-cd /opt/afrogate
+cd /opt/afrows
 git pull --ff-only
 npm ci
 VITE_API_BASE_URL=/api npm run build --workspaces --if-present
 set -a
-. /etc/afrogate/afrogate.env
+. /etc/afrows/afrows.env
 set +a
-npm --workspace @afrogate/backend run db:migrate
-sudo systemctl restart afrogate-backend
+npm --workspace @afrows/backend run db:migrate
+sudo systemctl restart afrows-backend
 sudo nginx -t
 sudo systemctl reload nginx
 curl -fsS http://127.0.0.1:7000/api/health
@@ -247,11 +247,11 @@ For safer production updates, create a database backup first and keep the previo
 ## Rollback
 
 ```bash
-cd /opt/afrogate
+cd /opt/afrows
 git checkout <previous-good-commit>
 npm ci
 VITE_API_BASE_URL=/api npm run build --workspaces --if-present
-sudo systemctl restart afrogate-backend
+sudo systemctl restart afrows-backend
 sudo systemctl reload nginx
 ```
 

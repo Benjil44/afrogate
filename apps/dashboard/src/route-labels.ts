@@ -1,4 +1,4 @@
-import type { AdminRouteDecisionCandidateSummary, RouteDecisionAction } from '@afrogate/shared';
+import type { AdminRouteDecisionCandidateSummary, RouteDecisionAction } from '@afrows/shared';
 import type { Tone } from './dashboard-types';
 import type { DashboardFormatters } from './formatters';
 import type { DashboardStrings } from './i18n';
@@ -1435,4 +1435,4 @@ export function parseTelegramChatIds(value: string): string[] {
         .filter(Boolean),
     ),
   ];
-}
+}

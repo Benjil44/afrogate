@@ -1,4 +1,4 @@
-import type { AdminBackupStatusSummary, MetricsTimeRange, ServerMetricTimeseries } from '@afrogate/shared';
+import type { AdminBackupStatusSummary, MetricsTimeRange, ServerMetricTimeseries } from '@afrows/shared';
 import { AlertsPanel, CapacityPanel, ControlPlanePanel, DashboardOverviewChartsPanel, HealthChartPanel, OutboundsPanel } from '../components/dashboard-panels';
 import { ServerPanel, TunnelPanel } from '../components/panels';
 import { MetricCard } from '../components/primitives';

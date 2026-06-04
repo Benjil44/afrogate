@@ -1,11 +1,11 @@
 ---
-name: afrogate-versioning
-description: Use after any meaningful AfroGate implementation section to decide and apply version bumps, changelog updates, and sidebar version checks.
+name: afrows-versioning
+description: Use after any meaningful Afrows implementation section to decide and apply version bumps, changelog updates, and sidebar version checks.
 ---
 
-# AfroGate Versioning
+# Afrows Versioning
 
-Use this skill whenever an AfroGate implementation session adds, changes, removes, or meaningfully documents product behavior.
+Use this skill whenever an Afrows implementation session adds, changes, removes, or meaningfully documents product behavior.
 
 ## Workflow
 
@@ -26,7 +26,7 @@ Use this skill whenever an AfroGate implementation session adds, changes, remove
 
 ## Rules
 
-- Keep one AfroGate product version across root and workspace packages.
+- Keep one Afrows product version across root and workspace packages.
 - Do not bump for failed experiments or discarded drafts.
 - Do not leave a version bump without a changelog entry.
 - Keep the dashboard sidebar version visible and sourced from root `package.json`.

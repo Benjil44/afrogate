@@ -2,7 +2,7 @@
 
 iOS per-app VPN is controlled through managed configuration profiles, usually from MDM. A normal consumer VPN app should not claim it can silently force arbitrary third-party apps into per-app VPN mode.
 
-AfroGate's native profile can carry selected bundle identifiers for managed deployments, but enforcement belongs to the platform-managed per-app VPN configuration path.
+Afrows's native profile can carry selected bundle identifiers for managed deployments, but enforcement belongs to the platform-managed per-app VPN configuration path.
 
 Privacy boundary:
 

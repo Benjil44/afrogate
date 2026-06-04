@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AdminAlertSummary } from '@afrogate/shared';
+import type { AdminAlertSummary } from '@afrows/shared';
 import { OutboundHttpService } from '../outbound/outbound-http.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
 
@@ -131,7 +131,7 @@ export class TelegramAlertService {
   private formatAlert(alert: AdminAlertSummary): string {
     const sourceLabel = alert.sourceLabel || alert.sourceId;
     const lines = [
-      'AfroGate critical alert',
+      'Afrows critical alert',
       `Severity: ${alert.severity}`,
       `Source: ${alert.sourceType} / ${sourceLabel}`,
       `Title: ${alert.title}`,
@@ -152,11 +152,11 @@ export class TelegramAlertService {
   }
 
   private apiBaseUrl(): string {
-    return this.config.get<string>('AFROGATE_TELEGRAM_API_BASE_URL')?.trim().replace(/\/+$/, '') || 'https://api.telegram.org';
+    return this.config.get<string>('AFROWS_TELEGRAM_API_BASE_URL')?.trim().replace(/\/+$/, '') || 'https://api.telegram.org';
   }
 
   private timeoutMs(): number {
-    const configured = Number(this.config.get<string>('AFROGATE_TELEGRAM_TIMEOUT_MS'));
+    const configured = Number(this.config.get<string>('AFROWS_TELEGRAM_TIMEOUT_MS'));
     return Number.isInteger(configured) && configured >= 1000 ? configured : 10000;
   }
 

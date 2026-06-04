@@ -1,6 +1,6 @@
 # Admin RBAC Policy
 
-AfroGate uses a deny-by-default admin RBAC model. Static roles still exist for operational simplicity, but the shared contract now exposes an explicit permission catalog so the backend, dashboard, and docs can agree on what each role can do.
+Afrows uses a deny-by-default admin RBAC model. Static roles still exist for operational simplicity, but the shared contract now exposes an explicit permission catalog so the backend, dashboard, and docs can agree on what each role can do.
 
 ## Roles
 

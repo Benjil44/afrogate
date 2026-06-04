@@ -51,7 +51,7 @@ export class OutboundHealthService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!process.env.DATABASE_URL) return;
-    if (!this.configFlag('AFROGATE_OUTBOUND_HEALTH_SCHEDULER_ENABLED', true)) return;
+    if (!this.configFlag('AFROWS_OUTBOUND_HEALTH_SCHEDULER_ENABLED', true)) return;
 
     this.timer = setInterval(() => void this.checkDueOutbounds(), this.scanIntervalMs());
     this.timer.unref?.();
@@ -241,7 +241,7 @@ export class OutboundHealthService implements OnModuleInit, OnModuleDestroy {
     const config = this.asRecord(outbound.config);
     const timeoutMs = this.configIntegerFromValue(
       config.timeoutMs ?? config.healthTimeoutMs,
-      this.configInteger('AFROGATE_OUTBOUND_HEALTH_TIMEOUT_MS', 5000, 500, 30000),
+      this.configInteger('AFROWS_OUTBOUND_HEALTH_TIMEOUT_MS', 5000, 500, 30000),
       500,
       30000,
     );
@@ -336,11 +336,11 @@ export class OutboundHealthService implements OnModuleInit, OnModuleDestroy {
   }
 
   private scanIntervalMs(): number {
-    return this.configInteger('AFROGATE_OUTBOUND_HEALTH_SCAN_INTERVAL_SECONDS', 10, 5, 3600) * 1000;
+    return this.configInteger('AFROWS_OUTBOUND_HEALTH_SCAN_INTERVAL_SECONDS', 10, 5, 3600) * 1000;
   }
 
   private batchSize(): number {
-    return this.configInteger('AFROGATE_OUTBOUND_HEALTH_BATCH_SIZE', 20, 1, 100);
+    return this.configInteger('AFROWS_OUTBOUND_HEALTH_BATCH_SIZE', 20, 1, 100);
   }
 
   private configInteger(name: string, fallback: number, minimum: number, maximum: number): number {

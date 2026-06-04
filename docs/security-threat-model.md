@@ -1,8 +1,8 @@
-# AfroGate Security Threat Model
+# Afrows Security Threat Model
 
 ## Overview
 
-AfroGate is a control plane for monitoring VPN/server health, billing VPN-client accounts, and making advisory route decisions for stable internet access. The repository contains:
+Afrows is a control plane for monitoring VPN/server health, billing VPN-client accounts, and making advisory route decisions for stable internet access. The repository contains:
 
 - `apps/backend`: NestJS API for admin auth, billing, tenant branding, metrics ingest, alerts, route decisions, Telegram/PayPal/rewarded-ad integration, and server/outbound management.
 - `apps/dashboard`: React admin/seller dashboard.
@@ -40,7 +40,7 @@ Assumptions:
 - Production is deployed behind Nginx with TLS, backend bound to localhost/private interfaces, and PostgreSQL not publicly exposed.
 - Secrets are provisioned from deployment secret storage, not committed to git.
 - Dashboard users can be malicious or compromised within their role; server-side role checks are required.
-- Network quality signals are synthetic or local telemetry only. AfroGate does not inspect user traffic payloads or destinations for routing decisions.
+- Network quality signals are synthetic or local telemetry only. Afrows does not inspect user traffic payloads or destinations for routing decisions.
 
 ## Attack Surface, Mitigations, and Attacker Stories
 
@@ -81,7 +81,7 @@ Realistic attacker stories:
 
 Out-of-scope or lower-priority stories:
 
-- Direct backend or database exposure is a deployment failure; AfroGate still documents and checks for private binding, but production firewalls/Nginx must enforce it.
+- Direct backend or database exposure is a deployment failure; Afrows still documents and checks for private binding, but production firewalls/Nginx must enforce it.
 - OS-level compromise of a VPS can bypass application controls on that host.
 - Perfect prevention of packet loss is not a security invariant; route stability is handled by health scoring, cooldown, route locks, and session-safe switching policy.
 
