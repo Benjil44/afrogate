@@ -354,8 +354,9 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 
 The drills above are now *executable* because there is a live host. Order roughly by risk.
 
+- [x] **Full rename AfroGate -> Afrows (DONE 2026-06-04).** Codebase rename merged to `main` (brand, `@afrows/*` packages, `AFROWS_*` env, identifiers, python module, plugin, infra samples) and the live VPS cut over (DB `afrows`, roles `afrows_*`, user `afrows`, `/opt|/etc|/var/lib|/var/log/afrows`, `afrows-backend` unit, nginx site). Verified live: `service:"afrows-backend"`, dashboard title "Afrows Operations", old `afrogate` DB/dir/unit gone.
+- [~] **Domain + Let's Encrypt TLS — in progress.** Bought `afrows.com`; nginx `server_name` already set to it. **Blocked on DNS:** add A records `@` + `www` -> `94.74.145.199` in iranserver's panel, then run `setup-tls.sh` (certbot --nginx) and set `CORS_ORIGIN=https://afrows.com`.
 - [ ] **Rotate the superadmin password** on the live VPS (it was exposed in chat). Log in at `https://94.74.145.199/`, change it via the Users page.
-- [ ] Add a real DNS domain + Let's Encrypt TLS to replace the self-signed cert (removes the browser warning; enables HSTS preload).
 - [ ] Run the install self-verifier on the live box (`scripts/drills/verify-install.sh`): health, security headers, loopback-only ports.
 - [ ] Run the encrypted backup + restore drill against the live DB (`scripts/drills/backup-restore-drill.sh`); confirm row-count parity. Then schedule recurring encrypted backups (cron/systemd timer) + off-box copy.
 - [ ] Connect the first real server/agent: register it, ship the Python agent, confirm heartbeat + metrics + WireGuard telemetry flow into the dashboard (validates the honest-data path end to end).

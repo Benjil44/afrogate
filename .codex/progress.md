@@ -2510,3 +2510,24 @@ Repository remote is ready:
 - Run the live-host drills now that a host exists: install self-verifier, encrypted backup+restore (then schedule recurring off-box backups), agent-token/secret rotation, k6 load smoke.
 - Connect the first real server/agent to validate the honest-data path end to end.
 - Optional: GitHub Actions push-to-deploy to remove the manual `sync.ps1` step.
+
+## 2026-06-04 Full Rename AfroGate -> Afrows + Domain afrows.com
+
+### Completed
+
+- **Bought the domain `afrows.com`** (iranserver.com) and decided to fully rebrand AfroGate -> **Afrows**. Kept the registrar default nameservers (`directi1.irandns.com` / `directi2.irandns.com`); DNS is managed in iranserver's panel.
+- **Phase 1 — codebase rename (committed to `main`).** Case-aware rename across 186 tracked text files + file/dir renames: brand `AfroGate`->`Afrows`, npm scope `@afrogate/*`->`@afrows/*`, env prefix `AFROGATE_*`->`AFROWS_*` (574 occurrences), internal `afroGate*`->`afrows*` identifiers, Python module `afrogate_agent`->`afrows_agent`, plugin dir `afrogate-versioning`->`afrows-versioning`, infra sample filenames, the Kotlin VPN service file. Regenerated `package-lock.json`, relinked workspaces, removed the stale `@afrogate` scope. Verified: typecheck, full build, **371/371 backend tests**, python compile, `version:check`, `secrets:check` — all pass. Commit `2036a57`, merged `fa28c6b`, pushed.
+- **Phase 2 — live VPS cutover (DONE).** One-time `migrate-to-afrows.sh` renamed the running infrastructure with the backend stopped: PostgreSQL DB `afrogate`->`afrows` and roles `afrogate_{owner,migrator,app}`->`afrows_*` (passwords preserved via `ALTER ROLE ... RENAME`), service user/group `afrogate`->`afrows` (uid/gid 111/113 kept), dirs `/opt`, `/etc`, `/var/lib`, `/var/log`, the env file + its `AFROGATE_*` keys and connection strings (**secret values preserved** so AES-GCM-encrypted data still decrypts), systemd unit `afrogate-backend`->`afrows-backend` (incl. `State/LogsDirectory`), self-signed cert files, and the nginx site (also set `server_name afrows.com www.afrows.com`). Then redeployed the renamed code with a clean `npm ci --offline` against the **existing** `/root/afrogate-cache` (third-party deps unchanged, so no slow re-warm was needed — the first attempt's fresh cache warm stalled on the flaky registry/proxy and was aborted before touching the box).
+- Updated the gitignored ops scripts to the new infra (`update-afrows.sh`, `sync.ps1`, `deploy-afrows.sh`, `ufw-afrows.sh`) and added `migrate-to-afrows.sh`, `cutover-afrows.ps1`, `setup-tls.sh` (all gitignored). **The SSH deploy key file is intentionally kept as `afrogate_deploy`** (already authorized on the box; renaming it is pointless risk).
+
+### Verification
+
+- Phase 1 gates all green (see above). Local temp build artifacts cleaned.
+- **Live cutover verified on the box:** public HTTPS `/api/health` -> `{"status":"ok","service":"afrows-backend","version":"0.114.27"}`; dashboard `<title>Afrows Operations</title>`; DB `afrogate` gone / `afrows` exists; `/opt/afrogate` gone; `afrogate-backend` unit gone; `afrows-backend` active; service user `afrows`. All 28 migrations applied idempotently on DB `afrows`.
+- Existing superadmin login preserved (password hash + session secret carried over unchanged) — still must be rotated (was exposed in chat).
+
+### Remaining
+
+- **DNS:** add A records `@` and `www` -> `94.74.145.199` in iranserver's panel (Iranian network blocks outbound UDP/53 from PC + VPS, so DNS can't be verified locally). Nginx `server_name` is already set to the domain.
+- **TLS:** once `afrows.com` resolves, run `setup-tls.sh` (certbot --nginx) for real Let's Encrypt HTTPS, then update `CORS_ORIGIN` -> `https://afrows.com`.
+- Carry-over Phase 7: rotate superadmin password; live-host drills; connect first real server/agent.
