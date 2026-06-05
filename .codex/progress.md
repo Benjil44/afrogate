@@ -2526,8 +2526,22 @@ Repository remote is ready:
 - **Live cutover verified on the box:** public HTTPS `/api/health` -> `{"status":"ok","service":"afrows-backend","version":"0.114.27"}`; dashboard `<title>Afrows Operations</title>`; DB `afrogate` gone / `afrows` exists; `/opt/afrogate` gone; `afrogate-backend` unit gone; `afrows-backend` active; service user `afrows`. All 28 migrations applied idempotently on DB `afrows`.
 - Existing superadmin login preserved (password hash + session secret carried over unchanged) — still must be rotated (was exposed in chat).
 
+### 2026-06-05 DNS + TLS (DONE)
+
+- **Network reality nailed down:** the iranserver VPS (`94.74.145.199`) is reachable **only from inside Iran**. check-host probes from DE/IT/NL/RU/US/FI/JP/IL/TR/CY/ID time out on ports 80, 443, **and 53**, while Iranian nodes connect in ~0.02s. Consequences: (1) self-hosting authoritative DNS on the box is impossible (global resolvers can't reach `:53`); (2) HTTP-01 / TLS-ALPN-01 can't work (LE validators can't reach `:80`/`:443`). Installed CoreDNS as a test then disabled it after proving the inbound block.
+- **DNS:** moved `afrows.com` to **deSEC** (free, German non-profit, sanction-safe, global anycast, full REST API). At iranserver, NS switched from the broken `directi1/2.irandns.com` to `ns1.desec.io` / `ns2.desec.org` (propagated within minutes). A records `@`+`www` -> `94.74.145.199` created via the deSEC API. Note: deSEC free tier enforces a **minimum TTL of 3600**.
+- **TLS:** issued a real Let's Encrypt cert (SANs `afrows.com` + `*.afrows.com`, expires **2026-09-03**) from the dev PC using **Posh-ACME + deSEC DNS-01** — DNS-01 needs no inbound to the box, sidestepping the border block. The dev PC can reach LE (200) while the box can't. Installed to `/etc/afrows/tls/afrows.{crt,key}` (self-signed backed up), nginx reloaded, `CORS_ORIGIN=https://afrows.com,https://www.afrows.com,https://94.74.145.199`, backend restarted. Verified on-box: `https://afrows.com/api/health` ok with cert verified, dashboard 200 `ssl_verify_result=0`, `www` 200, `http`->`https` 301.
+- **Auto-renew:** Windows scheduled task `Afrows-TLS-Renew` (weekly, Mon 3am) runs `C:\Users\BenJiL\afrows-ops\renew-deploy-afrows.ps1` (Submit-Renewal -> scp new cert -> `nginx -t` + reload). deSEC API token lives only in Posh-ACME's encrypted profile — never committed. Gotcha learned: a leftover/placeholder TXT in the `_acme-challenge` RRset makes LE fail with "Incorrect TXT record found"; keep that RRset clean (Posh-ACME manages it).
+
+### 2026-06-05 Phase 7 hardening (DONE)
+
+- **Superadmin password rotated.** It's a bootstrap account locked to env (`AFROWS_SUPERADMIN_PASSWORD_HASH`, scrypt format per `security/password.ts`) — not editable in the dashboard. Generated a strong password on the box, wrote the new hash, restarted; `POST /api/auth/login` returns 200. Operator holds the new password.
+- **Install self-verifier:** all pass (health, CSP/X-Frame/X-Content headers, ports 7000/5432 loopback-only). Added missing **HSTS** (`max-age=31536000; includeSubDomains`) to the nginx 443 block.
+- **Backup/restore drill:** dump+AES256 encrypt, wrong-passphrase rejected, restore into a throwaway `afrows_scratch` DB (as `postgres` over the socket), row-count parity across 5 tables (all 0, no real data yet). Drill scripts carry CRLF from the repo — strip with `tr -d '\r'`.
+- **Recurring encrypted backups:** `/usr/local/bin/afrows-backup.sh` + `afrows-backup.timer` (daily 03:30 UTC, AES256, keep-14, root-only `/var/backups/afrows/`). Passphrase at `/etc/afrows/.backup-passphrase` (root-only; given to operator off-box). First run verified.
+- **TLS hardened:** `ssl_protocols TLSv1.2 TLSv1.3` only (dropped 1.0/1.1).
+
 ### Remaining
 
-- **DNS:** add A records `@` and `www` -> `94.74.145.199` in iranserver's panel (Iranian network blocks outbound UDP/53 from PC + VPS, so DNS can't be verified locally). Nginx `server_name` is already set to the domain.
-- **TLS:** once `afrows.com` resolves, run `setup-tls.sh` (certbot --nginx) for real Let's Encrypt HTTPS, then update `CORS_ORIGIN` -> `https://afrows.com`.
-- Carry-over Phase 7: rotate superadmin password; live-host drills; connect first real server/agent.
+- Off-box copy of `/var/backups/afrows/` (periodic scp pull to the dev PC).
+- Carry-over Phase 7: agent-token/secret rotation drill (`verify-rotation.sh`); k6 load smoke; connect first real server/agent; optional GitHub Actions push-to-deploy.
