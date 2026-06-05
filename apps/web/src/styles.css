@@ -13,6 +13,21 @@
   --card-foreground: var(--foreground);
 }
 
+/* Expose the dark tokens as Tailwind color utilities (text-primary, bg-background,
+   border-border, text-muted-foreground, ...) while keeping raw var(--token) usable. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+}
+
 html {
   background: var(--background);
   color: var(--foreground);

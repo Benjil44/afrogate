@@ -1,4 +1,12 @@
-// Placeholder entry — replaced in Task 13 with LangProvider + BrowserRouter + Home.
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { Home } from './pages/home';
+
 export function App() {
-  return <div style={{ padding: 40 }}>Afrows — coming soon</div>;
+  return (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      {/* Detail pages (/resellers, /gaming, /vpn) are a fast-follow. */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
