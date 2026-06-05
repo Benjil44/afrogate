@@ -2541,6 +2541,13 @@ Repository remote is ready:
 - **Recurring encrypted backups:** `/usr/local/bin/afrows-backup.sh` + `afrows-backup.timer` (daily 03:30 UTC, AES256, keep-14, root-only `/var/backups/afrows/`). Passphrase at `/etc/afrows/.backup-passphrase` (root-only; given to operator off-box). First run verified.
 - **TLS hardened:** `ssl_protocols TLSv1.2 TLSv1.3` only (dropped 1.0/1.1).
 
+### 2026-06-05 Public landing site + subdomain split (DONE)
+
+- New `apps/web` (Vite + React 19 + Tailwind v4 + framer-motion + gsap + react-router) — dark cinematic bilingual (FA/EN, default EN, RTL for FA) marketing site. Built bottom-up with per-task commits on branch `feat/web-landing`; spec + plan under `docs/superpowers/`. Tokens exposed via Tailwind v4 `@theme inline` so shadcn-style utilities + raw `var(--token)` both work. `@` alias added to vite + tsconfig (the provided GSAP footer imports `@/...`).
+- Home: blinking 50%-off promo bar, parallax hero, animated metrics (count-up), motion feature cards, **advanced Gamers section** (framer-motion latency graph via `pathLength` + animated ping bars), audience split, static pricing, rebranded cinematic GSAP footer. Login/Get-started centralized in `APP_URL` (`VITE_APP_URL`, default `https://app.afrows.com`).
+- Subdomain split: deSEC `app` A record (resolves globally); nginx split — `afrows.com`/`www` → `/opt/afrows/apps/web/dist` (landing CSP allows Google Fonts), `app.afrows.com` → dashboard + `/api`. `CORS_ORIGIN` adds the app origin. `*.afrows.com` cert covers app. Deployed via `sync.ps1 -WithDeps` (warmed Linux cache for the 6 new pure-JS deps; box `npm ci --offline` + build all workspaces). Verified both hosts live + cert-valid.
+- Fast-follow: detail pages `/resellers`,`/gaming`,`/vpn`, real pricing wiring. Next phase: Android app (`apps/native-client`).
+
 ### Remaining
 
 - Off-box copy of `/var/backups/afrows/` (periodic scp pull to the dev PC).
