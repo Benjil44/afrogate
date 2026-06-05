@@ -361,6 +361,14 @@ The drills above are now *executable* because there is a live host. Order roughl
 - [x] **Encrypted backup + restore drill (DONE 2026-06-05).** `scripts/drills/backup-restore-drill.sh` via a scratch DB (`afrows_scratch`, created+dropped) as the `postgres` superuser over the unix socket: dump+AES256-encrypt OK, artifact unreadable without passphrase, restore OK, row-count parity across all 5 tables (all 0 — no real data yet). Note: drill scripts ship with CRLF from the Windows repo; strip with `tr -d '\r'` before running on the box.
 - [x] **Recurring encrypted backups (DONE 2026-06-05).** `/usr/local/bin/afrows-backup.sh` (`pg_dump` over the unix socket | `gpg --symmetric --cipher-algo AES256`, rotates to newest 14) driven by `afrows-backup.timer` (daily 03:30 UTC). Passphrase root-only at `/etc/afrows/.backup-passphrase` (also handed to the operator for off-box storage — never committed). First run verified (15 KB artifact). **Still TODO:** automated off-box copy of `/var/backups/afrows/` (e.g., periodic `scp` pull to the dev PC; box is reachable from the operator's network).
 - [x] **TLS hardened (DONE 2026-06-05).** nginx `ssl_protocols` narrowed to `TLSv1.2 TLSv1.3` (dropped obsolete TLS 1.0/1.1); both remaining versions verified serving. HSTS already added (see install-verifier line).
+### Phase 8: Public website + subdomain split
+
+Design: `docs/superpowers/specs/2026-06-05-afrows-landing-website-design.md`.
+
+- [ ] **Public landing site `apps/web` (in progress, design approved 2026-06-05).** New Vite+React+Tailwind app served at `afrows.com`/`www`; dark cinematic, bilingual FA/EN (RTL), GSAP + framer-motion. v1 = full Home (nav, hero+CTA, animated metrics, features grid, audience split, static pricing, cinematic footer). Login/Get-started → `app.afrows.com`.
+- [ ] **Subdomain split.** Move the panel to `app.afrows.com` (DNS A record via deSEC; `*.afrows.com` cert already covers it; new nginx server block; add `https://app.afrows.com` to `CORS_ORIGIN`). `afrows.com` serves the static landing.
+- [ ] **Fast-follow:** detail pages `/resellers`, `/gaming`, `/vpn`; wire pricing to real billing.
+- [ ] **Next phase:** Android native app (`apps/native-client`).
 - [ ] Connect the first real server/agent: register it, ship the Python agent, confirm heartbeat + metrics + WireGuard telemetry flow into the dashboard (validates the honest-data path end to end).
 - [ ] Run the k6 load/scale smoke against the host (`scripts/loadtest/afrows-smoke.js`) to validate the 4 GB capacity model before paid traffic.
 - [ ] Rehearse agent-token + secret rotation on the live box (`scripts/drills/verify-rotation.sh`).
