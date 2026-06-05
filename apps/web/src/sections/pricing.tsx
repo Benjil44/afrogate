@@ -40,10 +40,16 @@ export function Pricing() {
                     {t.pricing.mostPopular}
                   </span>
                 )}
-                <h3 className="text-lg font-bold">{p.name}</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold">{p.name}</h3>
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                    {t.pricing.discount}
+                  </span>
+                </div>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">{p.tagline}</p>
-                <div className="mt-5 flex items-end gap-1">
+                <div className="mt-5 flex items-end gap-2">
                   <span className="text-4xl font-black">{p.price}</span>
+                  <span className="mb-1 text-sm text-[var(--muted-foreground)] line-through opacity-70">{p.was}</span>
                   <span className="mb-1 text-sm text-[var(--muted-foreground)]">{t.pricing.perMonth}</span>
                 </div>
                 <ul className="mt-6 flex flex-1 flex-col gap-3">

@@ -1,3 +1,4 @@
+import { ScrollProgress } from '@/components/scroll-progress';
 import { PromoBar } from '@/components/promo-bar';
 import { Nav } from '@/components/nav';
 import { Hero } from '@/sections/hero';
@@ -12,6 +13,7 @@ import { CinematicFooter } from '@/components/ui/motion-footer';
 export function Home() {
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-background text-foreground">
+      <ScrollProgress />
       {/* Fixed header: promo bar + nav stacked */}
       <div className="fixed inset-x-0 top-0 z-50">
         <PromoBar />

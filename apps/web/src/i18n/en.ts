@@ -97,10 +97,12 @@ export const en = {
     note: 'Plans shown are examples. Live plans and billing appear inside the panel.',
     perMonth: '/mo',
     mostPopular: 'Most popular',
+    discount: 'Save 50% this month',
     plans: {
       starter: {
         name: 'Starter',
         price: '$3',
+        was: '$6',
         tagline: 'For getting online fast.',
         features: ['1 device', 'Standard speed', 'Core locations', 'Email support'],
         cta: 'Start now',
@@ -108,6 +110,7 @@ export const en = {
       pro: {
         name: 'Pro',
         price: '$7',
+        was: '$14',
         tagline: 'For streaming & gaming.',
         features: ['5 devices', 'Max speed', 'All locations', 'Low-ping routing', 'Priority support'],
         cta: 'Go Pro',
@@ -115,6 +118,7 @@ export const en = {
       reseller: {
         name: 'Reseller',
         price: '$29',
+        was: '$58',
         tagline: 'Sell access, manage customers.',
         features: ['Customer management', 'Wallet & margins', 'Bulk provisioning', 'Dedicated support'],
         cta: 'Start reselling',

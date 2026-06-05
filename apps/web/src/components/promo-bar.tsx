@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import { useLang, APP_URL } from '@/i18n';
+import { useLang } from '@/i18n';
 
 export function PromoBar() {
   const { t } = useLang();
@@ -24,7 +24,7 @@ export function PromoBar() {
             </span>
             <span className="animate-blink font-extrabold tracking-wide drop-shadow">{t.promo.text}</span>
             <a
-              href={APP_URL}
+              href="#pricing"
               className="ml-1 shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0a0a0f] transition hover:brightness-90"
             >
               {t.promo.cta}

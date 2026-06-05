@@ -31,6 +31,8 @@
 html {
   background: var(--background);
   color: var(--foreground);
+  scroll-behavior: smooth;
+  scroll-padding-top: 120px;
 }
 html[dir="rtl"] body { font-family: 'Vazirmatn', sans-serif; }
 html[dir="ltr"] body { font-family: 'Plus Jakarta Sans', sans-serif; }
