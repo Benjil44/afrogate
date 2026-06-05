@@ -33,16 +33,17 @@ export function Nav() {
 
   const links = [
     { href: '#features', label: t.nav.features },
+    { href: '#gaming', label: t.nav.gaming },
     { href: '#pricing', label: t.nav.pricing },
   ];
 
   return (
     <header
       className={cn(
-        'fixed inset-x-0 top-0 z-50 transition-all duration-300',
+        'w-full transition-all duration-300',
         scrolled
           ? 'border-b border-[var(--border)] bg-[color-mix(in_oklch,var(--background)_70%,transparent)] backdrop-blur-xl'
-          : 'border-b border-transparent',
+          : 'border-b border-transparent bg-[color-mix(in_oklch,var(--background)_40%,transparent)] backdrop-blur-md',
       )}
     >
       <nav className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5">

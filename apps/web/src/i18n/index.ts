@@ -21,9 +21,9 @@ interface LangContextValue {
 const LangContext = createContext<LangContextValue | null>(null);
 
 function readInitialLang(): Lang {
-  if (typeof localStorage === 'undefined') return 'fa';
+  if (typeof localStorage === 'undefined') return 'en';
   const stored = localStorage.getItem('afrows.lang');
-  return stored === 'en' || stored === 'fa' ? stored : 'fa';
+  return stored === 'en' || stored === 'fa' ? stored : 'en';
 }
 
 export function LangProvider({ children }: { children: ReactNode }) {

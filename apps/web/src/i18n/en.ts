@@ -2,10 +2,16 @@ export const en = {
   dirLabel: 'EN',
   nav: {
     features: 'Features',
+    gaming: 'Gaming',
     pricing: 'Pricing',
     login: 'Login',
     getStarted: 'Get started',
     menu: 'Menu',
+  },
+  promo: {
+    tag: 'Limited time',
+    text: '50% OFF — this month only',
+    cta: 'Claim 50% off',
   },
   hero: {
     badge: 'Smart routing · Low latency · Stable',
@@ -50,6 +56,21 @@ export const en = {
         body: 'Strong encryption and no traffic logging — your activity stays yours.',
       },
     },
+  },
+  gaming: {
+    tag: 'For gamers',
+    title: 'Engineered for competitive play',
+    subtitle:
+      'Route-optimized paths to game servers crush latency and kill lag spikes — so you react first.',
+    withoutLabel: 'Typical connection',
+    withLabel: 'With Afrows',
+    unit: 'ms',
+    improvement: '6× lower ping',
+    perks: ['Lowest-ping smart routing', 'Anti lag-spike stabilization', 'Priority for real-time traffic'],
+    statPing: 'Game ping',
+    statJitter: 'Jitter',
+    statLoss: 'Packet loss',
+    cta: 'Game with low ping',
   },
   audience: {
     title: 'Built for everyone',
