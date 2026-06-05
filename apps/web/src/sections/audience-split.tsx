@@ -1,15 +1,15 @@
 import { User, Gamepad2, Store } from 'lucide-react';
 import { Reveal } from '@/components/reveal';
 import { Button } from '@/components/ui/button';
-import { useLang, APP_URL } from '@/i18n';
+import { useLang } from '@/i18n';
 
 export function AudienceSplit() {
-  const { t } = useLang();
+  const { t, appHref } = useLang();
   // Detail pages /vpn, /gaming, /resellers are fast-follow; swap href then.
   const cards = [
-    { key: 'enduser', Icon: User, href: APP_URL },
-    { key: 'gamer', Icon: Gamepad2, href: APP_URL },
-    { key: 'reseller', Icon: Store, href: APP_URL },
+    { key: 'enduser', Icon: User, href: appHref },
+    { key: 'gamer', Icon: Gamepad2, href: appHref },
+    { key: 'reseller', Icon: Store, href: appHref },
   ] as const;
 
   return (

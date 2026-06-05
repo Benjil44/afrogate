@@ -4,7 +4,7 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { LangToggle } from '@/components/lang-toggle';
-import { useLang, APP_URL } from '@/i18n';
+import { useLang } from '@/i18n';
 
 function Logo() {
   return (
@@ -20,7 +20,7 @@ function Logo() {
 }
 
 export function Nav() {
-  const { t } = useLang();
+  const { t, appHref } = useLang();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -63,10 +63,10 @@ export function Nav() {
 
         <div className="hidden items-center gap-3 md:flex">
           <LangToggle />
-          <Button as="a" href={APP_URL} variant="ghost" size="sm">
+          <Button as="a" href={appHref} variant="ghost" size="sm">
             {t.nav.login}
           </Button>
-          <Button as="a" href={APP_URL} variant="primary" size="sm">
+          <Button as="a" href={appHref} variant="primary" size="sm">
             {t.nav.getStarted}
           </Button>
         </div>
@@ -104,10 +104,10 @@ export function Nav() {
                 </a>
               ))}
               <div className="mt-2 flex gap-3">
-                <Button as="a" href={APP_URL} variant="glass" size="sm" className="flex-1">
+                <Button as="a" href={appHref} variant="glass" size="sm" className="flex-1">
                   {t.nav.login}
                 </Button>
-                <Button as="a" href={APP_URL} variant="primary" size="sm" className="flex-1">
+                <Button as="a" href={appHref} variant="primary" size="sm" className="flex-1">
                   {t.nav.getStarted}
                 </Button>
               </div>

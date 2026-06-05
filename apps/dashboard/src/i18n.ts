@@ -36,10 +36,15 @@ export function useDashboardLanguage() {
 }
 
 function loadInitialLanguage(): DashboardLanguage {
+  // 1) Honor the language handed off from the landing site (?lang=en|fa).
+  const param = new URLSearchParams(window.location.search).get('lang');
+  if (param === 'en' || param === 'fa') return param;
+
+  // 2) Otherwise the user's saved in-app choice.
   const savedLanguage = window.localStorage.getItem(languageStorageKey);
   if (savedLanguage === 'en' || savedLanguage === 'fa') return savedLanguage;
 
-  const browserLanguages = window.navigator.languages.length > 0 ? window.navigator.languages : [window.navigator.language];
-  return browserLanguages.some((language) => language.toLowerCase().startsWith('fa')) ? 'fa' : 'en';
+  // 3) Default to English.
+  return 'en';
 }
 

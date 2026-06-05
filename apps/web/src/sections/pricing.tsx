@@ -2,10 +2,10 @@ import { Check } from 'lucide-react';
 import { Reveal } from '@/components/reveal';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useLang, APP_URL } from '@/i18n';
+import { useLang } from '@/i18n';
 
 export function Pricing() {
-  const { t } = useLang();
+  const { t, appHref } = useLang();
   // Static example prices — live plans/billing live in the panel.
   const plans = [
     { key: 'starter', featured: false },
@@ -60,7 +60,7 @@ export function Pricing() {
                     </li>
                   ))}
                 </ul>
-                <Button as="a" href={APP_URL} variant={featured ? 'primary' : 'glass'} size="md" className="mt-7 w-full">
+                <Button as="a" href={appHref} variant={featured ? 'primary' : 'glass'} size="md" className="mt-7 w-full">
                   {p.cta}
                 </Button>
               </div>

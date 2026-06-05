@@ -1,9 +1,9 @@
 import { Reveal } from '@/components/reveal';
 import { Button } from '@/components/ui/button';
-import { useLang, APP_URL } from '@/i18n';
+import { useLang } from '@/i18n';
 
 export function Cta() {
-  const { t } = useLang();
+  const { t, appHref } = useLang();
   return (
     <section className="relative mx-auto w-full max-w-6xl px-5 py-20">
       <Reveal>
@@ -18,7 +18,7 @@ export function Cta() {
           <div className="relative z-10 mx-auto max-w-2xl">
             <h2 className="text-3xl font-black tracking-tight md:text-5xl">{t.cta.title}</h2>
             <p className="mt-4 text-[var(--muted-foreground)]">{t.cta.body}</p>
-            <Button as="a" href={APP_URL} variant="primary" size="lg" className="mt-8">
+            <Button as="a" href={appHref} variant="primary" size="lg" className="mt-8">
               {t.cta.button}
             </Button>
           </div>

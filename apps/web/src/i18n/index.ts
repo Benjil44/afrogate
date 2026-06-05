@@ -14,6 +14,8 @@ interface LangContextValue {
   lang: Lang;
   dir: 'rtl' | 'ltr';
   t: Dict;
+  /** Link to the panel that carries the current language (?lang=). */
+  appHref: string;
   setLang: (lang: Lang) => void;
   toggle: () => void;
 }
@@ -40,6 +42,7 @@ export function LangProvider({ children }: { children: ReactNode }) {
     lang,
     dir,
     t: DICTS[lang],
+    appHref: `${APP_URL}?lang=${lang}`,
     setLang,
     toggle: () => setLang(lang === 'fa' ? 'en' : 'fa'),
   };

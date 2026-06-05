@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Gamepad2, Check, Activity } from 'lucide-react';
 import { Reveal } from '@/components/reveal';
 import { Button } from '@/components/ui/button';
-import { useLang, APP_URL } from '@/i18n';
+import { useLang } from '@/i18n';
 
 const TYPICAL_PATH = 'M0,92 L36,28 L72,78 L108,18 L144,72 L180,34 L216,84 L252,22 L288,76 L324,40 L360,70 L400,30';
 const AFROWS_PATH = 'M0,104 L80,101 L160,106 L240,100 L320,105 L400,102';
@@ -64,7 +64,7 @@ function Bar({ label, value, width, color, delay }: { label: string; value: stri
 }
 
 export function Gaming() {
-  const { t } = useLang();
+  const { t, appHref } = useLang();
   const g = t.gaming;
   const stats = [
     { value: '18', unit: g.unit, label: g.statPing, color: '#34d399' },
@@ -102,7 +102,7 @@ export function Gaming() {
                 ))}
               </ul>
 
-              <Button as="a" href={APP_URL} size="lg" className="mt-8 border-0 bg-[linear-gradient(135deg,#10b981,#22d3ee)] text-[#04140d]">
+              <Button as="a" href={appHref} size="lg" className="mt-8 border-0 bg-[linear-gradient(135deg,#10b981,#22d3ee)] text-[#04140d]">
                 {g.cta}
               </Button>
             </div>

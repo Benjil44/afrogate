@@ -1,7 +1,7 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Sparkles, ShieldCheck, Clock, Globe, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useLang, APP_URL } from '@/i18n';
+import { useLang } from '@/i18n';
 
 const container = {
   hidden: {},
@@ -13,7 +13,7 @@ const item = {
 };
 
 export function Hero() {
-  const { t } = useLang();
+  const { t, appHref } = useLang();
   const { scrollY } = useScroll();
   const auroraY = useTransform(scrollY, [0, 700], [0, 160]);
   const gridY = useTransform(scrollY, [0, 700], [0, 80]);
@@ -107,7 +107,7 @@ export function Hero() {
         </motion.p>
 
         <motion.div variants={item} className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Button as="a" href={APP_URL} variant="primary" size="lg">
+          <Button as="a" href={appHref} variant="primary" size="lg">
             {t.hero.ctaPrimary}
           </Button>
           <Button as="a" href="#features" variant="glass" size="lg">
