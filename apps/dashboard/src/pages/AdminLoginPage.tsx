@@ -6,14 +6,6 @@ import { LanguageButton } from '../components/Sidebar';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardLanguage, DashboardStrings } from '../i18n';
 
-const LOGIN_STYLES = `
-@keyframes afro-login-in { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }
-@keyframes afro-login-breathe { 0% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0.9; transform: translate(-50%, -50%) scale(1.12); } }
-.afro-login-card { animation: afro-login-in 0.6s cubic-bezier(0.16,1,0.3,1) both; }
-.afro-login-aurora { animation: afro-login-breathe 7s ease-in-out infinite alternate; }
-.afro-login-input::placeholder { color: #6b7280; }
-`;
-
 export function AdminLoginPage({
   auth,
   isRtl,
@@ -51,8 +43,6 @@ export function AdminLoginPage({
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
     >
-      <style dangerouslySetInnerHTML={{ __html: LOGIN_STYLES }} />
-
       {/* Aurora glow */}
       <div
         aria-hidden
