@@ -21,6 +21,8 @@ import type {
   AdminReportsSummaryResponse,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminOutboundTestResult,
+  AdminOutboundsAutoTestState,
   AdminSessionResponse,
   AdminOutboundsResponse,
   AdminServerDetail,
@@ -692,6 +694,32 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<void> {
     return this.operationsService.deleteOutbound(id, request.actor);
+  }
+
+  @Post('outbounds/test-all')
+  @Roles('admin')
+  testAllOutbounds(): Promise<{ requested: number }> {
+    return this.operationsService.requestAllOutboundTests();
+  }
+
+  @Post('outbounds/:id/test')
+  @Roles('admin')
+  testOutbound(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminOutboundTestResult> {
+    return this.operationsService.requestOutboundTest(id);
+  }
+
+  @Get('outbound-test-settings')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getOutboundTestSettings(): Promise<AdminOutboundsAutoTestState> {
+    return this.operationsService.getOutboundTestSettings();
+  }
+
+  @Patch('outbound-test-settings')
+  @Roles('admin')
+  setOutboundTestSettings(@Body() body: { enabled?: boolean }): Promise<AdminOutboundsAutoTestState> {
+    return this.operationsService.setOutboundTestSettings(Boolean(body?.enabled));
   }
 
   @Get('route-failover-events')

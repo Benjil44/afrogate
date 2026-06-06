@@ -8,6 +8,8 @@ import type {
   AdminAlertSummary,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminOutboundTestResult,
+  AdminOutboundsAutoTestState,
   AdminProtocolServerApplyAdapterSummary,
   AdminProtocolServerApplyDryRunSnapshot,
   AdminProtocolServerApplyEventDetail,
@@ -77,6 +79,7 @@ import type {
 } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
+import { parseVlessUrl } from './outbound-vless-parser';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
 import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, roundMetric, thresholdPenalty } from './route-scoring';
 import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, getRouteProbes, isProtocolSpecificScoreProfile, isRecord, isRouteProbeMetric, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores, summarizeRouteProbes } from './route-metrics';
@@ -1344,6 +1347,7 @@ export class OperationsService {
   }
 
   async createOutbound(dto: CreateOutboundDto, actor: AuthActor | undefined): Promise<AdminOutboundSummary> {
+    dto = this.applyVlessImport(dto);
     this.assertSafeConfig(dto.config);
 
     const outboundId = await this.database.transaction(async (executor) => {
@@ -4676,6 +4680,56 @@ export class OperationsService {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+  }
+
+  private applyVlessImport(dto: CreateOutboundDto): CreateOutboundDto {
+    const config = this.asRecord(dto.config);
+    const importUrl = typeof config.importUrl === 'string' ? config.importUrl : null;
+    if (dto.type === 'vless' && importUrl) {
+      let parsed;
+      try {
+        parsed = parseVlessUrl(importUrl);
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error ? error.message : 'Invalid vless:// link');
+      }
+      const name = dto.name && dto.name.trim() ? dto.name.trim() : parsed.name;
+      return { ...dto, name, config: parsed.config };
+    }
+    return dto;
+  }
+
+  async requestOutboundTest(id: string): Promise<AdminOutboundTestResult> {
+    const result = await this.database.query<{ id: string }>(
+      `UPDATE outbounds SET speed_test_requested_at = now(), updated_at = now() WHERE id = $1 RETURNING id`,
+      [id],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Outbound not found');
+    return { outboundId: id, status: 'queued' };
+  }
+
+  async requestAllOutboundTests(): Promise<{ requested: number }> {
+    const result = await this.database.query(
+      `UPDATE outbounds SET speed_test_requested_at = now(), updated_at = now() WHERE enabled = true`,
+    );
+    return { requested: result.rowCount ?? 0 };
+  }
+
+  async getOutboundTestSettings(): Promise<AdminOutboundsAutoTestState> {
+    const result = await this.database.query<{ auto_enabled: boolean; interval_seconds: number }>(
+      `SELECT auto_enabled, interval_seconds FROM outbound_test_settings WHERE id = true`,
+    );
+    const row = result.rows[0];
+    return { enabled: row?.auto_enabled ?? false, intervalSeconds: row?.interval_seconds ?? 600 };
+  }
+
+  async setOutboundTestSettings(enabled: boolean): Promise<AdminOutboundsAutoTestState> {
+    await this.database.query(
+      `INSERT INTO outbound_test_settings (id, auto_enabled, updated_at)
+       VALUES (true, $1, now())
+       ON CONFLICT (id) DO UPDATE SET auto_enabled = EXCLUDED.auto_enabled, updated_at = now()`,
+      [enabled],
+    );
+    return this.getOutboundTestSettings();
   }
 
   private mapServerInterface(row: ServerInterfaceRow): AdminServerInterfaceSummary {
