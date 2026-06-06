@@ -1813,8 +1813,30 @@ export interface AdminOutboundSummary {
   maxUsers?: number | null;
   lastCheckedAt?: string | null;
   lastHealthyAt?: string | null;
+  // live metrics (latest measured; null until first probe/test)
+  latestLatencyMs?: number | null;
+  latestJitterMs?: number | null;
+  latestDownMbps?: number | null;
+  latestUpMbps?: number | null;
+  lastSpeedTestAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminOutboundTestResult {
+  outboundId: string;
+  status: 'ok' | 'failed' | 'queued';
+  latencyMs?: number | null;
+  jitterMs?: number | null;
+  downMbps?: number | null;
+  upMbps?: number | null;
+  measuredAt?: string | null;
+  message?: string | null;
+}
+
+export interface AdminOutboundsAutoTestState {
+  enabled: boolean;
+  intervalSeconds: number;
 }
 
 export interface RouteFailoverEventSummary {
