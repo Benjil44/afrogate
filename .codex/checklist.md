@@ -369,6 +369,14 @@ Design: `docs/superpowers/specs/2026-06-05-afrows-landing-website-design.md`.
 - [x] **Subdomain split (DONE 2026-06-05).** Panel moved to `app.afrows.com` (deSEC A record → 94.74.145.199, resolves globally; `*.afrows.com` cert covers it; nginx `app.afrows.com` server block w/ `/api` proxy + login limit + HSTS/CSP; `CORS_ORIGIN` now `https://app.afrows.com,https://afrows.com,https://www.afrows.com`). `afrows.com`/`www` serve the static landing (own CSP allowing Google Fonts). Verified live: `afrows.com`→landing title, `app.afrows.com`→`Afrows Operations` + `/api/health` ok, both cert-valid, HTTP→HTTPS 301.
 - [ ] **Fast-follow:** detail pages `/resellers`, `/gaming`, `/vpn`; wire pricing to real billing.
 - [ ] **Next phase:** Android native app (`apps/native-client`).
+
+### Phase 9: Outbounds management page
+
+Design: `docs/superpowers/specs/2026-06-06-outbounds-management-design.md`.
+
+- [ ] **New "Outbounds" dashboard page (design approved 2026-06-06).** Table of all outbounds (Name/Type/Status/Ping/Jitter/Download/Upload/Actions); Add panel with protocol picker (VLESS/WireGuard/L2TP) + paste-`vless://` auto-fill; Edit/Disable/Delete. Reuses existing outbound CRUD API + agent ping/jitter/status probes (live, ~20s poll).
+- [ ] **On-demand testing.** `POST /outbounds/:id/test` + test-all; per-row **Test** and **Sync now**; **Auto toggle** re-tests every 10 min when on.
+- [ ] **Agent speed test.** `apps/agent/collect.py` gains a download/upload throughput test routed through the outbound's local proxy (new capability); backend surfaces throughput in `GET /outbounds`.
 - [ ] Connect the first real server/agent: register it, ship the Python agent, confirm heartbeat + metrics + WireGuard telemetry flow into the dashboard (validates the honest-data path end to end).
 - [ ] Run the k6 load/scale smoke against the host (`scripts/loadtest/afrows-smoke.js`) to validate the 4 GB capacity model before paid traffic.
 - [ ] Rehearse agent-token + secret rotation on the live box (`scripts/drills/verify-rotation.sh`).

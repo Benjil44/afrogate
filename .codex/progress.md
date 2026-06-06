@@ -2548,6 +2548,12 @@ Repository remote is ready:
 - Subdomain split: deSEC `app` A record (resolves globally); nginx split — `afrows.com`/`www` → `/opt/afrows/apps/web/dist` (landing CSP allows Google Fonts), `app.afrows.com` → dashboard + `/api`. `CORS_ORIGIN` adds the app origin. `*.afrows.com` cert covers app. Deployed via `sync.ps1 -WithDeps` (warmed Linux cache for the 6 new pure-JS deps; box `npm ci --offline` + build all workspaces). Verified both hosts live + cert-valid.
 - Fast-follow: detail pages `/resellers`,`/gaming`,`/vpn`, real pricing wiring. Next phase: Android app (`apps/native-client`).
 
+### 2026-06-06 Outbounds management (design)
+
+- Brainstormed + spec'd a new **Outbounds** dashboard page (`docs/superpowers/specs/2026-06-06-outbounds-management-design.md`). Clarified the model for the operator: **server** = node you run, **outbound** = egress connection (VLESS/WireGuard/L2TP — what a VLESS link is), **route** = which-outbound logic. Backend already has full outbound CRUD + multi-protocol + agent ping/jitter/status probes + throughput concept; the gap is a management UI.
+- v1: Outbounds table (Status/Ping/Jitter live via agent + ~20s poll; Download/Upload via test), Add panel (protocol picker, paste-`vless://`), Edit/Disable/Delete, per-row **Test** + **Sync now** (test-all), **Auto toggle** (re-test every 10 min). New backend test endpoint + throughput surfacing; **agent gains a download/upload speed-test routine** (`collect.py`). Speed history/charts + scheduled-interval config are later.
+- Next: writing-plans → implement.
+
 ### Remaining
 
 - Off-box copy of `/var/backups/afrows/` (periodic scp pull to the dev PC).
