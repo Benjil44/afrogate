@@ -173,6 +173,11 @@ interface OutboundRow {
   maxUsers: number | null;
   lastCheckedAt: Date | null;
   lastHealthyAt: Date | null;
+  latestLatencyMs: number | null;
+  latestJitterMs: number | null;
+  latestDownMbps: number | null;
+  latestUpMbps: number | null;
+  lastSpeedTestAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1258,10 +1263,22 @@ export class OperationsService {
           o.max_users AS "maxUsers",
           o.last_checked_at AS "lastCheckedAt",
           o.last_healthy_at AS "lastHealthyAt",
+          hc.latency_ms AS "latestLatencyMs",
+          hc.jitter_ms AS "latestJitterMs",
+          o.latest_down_mbps AS "latestDownMbps",
+          o.latest_up_mbps AS "latestUpMbps",
+          o.last_speed_test_at AS "lastSpeedTestAt",
           o.created_at AS "createdAt",
           o.updated_at AS "updatedAt"
         FROM outbounds o
         LEFT JOIN servers s ON s.id = o.server_id
+        LEFT JOIN LATERAL (
+          SELECT oh.latency_ms, oh.jitter_ms
+          FROM outbound_health_checks oh
+          WHERE oh.outbound_id = o.id
+          ORDER BY oh.checked_at DESC
+          LIMIT 1
+        ) hc ON true
         WHERE ($1::uuid IS NULL OR o.server_id = $1)
           AND ($2::text IS NULL OR o.route_group = $2)
         ORDER BY o.route_group ASC, o.priority ASC, o.created_at ASC, o.name ASC
@@ -1299,10 +1316,22 @@ export class OperationsService {
           o.max_users AS "maxUsers",
           o.last_checked_at AS "lastCheckedAt",
           o.last_healthy_at AS "lastHealthyAt",
+          hc.latency_ms AS "latestLatencyMs",
+          hc.jitter_ms AS "latestJitterMs",
+          o.latest_down_mbps AS "latestDownMbps",
+          o.latest_up_mbps AS "latestUpMbps",
+          o.last_speed_test_at AS "lastSpeedTestAt",
           o.created_at AS "createdAt",
           o.updated_at AS "updatedAt"
         FROM outbounds o
         LEFT JOIN servers s ON s.id = o.server_id
+        LEFT JOIN LATERAL (
+          SELECT oh.latency_ms, oh.jitter_ms
+          FROM outbound_health_checks oh
+          WHERE oh.outbound_id = o.id
+          ORDER BY oh.checked_at DESC
+          LIMIT 1
+        ) hc ON true
         WHERE o.id = $1
       `,
       [id],
@@ -4639,6 +4668,11 @@ export class OperationsService {
       maxUsers: row.maxUsers,
       lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
       lastHealthyAt: row.lastHealthyAt?.toISOString() ?? null,
+      latestLatencyMs: row.latestLatencyMs ?? null,
+      latestJitterMs: row.latestJitterMs ?? null,
+      latestDownMbps: row.latestDownMbps ?? null,
+      latestUpMbps: row.latestUpMbps ?? null,
+      lastSpeedTestAt: row.lastSpeedTestAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
