@@ -16,6 +16,9 @@ import type {
   AdminLoginRequest,
   AdminLoginResponse,
   AdminOutboundsResponse,
+  AdminOutboundSummary,
+  AdminOutboundTestResult,
+  AdminOutboundsAutoTestState,
   AdminPaymentOrdersResponse,
   AdminPermissionsResponse,
   AdminRewardedAdSettingsResponse,
@@ -323,6 +326,94 @@ export async function fetchAdminOutbounds(sessionToken: string, signal?: AbortSi
   });
 
   return response.json() as Promise<AdminOutboundsResponse>;
+}
+
+export interface CreateOutboundPayload {
+  type: string;
+  name?: string;
+  routeGroup?: string;
+  serverId?: string | null;
+  config?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export interface UpdateOutboundPayload {
+  name?: string;
+  enabled?: boolean;
+  routeGroup?: string;
+  maintenanceMode?: boolean;
+  config?: Record<string, unknown>;
+}
+
+export async function createAdminOutbound(
+  sessionToken: string,
+  payload: CreateOutboundPayload,
+): Promise<AdminOutboundSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbounds`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+  return response.json() as Promise<AdminOutboundSummary>;
+}
+
+export async function updateAdminOutbound(
+  sessionToken: string,
+  outboundId: string,
+  payload: UpdateOutboundPayload,
+): Promise<AdminOutboundSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbounds/${encodeURIComponent(outboundId)}`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+  return response.json() as Promise<AdminOutboundSummary>;
+}
+
+export async function deleteAdminOutbound(sessionToken: string, outboundId: string): Promise<void> {
+  await requestAdminAuth(`${getApiBaseUrl()}/admin/outbounds/${encodeURIComponent(outboundId)}`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'DELETE',
+  });
+}
+
+export async function testAdminOutbound(sessionToken: string, outboundId: string): Promise<AdminOutboundTestResult> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbounds/${encodeURIComponent(outboundId)}/test`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+  return response.json() as Promise<AdminOutboundTestResult>;
+}
+
+export async function testAllAdminOutbounds(sessionToken: string): Promise<{ requested: number }> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbounds/test-all`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+  return response.json() as Promise<{ requested: number }>;
+}
+
+export async function fetchAdminOutboundTestSettings(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminOutboundsAutoTestState> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-test-settings`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminOutboundsAutoTestState>;
+}
+
+export async function setAdminOutboundTestSettings(
+  sessionToken: string,
+  enabled: boolean,
+): Promise<AdminOutboundsAutoTestState> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-test-settings`, {
+    body: JSON.stringify({ enabled }),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+  return response.json() as Promise<AdminOutboundsAutoTestState>;
 }
 
 export async function fetchAdminServerInterfaces(
