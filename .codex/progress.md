@@ -2554,6 +2554,13 @@ Repository remote is ready:
 - v1: Outbounds table (Status/Ping/Jitter live via agent + ~20s poll; Download/Upload via test), Add panel (protocol picker, paste-`vless://`), Edit/Disable/Delete, per-row **Test** + **Sync now** (test-all), **Auto toggle** (re-test every 10 min). New backend test endpoint + throughput surfacing; **agent gains a download/upload speed-test routine** (`collect.py`). Speed history/charts + scheduled-interval config are later.
 - Next: writing-plans → implement.
 
+### 2026-06-06 Outbounds management (built + deployed, UI + backend)
+
+- Plan `docs/superpowers/plans/2026-06-06-outbounds-management.md`, branch `feat/outbounds`. Confirmed with operator: **monitor & test (self-contained)**, NOT wired into the subscription/secret renderer (`renderVlessClientUri`) — a key fork found during build.
+- Shipped: shared metric types; migration `0029_outbound_throughput.sql` (throughput cols + `speed_test_requested_at` + `outbound_test_settings`); `outbound-vless-parser.ts` (+3 tests) parsing `vless://` into a self-contained monitor config; `listOutbounds`/`getOutbound` enriched with latest latency/jitter (LATERAL on `outbound_health_checks`) + throughput; endpoints `POST /outbounds/:id/test`, `/outbounds/test-all`, `outbound-test-settings` GET/PATCH; `createOutbound` vless `importUrl` support; dashboard api client; FA/EN i18n; **Outbounds page** (sidebar `Waypoints`, route, table w/ 20s poll, Add panel protocol-picker + paste-vless, Test/Enable-Disable/Delete, Sync-now, Auto toggle). Deployed; verified endpoints 200 + migration applied + 374/374 backend tests.
+- Fixed latent regression: login redesign's inline `<style dangerouslySetInnerHTML>` tripped the XSS guard — moved CSS to `apps/dashboard/src/styles.css`.
+- **Deferred (needs real box/proxy):** agent download/upload speed test (`collect.py`) + backend ingest + 10-min auto scheduler. Until then Download/Upload columns show `—`; Status/Ping/Jitter are live. Plan tasks T6/T7.
+
 ### Remaining
 
 - Off-box copy of `/var/backups/afrows/` (periodic scp pull to the dev PC).
