@@ -4685,7 +4685,7 @@ export class OperationsService {
   private applyVlessImport(dto: CreateOutboundDto): CreateOutboundDto {
     const config = this.asRecord(dto.config);
     const importUrl = typeof config.importUrl === 'string' ? config.importUrl : null;
-    if (dto.type === 'vless' && importUrl) {
+    if ((dto.type === 'vless-local-proxy' || dto.type === 'vless') && importUrl) {
       let parsed;
       try {
         parsed = parseVlessUrl(importUrl);

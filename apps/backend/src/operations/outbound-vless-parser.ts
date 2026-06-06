@@ -1,6 +1,6 @@
 export interface ParsedVless {
   name: string;
-  type: 'vless';
+  type: 'vless-local-proxy';
   config: Record<string, unknown>;
 }
 
@@ -41,6 +41,7 @@ export function parseVlessUrl(input: string): ParsedVless {
     serverName: q.get('sni') ?? q.get('peer') ?? undefined,
     flow: q.get('flow') || undefined,
     network: q.get('type') ?? 'tcp',
+    headerType: q.get('headerType') || undefined,
     host: q.get('host') || undefined,
     path: q.get('path') ? decodeURIComponent(q.get('path') as string) : undefined,
     fingerprint: q.get('fp') || undefined,
@@ -51,5 +52,5 @@ export function parseVlessUrl(input: string): ParsedVless {
     if (config[key] === undefined) delete config[key];
   }
 
-  return { name, type: 'vless', config };
+  return { name, type: 'vless-local-proxy', config };
 }

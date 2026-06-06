@@ -72,7 +72,7 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
         setSaving(false);
         return;
       }
-      payload = { type: 'vless', name: name.trim() || undefined, config: { importUrl: vlessLink.trim() } };
+      payload = { type: 'vless-local-proxy', name: name.trim() || undefined, config: { importUrl: vlessLink.trim() } };
     } else if (protocol === 'wireguard') {
       payload = { type: 'wireguard', name: name.trim() || undefined, config: { importConfig: wgConfig.trim() } };
     } else {
