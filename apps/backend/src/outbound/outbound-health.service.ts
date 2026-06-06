@@ -255,7 +255,9 @@ export class OutboundHealthService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const host = this.firstString(config.healthHost, config.host, config.targetHost);
+    // Prefer the real dial endpoint (address) over `host`, which for VLESS/proxy
+    // configs is the HTTP/SNI obfuscation hostname, not the TCP target.
+    const host = this.firstString(config.healthHost, config.address, config.host, config.targetHost);
     const port = this.configIntegerFromValue(config.healthPort ?? config.port ?? config.targetPort, 0, 1, 65535);
 
     if (host && port > 0) {
