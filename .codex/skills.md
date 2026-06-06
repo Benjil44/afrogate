@@ -13,6 +13,12 @@
 - Model server health: CPU, RAM, disk, network throughput, service status.
 - Model tunnel health: ping, jitter, packet loss, rx/tx, up/down, health score.
 - Treat storage below 10% as a critical alert.
+- Measure outbound throughput backend-on-box: spawn a throwaway xray SOCKS proxy bound to the outbound (`outbound-xray-config.ts` + `outbound-speed-test.service.ts`) and transfer through it; probe `config.address` for latency, not the SNI/camouflage `config.host`. Reachability is vantage-dependent (an outbound healthy from one network can be dead from another).
+
+### Inbound Reachability / Anti-Filtering
+
+- Keep the site reachable from any network: the raw Iran VPS IP is filtered, so universal access (users → landing + panel) needs a CDN/front (ArvanCloud preferred for sanction-safety; Cloudflare+ECH as an alternative), with origin-IP hiding and the cross-subdomain login flow preserved.
+- Diagnose access failures client-vs-server first: ping bypasses browser proxies, caches mask failures; confirm via hard reload + check for a client-side (v2ray) proxy before assuming a server/DPI fault.
 
 ### Network Routing
 

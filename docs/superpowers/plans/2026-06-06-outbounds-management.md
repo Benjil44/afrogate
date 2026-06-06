@@ -238,7 +238,9 @@ setOutboundTestSettings(@Body() body: { enabled: boolean }): Promise<AdminOutbou
 
 ---
 
-## Task 6: Agent download/upload speed test
+## Task 6: ~~Agent~~ Backend-on-box download/upload speed test — DONE (2026-06-06)
+
+> **Built backend-on-box, NOT in the agent.** The Python agent is static/env-driven with no command channel; backend + Postgres + `xray` share the VPS. Implemented as `outbound-speed-test.service.ts` (+ pure `outbound-xray-config.ts`, unit-tested): picks up `speed_test_requested_at`, measures TCP latency/jitter to `config.address`, and download/upload Mbps via a throwaway xray SOCKS proxy (curl, Cloudflare `__down`/`__up` defaults). Verified live on the box. Original agent-based steps below kept for history.
 
 **Files:** Modify `apps/agent/afrows_agent/collect.py`.
 
@@ -250,7 +252,9 @@ setOutboundTestSettings(@Body() body: { enabled: boolean }): Promise<AdminOutbou
 
 ---
 
-## Task 7: Auto-test scheduler (10 min)
+## Task 7: Auto-test scheduler (10 min) — DONE (2026-06-06)
+
+> Implemented in the same `outbound-speed-test.service.ts` tick: when `outbound_test_settings.auto_enabled`, flags enabled outbounds whose `interval_seconds` has elapsed by setting `speed_test_requested_at`, reusing the Task 6 pickup path.
 
 **Files:** Modify backend — add a scheduled tick (mirror an existing interval/cron in the backend; grep for `setInterval`/`@Cron`/scheduler in `apps/backend/src`).
 

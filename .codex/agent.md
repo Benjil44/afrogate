@@ -55,6 +55,9 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Treat packet loss, high jitter, storage pressure, and API/request backlog as urgent operational signals.
 - Keep enhancement work progressive: visibility first, reliability second, manual control third, automation fourth, enterprise polish last.
 - Do not make GitHub remote work a blocker; local git is enough until the user asks to push.
+- Separate **inbound reachability** (users → panel/landing) from **outbound** (the box's own internet). The raw Iran VPS IP is filtered (reachable from inside Iran, unreliable from abroad/foreign-exits), so "reachable from any network" needs **fronting** (ArvanCloud/CDN), not server tweaks. The box's own outbound internet must run through a managed, health-checked outbound (xray client → a *working* outbound), never a hardcoded/dead first-setup proxy.
+- Measure outbound throughput **backend-on-box** (spawn a throwaway xray SOCKS proxy bound to the outbound and transfer through it); the Python agent is static/env-driven and not the place for it. Reachability is **vantage-dependent** — an outbound healthy from one network can be dead from another.
+- When access fails, isolate **client vs server first**: ping bypasses browser proxies and caches can mask failures, so confirm with a fresh/hard reload and check whether the client is routed through a (possibly dead) v2ray/proxy before assuming a server or DPI fault. For VLESS/proxy configs, probe `config.address` (the dial endpoint), not `config.host` (the SNI/HTTP camouflage hostname).
 
 ## UX Principles
 
