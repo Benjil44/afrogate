@@ -382,3 +382,13 @@ Design: `docs/superpowers/specs/2026-06-06-outbounds-management-design.md`.
 - [ ] Rehearse agent-token + secret rotation on the live box (`scripts/drills/verify-rotation.sh`).
 - [ ] (Optional) GitHub Actions push-to-deploy so `git push` runs `update-afrows.sh` on the VPS (the manual `sync.ps1` loop works today; this just removes the manual step).
 - [ ] (Optional) Set up log/uptime monitoring + a Telegram alert chat for the live host.
+
+### Phase 10: Smart outbound handler (auto-failover + best-pick) — PLANNED
+
+Operator vision (2026-06-06): the app is a VPN with a **pool** of outbounds; it must transparently keep users online — never let a user notice a dead outbound. Requirements:
+
+- [ ] **Liveness-aware pool:** continuously know which outbounds are reachable (already have `outbound_health_checks` + speed-test engine); treat unreachable ones (e.g. vantage-filtered like `benjil` from the VPS) as out-of-rotation automatically.
+- [ ] **Instant failover:** when the active outbound breaks, switch to a healthy one with no user-visible interruption (reuse existing route lock / hysteresis / cooldown on the Routes page).
+- [ ] **Smart best-pick from history:** choose the best + most-stable outbound using time-bucketed quality over **1h / 1d / 1w / 1month** windows (latency, jitter, throughput, uptime). **Reuse existing infra:** `route-quality-aggregation.service.ts`, route scoring, and "route quality history aggregation by server/outbound/operator/profile/time bucket" (Phase 6) — likely most of the scoring exists; the gap is wiring the new Outbounds pool into it + a periodic "re-evaluate winner" pass.
+- [ ] **Transparent to users:** selection/failover happens in the control plane; the user just gets a working connection.
+- [ ] Next step: **brainstorm → spec → plan** (don't build blind — design the failover/selection policy and how it ties the Outbounds pool to the existing route engine).
