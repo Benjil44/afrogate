@@ -30,6 +30,7 @@ import { OperationsService } from './operations/operations.service';
 import { RouteQualityAggregationService } from './operations/route-quality-aggregation.service';
 import { OutboundHealthService } from './outbound/outbound-health.service';
 import { OutboundHttpService } from './outbound/outbound-http.service';
+import { OutboundSpeedTestService } from './outbound/outbound-speed-test.service';
 import { AdminReportsService } from './reports/admin-reports.service';
 import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
@@ -80,6 +81,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     RouteQualityAggregationService,
     OutboundHealthService,
     OutboundHttpService,
+    OutboundSpeedTestService,
     AdminTokenGuard,
     AgentTokenGuard,
     ClientTokenGuard,
