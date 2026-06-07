@@ -1,10 +1,17 @@
-# Afrows Native Client References
+# afrows_vpn
 
-This folder holds platform-specific implementation references for features that cannot be enforced by the React web client.
+Afrows VPN
 
-Current scope:
+## Getting Started
 
-- Android per-app VPN include-only routing through `VpnService`.
-- iOS per-app VPN managed-profile notes.
+This project is a starting point for a Flutter application.
 
-These references do not contain secrets, production config, or generated user profiles.
+A few resources to get you started if this is your first Flutter project:
+
+- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
+- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
