@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'connect_screen.dart';
+import 'start_screen.dart';
 
 void main() => runApp(const AfrowsApp());
 
@@ -21,7 +21,7 @@ class AfrowsApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const ConnectScreen(),
+      home: const StartScreen(),
     );
   }
 }

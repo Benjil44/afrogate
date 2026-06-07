@@ -39,6 +39,8 @@ dependencies:
   flutter_v2ray: ^1.0.10
   # local persistence for the pasted VLESS config
   shared_preferences: ^2.3.2
+  # backend API calls (account login, subscription, usage)
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:

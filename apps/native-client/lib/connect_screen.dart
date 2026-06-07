@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
+import 'api.dart';
 import 'vpn_config.dart';
 
 const _teal = Color(0xFF18B6A6);
@@ -8,7 +9,12 @@ const _panel = Color(0xFF12201F);
 const _line = Color(0xFF24302F);
 
 class ConnectScreen extends StatefulWidget {
-  const ConnectScreen({super.key});
+  const ConnectScreen({super.key, this.account, this.accountConfigUri});
+
+  /// When set, the screen is in "account mode" (logged-in user): config comes
+  /// from the subscription and quota is shown. When null, it's BYO-vless mode.
+  final AccountSession? account;
+  final String? accountConfigUri;
 
   @override
   State<ConnectScreen> createState() => _ConnectScreenState();
@@ -37,14 +43,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
     _init();
   }
 
+  bool get _accountMode => widget.account != null;
+
   Future<void> _init() async {
     await _v2ray.initializeV2Ray();
-    final link = await _store.load();
-    if (link != null) {
-      _configLink = link;
-      try {
-        _remark = FlutterV2ray.parseFromURL(link).remark;
-      } catch (_) {}
+    if (_accountMode) {
+      _configLink = widget.accountConfigUri;
+      _remark = widget.account!.account.displayName ?? 'Afrows';
+    } else {
+      final link = await _store.load();
+      if (link != null) {
+        _configLink = link;
+        try {
+          _remark = FlutterV2ray.parseFromURL(link).remark;
+        } catch (_) {}
+      }
     }
     if (mounted) setState(() => _ready = true);
   }
@@ -173,11 +186,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
         backgroundColor: Colors.transparent,
         title: const Text('Afrows', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          IconButton(
-            tooltip: 'Server config',
-            onPressed: _editConfig,
-            icon: const Icon(Icons.settings_outlined),
-          ),
+          if (_accountMode)
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.logout),
+            )
+          else
+            IconButton(
+              tooltip: 'Server config',
+              onPressed: _editConfig,
+              icon: const Icon(Icons.settings_outlined),
+            ),
         ],
       ),
       body: !_ready
@@ -189,6 +209,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
                   children: [
                     const Spacer(),
                     _StatusPill(state: _state),
+                    if (_accountMode && widget.account!.account.remainingBytes != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        '${_fmtBytes(widget.account!.account.remainingBytes!)} remaining',
+                        style: const TextStyle(color: _teal, fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
                     const SizedBox(height: 28),
                     _ConnectButton(
                       connected: _connected,
@@ -198,7 +225,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     const SizedBox(height: 20),
                     Text(
                       _configLink == null
-                          ? 'No server — tap to add one'
+                          ? (_accountMode ? 'No active config yet — contact your seller' : 'No server — tap to add one')
                           : (_remark.isNotEmpty ? _remark : 'Server ready'),
                       style: const TextStyle(color: Colors.white60),
                     ),
