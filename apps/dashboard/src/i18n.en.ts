@@ -30,6 +30,8 @@ export const en = {
       empty: 'No outbounds yet. Add your first connection.',
       testing: 'Testing…',
       queued: 'Test queued',
+      syncQueued: 'Testing {n} outbound(s)… results appear shortly',
+      syncError: 'Could not start the test',
       statusUp: 'Up',
       statusDown: 'Down',
       statusUnknown: 'Unknown',

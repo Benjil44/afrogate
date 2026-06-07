@@ -17,6 +17,7 @@ import {
 type Protocol = 'vless' | 'wireguard' | 'l2tp';
 
 const POLL_MS = 20000;
+const FAST_POLL_MS = 4000;
 
 export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: DashboardStrings }) {
   const s = t.outboundsPage;
@@ -32,24 +33,38 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [l2tpSecret, setL2tpSecret] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<AdminOutboundSummary[] | null> => {
     try {
       const res = await fetchAdminOutbounds(sessionToken);
       setRows(res.outbounds);
+      return res.outbounds;
     } catch {
-      /* keep last data on transient failure */
+      return null; // keep last data on transient failure
     }
   }, [sessionToken]);
 
+  // Poll fast (4s) while any test is in flight, otherwise every 20s.
   useEffect(() => {
-    void load();
+    let active = true;
+    let timer: number | undefined;
+    const schedule = (data: AdminOutboundSummary[] | null) => {
+      if (!active) return;
+      const pending = (data ?? []).some((r) => r.pendingTest);
+      timer = window.setTimeout(run, pending ? FAST_POLL_MS : POLL_MS);
+    };
+    const run = () => void load().then(schedule);
+    run();
     fetchAdminOutboundTestSettings(sessionToken)
       .then((st) => setAuto(st.enabled))
       .catch(() => {});
-    const id = window.setInterval(() => void load(), POLL_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [load, sessionToken]);
 
   const resetForm = () => {
@@ -112,8 +127,18 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
   const onDelete = (id: string) => {
     if (window.confirm(s.deleteConfirm)) void withBusy(id, () => deleteAdminOutbound(sessionToken, id));
   };
-  const onSyncAll = () => {
-    void testAllAdminOutbounds(sessionToken).then(() => load()).catch(() => {});
+  const onSyncAll = async () => {
+    setSyncing(true);
+    setNotice(null);
+    try {
+      const r = await testAllAdminOutbounds(sessionToken);
+      setNotice(s.syncQueued.replace('{n}', String(r.requested)));
+      await load();
+    } catch {
+      setNotice(s.syncError);
+    } finally {
+      setSyncing(false);
+    }
   };
   const onToggleAuto = async () => {
     const next = !auto;
@@ -149,10 +174,11 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onSyncAll}
-            className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+            onClick={() => void onSyncAll()}
+            disabled={syncing}
+            className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
           >
-            <RefreshCw size={15} />
+            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
             {s.syncNow}
           </button>
           <button
@@ -168,6 +194,15 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
           </button>
         </div>
       </div>
+
+      {notice ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-afro-line bg-[#eef7f6] px-3 py-2 text-[13px] font-bold text-afro-teal">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className="text-afro-muted hover:text-afro-ink">
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
 
       {/* Add panel */}
       {addOpen ? (
@@ -299,22 +334,27 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
                       {statusLabel(o.healthStatus)}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-afro-ink">{fmt(o.latestLatencyMs, ' ms')}</td>
-                  <td className="px-3 py-3 text-afro-ink">{fmt(o.latestJitterMs, ' ms')}</td>
-                  <td className="px-3 py-3 text-afro-ink">{fmt(o.latestDownMbps, ' Mbps')}</td>
-                  <td className="px-3 py-3 text-afro-ink">{fmt(o.latestUpMbps, ' Mbps')}</td>
+                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestLatencyMs, ' ms')}</td>
+                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestJitterMs, ' ms')}</td>
+                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestDownMbps, ' Mbps')}</td>
+                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestUpMbps, ' Mbps')}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onTest(o.id)}
-                        disabled={busy[o.id]}
-                        title={s.test}
-                        className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
-                      >
-                        <Zap size={14} />
-                        {busy[o.id] ? s.testing : s.test}
-                      </button>
+                      {(() => {
+                        const testing = busy[o.id] || !!o.pendingTest;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => onTest(o.id)}
+                            disabled={testing}
+                            title={s.test}
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+                          >
+                            {testing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+                            {testing ? s.testing : s.test}
+                          </button>
+                        );
+                      })()}
                       <button
                         type="button"
                         onClick={() => onToggleEnabled(o)}

@@ -1819,6 +1819,8 @@ export interface AdminOutboundSummary {
   latestDownMbps?: number | null;
   latestUpMbps?: number | null;
   lastSpeedTestAt?: string | null;
+  /** true while a speed test is queued/running (speed_test_requested_at set) */
+  pendingTest?: boolean;
   createdAt: string;
   updatedAt: string;
 }

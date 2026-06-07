@@ -181,6 +181,7 @@ interface OutboundRow {
   latestDownMbps: number | null;
   latestUpMbps: number | null;
   lastSpeedTestAt: Date | null;
+  pendingTest: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1271,6 +1272,7 @@ export class OperationsService {
           o.latest_down_mbps AS "latestDownMbps",
           o.latest_up_mbps AS "latestUpMbps",
           o.last_speed_test_at AS "lastSpeedTestAt",
+          (o.speed_test_requested_at IS NOT NULL) AS "pendingTest",
           o.created_at AS "createdAt",
           o.updated_at AS "updatedAt"
         FROM outbounds o
@@ -1324,6 +1326,7 @@ export class OperationsService {
           o.latest_down_mbps AS "latestDownMbps",
           o.latest_up_mbps AS "latestUpMbps",
           o.last_speed_test_at AS "lastSpeedTestAt",
+          (o.speed_test_requested_at IS NOT NULL) AS "pendingTest",
           o.created_at AS "createdAt",
           o.updated_at AS "updatedAt"
         FROM outbounds o
@@ -4677,6 +4680,7 @@ export class OperationsService {
       latestDownMbps: row.latestDownMbps ?? null,
       latestUpMbps: row.latestUpMbps ?? null,
       lastSpeedTestAt: row.lastSpeedTestAt?.toISOString() ?? null,
+      pendingTest: row.pendingTest ?? false,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

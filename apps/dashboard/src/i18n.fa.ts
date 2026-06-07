@@ -32,6 +32,8 @@ export const fa: DashboardStrings = {
       empty: 'هنوز اوت‌باندی نیست. اولین اتصال را اضافه کنید.',
       testing: 'در حال تست…',
       queued: 'تست در صف قرار گرفت',
+      syncQueued: 'در حال تست {n} اتصال خروجی… نتایج به‌زودی نمایش داده می‌شود',
+      syncError: 'شروع تست ممکن نشد',
       statusUp: 'فعال',
       statusDown: 'قطع',
       statusUnknown: 'نامشخص',
