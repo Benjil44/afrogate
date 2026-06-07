@@ -804,6 +804,8 @@ export const fa: DashboardStrings = {
       amount: 'مبلغ',
       allocation: 'شارژ',
       clients: 'کلاینت‌ها',
+      seller: 'فروشنده / فروشگاه',
+      directSale: 'مستقیم',
       remaining: 'باقی‌مانده',
       quotaScope: 'محدوده حجم',
       accountsLoaded: (count: number | string) => `${count} حساب`,

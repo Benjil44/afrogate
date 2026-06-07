@@ -802,6 +802,8 @@ export const en = {
       amount: 'Amount',
       allocation: 'Allocation',
       clients: 'Clients',
+      seller: 'Seller / Shop',
+      directSale: 'Direct',
       remaining: 'Remaining',
       quotaScope: 'Quota scope',
       accountsLoaded: (count: number | string) => `${count} accounts`,

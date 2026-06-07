@@ -2378,6 +2378,18 @@ function CustomerAccountsPanel({
       ),
     },
     {
+      key: 'seller',
+      header: t.billing.seller,
+      render: (account) =>
+        account.resellerDisplayName ? (
+          <span className="inline-flex items-center rounded-md bg-[#eef2ff] px-2 py-0.5 text-[12px] font-bold text-[#4f46e5]">
+            {account.resellerDisplayName}
+          </span>
+        ) : (
+          <span className="text-[12px] text-afro-muted">{t.billing.directSale}</span>
+        ),
+    },
+    {
       key: 'clients',
       header: t.billing.clients,
       render: (account) => `${format.integer(account.activeClientCount)} / ${format.integer(account.clientCount)}`,
