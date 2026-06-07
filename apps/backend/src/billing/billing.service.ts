@@ -19,6 +19,7 @@ import type {
   AdminCurrentPanelVolumeChargeResponse,
   AdminRewardedAdSettingsSummary,
   ClientAccessTokenSummary,
+  ClientLoginResponse,
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceSummary,
@@ -86,6 +87,8 @@ import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLi
 import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
+import { hashPassword, verifyScryptPassword } from '../security/password';
+import { generatePassword, normalizeLoginIdentifier } from '../security/generate-password';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { TelegramAlertService, type TelegramMessageSendResult } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
@@ -2805,6 +2808,13 @@ export class BillingService {
   ): Promise<AdminCustomerAccountDetail> {
     try {
       const paidNumberHash = this.hashPaidNumberIfPresent(dto.paidNumber);
+      const loginEmail = normalizeLoginIdentifier(dto.loginEmail);
+      let generatedPassword: string | null = null;
+      let passwordHash: string | null = null;
+      if (loginEmail) {
+        generatedPassword = generatePassword(16);
+        passwordHash = hashPassword(generatedPassword);
+      }
       const result = await this.database.transaction(async (executor) => {
         const resellerAccountId = normalizeNullableString(dto.resellerAccountId);
         if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
@@ -2814,9 +2824,9 @@ export class BillingService {
             INSERT INTO customer_accounts (
               reseller_account_id, display_name, telegram_id, telegram_username, paid_number_hash,
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
-              used_bytes, notes
+              used_bytes, notes, login_email, password_hash, password_set_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id
           `,
           [
@@ -2831,6 +2841,9 @@ export class BillingService {
             dto.perClientLimitBytes ?? null,
             dto.usedBytes ?? 0,
             normalizeNullableString(dto.notes),
+            loginEmail,
+            passwordHash,
+            passwordHash ? new Date() : null,
           ],
         );
         const id = insertResult.rows[0].id;
@@ -2854,7 +2867,8 @@ export class BillingService {
         return id;
       });
 
-      return this.getCustomerAccount(result);
+      const detail = await this.getCustomerAccount(result);
+      return generatedPassword ? { ...detail, generatedPassword } : detail;
     } catch (error) {
       throwConflictIfUniqueViolation(error, 'Customer account identity already exists');
       throw error;
@@ -3475,6 +3489,92 @@ export class BillingService {
       if (error instanceof UnauthorizedException) throw error;
       throw new ServiceUnavailableException('Client token lookup is unavailable');
     }
+  }
+
+  /**
+   * Authenticate a customer by email/username + password and issue a client
+   * access token the mobile app can use like any other client token.
+   */
+  async loginClientByPassword(identifierInput: string, passwordInput: string): Promise<ClientLoginResponse> {
+    const identifier = normalizeLoginIdentifier(identifierInput);
+    const genericError = new UnauthorizedException('Invalid email or password');
+    if (!identifier || typeof passwordInput !== 'string' || passwordInput.length === 0) {
+      throw genericError;
+    }
+
+    const accountResult = await this.database.query<{
+      id: string;
+      passwordHash: string | null;
+      displayName: string | null;
+      quotaLimitBytes: string | null;
+      usedBytes: string | null;
+    }>(
+      `
+        SELECT id, password_hash AS "passwordHash", display_name AS "displayName",
+               quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes"
+        FROM customer_accounts
+        WHERE lower(login_email) = $1 AND status = 'active'
+        LIMIT 1
+      `,
+      [identifier],
+    );
+    const account = accountResult.rows[0];
+    if (!account || !account.passwordHash || !verifyScryptPassword(passwordInput, account.passwordHash)) {
+      throw genericError;
+    }
+
+    const configResult = await this.database.query<{ id: string }>(
+      `
+        SELECT id FROM client_configs
+        WHERE customer_account_id = $1 AND status <> 'disabled'
+        ORDER BY created_at ASC
+        LIMIT 1
+      `,
+      [account.id],
+    );
+    const clientConfig = configResult.rows[0];
+    if (!clientConfig) {
+      throw new UnauthorizedException('No active configuration for this account yet');
+    }
+
+    const token = this.createClientAccessToken();
+    await this.database.query(
+      `
+        INSERT INTO client_access_tokens (client_config_id, name, token_hash, scopes, created_by)
+        VALUES ($1, $2, $3, $4::jsonb, $5)
+      `,
+      [clientConfig.id, 'mobile login', hashClientToken(token), JSON.stringify(['client:read', 'route:write', 'reward:claim']), null],
+    );
+
+    const quotaLimitBytes = numberFromBigInt(account.quotaLimitBytes);
+    const usedBytes = numberFromBigInt(account.usedBytes) ?? 0;
+    return {
+      token,
+      account: {
+        id: account.id,
+        displayName: account.displayName,
+        quotaLimitBytes,
+        usedBytes,
+        remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
+      },
+    };
+  }
+
+  /** Regenerate a customer's password (seller/superadmin); returns it once. */
+  async resetCustomerAccountPassword(accountId: string, actor: AuthActor | undefined): Promise<{ generatedPassword: string }> {
+    const password = generatePassword(16);
+    const result = await this.database.query<{ id: string }>(
+      `
+        UPDATE customer_accounts
+        SET password_hash = $2, password_set_at = now(), updated_at = now()
+        WHERE id = $1 AND login_email IS NOT NULL
+        RETURNING id
+      `,
+      [accountId, hashPassword(password)],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Customer account has no login email');
+    await this.audit.record(actor, 'customer_account.password_reset', 'customer_account', accountId, {}, undefined);
+    return { generatedPassword: password };
   }
 
   async getClientPortalProfile(actor: ClientAuthActor): Promise<ClientPortalProfileResponse> {

@@ -74,6 +74,11 @@ export class CreateCustomerAccountDto {
   paidNumber?: string | null;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  loginEmail?: string | null;
+
+  @IsOptional()
   @IsIn(CUSTOMER_ACCOUNT_STATUSES)
   status?: string;
 

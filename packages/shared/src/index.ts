@@ -792,12 +792,32 @@ export interface AdminCustomerAccountSummary {
   clientCount: number;
   activeClientCount: number;
   notes?: string | null;
+  loginEmail?: string | null;
+  hasPassword?: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary {
   clientConfigs: AdminClientConfigSummary[];
+  /** Plaintext password returned ONCE at creation/reset; never stored or re-returned. */
+  generatedPassword?: string;
+}
+
+export interface ClientLoginRequest {
+  identifier: string;
+  password: string;
+}
+
+export interface ClientLoginResponse {
+  token: string;
+  account: {
+    id: string;
+    displayName?: string | null;
+    quotaLimitBytes?: number | null;
+    usedBytes: number;
+    remainingBytes?: number | null;
+  };
 }
 
 export type ResellerAccountStatus = 'active' | 'suspended' | 'disabled';

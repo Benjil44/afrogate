@@ -522,6 +522,15 @@ export class BillingController {
     return this.billingService.createCustomerAccount(payload, request.actor);
   }
 
+  @Post('customer-accounts/:id/reset-password')
+  @Roles('admin')
+  resetCustomerAccountPassword(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ generatedPassword: string }> {
+    return this.billingService.resetCustomerAccountPassword(id, request.actor);
+  }
+
   @Patch('customer-accounts/:id')
   @Roles('admin')
   updateCustomerAccount(
