@@ -411,6 +411,7 @@ Spec: `docs/superpowers/specs/2026-06-07-afrows-native-data-plane-design.md`. **
 - [ ] **Phase 4 — metering + quota.** Poll xray `StatsService` per-user up/down → `used_bytes` → enforce quota (rmu/limit when over); app shows GB decreasing.
 - [ ] **Phase 5 — smart routing (ties Phase 10).** Per-user/route-group best-outbound from route-quality history (1h/1d/1w/1mo) + hysteresis/cooldown + auto-failover; drop unreachable outbounds; register the ax3 mesh exits as outbounds.
 - [ ] **Multi-protocol sell:** let a user/seller choose VLESS-Reality / WireGuard / L2TP per account (VLESS-Reality first).
+- [ ] **Subscription-outbound import (operator 2026-06-09):** add a *subscription URL* (a sub you bought that contains many VLESS configs) to the Outbounds table → expand into **one outbound row per server** in the sub → **auto-refresh the sub** on an interval (re-fetch, update the VLESS configs as the provider rotates) → speed-test each → smart-pick the best server. Extends the outbounds engine; pairs with Phase 5 smart routing.
 - [ ] **Gate / deploy:** confirm `:8443` Reality test connects; deploy backend (migs 0030/0031 + login + provisioning); set `AFROWS_INBOUND_*` env; later move the inbound to the Germany VPS for global reach (ties Phase 11).
 
 ### Phase 13: Sidebar / IA restructure (UX) — PLANNED
