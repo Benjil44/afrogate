@@ -5,6 +5,8 @@ import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 import 'api.dart';
 import 'app_version.dart';
+import 'diag.dart';
+import 'diag_screen.dart';
 import 'start_screen.dart';
 import 'vpn_config.dart';
 
@@ -68,6 +70,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
         } catch (_) {}
       }
     }
+    Diag.I.log('init: mode=${_accountMode ? "account" : "manual"}, '
+        'config=${_configLink == null ? "NONE" : "${_configLink!.length} chars"}');
     if (mounted) setState(() => _ready = true);
   }
 
@@ -89,6 +93,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   void _onStatus(V2RayStatus status) {
     if (!mounted) return;
+    if (status.state != _state) {
+      Diag.I.log('status -> ${status.state}');
+    }
+    // log traffic once it starts moving (confirms the tunnel carries data)
+    if (status.download + status.upload > 0 && _downloadTotal + _uploadTotal == 0) {
+      Diag.I.log('traffic flowing: down=${status.download}B up=${status.upload}B');
+    }
     setState(() {
       _state = status.state;
       _uploadSpeed = status.uploadSpeed;
@@ -101,6 +112,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   Future<void> _toggle() async {
     if (_connected || _connecting) {
+      Diag.I.log('Disconnect tapped');
       await _v2ray.stopV2Ray();
       return;
     }
@@ -108,23 +120,43 @@ class _ConnectScreenState extends State<ConnectScreen> {
       await _editConfig();
       if (_configLink == null) return;
     }
+    Diag.I.log('Connect tapped (mode=${_accountMode ? "account" : "manual"}, link=${_configLink!.length} chars)');
     final V2RayURL parsed;
     try {
       parsed = FlutterV2ray.parseFromURL(_configLink!);
-    } catch (_) {
+      Diag.I.log('parsed: ${parsed.address}:${parsed.port} remark="${parsed.remark}"');
+    } catch (e) {
+      Diag.I.log('parseFromURL FAILED: $e');
       _snack('Invalid vless:// link — fix it in settings');
       return;
     }
+    final String fullConfig;
+    try {
+      fullConfig = parsed.getFullConfiguration();
+      final preview = fullConfig.length > 600 ? fullConfig.substring(0, 600) : fullConfig;
+      Diag.I.log('config built (${fullConfig.length} chars):\n$preview');
+    } catch (e) {
+      Diag.I.log('getFullConfiguration FAILED: $e');
+      _snack('Could not build config: $e');
+      return;
+    }
     final granted = await _v2ray.requestPermission();
+    Diag.I.log('VPN permission granted=$granted');
     if (!granted) {
       _snack('VPN permission is required to connect');
       return;
     }
-    await _v2ray.startV2Ray(
-      remark: parsed.remark.isNotEmpty ? parsed.remark : 'Afrows',
-      config: parsed.getFullConfiguration(),
-      proxyOnly: false,
-    );
+    try {
+      await _v2ray.startV2Ray(
+        remark: parsed.remark.isNotEmpty ? parsed.remark : 'Afrows',
+        config: fullConfig,
+        proxyOnly: false,
+      );
+      Diag.I.log('startV2Ray() returned (VpnService starting)');
+    } catch (e) {
+      Diag.I.log('startV2Ray FAILED: $e');
+      _snack('Start failed: $e');
+    }
   }
 
   Future<void> _signOut() async {
@@ -223,6 +255,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
         backgroundColor: Colors.transparent,
         title: const Text('Afrows', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          IconButton(
+            tooltip: 'Diagnostics',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DiagScreen()),
+            ),
+            icon: const Icon(Icons.bug_report_outlined),
+          ),
           if (_accountMode)
             IconButton(
               tooltip: 'Sign out',
