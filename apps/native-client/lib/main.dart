@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'api.dart';
+import 'connect_screen.dart';
 import 'start_screen.dart';
+import 'vpn_config.dart';
 
 void main() => runApp(const AfrowsApp());
 
@@ -21,7 +24,37 @@ class AfrowsApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const StartScreen(),
+      home: const _RootGate(),
+    );
+  }
+}
+
+/// Decides the first screen: restore a saved session (stay signed in) or show
+/// the start screen.
+class _RootGate extends StatefulWidget {
+  const _RootGate();
+
+  @override
+  State<_RootGate> createState() => _RootGateState();
+}
+
+class _RootGateState extends State<_RootGate> {
+  late final Future<(AccountSession, String?)?> _session = SessionStore().load();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<(AccountSession, String?)?>(
+      future: _session,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator(color: Color(0xFF18B6A6))));
+        }
+        final saved = snap.data;
+        if (saved != null) {
+          return ConnectScreen(account: saved.$1, accountConfigUri: saved.$2);
+        }
+        return const StartScreen();
+      },
     );
   }
 }

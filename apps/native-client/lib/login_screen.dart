@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'api.dart';
 import 'connect_screen.dart';
+import 'vpn_config.dart';
 
 const _teal = Color(0xFF18B6A6);
 const _line = Color(0xFF24302F);
@@ -34,6 +35,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final session = await _api.login(id, pw);
       final configUri = await _api.firstConfigUri(session.token);
+      await SessionStore().save(session, configUri); // stay signed in after close
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => ConnectScreen(account: session, accountConfigUri: configUri)),

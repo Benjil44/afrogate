@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 import 'api.dart';
+import 'start_screen.dart';
 import 'vpn_config.dart';
 
 const _teal = Color(0xFF18B6A6);
@@ -102,6 +103,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
     );
   }
 
+  Future<void> _signOut() async {
+    try {
+      await _v2ray.stopV2Ray();
+    } catch (_) {}
+    await SessionStore().clear();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const StartScreen()),
+      (route) => false,
+    );
+  }
+
   Future<void> _editConfig() async {
     final ctrl = TextEditingController(text: _configLink ?? '');
     final saved = await showModalBottomSheet<bool>(
@@ -189,7 +202,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
           if (_accountMode)
             IconButton(
               tooltip: 'Sign out',
-              onPressed: () => Navigator.of(context).maybePop(),
+              onPressed: () {
+                _signOut();
+              },
               icon: const Icon(Icons.logout),
             )
           else
