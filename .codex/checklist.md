@@ -412,7 +412,9 @@ Spec: `docs/superpowers/specs/2026-06-07-afrows-native-data-plane-design.md`. **
 - [ ] **Phase 5 — smart routing (ties Phase 10).** Per-user/route-group best-outbound from route-quality history (1h/1d/1w/1mo) + hysteresis/cooldown + auto-failover; drop unreachable outbounds; register the ax3 mesh exits as outbounds.
 - [ ] **Multi-protocol sell:** let a user/seller choose VLESS-Reality / WireGuard / L2TP per account (VLESS-Reality first).
 - [ ] **Subscription-outbound import (operator 2026-06-09):** add a *subscription URL* (a sub you bought that contains many VLESS configs) to the Outbounds table → expand into **one outbound row per server** in the sub → **auto-refresh the sub** on an interval (re-fetch, update the VLESS configs as the provider rotates) → speed-test each → smart-pick the best server. Extends the outbounds engine; pairs with Phase 5 smart routing.
-- [ ] **Gate / deploy:** confirm `:8443` Reality test connects; deploy backend (migs 0030/0031 + login + provisioning); set `AFROWS_INBOUND_*` env; later move the inbound to the Germany VPS for global reach (ties Phase 11).
+- [x] **Deployed + live (2026-06-09):** backend deployed (migs 0030/0031 + login + provisioning); `AFROWS_INBOUND_*` env set; inbound **moved to 443 behind the panel** (nginx → 127.0.0.1:8444, Reality dest→nginx, serverNames app/afrows.com) since 8443 is filtered in Iran. Server **proven** (on-box Reality client → Germany, accepted afrows-in→proxy). Test user `test@afrows.com`/`AfrowsTest2026` (10GB) provisioned. App **versioning** added (v1.1.0, shown in UI) for diagnosis.
+- [ ] **Open: client connects but 0 traffic.** Server is proven; the gap is the *client* Reality config. v2rayN failed only because the operator typed entries with empty fp/pbk/sid (fix: import the link). The **app** (flutter_v2ray) shows connected+0B/s — verify on the latest APK after Sign out→Sign in; if it still fails, switch the inbound to **VLESS+WS+TLS** (operator's proven snapp.ir pattern) or update the app's xray core.
+- [ ] Later: move the inbound to the **Germany VPS** for global reach (ties Phase 11).
 
 ### Phase 13: Sidebar / IA restructure (UX) — PLANNED
 
