@@ -392,3 +392,33 @@ Operator vision (2026-06-06): the app is a VPN with a **pool** of outbounds; it 
 - [ ] **Smart best-pick from history:** choose the best + most-stable outbound using time-bucketed quality over **1h / 1d / 1w / 1month** windows (latency, jitter, throughput, uptime). **Reuse existing infra:** `route-quality-aggregation.service.ts`, route scoring, and "route quality history aggregation by server/outbound/operator/profile/time bucket" (Phase 6) — likely most of the scoring exists; the gap is wiring the new Outbounds pool into it + a periodic "re-evaluate winner" pass.
 - [ ] **Transparent to users:** selection/failover happens in the control plane; the user just gets a working connection.
 - [ ] Next step: **brainstorm → spec → plan** (don't build blind — design the failover/selection policy and how it ties the Outbounds pool to the existing route engine).
+
+### Phase 11: Universal inbound reachability — DEFERRED (needs Germany VPS)
+
+Operator vision (2026-06-07): every visitor on any network must always load landing + panel. Root cause confirmed: the raw Iran VPS IP (`94.74.145.199`) is **SNI-DPI filtered** — intermittent TLS-handshake failures direct (`schannel: failed to receive handshake` then 200 on retry), and unreachable from abroad/foreign-exits. **CDN fronting rejected:** ArvanCloud needs Iranian KYC (operator declined); Cloudflare has sanctions/edge-reachability issues.
+
+- [ ] **Chosen approach (future): dual-VPS mirror.** Buy a **Germany VPS**; mirror both sites. Iranian users → Iran box; worldwide users → Germany box (split via GeoDNS or per-region records). Hide origin IP. Sync the two boxes; connect them over **WireGuard** (control/data link) and/or VLESS. Decide what syncs (DB = single source vs replica; the panel is one app, so likely Germany proxies/reads from Iran DB over the WG link, or read-replica).
+- [ ] Open design questions for when the VPS exists: single DB (Germany→Iran over WG) vs replicated; cert strategy per box; session/cookie domain across boxes; failover if one box dies; how `app.afrows.com` login handoff works per region.
+- [ ] **Blocked on:** purchasing the Germany VPS. Revisit (brainstorm → spec → plan) then.
+
+### Phase 12: Native VPN data plane (Afrows = its own engine, no Marzban)
+
+Spec: `docs/superpowers/specs/2026-06-07-afrows-native-data-plane-design.md`. **Mental model (3 layers):** SUPPLY = **Outbounds** (where internet comes from: foreign VLESS/WG/L2TP, Starlink/ax3 mesh) → ENGINE = **Routes** (smart route-fixer + failover) → SELL = **Inbounds + accounts** (what clients dial: VLESS-Reality/WG/L2TP, per-user, sold by sellers). Inbound ≠ Outbound ≠ Routes — three distinct things.
+
+- [x] **Phase 1 — user inbound live.** `afrows-xray` VLESS+Reality on the box `:8443` (cover `www.digikala.com`), egress → socks 10808 → r-juuh4sm3 → Germany. Test link issued. *(Awaiting operator connect-confirmation.)*
+- [x] **Phase 2 — live per-user provisioning.** xray API enabled (`127.0.0.1:10085`); `adu`/`rmu` verified live. Backend: `client_configs.entry_uuid` (0031), `XrayProvisioningService` reconciles active users → inbound (60s), tested. *(Runs once deployed.)*
+- [x] **Phase 3 — config delivery.** `/client/subscription` returns the native afrows-in Reality link first (from `entry_uuid` + env `AFROWS_INBOUND_*`); app login → auto config. *(Needs env set + deploy.)*
+- [ ] **Phase 4 — metering + quota.** Poll xray `StatsService` per-user up/down → `used_bytes` → enforce quota (rmu/limit when over); app shows GB decreasing.
+- [ ] **Phase 5 — smart routing (ties Phase 10).** Per-user/route-group best-outbound from route-quality history (1h/1d/1w/1mo) + hysteresis/cooldown + auto-failover; drop unreachable outbounds; register the ax3 mesh exits as outbounds.
+- [ ] **Multi-protocol sell:** let a user/seller choose VLESS-Reality / WireGuard / L2TP per account (VLESS-Reality first).
+- [ ] **Gate / deploy:** confirm `:8443` Reality test connects; deploy backend (migs 0030/0031 + login + provisioning); set `AFROWS_INBOUND_*` env; later move the inbound to the Germany VPS for global reach (ties Phase 11).
+
+### Phase 13: Sidebar / IA restructure (UX) — PLANNED
+
+Sidebar is a flat list of 11 items; operator finds it confusing. Regroup by the 3-layer model so each item's purpose is obvious:
+- [ ] **Overview:** Dashboard.
+- [ ] **Supply:** Servers · Outbounds (internet sources).
+- [ ] **Engine:** Routes (the route-fixer/policy).
+- [ ] **Sell:** Customers (Users) · **Plans/Inbounds (new)** · Billing · Resellers — with the Seller/Shop column (done).
+- [ ] **Operations:** Alerts · Reports · Audit logs · Backups · Settings.
+- [ ] Add short helper text per section so "inbound vs outbound vs route" is self-evident in the UI.
