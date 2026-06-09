@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 import 'api.dart';
+import 'app_version.dart';
 import 'start_screen.dart';
 import 'vpn_config.dart';
 
@@ -275,7 +276,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 12),
+                    Text('Afrows v$kAppVersion · $kBuildTag',
+                        style: const TextStyle(color: Colors.white24, fontSize: 11)),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),

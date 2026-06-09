@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_version.dart';
 import 'connect_screen.dart';
 import 'login_screen.dart';
 
@@ -52,6 +53,9 @@ class StartScreen extends StatelessWidget {
                 child: const Text('Use my own VLESS',
                     style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
+              const SizedBox(height: 28),
+              Text('Afrows v$kAppVersion  ·  $kBuildTag',
+                  textAlign: TextAlign.center, style: const TextStyle(color: Colors.white24, fontSize: 12)),
             ],
           ),
         ),
