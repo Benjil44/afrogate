@@ -133,8 +133,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final String fullConfig;
     try {
       fullConfig = parsed.getFullConfiguration();
-      final preview = fullConfig.length > 600 ? fullConfig.substring(0, 600) : fullConfig;
-      Diag.I.log('config built (${fullConfig.length} chars):\n$preview');
+      // log the streamSettings region (where ws/tls/path live) so we can verify it
+      final idx = fullConfig.indexOf('streamSettings');
+      final region = idx >= 0
+          ? fullConfig.substring(idx, (idx + 700).clamp(0, fullConfig.length))
+          : fullConfig;
+      Diag.I.log('streamSettings: $region');
     } catch (e) {
       Diag.I.log('getFullConfiguration FAILED: $e');
       _snack('Could not build config: $e');
