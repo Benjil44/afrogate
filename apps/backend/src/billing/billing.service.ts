@@ -89,6 +89,7 @@ import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-re
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { hashPassword, verifyScryptPassword } from '../security/password';
 import { generatePassword, normalizeLoginIdentifier } from '../security/generate-password';
+import { buildAfrowsEntryUri, readAfrowsInboundEnv } from '../client/afrows-entry-link';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { TelegramAlertService, type TelegramMessageSendResult } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
@@ -4213,6 +4214,16 @@ export class BillingService {
       credentialRows.map((row) => [`${row.outboundId}:${row.protocol}`, row] as const),
     );
 
+    const baseConfigLinks = routeOptions.outbounds.map((outbound) => {
+      const protocol = normalizeSubscriptionProtocol(outbound.type);
+      const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
+      return this.subscriptionConfigLink(outbound, credential);
+    });
+    // Native Afrows inbound (afrows-in) link first, so the app connects to our
+    // own engine by default. Omitted until the inbound is configured via env.
+    const nativeLink = await this.buildNativeEntryConfigLink(actor.clientConfigId, routeGroup);
+    const configLinks = nativeLink ? [nativeLink, ...baseConfigLinks] : baseConfigLinks;
+
     return {
       subscription: {
         clientConfigId: actor.clientConfigId,
@@ -4222,12 +4233,39 @@ export class BillingService {
         endpoints: routeOptions.outbounds
           .map((outbound) => outbound.subscriptionEndpoint)
           .filter((endpoint): endpoint is ClientSubscriptionEndpointSummary => Boolean(endpoint)),
-        configLinks: routeOptions.outbounds.map((outbound) => {
-          const protocol = normalizeSubscriptionProtocol(outbound.type);
-          const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
-          return this.subscriptionConfigLink(outbound, credential);
-        }),
+        configLinks,
       },
+    };
+  }
+
+  /** Builds the native afrows-in Reality config link for a client (or null). */
+  private async buildNativeEntryConfigLink(
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
+    const inbound = readAfrowsInboundEnv(process.env);
+    if (!inbound) return null;
+    const result = await this.database.query<{ entryUuid: string | null }>(
+      `SELECT entry_uuid AS "entryUuid" FROM client_configs WHERE id = $1`,
+      [clientConfigId],
+    );
+    const entryUuid = result.rows[0]?.entryUuid;
+    if (!entryUuid) return null;
+
+    const uri = buildAfrowsEntryUri(inbound, entryUuid, 'Afrows');
+    return {
+      outboundId: 'afrows-in',
+      name: 'Afrows',
+      type: 'vless',
+      routeGroup,
+      usageMultiplier: 1,
+      chargeLabel: 'standard',
+      format: 'vless-uri',
+      renderStatus: 'rendered',
+      uri,
+      missingFields: [],
+      warnings: [],
+      requiresClientSecret: false,
     };
   }
 
