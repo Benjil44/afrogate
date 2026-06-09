@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
@@ -35,6 +37,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String _duration = '00:00:00';
   String? _configLink;
   String _remark = '';
+  AccountInfo? _account; // live account (GB remaining) in account mode
+  Timer? _accountTimer;
 
   bool get _connected => _state.toUpperCase() == 'CONNECTED';
   bool get _connecting => _state.toUpperCase() == 'CONNECTING';
@@ -51,7 +55,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
     await _v2ray.initializeV2Ray();
     if (_accountMode) {
       _configLink = widget.accountConfigUri;
+      _account = widget.account!.account;
       _remark = widget.account!.account.displayName ?? 'Afrows';
+      unawaited(_refreshAccount());
+      _accountTimer = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(_refreshAccount()));
     } else {
       final link = await _store.load();
       if (link != null) {
@@ -62,6 +69,22 @@ class _ConnectScreenState extends State<ConnectScreen> {
       }
     }
     if (mounted) setState(() => _ready = true);
+  }
+
+  /// Live-refresh the account (GB remaining) from the backend; persists it.
+  Future<void> _refreshAccount() async {
+    final token = widget.account?.token;
+    if (token == null) return;
+    final fresh = await AfrowsApi().fetchAccount(token);
+    if (fresh == null || !mounted) return;
+    setState(() => _account = fresh);
+    await SessionStore().save(AccountSession(token: token, account: fresh), widget.accountConfigUri);
+  }
+
+  @override
+  void dispose() {
+    _accountTimer?.cancel();
+    super.dispose();
   }
 
   void _onStatus(V2RayStatus status) {
@@ -225,10 +248,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
                   children: [
                     const Spacer(),
                     _StatusPill(state: _state),
-                    if (_accountMode && widget.account!.account.remainingBytes != null) ...[
+                    if (_accountMode && _account?.remainingBytes != null) ...[
                       const SizedBox(height: 12),
                       Text(
-                        '${_fmtBytes(widget.account!.account.remainingBytes!)} remaining',
+                        '${_fmtBytes(_account!.remainingBytes!)} remaining',
                         style: const TextStyle(color: _teal, fontWeight: FontWeight.bold, fontSize: 15),
                       ),
                     ],

@@ -60,6 +60,23 @@ class AfrowsApi {
     );
   }
 
+  /// Fetches the current account (live GB remaining/usage). Returns null on error.
+  Future<AccountInfo?> fetchAccount(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$base/client/me'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final account = body['account'];
+      if (account is Map) return AccountInfo.fromJson(account.cast<String, dynamic>());
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Returns the first connectable config URI from the user's subscription.
   Future<String?> firstConfigUri(String token) async {
     final res = await http.get(
