@@ -17,6 +17,11 @@ export interface AddUserInput {
  * Each client needs an `email` so it can be listed/removed later.
  */
 export function buildAddUserConfig(input: AddUserInput): Record<string, unknown> {
+  // flow defaults to vision for back-compat; an explicit '' (WS/TLS) omits it,
+  // since xtls flow is invalid on non-TLS transports.
+  const flow = input.flow ?? 'xtls-rprx-vision';
+  const client: Record<string, unknown> = { id: input.uuid, email: input.email, level: 0 };
+  if (flow) client.flow = flow;
   return {
     inbounds: [
       {
@@ -25,14 +30,7 @@ export function buildAddUserConfig(input: AddUserInput): Record<string, unknown>
         protocol: 'vless',
         settings: {
           decryption: 'none',
-          clients: [
-            {
-              id: input.uuid,
-              email: input.email,
-              flow: input.flow ?? 'xtls-rprx-vision',
-              level: 0,
-            },
-          ],
+          clients: [client],
         },
       },
     ],

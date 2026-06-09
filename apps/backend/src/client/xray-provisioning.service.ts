@@ -51,6 +51,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
       port: this.inboundPort(),
       uuid,
       email,
+      flow: this.config.get<string>('AFROWS_XRAY_INBOUND_FLOW')?.trim(),
     });
     const file = path.join(os.tmpdir(), `afrows-adu-${email.replace(/[^a-z0-9_-]/gi, '')}.json`);
     try {
