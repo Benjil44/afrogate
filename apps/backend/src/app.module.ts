@@ -15,6 +15,7 @@ import { RewardedAdWebhookController } from './billing/rewarded-ad-webhook.contr
 import { RewardedAdWebhookService } from './billing/rewarded-ad-webhook.service';
 import { ClientController } from './client/client.controller';
 import { ClientAuthController } from './client/client-auth.controller';
+import { XrayProvisioningService } from './client/xray-provisioning.service';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
@@ -84,6 +85,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     OutboundHealthService,
     OutboundHttpService,
     OutboundSpeedTestService,
+    XrayProvisioningService,
     AdminTokenGuard,
     AgentTokenGuard,
     ClientTokenGuard,
