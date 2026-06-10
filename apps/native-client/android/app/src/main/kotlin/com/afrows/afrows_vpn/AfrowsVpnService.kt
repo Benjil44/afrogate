@@ -262,21 +262,27 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
         defaultListener = listener
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        // Track the UNDERLYING (non-VPN) network — when our VPN is up, the
+        // "default" network is the tun itself, so binding the egress to it loops.
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { notifyDefault(cm, network) }
-            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { notifyDefault(cm, network) }
+            override fun onLinkPropertiesChanged(network: Network, lp: android.net.LinkProperties) { notifyDefault(cm, network) }
             override fun onLost(network: Network) {
                 try { listener.updateDefaultInterface("", -1, false, false) } catch (_: Exception) {}
             }
         }
         networkCallback = cb
-        try { cm.registerDefaultNetworkCallback(cb) } catch (_: Exception) {}
-        cm.activeNetwork?.let { notifyDefault(cm, it) }
+        try { cm.registerNetworkCallback(request, cb) } catch (_: Exception) {}
     }
 
     private fun notifyDefault(cm: ConnectivityManager, network: Network) {
         val listener = defaultListener ?: return
         try {
+            setUnderlyingNetworks(arrayOf(network)) // route the VPN over the real network
             val linkProps = cm.getLinkProperties(network) ?: return
             val name = linkProps.interfaceName ?: return
             val index = JavaNetworkInterface.getByName(name)?.index ?: -1
