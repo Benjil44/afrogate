@@ -249,7 +249,7 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             try { item.setMTU(iface.mtu) } catch (_: Exception) {}
             val addrs = ArrayList<String>()
             for (a in iface.interfaceAddresses) {
-                val host = a.address.hostAddress ?: continue
+                val host = (a.address.hostAddress ?: continue).substringBefore('%') // strip IPv6 zone
                 addrs.add("$host/${a.networkPrefixLength}")
             }
             item.addresses = StringList(addrs)
