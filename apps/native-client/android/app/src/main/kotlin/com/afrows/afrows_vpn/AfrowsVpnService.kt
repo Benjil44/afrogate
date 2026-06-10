@@ -26,6 +26,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.LocalDNSTransport
 import io.nekohasekai.libbox.LogIterator
 import io.nekohasekai.libbox.NetworkInterface as LibboxNetworkInterface
+import io.nekohasekai.libbox.OverrideOptions
 import io.nekohasekai.libbox.NetworkInterfaceIterator
 import io.nekohasekai.libbox.Notification as LibboxNotification
 import io.nekohasekai.libbox.OutboundGroupIterator
@@ -90,6 +91,7 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         try {
             val base = filesDir.absolutePath
             File("$base/work").mkdirs()
+            try { Libbox.redirectStderr("$base/box.log") } catch (_: Exception) {}
             Libbox.setup(SetupOptions().apply {
                 basePath = base
                 workingPath = "$base/work"
@@ -100,8 +102,7 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             val server = CommandServer(this, this)
             server.start()
             commandServer = server
-            server.startOrReloadService(config, null)
-            commandServer = server
+            server.startOrReloadService(config, OverrideOptions())
             running = true
             startStatusClient()
             pushStatus(mapOf("state" to "CONNECTED"))
@@ -234,7 +235,7 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
 
     override fun clearDNSCache() {}
 
-    override fun systemCertificates(): StringIterator? = null
+    override fun systemCertificates(): StringIterator = StringList(emptyList())
 
     override fun underNetworkExtension(): Boolean = false
 
