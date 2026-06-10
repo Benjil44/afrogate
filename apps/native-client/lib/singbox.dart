@@ -127,7 +127,15 @@ String buildSingboxConfig(String uri) {
   }
 
   final config = <String, dynamic>{
-    'log': {'level': 'warn'},
+    'log': {'level': 'info'},
+    'dns': {
+      'servers': [
+        {'tag': 'proxy-dns', 'address': 'https://1.1.1.1/dns-query', 'detour': 'proxy'},
+        {'tag': 'local-dns', 'address': '223.5.5.5', 'detour': 'direct'},
+      ],
+      'final': 'proxy-dns',
+      'strategy': 'ipv4_only',
+    },
     'inbounds': [
       {
         'type': 'tun',

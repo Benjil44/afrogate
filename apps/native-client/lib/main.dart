@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'connect_screen.dart';
 import 'start_screen.dart';
 import 'vpn_config.dart';
 
-void main() => runApp(const AfrowsApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  runApp(const AfrowsApp());
+}
 
 class AfrowsApp extends StatelessWidget {
   const AfrowsApp({super.key});
