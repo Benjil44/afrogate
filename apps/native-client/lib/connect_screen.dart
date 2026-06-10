@@ -97,6 +97,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   void _onStatus(SingboxStatus status) {
     if (!mounted) return;
+    if (status.state == 'LOG') {
+      if (status.log != null) Diag.I.log('box: ${status.log}');
+      return;
+    }
     if (status.state != _state) {
       Diag.I.log('status -> ${status.state}${status.error != null ? " (${status.error})" : ""}');
       if (status.state == 'ERROR' && status.error != null) _snack(status.error!);

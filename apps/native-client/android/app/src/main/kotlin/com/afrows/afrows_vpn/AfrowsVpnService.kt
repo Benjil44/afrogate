@@ -117,6 +117,7 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         try {
             val opts = CommandClientOptions().apply {
                 addCommand(Libbox.CommandStatus)
+                addCommand(Libbox.CommandLog)
                 statusInterval = 1_000_000_000L // 1s in ns
             }
             val client = CommandClient(object : CommandClientHandler {
@@ -128,7 +129,13 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
                 override fun updateClashMode(mode: String?) {}
                 override fun writeConnectionEvents(message: ConnectionEvents?) {}
                 override fun writeGroups(message: OutboundGroupIterator?) {}
-                override fun writeLogs(messageList: LogIterator?) {}
+                override fun writeLogs(messageList: LogIterator?) {
+                    if (messageList == null) return
+                    while (messageList.hasNext()) {
+                        val entry = messageList.next() ?: continue
+                        pushStatus(mapOf("state" to "LOG", "log" to entry.message))
+                    }
+                }
                 override fun writeStatus(message: StatusMessage?) {
                     if (message == null) return
                     pushStatus(

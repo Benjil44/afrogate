@@ -11,6 +11,7 @@ class SingboxStatus {
   final int uplinkTotal;
   final int downlinkTotal;
   final String? error;
+  final String? log;
 
   const SingboxStatus({
     required this.state,
@@ -19,6 +20,7 @@ class SingboxStatus {
     this.uplinkTotal = 0,
     this.downlinkTotal = 0,
     this.error,
+    this.log,
   });
 
   factory SingboxStatus.fromMap(Map<dynamic, dynamic> m) => SingboxStatus(
@@ -28,6 +30,7 @@ class SingboxStatus {
         uplinkTotal: (m['uplinkTotal'] as num?)?.toInt() ?? 0,
         downlinkTotal: (m['downlinkTotal'] as num?)?.toInt() ?? 0,
         error: m['error'] as String?,
+        log: m['log'] as String?,
       );
 }
 
