@@ -40,6 +40,14 @@ kotlin {
     }
 }
 
+repositories {
+    flatDir { dirs("libs") }
+}
+
+dependencies {
+    implementation(":libbox@aar")
+}
+
 flutter {
     source = "../.."
 }

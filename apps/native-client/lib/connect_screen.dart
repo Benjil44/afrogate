@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 import 'api.dart';
 import 'app_version.dart';
 import 'diag.dart';
 import 'diag_screen.dart';
+import 'singbox.dart';
 import 'start_screen.dart';
 import 'vpn_config.dart';
 
@@ -28,7 +28,9 @@ class ConnectScreen extends StatefulWidget {
 
 class _ConnectScreenState extends State<ConnectScreen> {
   final _store = VpnConfigStore();
-  late final FlutterV2ray _v2ray = FlutterV2ray(onStatusChanged: _onStatus);
+  final _vpn = SingboxVpn();
+  StreamSubscription<SingboxStatus>? _statusSub;
+  DateTime? _connectedAt;
 
   bool _ready = false;
   String _state = 'DISCONNECTED';
@@ -54,7 +56,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
   bool get _accountMode => widget.account != null;
 
   Future<void> _init() async {
-    await _v2ray.initializeV2Ray();
+    _statusSub = _vpn.status().listen(_onStatus);
+    if (await _vpn.isRunning()) _state = 'CONNECTED';
     if (_accountMode) {
       _configLink = widget.accountConfigUri;
       _account = widget.account!.account;
@@ -66,7 +69,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       if (link != null) {
         _configLink = link;
         try {
-          _remark = FlutterV2ray.parseFromURL(link).remark;
+          _remark = parseVless(link).remark;
         } catch (_) {}
       }
     }
@@ -88,84 +91,72 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   void dispose() {
     _accountTimer?.cancel();
+    _statusSub?.cancel();
     super.dispose();
   }
 
-  void _onStatus(V2RayStatus status) {
+  void _onStatus(SingboxStatus status) {
     if (!mounted) return;
     if (status.state != _state) {
-      Diag.I.log('status -> ${status.state}');
+      Diag.I.log('status -> ${status.state}${status.error != null ? " (${status.error})" : ""}');
+      if (status.state == 'ERROR' && status.error != null) _snack(status.error!);
     }
     // log traffic once it starts moving (confirms the tunnel carries data)
-    if (status.download + status.upload > 0 && _downloadTotal + _uploadTotal == 0) {
-      Diag.I.log('traffic flowing: down=${status.download}B up=${status.upload}B');
+    if (status.downlink + status.uplink > 0 && _downloadTotal + _uploadTotal == 0) {
+      Diag.I.log('traffic flowing: down=${status.downlink}B/s up=${status.uplink}B/s');
     }
+    final connected = status.state.toUpperCase() == 'CONNECTED';
+    _connectedAt = connected ? (_connectedAt ?? DateTime.now()) : null;
     setState(() {
       _state = status.state;
-      _uploadSpeed = status.uploadSpeed;
-      _downloadSpeed = status.downloadSpeed;
-      _uploadTotal = status.upload;
-      _downloadTotal = status.download;
-      _duration = status.duration;
+      _uploadSpeed = status.uplink;
+      _downloadSpeed = status.downlink;
+      _uploadTotal = status.uplinkTotal;
+      _downloadTotal = status.downlinkTotal;
+      _duration = _fmtDuration(_connectedAt);
     });
   }
 
   Future<void> _toggle() async {
     if (_connected || _connecting) {
       Diag.I.log('Disconnect tapped');
-      await _v2ray.stopV2Ray();
+      await _vpn.stop();
       return;
     }
     if (_configLink == null) {
       await _editConfig();
       if (_configLink == null) return;
     }
-    Diag.I.log('Connect tapped (mode=${_accountMode ? "account" : "manual"}, link=${_configLink!.length} chars)');
-    final V2RayURL parsed;
+    Diag.I.log('Connect tapped (mode=${_accountMode ? "account" : "manual"})');
+    final String config;
     try {
-      parsed = FlutterV2ray.parseFromURL(_configLink!);
-      Diag.I.log('parsed: ${parsed.address}:${parsed.port} remark="${parsed.remark}"');
+      final c = parseVless(_configLink!);
+      Diag.I.log('parsed: ${c.host}:${c.port} ${c.network}/${c.security} sni=${c.sni} path=${c.wsPath}');
+      config = buildSingboxConfig(_configLink!);
+      Diag.I.log('sing-box config built (${config.length} chars)');
     } catch (e) {
-      Diag.I.log('parseFromURL FAILED: $e');
-      _snack('Invalid vless:// link — fix it in settings');
+      Diag.I.log('parse/build FAILED: $e');
+      _snack('Invalid vless:// link');
       return;
     }
-    final String fullConfig;
+    setState(() => _state = 'CONNECTING');
     try {
-      fullConfig = parsed.getFullConfiguration();
-      // log the streamSettings region (where ws/tls/path live) so we can verify it
-      final idx = fullConfig.indexOf('streamSettings');
-      final region = idx >= 0
-          ? fullConfig.substring(idx, (idx + 700).clamp(0, fullConfig.length))
-          : fullConfig;
-      Diag.I.log('streamSettings: $region');
+      final ok = await _vpn.start(config);
+      Diag.I.log('start() -> $ok');
+      if (!ok) {
+        _snack('VPN permission is required to connect');
+        if (mounted) setState(() => _state = 'DISCONNECTED');
+      }
     } catch (e) {
-      Diag.I.log('getFullConfiguration FAILED: $e');
-      _snack('Could not build config: $e');
-      return;
-    }
-    final granted = await _v2ray.requestPermission();
-    Diag.I.log('VPN permission granted=$granted');
-    if (!granted) {
-      _snack('VPN permission is required to connect');
-      return;
-    }
-    try {
-      await _v2ray.startV2Ray(
-        remark: parsed.remark.isNotEmpty ? parsed.remark : 'Afrows',
-        config: fullConfig,
-        proxyOnly: false,
-      );
-      Diag.I.log('startV2Ray() returned (VpnService starting)');
-    } catch (e) {
-      Diag.I.log('startV2Ray FAILED: $e');
+      Diag.I.log('start FAILED: $e');
       _snack('Start failed: $e');
+      if (mounted) setState(() => _state = 'DISCONNECTED');
     }
   }
 
   Future<void> _signOut() async {
     try {
-      await _v2ray.stopV2Ray();
+      await _vpn.stop();
     } catch (_) {}
     await SessionStore().clear();
     if (!mounted) return;
@@ -232,7 +223,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       final link = ctrl.text.trim();
       if (link.isEmpty) return;
       try {
-        final parsed = FlutterV2ray.parseFromURL(link);
+        final parsed = parseVless(link);
         await _store.save(link);
         if (mounted) {
           setState(() {
@@ -352,6 +343,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
             ),
     );
   }
+}
+
+String _fmtDuration(DateTime? since) {
+  if (since == null) return '00:00:00';
+  final d = DateTime.now().difference(since);
+  final h = d.inHours.toString().padLeft(2, '0');
+  final m = (d.inMinutes % 60).toString().padLeft(2, '0');
+  final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+  return '$h:$m:$s';
 }
 
 String _fmtSpeed(int bytesPerSec) {
