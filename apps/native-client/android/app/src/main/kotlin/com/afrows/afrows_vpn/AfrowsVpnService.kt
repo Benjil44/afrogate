@@ -278,22 +278,32 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { notifyDefault(cm, network) }
             override fun onLinkPropertiesChanged(network: Network, lp: android.net.LinkProperties) { notifyDefault(cm, network) }
-            override fun onLost(network: Network) {
-                try { listener.updateDefaultInterface("", -1, false, false) } catch (_: Exception) {}
-            }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { notifyDefault(cm, network) }
         }
         networkCallback = cb
         try { cm.registerNetworkCallback(request, cb) } catch (_: Exception) {}
+        // report the current underlying (non-VPN) network immediately
+        try {
+            for (n in cm.allNetworks) {
+                val caps = cm.getNetworkCapabilities(n) ?: continue
+                if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                ) {
+                    notifyDefault(cm, n)
+                    break
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun notifyDefault(cm: ConnectivityManager, network: Network) {
         val listener = defaultListener ?: return
+        try { setUnderlyingNetworks(arrayOf(network)) } catch (_: Exception) {}
+        val name = try { cm.getLinkProperties(network)?.interfaceName } catch (_: Exception) { null } ?: return
+        val index = try { JavaNetworkInterface.getByName(name)?.index ?: 0 } catch (_: Exception) { 0 }
         try {
-            setUnderlyingNetworks(arrayOf(network)) // route the VPN over the real network
-            val linkProps = cm.getLinkProperties(network) ?: return
-            val name = linkProps.interfaceName ?: return
-            val index = JavaNetworkInterface.getByName(name)?.index ?: -1
             listener.updateDefaultInterface(name, index, false, false)
+            pushStatus(mapOf("state" to "LOG", "log" to "default iface: $name (#$index)"))
         } catch (_: Exception) {}
     }
 
