@@ -246,22 +246,34 @@ class AfrowsVpnService : VpnService(), PlatformInterface, CommandServerHandler {
 
     override fun underNetworkExtension(): Boolean = false
 
+    @Volatile private var lastIfaceSummary = ""
+
     override fun getInterfaces(): NetworkInterfaceIterator {
         val list = ArrayList<LibboxNetworkInterface>()
-        for (iface in JavaNetworkInterface.getNetworkInterfaces()) {
-            if (!iface.isUp) continue
-            val item = LibboxNetworkInterface()
-            item.name = iface.name
-            item.index = iface.index
-            try { item.setMTU(iface.mtu) } catch (_: Exception) {}
-            val addrs = ArrayList<String>()
-            for (a in iface.interfaceAddresses) {
-                val host = (a.address.hostAddress ?: continue).substringBefore('%') // strip IPv6 zone
-                addrs.add("$host/${a.networkPrefixLength}")
+        try {
+            val ifaces = JavaNetworkInterface.getNetworkInterfaces() ?: return InterfaceList(list)
+            for (iface in ifaces) {
+                try {
+                    if (iface.isLoopback) continue
+                    val item = LibboxNetworkInterface()
+                    item.name = iface.name
+                    item.index = iface.index
+                    try { item.setMTU(iface.mtu) } catch (_: Exception) {}
+                    val addrs = ArrayList<String>()
+                    for (a in iface.interfaceAddresses) {
+                        val host = (a.address.hostAddress ?: continue).substringBefore('%') // strip IPv6 zone
+                        addrs.add("$host/${a.networkPrefixLength}")
+                    }
+                    item.addresses = StringList(addrs)
+                    item.type = Libbox.InterfaceTypeOther
+                    list.add(item)
+                } catch (_: Exception) {}
             }
-            item.addresses = StringList(addrs)
-            item.type = Libbox.InterfaceTypeOther
-            list.add(item)
+        } catch (_: Exception) {}
+        val summary = list.joinToString(",") { "${it.name}#${it.index}" }
+        if (summary != lastIfaceSummary) {
+            lastIfaceSummary = summary
+            pushStatus(mapOf("state" to "LOG", "log" to "getInterfaces -> [$summary]"))
         }
         return InterfaceList(list)
     }
