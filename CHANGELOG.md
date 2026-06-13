@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.35 - 2026-06-13
+
+- Added a **Connections** view (new sidebar item) — a unified table of every live client connecting through the server, regardless of protocol: VLESS customer devices (joined to their customer account + cumulative usage + online status from xray) and WireGuard peers (e.g. the MikroTik gateway, shown as infrastructure with tunnel traffic). Each row shows protocol/transport, inbound, owner (customer or "Infrastructure"), online, and used GB; searchable. New box-coupled `ConnectionsService` reads the afrows-xray config inbounds, maps client emails (`cc_<id>@afrows`) to `client_configs`/`customer_accounts`, and pulls online users + per-inbound traffic from the xray stats API. New `GET /api/admin/connections`. This is where the WireGuard tunnel and the VLESS test user now appear side by side (Customers stays billing-only). EN/FA strings added.
+
 ## 0.114.34 - 2026-06-13
 
 - Dashboard polish (single-box): the top **Download/Upload** cards now show **cumulative totals** (distinct from the live **Download now/Upload now** rate cards) so they're no longer duplicates. The empty **Health timeline** ("0 monitored nodes") panel is hidden when there's no node history, with the remaining top panels reflowed to a 2-column layout. The empty **Server health** donut in Operational mix is dropped on single-box (leaving Alert severity + Route quality). Frontend only.

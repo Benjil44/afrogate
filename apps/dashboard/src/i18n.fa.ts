@@ -105,6 +105,23 @@ export const fa: DashboardStrings = {
       colDown: 'دانلود (کل)',
       colUp: 'آپلود (کل)',
     },
+    connectionsPage: {
+      title: 'اتصال‌های زنده',
+      intro: 'هر کلاینتی که از طریق این سرور وصل می‌شود، همراه با پروتکل و مصرفش.',
+      total: '{n} اتصال',
+      empty: 'اتصالی یافت نشد.',
+      unavailable: 'داده اتصال‌ها در دسترس نیست (محیط توسعه یا بک‌اند غیرسروری).',
+      searchPlaceholder: 'جستجوی اتصال‌ها…',
+      colName: 'اتصال',
+      colProtocol: 'پروتکل',
+      colInbound: 'این‌باند',
+      colCustomer: 'مشتری',
+      colOnline: 'آنلاین',
+      colUsed: 'مصرف‌شده',
+      online: 'آنلاین',
+      offline: 'آفلاین',
+      infra: 'زیرساخت',
+    },
     nav: {
       dashboard: 'داشبورد',
       servers: 'سرورها',
@@ -119,6 +136,7 @@ export const fa: DashboardStrings = {
       outbounds: 'اوت‌باندها',
       customers: 'مشتریان',
       inbounds: 'این‌باندها',
+      connections: 'اتصال‌ها',
     },
     pageHeaders: {
       dashboard: { eyebrow: 'عملیات', title: 'نمایش عملیات شبکه' },
@@ -134,6 +152,7 @@ export const fa: DashboardStrings = {
       outbounds: { eyebrow: 'اتصال', title: 'اوت‌باندها' },
       customers: { eyebrow: 'مشترکین', title: 'مشتریان' },
       inbounds: { eyebrow: 'اتصال', title: 'این‌باندها' },
+      connections: { eyebrow: 'زنده', title: 'اتصال‌ها' },
     },
     reseller: {
       pageHeaders: {

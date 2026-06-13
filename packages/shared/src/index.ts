@@ -1870,6 +1870,24 @@ export interface AdminOutboundSubscriptionSummary {
   updatedAt: string;
 }
 
+export interface AdminConnectionSummary {
+  id: string;
+  /** display name — customer name, or client email, or wg peer label */
+  label: string;
+  protocol: string; // vless | wireguard
+  transport: string; // ws | tcp | wireguard
+  inboundTag: string;
+  customerName?: string | null;
+  status?: string | null;
+  online: boolean;
+  usedBytes: number;
+}
+
+export interface AdminConnectionsResponse {
+  connections: AdminConnectionSummary[];
+  available: boolean;
+}
+
 export interface AdminOperationsOverview {
   /** false when box metrics/xray aren't reachable (e.g. dev) */
   available: boolean;

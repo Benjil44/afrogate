@@ -13,7 +13,7 @@ import type {
 export type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 export type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 export type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'reports' | 'routes' | 'outbounds' | 'alerts' | 'settings';
+export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'connections' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'reports' | 'routes' | 'outbounds' | 'alerts' | 'settings';
 export type AlertStatusFilter = 'open' | 'resolved';
 export type AlertSeverityFilter = 'all' | Tone;
 export type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';

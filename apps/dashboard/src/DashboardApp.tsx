@@ -210,6 +210,7 @@ import { RoutesPage } from './pages/RoutesPage';
 import { OutboundsPage } from './pages/OutboundsPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { InboundsPage } from './pages/InboundsPage';
+import { ConnectionsPage } from './pages/ConnectionsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BillingPage, ResellerDashboardPage, ResellerUsersPage } from './pages/BillingReseller';
 import { AdminLoginPage } from './pages/AdminLoginPage';
@@ -1241,6 +1242,8 @@ function ActivePage({
       return <CustomersPage format={format} sessionToken={sessionToken} t={t} />;
     case 'inbounds':
       return <InboundsPage format={format} sessionToken={sessionToken} t={t} />;
+    case 'connections':
+      return <ConnectionsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'alerts':
       return <AlertsPage alerts={alerts} dataState={alertDataState} format={format} sessionToken={sessionToken} t={t} />;
     case 'settings':

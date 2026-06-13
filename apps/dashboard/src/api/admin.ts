@@ -17,6 +17,7 @@ import type {
   AdminLoginResponse,
   AdminOutboundsResponse,
   AdminInboundsResponse,
+  AdminConnectionsResponse,
   AdminOperationsOverview,
   AdminOutboundSummary,
   AdminOutboundSubscriptionSummary,
@@ -397,6 +398,17 @@ export async function fetchAdminOperationsOverview(
     signal,
   });
   return response.json() as Promise<AdminOperationsOverview>;
+}
+
+export async function fetchAdminConnections(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminConnectionsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/connections`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminConnectionsResponse>;
 }
 
 export interface CreateOutboundSubscriptionPayload {

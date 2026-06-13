@@ -26,6 +26,7 @@ import type {
   AdminOutboundsAutoTestState,
   AdminSessionResponse,
   AdminInboundsResponse,
+  AdminConnectionsResponse,
   AdminOperationsOverview,
   AdminOutboundsResponse,
   AdminServerDetail,
@@ -63,6 +64,7 @@ import { AuditService } from '../audit/audit.service';
 import { BackupStatusService } from '../backups/backup-status.service';
 import { AuthService } from '../auth/auth.service';
 import { InboundsService } from '../client/inbounds.service';
+import { ConnectionsService } from '../client/connections.service';
 import { OperationsOverviewService } from '../client/operations-overview.service';
 import { CreateAdminUserDto, UpdateAdminUserDto, UpdateAdminUserPasswordDto } from '../auth/dto/admin-user.dto';
 import { AdminTokenGuard } from '../security/admin-token.guard';
@@ -108,6 +110,7 @@ export class OperationsController {
     private readonly adminReportsService: AdminReportsService,
     private readonly telegramBotConfigService: TelegramBotConfigService,
     private readonly inboundsService: InboundsService,
+    private readonly connectionsService: ConnectionsService,
     private readonly overviewService: OperationsOverviewService,
   ) {}
 
@@ -718,6 +721,12 @@ export class OperationsController {
   @Roles('admin', 'supervisor', 'support', 'auditor')
   getOperationsOverview(): Promise<AdminOperationsOverview> {
     return this.overviewService.getOverview();
+  }
+
+  @Get('connections')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  listConnections(): Promise<AdminConnectionsResponse> {
+    return this.connectionsService.listConnections();
   }
 
   @Get('outbound-subscriptions')
