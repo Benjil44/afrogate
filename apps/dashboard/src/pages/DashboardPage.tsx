@@ -48,23 +48,34 @@ export function DashboardPage({
   timeRange: MetricsTimeRange;
   trafficTotals: TrafficTotals;
 }) {
+  // No monitored-node history (single box) → drop the empty Health timeline and
+  // give the remaining panels a 2-column layout instead of a hole.
+  const showHealthTimeline = chartSeries.length > 0;
   return (
     <>
-      <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(280px,0.34fr)_minmax(0,0.92fr)_minmax(280px,0.38fr)]">
+      <section
+        className={`mt-2 grid items-start gap-2 ${
+          showHealthTimeline
+            ? 'xl:grid-cols-[minmax(280px,0.34fr)_minmax(0,0.92fr)_minmax(280px,0.38fr)]'
+            : 'xl:grid-cols-[minmax(280px,1fr)_minmax(280px,0.55fr)]'
+        }`}
+      >
         <section className="grid gap-2 sm:grid-cols-2" aria-label={t.aria.summary}>
           {summary.map((item) => (
             <MetricCard item={item} key={item.label} />
           ))}
         </section>
 
-        <HealthChartPanel
-          dataState={dataState}
-          format={format}
-          range={timeRange}
-          series={chartSeries}
-          t={t}
-          onRangeChange={onRangeChange}
-        />
+        {showHealthTimeline ? (
+          <HealthChartPanel
+            dataState={dataState}
+            format={format}
+            range={timeRange}
+            series={chartSeries}
+            t={t}
+            onRangeChange={onRangeChange}
+          />
+        ) : null}
         <DashboardOverviewChartsPanel alerts={alerts} format={format} outbounds={outbounds} servers={servers} t={t} />
       </section>
 

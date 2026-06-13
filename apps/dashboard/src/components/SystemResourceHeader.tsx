@@ -14,6 +14,8 @@ export function SystemResourceHeader({
   overrideCpuPercent,
   overrideRamPercent,
   overrideStorageFreePercent,
+  downloadTotal,
+  uploadTotal,
 }: {
   format: DashboardFormatters;
   servers: ServerRowData[];
@@ -23,6 +25,10 @@ export function SystemResourceHeader({
   overrideCpuPercent?: number | null;
   overrideRamPercent?: number | null;
   overrideStorageFreePercent?: number | null;
+  // When provided, the Download/Upload cards show cumulative totals (vs the
+  // live "…now" rate cards), so the two aren't duplicates.
+  downloadTotal?: number | null;
+  uploadTotal?: number | null;
 }) {
   const cpuAverage = overrideCpuPercent ?? averagePercent(servers.map((server) => server.cpu));
   const ramAverage = overrideRamPercent ?? averagePercent(servers.map((server) => server.ram));
@@ -45,8 +51,18 @@ export function SystemResourceHeader({
         <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={format.percent(cpuAverage)} />
         <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={format.percent(ramAverage)} />
         <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={format.percent(lowestStorage)} />
-        <ResourceStat icon={Download} label={t.resources.download} tone="neutral" value={format.bytesPerSecond(trafficTotals.downloadBps)} />
-        <ResourceStat icon={Upload} label={t.resources.upload} tone="neutral" value={format.bytesPerSecond(trafficTotals.uploadBps)} />
+        <ResourceStat
+          icon={Download}
+          label={t.resources.download}
+          tone="neutral"
+          value={downloadTotal != null ? format.bytes(downloadTotal) : format.bytesPerSecond(trafficTotals.downloadBps)}
+        />
+        <ResourceStat
+          icon={Upload}
+          label={t.resources.upload}
+          tone="neutral"
+          value={uploadTotal != null ? format.bytes(uploadTotal) : format.bytesPerSecond(trafficTotals.uploadBps)}
+        />
       </div>
 
       <div className="mt-2 overflow-x-auto rounded-md border border-afro-line bg-afro-panel">

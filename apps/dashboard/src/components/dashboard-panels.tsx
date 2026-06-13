@@ -115,12 +115,17 @@ export function DashboardOverviewChartsPanel({
   );
 
   const chartCards = [
-    {
-      ariaLabel: t.dashboardCharts.serverHealth,
-      label: t.dashboardCharts.serverHealth,
-      option: serverOption,
-      value: t.dashboardCharts.count(format.integer(servers.length)),
-    },
+    // Server-health donut only makes sense with a registered server fleet.
+    ...(servers.length > 0
+      ? [
+          {
+            ariaLabel: t.dashboardCharts.serverHealth,
+            label: t.dashboardCharts.serverHealth,
+            option: serverOption,
+            value: t.dashboardCharts.count(format.integer(servers.length)),
+          },
+        ]
+      : []),
     {
       ariaLabel: t.dashboardCharts.alertSeverity,
       label: t.dashboardCharts.alertSeverity,

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.34 - 2026-06-13
+
+- Dashboard polish (single-box): the top **Download/Upload** cards now show **cumulative totals** (distinct from the live **Download now/Upload now** rate cards) so they're no longer duplicates. The empty **Health timeline** ("0 monitored nodes") panel is hidden when there's no node history, with the remaining top panels reflowed to a 2-column layout. The empty **Server health** donut in Operational mix is dropped on single-box (leaving Alert severity + Route quality). Frontend only.
+
 ## 0.114.33 - 2026-06-13
 
 - Information-architecture phase 3: **Dashboard rewired to the single-box reality** so the empty `--`/0 cards now show real data. New box-coupled `OperationsOverviewService` + `GET /api/admin/operations-overview` returns the box's own **CPU / RAM / free-disk** (read via `os`/`statfs`, no agent fleet needed) plus **active users** (xray online users) and **download/upload** (totals + live rate, from xray inbound stats with rolling-sample rate). The dashboard's top resource cards, the Active-users / Download-now / Upload-now summary cards, and the Capacity panel now read from this overview (falling back to the fleet path when present). The always-empty **Servers** and **Tunnels** panels are now hidden when no server nodes are registered (single-box), letting Alerts span full width. Degrades gracefully in dev (`available:false`). Known follow-ups: the "Health timeline / monitored nodes" chart and the "Server health" donut still reflect the fleet model.

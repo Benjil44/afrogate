@@ -1087,6 +1087,8 @@ function AuthenticatedDashboard({
               overrideCpuPercent={overview?.available ? overview.cpuPercent : undefined}
               overrideRamPercent={overview?.available ? overview.memPercent : undefined}
               overrideStorageFreePercent={overview?.available ? overview.diskFreePercent : undefined}
+              downloadTotal={overview?.available ? overview.downloadTotalBytes : undefined}
+              uploadTotal={overview?.available ? overview.uploadTotalBytes : undefined}
             />
 
             <div className="mt-2.5 border-t border-afro-line" />
