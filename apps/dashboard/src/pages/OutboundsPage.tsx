@@ -19,6 +19,7 @@ import {
 } from '../api/admin';
 
 type Protocol = 'vless' | 'wireguard' | 'l2tp' | 'subscription';
+type SortKey = 'name' | 'status' | 'ping' | 'jitter' | 'down' | 'up';
 
 const POLL_MS = 20000;
 const FAST_POLL_MS = 4000;
@@ -28,6 +29,8 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [rows, setRows] = useState<AdminOutboundSummary[]>([]);
   const [subs, setSubs] = useState<AdminOutboundSubscriptionSummary[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [sortKey, setSortKey] = useState<SortKey>('status');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [subUrl, setSubUrl] = useState('');
   const [auto, setAuto] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -305,6 +308,50 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
     return days >= 0 ? `${days}d` : s.subExpired;
   };
 
+  // --- Sorting (best servers float to top; untested rows always sort last) ---
+  const statusRank = (st: string) => (st === 'healthy' || st === 'up' ? 0 : st === 'unknown' || st === '' ? 1 : 2);
+  const sortValue = (o: AdminOutboundSummary, key: SortKey): number | string | null => {
+    switch (key) {
+      case 'name':
+        return o.name.toLowerCase();
+      case 'status':
+        return statusRank(o.healthStatus);
+      case 'ping':
+        return o.latestLatencyMs ?? null;
+      case 'jitter':
+        return o.latestJitterMs ?? null;
+      case 'down':
+        return o.latestDownMbps ?? null;
+      case 'up':
+        return o.latestUpMbps ?? null;
+    }
+  };
+  const sortRows = (list: AdminOutboundSummary[]): AdminOutboundSummary[] =>
+    [...list].sort((a, b) => {
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
+      if (va == null && vb == null) return a.name.localeCompare(b.name);
+      if (va == null) return 1; // nulls (untested) last
+      if (vb == null) return -1;
+      let base = typeof va === 'string' ? va.localeCompare(vb as string) : (va as number) - (vb as number);
+      if (base === 0) base = a.name.localeCompare(b.name);
+      return sortDir === 'asc' ? base : -base;
+    });
+  const defaultDir = (key: SortKey): 'asc' | 'desc' => (key === 'down' || key === 'up' ? 'desc' : 'asc');
+  const onSort = (key: SortKey) => {
+    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir(defaultDir(key));
+    }
+  };
+  const sortArrow = (key: SortKey) => (sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '');
+
+  // Collapse/expand all subscription groups.
+  const anyExpanded = subs.some((su) => isExpanded(su.id));
+  const setAllExpanded = (val: boolean) =>
+    setExpanded(Object.fromEntries(subs.map((su) => [su.id, val])));
+
   // Group child configs under their subscription; everything else is standalone.
   const childrenBySub = new Map<string, AdminOutboundSummary[]>();
   const standalone: AdminOutboundSummary[] = [];
@@ -397,6 +444,16 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
           {s.auto}
         </button>
         <div className="flex items-center gap-2">
+          {subs.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setAllExpanded(!anyExpanded)}
+              className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+            >
+              {anyExpanded ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+              {anyExpanded ? s.collapseAll : s.expandAll}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void onSyncAll()}
@@ -611,13 +668,37 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
         <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-afro-line text-left text-[12px] uppercase tracking-wide text-afro-muted">
-              <th className="px-4 py-3 font-bold">{s.colName}</th>
+              <th className="px-4 py-3 font-bold">
+                <button type="button" onClick={() => onSort('name')} className="uppercase hover:text-afro-teal">
+                  {s.colName}{sortArrow('name')}
+                </button>
+              </th>
               <th className="px-3 py-3 font-bold">{s.colType}</th>
-              <th className="px-3 py-3 font-bold">{s.colStatus}</th>
-              <th className="px-3 py-3 font-bold">{s.colPing}</th>
-              <th className="px-3 py-3 font-bold">{s.colJitter}</th>
-              <th className="px-3 py-3 font-bold">{s.colDown}</th>
-              <th className="px-3 py-3 font-bold">{s.colUp}</th>
+              <th className="px-3 py-3 font-bold">
+                <button type="button" onClick={() => onSort('status')} className="uppercase hover:text-afro-teal">
+                  {s.colStatus}{sortArrow('status')}
+                </button>
+              </th>
+              <th className="px-3 py-3 font-bold">
+                <button type="button" onClick={() => onSort('ping')} className="uppercase hover:text-afro-teal">
+                  {s.colPing}{sortArrow('ping')}
+                </button>
+              </th>
+              <th className="px-3 py-3 font-bold">
+                <button type="button" onClick={() => onSort('jitter')} className="uppercase hover:text-afro-teal">
+                  {s.colJitter}{sortArrow('jitter')}
+                </button>
+              </th>
+              <th className="px-3 py-3 font-bold">
+                <button type="button" onClick={() => onSort('down')} className="uppercase hover:text-afro-teal">
+                  {s.colDown}{sortArrow('down')}
+                </button>
+              </th>
+              <th className="px-3 py-3 font-bold">
+                <button type="button" onClick={() => onSort('up')} className="uppercase hover:text-afro-teal">
+                  {s.colUp}{sortArrow('up')}
+                </button>
+              </th>
               <th className="px-4 py-3 text-right font-bold">{s.colActions}</th>
             </tr>
           </thead>
@@ -631,7 +712,7 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
             ) : (
               <>
                 {subs.map((sub) => {
-                  const kids = childrenBySub.get(sub.id) ?? [];
+                  const kids = sortRows(childrenBySub.get(sub.id) ?? []);
                   const used = (sub.userInfo.upload ?? 0) + (sub.userInfo.download ?? 0);
                   const open = isExpanded(sub.id);
                   const subBusy = busy[`sub:${sub.id}`];
@@ -689,7 +770,7 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
                     </Fragment>
                   );
                 })}
-                {standalone.map((o) => renderRow(o, false))}
+                {sortRows(standalone).map((o) => renderRow(o, false))}
               </>
             )}
           </tbody>

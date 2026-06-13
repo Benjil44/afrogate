@@ -72,6 +72,8 @@ export const en = {
       subRefresh: 'Refresh now',
       subDelete: 'Delete subscription',
       subEmpty: 'No configs imported yet.',
+      collapseAll: 'Collapse all',
+      expandAll: 'Expand all',
     },
     nav: {
       dashboard: 'Dashboard',

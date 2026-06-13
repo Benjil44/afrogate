@@ -74,6 +74,8 @@ export const fa: DashboardStrings = {
       subRefresh: 'به‌روزرسانی فوری',
       subDelete: 'حذف اشتراک',
       subEmpty: 'هنوز کانفیگی وارد نشده است.',
+      collapseAll: 'بستن همه',
+      expandAll: 'باز کردن همه',
     },
     nav: {
       dashboard: 'داشبورد',

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.30 - 2026-06-13
+
+- Outbounds page: **sortable columns** + **collapse/expand all**. Clicking the Name/Status/Ping/Jitter/Download/Upload headers sorts the table (with an ↑/↓ indicator); untested rows always sort last, and sorting applies within each subscription group as well as standalone outbounds — so after running tests the fastest/healthiest servers float to the top. Added a "Collapse all / Expand all" toolbar button for subscription groups (each group also keeps its own chevron toggle). Frontend only. EN/FA strings added.
+
 ## 0.114.29 - 2026-06-13
 
 - Added **outbound subscriptions**: import a subscription URL once and it expands into many configs shown as nested rows under a collapsible group on the Outbounds page. New `outbound_subscriptions` table + `subscription_id`/`subscription_key` on `outbounds` (migration 0032, additive/idempotent); each fetched VLESS link becomes a child outbound so it reuses test/health/enable/edit/routing. Backend fetches the URL server-side (v2rayNG UA), parses `profile-title`/`profile-update-interval`/`subscription-userinfo` (quota + expiry) headers and the share links (non-VLESS like `ss://` are skipped), and upserts children by a stable per-config key on refresh (preserving the operator's enable/disable choices, removing configs that disappear). New admin endpoints (list/add/refresh/delete) and a background service that auto-refreshes due subscriptions hourly (honoring the 12h interval). Dashboard: subscription group header (title, config count, used/total quota, expiry, Refresh + Delete) with nested config rows; "Add" gains a Subscription option. EN/FA strings added.
