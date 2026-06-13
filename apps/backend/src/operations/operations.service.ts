@@ -1412,6 +1412,10 @@ export class OperationsService {
   }
 
   async updateOutbound(id: string, dto: UpdateOutboundDto, actor: AuthActor | undefined): Promise<AdminOutboundSummary> {
+    // Resolve the existing type so a pasted vless:// link (config.importUrl) is
+    // parsed into a full config — mirroring create's "import from link" path.
+    const existing = await this.getOutbound(id);
+    dto = this.applyVlessImportConfig(dto.type ?? existing.type, dto);
     this.assertSafeConfig(dto.config);
 
     await this.database.transaction(async (executor) => {
@@ -4687,9 +4691,21 @@ export class OperationsService {
   }
 
   private applyVlessImport(dto: CreateOutboundDto): CreateOutboundDto {
+    return this.applyVlessImportConfig(dto.type, dto);
+  }
+
+  /**
+   * If `config.importUrl` holds a vless:// link (and the outbound is VLESS),
+   * parse it into a self-contained config. Shared by create and update so the
+   * dashboard's "replace via link" edit works the same way as add.
+   */
+  private applyVlessImportConfig<T extends { name?: string; config?: Record<string, unknown> }>(
+    type: string | undefined,
+    dto: T,
+  ): T {
     const config = this.asRecord(dto.config);
     const importUrl = typeof config.importUrl === 'string' ? config.importUrl : null;
-    if ((dto.type === 'vless-local-proxy' || dto.type === 'vless') && importUrl) {
+    if ((type === 'vless-local-proxy' || type === 'vless') && importUrl) {
       let parsed;
       try {
         parsed = parseVlessUrl(importUrl);

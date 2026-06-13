@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, RefreshCw, Trash2, Zap, Power, X } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Zap, Power, X, Pencil } from 'lucide-react';
 import type { AdminOutboundSummary } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
 import {
@@ -24,6 +24,7 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [rows, setRows] = useState<AdminOutboundSummary[]>([]);
   const [auto, setAuto] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null); // null = add mode
   const [protocol, setProtocol] = useState<Protocol>('vless');
   const [name, setName] = useState('');
   const [vlessLink, setVlessLink] = useState('');
@@ -31,6 +32,19 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [l2tpServer, setL2tpServer] = useState('');
   const [l2tpUser, setL2tpUser] = useState('');
   const [l2tpSecret, setL2tpSecret] = useState('');
+  // Inline VLESS field editor (edit mode). baseConfig keeps fields we don't show
+  // (flow, pbk/sid, fingerprint) so they survive a save.
+  const [baseConfig, setBaseConfig] = useState<Record<string, unknown>>({});
+  const [fAddress, setFAddress] = useState('');
+  const [fPort, setFPort] = useState('');
+  const [fUuid, setFUuid] = useState('');
+  const [fNetwork, setFNetwork] = useState('tcp');
+  const [fHeaderType, setFHeaderType] = useState('none');
+  const [fHost, setFHost] = useState('');
+  const [fSecurity, setFSecurity] = useState('none');
+  const [fEncryption, setFEncryption] = useState('none');
+  const [fSni, setFSni] = useState('');
+  const [fPath, setFPath] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -74,12 +88,98 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
     setL2tpUser('');
     setL2tpSecret('');
     setName('');
+    setBaseConfig({});
+    setFAddress('');
+    setFPort('');
+    setFUuid('');
+    setFNetwork('tcp');
+    setFHeaderType('none');
+    setFHost('');
+    setFSecurity('none');
+    setFEncryption('none');
+    setFSni('');
+    setFPath('');
     setError(null);
+  };
+
+  const protocolOf = (type: string): Protocol =>
+    type === 'wireguard' ? 'wireguard' : type === 'l2tp' ? 'l2tp' : 'vless';
+
+  const str = (v: unknown): string => (v == null ? '' : String(v));
+
+  const openEdit = (o: AdminOutboundSummary) => {
+    resetForm();
+    const cfg = o.config ?? {};
+    setEditId(o.id);
+    setProtocol(protocolOf(o.type));
+    setName(o.name);
+    setBaseConfig(cfg);
+    // Pre-fill inline VLESS fields (config is not redacted for VLESS).
+    setFAddress(str(cfg.address));
+    setFPort(str(cfg.port));
+    setFUuid(str(cfg.uuid));
+    setFNetwork(str(cfg.network) || 'tcp');
+    setFHeaderType(str(cfg.headerType) || 'none');
+    setFHost(str(cfg.host));
+    setFSecurity(str(cfg.security) || 'none');
+    setFEncryption(str(cfg.encryption) || 'none');
+    setFSni(str(cfg.serverName));
+    setFPath(str(cfg.path));
+    setAddOpen(true);
+  };
+
+  // Build the VLESS config from the inline fields, preserving untouched keys.
+  const buildInlineVlessConfig = (): Record<string, unknown> => {
+    const cfg: Record<string, unknown> = { ...baseConfig };
+    delete cfg.importUrl;
+    cfg.address = fAddress.trim();
+    cfg.port = Number(fPort) || baseConfig.port || 443;
+    cfg.uuid = fUuid.trim();
+    cfg.network = fNetwork;
+    cfg.security = fSecurity;
+    cfg.encryption = fEncryption.trim() || 'none';
+    const setOpt = (k: string, v: string) => {
+      if (v && v.trim()) cfg[k] = v.trim();
+      else delete cfg[k];
+    };
+    setOpt('headerType', fHeaderType === 'none' ? '' : fHeaderType);
+    setOpt('host', fHost);
+    setOpt('serverName', fSni);
+    setOpt('path', fPath);
+    return cfg;
   };
 
   const onSave = async () => {
     setSaving(true);
     setError(null);
+
+    // EDIT mode: update name + config (inline fields, or replace via pasted link).
+    if (editId) {
+      let config: Record<string, unknown> | undefined;
+      if (protocol === 'vless') {
+        config = vlessLink.trim() ? { importUrl: vlessLink.trim() } : buildInlineVlessConfig();
+      } else if (protocol === 'wireguard') {
+        config = wgConfig.trim() ? { importConfig: wgConfig.trim() } : undefined;
+      } else {
+        config = l2tpServer.trim() || l2tpUser.trim() || l2tpSecret
+          ? { server: l2tpServer.trim(), username: l2tpUser.trim(), ...(l2tpSecret ? { secret: l2tpSecret } : {}) }
+          : undefined;
+      }
+      try {
+        await updateAdminOutbound(sessionToken, editId, { name: name.trim() || undefined, config });
+        resetForm();
+        setAddOpen(false);
+        setEditId(null);
+        await load();
+      } catch {
+        setError(s.saveError);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // ADD mode (import from link/config).
     let payload: CreateOutboundPayload;
     if (protocol === 'vless') {
       if (!vlessLink.trim()) {
@@ -184,8 +284,11 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
           <button
             type="button"
             onClick={() => {
+              const next = !(addOpen && !editId);
               resetForm();
-              setAddOpen((o) => !o);
+              setEditId(null);
+              setProtocol('vless');
+              setAddOpen(next);
             }}
             className="inline-flex min-h-9 items-center gap-2 rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white hover:bg-[#1f3138]"
           >
@@ -208,8 +311,15 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
       {addOpen ? (
         <div className="rounded-md border border-afro-line bg-afro-panel p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-afro-ink">{s.addTitle}</h2>
-            <button type="button" onClick={() => setAddOpen(false)} className="text-afro-muted hover:text-afro-ink">
+            <h2 className="text-sm font-bold text-afro-ink">{editId ? s.editTitle : s.addTitle}</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setAddOpen(false);
+                setEditId(null);
+              }}
+              className="text-afro-muted hover:text-afro-ink"
+            >
               <X size={16} />
             </button>
           </div>
@@ -220,7 +330,8 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
               <select
                 value={protocol}
                 onChange={(e) => setProtocol(e.target.value as Protocol)}
-                className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold outline-none focus:border-afro-teal"
+                disabled={!!editId}
+                className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold outline-none focus:border-afro-teal disabled:opacity-60"
               >
                 <option value="vless">VLESS</option>
                 <option value="wireguard">WireGuard</option>
@@ -238,18 +349,70 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
           </div>
 
           {protocol === 'vless' ? (
-            <label className="mt-3 grid gap-1.5">
-              <span className="text-[13px] font-bold text-afro-muted">{s.vlessLink}</span>
-              <textarea
-                value={vlessLink}
-                onChange={(e) => setVlessLink(e.target.value)}
-                rows={3}
-                dir="ltr"
-                placeholder="vless://..."
-                className="rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-xs outline-none focus:border-afro-teal"
-              />
-              <span className="text-[12px] text-afro-muted">{s.vlessHint}</span>
-            </label>
+            <>
+              {editId ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldAddress}</span>
+                    <input value={fAddress} onChange={(e) => setFAddress(e.target.value)} dir="ltr" className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldPort}</span>
+                    <input value={fPort} onChange={(e) => setFPort(e.target.value)} dir="ltr" inputMode="numeric" className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal" />
+                  </label>
+                  <label className="grid gap-1.5 md:col-span-2">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldUuid}</span>
+                    <input value={fUuid} onChange={(e) => setFUuid(e.target.value)} dir="ltr" className="min-h-10 rounded-md border border-afro-line bg-white px-3 font-mono text-xs outline-none focus:border-afro-teal" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldNetwork}</span>
+                    <select value={fNetwork} onChange={(e) => setFNetwork(e.target.value)} className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal">
+                      {['tcp', 'ws', 'grpc', 'h2', 'quic'].map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldHeaderType}</span>
+                    <select value={fHeaderType} onChange={(e) => setFHeaderType(e.target.value)} className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal">
+                      {['none', 'http'].map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldHost}</span>
+                    <input value={fHost} onChange={(e) => setFHost(e.target.value)} dir="ltr" placeholder="telewebion.ir" className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldSecurity}</span>
+                    <select value={fSecurity} onChange={(e) => setFSecurity(e.target.value)} className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal">
+                      {['none', 'tls', 'reality'].map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldSni}</span>
+                    <input value={fSni} onChange={(e) => setFSni(e.target.value)} dir="ltr" className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldPath}</span>
+                    <input value={fPath} onChange={(e) => setFPath(e.target.value)} dir="ltr" placeholder="/afrowsws" className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal" />
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-[13px] font-bold text-afro-muted">{s.fldEncryption}</span>
+                    <input value={fEncryption} onChange={(e) => setFEncryption(e.target.value)} dir="ltr" className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal" />
+                  </label>
+                </div>
+              ) : null}
+              <label className="mt-3 grid gap-1.5">
+                <span className="text-[13px] font-bold text-afro-muted">{editId ? s.replaceLink : s.vlessLink}</span>
+                <textarea
+                  value={vlessLink}
+                  onChange={(e) => setVlessLink(e.target.value)}
+                  rows={3}
+                  dir="ltr"
+                  placeholder="vless://..."
+                  className="rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-xs outline-none focus:border-afro-teal"
+                />
+                <span className="text-[12px] text-afro-muted">{editId ? s.replaceHint : s.vlessHint}</span>
+              </label>
+            </>
           ) : protocol === 'wireguard' ? (
             <label className="mt-3 grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.wireguardConfig}</span>
@@ -292,7 +455,10 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
             </button>
             <button
               type="button"
-              onClick={() => setAddOpen(false)}
+              onClick={() => {
+                setAddOpen(false);
+                setEditId(null);
+              }}
               className="inline-flex min-h-10 items-center rounded-md border border-afro-line px-4 text-sm font-bold text-afro-muted"
             >
               {s.cancel}
@@ -355,6 +521,15 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
                           </button>
                         );
                       })()}
+                      <button
+                        type="button"
+                        onClick={() => openEdit(o)}
+                        disabled={busy[o.id]}
+                        title={s.edit}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+                      >
+                        <Pencil size={14} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => onToggleEnabled(o)}

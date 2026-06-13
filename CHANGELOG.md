@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.28 - 2026-06-13
+
+- Added an **Edit** action to the Outbounds page so admins can change an outbound in place instead of deleting and re-adding it. For VLESS outbounds the editor exposes the visible connection fields inline (address, port, UUID, network, header type, host/camouflage, security, SNI, path, encryption, name) pre-filled from the current config, preserving untouched keys (flow, pbk/sid, fingerprint) on save; a "replace via link" box also accepts a fresh `vless://` link to swap the whole config. The backend `updateOutbound` now parses `config.importUrl` the same way create does (shared `applyVlessImportConfig` helper). Secrets stay protected: WireGuard/L2TP secret fields remain redacted and are only changeable via re-import. EN/FA strings added.
+
 ## 0.114.27 - 2026-06-04
 
 - Added automatic in-place version refresh so open dashboards pick up a new deploy without a manual page reload. The backend `/api/health` now reports the running monorepo `version` (resolved once at module load by walking up to the root `afrows` package.json). A new `VersionWatcher` component polls `/api/health` every 30s, and when the deployed version differs from the bundle it was built with, it shows a bottom banner (EN/FA) and auto-reloads after 4s — guarded by a `sessionStorage` key to prevent reload loops while versions converge.
