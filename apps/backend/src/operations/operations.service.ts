@@ -8,6 +8,7 @@ import type {
   AdminAlertSummary,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminOutboundSubscriptionSummary,
   AdminOutboundTestResult,
   AdminOutboundsAutoTestState,
   AdminProtocolServerApplyAdapterSummary,
@@ -80,6 +81,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { parseVlessUrl } from './outbound-vless-parser';
+import { parseSubscription, type ParsedSubscription } from './outbound-subscription-parser';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
 import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, roundMetric, thresholdPenalty } from './route-scoring';
 import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, getRouteProbes, isProtocolSpecificScoreProfile, isRecord, isRouteProbeMetric, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores, summarizeRouteProbes } from './route-metrics';
@@ -89,7 +91,7 @@ import { normalizeAlertStatusParam, normalizeLimitParam, normalizeRangeHoursPara
 import { describeRouteDecisionTimelineDetail, incidentSeverityFromAlert, routeDecisionTimelineSeverity } from './timeline-severity';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
-import { CreateOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
+import { CreateOutboundDto, CreateOutboundSubscriptionDto, UpdateOutboundDto } from './dto/outbound.dto';
 import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto, UpsertServerAccessProfileDto } from './dto/server.dto';
 import {
   CreateServerInterfaceDto,
@@ -182,6 +184,23 @@ interface OutboundRow {
   latestUpMbps: number | null;
   lastSpeedTestAt: Date | null;
   pendingTest: boolean;
+  subscriptionId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface OutboundSubscriptionRow {
+  id: string;
+  name: string;
+  routeGroup: string;
+  profileTitle: string | null;
+  updateIntervalHours: number | null;
+  userInfo: Record<string, unknown> | null;
+  enabled: boolean;
+  configCount: number;
+  lastFetchedAt: Date | null;
+  lastStatus: string;
+  lastError: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1273,6 +1292,7 @@ export class OperationsService {
           o.latest_up_mbps AS "latestUpMbps",
           o.last_speed_test_at AS "lastSpeedTestAt",
           (o.speed_test_requested_at IS NOT NULL) AS "pendingTest",
+          o.subscription_id AS "subscriptionId",
           o.created_at AS "createdAt",
           o.updated_at AS "updatedAt"
         FROM outbounds o
@@ -1327,6 +1347,7 @@ export class OperationsService {
           o.latest_up_mbps AS "latestUpMbps",
           o.last_speed_test_at AS "lastSpeedTestAt",
           (o.speed_test_requested_at IS NOT NULL) AS "pendingTest",
+          o.subscription_id AS "subscriptionId",
           o.created_at AS "createdAt",
           o.updated_at AS "updatedAt"
         FROM outbounds o
@@ -1462,6 +1483,227 @@ export class OperationsService {
         executor,
       );
     });
+  }
+
+  // ---- Outbound subscriptions ----
+
+  async listOutboundSubscriptions(): Promise<AdminOutboundSubscriptionSummary[]> {
+    const result = await this.database.query<OutboundSubscriptionRow>(
+      `
+        SELECT id, name, route_group AS "routeGroup", profile_title AS "profileTitle",
+               update_interval_hours AS "updateIntervalHours", userinfo AS "userInfo",
+               enabled, config_count AS "configCount", last_fetched_at AS "lastFetchedAt",
+               last_status AS "lastStatus", last_error AS "lastError",
+               created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM outbound_subscriptions
+        ORDER BY created_at ASC
+      `,
+    );
+    return result.rows.map((r) => this.mapSubscription(r));
+  }
+
+  async getOutboundSubscription(id: string): Promise<AdminOutboundSubscriptionSummary> {
+    const result = await this.database.query<OutboundSubscriptionRow>(
+      `
+        SELECT id, name, route_group AS "routeGroup", profile_title AS "profileTitle",
+               update_interval_hours AS "updateIntervalHours", userinfo AS "userInfo",
+               enabled, config_count AS "configCount", last_fetched_at AS "lastFetchedAt",
+               last_status AS "lastStatus", last_error AS "lastError",
+               created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM outbound_subscriptions
+        WHERE id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Subscription not found');
+    return this.mapSubscription(row);
+  }
+
+  async addOutboundSubscription(
+    dto: CreateOutboundSubscriptionDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminOutboundSubscriptionSummary> {
+    const url = dto.url.trim();
+    if (!/^https?:\/\//i.test(url)) throw new BadRequestException('Subscription URL must be http(s)');
+    const parsed = await this.fetchAndParseSubscription(url);
+    const name = dto.name?.trim() || parsed.title || 'Subscription';
+    const routeGroup = dto.routeGroup ?? 'default';
+    const enabled = dto.enabled ?? true;
+
+    const subId = await this.database.transaction(async (executor) => {
+      const ins = await executor.query<{ id: string }>(
+        `
+          INSERT INTO outbound_subscriptions
+            (name, url, route_group, profile_title, update_interval_hours, userinfo, enabled, last_fetched_at, last_status)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, now(), 'ok')
+          RETURNING id
+        `,
+        [name, url, routeGroup, parsed.title ?? null, parsed.updateIntervalHours ?? null, JSON.stringify(parsed.userInfo), enabled],
+      );
+      const id = ins.rows[0].id;
+      await this.syncSubscriptionChildren(executor, id, routeGroup, enabled, parsed);
+      await this.audit.record(
+        actor,
+        'outbound.subscription.create',
+        'outbound_subscription',
+        id,
+        { configCount: parsed.configs.length, skipped: parsed.skipped },
+        executor,
+      );
+      return id;
+    });
+    return this.getOutboundSubscription(subId);
+  }
+
+  async refreshOutboundSubscription(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminOutboundSubscriptionSummary> {
+    const sub = await this.getOutboundSubscription(id); // throws if missing
+    const url = await this.subscriptionUrl(id);
+    try {
+      const parsed = await this.fetchAndParseSubscription(url);
+      await this.database.transaction(async (executor) => {
+        await executor.query(
+          `
+            UPDATE outbound_subscriptions
+            SET profile_title = $2, update_interval_hours = $3, userinfo = $4::jsonb,
+                last_fetched_at = now(), last_status = 'ok', last_error = NULL, updated_at = now()
+            WHERE id = $1
+          `,
+          [id, parsed.title ?? null, parsed.updateIntervalHours ?? null, JSON.stringify(parsed.userInfo)],
+        );
+        await this.syncSubscriptionChildren(executor, id, sub.routeGroup, sub.enabled, parsed);
+        await this.audit.record(
+          actor,
+          'outbound.subscription.refresh',
+          'outbound_subscription',
+          id,
+          { configCount: parsed.configs.length, skipped: parsed.skipped },
+          executor,
+        );
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      await this.database.query(
+        `UPDATE outbound_subscriptions SET last_status = 'error', last_error = $2, last_fetched_at = now(), updated_at = now() WHERE id = $1`,
+        [id, msg.slice(0, 500)],
+      );
+      throw new BadRequestException(`Subscription refresh failed: ${msg}`);
+    }
+    return this.getOutboundSubscription(id);
+  }
+
+  async deleteOutboundSubscription(id: string, actor: AuthActor | undefined): Promise<void> {
+    await this.database.transaction(async (executor) => {
+      const res = await executor.query<{ id: string }>(
+        'DELETE FROM outbound_subscriptions WHERE id = $1 RETURNING id',
+        [id],
+      );
+      if (!res.rows[0]) throw new NotFoundException('Subscription not found');
+      await this.audit.record(actor, 'outbound.subscription.delete', 'outbound_subscription', id, {}, executor);
+    });
+  }
+
+  /** Subscription ids whose update interval has elapsed (for the background refresher). */
+  async listDueOutboundSubscriptionIds(): Promise<string[]> {
+    const result = await this.database.query<{ id: string }>(
+      `
+        SELECT id FROM outbound_subscriptions
+        WHERE enabled = true
+          AND (last_fetched_at IS NULL
+               OR last_fetched_at + (COALESCE(update_interval_hours, 12) || ' hours')::interval < now())
+      `,
+    );
+    return result.rows.map((r) => r.id);
+  }
+
+  private async subscriptionUrl(id: string): Promise<string> {
+    const r = await this.database.query<{ url: string }>('SELECT url FROM outbound_subscriptions WHERE id = $1', [id]);
+    if (!r.rows[0]) throw new NotFoundException('Subscription not found');
+    return r.rows[0].url;
+  }
+
+  private async fetchAndParseSubscription(url: string): Promise<ParsedSubscription> {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { 'User-Agent': 'v2rayNG/1.8.0', Accept: '*/*' },
+        signal: AbortSignal.timeout(20000),
+        redirect: 'follow',
+      });
+    } catch (error) {
+      throw new Error(`fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.text();
+    const headers: Record<string, string | undefined> = {};
+    res.headers.forEach((v, k) => {
+      headers[k] = v;
+    });
+    const parsed = parseSubscription(headers, body);
+    if (parsed.configs.length === 0) throw new Error('No VLESS configs found in subscription');
+    return parsed;
+  }
+
+  private async syncSubscriptionChildren(
+    executor: DatabaseQueryExecutor,
+    subscriptionId: string,
+    routeGroup: string,
+    enabledForNew: boolean,
+    parsed: ParsedSubscription,
+  ): Promise<void> {
+    const keys = parsed.configs.map((c) => c.key);
+    // Remove children that disappeared from the subscription.
+    await executor.query(
+      `DELETE FROM outbounds
+       WHERE subscription_id = $1
+         AND (subscription_key IS NULL OR NOT (subscription_key = ANY($2::text[])))`,
+      [subscriptionId, keys],
+    );
+    // Upsert each config by its stable key. enabled is set only on insert so a
+    // user's later enable/disable choice survives refreshes.
+    for (const c of parsed.configs) {
+      await executor.query(
+        `
+          INSERT INTO outbounds (name, type, route_group, enabled, config, subscription_id, subscription_key, health_status)
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'unknown')
+          ON CONFLICT (subscription_id, subscription_key) WHERE subscription_id IS NOT NULL
+          DO UPDATE SET name = EXCLUDED.name, config = EXCLUDED.config, route_group = EXCLUDED.route_group, updated_at = now()
+        `,
+        [c.name, c.type, routeGroup, enabledForNew, JSON.stringify(c.config), subscriptionId, c.key],
+      );
+    }
+    await executor.query('UPDATE outbound_subscriptions SET config_count = $2, updated_at = now() WHERE id = $1', [
+      subscriptionId,
+      parsed.configs.length,
+    ]);
+  }
+
+  private mapSubscription(row: OutboundSubscriptionRow): AdminOutboundSubscriptionSummary {
+    const info = this.asRecord(row.userInfo);
+    const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+    return {
+      id: row.id,
+      name: row.name,
+      routeGroup: row.routeGroup,
+      profileTitle: row.profileTitle,
+      updateIntervalHours: row.updateIntervalHours,
+      userInfo: {
+        upload: num(info.upload),
+        download: num(info.download),
+        total: num(info.total),
+        expire: num(info.expire),
+      },
+      enabled: row.enabled,
+      configCount: row.configCount,
+      lastFetchedAt: row.lastFetchedAt?.toISOString() ?? null,
+      lastStatus: row.lastStatus,
+      lastError: row.lastError,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
   }
 
   async moveOutbound(id: string, direction: string, actor: AuthActor | undefined): Promise<AdminOutboundSummary> {
@@ -4685,6 +4927,7 @@ export class OperationsService {
       latestUpMbps: row.latestUpMbps ?? null,
       lastSpeedTestAt: row.lastSpeedTestAt?.toISOString() ?? null,
       pendingTest: row.pendingTest ?? false,
+      subscriptionId: row.subscriptionId ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

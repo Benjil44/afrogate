@@ -21,6 +21,7 @@ import type {
   AdminReportsSummaryResponse,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminOutboundSubscriptionSummary,
   AdminOutboundTestResult,
   AdminOutboundsAutoTestState,
   AdminSessionResponse,
@@ -64,7 +65,12 @@ import { AdminTokenGuard } from '../security/admin-token.guard';
 import type { RequestWithAuth } from '../security/auth-request';
 import { Permissions, Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
-import { CreateOutboundDto, MoveOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
+import {
+  CreateOutboundDto,
+  CreateOutboundSubscriptionDto,
+  MoveOutboundDto,
+  UpdateOutboundDto,
+} from './dto/outbound.dto';
 import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto } from './dto/server.dto';
 import {
   CreateServerInterfaceDto,
@@ -694,6 +700,40 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<void> {
     return this.operationsService.deleteOutbound(id, request.actor);
+  }
+
+  @Get('outbound-subscriptions')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listOutboundSubscriptions(): Promise<{ subscriptions: AdminOutboundSubscriptionSummary[] }> {
+    return { subscriptions: await this.operationsService.listOutboundSubscriptions() };
+  }
+
+  @Post('outbound-subscriptions')
+  @Roles('admin')
+  addOutboundSubscription(
+    @Body() payload: CreateOutboundSubscriptionDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminOutboundSubscriptionSummary> {
+    return this.operationsService.addOutboundSubscription(payload, request.actor);
+  }
+
+  @Post('outbound-subscriptions/:id/refresh')
+  @Roles('admin')
+  refreshOutboundSubscription(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminOutboundSubscriptionSummary> {
+    return this.operationsService.refreshOutboundSubscription(id, request.actor);
+  }
+
+  @Delete('outbound-subscriptions/:id')
+  @Roles('admin')
+  @HttpCode(204)
+  deleteOutboundSubscription(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<void> {
+    return this.operationsService.deleteOutboundSubscription(id, request.actor);
   }
 
   @Post('outbounds/test-all')

@@ -1841,6 +1841,31 @@ export interface AdminOutboundSummary {
   lastSpeedTestAt?: string | null;
   /** true while a speed test is queued/running (speed_test_requested_at set) */
   pendingTest?: boolean;
+  /** set when this outbound is a config that belongs to a subscription */
+  subscriptionId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminOutboundSubscriptionUserInfo {
+  upload?: number;
+  download?: number;
+  total?: number;
+  expire?: number;
+}
+
+export interface AdminOutboundSubscriptionSummary {
+  id: string;
+  name: string;
+  routeGroup: string;
+  profileTitle?: string | null;
+  updateIntervalHours?: number | null;
+  userInfo: AdminOutboundSubscriptionUserInfo;
+  enabled: boolean;
+  configCount: number;
+  lastFetchedAt?: string | null;
+  lastStatus: string;
+  lastError?: string | null;
   createdAt: string;
   updatedAt: string;
 }

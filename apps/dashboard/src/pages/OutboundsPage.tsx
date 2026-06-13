@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Plus, RefreshCw, Trash2, Zap, Power, X, Pencil } from 'lucide-react';
-import type { AdminOutboundSummary } from '@afrows/shared';
+import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Plus, RefreshCw, Trash2, Zap, Power, X, Pencil, ChevronDown, ChevronRight } from 'lucide-react';
+import type { AdminOutboundSummary, AdminOutboundSubscriptionSummary } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
 import {
   fetchAdminOutbounds,
@@ -11,10 +11,14 @@ import {
   testAllAdminOutbounds,
   fetchAdminOutboundTestSettings,
   setAdminOutboundTestSettings,
+  fetchAdminOutboundSubscriptions,
+  createAdminOutboundSubscription,
+  refreshAdminOutboundSubscription,
+  deleteAdminOutboundSubscription,
   type CreateOutboundPayload,
 } from '../api/admin';
 
-type Protocol = 'vless' | 'wireguard' | 'l2tp';
+type Protocol = 'vless' | 'wireguard' | 'l2tp' | 'subscription';
 
 const POLL_MS = 20000;
 const FAST_POLL_MS = 4000;
@@ -22,6 +26,9 @@ const FAST_POLL_MS = 4000;
 export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: DashboardStrings }) {
   const s = t.outboundsPage;
   const [rows, setRows] = useState<AdminOutboundSummary[]>([]);
+  const [subs, setSubs] = useState<AdminOutboundSubscriptionSummary[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [subUrl, setSubUrl] = useState('');
   const [auto, setAuto] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null); // null = add mode
@@ -53,8 +60,12 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
 
   const load = useCallback(async (): Promise<AdminOutboundSummary[] | null> => {
     try {
-      const res = await fetchAdminOutbounds(sessionToken);
+      const [res, subRes] = await Promise.all([
+        fetchAdminOutbounds(sessionToken),
+        fetchAdminOutboundSubscriptions(sessionToken).catch(() => ({ subscriptions: [] })),
+      ]);
       setRows(res.outbounds);
+      setSubs(subRes.subscriptions);
       return res.outbounds;
     } catch {
       return null; // keep last data on transient failure
@@ -87,6 +98,7 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
     setL2tpServer('');
     setL2tpUser('');
     setL2tpSecret('');
+    setSubUrl('');
     setName('');
     setBaseConfig({});
     setFAddress('');
@@ -179,6 +191,26 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
       return;
     }
 
+    // ADD mode — subscription (fetch + expand into child outbounds).
+    if (protocol === 'subscription') {
+      if (!subUrl.trim()) {
+        setError(s.parseError);
+        setSaving(false);
+        return;
+      }
+      try {
+        await createAdminOutboundSubscription(sessionToken, { url: subUrl.trim(), name: name.trim() || undefined });
+        resetForm();
+        setAddOpen(false);
+        await load();
+      } catch {
+        setError(s.subSaveError);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     // ADD mode (import from link/config).
     let payload: CreateOutboundPayload;
     if (protocol === 'vless') {
@@ -227,6 +259,12 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
   const onDelete = (id: string) => {
     if (window.confirm(s.deleteConfirm)) void withBusy(id, () => deleteAdminOutbound(sessionToken, id));
   };
+  const onRefreshSub = (id: string) => void withBusy(`sub:${id}`, () => refreshAdminOutboundSubscription(sessionToken, id));
+  const onDeleteSub = (id: string) => {
+    if (window.confirm(s.subDeleteConfirm)) void withBusy(`sub:${id}`, () => deleteAdminOutboundSubscription(sessionToken, id));
+  };
+  const toggleExpanded = (id: string) => setExpanded((e) => ({ ...e, [id]: !(e[id] ?? true) }));
+  const isExpanded = (id: string) => expanded[id] ?? true; // expanded by default
   const onSyncAll = async () => {
     setSyncing(true);
     setNotice(null);
@@ -255,6 +293,93 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
     st === 'healthy' || st === 'up' ? '#1f9d57' : st === 'unknown' || st === '' ? '#9aa7ad' : '#d23f3f';
   const statusLabel = (st: string) =>
     st === 'healthy' || st === 'up' ? s.statusUp : st === 'unknown' || st === '' ? s.statusUnknown : s.statusDown;
+
+  const fmtBytes = (n?: number) => {
+    if (!n || n <= 0) return '0';
+    const gb = n / 1e9;
+    return gb >= 1000 ? `${(gb / 1000).toFixed(2)} TB` : `${gb.toFixed(1)} GB`;
+  };
+  const fmtExpire = (sec?: number) => {
+    if (!sec) return '—';
+    const days = Math.round((sec * 1000 - Date.now()) / 86_400_000);
+    return days >= 0 ? `${days}d` : s.subExpired;
+  };
+
+  // Group child configs under their subscription; everything else is standalone.
+  const childrenBySub = new Map<string, AdminOutboundSummary[]>();
+  const standalone: AdminOutboundSummary[] = [];
+  for (const o of rows) {
+    if (o.subscriptionId) {
+      const arr = childrenBySub.get(o.subscriptionId) ?? [];
+      arr.push(o);
+      childrenBySub.set(o.subscriptionId, arr);
+    } else {
+      standalone.push(o);
+    }
+  }
+
+  const renderRow = (o: AdminOutboundSummary, isChild = false) => {
+    const testing = busy[o.id] || !!o.pendingTest;
+    return (
+      <tr key={o.id} className="border-b border-[#eef2f4] last:border-0">
+        <td className={`px-4 py-3 font-bold text-afro-ink ${isChild ? 'pl-10' : ''}`}>{o.name}</td>
+        <td className="px-3 py-3 uppercase text-afro-muted">{o.type}</td>
+        <td className="px-3 py-3">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusTone(o.healthStatus) }} />
+            {statusLabel(o.healthStatus)}
+          </span>
+        </td>
+        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestLatencyMs, ' ms')}</td>
+        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestJitterMs, ' ms')}</td>
+        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestDownMbps, ' Mbps')}</td>
+        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestUpMbps, ' Mbps')}</td>
+        <td className="px-4 py-3">
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => onTest(o.id)}
+              disabled={testing}
+              title={s.test}
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+            >
+              {testing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+              {testing ? s.testing : s.test}
+            </button>
+            <button
+              type="button"
+              onClick={() => openEdit(o)}
+              disabled={busy[o.id]}
+              title={s.edit}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleEnabled(o)}
+              disabled={busy[o.id]}
+              title={o.enabled ? s.disable : s.enable}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:text-afro-ink disabled:opacity-50"
+            >
+              <Power size={14} className={o.enabled ? 'text-afro-teal' : ''} />
+            </button>
+            {isChild ? null : (
+              <button
+                type="button"
+                onClick={() => onDelete(o.id)}
+                disabled={busy[o.id]}
+                title={s.delete}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-[#e0b4b4] hover:text-[#b91c1c] disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <section className="grid gap-4">
@@ -336,6 +461,7 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
                 <option value="vless">VLESS</option>
                 <option value="wireguard">WireGuard</option>
                 <option value="l2tp">L2TP</option>
+                {!editId ? <option value="subscription">{s.subscriptionOption}</option> : null}
               </select>
             </label>
             <label className="grid gap-1.5">
@@ -425,6 +551,19 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
                 className="rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-xs outline-none focus:border-afro-teal"
               />
             </label>
+          ) : protocol === 'subscription' ? (
+            <label className="mt-3 grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.subscriptionUrl}</span>
+              <textarea
+                value={subUrl}
+                onChange={(e) => setSubUrl(e.target.value)}
+                rows={2}
+                dir="ltr"
+                placeholder="https://.../sub/..."
+                className="rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-xs outline-none focus:border-afro-teal"
+              />
+              <span className="text-[12px] text-afro-muted">{s.subscriptionHint}</span>
+            </label>
           ) : (
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <label className="grid gap-1.5">
@@ -483,75 +622,75 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {rows.length === 0 && subs.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-10 text-center text-afro-muted">
                   {s.empty}
                 </td>
               </tr>
             ) : (
-              rows.map((o) => (
-                <tr key={o.id} className="border-b border-[#eef2f4] last:border-0">
-                  <td className="px-4 py-3 font-bold text-afro-ink">{o.name}</td>
-                  <td className="px-3 py-3 uppercase text-afro-muted">{o.type}</td>
-                  <td className="px-3 py-3">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusTone(o.healthStatus) }} />
-                      {statusLabel(o.healthStatus)}
-                    </span>
-                  </td>
-                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestLatencyMs, ' ms')}</td>
-                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestJitterMs, ' ms')}</td>
-                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestDownMbps, ' Mbps')}</td>
-                  <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestUpMbps, ' Mbps')}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {(() => {
-                        const testing = busy[o.id] || !!o.pendingTest;
-                        return (
+              <>
+                {subs.map((sub) => {
+                  const kids = childrenBySub.get(sub.id) ?? [];
+                  const used = (sub.userInfo.upload ?? 0) + (sub.userInfo.download ?? 0);
+                  const open = isExpanded(sub.id);
+                  const subBusy = busy[`sub:${sub.id}`];
+                  return (
+                    <Fragment key={sub.id}>
+                      <tr className="border-b border-afro-line bg-[#f1f6f6]">
+                        <td colSpan={7} className="px-4 py-3">
                           <button
                             type="button"
-                            onClick={() => onTest(o.id)}
-                            disabled={testing}
-                            title={s.test}
-                            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+                            onClick={() => toggleExpanded(sub.id)}
+                            className="inline-flex items-center gap-2 text-left font-bold text-afro-ink"
                           >
-                            {testing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
-                            {testing ? s.testing : s.test}
+                            {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            {sub.name}
+                            <span className="text-[12px] font-normal text-afro-muted">
+                              {' · '}
+                              {kids.length} {s.subConfigs}
+                              {sub.userInfo.total ? ` · ${fmtBytes(used)} / ${fmtBytes(sub.userInfo.total)}` : ''}
+                              {sub.userInfo.expire ? ` · ${s.subExpires} ${fmtExpire(sub.userInfo.expire)}` : ''}
+                              {sub.lastStatus === 'error' ? ` · ⚠ ${sub.lastError ?? ''}` : ''}
+                            </span>
                           </button>
-                        );
-                      })()}
-                      <button
-                        type="button"
-                        onClick={() => openEdit(o)}
-                        disabled={busy[o.id]}
-                        title={s.edit}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onToggleEnabled(o)}
-                        disabled={busy[o.id]}
-                        title={o.enabled ? s.disable : s.enable}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:text-afro-ink disabled:opacity-50"
-                      >
-                        <Power size={14} className={o.enabled ? 'text-afro-teal' : ''} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDelete(o.id)}
-                        disabled={busy[o.id]}
-                        title={s.delete}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-[#e0b4b4] hover:text-[#b91c1c] disabled:opacity-50"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => onRefreshSub(sub.id)}
+                              disabled={subBusy}
+                              title={s.subRefresh}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+                            >
+                              <RefreshCw size={14} className={subBusy ? 'animate-spin' : ''} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDeleteSub(sub.id)}
+                              disabled={subBusy}
+                              title={s.subDelete}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-[#e0b4b4] hover:text-[#b91c1c] disabled:opacity-50"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {open ? kids.map((o) => renderRow(o, true)) : null}
+                      {open && kids.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-4 pl-10 text-[13px] text-afro-muted">
+                            {s.subEmpty}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+                {standalone.map((o) => renderRow(o, false))}
+              </>
             )}
           </tbody>
         </table>

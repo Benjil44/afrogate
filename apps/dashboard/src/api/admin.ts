@@ -17,6 +17,7 @@ import type {
   AdminLoginResponse,
   AdminOutboundsResponse,
   AdminOutboundSummary,
+  AdminOutboundSubscriptionSummary,
   AdminOutboundTestResult,
   AdminOutboundsAutoTestState,
   AdminPaymentOrdersResponse,
@@ -372,6 +373,57 @@ export async function updateAdminOutbound(
 
 export async function deleteAdminOutbound(sessionToken: string, outboundId: string): Promise<void> {
   await requestAdminAuth(`${getApiBaseUrl()}/admin/outbounds/${encodeURIComponent(outboundId)}`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'DELETE',
+  });
+}
+
+export interface CreateOutboundSubscriptionPayload {
+  url: string;
+  name?: string;
+  routeGroup?: string;
+  enabled?: boolean;
+}
+
+export async function fetchAdminOutboundSubscriptions(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<{ subscriptions: AdminOutboundSubscriptionSummary[] }> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-subscriptions`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<{ subscriptions: AdminOutboundSubscriptionSummary[] }>;
+}
+
+export async function createAdminOutboundSubscription(
+  sessionToken: string,
+  payload: CreateOutboundSubscriptionPayload,
+): Promise<AdminOutboundSubscriptionSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-subscriptions`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+  return response.json() as Promise<AdminOutboundSubscriptionSummary>;
+}
+
+export async function refreshAdminOutboundSubscription(
+  sessionToken: string,
+  subscriptionId: string,
+): Promise<AdminOutboundSubscriptionSummary> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/outbound-subscriptions/${encodeURIComponent(subscriptionId)}/refresh`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminOutboundSubscriptionSummary>;
+}
+
+export async function deleteAdminOutboundSubscription(sessionToken: string, subscriptionId: string): Promise<void> {
+  await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-subscriptions/${encodeURIComponent(subscriptionId)}`, {
     headers: createSessionHeaders(sessionToken),
     method: 'DELETE',
   });

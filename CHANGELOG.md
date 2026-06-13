@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.29 - 2026-06-13
+
+- Added **outbound subscriptions**: import a subscription URL once and it expands into many configs shown as nested rows under a collapsible group on the Outbounds page. New `outbound_subscriptions` table + `subscription_id`/`subscription_key` on `outbounds` (migration 0032, additive/idempotent); each fetched VLESS link becomes a child outbound so it reuses test/health/enable/edit/routing. Backend fetches the URL server-side (v2rayNG UA), parses `profile-title`/`profile-update-interval`/`subscription-userinfo` (quota + expiry) headers and the share links (non-VLESS like `ss://` are skipped), and upserts children by a stable per-config key on refresh (preserving the operator's enable/disable choices, removing configs that disappear). New admin endpoints (list/add/refresh/delete) and a background service that auto-refreshes due subscriptions hourly (honoring the 12h interval). Dashboard: subscription group header (title, config count, used/total quota, expiry, Refresh + Delete) with nested config rows; "Add" gains a Subscription option. EN/FA strings added.
+
 ## 0.114.28 - 2026-06-13
 
 - Added an **Edit** action to the Outbounds page so admins can change an outbound in place instead of deleting and re-adding it. For VLESS outbounds the editor exposes the visible connection fields inline (address, port, UUID, network, header type, host/camouflage, security, SNI, path, encryption, name) pre-filled from the current config, preserving untouched keys (flow, pbk/sid, fingerprint) on save; a "replace via link" box also accepts a fresh `vless://` link to swap the whole config. The backend `updateOutbound` now parses `config.importUrl` the same way create does (shared `applyVlessImportConfig` helper). Secrets stay protected: WireGuard/L2TP secret fields remain redacted and are only changeable via re-import. EN/FA strings added.

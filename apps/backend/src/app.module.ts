@@ -31,6 +31,7 @@ import { AdminTenantBrandingService } from './branding/admin-tenant-branding.ser
 import { OperationsController } from './operations/operations.controller';
 import { OperationsService } from './operations/operations.service';
 import { RouteQualityAggregationService } from './operations/route-quality-aggregation.service';
+import { OutboundSubscriptionRefreshService } from './operations/outbound-subscription-refresh.service';
 import { OutboundHealthService } from './outbound/outbound-health.service';
 import { OutboundHttpService } from './outbound/outbound-http.service';
 import { OutboundSpeedTestService } from './outbound/outbound-speed-test.service';
@@ -83,6 +84,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     MetricsService,
     OperationsService,
     RouteQualityAggregationService,
+    OutboundSubscriptionRefreshService,
     OutboundHealthService,
     OutboundHttpService,
     OutboundSpeedTestService,
