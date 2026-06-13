@@ -1,4 +1,4 @@
-import { Activity, Archive, Bell, CreditCard, Gauge, Languages, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Route, ScrollText, Server, Settings as SettingsIcon, ShieldCheck, UserRound, Waypoints } from 'lucide-react';
+import { Activity, Archive, Bell, CreditCard, Gauge, Languages, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Route, ScrollText, Server, Settings as SettingsIcon, ShieldCheck, Users, UserRound, Waypoints } from 'lucide-react';
 import type { AdminSessionResponse } from '@afrows/shared';
 import { appVersion, resellerNavViews } from '../app-config';
 import type { ActiveView, NavItemData, SidebarAlertState } from '../dashboard-types';
@@ -10,6 +10,7 @@ const navItems: NavItemData[] = [
   { id: 'dashboard', labelKey: 'dashboard', icon: Activity },
   { id: 'servers', labelKey: 'servers', icon: Server },
   { id: 'users', labelKey: 'users', icon: UserRound },
+  { id: 'customers', labelKey: 'customers', icon: Users },
   { id: 'audit', labelKey: 'audit', icon: ScrollText },
   { id: 'backups', labelKey: 'backups', icon: Archive },
   { id: 'billing', labelKey: 'billing', icon: CreditCard },

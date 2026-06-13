@@ -77,6 +77,20 @@ export const fa: DashboardStrings = {
       collapseAll: 'بستن همه',
       expandAll: 'باز کردن همه',
     },
+    customersPage: {
+      title: 'حساب‌های مشتری',
+      searchPlaceholder: 'جستجوی مشتری…',
+      total: '{n} مشتری',
+      empty: 'هنوز مشتری‌ای نیست. از بخش مالی ایجاد کنید.',
+      colCustomer: 'مشتری',
+      colStatus: 'وضعیت',
+      colUsed: 'مصرف‌شده',
+      colQuota: 'سهمیه',
+      colRemaining: 'باقی‌مانده',
+      colClients: 'کلاینت‌ها',
+      colSeller: 'فروشنده',
+      direct: 'مستقیم',
+    },
     nav: {
       dashboard: 'داشبورد',
       servers: 'سرورها',
@@ -89,6 +103,7 @@ export const fa: DashboardStrings = {
       alerts: 'هشدارها',
       settings: 'تنظیمات',
       outbounds: 'اوت‌باندها',
+      customers: 'مشتریان',
     },
     pageHeaders: {
       dashboard: { eyebrow: 'عملیات', title: 'نمایش عملیات شبکه' },
@@ -102,6 +117,7 @@ export const fa: DashboardStrings = {
       alerts: { eyebrow: 'رخدادها', title: 'هشدارها و ارسال اعلان' },
       settings: { eyebrow: 'راه‌اندازی سیستم', title: 'تنظیمات وایرگارد و سیستم' },
       outbounds: { eyebrow: 'اتصال', title: 'اوت‌باندها' },
+      customers: { eyebrow: 'مشترکین', title: 'مشتریان' },
     },
     reseller: {
       pageHeaders: {

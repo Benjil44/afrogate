@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.31 - 2026-06-13
+
+- Information-architecture phase 1: promoted **Customers** to its own top-level sidebar item (next to Users) with a dedicated page — searchable list of subscriber accounts showing status, used/quota/remaining GB, active/total clients, and seller. (Full create/edit still lives in Billing; this is the prominent list view.) Clarifies the model: the people you sell to are **Customers**, distinct from staff **Users**. Frontend only. EN/FA strings added. (Next phases: an **Inbounds** page for entry listeners, and a single-box **Dashboard** rewire.)
+
 ## 0.114.30 - 2026-06-13
 
 - Outbounds page: **sortable columns** + **collapse/expand all**. Clicking the Name/Status/Ping/Jitter/Download/Upload headers sorts the table (with an ↑/↓ indicator); untested rows always sort last, and sorting applies within each subscription group as well as standalone outbounds — so after running tests the fastest/healthiest servers float to the top. Added a "Collapse all / Expand all" toolbar button for subscription groups (each group also keeps its own chevron toggle). Frontend only. EN/FA strings added.

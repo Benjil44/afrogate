@@ -75,6 +75,20 @@ export const en = {
       collapseAll: 'Collapse all',
       expandAll: 'Expand all',
     },
+    customersPage: {
+      title: 'Customer accounts',
+      searchPlaceholder: 'Search customers…',
+      total: '{n} customers',
+      empty: 'No customers yet. Create them in Billing.',
+      colCustomer: 'Customer',
+      colStatus: 'Status',
+      colUsed: 'Used',
+      colQuota: 'Quota',
+      colRemaining: 'Remaining',
+      colClients: 'Clients',
+      colSeller: 'Seller',
+      direct: 'Direct',
+    },
     nav: {
       dashboard: 'Dashboard',
       servers: 'Servers',
@@ -87,6 +101,7 @@ export const en = {
       alerts: 'Alerts',
       settings: 'Settings',
       outbounds: 'Outbounds',
+      customers: 'Customers',
     },
     pageHeaders: {
       dashboard: { eyebrow: 'Operations', title: 'Network operations display' },
@@ -100,6 +115,7 @@ export const en = {
       alerts: { eyebrow: 'Incidents', title: 'Alerts and delivery' },
       settings: { eyebrow: 'System setup', title: 'WireGuard and system setup' },
       outbounds: { eyebrow: 'Connectivity', title: 'Outbounds' },
+      customers: { eyebrow: 'Subscribers', title: 'Customers' },
     },
     dataStatus: {
       live: 'Live',
