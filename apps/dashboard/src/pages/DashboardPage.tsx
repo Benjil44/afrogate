@@ -21,6 +21,7 @@ export function DashboardPage({
   serverDataState,
   servers,
   summary,
+  activeUsers,
   t,
   tunnelDataState,
   tunnels,
@@ -40,6 +41,7 @@ export function DashboardPage({
   serverDataState: DataState;
   servers: ServerRowData[];
   summary: MetricCardData[];
+  activeUsers?: number;
   t: DashboardStrings;
   tunnelDataState: DataState;
   tunnels: TunnelRowData[];
@@ -67,14 +69,16 @@ export function DashboardPage({
       </section>
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">
-        <ServerPanel dataState={serverDataState} format={format} servers={servers} t={t} />
-        <TunnelPanel dataState={tunnelDataState} format={format} t={t} tunnels={tunnels} />
-        <AlertsPanel alerts={alerts} dataState={alertDataState} format={format} t={t} />
+        {servers.length > 0 ? <ServerPanel dataState={serverDataState} format={format} servers={servers} t={t} /> : null}
+        {servers.length > 0 ? <TunnelPanel dataState={tunnelDataState} format={format} t={t} tunnels={tunnels} /> : null}
+        <div className={servers.length > 0 ? '' : 'xl:col-span-3'}>
+          <AlertsPanel alerts={alerts} dataState={alertDataState} format={format} t={t} />
+        </div>
       </section>
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-3">
         <OutboundsPanel dataState={routeDataState} format={format} outbounds={outbounds} t={t} />
-        <CapacityPanel activeUsers={countActiveUsers(servers)} format={format} t={t} trafficTotals={trafficTotals} />
+        <CapacityPanel activeUsers={activeUsers ?? countActiveUsers(servers)} format={format} t={t} trafficTotals={trafficTotals} />
         <ControlPlanePanel backupDataState={backupDataState} backupStatus={backupStatus} format={format} t={t} />
       </section>
     </>

@@ -17,6 +17,7 @@ import { ClientController } from './client/client.controller';
 import { ClientAuthController } from './client/client-auth.controller';
 import { XrayProvisioningService } from './client/xray-provisioning.service';
 import { InboundsService } from './client/inbounds.service';
+import { OperationsOverviewService } from './client/operations-overview.service';
 import { XrayUsageMeteringService } from './client/xray-usage-metering.service';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
@@ -92,6 +93,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     XrayProvisioningService,
     XrayUsageMeteringService,
     InboundsService,
+    OperationsOverviewService,
     AdminTokenGuard,
     AgentTokenGuard,
     ClientTokenGuard,

@@ -1870,6 +1870,21 @@ export interface AdminOutboundSubscriptionSummary {
   updatedAt: string;
 }
 
+export interface AdminOperationsOverview {
+  /** false when box metrics/xray aren't reachable (e.g. dev) */
+  available: boolean;
+  cpuPercent: number | null;
+  memPercent: number | null;
+  /** free storage % on the root filesystem (matches the dashboard's "lowest storage") */
+  diskFreePercent: number | null;
+  /** users currently online on the xray inbounds */
+  activeUsers: number;
+  downloadBps: number;
+  uploadBps: number;
+  downloadTotalBytes: number;
+  uploadTotalBytes: number;
+}
+
 export interface AdminInboundSummary {
   /** xray inbound tag (e.g. afrows-in, afrows-in-tcp) */
   tag: string;

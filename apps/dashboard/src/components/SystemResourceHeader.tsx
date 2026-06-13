@@ -11,24 +11,33 @@ export function SystemResourceHeader({
   servers,
   t,
   trafficTotals,
+  overrideCpuPercent,
+  overrideRamPercent,
+  overrideStorageFreePercent,
 }: {
   format: DashboardFormatters;
   servers: ServerRowData[];
   t: DashboardStrings;
   trafficTotals: TrafficTotals;
+  // Single-box overrides (the box reports itself; no agent fleet). Used when set.
+  overrideCpuPercent?: number | null;
+  overrideRamPercent?: number | null;
+  overrideStorageFreePercent?: number | null;
 }) {
-  const cpuAverage = averagePercent(servers.map((server) => server.cpu));
-  const ramAverage = averagePercent(servers.map((server) => server.ram));
+  const cpuAverage = overrideCpuPercent ?? averagePercent(servers.map((server) => server.cpu));
+  const ramAverage = overrideRamPercent ?? averagePercent(servers.map((server) => server.ram));
   const storages = servers.flatMap((server) =>
     server.storages.map((storage) => ({
       ...storage,
       serverName: server.name,
     })),
   );
-  const lowestStorage = storages.reduce<number | null>((lowest, storage) => {
-    if (typeof storage.freePercent !== 'number') return lowest;
-    return lowest === null ? storage.freePercent : Math.min(lowest, storage.freePercent);
-  }, null);
+  const lowestStorage =
+    overrideStorageFreePercent ??
+    storages.reduce<number | null>((lowest, storage) => {
+      if (typeof storage.freePercent !== 'number') return lowest;
+      return lowest === null ? storage.freePercent : Math.min(lowest, storage.freePercent);
+    }, null);
 
   return (
     <section className="mt-2.5" aria-label={t.aria.systemResources}>
@@ -102,4 +111,4 @@ function ResourceStat({
       <strong className="min-w-0 truncate text-[15px] leading-tight sm:text-[17px]" title={value}>{value}</strong>
     </div>
   );
-}
+}

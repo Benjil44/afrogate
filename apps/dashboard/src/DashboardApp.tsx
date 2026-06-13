@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type {
   AdminAlertSummary,
+  AdminOperationsOverview,
   AdminAuditLogSummary,
   AdminBackupRestoreCheckSummary,
   AdminBackupRestorePlanStepSummary,
@@ -144,6 +145,7 @@ import {
   deleteAdminUser,
   exportAdminCustomerClientConfigs,
   fetchAdminAlerts,
+  fetchAdminOperationsOverview,
   fetchAdminAuditLogs,
   fetchAdminBackupRestorePlan,
   fetchAdminBackupStatus,
@@ -975,7 +977,33 @@ function AuthenticatedDashboard({
     ));
     setServerDataState('live');
   };
-  const trafficTotals = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
+  const [overview, setOverview] = useState<AdminOperationsOverview | null>(null);
+  useEffect(() => {
+    let active = true;
+    let timer: number | undefined;
+    const load = async () => {
+      try {
+        const o = await fetchAdminOperationsOverview(sessionToken);
+        if (active) setOverview(o);
+      } catch {
+        /* keep last */
+      } finally {
+        if (active) timer = window.setTimeout(() => void load(), 10000);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [sessionToken]);
+
+  const fleetTraffic = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
+  // Single-box: prefer the box/xray overview; fall back to the (empty) fleet.
+  const trafficTotals = overview?.available
+    ? { downloadBps: overview.downloadBps, uploadBps: overview.uploadBps }
+    : fleetTraffic;
+  const overviewActiveUsers = overview?.available ? overview.activeUsers : undefined;
   const computedAlerts = useMemo(() => createComputedAlertRows(serverRows, t), [serverRows, t]);
   const apiAlertRows = useMemo(() => mapAdminAlertsToRows(apiAlerts, t), [apiAlerts, t]);
   const alerts = useMemo(() => {
@@ -985,7 +1013,10 @@ function AuthenticatedDashboard({
 
     return computedAlerts;
   }, [alertDataState, apiAlertRows, computedAlerts, t]);
-  const summary = useMemo(() => createSummary(serverRows, trafficTotals, alerts, t, format), [alerts, format, serverRows, trafficTotals, t]);
+  const summary = useMemo(
+    () => createSummary(serverRows, trafficTotals, alerts, t, format, overviewActiveUsers),
+    [alerts, format, serverRows, trafficTotals, t, overviewActiveUsers],
+  );
   const chartSeries = useMemo(
     () => (timeseries.length > 0 ? timeseries : (import.meta.env.DEV ? createFallbackTimeseries(serverRows, timeRange) : [])),
     [serverRows, timeRange, timeseries],
@@ -1048,7 +1079,15 @@ function AuthenticatedDashboard({
 
         {activeView === 'dashboard' && !isResellerSession ? (
           <>
-            <SystemResourceHeader format={format} servers={serverRows} t={t} trafficTotals={trafficTotals} />
+            <SystemResourceHeader
+              format={format}
+              servers={serverRows}
+              t={t}
+              trafficTotals={trafficTotals}
+              overrideCpuPercent={overview?.available ? overview.cpuPercent : undefined}
+              overrideRamPercent={overview?.available ? overview.memPercent : undefined}
+              overrideStorageFreePercent={overview?.available ? overview.diskFreePercent : undefined}
+            />
 
             <div className="mt-2.5 border-t border-afro-line" />
           </>
@@ -1076,6 +1115,7 @@ function AuthenticatedDashboard({
           session={session}
           sessionToken={sessionToken}
           summary={summary}
+          activeUsers={overviewActiveUsers}
           t={t}
           tunnelDataState={tunnelDataState}
           timeRange={timeRange}
@@ -1110,6 +1150,7 @@ function ActivePage({
   session,
   sessionToken,
   summary,
+  activeUsers,
   t,
   tunnelDataState,
   timeRange,
@@ -1136,6 +1177,7 @@ function ActivePage({
   session: AdminSessionResponse;
   sessionToken: string;
   summary: MetricCardData[];
+  activeUsers?: number;
   t: DashboardStrings;
   tunnelDataState: DataState;
   timeRange: MetricsTimeRange;
@@ -1217,6 +1259,7 @@ function ActivePage({
           serverDataState={serverDataState}
           servers={servers}
           summary={summary}
+          activeUsers={activeUsers}
           t={t}
           tunnelDataState={tunnelDataState}
           tunnels={routeTunnels}
