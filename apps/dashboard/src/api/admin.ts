@@ -16,6 +16,7 @@ import type {
   AdminLoginRequest,
   AdminLoginResponse,
   AdminOutboundsResponse,
+  AdminInboundsResponse,
   AdminOutboundSummary,
   AdminOutboundSubscriptionSummary,
   AdminOutboundTestResult,
@@ -376,6 +377,14 @@ export async function deleteAdminOutbound(sessionToken: string, outboundId: stri
     headers: createSessionHeaders(sessionToken),
     method: 'DELETE',
   });
+}
+
+export async function fetchAdminInbounds(sessionToken: string, signal?: AbortSignal): Promise<AdminInboundsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/inbounds`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminInboundsResponse>;
 }
 
 export interface CreateOutboundSubscriptionPayload {

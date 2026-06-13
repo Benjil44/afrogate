@@ -89,6 +89,20 @@ export const en = {
       colSeller: 'Seller',
       direct: 'Direct',
     },
+    inboundsPage: {
+      title: 'Entry listeners',
+      intro: 'The doors users connect to. Customers connect through an inbound and exit via an outbound.',
+      total: '{n} inbounds',
+      empty: 'No inbounds found on this server.',
+      unavailable: 'Inbound config not reachable (dev or non-box backend).',
+      colName: 'Inbound',
+      colProto: 'Protocol',
+      colEntry: 'Entry',
+      colCamouflage: 'Host / SNI',
+      colUsers: 'Users',
+      colDown: 'Down (total)',
+      colUp: 'Up (total)',
+    },
     nav: {
       dashboard: 'Dashboard',
       servers: 'Servers',
@@ -102,6 +116,7 @@ export const en = {
       settings: 'Settings',
       outbounds: 'Outbounds',
       customers: 'Customers',
+      inbounds: 'Inbounds',
     },
     pageHeaders: {
       dashboard: { eyebrow: 'Operations', title: 'Network operations display' },
@@ -116,6 +131,7 @@ export const en = {
       settings: { eyebrow: 'System setup', title: 'WireGuard and system setup' },
       outbounds: { eyebrow: 'Connectivity', title: 'Outbounds' },
       customers: { eyebrow: 'Subscribers', title: 'Customers' },
+      inbounds: { eyebrow: 'Connectivity', title: 'Inbounds' },
     },
     dataStatus: {
       live: 'Live',

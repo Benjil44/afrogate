@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.32 - 2026-06-13
+
+- Information-architecture phase 2: added an **Inbounds** page (sidebar item next to Outbounds) that surfaces the server's real entry listeners — the xray inbounds users connect to (e.g. `afrows-in` VLESS+WS+TLS:443, `afrows-in-tcp` telewebion:8080). New box-coupled `InboundsService` reads the afrows-xray config file for each inbound's protocol/transport/port/camouflage-host/SNI/path + configured user count, enriched with per-inbound total traffic from the xray stats API (`inbound>>>…` pattern); returns `available:false` gracefully in dev. New admin endpoint `GET /api/admin/inbounds`. Frontend page shows protocol/transport, entry `listen:port`, host/SNI, users, and total down/up. EN/FA strings added. (Next: phase 3 — single-box Dashboard rewire reusing this xray-stats plumbing.)
+
 ## 0.114.31 - 2026-06-13
 
 - Information-architecture phase 1: promoted **Customers** to its own top-level sidebar item (next to Users) with a dedicated page — searchable list of subscriber accounts showing status, used/quota/remaining GB, active/total clients, and seller. (Full create/edit still lives in Billing; this is the prominent list view.) Clarifies the model: the people you sell to are **Customers**, distinct from staff **Users**. Frontend only. EN/FA strings added. (Next phases: an **Inbounds** page for entry listeners, and a single-box **Dashboard** rewire.)

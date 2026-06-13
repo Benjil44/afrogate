@@ -91,6 +91,20 @@ export const fa: DashboardStrings = {
       colSeller: 'فروشنده',
       direct: 'مستقیم',
     },
+    inboundsPage: {
+      title: 'شنونده‌های ورودی',
+      intro: 'درهایی که کاربران به آن وصل می‌شوند. مشتری از یک این‌باند وارد و از یک اوت‌باند خارج می‌شود.',
+      total: '{n} این‌باند',
+      empty: 'هیچ این‌باندی روی این سرور یافت نشد.',
+      unavailable: 'پیکربندی این‌باند در دسترس نیست (محیط توسعه یا بک‌اند غیرسروری).',
+      colName: 'این‌باند',
+      colProto: 'پروتکل',
+      colEntry: 'ورودی',
+      colCamouflage: 'هاست / SNI',
+      colUsers: 'کاربران',
+      colDown: 'دانلود (کل)',
+      colUp: 'آپلود (کل)',
+    },
     nav: {
       dashboard: 'داشبورد',
       servers: 'سرورها',
@@ -104,6 +118,7 @@ export const fa: DashboardStrings = {
       settings: 'تنظیمات',
       outbounds: 'اوت‌باندها',
       customers: 'مشتریان',
+      inbounds: 'این‌باندها',
     },
     pageHeaders: {
       dashboard: { eyebrow: 'عملیات', title: 'نمایش عملیات شبکه' },
@@ -118,6 +133,7 @@ export const fa: DashboardStrings = {
       settings: { eyebrow: 'راه‌اندازی سیستم', title: 'تنظیمات وایرگارد و سیستم' },
       outbounds: { eyebrow: 'اتصال', title: 'اوت‌باندها' },
       customers: { eyebrow: 'مشترکین', title: 'مشتریان' },
+      inbounds: { eyebrow: 'اتصال', title: 'این‌باندها' },
     },
     reseller: {
       pageHeaders: {

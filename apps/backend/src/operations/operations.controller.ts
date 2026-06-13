@@ -25,6 +25,7 @@ import type {
   AdminOutboundTestResult,
   AdminOutboundsAutoTestState,
   AdminSessionResponse,
+  AdminInboundsResponse,
   AdminOutboundsResponse,
   AdminServerDetail,
   AdminServerInterfaceSummary,
@@ -60,6 +61,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { BackupStatusService } from '../backups/backup-status.service';
 import { AuthService } from '../auth/auth.service';
+import { InboundsService } from '../client/inbounds.service';
 import { CreateAdminUserDto, UpdateAdminUserDto, UpdateAdminUserPasswordDto } from '../auth/dto/admin-user.dto';
 import { AdminTokenGuard } from '../security/admin-token.guard';
 import type { RequestWithAuth } from '../security/auth-request';
@@ -103,6 +105,7 @@ export class OperationsController {
     private readonly backupStatusService: BackupStatusService,
     private readonly adminReportsService: AdminReportsService,
     private readonly telegramBotConfigService: TelegramBotConfigService,
+    private readonly inboundsService: InboundsService,
   ) {}
 
   @Get('session')
@@ -700,6 +703,12 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<void> {
     return this.operationsService.deleteOutbound(id, request.actor);
+  }
+
+  @Get('inbounds')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  listInbounds(): Promise<AdminInboundsResponse> {
+    return this.inboundsService.listInbounds();
   }
 
   @Get('outbound-subscriptions')

@@ -1870,6 +1870,30 @@ export interface AdminOutboundSubscriptionSummary {
   updatedAt: string;
 }
 
+export interface AdminInboundSummary {
+  /** xray inbound tag (e.g. afrows-in, afrows-in-tcp) */
+  tag: string;
+  protocol: string;
+  listen: string;
+  port: number;
+  network: string;
+  security: string;
+  /** camouflage/host header (ws Host, tcp http-header host) */
+  host?: string | null;
+  path?: string | null;
+  sni?: string | null;
+  /** number of users currently configured on this inbound */
+  clientCount: number;
+  uplinkBytes: number;
+  downlinkBytes: number;
+}
+
+export interface AdminInboundsResponse {
+  inbounds: AdminInboundSummary[];
+  /** false when the box config/xray isn't reachable (e.g. dev) */
+  available: boolean;
+}
+
 export interface AdminOutboundTestResult {
   outboundId: string;
   status: 'ok' | 'failed' | 'queued';
