@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.36 - 2026-06-14
+
+- Customer management consolidated onto the **Customers** page (out of Billing): an **Add customer** button opens an inline create form above the table, and each row has an **Edit** action (name, login email, telegram, account quota GB, per-client cap, quota scope, status, notes). A new **Login email** column is shown. The duplicate **Customers tab is removed from Billing for admins** (resellers, who have no Customers sidebar item, keep it there). **Bug fix:** customer `login_email` was saved but never returned by the accounts list API, so it looked unsaved and couldn't be displayed/edited — the list now selects + maps `loginEmail`/`hasPassword`, and `loginEmail`/`password` were added to the create/update request types. (Next: inline VLESS-config creation per customer.)
+
 ## 0.114.35 - 2026-06-13
 
 - Added a **Connections** view (new sidebar item) — a unified table of every live client connecting through the server, regardless of protocol: VLESS customer devices (joined to their customer account + cumulative usage + online status from xray) and WireGuard peers (e.g. the MikroTik gateway, shown as infrastructure with tunnel traffic). Each row shows protocol/transport, inbound, owner (customer or "Infrastructure"), online, and used GB; searchable. New box-coupled `ConnectionsService` reads the afrows-xray config inbounds, maps client emails (`cc_<id>@afrows`) to `client_configs`/`customer_accounts`, and pulls online users + per-inbound traffic from the xray stats API. New `GET /api/admin/connections`. This is where the WireGuard tunnel and the VLESS test user now appear side by side (Customers stays billing-only). EN/FA strings added.

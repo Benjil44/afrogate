@@ -190,6 +190,8 @@ interface CustomerAccountRow {
   perClientLimitBytes: string | number | null;
   usedBytes: string | number;
   notes: string | null;
+  loginEmail: string | null;
+  hasPassword: boolean;
   createdAt: Date;
   updatedAt: Date;
   clientCount: number;
@@ -5803,6 +5805,8 @@ export class BillingService {
         ca.per_client_limit_bytes AS "perClientLimitBytes",
         ca.used_bytes AS "usedBytes",
         ca.notes,
+        ca.login_email AS "loginEmail",
+        (ca.password_hash IS NOT NULL) AS "hasPassword",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
@@ -7241,6 +7245,8 @@ export class BillingService {
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
       notes: row.notes,
+      loginEmail: row.loginEmail,
+      hasPassword: Boolean(row.hasPassword),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

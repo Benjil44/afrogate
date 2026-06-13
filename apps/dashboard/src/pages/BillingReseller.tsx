@@ -1172,7 +1172,11 @@ export function BillingPage({
 
   const billingTabs: Array<DashboardTabItem<BillingTab>> = [
     { id: 'catalog', label: t.tabs.billingCatalog, meta: t.billing.packagesLoaded(format.integer(packages.length)) },
-    { id: 'customers', label: t.tabs.billingCustomers, meta: t.billing.accountsLoaded(format.integer(accounts.length)) },
+    // Admins manage customers on the dedicated Customers page; resellers (no
+    // Customers sidebar item) still manage them here.
+    ...(isResellerSession
+      ? [{ id: 'customers' as BillingTab, label: t.tabs.billingCustomers, meta: t.billing.accountsLoaded(format.integer(accounts.length)) }]
+      : []),
     { id: 'panelImport', label: t.tabs.billingPanelImport, meta: t.billing.currentPanelReadOnly },
     { id: 'telegram', label: t.tabs.billingTelegram, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
     { id: 'orders', label: t.tabs.billingOrders, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },

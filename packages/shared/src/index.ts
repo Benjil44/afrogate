@@ -1115,6 +1115,8 @@ export interface CreateCustomerAccountRequest {
   perClientLimitBytes?: number | null;
   usedBytes?: number;
   notes?: string | null;
+  loginEmail?: string | null;
+  password?: string | null;
 }
 
 export interface UpdateCustomerAccountRequest {
@@ -1130,6 +1132,8 @@ export interface UpdateCustomerAccountRequest {
   perClientLimitBytes?: number | null;
   usedBytes?: number;
   notes?: string | null;
+  loginEmail?: string | null;
+  password?: string | null;
 }
 
 export interface CreateClientConfigRequest {
