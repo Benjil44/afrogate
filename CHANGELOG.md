@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.37 - 2026-06-14
+
+- Inline **VLESS config creation** on the Customers page: each customer row has a **Configs** action that opens a panel listing the customer's client configs (label, protocol, status, usage) with their **VLESS entry link** shown and one-click **Copy link**, plus a **New VLESS config** button that creates a config (auto-provisioned into the native `afrows-in` inbound via its `entry_uuid`) — no more hopping to another tab. New admin endpoint `GET /api/admin/client-configs/:id/entry-link` (builds the afrows-in VLESS URI from the config's entry_uuid via `buildAfrowsEntryUri`), and dashboard API helpers `createAdminClientConfig` + `fetchAdminClientConfigEntryLink`. EN/FA strings added.
+
 ## 0.114.36 - 2026-06-14
 
 - Customer management consolidated onto the **Customers** page (out of Billing): an **Add customer** button opens an inline create form above the table, and each row has an **Edit** action (name, login email, telegram, account quota GB, per-client cap, quota scope, status, notes). A new **Login email** column is shown. The duplicate **Customers tab is removed from Billing for admins** (resellers, who have no Customers sidebar item, keep it there). **Bug fix:** customer `login_email` was saved but never returned by the accounts list API, so it looked unsaved and couldn't be displayed/edited — the list now selects + maps `loginEmail`/`hasPassword`, and `loginEmail`/`password` were added to the create/update request types. (Next: inline VLESS-config creation per customer.)

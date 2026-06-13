@@ -551,6 +551,14 @@ export class BillingController {
     return this.billingService.createClientConfig(id, payload, request.actor);
   }
 
+  @Get('client-configs/:id/entry-link')
+  @Roles('admin')
+  getClientConfigEntryLink(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<{ link: string | null }> {
+    return this.billingService.getClientConfigEntryLink(id);
+  }
+
   @Patch('client-configs/:id')
   @Roles('admin')
   updateClientConfig(

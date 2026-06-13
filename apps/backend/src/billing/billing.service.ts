@@ -2805,6 +2805,19 @@ export class BillingService {
     };
   }
 
+  /** The native afrows-in VLESS entry link for a client config (admin-only). */
+  async getClientConfigEntryLink(clientConfigId: string): Promise<{ link: string | null }> {
+    const inbound = readAfrowsInboundEnv(process.env);
+    if (!inbound) return { link: null };
+    const result = await this.database.query<{ entryUuid: string | null; label: string | null }>(
+      `SELECT entry_uuid AS "entryUuid", label FROM client_configs WHERE id = $1`,
+      [clientConfigId],
+    );
+    const row = result.rows[0];
+    if (!row?.entryUuid) return { link: null };
+    return { link: buildAfrowsEntryUri(inbound, row.entryUuid, row.label || 'Afrows') };
+  }
+
   async createCustomerAccount(
     dto: CreateCustomerAccountDto,
     actor: AuthActor | undefined,

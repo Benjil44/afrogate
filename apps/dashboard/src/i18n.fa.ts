@@ -106,6 +106,13 @@ export const fa: DashboardStrings = {
       save: 'ذخیره',
       cancel: 'انصراف',
       saveError: 'ذخیره نشد. ورودی‌ها را بررسی و دوباره تلاش کنید.',
+      configsAction: 'کانفیگ‌ها',
+      configsTitle: 'کانفیگ‌های VLESS',
+      newConfig: 'کانفیگ VLESS جدید',
+      copyLink: 'کپی لینک',
+      copied: 'کپی شد',
+      noConfigs: 'هنوز کانفیگی نیست. یکی بسازید تا لینک VLESS ساخته شود.',
+      configError: 'ایجاد کانفیگ ممکن نشد.',
     },
     inboundsPage: {
       title: 'شنونده‌های ورودی',

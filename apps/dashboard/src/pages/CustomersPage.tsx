@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil, Plus, Search, X } from 'lucide-react';
-import type { AdminCustomerAccountSummary } from '@afrows/shared';
-import { createAdminCustomerAccount, fetchAdminCustomerAccounts, updateAdminCustomerAccount } from '../api/admin';
+import { Copy, Link2, Pencil, Plus, Search, X } from 'lucide-react';
+import type { AdminClientConfigSummary, AdminCustomerAccountSummary } from '@afrows/shared';
+import {
+  createAdminClientConfig,
+  createAdminCustomerAccount,
+  exportAdminCustomerClientConfigs,
+  fetchAdminClientConfigEntryLink,
+  fetchAdminCustomerAccounts,
+  updateAdminCustomerAccount,
+} from '../api/admin';
 import { DataTable, EmptyState, PanelHeading } from '../components/primitives';
 import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
@@ -42,6 +49,14 @@ export function CustomersPage({
   const [scope, setScope] = useState<Scope>('account_shared');
   const [status, setStatus] = useState<Status>('active');
   const [notes, setNotes] = useState('');
+
+  // VLESS configs panel
+  const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
+  const [configList, setConfigList] = useState<AdminClientConfigSummary[]>([]);
+  const [linkMap, setLinkMap] = useState<Record<string, string>>({});
+  const [configBusy, setConfigBusy] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -139,6 +154,67 @@ export function CustomersPage({
     }
   };
 
+  const loadConfigs = async (accountId: string) => {
+    setConfigBusy(true);
+    setConfigError(null);
+    try {
+      const res = await exportAdminCustomerClientConfigs(sessionToken, accountId);
+      setConfigList(res.configs);
+      const links: Record<string, string> = {};
+      await Promise.all(
+        res.configs.map(async (c) => {
+          try {
+            const r = await fetchAdminClientConfigEntryLink(sessionToken, c.id);
+            if (r.link) links[c.id] = r.link;
+          } catch {
+            /* skip */
+          }
+        }),
+      );
+      setLinkMap(links);
+    } catch {
+      setConfigError(t.customersPage.configError);
+    } finally {
+      setConfigBusy(false);
+    }
+  };
+
+  const openConfigs = (a: AdminCustomerAccountSummary) => {
+    setEditorOpen(false);
+    setConfigsFor(a);
+    setConfigList([]);
+    setLinkMap({});
+    void loadConfigs(a.id);
+  };
+
+  const onCreateConfig = async () => {
+    if (!configsFor) return;
+    setConfigBusy(true);
+    setConfigError(null);
+    try {
+      await createAdminClientConfig(sessionToken, configsFor.id, {
+        label: `vless-${configList.length + 1}`,
+        protocol: 'vless',
+      });
+      await loadConfigs(configsFor.id);
+      await load();
+    } catch {
+      setConfigError(t.customersPage.configError);
+    } finally {
+      setConfigBusy(false);
+    }
+  };
+
+  const copyLink = async (id: string, link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return accounts;
@@ -185,14 +261,25 @@ export function CustomersPage({
       header: '',
       alignRight: true,
       render: (a) => (
-        <button
-          type="button"
-          onClick={() => openEdit(a)}
-          title={s.editAction}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal"
-        >
-          <Pencil size={14} />
-        </button>
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => openConfigs(a)}
+            title={s.configsAction}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+          >
+            <Link2 size={14} />
+            {s.configsAction}
+          </button>
+          <button
+            type="button"
+            onClick={() => openEdit(a)}
+            title={s.editAction}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal"
+          >
+            <Pencil size={14} />
+          </button>
+        </div>
       ),
     },
   ];
@@ -289,6 +376,65 @@ export function CustomersPage({
               {s.cancel}
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {configsFor ? (
+        <div className="rounded-md border border-afro-line bg-afro-panel p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-afro-ink">
+              {s.configsTitle} — {nameOf(configsFor)}
+            </h2>
+            <button type="button" onClick={() => setConfigsFor(null)} className="text-afro-muted hover:text-afro-ink">
+              <X size={16} />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => void onCreateConfig()}
+            disabled={configBusy}
+            className="mb-3 inline-flex min-h-9 items-center gap-2 rounded-md bg-afro-teal px-3 text-sm font-bold text-white disabled:opacity-60"
+          >
+            <Plus size={15} />
+            {s.newConfig}
+          </button>
+          {configError ? <p className="mb-2 text-[13px] font-bold text-[#b91c1c]">{configError}</p> : null}
+          {configList.length === 0 ? (
+            <EmptyState message={configBusy ? t.dataStatus.loading : s.noConfigs} />
+          ) : (
+            <div className="grid gap-2">
+              {configList.map((c) => (
+                <div key={c.id} className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="text-[13px] text-afro-ink">{c.label}</strong>
+                    <span className="text-[12px] text-afro-muted">
+                      {c.protocol} · {String(c.status)} · {format.bytes(c.usedBytes)}
+                    </span>
+                  </div>
+                  {linkMap[c.id] ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        readOnly
+                        value={linkMap[c.id]}
+                        dir="ltr"
+                        className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[11px] outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void copyLink(c.id, linkMap[c.id])}
+                        className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                      >
+                        <Copy size={13} />
+                        {copiedId === c.id ? s.copied : s.copyLink}
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
 

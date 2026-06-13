@@ -5,6 +5,9 @@ import type {
   AdminBackupStatusResponse,
   AdminBillingCatalogResponse,
   AdminClientConfigsExportResponse,
+  AdminClientConfigSummary,
+  AdminClientConfigEntryLinkResponse,
+  CreateClientConfigRequest,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelUsageSyncResponse,
@@ -662,6 +665,33 @@ export async function updateAdminCustomerAccount(
   });
 
   return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+export async function createAdminClientConfig(
+  sessionToken: string,
+  accountId: string,
+  payload: CreateClientConfigRequest,
+): Promise<AdminClientConfigSummary> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/client-configs`,
+    {
+      body: JSON.stringify(payload),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminClientConfigSummary>;
+}
+
+export async function fetchAdminClientConfigEntryLink(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<AdminClientConfigEntryLinkResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}/entry-link`,
+    { headers: createSessionHeaders(sessionToken) },
+  );
+  return response.json() as Promise<AdminClientConfigEntryLinkResponse>;
 }
 
 export async function exportAdminCustomerClientConfigs(

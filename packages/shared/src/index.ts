@@ -948,6 +948,11 @@ export interface CreateResellerPackageSaleRequest {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface AdminClientConfigEntryLinkResponse {
+  /** the native afrows-in VLESS entry link for this client config (null if the inbound env isn't configured) */
+  link: string | null;
+}
+
 export interface AdminClientConfigsExportResponse {
   customerAccountId: string;
   generatedAt: string;

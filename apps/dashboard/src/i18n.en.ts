@@ -104,6 +104,13 @@ export const en = {
       save: 'Save',
       cancel: 'Cancel',
       saveError: 'Could not save. Check the inputs and try again.',
+      configsAction: 'Configs',
+      configsTitle: 'VLESS configs',
+      newConfig: 'New VLESS config',
+      copyLink: 'Copy link',
+      copied: 'Copied',
+      noConfigs: 'No configs yet. Create one to generate a VLESS link.',
+      configError: 'Could not create the config.',
     },
     inboundsPage: {
       title: 'Entry listeners',
