@@ -50,7 +50,7 @@ class StartScreen extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ConnectScreen()),
                 ),
-                child: const Text('Use my own VLESS',
+                child: const Text('Use my own config',
                     style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               const SizedBox(height: 28),

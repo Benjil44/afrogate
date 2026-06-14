@@ -90,6 +90,12 @@ import { assertClientScope, hashClientToken, normalizeScopes } from '../security
 import { hashPassword, verifyScryptPassword } from '../security/password';
 import { generatePassword, normalizeLoginIdentifier } from '../security/generate-password';
 import { buildAfrowsEntryUri, readAfrowsInboundEnv } from '../client/afrows-entry-link';
+import {
+  buildWireguardConf,
+  generateWireguardKeypair,
+  nextWireguardAddress,
+  readAfrowsWireguardEnv,
+} from '../client/afrows-wireguard';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { TelegramAlertService, type TelegramMessageSendResult } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
@@ -4235,10 +4241,14 @@ export class BillingService {
       const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
       return this.subscriptionConfigLink(outbound, credential);
     });
-    // Native Afrows inbound (afrows-in) link first, so the app connects to our
-    // own engine by default. Omitted until the inbound is configured via env.
+    // Native links first so the app connects to our own engine by default:
+    // WireGuard (kernel wg0) is the primary mobile transport now, then the
+    // native afrows-in VLESS link. Each is omitted until configured via env.
+    const wireguardLink = await this.buildNativeWireguardConfigLink(actor.clientConfigId, routeGroup);
     const nativeLink = await this.buildNativeEntryConfigLink(actor.clientConfigId, routeGroup);
-    const configLinks = nativeLink ? [nativeLink, ...baseConfigLinks] : baseConfigLinks;
+    const configLinks = [wireguardLink, nativeLink, ...baseConfigLinks].filter(
+      (link): link is ClientSubscriptionConfigLinkSummary => link !== null,
+    );
 
     return {
       subscription: {
@@ -4283,6 +4293,205 @@ export class BillingService {
       warnings: [],
       requiresClientSecret: false,
     };
+  }
+
+  /**
+   * Builds the native kernel-WireGuard config link for the logged-in account.
+   * Account-scoped: a session is pinned to one client_config (the oldest), but
+   * WireGuard delivery is per *account* — we resolve the account, ensure it has
+   * a WireGuard client_config + provisioned wg0 peer, and render its `.conf`.
+   * Returns null when WireGuard isn't configured via env.
+   */
+  private async buildNativeWireguardConfigLink(
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
+    const server = readAfrowsWireguardEnv(process.env);
+    if (!server) return null;
+
+    const peer = await this.ensureAccountWireguardPeer(clientConfigId, server.interface);
+    if (!peer) return null;
+
+    let privateKey: string;
+    try {
+      const material = this.secretVault.decryptJson(
+        peer.encryptedPrivateKey,
+        this.wireguardPeerEncryptionContext(peer.clientConfigId),
+      );
+      privateKey = typeof material.clientPrivateKey === 'string' ? material.clientPrivateKey : '';
+    } catch {
+      return null;
+    }
+    if (!privateKey) return null;
+
+    const configText = buildWireguardConf({
+      privateKey,
+      address: peer.clientAddress,
+      server,
+      presharedKey: peer.presharedKey,
+    });
+
+    return {
+      outboundId: 'afrows-wg',
+      name: 'Afrows WireGuard',
+      type: 'wireguard',
+      routeGroup,
+      usageMultiplier: 1,
+      chargeLabel: 'standard',
+      format: 'wireguard-profile',
+      renderStatus: 'rendered',
+      uri: null,
+      configText,
+      missingFields: [],
+      warnings: [],
+      requiresClientSecret: false,
+    };
+  }
+
+  /** Stable encryption context for a peer's stored private key. */
+  private wireguardPeerEncryptionContext(clientConfigId: string): string {
+    return ['wireguard-peer', clientConfigId].join(':');
+  }
+
+  /**
+   * Ensures the account owning `clientConfigId` has a WireGuard client_config
+   * and a provisioned wg0 peer (generating the keypair + allocating an address
+   * on first use). The peer is written with desired_state='present' for the root
+   * reconciler to apply to wg0. Returns the peer record, or null on failure.
+   */
+  private async ensureAccountWireguardPeer(
+    sessionClientConfigId: string,
+    iface: string,
+  ): Promise<{
+    clientConfigId: string;
+    clientPublicKey: string;
+    clientAddress: string;
+    encryptedPrivateKey: string;
+    presharedKey: string | null;
+  } | null> {
+    return this.database.transaction(async (executor) => {
+      // 1) resolve the account from the session's client_config
+      const accountRes = await executor.query<{ accountId: string }>(
+        `SELECT customer_account_id AS "accountId" FROM client_configs WHERE id = $1`,
+        [sessionClientConfigId],
+      );
+      const accountId = accountRes.rows[0]?.accountId;
+      if (!accountId) return null;
+
+      // 2) existing WireGuard peer for any of the account's wireguard configs?
+      const existing = await executor.query<{
+        clientConfigId: string;
+        clientPublicKey: string;
+        clientAddress: string;
+        encryptedPrivateKey: string;
+        presharedKey: string | null;
+      }>(
+        `
+          SELECT wp.client_config_id AS "clientConfigId",
+                 wp.client_public_key AS "clientPublicKey",
+                 wp.client_address AS "clientAddress",
+                 wp.encrypted_private_key AS "encryptedPrivateKey",
+                 wp.preshared_key AS "presharedKey"
+          FROM wireguard_peers wp
+          JOIN client_configs cc ON cc.id = wp.client_config_id
+          WHERE cc.customer_account_id = $1
+            AND wp.interface = $2
+            AND wp.desired_state = 'present'
+          ORDER BY wp.created_at ASC
+          LIMIT 1
+        `,
+        [accountId, iface],
+      );
+      if (existing.rows[0]) return existing.rows[0];
+
+      // 3) ensure a wireguard client_config exists for the account
+      const cfgRes = await executor.query<{ id: string }>(
+        `
+          SELECT id FROM client_configs
+          WHERE customer_account_id = $1 AND lower(protocol) = 'wireguard' AND status <> 'disabled'
+          ORDER BY created_at ASC
+          LIMIT 1
+        `,
+        [accountId],
+      );
+      let wgConfigId = cfgRes.rows[0]?.id;
+      if (!wgConfigId) {
+        const created = await executor.query<{ id: string }>(
+          `
+            INSERT INTO client_configs (customer_account_id, label, protocol, status, notes)
+            VALUES ($1, 'App (WireGuard)', 'wireguard', 'active', 'auto-provisioned for the Afrows app')
+            RETURNING id
+          `,
+          [accountId],
+        );
+        wgConfigId = created.rows[0].id;
+      }
+
+      // 4) reuse an existing peer for that config if present (any state)
+      const peerForCfg = await executor.query<{
+        clientConfigId: string;
+        clientPublicKey: string;
+        clientAddress: string;
+        encryptedPrivateKey: string;
+        presharedKey: string | null;
+      }>(
+        `
+          SELECT client_config_id AS "clientConfigId",
+                 client_public_key AS "clientPublicKey",
+                 client_address AS "clientAddress",
+                 encrypted_private_key AS "encryptedPrivateKey",
+                 preshared_key AS "presharedKey"
+          FROM wireguard_peers WHERE client_config_id = $1
+        `,
+        [wgConfigId],
+      );
+      if (peerForCfg.rows[0]) {
+        // re-arm desired_state in case it was disabled
+        await executor.query(
+          `UPDATE wireguard_peers SET desired_state = 'present', updated_at = now() WHERE client_config_id = $1`,
+          [wgConfigId],
+        );
+        return peerForCfg.rows[0];
+      }
+
+      // 5) allocate an address + generate a keypair, then insert the peer
+      const usedRes = await executor.query<{ clientAddress: string }>(
+        `SELECT client_address AS "clientAddress" FROM wireguard_peers WHERE interface = $1`,
+        [iface],
+      );
+      const server = readAfrowsWireguardEnv(process.env);
+      if (!server) return null;
+      const address = nextWireguardAddress(
+        usedRes.rows.map((r) => r.clientAddress),
+        server,
+      );
+      if (!address) return null;
+
+      const keypair = generateWireguardKeypair();
+      const envelope = this.secretVault.encryptJson(
+        { clientPrivateKey: keypair.privateKey },
+        this.wireguardPeerEncryptionContext(wgConfigId),
+      );
+
+      await executor.query(
+        `
+          INSERT INTO wireguard_peers (
+            client_config_id, interface, client_public_key, encrypted_private_key,
+            client_address, desired_state
+          )
+          VALUES ($1, $2, $3, $4, $5, 'present')
+        `,
+        [wgConfigId, iface, keypair.publicKey, envelope.payload, address],
+      );
+
+      return {
+        clientConfigId: wgConfigId,
+        clientPublicKey: keypair.publicKey,
+        clientAddress: address,
+        encryptedPrivateKey: envelope.payload,
+        presharedKey: null,
+      };
+    });
   }
 
   async getClientRoutePreference(

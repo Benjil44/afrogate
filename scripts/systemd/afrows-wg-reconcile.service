@@ -1,0 +1,10 @@
+[Unit]
+Description=Afrows WireGuard reconciler (apply desired peers to wg0 + meter usage)
+After=wg-quick@wg0.service postgresql.service
+Wants=wg-quick@wg0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/afrows-wg-reconcile.sh
+# Don't fail the timer if a single run errors transiently.
+SuccessExitStatus=0 1

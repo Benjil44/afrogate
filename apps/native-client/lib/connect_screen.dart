@@ -31,6 +31,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _vpn = WireguardVpn();
   StreamSubscription<VpnStatus>? _statusSub;
   DateTime? _connectedAt;
+  Timer? _uptimeTimer; // ticks the duration each second (WG plugin emits no periodic status)
 
   bool _ready = false;
   String _state = 'DISCONNECTED';
@@ -57,6 +58,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   Future<void> _init() async {
     _statusSub = _vpn.status().listen(_onStatus);
+    // The WireGuard plugin only emits on stage change (no periodic status), so
+    // tick the uptime ourselves once a second while connected.
+    _uptimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !_connected || _connectedAt == null) return;
+      setState(() => _duration = _fmtDuration(_connectedAt));
+    });
     // Initialize the WireGuard backend early so the one-time VPN consent dialog
     // is handled before the user taps Connect.
     await _vpn.ensureReady();
@@ -94,6 +101,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   void dispose() {
     _accountTimer?.cancel();
+    _uptimeTimer?.cancel();
     _statusSub?.cancel();
     _vpn.dispose();
     super.dispose();
@@ -340,6 +348,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
                         ),
                       ],
                     ),
+                    if (_connected) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Live speed isn\'t reported by WireGuard on Android — your usage is metered on the server.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Text('Afrows v$kAppVersion · $kBuildTag',
                         style: const TextStyle(color: Colors.white24, fontSize: 11)),

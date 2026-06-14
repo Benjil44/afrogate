@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Afrows WireGuard reconciler periodically
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Unit=afrows-wg-reconcile.service
+
+[Install]
+WantedBy=timers.target

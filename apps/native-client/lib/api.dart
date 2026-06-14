@@ -77,7 +77,9 @@ class AfrowsApi {
     }
   }
 
-  /// Returns the first connectable config URI from the user's subscription.
+  /// Returns the first connectable config from the user's subscription. The app
+  /// engine is WireGuard, so a rendered WireGuard `.conf` (`configText`) is
+  /// preferred; falls back to the first `uri` for older accounts.
   Future<String?> firstConfigUri(String token) async {
     final res = await http.get(
       Uri.parse('$base/client/subscription'),
@@ -86,6 +88,12 @@ class AfrowsApi {
     if (res.statusCode != 200) return null;
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final links = (((body['subscription'] as Map?)?['configLinks']) as List?) ?? const [];
+    // Prefer a rendered WireGuard config (configText).
+    for (final link in links) {
+      final text = (link as Map)['configText'];
+      if (text is String && text.trim().isNotEmpty) return text.trim();
+    }
+    // Fallback: a connectable URI.
     for (final link in links) {
       final uri = (link as Map)['uri'];
       if (uri is String && uri.trim().isNotEmpty) return uri.trim();
