@@ -21,6 +21,10 @@ export interface AfrowsWireguardServer {
   allowedIps: string;
   /** PersistentKeepalive seconds. */
   keepalive: number;
+  /** Client tunnel MTU. The wg→xray→Germany path is stacked, so the default
+   *  1420 drops large TLS packets ("connects but web hangs"); 1280 is the
+   *  proven value for this server (matches the MikroTik MSS-1240 fix). */
+  mtu: number;
   /** First three octets of the tunnel subnet, e.g. "10.8.0". */
   subnet: string;
   /** First host octet to allocate (reserves .1=server and the manual range below it). */
@@ -49,6 +53,7 @@ export function readAfrowsWireguardEnv(
     dns: env.AFROWS_WG_DNS?.trim() || '1.1.1.1',
     allowedIps: env.AFROWS_WG_ALLOWED_IPS?.trim() || '0.0.0.0/0',
     keepalive: clampInt(env.AFROWS_WG_KEEPALIVE, 25, 0, 65535),
+    mtu: clampInt(env.AFROWS_WG_MTU, 1280, 1280, 1500),
     subnet,
     addressStart: clampInt(env.AFROWS_WG_ADDRESS_START, 16, 2, 254),
   };
@@ -100,6 +105,7 @@ export function buildWireguardConf(opts: {
     `PrivateKey = ${privateKey}`,
     `Address = ${address}`,
     server.dns ? `DNS = ${server.dns}` : null,
+    server.mtu > 0 ? `MTU = ${server.mtu}` : null,
     '',
     '[Peer]',
     `PublicKey = ${server.serverPublicKey}`,

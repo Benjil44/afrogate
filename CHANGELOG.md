@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.114.44 - 2026-06-15
+
+- **WireGuard MTU fix** (the app "connects but websites hang" bug): the backend-rendered `.conf` now sets `MTU = 1280` (env `AFROWS_WG_MTU`, default 1280). The wg→xray→Germany egress is a stacked tunnel, so the default 1420 MTU silently drops large TLS packets while handshake/small requests pass — the same reason the MikroTik gateway needed MSS 1240 on this server. The official WireGuard app auto-picked a safe MTU; `wireguard_flutter` didn't, so the Afrows app needed it explicit.
+- Docs: added `docs/germany-exit-structure.md` documenting the foreign exit box (PasarGuard panel + hexogate stack + WireGuard relay tunnels) and the proven reachability constraints (Iran blocks the Germany IP directly; egress must front through a reachable intermediary). Egress-redesign work is parked.
+
 ## 0.114.43 - 2026-06-15
 
 - **Instant WireGuard provisioning** (removes first-connect lag): when the backend provisions a peer (on app login or WG config creation) it now triggers the root reconciler immediately via a scoped `sudoers` rule (`afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-wg-reconcile.service`) instead of waiting up to ~30s for the timer — so the app handshakes on first connect. The systemd timer remains the fallback. Sudoers file added at `scripts/systemd/afrows-wg-reconcile.sudoers`.
