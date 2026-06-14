@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.114.42 - 2026-06-15
+
+- **Customers: per-protocol usage + protocol management.** The Protocols column now shows each protocol's usage (e.g. `VLESS 0.9 GB` / `WIREGUARD 1.2 GB`) — the admin customer-list query returns per-protocol `usedBytes` (`AdminCustomerAccountSummary.protocols` is now `{protocol, usedBytes}[]`). The **Edit customer** dialog now lists the customer's protocols with usage and adds missing ones (VLESS / WireGuard) in place, so protocols are managed where you'd expect (not only in the Configs panel).
+- **WireGuard configs provision a peer on creation.** Creating a `wireguard` client config (dashboard or auto on app login) now eagerly provisions its `wg0` peer (`provisionWireguardPeerForConfig`), so the app and dashboard share one peer and the `.conf` is ready immediately. Fixed account-scoped provisioning to use a dedicated `App (WireGuard)` config instead of accidentally reusing the operator's MikroTik gateway config.
+- **L2TP deferred**: hidden from the Add/Edit/Configs UI until its server backend lands. Full **Phase 4 (L2TP/IPsec)** implementation checklist added to `docs/superpowers/plans/2026-06-14-mobile-wireguard-pivot.md`.
+
 ## 0.114.41 - 2026-06-15
 
 - **Backend WireGuard delivery**: logged-in accounts now receive a ready-to-use kernel-WireGuard `.conf` from `GET /client/subscription` (new native `afrows-wg` config link, listed first). Because a session is pinned to one client config but WireGuard is per *account*, delivery is account-scoped: `buildNativeWireguardConfigLink` resolves the account, ensures it has a `wireguard` client config + a provisioned `wg0` peer (generates an X25519 keypair in-process, allocates the next `10.8.0.x` address), stores the private key encrypted (SecretVault), and renders the `.conf`. New `wireguard_peers` table (migration 0033) is the desired-state + metering store. The mobile app now prefers a rendered WireGuard `configText` over a `uri`, so account login auto-connects over WireGuard (no pasting). New WireGuard UI: ticking uptime, an honest "speed metered on server" caption, and a "Use my own config" label; app version `2.2.0`.

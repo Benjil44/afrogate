@@ -202,7 +202,15 @@ interface CustomerAccountRow {
   updatedAt: Date;
   clientCount: number;
   activeClientCount: number;
-  protocols: string[] | null;
+  protocols: Array<{ protocol: string; usedBytes: number | string }> | null;
+}
+
+interface WireguardPeerRecord {
+  clientConfigId: string;
+  clientPublicKey: string;
+  clientAddress: string;
+  encryptedPrivateKey: string;
+  presharedKey: string | null;
 }
 
 interface ClientConfigRow {
@@ -2967,6 +2975,15 @@ export class BillingService {
         );
         const id = result.rows[0].id;
 
+        // WireGuard configs get a wg0 peer provisioned eagerly so the rendered
+        // .conf is ready immediately and the app shares the same peer on login.
+        if (normalizeProtocol(dto.protocol) === 'wireguard') {
+          const server = readAfrowsWireguardEnv(process.env);
+          if (server) {
+            await this.provisionWireguardPeerForConfig(executor, id, server.interface);
+          }
+        }
+
         await this.audit.record(
           actor,
           'client_config.create',
@@ -4404,94 +4421,106 @@ export class BillingService {
       );
       if (existing.rows[0]) return existing.rows[0];
 
-      // 3) ensure a wireguard client_config exists for the account
+      // 3) Use a DEDICATED "App (WireGuard)" config — never reuse the operator's
+      // other wireguard configs (e.g. the MikroTik gateway), which represent
+      // different peers/interfaces. Reuse by label to stay idempotent.
+      const APP_WG_LABEL = 'App (WireGuard)';
       const cfgRes = await executor.query<{ id: string }>(
         `
           SELECT id FROM client_configs
-          WHERE customer_account_id = $1 AND lower(protocol) = 'wireguard' AND status <> 'disabled'
+          WHERE customer_account_id = $1 AND lower(protocol) = 'wireguard'
+            AND label = $2 AND status <> 'disabled'
           ORDER BY created_at ASC
           LIMIT 1
         `,
-        [accountId],
+        [accountId, APP_WG_LABEL],
       );
       let wgConfigId = cfgRes.rows[0]?.id;
       if (!wgConfigId) {
         const created = await executor.query<{ id: string }>(
           `
             INSERT INTO client_configs (customer_account_id, label, protocol, status, notes)
-            VALUES ($1, 'App (WireGuard)', 'wireguard', 'active', 'auto-provisioned for the Afrows app')
+            VALUES ($1, $2, 'wireguard', 'active', 'auto-provisioned for the Afrows app (kernel wg0)')
             RETURNING id
           `,
-          [accountId],
+          [accountId, APP_WG_LABEL],
         );
         wgConfigId = created.rows[0].id;
       }
 
-      // 4) reuse an existing peer for that config if present (any state)
-      const peerForCfg = await executor.query<{
-        clientConfigId: string;
-        clientPublicKey: string;
-        clientAddress: string;
-        encryptedPrivateKey: string;
-        presharedKey: string | null;
-      }>(
-        `
-          SELECT client_config_id AS "clientConfigId",
-                 client_public_key AS "clientPublicKey",
-                 client_address AS "clientAddress",
-                 encrypted_private_key AS "encryptedPrivateKey",
-                 preshared_key AS "presharedKey"
-          FROM wireguard_peers WHERE client_config_id = $1
-        `,
+      // 5) allocate an address + generate a keypair, then insert the peer
+      return this.provisionWireguardPeerForConfig(executor, wgConfigId, iface);
+    });
+  }
+
+  /**
+   * Provisions (or returns the existing) wg0 peer for a specific WireGuard
+   * client_config: generates an X25519 keypair, allocates the next free
+   * 10.8.0.x address, stores the private key encrypted, and writes the peer
+   * with desired_state='present' for the reconciler. Idempotent per config.
+   * Called both lazily on app login and eagerly when an admin creates a
+   * WireGuard config, so the app + dashboard always share one peer.
+   */
+  private async provisionWireguardPeerForConfig(
+    executor: DatabaseQueryExecutor,
+    wgConfigId: string,
+    iface: string,
+  ): Promise<WireguardPeerRecord | null> {
+    const existing = await executor.query<WireguardPeerRecord>(
+      `
+        SELECT client_config_id AS "clientConfigId",
+               client_public_key AS "clientPublicKey",
+               client_address AS "clientAddress",
+               encrypted_private_key AS "encryptedPrivateKey",
+               preshared_key AS "presharedKey"
+        FROM wireguard_peers WHERE client_config_id = $1
+      `,
+      [wgConfigId],
+    );
+    if (existing.rows[0]) {
+      await executor.query(
+        `UPDATE wireguard_peers SET desired_state = 'present', updated_at = now() WHERE client_config_id = $1`,
         [wgConfigId],
       );
-      if (peerForCfg.rows[0]) {
-        // re-arm desired_state in case it was disabled
-        await executor.query(
-          `UPDATE wireguard_peers SET desired_state = 'present', updated_at = now() WHERE client_config_id = $1`,
-          [wgConfigId],
-        );
-        return peerForCfg.rows[0];
-      }
+      return existing.rows[0];
+    }
 
-      // 5) allocate an address + generate a keypair, then insert the peer
-      const usedRes = await executor.query<{ clientAddress: string }>(
-        `SELECT client_address AS "clientAddress" FROM wireguard_peers WHERE interface = $1`,
-        [iface],
-      );
-      const server = readAfrowsWireguardEnv(process.env);
-      if (!server) return null;
-      const address = nextWireguardAddress(
-        usedRes.rows.map((r) => r.clientAddress),
-        server,
-      );
-      if (!address) return null;
+    const server = readAfrowsWireguardEnv(process.env);
+    if (!server) return null;
+    const usedRes = await executor.query<{ clientAddress: string }>(
+      `SELECT client_address AS "clientAddress" FROM wireguard_peers WHERE interface = $1`,
+      [iface],
+    );
+    const address = nextWireguardAddress(
+      usedRes.rows.map((r) => r.clientAddress),
+      server,
+    );
+    if (!address) return null;
 
-      const keypair = generateWireguardKeypair();
-      const envelope = this.secretVault.encryptJson(
-        { clientPrivateKey: keypair.privateKey },
-        this.wireguardPeerEncryptionContext(wgConfigId),
-      );
+    const keypair = generateWireguardKeypair();
+    const envelope = this.secretVault.encryptJson(
+      { clientPrivateKey: keypair.privateKey },
+      this.wireguardPeerEncryptionContext(wgConfigId),
+    );
 
-      await executor.query(
-        `
-          INSERT INTO wireguard_peers (
-            client_config_id, interface, client_public_key, encrypted_private_key,
-            client_address, desired_state
-          )
-          VALUES ($1, $2, $3, $4, $5, 'present')
-        `,
-        [wgConfigId, iface, keypair.publicKey, envelope.payload, address],
-      );
+    await executor.query(
+      `
+        INSERT INTO wireguard_peers (
+          client_config_id, interface, client_public_key, encrypted_private_key,
+          client_address, desired_state
+        )
+        VALUES ($1, $2, $3, $4, $5, 'present')
+      `,
+      [wgConfigId, iface, keypair.publicKey, envelope.payload, address],
+    );
 
-      return {
-        clientConfigId: wgConfigId,
-        clientPublicKey: keypair.publicKey,
-        clientAddress: address,
-        encryptedPrivateKey: envelope.payload,
-        presharedKey: null,
-      };
-    });
+    return {
+      clientConfigId: wgConfigId,
+      clientPublicKey: keypair.publicKey,
+      clientAddress: address,
+      encryptedPrivateKey: envelope.payload,
+      presharedKey: null,
+    };
   }
 
   async getClientRoutePreference(
@@ -5382,7 +5411,7 @@ export class BillingService {
           updated_at AS "updatedAt",
           0::int AS "clientCount",
           0::int AS "activeClientCount",
-          ARRAY[]::text[] AS "protocols"
+          '[]'::jsonb AS "protocols"
         FROM customer_accounts
         WHERE id = $1
         FOR UPDATE
@@ -6036,8 +6065,19 @@ export class BillingService {
         COUNT(cc.id)::int AS "clientCount",
         COUNT(cc.id) FILTER (WHERE cc.status = 'active')::int AS "activeClientCount",
         COALESCE(
-          array_agg(DISTINCT cc.protocol) FILTER (WHERE cc.protocol IS NOT NULL),
-          ARRAY[]::text[]
+          (
+            SELECT jsonb_agg(
+                     jsonb_build_object('protocol', t.protocol, 'usedBytes', t.used)
+                     ORDER BY t.protocol
+                   )
+            FROM (
+              SELECT protocol, SUM(used_bytes)::bigint AS used
+              FROM client_configs
+              WHERE customer_account_id = ca.id AND protocol IS NOT NULL
+              GROUP BY protocol
+            ) t
+          ),
+          '[]'::jsonb
         ) AS "protocols"
       FROM customer_accounts ca
       LEFT JOIN reseller_accounts ra ON ra.id = ca.reseller_account_id
@@ -7472,7 +7512,10 @@ export class BillingService {
       remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
-      protocols: row.protocols ?? [],
+      protocols: (row.protocols ?? []).map((p) => ({
+        protocol: p.protocol,
+        usedBytes: Number(p.usedBytes) || 0,
+      })),
       notes: row.notes,
       loginEmail: row.loginEmail,
       hasPassword: Boolean(row.hasPassword),

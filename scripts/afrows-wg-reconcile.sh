@@ -40,7 +40,8 @@ done < <(q "SELECT client_public_key FROM wireguard_peers WHERE interface='$IFAC
 wg show "$IFACE" dump | tail -n +2 | while IFS=$'\t' read -r pub _psk _ep _allowed hs rx tx _ka; do
   [ -n "$pub" ] || continue
   hs_sql="NULL"; [ "${hs:-0}" != "0" ] && hs_sql="to_timestamp($hs)"
-  psql "$DBURL" -q -c "UPDATE wireguard_peers SET rx_bytes=${rx:-0}, tx_bytes=${tx:-0}, last_handshake_at=$hs_sql, updated_at=now() WHERE interface='$IFACE' AND client_public_key=$$${pub}$$;"
+  # pubkeys are base64 (no single quotes), so plain single-quoting is safe here
+  psql "$DBURL" -q -c "UPDATE wireguard_peers SET rx_bytes=${rx:-0}, tx_bytes=${tx:-0}, last_handshake_at=$hs_sql, updated_at=now() WHERE interface='$IFACE' AND client_public_key='${pub}';"
 done
 
 # 2b) roll per-peer usage into the owning client_configs.used_bytes (rx+tx)

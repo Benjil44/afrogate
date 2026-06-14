@@ -49,11 +49,11 @@ export function CustomersPage({
   const [scope, setScope] = useState<Scope>('account_shared');
   const [status, setStatus] = useState<Status>('active');
   const [notes, setNotes] = useState('');
-  // protocols to auto-create when adding a customer
+  // protocols to auto-create when adding a customer (L2TP deferred until its server lands)
   const [protoVless, setProtoVless] = useState(true);
   const [protoWg, setProtoWg] = useState(false);
-  const [protoL2tp, setProtoL2tp] = useState(false);
   const [newConfigProto, setNewConfigProto] = useState('vless');
+  const [addProtoBusy, setAddProtoBusy] = useState(false);
 
   // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
@@ -103,7 +103,6 @@ export function CustomersPage({
     setNotes('');
     setProtoVless(true);
     setProtoWg(false);
-    setProtoL2tp(false);
     setError(null);
   };
 
@@ -125,6 +124,28 @@ export function CustomersPage({
     setStatus((a.status as Status) || 'active');
     setNotes(a.notes ?? '');
     setEditorOpen(true);
+  };
+
+  // Protocols of the customer currently being edited (for the Edit dialog).
+  const editProtocols = useMemo(
+    () => accounts.find((a) => a.id === editId)?.protocols ?? [],
+    [accounts, editId],
+  );
+
+  // Add a protocol (a new client config) to the customer being edited.
+  const onAddProtocol = async (protocol: 'vless' | 'wireguard') => {
+    if (!editId) return;
+    setAddProtoBusy(true);
+    setError(null);
+    try {
+      const count = editProtocols.filter((p) => p.protocol === protocol).length + 1;
+      await createAdminClientConfig(sessionToken, editId, { label: `${protocol}-${count}`, protocol });
+      await load();
+    } catch {
+      setError(s.saveError);
+    } finally {
+      setAddProtoBusy(false);
+    }
   };
 
   const gbToBytes = (v: string): number | null => {
@@ -154,7 +175,7 @@ export function CustomersPage({
         await updateAdminCustomerAccount(sessionToken, editId, payload);
       } else {
         const created = await createAdminCustomerAccount(sessionToken, payload);
-        const protos = [protoVless ? 'vless' : '', protoWg ? 'wireguard' : '', protoL2tp ? 'l2tp' : ''].filter(Boolean);
+        const protos = [protoVless ? 'vless' : '', protoWg ? 'wireguard' : ''].filter(Boolean);
         for (const p of protos) {
           try {
             await createAdminClientConfig(sessionToken, created.id, { label: `${p}-1`, protocol: p });
@@ -282,10 +303,12 @@ export function CustomersPage({
           <span className="flex flex-wrap gap-1">
             {a.protocols.map((p) => (
               <span
-                key={p}
-                className="inline-flex items-center rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
+                key={p.protocol}
+                title={`${p.protocol}: ${format.bytes(p.usedBytes)}`}
+                className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
               >
-                {p}
+                {p.protocol}
+                <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
               </span>
             ))}
           </span>
@@ -405,12 +428,42 @@ export function CustomersPage({
                   <label className="inline-flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={protoWg} onChange={(e) => setProtoWg(e.target.checked)} /> {s.protoWireguard}
                   </label>
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={protoL2tp} onChange={(e) => setProtoL2tp(e.target.checked)} /> {s.protoL2tp}
-                  </label>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="grid gap-1.5 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {editProtocols.length > 0 ? (
+                    editProtocols.map((p) => (
+                      <span
+                        key={p.protocol}
+                        className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-afro-ink"
+                      >
+                        {p.protocol}
+                        <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[13px] text-afro-muted">{s.noConfigs}</span>
+                  )}
+                  {(['vless', 'wireguard'] as const)
+                    .filter((proto) => !editProtocols.some((p) => p.protocol === proto))
+                    .map((proto) => (
+                      <button
+                        key={proto}
+                        type="button"
+                        disabled={addProtoBusy}
+                        onClick={() => void onAddProtocol(proto)}
+                        className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                      >
+                        <Plus size={13} />
+                        {proto}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
           {error ? <p className="mt-3 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
           <div className="mt-4 flex gap-2">
@@ -447,7 +500,6 @@ export function CustomersPage({
             <select value={newConfigProto} onChange={(e) => setNewConfigProto(e.target.value)} className={inputClass}>
               <option value="vless">{s.protoVless}</option>
               <option value="wireguard">{s.protoWireguard}</option>
-              <option value="l2tp">{s.protoL2tp}</option>
             </select>
             <button
               type="button"

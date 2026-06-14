@@ -102,3 +102,47 @@
 - **`afrows-wg` restart on peer changes drops active WG users briefly** → isolated service + batched reconcile; acceptable at current scale. Revisit kernel-WG if churn grows.
 - **Private-key handling** → generated on-box, encrypted at rest (SecretVault), delivered once in the `.conf`; never returned in list endpoints.
 - **Two engines already failed (sing-box, flutter_v2ray)** → this avoids the failure class entirely (official WG backend, no tun2socks/xray-in-app).
+
+---
+
+## Status (2026-06-15) — Phases 1–3 DONE; multi-protocol dashboard DONE
+
+- **Phase 1 (server)**: kernel `wg0` on **51822** + TPROXY → xray → Germany, proven (per-peer metering + Germany exit). Migration `0033_wireguard_peers`. **Difference from the original plan**: the backend runs **unprivileged** (`afrows` user), so provisioning + metering moved to a **root reconciler** (`scripts/afrows-wg-reconcile.sh` + systemd timer) — the backend only writes desired peer state to `wireguard_peers`; the reconciler applies `wg set` and writes back `wg show … dump` usage. Keys are generated **in-process** (Node X25519, no `wg` binary needed) and the private key is stored encrypted (SecretVault).
+- **Phase 2 (delivery)**: `GET /client/subscription` returns a native `afrows-wg` link with a rendered `.conf` (account-scoped via `buildNativeWireguardConfigLink`/`ensureAccountWireguardPeer`). Creating a WireGuard config in the dashboard provisions its peer eagerly (`provisionWireguardPeerForConfig`), so app + dashboard share one peer. Still TODO: surface the `.conf` + QR in the Configs panel (admin endpoint) for non-app users.
+- **Phase 3 (app)**: `wireguard_flutter` engine (`wireguard_vpn.dart`), account login auto-connects over WireGuard (`configText`), app `v2.2.0`.
+- **Dashboard multi-protocol**: Customers table shows a **Protocols** column with per-protocol usage; the Edit dialog adds/lists protocols (VLESS + WireGuard); L2TP is hidden pending Phase 4.
+
+---
+
+## Phase 4 — L2TP/IPsec (per-customer) — NOT STARTED
+
+**Goal:** offer L2TP/IPsec as a third per-customer protocol (built-in VPN client on iOS/Android/Windows, no app needed), metered + quota-enforced like VLESS/WireGuard.
+
+**Architecture:** strongSwan (IKEv1/IPsec, PSK) + xl2tpd (L2TP/PPP) on the VPS; PPP hands each user a `10.9.0.x`; route that pool through the same xray TPROXY → Germany egress (mirror the wg0 recipe, scoped to `ppp+`/`10.9.0.0/24`). Per-user credentials in CHAP secrets; usage from PPP/ip accounting.
+
+### Task 4.1: Server install + egress (VPS)
+- [ ] `apt-get install -y strongswan xl2tpd ppp` (Ubuntu noble mirror reachable).
+- [ ] `/etc/ipsec.conf` + `/etc/ipsec.secrets`: PSK transport for L2TP (`conn L2TP-PSK-NAT`, `type=transport`, `rightprotoport=17/%any`), `AFROWS_L2TP_PSK` from env/secret.
+- [ ] `/etc/xl2tpd/xl2tpd.conf` (`ip range = 10.9.0.10-10.9.0.250`, `local ip = 10.9.0.1`) + `/etc/ppp/options.xl2tpd` (ms-dns 1.1.1.1, `require-mschap-v2`, `mtu/mru 1400`).
+- [ ] Open UDP **500 + 4500** (+ESP) in ufw; `sysctl` already has ip_forward.
+- [ ] Egress: TPROXY-mark `ppp+` / `10.9.0.0/24` → xray `tproxy-in` (reuse the wg0 mangle recipe, scoped). Snapshot iptables/ip rule/route first. Verify a test user exits **Germany** (`162.19.253.235`).
+- [ ] `systemctl enable --now strongswan xl2tpd`; verify `ipsec statusall` + an L2TP dial from a phone.
+
+### Task 4.2: Per-user provisioning (root reconciler, mirror wg)
+- [ ] Migration `0034_l2tp_accounts`: `l2tp_accounts(id, client_config_id FK unique, username unique, encrypted_password, assigned_ip, rx_bytes, tx_bytes, last_seen_at, desired_state, …)`.
+- [ ] Backend (unprivileged): on `createClientConfig protocol='l2tp'`, generate username/password, store encrypted, write desired_state — mirror `provisionWireguardPeerForConfig`.
+- [ ] Extend the root reconciler (or a sibling `afrows-l2tp-reconcile`): render `/etc/ppp/chap-secrets` from `l2tp_accounts` (present), reload xl2tpd; meter via `/proc/net/dev` per `ppp` iface or pppd ip-up/ip-down accounting → write `client_configs.used_bytes`.
+- [ ] Quota enforcement: disconnect + set desired_state='absent' when over quota.
+
+### Task 4.3: Delivery (backend + dashboard + app)
+- [ ] `renderL2tpClientProfile` already exists in `subscription-sanitizers.ts` — wire an `afrows-l2tp` link into `getClientSubscription` (server address + username + password + PSK), gated on `AFROWS_L2TP_*` env.
+- [ ] Dashboard: un-hide L2TP in the Add checkboxes / Edit dialog / Configs dropdown (re-add the `'l2tp'` option removed in the v0.114.42 multi-protocol work); show the L2TP profile (server/user/pass/PSK) + setup steps in the Configs panel.
+- [ ] App: L2TP uses the OS VPN (no in-app tunnel) — show the profile + a "copy" / platform deep-link rather than connecting in-app (the WireGuard engine can't speak L2TP).
+
+### Task 4.4: Metering + dashboard parity
+- [ ] Fold L2TP active users + usage into the Protocols column + dashboard overview (same as wg/vless), so all three protocols meter uniformly.
+
+### Risks (L2TP)
+- **IPsec + double-NAT / carrier-grade NAT** in Iran can break IKE; NAT-T (4500) helps but some ISPs block ESP — keep WireGuard as the primary, L2TP as fallback.
+- **MSCHAPv2 secrets at rest** → encrypt like WG private keys (SecretVault); never return in list endpoints.
+- **MTU/MSS** → clamp (1400/1360) as we already do on the MikroTik path.
