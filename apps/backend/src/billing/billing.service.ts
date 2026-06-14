@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHmac, randomBytes, randomUUID } from 'crypto';
+import { execFile } from 'node:child_process';
 import type {
   AdminClientSubscriptionCredentialSummary,
   AdminBillingCatalogResponse,
@@ -3002,6 +3003,11 @@ export class BillingService {
         return id;
       });
 
+      // Newly created WireGuard config: apply its peer to wg0 now (post-commit).
+      if (normalizeProtocol(dto.protocol) === 'wireguard') {
+        this.triggerWgReconcile();
+      }
+
       return this.getClientConfig(clientId);
     } catch (error) {
       throwConflictIfUniqueViolation(error, 'Client config external identity already exists');
@@ -4328,6 +4334,8 @@ export class BillingService {
 
     const peer = await this.ensureAccountWireguardPeer(clientConfigId, server.interface);
     if (!peer) return null;
+    // Apply the peer to wg0 immediately so the app handshakes on first connect.
+    this.triggerWgReconcile();
 
     let privateKey: string;
     try {
@@ -4368,6 +4376,19 @@ export class BillingService {
   /** Stable encryption context for a peer's stored private key. */
   private wireguardPeerEncryptionContext(clientConfigId: string): string {
     return ['wireguard-peer', clientConfigId].join(':');
+  }
+
+  /**
+   * Fire-and-forget: ask the root reconciler to apply pending peers to wg0 NOW
+   * (instead of waiting for its ~30s timer), so a freshly provisioned peer is
+   * live within a second. The backend is unprivileged; a scoped sudoers rule
+   * (`afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-wg-reconcile.service`)
+   * allows just this one command. Errors are ignored (the timer is the fallback).
+   */
+  private triggerWgReconcile(): void {
+    execFile('sudo', ['-n', 'systemctl', 'start', 'afrows-wg-reconcile.service'], () => {
+      /* best-effort; the systemd timer reconciles regardless */
+    });
   }
 
   /**

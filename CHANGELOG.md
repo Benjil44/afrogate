@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.43 - 2026-06-15
+
+- **Instant WireGuard provisioning** (removes first-connect lag): when the backend provisions a peer (on app login or WG config creation) it now triggers the root reconciler immediately via a scoped `sudoers` rule (`afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-wg-reconcile.service`) instead of waiting up to ~30s for the timer — so the app handshakes on first connect. The systemd timer remains the fallback. Sudoers file added at `scripts/systemd/afrows-wg-reconcile.sudoers`.
+
 ## 0.114.42 - 2026-06-15
 
 - **Customers: per-protocol usage + protocol management.** The Protocols column now shows each protocol's usage (e.g. `VLESS 0.9 GB` / `WIREGUARD 1.2 GB`) — the admin customer-list query returns per-protocol `usedBytes` (`AdminCustomerAccountSummary.protocols` is now `{protocol, usedBytes}[]`). The **Edit customer** dialog now lists the customer's protocols with usage and adds missing ones (VLESS / WireGuard) in place, so protocols are managed where you'd expect (not only in the Configs panel).
