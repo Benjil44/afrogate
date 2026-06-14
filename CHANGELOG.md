@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.38 - 2026-06-14
+
+- **Active users** now counts anyone *using* a protocol — the union of open connections (`statsgetallonlineusers`) and users with traffic in the current window (`user>>>` counters) — so a user shows as active as soon as bytes flow, not only when online-IP tracking registers. **Customers page** gained protocol checkboxes on Add (auto-creates a config per selected protocol; VLESS works today, WG/L2TP marked pending until their backends land) and a protocol picker + per-protocol display in the Configs panel. Dev tooling: vite dev-proxy (`VITE_API_PROXY_TARGET`) to point the local UI at a remote backend, and a `SHOW_DEMO`/`VITE_DEMO_FALLBACK` flag to disable demo placeholders in dev (both dev-only; production unaffected). Added the mobile WireGuard pivot plan under `docs/`.
+
 ## 0.114.37 - 2026-06-14
 
 - Inline **VLESS config creation** on the Customers page: each customer row has a **Configs** action that opens a panel listing the customer's client configs (label, protocol, status, usage) with their **VLESS entry link** shown and one-click **Copy link**, plus a **New VLESS config** button that creates a config (auto-provisioned into the native `afrows-in` inbound via its `entry_uuid`) — no more hopping to another tab. New admin endpoint `GET /api/admin/client-configs/:id/entry-link` (builds the afrows-in VLESS URI from the config's entry_uuid via `buildAfrowsEntryUri`), and dashboard API helpers `createAdminClientConfig` + `fetchAdminClientConfigEntryLink`. EN/FA strings added.

@@ -492,10 +492,12 @@ import {
 
 const refreshIntervalMs = 10_000;
 
-// Demo datasets render only in local development (`import.meta.env.DEV`) so the UI
-// is never blank while building. Production builds show real API data — and the
-// honest empty state when nothing has reported in yet.
-const fallbackServers: ServerRowData[] = import.meta.env.DEV ? [
+// Demo datasets render only in local development so the UI is never blank while
+// building. Production builds show real API data. Set VITE_DEMO_FALLBACK=false
+// (e.g. in .env.local) to also disable demos in dev — handy when pointing the
+// local UI at a real backend, so it matches production exactly.
+const SHOW_DEMO = import.meta.env.DEV && import.meta.env.VITE_DEMO_FALLBACK !== 'false';
+const fallbackServers: ServerRowData[] = SHOW_DEMO ? [
   {
     id: 'iran-edge-01',
     name: 'Iran Edge 01',
@@ -585,13 +587,13 @@ const fallbackServers: ServerRowData[] = import.meta.env.DEV ? [
   },
 ] : [];
 
-const tunnels: TunnelRowData[] = import.meta.env.DEV ? [
+const tunnels: TunnelRowData[] = SHOW_DEMO ? [
   { name: 'wg1', operator: 'Mobinnet', ping: 46, jitter: 8, loss: 0.1, score: 95 },
   { name: 'wireguard2', operator: 'Irancell', ping: 62, jitter: 14, loss: 0.3, score: 86 },
   { name: 'wireguard3', operator: 'Irancell', ping: 58, jitter: 11, loss: 0.2, score: 89 },
 ] : [];
 
-const outbounds: OutboundRowData[] = import.meta.env.DEV ? [
+const outbounds: OutboundRowData[] = SHOW_DEMO ? [
   {
     id: 'sample-germany-gateway',
     name: 'Germany gateway',
@@ -967,7 +969,7 @@ function AuthenticatedDashboard({
   const failoverRows = useMemo(
     () => (routeDataState === 'live' || routeDataState === 'stale'
       ? routeFailoverEvents.map(mapRouteFailoverEventToRow)
-      : (import.meta.env.DEV ? createFallbackFailoverRows(t) : [])),
+      : (SHOW_DEMO ? createFallbackFailoverRows(t) : [])),
     [routeDataState, routeFailoverEvents, t],
   );
   const handleAdminServerUpdated = (server: AdminServerDetail) => {
@@ -1019,7 +1021,7 @@ function AuthenticatedDashboard({
     [alerts, format, serverRows, trafficTotals, t, overviewActiveUsers],
   );
   const chartSeries = useMemo(
-    () => (timeseries.length > 0 ? timeseries : (import.meta.env.DEV ? createFallbackTimeseries(serverRows, timeRange) : [])),
+    () => (timeseries.length > 0 ? timeseries : (SHOW_DEMO ? createFallbackTimeseries(serverRows, timeRange) : [])),
     [serverRows, timeRange, timeseries],
   );
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);

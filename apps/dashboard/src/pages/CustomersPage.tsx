@@ -49,8 +49,13 @@ export function CustomersPage({
   const [scope, setScope] = useState<Scope>('account_shared');
   const [status, setStatus] = useState<Status>('active');
   const [notes, setNotes] = useState('');
+  // protocols to auto-create when adding a customer
+  const [protoVless, setProtoVless] = useState(true);
+  const [protoWg, setProtoWg] = useState(false);
+  const [protoL2tp, setProtoL2tp] = useState(false);
+  const [newConfigProto, setNewConfigProto] = useState('vless');
 
-  // VLESS configs panel
+  // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
   const [configList, setConfigList] = useState<AdminClientConfigSummary[]>([]);
   const [linkMap, setLinkMap] = useState<Record<string, string>>({});
@@ -96,6 +101,9 @@ export function CustomersPage({
     setScope('account_shared');
     setStatus('active');
     setNotes('');
+    setProtoVless(true);
+    setProtoWg(false);
+    setProtoL2tp(false);
     setError(null);
   };
 
@@ -142,8 +150,19 @@ export function CustomersPage({
       notes: notes.trim() || null,
     };
     try {
-      if (editId) await updateAdminCustomerAccount(sessionToken, editId, payload);
-      else await createAdminCustomerAccount(sessionToken, payload);
+      if (editId) {
+        await updateAdminCustomerAccount(sessionToken, editId, payload);
+      } else {
+        const created = await createAdminCustomerAccount(sessionToken, payload);
+        const protos = [protoVless ? 'vless' : '', protoWg ? 'wireguard' : '', protoL2tp ? 'l2tp' : ''].filter(Boolean);
+        for (const p of protos) {
+          try {
+            await createAdminClientConfig(sessionToken, created.id, { label: `${p}-1`, protocol: p });
+          } catch {
+            /* config create best-effort */
+          }
+        }
+      }
       setEditorOpen(false);
       setEditId(null);
       await load();
@@ -193,8 +212,8 @@ export function CustomersPage({
     setConfigError(null);
     try {
       await createAdminClientConfig(sessionToken, configsFor.id, {
-        label: `vless-${configList.length + 1}`,
-        protocol: 'vless',
+        label: `${newConfigProto}-${configList.length + 1}`,
+        protocol: newConfigProto,
       });
       await loadConfigs(configsFor.id);
       await load();
@@ -357,6 +376,22 @@ export function CustomersPage({
               <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} />
             </label>
+            {!editId ? (
+              <div className="grid gap-1.5 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
+                <div className="flex flex-wrap gap-4">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={protoVless} onChange={(e) => setProtoVless(e.target.checked)} /> {s.protoVless}
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={protoWg} onChange={(e) => setProtoWg(e.target.checked)} /> {s.protoWireguard}
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={protoL2tp} onChange={(e) => setProtoL2tp(e.target.checked)} /> {s.protoL2tp}
+                  </label>
+                </div>
+              </div>
+            ) : null}
           </div>
           {error ? <p className="mt-3 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
           <div className="mt-4 flex gap-2">
@@ -389,15 +424,22 @@ export function CustomersPage({
               <X size={16} />
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => void onCreateConfig()}
-            disabled={configBusy}
-            className="mb-3 inline-flex min-h-9 items-center gap-2 rounded-md bg-afro-teal px-3 text-sm font-bold text-white disabled:opacity-60"
-          >
-            <Plus size={15} />
-            {s.newConfig}
-          </button>
+          <div className="mb-3 flex items-center gap-2">
+            <select value={newConfigProto} onChange={(e) => setNewConfigProto(e.target.value)} className={inputClass}>
+              <option value="vless">{s.protoVless}</option>
+              <option value="wireguard">{s.protoWireguard}</option>
+              <option value="l2tp">{s.protoL2tp}</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => void onCreateConfig()}
+              disabled={configBusy}
+              className="inline-flex min-h-9 items-center gap-2 rounded-md bg-afro-teal px-3 text-sm font-bold text-white disabled:opacity-60"
+            >
+              <Plus size={15} />
+              {s.newConfig}
+            </button>
+          </div>
           {configError ? <p className="mb-2 text-[13px] font-bold text-[#b91c1c]">{configError}</p> : null}
           {configList.length === 0 ? (
             <EmptyState message={configBusy ? t.dataStatus.loading : s.noConfigs} />
@@ -428,8 +470,10 @@ export function CustomersPage({
                         {copiedId === c.id ? s.copied : s.copyLink}
                       </button>
                     </div>
-                  ) : (
+                  ) : c.protocol === 'vless' ? (
                     <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
+                  ) : (
+                    <span className="text-[12px] font-bold text-[#c27a1a]">{s.configPending}</span>
                   )}
                 </div>
               ))}

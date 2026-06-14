@@ -120,19 +120,54 @@ export class OperationsOverviewService {
     }
   }
 
+  /**
+   * Active users = distinct users currently using a protocol: anyone with an
+   * open connection (statsgetallonlineusers) OR with traffic in the current
+   * metering window (user>>> counters, reset ~every 60s). The union makes the
+   * count reflect real usage even when online-IP tracking hasn't registered.
+   */
   private async onlineUsers(): Promise<number> {
+    const active = new Set<string>();
+
+    // 1) open connections
     try {
       const res = await execFileAsync(
         this.bin(),
         ['api', 'statsgetallonlineusers', `--server=${this.apiServer()}`],
         { timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
       );
-      const data = JSON.parse(res.stdout) as Record<string, unknown>;
-      const users = (data.users ?? data) as Record<string, unknown>;
-      return users && typeof users === 'object' ? Object.keys(users).length : 0;
+      const data = JSON.parse(res.stdout) as { users?: unknown };
+      const users = data.users ?? data;
+      if (Array.isArray(users)) {
+        for (const name of users) {
+          const m = String(name).match(/^user>>>(.+?)>>>online$/);
+          if (m) active.add(m[1]);
+        }
+      } else if (users && typeof users === 'object') {
+        for (const key of Object.keys(users as Record<string, unknown>)) active.add(key);
+      }
     } catch {
-      return 0;
+      /* xray/api unavailable */
     }
+
+    // 2) users with traffic in the current window (used the protocol recently)
+    try {
+      const res = await execFileAsync(
+        this.bin(),
+        ['api', 'statsquery', `--server=${this.apiServer()}`, '-pattern', 'user>>>'],
+        { timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
+      );
+      const data = JSON.parse(res.stdout) as { stat?: Array<{ name?: string; value?: string }> };
+      for (const entry of data.stat ?? []) {
+        const m = (entry.name ?? '').match(/^user>>>(.+?)>>>traffic>>>(?:uplink|downlink)$/);
+        if (!m) continue;
+        if (Number(entry.value ?? 0) > 0) active.add(m[1]);
+      }
+    } catch {
+      /* xray/api unavailable */
+    }
+
+    return active.size;
   }
 
   private bin(): string {
