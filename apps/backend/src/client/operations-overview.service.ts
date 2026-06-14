@@ -95,29 +95,41 @@ export class OperationsOverviewService {
     }
   }
 
+  /** Sum inbound traffic across all xray instances (afrows-xray VLESS + afrows-wg
+   * WireGuard), so WireGuard traffic shows on the dashboard too. */
   private async inboundTrafficTotals(): Promise<{ up: number; down: number } | null> {
-    try {
-      const res = await execFileAsync(
-        this.bin(),
-        ['api', 'statsquery', `--server=${this.apiServer()}`, '-pattern', 'inbound>>>'],
-        { timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
-      );
-      const data = JSON.parse(res.stdout) as { stat?: Array<{ name?: string; value?: string }> };
-      let up = 0;
-      let down = 0;
-      for (const entry of data.stat ?? []) {
-        const name = typeof entry.name === 'string' ? entry.name : '';
-        const m = name.match(/^inbound>>>(.+?)>>>traffic>>>(uplink|downlink)$/);
-        if (!m || m[1] === 'api') continue; // exclude the internal api inbound
-        const value = Number(entry.value ?? 0);
-        if (!Number.isFinite(value)) continue;
-        if (m[2] === 'uplink') up += value;
-        else down += value;
+    let up = 0;
+    let down = 0;
+    let any = false;
+    for (const server of this.apiServers()) {
+      try {
+        const res = await execFileAsync(
+          this.bin(),
+          ['api', 'statsquery', `--server=${server}`, '-pattern', 'inbound>>>'],
+          { timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
+        );
+        const data = JSON.parse(res.stdout) as { stat?: Array<{ name?: string; value?: string }> };
+        for (const entry of data.stat ?? []) {
+          const m = (entry.name ?? '').match(/^inbound>>>(.+?)>>>traffic>>>(uplink|downlink)$/);
+          if (!m || m[1] === 'api') continue; // exclude the internal api inbound
+          const value = Number(entry.value ?? 0);
+          if (!Number.isFinite(value)) continue;
+          if (m[2] === 'uplink') up += value;
+          else down += value;
+        }
+        any = true;
+      } catch {
+        /* this xray instance unavailable */
       }
-      return { up, down };
-    } catch {
-      return null;
     }
+    return any ? { up, down } : null;
+  }
+
+  /** All xray api endpoints to aggregate: the VLESS service + the WireGuard service. */
+  private apiServers(): string[] {
+    const main = this.apiServer();
+    const wg = this.config.get<string>('AFROWS_WG_API_SERVER')?.trim() || '127.0.0.1:10086';
+    return wg && wg !== main ? [main, wg] : [main];
   }
 
   /**

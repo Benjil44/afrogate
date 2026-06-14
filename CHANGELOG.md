@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.39 - 2026-06-14
+
+- Dashboard overview now aggregates inbound traffic across **all xray instances** (the VLESS `afrows-xray` api + the WireGuard `afrows-wg` api `AFROWS_WG_API_SERVER`), so WireGuard traffic shows in Download/Upload instead of reading 0. (Per-customer WG metering still requires the planned kernel-WireGuard switch — xray's WG inbound only exposes aggregate.)
+
 ## 0.114.38 - 2026-06-14
 
 - **Active users** now counts anyone *using* a protocol — the union of open connections (`statsgetallonlineusers`) and users with traffic in the current window (`user>>>` counters) — so a user shows as active as soon as bytes flow, not only when online-IP tracking registers. **Customers page** gained protocol checkboxes on Add (auto-creates a config per selected protocol; VLESS works today, WG/L2TP marked pending until their backends land) and a protocol picker + per-protocol display in the Configs panel. Dev tooling: vite dev-proxy (`VITE_API_PROXY_TARGET`) to point the local UI at a remote backend, and a `SHOW_DEMO`/`VITE_DEMO_FALLBACK` flag to disable demo placeholders in dev (both dev-only; production unaffected). Added the mobile WireGuard pivot plan under `docs/`.
