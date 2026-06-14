@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.114.40 - 2026-06-15
+
+- **Customers page** now shows a **Protocols** column (chips like `vless` / `wireguard`) per customer, so each customer's protocols are visible at a glance instead of only inside the Configs drawer. The admin customer-list query now returns `protocols[]` (distinct `client_configs.protocol` per account; new field on `AdminCustomerAccountSummary`). EN/FA strings added. Backfilled the existing WireGuard peers into the DB so they appear in Customers: the **MikroTik home-router gateway** (`wg-in`, xray inbound) and the **mobile/kernel `wg0`** peer, both attached to the **Ben** account as `wireguard` configs (per-peer WG metering for the xray inbound is still aggregate-only; the kernel `wg0` peer can be metered via `wg show`).
+- **Mobile app**: swapped the in-app VPN engine from xray-core (`flutter_v2ray`) to **native WireGuard** (`wireguard_flutter`, the official `com.wireguard.android` GoBackend) — `flutter_v2ray` never forwarded reliably on the target device. New `wireguard_vpn.dart` engine bridge (mirrors the prior `start/stop/status/isRunning` interface) + a wg-quick `.conf` parser; `connect_screen` now consumes WireGuard and its config editor accepts a `.conf` instead of a `vless://` link. The server side runs kernel WireGuard (`wg0`) → TPROXY → xray → Germany egress (proven: per-peer metering + Germany exit). Account-mode WG config delivery from the backend is the next step (manual/BYO paste works today).
+
 ## 0.114.39 - 2026-06-14
 
 - Dashboard overview now aggregates inbound traffic across **all xray instances** (the VLESS `afrows-xray` api + the WireGuard `afrows-wg` api `AFROWS_WG_API_SERVER`), so WireGuard traffic shows in Download/Upload instead of reading 0. (Per-customer WG metering still requires the planned kernel-WireGuard switch — xray's WG inbound only exposes aggregate.)

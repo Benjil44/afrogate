@@ -6,8 +6,8 @@ import 'api.dart';
 import 'app_version.dart';
 import 'diag.dart';
 import 'diag_screen.dart';
-import 'singbox.dart';
 import 'start_screen.dart';
+import 'wireguard_vpn.dart';
 import 'vpn_config.dart';
 
 const _teal = Color(0xFF18B6A6);
@@ -28,8 +28,8 @@ class ConnectScreen extends StatefulWidget {
 
 class _ConnectScreenState extends State<ConnectScreen> {
   final _store = VpnConfigStore();
-  final _vpn = SingboxVpn();
-  StreamSubscription<SingboxStatus>? _statusSub;
+  final _vpn = WireguardVpn();
+  StreamSubscription<VpnStatus>? _statusSub;
   DateTime? _connectedAt;
 
   bool _ready = false;
@@ -57,6 +57,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   Future<void> _init() async {
     _statusSub = _vpn.status().listen(_onStatus);
+    // Initialize the WireGuard backend early so the one-time VPN consent dialog
+    // is handled before the user taps Connect.
+    await _vpn.ensureReady();
     if (await _vpn.isRunning()) _state = 'CONNECTED';
     if (_accountMode) {
       _configLink = widget.accountConfigUri;
@@ -69,7 +72,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       if (link != null) {
         _configLink = link;
         try {
-          _remark = parseVless(link).remark;
+          _remark = parseWgConf(link).remark;
         } catch (_) {}
       }
     }
@@ -92,10 +95,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
   void dispose() {
     _accountTimer?.cancel();
     _statusSub?.cancel();
+    _vpn.dispose();
     super.dispose();
   }
 
-  void _onStatus(SingboxStatus status) {
+  void _onStatus(VpnStatus status) {
     if (!mounted) return;
     if (status.state == 'LOG') {
       if (status.log != null) Diag.I.log('box: ${status.log}');
@@ -124,6 +128,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   Future<void> _toggle() async {
     if (_connected || _connecting) {
       Diag.I.log('Disconnect tapped');
+      setState(() => _state = 'DISCONNECTED'); // immediate UI feedback
       await _vpn.stop();
       return;
     }
@@ -132,23 +137,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
       if (_configLink == null) return;
     }
     Diag.I.log('Connect tapped (mode=${_accountMode ? "account" : "manual"})');
-    final String config;
     try {
-      final c = parseVless(_configLink!);
-      Diag.I.log('parsed: ${c.host}:${c.port} ${c.network}/${c.security} sni=${c.sni} path=${c.wsPath}');
-      config = buildSingboxConfig(_configLink!);
-      Diag.I.log('sing-box config built (${config.length} chars)');
+      final c = parseWgConf(_configLink!);
+      Diag.I.log('parsed WG: endpoint=${c.endpoint} address=${c.address}');
     } catch (e) {
-      Diag.I.log('parse/build FAILED: $e');
-      _snack('Invalid vless:// link');
+      Diag.I.log('parse FAILED: $e');
+      _snack('Invalid WireGuard config');
       return;
     }
     setState(() => _state = 'CONNECTING');
     try {
-      final ok = await _vpn.start(config);
+      // The WireGuard backend consumes the wg-quick .conf text directly.
+      final ok = await _vpn.start(_configLink!);
       Diag.I.log('start() -> $ok');
       if (!ok) {
-        _snack('VPN permission is required to connect');
+        _snack('Allow the VPN permission, then tap Connect again');
         if (mounted) setState(() => _state = 'DISCONNECTED');
       }
     } catch (e) {
@@ -193,15 +196,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
             const Text('Server config',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 4),
-            const Text('Paste a vless:// link',
+            const Text('Paste a WireGuard config (.conf)',
                 style: TextStyle(color: Colors.white54, fontSize: 13)),
             const SizedBox(height: 12),
             TextField(
               controller: ctrl,
-              maxLines: 4,
+              maxLines: 8,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
               decoration: InputDecoration(
-                hintText: 'vless://...',
+                hintText: '[Interface]\nPrivateKey = ...\nAddress = 10.8.0.x/32\n\n[Peer]\nPublicKey = ...\nEndpoint = host:port\nAllowedIPs = 0.0.0.0/0',
                 filled: true,
                 fillColor: const Color(0xFF0B1416),
                 border: OutlineInputBorder(
@@ -227,7 +230,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       final link = ctrl.text.trim();
       if (link.isEmpty) return;
       try {
-        final parsed = parseVless(link);
+        final parsed = parseWgConf(link);
         await _store.save(link);
         if (mounted) {
           setState(() {
@@ -236,7 +239,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           });
         }
       } catch (_) {
-        _snack('That does not look like a valid vless:// link');
+        _snack('That does not look like a valid WireGuard config');
       }
     }
   }

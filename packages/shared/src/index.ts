@@ -791,6 +791,8 @@ export interface AdminCustomerAccountSummary {
   remainingBytes?: number | null;
   clientCount: number;
   activeClientCount: number;
+  /** Distinct protocols across this customer's client configs (e.g. ['vless','wireguard']). */
+  protocols: string[];
   notes?: string | null;
   loginEmail?: string | null;
   hasPassword?: boolean;

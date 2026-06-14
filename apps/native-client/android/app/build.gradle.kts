@@ -41,11 +41,8 @@ kotlin {
 }
 
 repositories {
+    // libv2ray.aar (xray-core, from the flutter_v2ray plugin) is resolved here.
     flatDir { dirs("libs") }
-}
-
-dependencies {
-    implementation(":libbox@aar")
 }
 
 flutter {

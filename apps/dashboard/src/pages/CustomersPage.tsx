@@ -274,6 +274,25 @@ export function CustomersPage({
     { key: 'used', header: s.colUsed, render: (a) => format.bytes(a.usedBytes) },
     { key: 'quota', header: s.colQuota, render: (a) => format.bytes(a.quotaLimitBytes ?? null) },
     { key: 'clients', header: s.colClients, render: (a) => `${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}` },
+    {
+      key: 'protocols',
+      header: s.colProtocols,
+      render: (a) =>
+        a.protocols && a.protocols.length > 0 ? (
+          <span className="flex flex-wrap gap-1">
+            {a.protocols.map((p) => (
+              <span
+                key={p}
+                className="inline-flex items-center rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
+              >
+                {p}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="text-afro-muted">—</span>
+        ),
+    },
     { key: 'seller', header: s.colSeller, render: (a) => a.resellerDisplayName || s.direct },
     {
       key: 'actions',

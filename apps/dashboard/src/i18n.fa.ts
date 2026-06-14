@@ -88,6 +88,7 @@ export const fa: DashboardStrings = {
       colQuota: 'سهمیه',
       colRemaining: 'باقی‌مانده',
       colClients: 'کلاینت‌ها',
+      colProtocols: 'پروتکل‌ها',
       colSeller: 'فروشنده',
       colEmail: 'ایمیل ورود',
       direct: 'مستقیم',

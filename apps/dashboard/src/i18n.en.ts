@@ -86,6 +86,7 @@ export const en = {
       colQuota: 'Quota',
       colRemaining: 'Remaining',
       colClients: 'Clients',
+      colProtocols: 'Protocols',
       colSeller: 'Seller',
       colEmail: 'Login email',
       direct: 'Direct',

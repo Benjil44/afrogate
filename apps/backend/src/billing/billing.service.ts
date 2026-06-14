@@ -196,6 +196,7 @@ interface CustomerAccountRow {
   updatedAt: Date;
   clientCount: number;
   activeClientCount: number;
+  protocols: string[] | null;
 }
 
 interface ClientConfigRow {
@@ -5171,7 +5172,8 @@ export class BillingService {
           created_at AS "createdAt",
           updated_at AS "updatedAt",
           0::int AS "clientCount",
-          0::int AS "activeClientCount"
+          0::int AS "activeClientCount",
+          ARRAY[]::text[] AS "protocols"
         FROM customer_accounts
         WHERE id = $1
         FOR UPDATE
@@ -5823,7 +5825,11 @@ export class BillingService {
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
-        COUNT(cc.id) FILTER (WHERE cc.status = 'active')::int AS "activeClientCount"
+        COUNT(cc.id) FILTER (WHERE cc.status = 'active')::int AS "activeClientCount",
+        COALESCE(
+          array_agg(DISTINCT cc.protocol) FILTER (WHERE cc.protocol IS NOT NULL),
+          ARRAY[]::text[]
+        ) AS "protocols"
       FROM customer_accounts ca
       LEFT JOIN reseller_accounts ra ON ra.id = ca.reseller_account_id
       LEFT JOIN client_configs cc ON cc.customer_account_id = ca.id
@@ -7257,6 +7263,7 @@ export class BillingService {
       remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
+      protocols: row.protocols ?? [],
       notes: row.notes,
       loginEmail: row.loginEmail,
       hasPassword: Boolean(row.hasPassword),
