@@ -28,6 +28,12 @@ class AccountInfo {
       );
 }
 
+class WgUsage {
+  WgUsage({required this.rxBytes, required this.txBytes});
+  final int rxBytes; // bytes server received from client = client UPLOAD
+  final int txBytes; // bytes server sent to client = client DOWNLOAD
+}
+
 class AfrowsApiException implements Exception {
   AfrowsApiException(this.message);
   final String message;
@@ -72,6 +78,26 @@ class AfrowsApi {
       final account = body['account'];
       if (account is Map) return AccountInfo.fromJson(account.cast<String, dynamic>());
       return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Live WireGuard usage for the account's peer, metered server-side (the
+  /// wireguard_flutter plugin reports no byte counters). rxBytes = client upload,
+  /// txBytes = client download. Returns null on error.
+  Future<WgUsage?> fetchWireguardUsage(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$base/client/wireguard-usage'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return null;
+      final b = jsonDecode(res.body) as Map<String, dynamic>;
+      return WgUsage(
+        rxBytes: (b['rxBytes'] as num?)?.toInt() ?? 0,
+        txBytes: (b['txBytes'] as num?)?.toInt() ?? 0,
+      );
     } catch (_) {
       return null;
     }

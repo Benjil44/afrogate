@@ -80,6 +80,13 @@ export class ClientController {
     return this.billingService.getClientSubscription(this.requireClientActor(request), routeGroup);
   }
 
+  @Get('wireguard-usage')
+  getWireguardUsage(
+    @Req() request: RequestWithClientAuth,
+  ): Promise<{ rxBytes: number; txBytes: number; lastHandshakeAt: string | null }> {
+    return this.billingService.getClientWireguardUsage(this.requireClientActor(request));
+  }
+
   private requireClientActor(request: RequestWithClientAuth): ClientAuthActor {
     if (!request.clientActor) {
       throw new Error('Client actor missing after ClientTokenGuard');

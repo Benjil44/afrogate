@@ -32,6 +32,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
   StreamSubscription<VpnStatus>? _statusSub;
   DateTime? _connectedAt;
   Timer? _uptimeTimer; // ticks the duration each second (WG plugin emits no periodic status)
+  Timer? _usageTimer; // polls server-side WG usage (plugin reports no byte counters)
+  // session baseline + last sample for computing per-session totals and speed
+  int _sessRxBase = 0, _sessTxBase = 0;
+  bool _sessBaseSet = false;
+  int _lastRx = 0, _lastTx = 0;
+  DateTime? _lastUsageAt;
 
   bool _ready = false;
   String _state = 'DISCONNECTED';
@@ -74,6 +80,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _remark = widget.account!.account.displayName ?? 'Afrows';
       unawaited(_refreshAccount());
       _accountTimer = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(_refreshAccount()));
+      // Poll server-side WG usage so the up/down cards show real data (the
+      // WireGuard plugin reports no on-device byte counters).
+      _usageTimer = Timer.periodic(const Duration(seconds: 5), (_) => unawaited(_pollUsage()));
     } else {
       final link = await _store.load();
       if (link != null) {
@@ -86,6 +95,41 @@ class _ConnectScreenState extends State<ConnectScreen> {
     Diag.I.log('init: mode=${_accountMode ? "account" : "manual"}, '
         'config=${_configLink == null ? "NONE" : "${_configLink!.length} chars"}');
     if (mounted) setState(() => _ready = true);
+  }
+
+  /// Polls server-side WireGuard usage and updates the up/down cards: totals are
+  /// per-session (current minus the baseline captured at connect), speed is the
+  /// delta since the last poll. rxBytes=upload, txBytes=download (server view).
+  Future<void> _pollUsage() async {
+    final token = widget.account?.token;
+    if (token == null || !_connected) return;
+    final u = await AfrowsApi().fetchWireguardUsage(token);
+    if (u == null || !mounted) return;
+    if (!_sessBaseSet) {
+      _sessRxBase = u.rxBytes;
+      _sessTxBase = u.txBytes;
+      _sessBaseSet = true;
+      _lastRx = u.rxBytes;
+      _lastTx = u.txBytes;
+      _lastUsageAt = DateTime.now();
+      return;
+    }
+    final now = DateTime.now();
+    final dt = _lastUsageAt == null ? 0.0 : now.difference(_lastUsageAt!).inMilliseconds / 1000.0;
+    final dDown = (u.txBytes - _lastTx).clamp(0, 1 << 62);
+    final dUp = (u.rxBytes - _lastRx).clamp(0, 1 << 62);
+    _lastRx = u.rxBytes;
+    _lastTx = u.txBytes;
+    _lastUsageAt = now;
+    if (!mounted) return;
+    setState(() {
+      _downloadTotal = (u.txBytes - _sessTxBase).clamp(0, 1 << 62);
+      _uploadTotal = (u.rxBytes - _sessRxBase).clamp(0, 1 << 62);
+      if (dt > 0) {
+        _downloadSpeed = (dDown / dt).round();
+        _uploadSpeed = (dUp / dt).round();
+      }
+    });
   }
 
   /// Live-refresh the account (GB remaining) from the backend; persists it.
@@ -102,6 +146,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   void dispose() {
     _accountTimer?.cancel();
     _uptimeTimer?.cancel();
+    _usageTimer?.cancel();
     _statusSub?.cancel();
     _vpn.dispose();
     super.dispose();
@@ -153,6 +198,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _snack('Invalid WireGuard config');
       return;
     }
+    _sessBaseSet = false; // recapture the usage baseline for this new session
     setState(() => _state = 'CONNECTING');
     try {
       // The WireGuard backend consumes the wg-quick .conf text directly.
@@ -348,14 +394,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
                         ),
                       ],
                     ),
-                    if (_connected) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Live speed isn\'t reported by WireGuard on Android — your usage is metered on the server.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white38, fontSize: 11),
-                      ),
-                    ],
                     const SizedBox(height: 12),
                     Text('Afrows v$kAppVersion · $kBuildTag',
                         style: const TextStyle(color: Colors.white24, fontSize: 11)),

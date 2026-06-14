@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.45 - 2026-06-15
+
+- **App shows real WireGuard up/down** (was stuck at 0 B/s — the `wireguard_flutter` plugin reports no byte counters). New `GET /client/wireguard-usage` returns the account peer's server-metered `rxBytes`/`txBytes`/`lastHandshakeAt`; the app polls it every 5 s while connected and shows per-session download/upload totals + live speed (rx = upload, tx = download). The reconciler now meters every 10 s (was 30 s) so the numbers move. App `2.2.1`.
+
 ## 0.114.44 - 2026-06-15
 
 - **WireGuard MTU fix** (the app "connects but websites hang" bug): the backend-rendered `.conf` now sets `MTU = 1280` (env `AFROWS_WG_MTU`, default 1280). The wg→xray→Germany egress is a stacked tunnel, so the default 1420 MTU silently drops large TLS packets while handshake/small requests pass — the same reason the MikroTik gateway needed MSS 1240 on this server. The official WireGuard app auto-picked a safe MTU; `wireguard_flutter` didn't, so the Afrows app needed it explicit.

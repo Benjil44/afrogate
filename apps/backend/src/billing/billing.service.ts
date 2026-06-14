@@ -4379,6 +4379,44 @@ export class BillingService {
   }
 
   /**
+   * Live WireGuard usage for the logged-in account's peer, as metered server-side
+   * by the root reconciler (`wg show wg0 dump`). The app polls this to show real
+   * up/down totals (the wireguard_flutter plugin reports no byte counters).
+   * `rxBytes` = bytes the server received from the client (the client's UPLOAD);
+   * `txBytes` = bytes the server sent to the client (the client's DOWNLOAD).
+   */
+  async getClientWireguardUsage(
+    actor: ClientAuthActor,
+  ): Promise<{ rxBytes: number; txBytes: number; lastHandshakeAt: string | null }> {
+    assertClientScope(actor, 'client:read');
+    const res = await this.database.query<{
+      rxBytes: string | number | null;
+      txBytes: string | number | null;
+      lastHandshakeAt: Date | null;
+    }>(
+      `
+        SELECT wp.rx_bytes AS "rxBytes", wp.tx_bytes AS "txBytes",
+               wp.last_handshake_at AS "lastHandshakeAt"
+        FROM wireguard_peers wp
+        JOIN client_configs cc ON cc.id = wp.client_config_id
+        WHERE cc.customer_account_id = (
+          SELECT customer_account_id FROM client_configs WHERE id = $1
+        )
+        AND wp.desired_state = 'present'
+        ORDER BY wp.last_handshake_at DESC NULLS LAST, wp.created_at DESC
+        LIMIT 1
+      `,
+      [actor.clientConfigId],
+    );
+    const row = res.rows[0];
+    return {
+      rxBytes: row ? Number(row.rxBytes ?? 0) || 0 : 0,
+      txBytes: row ? Number(row.txBytes ?? 0) || 0 : 0,
+      lastHandshakeAt: row?.lastHandshakeAt ? row.lastHandshakeAt.toISOString() : null,
+    };
+  }
+
+  /**
    * Fire-and-forget: ask the root reconciler to apply pending peers to wg0 NOW
    * (instead of waiting for its ~30s timer), so a freshly provisioned peer is
    * live within a second. The backend is unprivileged; a scoped sudoers rule
