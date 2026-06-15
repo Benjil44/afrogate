@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.49 - 2026-06-15
+
+- **App up/down display fix**: the on-device `/proc/net/dev` read is sandboxed/unreliable on MIUI and was wrongly disabling the working server fallback (cards stuck at 0). Now the on-device path only takes over once it observes **real movement**; otherwise the app shows the **server-metered** peer usage as **cumulative totals** (always real/non-zero) + speed from the poll delta. App `2.2.3`.
+
 ## 0.114.48 - 2026-06-15
 
 - **Custom or auto-generated passwords**: when creating a customer (Add dialog) or in Edit, you can now **type a custom login password** or leave it blank to auto-generate; the resulting password is shown once to copy and hand to the user. Backend `createCustomerAccount` accepts an optional `password`, and `POST /customer-accounts/:id/reset-password` accepts an optional `{ password }` (min 6 chars) — both fall back to a generated one.

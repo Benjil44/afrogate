@@ -38,9 +38,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   bool _tunActive = false; // on-device reading works -> ignore the server fallback
   bool _tunBaseSet = false;
   int _tunRxBase = 0, _tunTxBase = 0, _lastTunRx = 0, _lastTunTx = 0;
-  // session baseline + last sample for the server-poll fallback
-  int _sessRxBase = 0, _sessTxBase = 0;
-  bool _sessBaseSet = false;
+  // last sample for the server-poll fallback speed calc
   int _lastRx = 0, _lastTx = 0;
   DateTime? _lastUsageAt;
 
@@ -126,13 +124,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
     return null;
   }
 
-  /// 1-second real-time tick: updates speed (delta/sec) + per-session totals
-  /// from the on-device tun counters.
+  /// 1-second real-time tick from the on-device tun counters. Only takes over
+  /// (`_tunActive`) once it observes REAL movement — so a frozen/sandboxed read
+  /// (common on MIUI) never disables the server fallback below.
   void _tickTun() {
     if (!mounted || !_connected) return;
     final s = _readTunBytes();
-    if (s == null) return; // unreadable -> server poll fallback handles it
-    _tunActive = true;
+    if (s == null) return; // unreadable -> server poll handles it
     if (!_tunBaseSet) {
       _tunRxBase = s.rx;
       _tunTxBase = s.tx;
@@ -145,6 +143,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final dUp = (s.tx - _lastTunTx).clamp(0, 1 << 62);
     _lastTunRx = s.rx;
     _lastTunTx = s.tx;
+    if (!_tunActive && dDown == 0 && dUp == 0) return; // not proven live yet
+    _tunActive = true; // observed genuine on-device movement
     setState(() {
       _downloadSpeed = dDown; // per 1s == bytes/sec
       _uploadSpeed = dUp;
@@ -153,8 +153,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
     });
   }
 
-  /// Polls server-side WireGuard usage and updates the up/down cards: totals are
-  /// per-session (current minus the baseline captured at connect), speed is the
+  /// Server-metered usage fallback (when the on-device read can't be trusted).
+  /// Shows the peer's CUMULATIVE totals (always real/non-zero) + speed from the
   /// delta since the last poll. rxBytes=upload, txBytes=download (server view).
   Future<void> _pollUsage() async {
     if (_tunActive) return; // on-device real-time reading is working; no need
@@ -162,27 +162,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (token == null || !_connected) return;
     final u = await AfrowsApi().fetchWireguardUsage(token);
     if (u == null || !mounted) return;
-    if (!_sessBaseSet) {
-      _sessRxBase = u.rxBytes;
-      _sessTxBase = u.txBytes;
-      _sessBaseSet = true;
-      _lastRx = u.rxBytes;
-      _lastTx = u.txBytes;
-      _lastUsageAt = DateTime.now();
-      return;
-    }
     final now = DateTime.now();
-    final dt = _lastUsageAt == null ? 0.0 : now.difference(_lastUsageAt!).inMilliseconds / 1000.0;
+    final hadPrev = _lastUsageAt != null;
+    final dt = hadPrev ? now.difference(_lastUsageAt!).inMilliseconds / 1000.0 : 0.0;
     final dDown = (u.txBytes - _lastTx).clamp(0, 1 << 62);
     final dUp = (u.rxBytes - _lastRx).clamp(0, 1 << 62);
     _lastRx = u.rxBytes;
     _lastTx = u.txBytes;
     _lastUsageAt = now;
-    if (!mounted) return;
     setState(() {
-      _downloadTotal = (u.txBytes - _sessTxBase).clamp(0, 1 << 62);
-      _uploadTotal = (u.rxBytes - _sessRxBase).clamp(0, 1 << 62);
-      if (dt > 0) {
+      _downloadTotal = u.txBytes; // cumulative — always shows real data
+      _uploadTotal = u.rxBytes;
+      if (hadPrev && dt > 0) {
         _downloadSpeed = (dDown / dt).round();
         _uploadSpeed = (dUp / dt).round();
       }
@@ -257,9 +248,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
       return;
     }
     // recapture the usage baselines for this new session
-    _sessBaseSet = false;
     _tunBaseSet = false;
     _tunActive = false;
+    _lastUsageAt = null;
     setState(() => _state = 'CONNECTING');
     try {
       // The WireGuard backend consumes the wg-quick .conf text directly.
