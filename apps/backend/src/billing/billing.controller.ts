@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -577,6 +578,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminClientConfigSummary> {
     return this.billingService.updateClientConfig(id, payload, request.actor);
+  }
+
+  @Delete('client-configs/:id')
+  @Roles('admin')
+  deleteClientConfig(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ deleted: boolean }> {
+    return this.billingService.deleteClientConfig(id, request.actor);
   }
 
   @Get('client-configs/:id/usage-events')

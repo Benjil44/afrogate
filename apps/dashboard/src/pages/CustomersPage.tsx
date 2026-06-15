@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Link2, Pencil, Plus, Search, X } from 'lucide-react';
+import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigSummary, AdminCustomerAccountSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
   createAdminCustomerAccount,
   exportAdminCustomerClientConfigs,
   fetchAdminClientConfigEntryLink,
+  deleteAdminClientConfig,
   fetchAdminCustomerAccounts,
   fetchAdminWireguardConfig,
   resetCustomerAccountPassword,
@@ -271,6 +272,9 @@ export function CustomersPage({
       const links: Record<string, string> = {};
       await Promise.all(
         res.configs.map(async (c) => {
+          // Entry link is a VLESS URI — only meaningful for vless configs.
+          // WireGuard configs render their own .conf via "Show WireGuard config".
+          if ((c.protocol ?? '').toLowerCase() !== 'vless') return;
           try {
             const r = await fetchAdminClientConfigEntryLink(sessionToken, c.id);
             if (r.link) links[c.id] = r.link;
@@ -320,6 +324,23 @@ export function CustomersPage({
     a.download = `${name}.conf`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Delete a single config (WireGuard peers are removed from wg0 by the reconciler).
+  const onDeleteConfig = async (configId: string, label: string) => {
+    if (!configsFor) return;
+    if (!window.confirm(s.deleteConfigConfirm(label))) return;
+    setConfigBusy(true);
+    setConfigError(null);
+    try {
+      await deleteAdminClientConfig(sessionToken, configId);
+      await loadConfigs(configsFor.id);
+      await load();
+    } catch {
+      setConfigError(t.customersPage.configError);
+    } finally {
+      setConfigBusy(false);
+    }
   };
 
   const onCreateConfig = async () => {
@@ -670,8 +691,17 @@ export function CustomersPage({
                 <div key={c.id} className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <strong className="text-[13px] text-afro-ink">{c.label}</strong>
-                    <span className="text-[12px] text-afro-muted">
+                    <span className="flex items-center gap-2 text-[12px] text-afro-muted">
                       {c.protocol} · {String(c.status)} · {format.bytes(c.usedBytes)}
+                      <button
+                        type="button"
+                        title={s.deleteConfig}
+                        disabled={configBusy}
+                        onClick={() => void onDeleteConfig(c.id, c.label)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-[#d23f3f] hover:text-[#d23f3f] disabled:opacity-60"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </span>
                   </div>
                   {linkMap[c.id] ? (

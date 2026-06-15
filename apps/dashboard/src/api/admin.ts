@@ -714,6 +714,18 @@ export async function fetchAdminClientConfigEntryLink(
   return response.json() as Promise<AdminClientConfigEntryLinkResponse>;
 }
 
+/** Deletes a client config (WireGuard peers are removed from wg0 by the reconciler). */
+export async function deleteAdminClientConfig(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}`,
+    { headers: createSessionHeaders(sessionToken), method: 'DELETE' },
+  );
+  return response.json() as Promise<{ deleted: boolean }>;
+}
+
 /** Renders (provisioning if needed) a WireGuard config's .conf text. */
 export async function fetchAdminWireguardConfig(
   sessionToken: string,

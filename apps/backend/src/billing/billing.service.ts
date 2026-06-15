@@ -3046,6 +3046,37 @@ export class BillingService {
     }
   }
 
+  /**
+   * Deletes a client config. For WireGuard it first marks the peer 'absent' so
+   * the root reconciler removes it from wg0, then deletes the config (the
+   * wireguard_peers row cascades). The reconciler's orphan sweep cleans up if
+   * the row is gone before it runs.
+   */
+  async deleteClientConfig(id: string, actor: AuthActor | undefined): Promise<{ deleted: boolean }> {
+    const isWireguard = await this.database.transaction(async (executor) => {
+      const existing = await this.getClientConfigRowForUpdate(executor, id);
+      const wg = (existing.protocol ?? '').toLowerCase() === 'wireguard';
+      if (wg) {
+        await executor.query(
+          `UPDATE wireguard_peers SET desired_state = 'absent', updated_at = now() WHERE client_config_id = $1`,
+          [id],
+        );
+      }
+      await executor.query(`DELETE FROM client_configs WHERE id = $1`, [id]);
+      await this.audit.record(
+        actor,
+        'client_config.delete',
+        'client_config',
+        id,
+        { customerAccountId: existing.customerAccountId, protocol: existing.protocol },
+        executor,
+      );
+      return wg;
+    });
+    if (isWireguard) this.triggerWgReconcile(); // remove the peer from wg0 now
+    return { deleted: true };
+  }
+
   async listClientUsageEvents(
     clientConfigId: string,
     filters: ClientUsageEventFilters,

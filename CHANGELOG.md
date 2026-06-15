@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.114.57 - 2026-06-15
+
+- **Delete configs from the dashboard.** Each config row in Customers → Configs now has a delete (trash) button. New `DELETE /admin/client-configs/:id`: for WireGuard it marks the peer absent + triggers the reconciler, then deletes (the `wireguard_peers` row cascades); the reconciler gained an **orphan sweep** that removes managed-range (`10.8.0.>=START`) `wg0` peers no longer in the DB, so deleted peers actually disconnect (manual/reserved peers below the range are untouched).
+- **Fix:** WireGuard config rows no longer show an (irrelevant) VLESS entry link — the entry-link is only fetched for VLESS configs now, so WireGuard rows correctly show **Show WireGuard config** (.conf + copy + download).
+
 ## 0.114.56 - 2026-06-15
 
 - **Harden WireGuard infra into the deploy.** `update-afrows.sh` now idempotently (re)installs the WG reconciler script, its systemd service + timer, and the scoped sudoers rule from the repo on every deploy (validated `visudo -cf` before installing) — so a rebuilt/fresh server reproduces it automatically, and it warns if `AFROWS_WG_*` env is missing. Added `scripts/afrows-wg-bootstrap.sh` — a one-time, idempotent fresh-server bootstrap (installs wireguard-tools, server keys, `wg0` with TPROXY egress baked into `wg0.conf` PostUp so it survives reboot, `ip_forward`, and the `AFROWS_WG_*` delivery env).

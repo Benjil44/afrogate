@@ -35,6 +35,19 @@ while IFS='|' read -r pub; do
   wg set "$IFACE" peer "$pub" remove 2>/dev/null || true
 done < <(q "SELECT client_public_key FROM wireguard_peers WHERE interface='$IFACE' AND desired_state='absent';")
 
+# 1c) ORPHAN SWEEP: remove managed-range peers (10.8.0.>=START) that are on wg0
+# but no longer in the DB (e.g. a deleted client config — its row cascaded away).
+# Scoped to the managed range so manually-added peers (e.g. .2) are never touched.
+START="$(grep -h '^AFROWS_WG_ADDRESS_START=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r')"; START="${START:-16}"
+SUBNET3="$(grep -h '^AFROWS_WG_SUBNET=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' | cut -d/ -f1 | cut -d. -f1-3)"; SUBNET3="${SUBNET3:-10.8.0}"
+DBPUBS="$(q "SELECT client_public_key FROM wireguard_peers WHERE interface='$IFACE';")"
+wg show "$IFACE" dump | tail -n +2 | while IFS=$'\t' read -r pub _psk _ep allowed _hs _rx _tx _ka; do
+  [ -n "$pub" ] || continue
+  host="$(printf '%s' "$allowed" | grep -oE "${SUBNET3//./\\.}\.[0-9]+" | head -1 | cut -d. -f4)"
+  [ -n "$host" ] && [ "$host" -ge "$START" ] 2>/dev/null || continue
+  printf '%s\n' "$DBPUBS" | grep -qxF "$pub" || wg set "$IFACE" peer "$pub" remove 2>/dev/null || true
+done
+
 # 2) METER: wg show dump -> per-peer usage. dump columns (peer lines):
 #    pubkey  psk  endpoint  allowed-ips  latest-handshake  rx  tx  keepalive
 wg show "$IFACE" dump | tail -n +2 | while IFS=$'\t' read -r pub _psk _ep _allowed hs rx tx _ka; do
