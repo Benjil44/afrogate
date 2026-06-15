@@ -20,6 +20,7 @@ import { InboundsService } from './client/inbounds.service';
 import { ConnectionsService } from './client/connections.service';
 import { OperationsOverviewService } from './client/operations-overview.service';
 import { XrayUsageMeteringService } from './client/xray-usage-metering.service';
+import { WireguardMeteringService } from './client/wireguard-metering.service';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
@@ -93,6 +94,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     OutboundSpeedTestService,
     XrayProvisioningService,
     XrayUsageMeteringService,
+    WireguardMeteringService,
     InboundsService,
     ConnectionsService,
     OperationsOverviewService,

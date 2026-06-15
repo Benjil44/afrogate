@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.52 - 2026-06-15
+
+- **Per-customer WireGuard quota enforcement.** New `WireguardMeteringService` (backend) meters each peer's usage as DELTAS (reset-safe) from the absolute counters the reconciler writes, rolling them into `client_configs` + `customer_accounts.used_bytes` (same model as VLESS) — so WireGuard now counts against the account quota. When an account goes over quota it flips its peers to `desired_state='absent'` (the root reconciler removes them from `wg0`, disconnecting the user); when back under quota (top-up/reset) + active, peers are re-armed automatically. Migration 0034 adds `wireguard_peers.metered_{rx,tx}_bytes` (seeded to current so history isn't retro-billed). The reconciler no longer sets `used_bytes` (the backend owns it now). Env: `AFROWS_WG_METERING_ENABLED` / `AFROWS_WG_METERING_INTERVAL_MS`.
+
 ## 0.114.51 - 2026-06-15
 
 - **Fix: Save now applies a typed password.** In Customers → Edit, typing a password in the box and clicking the main **Save** previously only saved account fields and ignored the password (you had to use the separate "Set password" button). Save now also sets the password when the box is filled (then shows it once). Removes the confusing two-button behavior.

@@ -1,6 +1,6 @@
 {
   "name": "@afrows/shared",
-  "version": "0.114.51",
+  "version": "0.114.52",
   "private": true,
   "type": "module",
   "main": "dist/index.js",

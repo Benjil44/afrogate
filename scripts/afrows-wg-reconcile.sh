@@ -44,10 +44,6 @@ wg show "$IFACE" dump | tail -n +2 | while IFS=$'\t' read -r pub _psk _ep _allow
   psql "$DBURL" -q -c "UPDATE wireguard_peers SET rx_bytes=${rx:-0}, tx_bytes=${tx:-0}, last_handshake_at=$hs_sql, updated_at=now() WHERE interface='$IFACE' AND client_public_key='${pub}';"
 done
 
-# 2b) roll per-peer usage into the owning client_configs.used_bytes (rx+tx)
-psql "$DBURL" -q -c "
-  UPDATE client_configs cc
-  SET used_bytes = wp.rx_bytes + wp.tx_bytes, updated_at = now()
-  FROM wireguard_peers wp
-  WHERE wp.client_config_id = cc.id AND wp.interface = '$IFACE';
-"
+# NOTE: used_bytes accounting + quota enforcement is done by the backend
+# WireguardMeteringService (DELTA model, like VLESS) reading the absolute rx/tx
+# written above. The reconciler only writes counters + applies desired_state.
