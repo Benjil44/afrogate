@@ -5,6 +5,7 @@ import { statfs } from 'node:fs/promises';
 import * as os from 'node:os';
 import { promisify } from 'node:util';
 import type { AdminOperationsOverview } from '@afrows/shared';
+import { DatabaseService } from '../database/database.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,7 +20,10 @@ export class OperationsOverviewService {
   private readonly logger = new Logger(OperationsOverviewService.name);
   private lastSample: { ts: number; up: number; down: number } | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly database: DatabaseService,
+  ) {}
 
   async getOverview(): Promise<AdminOperationsOverview> {
     const [cpu, mem, disk, traffic, activeUsers] = await Promise.all([
@@ -177,6 +181,25 @@ export class OperationsOverviewService {
       }
     } catch {
       /* xray/api unavailable */
+    }
+
+    // 3) active WireGuard peers (kernel wg0 isn't in xray stats): a peer with a
+    // handshake in the last ~3 min = an active user. Keyed by account so a
+    // customer isn't double-counted across their WG peers.
+    try {
+      const res = await this.database.query<{ accountId: string }>(
+        `
+          SELECT DISTINCT cc.customer_account_id AS "accountId"
+          FROM wireguard_peers wp
+          JOIN client_configs cc ON cc.id = wp.client_config_id
+          WHERE wp.desired_state = 'present'
+            AND wp.last_handshake_at IS NOT NULL
+            AND wp.last_handshake_at > now() - interval '180 seconds'
+        `,
+      );
+      for (const row of res.rows) active.add(`wg:${row.accountId}`);
+    } catch {
+      /* DB unavailable (dev) */
     }
 
     return active.size;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.55 - 2026-06-15
+
+- **Dashboard overview counts WireGuard users.** The Active Users metric now includes active WireGuard peers (kernel `wg0` isn't in xray stats): a peer with a handshake in the last ~3 min counts as an active user, keyed by account so a customer isn't double-counted across peers. (WireGuard *traffic* was already included in Download/Upload via the `tproxy-in` inbound.) `OperationsOverviewService` now reads `wireguard_peers` from the DB.
+
 ## 0.114.54 - 2026-06-15
 
 - **WireGuard config delivery in the dashboard**: in Customers → Configs, each WireGuard config now has a **Show WireGuard config** action that renders its wg-quick `.conf` (provisioning the `wg0` peer on first use), with **Copy** + **Download .conf** — so you can hand a working config to users on the official WireGuard app / desktop / any device (not only the Afrows app). New admin endpoint `GET /admin/client-configs/:id/wireguard-config`. (Scan-QR is a planned follow-up — the `.conf` file imports directly into the WireGuard app today.)
