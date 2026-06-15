@@ -51,13 +51,13 @@ export class WireguardMeteringService implements OnModuleInit, OnModuleDestroy {
    *  is re-added its counters restart, so a negative delta is treated as a fresh
    *  start (delta = current). */
   private async meter(): Promise<void> {
-    const res = await this.database.query<{ accounted: string }>(
+    // 1) add each peer's delta (reset-safe) to its client_config.used_bytes
+    const res = await this.database.query<{ accountId: string }>(
       `
         WITH d AS (
           SELECT
             wp.id,
             wp.client_config_id,
-            (wp.rx_bytes + wp.tx_bytes) AS cur_total,
             CASE
               WHEN (wp.rx_bytes + wp.tx_bytes) >= (wp.metered_rx_bytes + wp.metered_tx_bytes)
                 THEN (wp.rx_bytes + wp.tx_bytes) - (wp.metered_rx_bytes + wp.metered_tx_bytes)
@@ -76,17 +76,25 @@ export class WireguardMeteringService implements OnModuleInit, OnModuleDestroy {
           UPDATE client_configs cc
           SET used_bytes = cc.used_bytes + up.delta, updated_at = now()
           FROM upd_peer up WHERE cc.id = up.client_config_id
-          RETURNING cc.customer_account_id, up.delta
+          RETURNING cc.customer_account_id
         )
-        UPDATE customer_accounts ca
-        SET used_bytes = ca.used_bytes + agg.total, updated_at = now()
-        FROM (SELECT customer_account_id, SUM(delta) AS total FROM upd_cfg GROUP BY customer_account_id) agg
-        WHERE ca.id = agg.customer_account_id
-        RETURNING agg.total AS accounted
+        SELECT DISTINCT customer_account_id AS "accountId" FROM upd_cfg
       `,
     );
-    const total = res.rows.reduce((a, r) => a + Number(r.accounted ?? 0), 0);
-    if (total > 0) this.logger.log(`WG metered ${total} bytes across ${res.rows.length} account(s)`);
+    // 2) recompute affected accounts' used_bytes = SUM(their configs) — the
+    // authoritative total (covers WG + VLESS, no incremental drift).
+    for (const row of res.rows) {
+      await this.database.query(
+        `
+          UPDATE customer_accounts ca
+          SET used_bytes = COALESCE((SELECT SUM(used_bytes) FROM client_configs WHERE customer_account_id = ca.id), 0),
+              updated_at = now()
+          WHERE ca.id = $1
+        `,
+        [row.accountId],
+      );
+    }
+    if (res.rows.length) this.logger.log(`WG metered + reconciled ${res.rows.length} account(s)`);
   }
 
   /** Disconnect over-quota peers and re-arm recovered ones (the reconciler applies). */

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.53 - 2026-06-15
+
+- **Fix: account `used_bytes` now reflects WireGuard usage** (so the dashboard Used column, per-protocol chips, and the mobile app's "GB remaining" are correct). `WireguardMeteringService` now recomputes each affected account's `used_bytes = SUM(its client_configs.used_bytes)` after metering, instead of an incremental add that had drifted (WG history sat in the config but never reached the account — e.g. Ben showed 13 KB instead of 460 MB). One-time reconcile applied to existing accounts. This also feeds quota enforcement correctly.
+
 ## 0.114.52 - 2026-06-15
 
 - **Per-customer WireGuard quota enforcement.** New `WireguardMeteringService` (backend) meters each peer's usage as DELTAS (reset-safe) from the absolute counters the reconciler writes, rolling them into `client_configs` + `customer_accounts.used_bytes` (same model as VLESS) — so WireGuard now counts against the account quota. When an account goes over quota it flips its peers to `desired_state='absent'` (the root reconciler removes them from `wg0`, disconnecting the user); when back under quota (top-up/reset) + active, peers are re-armed automatically. Migration 0034 adds `wireguard_peers.metered_{rx,tx}_bytes` (seeded to current so history isn't retro-billed). The reconciler no longer sets `used_bytes` (the backend owns it now). Env: `AFROWS_WG_METERING_ENABLED` / `AFROWS_WG_METERING_INTERVAL_MS`.
