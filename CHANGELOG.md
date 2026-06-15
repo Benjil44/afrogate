@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.56 - 2026-06-15
+
+- **Harden WireGuard infra into the deploy.** `update-afrows.sh` now idempotently (re)installs the WG reconciler script, its systemd service + timer, and the scoped sudoers rule from the repo on every deploy (validated `visudo -cf` before installing) — so a rebuilt/fresh server reproduces it automatically, and it warns if `AFROWS_WG_*` env is missing. Added `scripts/afrows-wg-bootstrap.sh` — a one-time, idempotent fresh-server bootstrap (installs wireguard-tools, server keys, `wg0` with TPROXY egress baked into `wg0.conf` PostUp so it survives reboot, `ip_forward`, and the `AFROWS_WG_*` delivery env).
+
 ## 0.114.55 - 2026-06-15
 
 - **Dashboard overview counts WireGuard users.** The Active Users metric now includes active WireGuard peers (kernel `wg0` isn't in xray stats): a peer with a handshake in the last ~3 min counts as an active user, keyed by account so a customer isn't double-counted across peers. (WireGuard *traffic* was already included in Download/Upload via the `tproxy-in` inbound.) `OperationsOverviewService` now reads `wireguard_peers` from the DB.
