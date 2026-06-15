@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -32,8 +33,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
   StreamSubscription<VpnStatus>? _statusSub;
   DateTime? _connectedAt;
   Timer? _uptimeTimer; // ticks the duration each second (WG plugin emits no periodic status)
-  Timer? _usageTimer; // polls server-side WG usage (plugin reports no byte counters)
-  // session baseline + last sample for computing per-session totals and speed
+  Timer? _usageTimer; // polls server-side WG usage (fallback if on-device read fails)
+  Timer? _tunTimer; // reads the tun interface counters every 1s (real-time, NPV-style)
+  bool _tunActive = false; // on-device reading works -> ignore the server fallback
+  bool _tunBaseSet = false;
+  int _tunRxBase = 0, _tunTxBase = 0, _lastTunRx = 0, _lastTunTx = 0;
+  // session baseline + last sample for the server-poll fallback
   int _sessRxBase = 0, _sessTxBase = 0;
   bool _sessBaseSet = false;
   int _lastRx = 0, _lastTx = 0;
@@ -70,6 +75,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
       if (!mounted || !_connected || _connectedAt == null) return;
       setState(() => _duration = _fmtDuration(_connectedAt));
     });
+    // Real-time up/down by reading the VPN tun interface counters every second
+    // (like NPV). Works on-device with no server round-trip; the server poll
+    // below is only a fallback if /proc/net/dev is unreadable on this device.
+    _tunTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickTun());
     // Initialize the WireGuard backend early so the one-time VPN consent dialog
     // is handled before the user taps Connect.
     await _vpn.ensureReady();
@@ -97,10 +106,58 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (mounted) setState(() => _ready = true);
   }
 
+  /// Reads the VPN tun interface byte counters from /proc/net/dev. From the
+  /// phone's view: Receive bytes = download, Transmit bytes = upload. Returns
+  /// null if unreadable (then the server poll takes over).
+  ({int rx, int tx})? _readTunBytes() {
+    try {
+      for (final raw in File('/proc/net/dev').readAsLinesSync()) {
+        final line = raw.trim();
+        if (!line.startsWith('tun')) continue;
+        final colon = line.indexOf(':');
+        if (colon < 0) continue;
+        final cols = line.substring(colon + 1).trim().split(RegExp(r'\s+'));
+        if (cols.length < 9) continue;
+        final rx = int.tryParse(cols[0]) ?? 0; // receive bytes = download
+        final tx = int.tryParse(cols[8]) ?? 0; // transmit bytes = upload
+        if (rx > 0 || tx > 0) return (rx: rx, tx: tx);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 1-second real-time tick: updates speed (delta/sec) + per-session totals
+  /// from the on-device tun counters.
+  void _tickTun() {
+    if (!mounted || !_connected) return;
+    final s = _readTunBytes();
+    if (s == null) return; // unreadable -> server poll fallback handles it
+    _tunActive = true;
+    if (!_tunBaseSet) {
+      _tunRxBase = s.rx;
+      _tunTxBase = s.tx;
+      _lastTunRx = s.rx;
+      _lastTunTx = s.tx;
+      _tunBaseSet = true;
+      return;
+    }
+    final dDown = (s.rx - _lastTunRx).clamp(0, 1 << 62);
+    final dUp = (s.tx - _lastTunTx).clamp(0, 1 << 62);
+    _lastTunRx = s.rx;
+    _lastTunTx = s.tx;
+    setState(() {
+      _downloadSpeed = dDown; // per 1s == bytes/sec
+      _uploadSpeed = dUp;
+      _downloadTotal = (s.rx - _tunRxBase).clamp(0, 1 << 62);
+      _uploadTotal = (s.tx - _tunTxBase).clamp(0, 1 << 62);
+    });
+  }
+
   /// Polls server-side WireGuard usage and updates the up/down cards: totals are
   /// per-session (current minus the baseline captured at connect), speed is the
   /// delta since the last poll. rxBytes=upload, txBytes=download (server view).
   Future<void> _pollUsage() async {
+    if (_tunActive) return; // on-device real-time reading is working; no need
     final token = widget.account?.token;
     if (token == null || !_connected) return;
     final u = await AfrowsApi().fetchWireguardUsage(token);
@@ -147,6 +204,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     _accountTimer?.cancel();
     _uptimeTimer?.cancel();
     _usageTimer?.cancel();
+    _tunTimer?.cancel();
     _statusSub?.cancel();
     _vpn.dispose();
     super.dispose();
@@ -198,7 +256,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _snack('Invalid WireGuard config');
       return;
     }
-    _sessBaseSet = false; // recapture the usage baseline for this new session
+    // recapture the usage baselines for this new session
+    _sessBaseSet = false;
+    _tunBaseSet = false;
+    _tunActive = false;
     setState(() => _state = 'CONNECTING');
     try {
       // The WireGuard backend consumes the wg-quick .conf text directly.

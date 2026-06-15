@@ -1,6 +1,6 @@
 {
   "name": "@afrows/dashboard",
-  "version": "0.114.45",
+  "version": "0.114.46",
   "private": true,
   "scripts": {
     "predev": "npm --workspace @afrows/shared run build",
@@ -13,7 +13,7 @@
     "lint": "echo \"dashboard lint not configured yet\""
   },
   "dependencies": {
-    "@afrows/shared": "0.114.45",
+    "@afrows/shared": "0.114.46",
     "echarts": "^6.1.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",

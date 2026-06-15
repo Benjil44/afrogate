@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.46 - 2026-06-15
+
+- **App real-time up/down (NPV-style)**: the Download/Upload cards now read the VPN `tun` interface byte counters from `/proc/net/dev` on-device every second, showing live speed + per-session totals with no server round-trip (download = tun receive, upload = tun transmit). The server `/client/wireguard-usage` poll stays as a fallback if `/proc/net/dev` is unreadable. App `2.2.2` (pubspec `2.2.2+11`).
+
 ## 0.114.45 - 2026-06-15
 
 - **App shows real WireGuard up/down** (was stuck at 0 B/s — the `wireguard_flutter` plugin reports no byte counters). New `GET /client/wireguard-usage` returns the account peer's server-metered `rxBytes`/`txBytes`/`lastHandshakeAt`; the app polls it every 5 s while connected and shows per-session download/upload totals + live speed (rx = upload, tx = download). The reconciler now meters every 10 s (was 30 s) so the numbers move. App `2.2.1`.
