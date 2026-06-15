@@ -67,6 +67,7 @@ export function CustomersPage({
   const [configList, setConfigList] = useState<AdminClientConfigSummary[]>([]);
   const [linkMap, setLinkMap] = useState<Record<string, string>>({});
   const [wgConfigMap, setWgConfigMap] = useState<Record<string, string>>({});
+  const [wgQrMap, setWgQrMap] = useState<Record<string, string>>({});
   const [wgBusy, setWgBusy] = useState<string | null>(null);
   const [configBusy, setConfigBusy] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -297,6 +298,7 @@ export function CustomersPage({
     setConfigList([]);
     setLinkMap({});
     setWgConfigMap({});
+    setWgQrMap({});
     void loadConfigs(a.id);
   };
 
@@ -305,8 +307,9 @@ export function CustomersPage({
     setWgBusy(configId);
     setConfigError(null);
     try {
-      const { configText } = await fetchAdminWireguardConfig(sessionToken, configId);
+      const { configText, qrSvg } = await fetchAdminWireguardConfig(sessionToken, configId);
       setWgConfigMap((m) => ({ ...m, [configId]: configText }));
+      setWgQrMap((m) => ({ ...m, [configId]: qrSvg }));
     } catch {
       setConfigError(t.customersPage.configError);
     } finally {
@@ -726,6 +729,14 @@ export function CustomersPage({
                   ) : c.protocol === 'wireguard' ? (
                     wgConfigMap[c.id] ? (
                       <div className="grid gap-1.5">
+                        {wgQrMap[c.id] ? (
+                          <div
+                            className="mx-auto h-40 w-40 rounded-md bg-white p-1 [&>svg]:h-full [&>svg]:w-full"
+                            title={s.scanWg}
+                            // eslint-disable-next-line react/no-danger
+                            dangerouslySetInnerHTML={{ __html: wgQrMap[c.id] }}
+                          />
+                        ) : null}
                         <textarea
                           readOnly
                           value={wgConfigMap[c.id]}

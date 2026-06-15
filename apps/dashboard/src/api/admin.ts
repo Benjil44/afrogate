@@ -730,12 +730,12 @@ export async function deleteAdminClientConfig(
 export async function fetchAdminWireguardConfig(
   sessionToken: string,
   clientConfigId: string,
-): Promise<{ configText: string }> {
+): Promise<{ configText: string; qrSvg: string }> {
   const response = await requestAdminAuth(
     `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}/wireguard-config`,
     { headers: createSessionHeaders(sessionToken) },
   );
-  return response.json() as Promise<{ configText: string }>;
+  return response.json() as Promise<{ configText: string; qrSvg: string }>;
 }
 
 export async function exportAdminCustomerClientConfigs(

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { createHmac, randomBytes, randomUUID } from 'crypto';
 import { execFile } from 'node:child_process';
+import * as QRCode from 'qrcode';
 import type {
   AdminClientSubscriptionCredentialSummary,
   AdminBillingCatalogResponse,
@@ -4423,7 +4424,9 @@ export class BillingService {
    * (provisioning its wg0 peer on first use), so the operator can copy/download
    * it and hand it to a user (official WireGuard app / desktop / any device).
    */
-  async getWireguardConfigForClientConfig(clientConfigId: string): Promise<{ configText: string }> {
+  async getWireguardConfigForClientConfig(
+    clientConfigId: string,
+  ): Promise<{ configText: string; qrSvg: string }> {
     const server = readAfrowsWireguardEnv(process.env);
     if (!server) throw new BadRequestException('WireGuard is not configured on this server');
 
@@ -4454,14 +4457,14 @@ export class BillingService {
     }
     if (!privateKey) throw new BadRequestException('Stored key material is unavailable');
 
-    return {
-      configText: buildWireguardConf({
-        privateKey,
-        address: peer.clientAddress,
-        server,
-        presharedKey: peer.presharedKey,
-      }),
-    };
+    const configText = buildWireguardConf({
+      privateKey,
+      address: peer.clientAddress,
+      server,
+      presharedKey: peer.presharedKey,
+    });
+    const qrSvg = await QRCode.toString(configText, { type: 'svg', margin: 1, width: 240 });
+    return { configText, qrSvg };
   }
 
   /**

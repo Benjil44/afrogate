@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.58 - 2026-06-15
+
+- **WireGuard QR code.** Show WireGuard config now also renders a **scannable QR** of the `.conf` (alongside copy + download) — users add the tunnel in the official WireGuard app via "Scan from QR code". The endpoint returns an SVG QR generated server-side (`qrcode`); the dashboard renders it inline.
+
 ## 0.114.57 - 2026-06-15
 
 - **Delete configs from the dashboard.** Each config row in Customers → Configs now has a delete (trash) button. New `DELETE /admin/client-configs/:id`: for WireGuard it marks the peer absent + triggers the reconciler, then deletes (the `wireguard_peers` row cascades); the reconciler gained an **orphan sweep** that removes managed-range (`10.8.0.>=START`) `wg0` peers no longer in the DB, so deleted peers actually disconnect (manual/reserved peers below the range are untouched).

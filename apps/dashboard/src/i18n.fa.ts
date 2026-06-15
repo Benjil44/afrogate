@@ -121,6 +121,7 @@ export const fa: DashboardStrings = {
       configPending: 'در انتظار راه‌اندازی — پشتیبانی بک‌اند به‌زودی.',
       showWgConfig: 'نمایش کانفیگ WireGuard',
       downloadConf: 'دانلود فایل conf.',
+      scanWg: 'برای افزودن، در اپ WireGuard اسکن کنید',
       deleteConfig: 'حذف کانفیگ',
       deleteConfigConfirm: (label: string) => `کانفیگ «${label}» حذف شود؟ اتصال قطع می‌شود و قابل بازگشت نیست.`,
       fldLoginPassword: 'رمز ورود اپ',

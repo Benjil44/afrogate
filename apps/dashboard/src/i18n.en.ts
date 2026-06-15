@@ -119,6 +119,7 @@ export const en = {
       configPending: 'Provisioning pending — backend support coming.',
       showWgConfig: 'Show WireGuard config',
       downloadConf: 'Download .conf',
+      scanWg: 'Scan in the WireGuard app to import',
       deleteConfig: 'Delete config',
       deleteConfigConfirm: (label: string) => `Delete config "${label}"? This disconnects it and can't be undone.`,
       fldLoginPassword: 'App login password',

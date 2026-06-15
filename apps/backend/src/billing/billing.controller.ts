@@ -566,7 +566,7 @@ export class BillingController {
   @Roles('admin')
   getClientConfigWireguardConfig(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-  ): Promise<{ configText: string }> {
+  ): Promise<{ configText: string; qrSvg: string }> {
     return this.billingService.getWireguardConfigForClientConfig(id);
   }
 
