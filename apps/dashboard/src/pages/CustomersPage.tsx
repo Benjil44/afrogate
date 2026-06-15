@@ -7,6 +7,7 @@ import {
   exportAdminCustomerClientConfigs,
   fetchAdminClientConfigEntryLink,
   fetchAdminCustomerAccounts,
+  resetCustomerAccountPassword,
   updateAdminCustomerAccount,
 } from '../api/admin';
 import { DataTable, EmptyState, PanelHeading } from '../components/primitives';
@@ -54,6 +55,9 @@ export function CustomersPage({
   const [protoWg, setProtoWg] = useState(false);
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
+  const [shownPassword, setShownPassword] = useState<string | null>(null);
+  const [pwCopied, setPwCopied] = useState(false);
 
   // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
@@ -103,6 +107,8 @@ export function CustomersPage({
     setNotes('');
     setProtoVless(true);
     setProtoWg(false);
+    setShownPassword(null);
+    setPwCopied(false);
     setError(null);
   };
 
@@ -145,6 +151,35 @@ export function CustomersPage({
       setError(s.saveError);
     } finally {
       setAddProtoBusy(false);
+    }
+  };
+
+  // Reset the customer's login password and show the new one once (to hand off).
+  const onResetPassword = async () => {
+    if (!editId) return;
+    setPwBusy(true);
+    setError(null);
+    setShownPassword(null);
+    try {
+      const { generatedPassword } = await resetCustomerAccountPassword(sessionToken, editId);
+      setShownPassword(generatedPassword);
+      setPwCopied(false);
+      await load();
+    } catch {
+      setError(s.saveError);
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
+  const copyPassword = async () => {
+    if (!shownPassword) return;
+    try {
+      await navigator.clipboard.writeText(shownPassword);
+      setPwCopied(true);
+      window.setTimeout(() => setPwCopied(false), 1500);
+    } catch {
+      /* ignore */
     }
   };
 
@@ -464,6 +499,42 @@ export function CustomersPage({
                 </div>
               </div>
             )}
+            {editId && email.trim() ? (
+              <div className="grid gap-1.5 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
+                {shownPassword ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={shownPassword}
+                      dir="ltr"
+                      className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[13px] outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void copyPassword()}
+                      className="inline-flex h-9 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                    >
+                      <Copy size={13} />
+                      {pwCopied ? s.copied : s.copyLink}
+                    </button>
+                  </div>
+                ) : null}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={pwBusy}
+                    onClick={() => void onResetPassword()}
+                    className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                  >
+                    {s.resetPassword}
+                  </button>
+                  <span className="text-[12px] text-afro-muted">
+                    {shownPassword ? s.passwordShownOnce : s.passwordHashedNote}
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </div>
           {error ? <p className="mt-3 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
           <div className="mt-4 flex gap-2">

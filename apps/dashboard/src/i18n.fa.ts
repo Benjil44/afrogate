@@ -119,6 +119,10 @@ export const fa: DashboardStrings = {
       protoWireguard: 'WireGuard',
       protoL2tp: 'L2TP',
       configPending: 'در انتظار راه‌اندازی — پشتیبانی بک‌اند به‌زودی.',
+      fldLoginPassword: 'رمز ورود اپ',
+      resetPassword: 'بازنشانی رمز',
+      passwordShownOnce: 'همین حالا کپی کنید — فقط یک‌بار نمایش داده می‌شود. برای ورود به اپ به کاربر بدهید.',
+      passwordHashedNote: 'به‌صورت هش ذخیره شده — قابل نمایش نیست. برای تنظیم رمز جدید بازنشانی کنید.',
     },
     inboundsPage: {
       title: 'شنونده‌های ورودی',

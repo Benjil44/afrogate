@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.47 - 2026-06-15
+
+- **Customer app-login password (set/hand-off)**: the Edit customer dialog now has a **Reset password** action that generates a new login password and shows it **once** to copy and give the user for the mobile app. Existing passwords can't be shown (stored hashed) — this resets to a known value. Wires the dashboard to the existing `POST /admin/customer-accounts/:id/reset-password`. EN/FA strings added.
+
 ## 0.114.46 - 2026-06-15
 
 - **App real-time up/down (NPV-style)**: the Download/Upload cards now read the VPN `tun` interface byte counters from `/proc/net/dev` on-device every second, showing live speed + per-session totals with no server round-trip (download = tun receive, upload = tun transmit). The server `/client/wireguard-usage` poll stays as a fallback if `/proc/net/dev` is unreadable. App `2.2.2` (pubspec `2.2.2+11`).

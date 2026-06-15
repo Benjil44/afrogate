@@ -117,6 +117,10 @@ export const en = {
       protoWireguard: 'WireGuard',
       protoL2tp: 'L2TP',
       configPending: 'Provisioning pending — backend support coming.',
+      fldLoginPassword: 'App login password',
+      resetPassword: 'Reset password',
+      passwordShownOnce: 'Copy now — shown only once. Give it to the user for the app.',
+      passwordHashedNote: 'Stored hashed — can’t be shown. Reset to set a new one.',
     },
     inboundsPage: {
       title: 'Entry listeners',

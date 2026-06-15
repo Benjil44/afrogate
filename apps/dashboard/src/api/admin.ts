@@ -683,6 +683,21 @@ export async function createAdminClientConfig(
   return response.json() as Promise<AdminClientConfigSummary>;
 }
 
+/** Regenerates a customer's login password; returns the new password ONCE. */
+export async function resetCustomerAccountPassword(
+  sessionToken: string,
+  accountId: string,
+): Promise<{ generatedPassword: string }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/reset-password`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<{ generatedPassword: string }>;
+}
+
 export async function fetchAdminClientConfigEntryLink(
   sessionToken: string,
   clientConfigId: string,
