@@ -215,6 +215,17 @@ export function CustomersPage({
     try {
       if (editId) {
         await updateAdminCustomerAccount(sessionToken, editId, payload);
+        // If the operator typed a password, Save applies it too (intuitive),
+        // not only the separate "Set password" button.
+        if (customPw.trim()) {
+          const { generatedPassword } = await resetCustomerAccountPassword(sessionToken, editId, customPw.trim());
+          setShownPassword(generatedPassword);
+          setCustomPw('');
+          setPwCopied(false);
+          await load();
+          setSaving(false);
+          return; // keep the editor open so the password is shown once
+        }
       } else {
         const created = await createAdminCustomerAccount(sessionToken, {
           ...payload,

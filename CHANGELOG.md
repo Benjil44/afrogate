@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.51 - 2026-06-15
+
+- **Fix: Save now applies a typed password.** In Customers → Edit, typing a password in the box and clicking the main **Save** previously only saved account fields and ignored the password (you had to use the separate "Set password" button). Save now also sets the password when the box is filled (then shows it once). Removes the confusing two-button behavior.
+
 ## 0.114.50 - 2026-06-15
 
 - **New app icon**: branded Afrows launcher icon (teal gradient shield + upward arrow = secure + fast), generated via `flutter_launcher_icons` (legacy + adaptive). Source art under `apps/native-client/assets/icon/`.
