@@ -119,8 +119,11 @@ export const en = {
       configPending: 'Provisioning pending — backend support coming.',
       fldLoginPassword: 'App login password',
       resetPassword: 'Reset password',
+      setPassword: 'Set password',
+      generatePassword: 'Generate',
+      passwordCustomPlaceholder: 'Type a password (or leave blank to auto-generate)',
       passwordShownOnce: 'Copy now — shown only once. Give it to the user for the app.',
-      passwordHashedNote: 'Stored hashed — can’t be shown. Reset to set a new one.',
+      passwordHashedNote: 'Stored hashed — can’t be shown. Set a custom one or generate.',
     },
     inboundsPage: {
       title: 'Entry listeners',

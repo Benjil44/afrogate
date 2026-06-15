@@ -58,6 +58,7 @@ export function CustomersPage({
   const [pwBusy, setPwBusy] = useState(false);
   const [shownPassword, setShownPassword] = useState<string | null>(null);
   const [pwCopied, setPwCopied] = useState(false);
+  const [customPw, setCustomPw] = useState(''); // operator-typed password (blank = auto-generate)
 
   // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
@@ -109,6 +110,7 @@ export function CustomersPage({
     setProtoWg(false);
     setShownPassword(null);
     setPwCopied(false);
+    setCustomPw('');
     setError(null);
   };
 
@@ -161,8 +163,13 @@ export function CustomersPage({
     setError(null);
     setShownPassword(null);
     try {
-      const { generatedPassword } = await resetCustomerAccountPassword(sessionToken, editId);
+      const { generatedPassword } = await resetCustomerAccountPassword(
+        sessionToken,
+        editId,
+        customPw.trim() || undefined,
+      );
       setShownPassword(generatedPassword);
+      setCustomPw('');
       setPwCopied(false);
       await load();
     } catch {
@@ -209,7 +216,10 @@ export function CustomersPage({
       if (editId) {
         await updateAdminCustomerAccount(sessionToken, editId, payload);
       } else {
-        const created = await createAdminCustomerAccount(sessionToken, payload);
+        const created = await createAdminCustomerAccount(sessionToken, {
+          ...payload,
+          password: customPw.trim() || null,
+        });
         const protos = [protoVless ? 'vless' : '', protoWg ? 'wireguard' : ''].filter(Boolean);
         for (const p of protos) {
           try {
@@ -217,6 +227,15 @@ export function CustomersPage({
           } catch {
             /* config create best-effort */
           }
+        }
+        await load();
+        // If the new account has a login, reopen it in edit mode and reveal the
+        // password once so the operator can copy it for the user.
+        if (created.generatedPassword) {
+          openEdit(created);
+          setShownPassword(created.generatedPassword);
+          setSaving(false);
+          return;
         }
       }
       setEditorOpen(false);
@@ -453,6 +472,18 @@ export function CustomersPage({
               <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} />
             </label>
+            {!editId && email.trim() ? (
+              <label className="grid gap-1.5 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
+                <input
+                  value={customPw}
+                  onChange={(e) => setCustomPw(e.target.value)}
+                  dir="ltr"
+                  placeholder={s.passwordCustomPlaceholder}
+                  className={inputClass}
+                />
+              </label>
+            ) : null}
             {!editId ? (
               <div className="grid gap-1.5 md:col-span-2">
                 <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
@@ -520,19 +551,26 @@ export function CustomersPage({
                     </button>
                   </div>
                 ) : null}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={customPw}
+                    onChange={(e) => setCustomPw(e.target.value)}
+                    dir="ltr"
+                    placeholder={s.passwordCustomPlaceholder}
+                    className={`${inputClass} min-w-[200px] flex-1`}
+                  />
                   <button
                     type="button"
                     disabled={pwBusy}
                     onClick={() => void onResetPassword()}
-                    className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                    className="inline-flex min-h-10 items-center gap-1 rounded-md border border-afro-line px-3 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
                   >
-                    {s.resetPassword}
+                    {customPw.trim() ? s.setPassword : s.generatePassword}
                   </button>
-                  <span className="text-[12px] text-afro-muted">
-                    {shownPassword ? s.passwordShownOnce : s.passwordHashedNote}
-                  </span>
                 </div>
+                <span className="text-[12px] text-afro-muted">
+                  {shownPassword ? s.passwordShownOnce : s.passwordHashedNote}
+                </span>
               </div>
             ) : null}
           </div>

@@ -121,8 +121,11 @@ export const fa: DashboardStrings = {
       configPending: 'در انتظار راه‌اندازی — پشتیبانی بک‌اند به‌زودی.',
       fldLoginPassword: 'رمز ورود اپ',
       resetPassword: 'بازنشانی رمز',
+      setPassword: 'تنظیم رمز',
+      generatePassword: 'تولید خودکار',
+      passwordCustomPlaceholder: 'یک رمز وارد کنید (یا خالی بگذارید تا خودکار ساخته شود)',
       passwordShownOnce: 'همین حالا کپی کنید — فقط یک‌بار نمایش داده می‌شود. برای ورود به اپ به کاربر بدهید.',
-      passwordHashedNote: 'به‌صورت هش ذخیره شده — قابل نمایش نیست. برای تنظیم رمز جدید بازنشانی کنید.',
+      passwordHashedNote: 'به‌صورت هش ذخیره شده — قابل نمایش نیست. رمز دلخواه تنظیم کنید یا تولید خودکار.',
     },
     inboundsPage: {
       title: 'شنونده‌های ورودی',

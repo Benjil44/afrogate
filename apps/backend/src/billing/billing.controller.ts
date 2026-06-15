@@ -60,6 +60,7 @@ import {
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
+  SetCustomerAccountPasswordDto,
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
   UpsertClientSubscriptionCredentialDto,
@@ -526,9 +527,10 @@ export class BillingController {
   @Roles('admin')
   resetCustomerAccountPassword(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: SetCustomerAccountPasswordDto,
     @Req() request: RequestWithAuth,
   ): Promise<{ generatedPassword: string }> {
-    return this.billingService.resetCustomerAccountPassword(id, request.actor);
+    return this.billingService.resetCustomerAccountPassword(id, request.actor, body?.password ?? null);
   }
 
   @Patch('customer-accounts/:id')

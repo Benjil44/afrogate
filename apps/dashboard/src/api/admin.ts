@@ -683,14 +683,19 @@ export async function createAdminClientConfig(
   return response.json() as Promise<AdminClientConfigSummary>;
 }
 
-/** Regenerates a customer's login password; returns the new password ONCE. */
+/**
+ * Sets a customer's login password; returns the password ONCE. Pass `password`
+ * to set a custom one, or omit it to auto-generate a strong password.
+ */
 export async function resetCustomerAccountPassword(
   sessionToken: string,
   accountId: string,
+  password?: string,
 ): Promise<{ generatedPassword: string }> {
   const response = await requestAdminAuth(
     `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/reset-password`,
     {
+      body: JSON.stringify(password && password.trim() ? { password: password.trim() } : {}),
       headers: createSessionHeaders(sessionToken),
       method: 'POST',
     },

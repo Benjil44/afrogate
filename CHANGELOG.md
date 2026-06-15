@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.114.48 - 2026-06-15
+
+- **Custom or auto-generated passwords**: when creating a customer (Add dialog) or in Edit, you can now **type a custom login password** or leave it blank to auto-generate; the resulting password is shown once to copy and hand to the user. Backend `createCustomerAccount` accepts an optional `password`, and `POST /customer-accounts/:id/reset-password` accepts an optional `{ password }` (min 6 chars) — both fall back to a generated one.
+- **Billing cleanup**: removed the **Panel import (VLESS)** tab from the Billing page — customer config import belongs with customer management, not billing. (Customer account + password management for admins is already on the dedicated Customers page.)
+
 ## 0.114.47 - 2026-06-15
 
 - **Customer app-login password (set/hand-off)**: the Edit customer dialog now has a **Reset password** action that generates a new login password and shows it **once** to copy and give the user for the mobile app. Existing passwords can't be shown (stored hashed) — this resets to a known value. Wires the dashboard to the existing `POST /admin/customer-accounts/:id/reset-password`. EN/FA strings added.

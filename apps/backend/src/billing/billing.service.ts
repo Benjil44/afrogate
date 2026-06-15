@@ -2844,7 +2844,8 @@ export class BillingService {
       let generatedPassword: string | null = null;
       let passwordHash: string | null = null;
       if (loginEmail) {
-        generatedPassword = generatePassword(16);
+        const custom = typeof dto.password === 'string' ? dto.password.trim() : '';
+        generatedPassword = custom.length >= 6 ? custom : generatePassword(16);
         passwordHash = hashPassword(generatedPassword);
       }
       const result = await this.database.transaction(async (executor) => {
@@ -3606,9 +3607,17 @@ export class BillingService {
     };
   }
 
-  /** Regenerate a customer's password (seller/superadmin); returns it once. */
-  async resetCustomerAccountPassword(accountId: string, actor: AuthActor | undefined): Promise<{ generatedPassword: string }> {
-    const password = generatePassword(16);
+  /**
+   * Set a customer's login password (seller/superadmin); returns it once.
+   * Uses `customPassword` if provided (>=6 chars), otherwise generates a strong one.
+   */
+  async resetCustomerAccountPassword(
+    accountId: string,
+    actor: AuthActor | undefined,
+    customPassword?: string | null,
+  ): Promise<{ generatedPassword: string }> {
+    const trimmed = typeof customPassword === 'string' ? customPassword.trim() : '';
+    const password = trimmed.length >= 6 ? trimmed : generatePassword(16);
     const result = await this.database.query<{ id: string }>(
       `
         UPDATE customer_accounts

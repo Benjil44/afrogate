@@ -1177,7 +1177,8 @@ export function BillingPage({
     ...(isResellerSession
       ? [{ id: 'customers' as BillingTab, label: t.tabs.billingCustomers, meta: t.billing.accountsLoaded(format.integer(accounts.length)) }]
       : []),
-    { id: 'panelImport', label: t.tabs.billingPanelImport, meta: t.billing.currentPanelReadOnly },
+    // Customer config import (VLESS/panel) lives with customer management, not
+    // billing — removed from the billing tabs. (Section code kept but unreachable.)
     { id: 'telegram', label: t.tabs.billingTelegram, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
     { id: 'orders', label: t.tabs.billingOrders, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
   ];
