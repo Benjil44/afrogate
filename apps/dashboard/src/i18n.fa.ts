@@ -119,6 +119,8 @@ export const fa: DashboardStrings = {
       protoWireguard: 'WireGuard',
       protoL2tp: 'L2TP',
       configPending: 'در انتظار راه‌اندازی — پشتیبانی بک‌اند به‌زودی.',
+      showWgConfig: 'نمایش کانفیگ WireGuard',
+      downloadConf: 'دانلود فایل conf.',
       fldLoginPassword: 'رمز ورود اپ',
       resetPassword: 'بازنشانی رمز',
       setPassword: 'تنظیم رمز',

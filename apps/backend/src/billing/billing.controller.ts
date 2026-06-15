@@ -561,6 +561,14 @@ export class BillingController {
     return this.billingService.getClientConfigEntryLink(id);
   }
 
+  @Get('client-configs/:id/wireguard-config')
+  @Roles('admin')
+  getClientConfigWireguardConfig(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<{ configText: string }> {
+    return this.billingService.getWireguardConfigForClientConfig(id);
+  }
+
   @Patch('client-configs/:id')
   @Roles('admin')
   updateClientConfig(

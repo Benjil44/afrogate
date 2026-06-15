@@ -117,6 +117,8 @@ export const en = {
       protoWireguard: 'WireGuard',
       protoL2tp: 'L2TP',
       configPending: 'Provisioning pending — backend support coming.',
+      showWgConfig: 'Show WireGuard config',
+      downloadConf: 'Download .conf',
       fldLoginPassword: 'App login password',
       resetPassword: 'Reset password',
       setPassword: 'Set password',

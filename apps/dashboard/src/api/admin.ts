@@ -714,6 +714,18 @@ export async function fetchAdminClientConfigEntryLink(
   return response.json() as Promise<AdminClientConfigEntryLinkResponse>;
 }
 
+/** Renders (provisioning if needed) a WireGuard config's .conf text. */
+export async function fetchAdminWireguardConfig(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<{ configText: string }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}/wireguard-config`,
+    { headers: createSessionHeaders(sessionToken) },
+  );
+  return response.json() as Promise<{ configText: string }>;
+}
+
 export async function exportAdminCustomerClientConfigs(
   sessionToken: string,
   accountId: string,

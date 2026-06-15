@@ -7,6 +7,7 @@ import {
   exportAdminCustomerClientConfigs,
   fetchAdminClientConfigEntryLink,
   fetchAdminCustomerAccounts,
+  fetchAdminWireguardConfig,
   resetCustomerAccountPassword,
   updateAdminCustomerAccount,
 } from '../api/admin';
@@ -64,6 +65,8 @@ export function CustomersPage({
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
   const [configList, setConfigList] = useState<AdminClientConfigSummary[]>([]);
   const [linkMap, setLinkMap] = useState<Record<string, string>>({});
+  const [wgConfigMap, setWgConfigMap] = useState<Record<string, string>>({});
+  const [wgBusy, setWgBusy] = useState<string | null>(null);
   const [configBusy, setConfigBusy] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -289,7 +292,34 @@ export function CustomersPage({
     setConfigsFor(a);
     setConfigList([]);
     setLinkMap({});
+    setWgConfigMap({});
     void loadConfigs(a.id);
+  };
+
+  // Fetch + reveal a WireGuard config's .conf text (provisions the peer if needed).
+  const showWgConfig = async (configId: string) => {
+    setWgBusy(configId);
+    setConfigError(null);
+    try {
+      const { configText } = await fetchAdminWireguardConfig(sessionToken, configId);
+      setWgConfigMap((m) => ({ ...m, [configId]: configText }));
+    } catch {
+      setConfigError(t.customersPage.configError);
+    } finally {
+      setWgBusy(null);
+    }
+  };
+
+  // Download a .conf file (so the operator can send it / the user imports it).
+  const downloadConf = (label: string, text: string) => {
+    const blob = new Blob([text], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const name = (label || 'afrows').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 15);
+    a.href = url;
+    a.download = `${name}.conf`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const onCreateConfig = async () => {
@@ -663,6 +693,44 @@ export function CustomersPage({
                     </div>
                   ) : c.protocol === 'vless' ? (
                     <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
+                  ) : c.protocol === 'wireguard' ? (
+                    wgConfigMap[c.id] ? (
+                      <div className="grid gap-1.5">
+                        <textarea
+                          readOnly
+                          value={wgConfigMap[c.id]}
+                          dir="ltr"
+                          rows={8}
+                          className="w-full rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[11px] outline-none"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void copyLink(c.id, wgConfigMap[c.id])}
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                          >
+                            <Copy size={13} />
+                            {copiedId === c.id ? s.copied : s.copyLink}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadConf(c.label, wgConfigMap[c.id])}
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                          >
+                            {s.downloadConf}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={wgBusy === c.id}
+                        onClick={() => void showWgConfig(c.id)}
+                        className="inline-flex h-8 w-fit items-center gap-1 rounded-md border border-afro-line px-2.5 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                      >
+                        {wgBusy === c.id ? t.dataStatus.loading : s.showWgConfig}
+                      </button>
+                    )
                   ) : (
                     <span className="text-[12px] font-bold text-[#c27a1a]">{s.configPending}</span>
                   )}

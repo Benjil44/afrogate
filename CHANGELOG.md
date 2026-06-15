@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.54 - 2026-06-15
+
+- **WireGuard config delivery in the dashboard**: in Customers → Configs, each WireGuard config now has a **Show WireGuard config** action that renders its wg-quick `.conf` (provisioning the `wg0` peer on first use), with **Copy** + **Download .conf** — so you can hand a working config to users on the official WireGuard app / desktop / any device (not only the Afrows app). New admin endpoint `GET /admin/client-configs/:id/wireguard-config`. (Scan-QR is a planned follow-up — the `.conf` file imports directly into the WireGuard app today.)
+
 ## 0.114.53 - 2026-06-15
 
 - **Fix: account `used_bytes` now reflects WireGuard usage** (so the dashboard Used column, per-protocol chips, and the mobile app's "GB remaining" are correct). `WireguardMeteringService` now recomputes each affected account's `used_bytes = SUM(its client_configs.used_bytes)` after metering, instead of an incremental add that had drifted (WG history sat in the config but never reached the account — e.g. Ben showed 13 KB instead of 460 MB). One-time reconcile applied to existing accounts. This also feeds quota enforcement correctly.

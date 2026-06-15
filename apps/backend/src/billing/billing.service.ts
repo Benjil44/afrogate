@@ -4388,6 +4388,52 @@ export class BillingService {
   }
 
   /**
+   * Admin: render the wg-quick `.conf` for a specific WireGuard client_config
+   * (provisioning its wg0 peer on first use), so the operator can copy/download
+   * it and hand it to a user (official WireGuard app / desktop / any device).
+   */
+  async getWireguardConfigForClientConfig(clientConfigId: string): Promise<{ configText: string }> {
+    const server = readAfrowsWireguardEnv(process.env);
+    if (!server) throw new BadRequestException('WireGuard is not configured on this server');
+
+    const peer = await this.database.transaction(async (executor) => {
+      const cfg = await executor.query<{ protocol: string }>(
+        `SELECT protocol FROM client_configs WHERE id = $1`,
+        [clientConfigId],
+      );
+      if (!cfg.rows[0]) throw new NotFoundException('Client config not found');
+      if ((cfg.rows[0].protocol ?? '').toLowerCase() !== 'wireguard') {
+        throw new BadRequestException('Client config is not a WireGuard config');
+      }
+      return this.provisionWireguardPeerForConfig(executor, clientConfigId, server.interface);
+    });
+    if (!peer) throw new BadRequestException('Could not provision a WireGuard peer (subnet full?)');
+
+    this.triggerWgReconcile(); // apply the peer to wg0 now
+
+    let privateKey = '';
+    try {
+      const material = this.secretVault.decryptJson(
+        peer.encryptedPrivateKey,
+        this.wireguardPeerEncryptionContext(peer.clientConfigId),
+      );
+      privateKey = typeof material.clientPrivateKey === 'string' ? material.clientPrivateKey : '';
+    } catch {
+      throw new BadRequestException('Stored key material is unavailable');
+    }
+    if (!privateKey) throw new BadRequestException('Stored key material is unavailable');
+
+    return {
+      configText: buildWireguardConf({
+        privateKey,
+        address: peer.clientAddress,
+        server,
+        presharedKey: peer.presharedKey,
+      }),
+    };
+  }
+
+  /**
    * Live WireGuard usage for the logged-in account's peer, as metered server-side
    * by the root reconciler (`wg show wg0 dump`). The app polls this to show real
    * up/down totals (the wireguard_flutter plugin reports no byte counters).
