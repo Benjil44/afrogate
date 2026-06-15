@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.114.50 - 2026-06-15
+
+- **New app icon**: branded Afrows launcher icon (teal gradient shield + upward arrow = secure + fast), generated via `flutter_launcher_icons` (legacy + adaptive). Source art under `apps/native-client/assets/icon/`.
+- **App up/down — server-only**: removed the on-device `/proc/net/dev` read entirely (sandboxed/unreliable on MIUI and was conflicting). The up/down cards are now driven solely by the server-metered `/client/wireguard-usage` poll (cumulative totals + speed), and `_onStatus` no longer overwrites them with the plugin's always-0 values. Added a Diag log line (`wg-usage: down=… up=…`) so the values are visible in the in-app Diagnostics screen. App `2.2.4`.
+
 ## 0.114.49 - 2026-06-15
 
 - **App up/down display fix**: the on-device `/proc/net/dev` read is sandboxed/unreliable on MIUI and was wrongly disabling the working server fallback (cards stuck at 0). Now the on-device path only takes over once it observes **real movement**; otherwise the app shows the **server-metered** peer usage as **cumulative totals** (always real/non-zero) + speed from the poll delta. App `2.2.3`.
