@@ -1,0 +1,11 @@
+[Unit]
+Description=Afrows uplink relay-pool reconciler (rebuild foreign-egress pool from working DB relays)
+After=network-online.target postgresql.service afrows-backend.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/afrows-uplink-pool-sync.py
+# Tunables (override here if needed):
+# Environment=POOL_MIN_MBPS=3 POOL_MAX_AGE_MIN=90 POOL_MAX_RELAYS=5
+TimeoutStartSec=90

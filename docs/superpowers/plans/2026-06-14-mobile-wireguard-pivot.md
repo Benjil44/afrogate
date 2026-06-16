@@ -146,3 +146,31 @@
 - **IPsec + double-NAT / carrier-grade NAT** in Iran can break IKE; NAT-T (4500) helps but some ISPs block ESP — keep WireGuard as the primary, L2TP as fallback.
 - **MSCHAPv2 secrets at rest** → encrypt like WG private keys (SecretVault); never return in list endpoints.
 - **MTU/MSS** → clamp (1400/1360) as we already do on the MikroTik path.
+
+---
+
+## Status (2026-06-16) — MikroTik home gateway split-routing DONE; egress redesign chosen
+
+- **MikroTik home gateway split-routing — DONE & verified.** hAP ac3 (RouterOS 7.22.3),
+  ONU modem feeds WAN `ether5`. Goal: **port 4 (PC) = direct modem internet**, ports
+  1/2/3 + WiFi = VPN. Implemented as ingress-port policy routing: routing-table `direct`
+  (default → modem `192.168.254.1` via `ether5`), bridge `use-ip-firewall=yes`, mangle
+  (`in-bridge-port=ether4` + `dst=!192.168.88.0/24` → connection-mark `p4` → routing-mark
+  `direct`), NAT masquerade out `ether5`. Verified: PC on `ether4` egresses direct (0%
+  loss, ~40 ms), router stays reachable (no lockout). Full details + the two gotchas that
+  cost the most time are in [[mikrotik-split-routing]].
+- **DNS on the direct path** — set router resolver to the **modem DNS `192.168.254.1`**
+  (public `8.8.4.4/1.1.1.1` are filtered on the raw Iran path; ICMP passes but UDP/53 is
+  dropped). `/ip/dns` is a set-only menu → use `POST /ip/dns/set`.
+- **Claude/foreign on port 4** — expected to need a PC-side VPN/proxy: port 4 is *direct
+  Iran* internet, so filtered foreign endpoints (e.g. `api.anthropic.com`) need the user's
+  own tunnel (the `x-ovpn-tap` OpenVPN client / local `127.0.0.1:10808` proxy) running.
+- **VPN ports (1/2/3/WiFi) blocked on the Germany exit** — they route via WireGuard →
+  Afrows VPS → Germany, but the **foreign egress relay is down** (see below). Making the
+  VPN ports reliable depends on the egress redesign.
+- **Egress redesign chosen.** Rather than keep patching the single relay, the operator
+  chose to build a **self-healing multi-path egress** (direct/domestic + Germany pool with
+  failover + future Starlink + app "filtering bypass" toggle). Plan:
+  `docs/superpowers/plans/2026-06-16-multi-egress-architecture.md`. Context on why the box
+  needs an uplink at all + the relay history: [[outbounds-and-box-uplink]],
+  [[germany-exit-structure]].

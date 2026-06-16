@@ -4,6 +4,18 @@
 > egress work is **parked**; this documents how the box works for future use.
 > Do **not** change the hexogate panel/bot — other servers depend on it.
 
+> **STATUS 2026-06-16 — relay uplink DOWN; egress redesign chosen.** Diagnosed:
+> Germany box itself is healthy (up 100d, panel+caddy on 443, own egress works).
+> The break is the **Afrows→relay handshake**: relay `46.245.95.155:11278` is
+> reachable (TCP open, 14 ms) but returns no data. Probe shows it now answers
+> plain HTTP `400` and **speaks TLS with a valid cert** → it expects **VLESS+TLS/
+> Reality**, while the Afrows uplink config is `security:none` + HTTP-camo
+> (`Host: telewebion.ir`) → stale/mismatched. Operator chose to **redesign egress
+> as a self-healing multi-path system** rather than keep patching one relay — see
+> `docs/superpowers/plans/2026-06-16-multi-egress-architecture.md`. Quick band-aid
+> if needed: repoint the uplink to a working `outbounds`-DB relay (see
+> [[outbounds-and-box-uplink]]).
+
 ## Host
 - IP: `162.19.253.235` (this is the confirmed **exit IP** for Afrows traffic today)
 - IPv6: `2001:41d0:701:1100::c4b`, iface `ens3`, gw `162.19.252.1`
