@@ -30,18 +30,31 @@ GEOIP_DIRECT = {"type": "field", "ip": ["geoip:private", "geoip:ir"], "outboundT
 GEOSITE_DIRECT = {"type": "field", "domain": ["geosite:category-ir"], "outboundTag": "direct"}
 VIA_VILLAGE_OUT = {"protocol": "freedom", "tag": "via-village",
                    "streamSettings": {"sockopt": {"interface": "wg-village"}}}
+# Extra source IPs to route to via-village regardless of DB tier (e.g. the home
+# router's tunnel IP on afrows-xray, for the operator's own gaming) — read from
+# the env FILE in main() (systemd has no shell env).
 
 
 def log(*a):
     print("[egress-mode]", *a, flush=True)
 
 
+def file_env(key, default=""):
+    try:
+        with open(ENV) as f:
+            for line in f:
+                if line.startswith(key + "="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("\r")
+    except Exception:
+        pass
+    return os.environ.get(key, default)
+
+
 def db_url():
-    with open(ENV) as f:
-        for line in f:
-            if line.startswith("DATABASE_URL="):
-                return line.split("=", 1)[1].strip().strip('"').strip("\r")
-    raise SystemExit("DATABASE_URL not found in " + ENV)
+    u = file_env("DATABASE_URL")
+    if not u:
+        raise SystemExit("DATABASE_URL not found in " + ENV)
+    return u
 
 
 def psql1(url, q):
@@ -93,11 +106,10 @@ def apply_target(cfg_path, svc, mode, gaming):
         return False
 
     changed_out = False
-    if gaming is not None:  # ensure the via-village outbound exists
-        outs = cfg.setdefault("outbounds", [])
-        if not any(o.get("tag") == "via-village" for o in outs):
-            outs.append(dict(VIA_VILLAGE_OUT))
-            changed_out = True
+    outs = cfg.setdefault("outbounds", [])  # ensure the via-village outbound exists
+    if not any(o.get("tag") == "via-village" for o in outs):
+        outs.append(dict(VIA_VILLAGE_OUT))
+        changed_out = True
 
     want = desired_rules(mode, tags, gaming or [])
     if rules == want and not changed_out:
@@ -122,13 +134,15 @@ def apply_target(cfg_path, svc, mode, gaming):
 def main():
     url = db_url()
     mode = read_mode(url)
-    gips = gaming_ips(url)
+    db = gaming_ips(url)
+    extra = [s.strip() for s in file_env("AFROWS_GAMING_EXTRA_SOURCES").split(",") if s.strip()]
     changed = False
-    for cfg_path, svc, gflag in TARGETS:
+    for cfg_path, svc, use_db in TARGETS:
         if os.path.exists(cfg_path):
-            changed |= apply_target(cfg_path, svc, mode, gips if gflag else None)
+            gaming = (db + extra) if use_db else list(extra)
+            changed |= apply_target(cfg_path, svc, mode, gaming)
     if not changed:
-        log("no change (mode=%s, gaming-src=%d)" % (mode, len(gips)))
+        log("no change (mode=%s, gaming wg=%d xray=%d)" % (mode, len(db) + len(extra), len(extra)))
     return 0
 
 
