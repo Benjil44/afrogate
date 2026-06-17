@@ -191,6 +191,25 @@ export class UpdateCustomerAccountDto {
   @IsString()
   @MaxLength(500)
   notes?: string | null;
+
+  @IsOptional()
+  @IsIn(['normal', 'gaming'])
+  egressTier?: string;
+}
+
+export class SetEgressTierPriceDto {
+  @IsIn(['normal', 'gaming'])
+  tier!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  price!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  currency?: string;
 }
 
 export class CurrentPanelImportPreviewDto {

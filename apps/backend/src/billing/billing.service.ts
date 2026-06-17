@@ -65,6 +65,7 @@ import type {
   RewardedAdWebhookHandlerResponse,
   PayPalWebhookHandlerResponse,
   EgressMode,
+  EgressTierPrice,
 } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
@@ -4592,6 +4593,39 @@ export class BillingService {
     });
   }
 
+  /** Per-tier prices (gaming/normal), super-admin editable. */
+  async getEgressTierPrices(_actor?: AuthActor): Promise<EgressTierPrice[]> {
+    try {
+      const r = await this.database.query<{ tier: string; price: string; currency: string; updatedAt: Date | null }>(
+        `SELECT tier, price::text AS price, currency, updated_at AS "updatedAt" FROM egress_tier_prices ORDER BY tier`,
+      );
+      return r.rows.map((row) => ({
+        tier: row.tier,
+        price: Number(row.price) || 0,
+        currency: row.currency,
+        updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  async setEgressTierPrice(
+    tier: string,
+    price: number,
+    currency: string | undefined,
+    actor: AuthActor | undefined,
+  ): Promise<EgressTierPrice[]> {
+    await this.database.query(
+      `INSERT INTO egress_tier_prices (tier, price, currency, updated_at, updated_by)
+       VALUES ($1, $2, COALESCE($3, 'IRT'), now(), $4)
+       ON CONFLICT (tier) DO UPDATE
+         SET price = EXCLUDED.price, currency = COALESCE($3, egress_tier_prices.currency), updated_at = now(), updated_by = EXCLUDED.updated_by`,
+      [tier, price, currency ?? null, actor?.id ?? null],
+    );
+    return this.getEgressTierPrices(actor);
+  }
+
   /**
    * Ensures the account owning `clientConfigId` has a WireGuard client_config
    * and a provisioned wg0 peer (generating the keypair + allocating an address
@@ -6282,6 +6316,7 @@ export class BillingService {
         ca.notes,
         ca.login_email AS "loginEmail",
         (ca.password_hash IS NOT NULL) AS "hasPassword",
+        ca.egress_tier AS "egressTier",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
@@ -7650,6 +7685,7 @@ export class BillingService {
     }
     if (dto.usedBytes !== undefined) add('usedBytes', 'used_bytes', dto.usedBytes);
     if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
+    if (dto.egressTier !== undefined) add('egressTier', 'egress_tier', dto.egressTier);
 
     if (!setClauses.length) return fields;
 

@@ -14,6 +14,7 @@ import type {
   AdminCurrentPanelVolumeChargeResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
+  EgressTierPrice,
   ApplyRouteDecisionPreviewRequest,
   ApplyRouteDecisionPreviewResponse,
   AdminLoginRequest,
@@ -665,6 +666,28 @@ export async function updateAdminCustomerAccount(
   });
 
   return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+export async function fetchEgressTierPrices(sessionToken: string, signal?: AbortSignal): Promise<EgressTierPrice[]> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/egress-tier-prices`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<EgressTierPrice[]>;
+}
+
+export async function setEgressTierPrice(
+  sessionToken: string,
+  tier: string,
+  price: number,
+  currency?: string,
+): Promise<EgressTierPrice[]> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/egress-tier-prices`, {
+    body: JSON.stringify({ tier, price, currency }),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+  return response.json() as Promise<EgressTierPrice[]>;
 }
 
 export async function createAdminClientConfig(

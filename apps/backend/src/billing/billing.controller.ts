@@ -62,6 +62,7 @@ import {
   CreateClientConfigDto,
   CreateCustomerAccountDto,
   SetCustomerAccountPasswordDto,
+  SetEgressTierPriceDto,
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
   UpsertClientSubscriptionCredentialDto,
@@ -532,6 +533,18 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<{ generatedPassword: string }> {
     return this.billingService.resetCustomerAccountPassword(id, request.actor, body?.password ?? null);
+  }
+
+  @Get('egress-tier-prices')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getEgressTierPrices(@Req() request: RequestWithAuth) {
+    return this.billingService.getEgressTierPrices(request.actor);
+  }
+
+  @Patch('egress-tier-prices')
+  @Roles('admin')
+  setEgressTierPrice(@Body() body: SetEgressTierPriceDto, @Req() request: RequestWithAuth) {
+    return this.billingService.setEgressTierPrice(body.tier, body.price, body.currency, request.actor);
   }
 
   @Patch('customer-accounts/:id')
