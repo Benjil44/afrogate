@@ -1,5 +1,5 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { Sparkles, ShieldCheck, Clock, Globe, Zap } from 'lucide-react';
+import { Sparkles, ShieldCheck, Clock, Globe, Zap, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/i18n';
 
@@ -112,6 +112,10 @@ export function Hero() {
           </Button>
           <Button as="a" href="#features" variant="glass" size="lg">
             {t.hero.ctaSecondary}
+          </Button>
+          <Button as="a" href="/afrows.apk" variant="glass" size="lg" download>
+            <Download className="h-4 w-4" />
+            {t.hero.ctaAndroid}
           </Button>
         </motion.div>
 
