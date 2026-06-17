@@ -113,6 +113,10 @@ def main():
         log("SAFETY: 0 working relays found (down>=%s, <%smin) -> leaving pool unchanged" % (MIN_MBPS, MAX_AGE_MIN))
         return 0
 
+    min_healthy = int(os.environ.get("POOL_MIN_HEALTHY", "3"))
+    if len(relays) < min_healthy:
+        log("WARNING: only %d working relay(s) in pool (< %d) — egress redundancy is thin, add/own more relays" % (len(relays), min_healthy))
+
     cfg = json.load(open(CFG))
     cur = [o for o in cfg.get("outbounds", []) if str(o.get("tag", "")).startswith("relay-")]
     if sorted(identity(o) for o in cur) == sorted(identity(o) for o in relays):
