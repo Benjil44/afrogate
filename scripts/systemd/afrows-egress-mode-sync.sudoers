@@ -1,0 +1,4 @@
+# Allow the unprivileged backend (user: afrows) to trigger ONE command: an
+# immediate run of the egress-mode reconciler (so an app toggle applies fast).
+# Install as /etc/sudoers.d/afrows-egress-mode with mode 0440 (validate with `visudo -cf`).
+afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-egress-mode-sync.service

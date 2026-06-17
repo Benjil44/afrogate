@@ -48,6 +48,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String _remark = '';
   AccountInfo? _account; // live account (GB remaining) in account mode
   Timer? _accountTimer;
+  String _egressMode = 'smart'; // 'smart' = Iran direct + foreign via bypass; 'full' = all via bypass
+  bool _egressBusy = false;
 
   bool get _connected => _state.toUpperCase() == 'CONNECTED';
   bool get _connecting => _state.toUpperCase() == 'CONNECTING';
@@ -77,6 +79,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _account = widget.account!.account;
       _remark = widget.account!.account.displayName ?? 'Afrows';
       unawaited(_refreshAccount());
+      unawaited(_loadEgressMode());
       _accountTimer = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(_refreshAccount()));
       // Poll server-side WG usage so the up/down cards show real data (the
       // WireGuard plugin reports no on-device byte counters).
@@ -135,6 +138,35 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (fresh == null || !mounted) return;
     setState(() => _account = fresh);
     await SessionStore().save(AccountSession(token: token, account: fresh), widget.accountConfigUri);
+  }
+
+  Future<void> _loadEgressMode() async {
+    final token = widget.account?.token;
+    if (token == null) return;
+    final mode = await AfrowsApi().fetchEgressMode(token);
+    if (mounted) setState(() => _egressMode = mode);
+  }
+
+  /// Toggle the global egress mode. 'full' routes ALL traffic through the foreign
+  /// bypass (for when Iran filters the local internet too); 'smart' keeps Iranian
+  /// sites direct (fast) and sends only foreign traffic through the bypass.
+  Future<void> _setEgress(bool full) async {
+    final token = widget.account?.token;
+    if (token == null || _egressBusy) return;
+    final want = full ? 'full' : 'smart';
+    setState(() => _egressBusy = true);
+    final applied = await AfrowsApi().setEgressMode(token, want);
+    if (!mounted) return;
+    setState(() {
+      _egressBusy = false;
+      if (applied != null) _egressMode = applied;
+    });
+    Diag.I.log('egress-mode -> ${applied ?? "FAILED"}');
+    if (applied == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not change bypass mode')),
+      );
+    }
   }
 
   @override
@@ -388,6 +420,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
                         ),
                       ],
                     ),
+                    if (_accountMode) ...[
+                      const SizedBox(height: 12),
+                      _BypassToggle(
+                        full: _egressMode == 'full',
+                        busy: _egressBusy,
+                        onChanged: _setEgress,
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Text('Afrows v$kAppVersion · $kBuildTag',
                         style: const TextStyle(color: Colors.white24, fontSize: 11)),
@@ -574,6 +614,56 @@ class _StatCard extends StatelessWidget {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
           Text(total, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Global "filtering bypass" toggle. OFF = Smart (Iran sites direct/fast, foreign
+/// via the bypass). ON = Full (everything via the bypass — for when Iran filters
+/// the local internet too).
+class _BypassToggle extends StatelessWidget {
+  const _BypassToggle({required this.full, required this.busy, required this.onChanged});
+  final bool full;
+  final bool busy;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        children: [
+          Icon(full ? Icons.public : Icons.alt_route, size: 18, color: _teal),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Full bypass',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                Text(
+                  full ? 'All traffic via the bypass' : 'Smart: Iran direct, foreign via bypass',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          busy
+              ? const SizedBox(
+                  width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: _teal))
+              : Switch(
+                  value: full,
+                  activeThumbColor: _teal,
+                  onChanged: onChanged,
+                ),
         ],
       ),
     );

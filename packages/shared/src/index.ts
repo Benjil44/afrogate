@@ -3760,6 +3760,17 @@ export interface ClientRouteOptionsResponse {
   outbounds: ClientRouteOutboundOption[];
 }
 
+// Global foreign-egress mode (Option A — affects all clients):
+//   smart = Iranian destinations exit direct (VPS local), foreign via the relay pool
+//   full  = everything routed through the relay pool (use when Iran filters the local internet too)
+export type EgressMode = 'smart' | 'full';
+
+export const EGRESS_MODES: readonly EgressMode[] = ['smart', 'full'] as const;
+
+export interface ClientEgressModeResponse {
+  mode: EgressMode;
+}
+
 export interface ClientSubscriptionSummary {
   clientConfigId: string;
   routeGroup: string;

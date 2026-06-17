@@ -79,14 +79,20 @@ App **mode toggle** ("Filtering bypass"):
 
 ---
 
-## Phase 2 — "Filtering bypass" mode (backend + selection)
+## Phase 2 — "Filtering bypass" mode (backend + selection) — DECISION: Option A (global smart/full)
 
-> Outcome: a setting that switches between split (direct + bypass-foreign) and full-bypass, controllable from the app.
+> Chosen approach (2026-06-17): a **global** Smart/Full mode (small + real), NOT per-client.
+> Per-client enforced exits (Option B, wiring the existing but stored-only route-preference
+> subsystem) is deferred. The existing `route-preference` API is stored-but-NOT-enforced
+> (nothing in provisioning/reconcile consumes `preferredOutboundId`) — don't rely on it for routing.
 
-### Task 2.1: Egress-mode setting
-**Files:** `apps/backend/src/...` (a settings service/table), `packages/shared`.
-- [ ] Add an egress-mode value (`split` | `full`), global first (per-user later). Persist in DB.
-- [ ] Reflect the mode into routing: `split` keeps the geoip:ir→direct rule; `full` routes all client traffic to the foreign balancer. (Either two xray routing profiles toggled by the reconciler, or per-user inbound tags.)
+### Task 2.1: Egress-mode setting — Slice 1 (engine) DONE; Slice 2 (backend/app) TODO (deploy-gated)
+**Files:** `infra/postgres/migrations/0035_egress_mode.sql`, `scripts/afrows-egress-mode-sync.py`, `scripts/systemd/afrows-egress-mode-sync.{service,timer}`.
+- [x] **Slice 1 (engine, live + tested):** `egress_settings` singleton table (`mode smart|full`, default smart). Reconciler `afrows-egress-mode-sync.py` reads it and rewrites `afrows-wg` + `afrows-xray` routing: smart = `geoip:ir/private + geosite:category-ir → direct`, rest → proxy pool; full = all client inbounds → proxy. Preserves the client inbound-tag set from each config. Idempotent + `xray -test` guard + backup. systemd timer every 1min (installed, active). Verified smart⇄full flip works on box. (Table created on box owned by `afrows_migrator`, granted to `afrows_app`; real deploy creates it via migrate + least-privilege grants.)
+- [x] **Slice 2 (backend + app, BUILT — needs deploy to go live):** `GET`/`PATCH /client/egress-mode` (`billing.service` getEgressMode/setEgressMode reading/writing `egress_settings`; `setEgressMode` calls `triggerEgressModeSync()` = `sudo systemctl start afrows-egress-mode-sync.service` for instant apply, timer is fallback; sudoers `scripts/systemd/afrows-egress-mode-sync.sudoers`). Shared `EgressMode`/`EGRESS_MODES`/`ClientEgressModeResponse`. DTO `SetEgressModeDto`. Flutter: `api.dart` fetch/setEgressMode + a `_BypassToggle` switch in `connect_screen` (account mode), app `v2.3.0`. `update-afrows.sh` `[5c]` installs the pool-sync + egress-mode reconcilers + sudoers on deploy. Backend `nest build` clean; `flutter analyze` clean. NOTE: **global** switch (any client flips everyone) — acceptable for the operator's use; gate PATCH to admin when going multi-tenant.
+
+## Phase 3 — App toggle (Flutter) — DONE (built, ships with Slice 2)
+- [x] `_BypassToggle` in `connect_screen.dart` (Smart ⇄ Full), loads current mode on login, PATCHes on change, snackbar on failure. Goes live when the app is rebuilt + the backend is deployed.
 
 ### Task 2.2: Egress health on the dashboard
 **Files:** `apps/dashboard/...`, backend overview service.

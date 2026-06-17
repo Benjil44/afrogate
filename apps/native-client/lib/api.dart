@@ -103,6 +103,38 @@ class AfrowsApi {
     }
   }
 
+  /// Global egress mode: 'smart' (Iran direct, foreign via the bypass pool) or
+  /// 'full' (everything via the bypass pool). Returns 'smart' on error.
+  Future<String> fetchEgressMode(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$base/client/egress-mode'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return 'smart';
+      final b = jsonDecode(res.body) as Map<String, dynamic>;
+      return b['mode'] == 'full' ? 'full' : 'smart';
+    } catch (_) {
+      return 'smart';
+    }
+  }
+
+  /// Sets the global egress mode. Returns the applied mode, or null on failure.
+  Future<String?> setEgressMode(String token, String mode) async {
+    try {
+      final res = await http.patch(
+        Uri.parse('$base/client/egress-mode'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'mode': mode}),
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) return null;
+      final b = jsonDecode(res.body) as Map<String, dynamic>;
+      return b['mode'] == 'full' ? 'full' : 'smart';
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Returns the first connectable config from the user's subscription. The app
   /// engine is WireGuard, so a rendered WireGuard `.conf` (`configText`) is
   /// preferred; falls back to the first `uri` for older accounts.

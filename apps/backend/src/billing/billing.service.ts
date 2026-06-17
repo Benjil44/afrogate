@@ -64,6 +64,7 @@ import type {
   ClientRewardedAdStatus,
   RewardedAdWebhookHandlerResponse,
   PayPalWebhookHandlerResponse,
+  EgressMode,
 } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
@@ -4515,6 +4516,46 @@ export class BillingService {
   private triggerWgReconcile(): void {
     execFile('sudo', ['-n', 'systemctl', 'start', 'afrows-wg-reconcile.service'], () => {
       /* best-effort; the systemd timer reconciles regardless */
+    });
+  }
+
+  /**
+   * Global foreign-egress mode (Option A). Reads the singleton `egress_settings`
+   * row; defaults to 'smart' if the row/table is missing.
+   */
+  async getEgressMode(actor: ClientAuthActor): Promise<EgressMode> {
+    assertClientScope(actor, 'client:read');
+    try {
+      const result = await this.database.query<{ mode: string }>(
+        `SELECT mode FROM egress_settings WHERE id = true LIMIT 1`,
+      );
+      const mode = result.rows[0]?.mode;
+      return mode === 'full' ? 'full' : 'smart';
+    } catch {
+      return 'smart';
+    }
+  }
+
+  /**
+   * Set the global egress mode. NOTE: this is GLOBAL — it changes routing for all
+   * clients. A VPS-side reconciler (afrows-egress-mode-sync) applies it to the
+   * afrows-wg / afrows-xray routing; we nudge it to run now (timer is the fallback).
+   */
+  async setEgressMode(actor: ClientAuthActor, mode: EgressMode): Promise<EgressMode> {
+    assertClientScope(actor, 'route:write');
+    await this.database.query(
+      `INSERT INTO egress_settings (id, mode, updated_at, updated_by)
+       VALUES (true, $1, now(), $2)
+       ON CONFLICT (id) DO UPDATE SET mode = EXCLUDED.mode, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+      [mode, actor.clientConfigId ?? null],
+    );
+    this.triggerEgressModeSync();
+    return mode;
+  }
+
+  private triggerEgressModeSync(): void {
+    execFile('sudo', ['-n', 'systemctl', 'start', 'afrows-egress-mode-sync.service'], () => {
+      /* best-effort; the systemd timer applies the mode regardless */
     });
   }
 
