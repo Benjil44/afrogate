@@ -68,10 +68,15 @@
 - [x] Subscription emits an **"Afrows Reality"** `vless://…reality` link alongside WS/WG (`readAfrowsRealityEnv` + `buildNativeRealityConfigLink`, gated on `AFROWS_REALITY_*` env). Deployed.
 - Note: improves DPI-resistance/reachability for VLESS clients; does NOT fix the flapping *exit* (that's T2.1 / #50). Vision flow omitted for now (provisioning uses empty flow); add per-tag flow later if wanted.
 
-### Task 3.2 — CDN-front the inbound (Cloudflare + WS/gRPC + ECH)  **[NEEDS: a domain on Cloudflare]**
+### Task 3.2 — CDN-front the inbound (Cloudflare + WS/gRPC + ECH)  **[PARKED — do when convenient]**
+> **Decision 2026-06-17:** parked, not urgent. Rationale: (1) CF free can't front the
+> **WireGuard app** (UDP) — only VLESS/WS/gRPC clients benefit; (2) CF signup from Iran
+> has sanctions friction (why deSEC was chosen for DNS); (3) the just-shipped **Reality
+> inbound** already buys DPI-resistance on the direct IP. CF is **insurance** for when
+> Iran blocks the VPS IP harder than today's intermittent filtering — revisit then.
 **Files:** Cloudflare DNS/proxy, nginx/xray WS or gRPC inbound, subscription builder.
-- [ ] Add a domain (or subdomain) to **Cloudflare free**, orange-cloud → origin = Afrows VPS; expose VLESS+**WS**(or gRPC)+TLS on a CF-supported port (443/2053/…); enable **ECH**.
-- [ ] Add the CF-fronted entry to the subscription so users hit the **reachable CF edge** instead of the filterable VPS IP. Verify reachability from multiple Iran networks.
+- [ ] (when convenient) Add a domain/subdomain to **Cloudflare free**, orange-cloud → origin = Afrows VPS; expose VLESS+**WS**(or gRPC)+TLS on a CF-supported port (443/2053/…); enable **ECH**.
+- [ ] Add the CF-fronted entry to the subscription so VLESS users hit the **reachable CF edge** instead of the filterable VPS IP. Verify reachability from multiple Iran networks.
 
 ### Task 3.3 — Entry diversity + auto-updating subscription
 **Files:** backend subscription builder, `outbounds`/inbound health, `apps/native-client`.
