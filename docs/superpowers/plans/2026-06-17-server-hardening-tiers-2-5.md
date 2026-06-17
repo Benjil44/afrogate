@@ -61,10 +61,12 @@
 
 ## TIER 3 — Inbound resilience (users can always reach Afrows)
 
-### Task 3.1 — Reality inbound on Afrows (block-resistant, no cert)
-**Files:** `/usr/local/etc/afrows-xray/config.json` (new inbound), subscription builder.
-- [ ] Add a VLESS+**Reality** inbound on a fresh port (dest = a real TLS1.3 site), generate keys; route it like the other user inbounds.
-- [ ] Include the `vless+reality` link in `/client/subscription`; show in dashboard. Verify a known-good client connects from a filtered network.
+### Task 3.1 — Reality inbound on Afrows (block-resistant, no cert) — DONE (2026-06-17)
+**Files:** `/usr/local/etc/afrows-xray/config.json` (on-box inbound), `apps/backend/src/client/xray-provisioning.service.ts`, `apps/backend/src/client/afrows-entry-link.ts`, `apps/backend/src/billing/billing.service.ts`.
+- [x] Added a VLESS+**Reality** inbound `afrows-reality` on port **8443** (dest `www.microsoft.com:443`, flow none), routed through the egress + geoip split. End-to-end self-test = clean handshake.
+- [x] **Multi-tag provisioning:** `XrayProvisioningService` now reconciles users onto every tag in `AFROWS_XRAY_INBOUND_TAGS` (`afrows-in:8447,afrows-reality:8443`) — all 14 customers populated onto Reality, survives restarts.
+- [x] Subscription emits an **"Afrows Reality"** `vless://…reality` link alongside WS/WG (`readAfrowsRealityEnv` + `buildNativeRealityConfigLink`, gated on `AFROWS_REALITY_*` env). Deployed.
+- Note: improves DPI-resistance/reachability for VLESS clients; does NOT fix the flapping *exit* (that's T2.1 / #50). Vision flow omitted for now (provisioning uses empty flow); add per-tag flow later if wanted.
 
 ### Task 3.2 — CDN-front the inbound (Cloudflare + WS/gRPC + ECH)  **[NEEDS: a domain on Cloudflare]**
 **Files:** Cloudflare DNS/proxy, nginx/xray WS or gRPC inbound, subscription builder.

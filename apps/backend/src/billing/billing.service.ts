@@ -92,7 +92,7 @@ import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-re
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { hashPassword, verifyScryptPassword } from '../security/password';
 import { generatePassword, normalizeLoginIdentifier } from '../security/generate-password';
-import { buildAfrowsEntryUri, readAfrowsInboundEnv } from '../client/afrows-entry-link';
+import { buildAfrowsEntryUri, readAfrowsInboundEnv, readAfrowsRealityEnv } from '../client/afrows-entry-link';
 import {
   buildWireguardConf,
   generateWireguardKeypair,
@@ -4311,7 +4311,8 @@ export class BillingService {
     // native afrows-in VLESS link. Each is omitted until configured via env.
     const wireguardLink = await this.buildNativeWireguardConfigLink(actor.clientConfigId, routeGroup);
     const nativeLink = await this.buildNativeEntryConfigLink(actor.clientConfigId, routeGroup);
-    const configLinks = [wireguardLink, nativeLink, ...baseConfigLinks].filter(
+    const realityLink = await this.buildNativeRealityConfigLink(actor.clientConfigId, routeGroup);
+    const configLinks = [wireguardLink, nativeLink, realityLink, ...baseConfigLinks].filter(
       (link): link is ClientSubscriptionConfigLinkSummary => link !== null,
     );
 
@@ -4347,6 +4348,38 @@ export class BillingService {
     return {
       outboundId: 'afrows-in',
       name: 'Afrows',
+      type: 'vless',
+      routeGroup,
+      usageMultiplier: 1,
+      chargeLabel: 'standard',
+      format: 'vless-uri',
+      renderStatus: 'rendered',
+      uri,
+      missingFields: [],
+      warnings: [],
+      requiresClientSecret: false,
+    };
+  }
+
+  /** Builds the block-resistant VLESS+Reality config link (delivered alongside
+   *  the WS link), or null when AFROWS_REALITY_* env isn't configured. */
+  private async buildNativeRealityConfigLink(
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
+    const inbound = readAfrowsRealityEnv(process.env);
+    if (!inbound) return null;
+    const result = await this.database.query<{ entryUuid: string | null }>(
+      `SELECT entry_uuid AS "entryUuid" FROM client_configs WHERE id = $1`,
+      [clientConfigId],
+    );
+    const entryUuid = result.rows[0]?.entryUuid;
+    if (!entryUuid) return null;
+
+    const uri = buildAfrowsEntryUri(inbound, entryUuid, 'Afrows Reality');
+    return {
+      outboundId: 'afrows-reality',
+      name: 'Afrows Reality',
       type: 'vless',
       routeGroup,
       usageMultiplier: 1,

@@ -44,36 +44,37 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Provision one user now (best-effort). */
+  /** Provision one user now onto every target inbound (best-effort). */
   async addUser(uuid: string, email: string): Promise<boolean> {
-    const cfg = buildAddUserConfig({
-      inboundTag: this.inboundTag(),
-      port: this.inboundPort(),
-      uuid,
-      email,
-      flow: this.config.get<string>('AFROWS_XRAY_INBOUND_FLOW')?.trim(),
-    });
-    const file = path.join(os.tmpdir(), `afrows-adu-${email.replace(/[^a-z0-9_-]/gi, '')}.json`);
-    try {
-      await fs.writeFile(file, JSON.stringify(cfg), 'utf8');
-      await this.xray(['api', 'adu', `--server=${this.apiServer()}`, file]);
-      return true;
-    } catch (error) {
-      this.logger.warn(`adu ${email} failed: ${error instanceof Error ? error.message : error}`);
-      return false;
-    } finally {
-      await fs.rm(file, { force: true }).catch(() => undefined);
+    const flow = this.config.get<string>('AFROWS_XRAY_INBOUND_FLOW')?.trim();
+    let ok = false;
+    for (const t of this.inboundTargets()) {
+      const cfg = buildAddUserConfig({ inboundTag: t.tag, port: t.port, uuid, email, flow });
+      const file = path.join(os.tmpdir(), `afrows-adu-${t.tag}-${email.replace(/[^a-z0-9_-]/gi, '')}.json`);
+      try {
+        await fs.writeFile(file, JSON.stringify(cfg), 'utf8');
+        await this.xray(['api', 'adu', `--server=${this.apiServer()}`, file]);
+        ok = true;
+      } catch (error) {
+        this.logger.warn(`adu ${email} on ${t.tag} failed: ${error instanceof Error ? error.message : error}`);
+      } finally {
+        await fs.rm(file, { force: true }).catch(() => undefined);
+      }
     }
+    return ok;
   }
 
   async removeUser(email: string): Promise<boolean> {
-    try {
-      await this.xray(['api', 'rmu', `--server=${this.apiServer()}`, `-tag=${this.inboundTag()}`, email]);
-      return true;
-    } catch (error) {
-      this.logger.warn(`rmu ${email} failed: ${error instanceof Error ? error.message : error}`);
-      return false;
+    let ok = false;
+    for (const t of this.inboundTargets()) {
+      try {
+        await this.xray(['api', 'rmu', `--server=${this.apiServer()}`, `-tag=${t.tag}`, email]);
+        ok = true;
+      } catch (error) {
+        this.logger.warn(`rmu ${email} on ${t.tag} failed: ${error instanceof Error ? error.message : error}`);
+      }
     }
+    return ok;
   }
 
   /** Sync Postgres active client_configs → xray inbound users. */
@@ -93,7 +94,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
         // adu is idempotent enough for our scale: re-adding an existing user is a no-op/ignored.
         if (await this.addUser(row.entryUuid, provisioningEmail(row.id))) added += 1;
       }
-      if (added) this.logger.log(`Provisioning reconcile: ensured ${added} user(s) on ${this.inboundTag()}`);
+      if (added) this.logger.log(`Provisioning reconcile: ensured ${added} user(s) on ${this.inboundTargets().map((t) => t.tag).join(',')}`);
     } catch (error) {
       this.logger.warn(`Provisioning reconcile failed: ${error instanceof Error ? error.message : error}`);
     } finally {
@@ -116,6 +117,23 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   }
   private inboundPort(): number {
     return this.intFromValue(this.config.get<string>('AFROWS_XRAY_INBOUND_PORT'), 8443, 1, 65535);
+  }
+  /**
+   * Inbound(s) to provision each user onto. AFROWS_XRAY_INBOUND_TAGS is a
+   * comma list of `tag:port` (e.g. "afrows-in:8447,afrows-reality:8443");
+   * falls back to the single AFROWS_XRAY_INBOUND_TAG/PORT for back-compat.
+   */
+  private inboundTargets(): { tag: string; port: number }[] {
+    const raw = this.config.get<string>('AFROWS_XRAY_INBOUND_TAGS')?.trim();
+    if (raw) {
+      const out: { tag: string; port: number }[] = [];
+      for (const part of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+        const [tag, portStr] = part.split(':').map((s) => s.trim());
+        if (tag) out.push({ tag, port: this.intFromValue(portStr, this.inboundPort(), 1, 65535) });
+      }
+      if (out.length) return out;
+    }
+    return [{ tag: this.inboundTag(), port: this.inboundPort() }];
   }
   private intervalMs(): number {
     return this.intFromValue(this.config.get<string>('AFROWS_XRAY_PROVISION_INTERVAL_SECONDS'), 60, 15, 3600) * 1000;

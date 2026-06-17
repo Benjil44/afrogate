@@ -81,3 +81,30 @@ export function readAfrowsInboundEnv(env: Record<string, string | undefined>): A
     flow: env.AFROWS_INBOUND_FLOW?.trim() || 'xtls-rprx-vision',
   };
 }
+
+/**
+ * Reads a SEPARATE Reality inbound (delivered ALONGSIDE the primary WS link, so
+ * clients get both a widely-compatible WS entry and a block-resistant Reality
+ * entry). Returns null unless AFROWS_REALITY_HOST/SNI/PBK/SID are all set.
+ * `AFROWS_REALITY_FLOW` is optional (omit for no-vision, matching our inbound).
+ */
+export function readAfrowsRealityEnv(env: Record<string, string | undefined>): AfrowsInboundParams | null {
+  const host = env.AFROWS_REALITY_HOST?.trim();
+  const serverName = env.AFROWS_REALITY_SNI?.trim();
+  const publicKey = env.AFROWS_REALITY_PBK?.trim();
+  const shortId = env.AFROWS_REALITY_SID?.trim();
+  if (!host || !serverName || !publicKey || !shortId) return null;
+
+  const portRaw = Number(env.AFROWS_REALITY_PORT ?? '8443');
+  const port = Number.isInteger(portRaw) && portRaw > 0 && portRaw <= 65535 ? portRaw : 8443;
+  return {
+    mode: 'reality',
+    host,
+    port,
+    serverName,
+    fingerprint: env.AFROWS_REALITY_FP?.trim() || 'chrome',
+    publicKey,
+    shortId,
+    flow: env.AFROWS_REALITY_FLOW?.trim() || undefined,
+  };
+}
