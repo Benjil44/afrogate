@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Afrows egress/pool health monitor periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+RandomizedDelaySec=15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

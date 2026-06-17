@@ -1,0 +1,9 @@
+[Unit]
+Description=Afrows egress/pool health monitor + alerter
+After=network-online.target xray.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/afrows-egress-monitor.sh
+TimeoutStartSec=60
