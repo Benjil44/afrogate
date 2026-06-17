@@ -791,13 +791,35 @@ export interface AdminCustomerAccountSummary {
   remainingBytes?: number | null;
   clientCount: number;
   activeClientCount: number;
+  /** Per-protocol usage across this customer's client configs (e.g. [{protocol:'vless',usedBytes:123}]). */
+  protocols: Array<{ protocol: string; usedBytes: number }>;
   notes?: string | null;
+  loginEmail?: string | null;
+  hasPassword?: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary {
   clientConfigs: AdminClientConfigSummary[];
+  /** Plaintext password returned ONCE at creation/reset; never stored or re-returned. */
+  generatedPassword?: string;
+}
+
+export interface ClientLoginRequest {
+  identifier: string;
+  password: string;
+}
+
+export interface ClientLoginResponse {
+  token: string;
+  account: {
+    id: string;
+    displayName?: string | null;
+    quotaLimitBytes?: number | null;
+    usedBytes: number;
+    remainingBytes?: number | null;
+  };
 }
 
 export type ResellerAccountStatus = 'active' | 'suspended' | 'disabled';
@@ -926,6 +948,11 @@ export interface CreateResellerPackageSaleRequest {
   idempotencyKey?: string | null;
   notes?: string | null;
   metadata?: Record<string, unknown> | null;
+}
+
+export interface AdminClientConfigEntryLinkResponse {
+  /** the native afrows-in VLESS entry link for this client config (null if the inbound env isn't configured) */
+  link: string | null;
 }
 
 export interface AdminClientConfigsExportResponse {
@@ -1095,6 +1122,8 @@ export interface CreateCustomerAccountRequest {
   perClientLimitBytes?: number | null;
   usedBytes?: number;
   notes?: string | null;
+  loginEmail?: string | null;
+  password?: string | null;
 }
 
 export interface UpdateCustomerAccountRequest {
@@ -1110,6 +1139,8 @@ export interface UpdateCustomerAccountRequest {
   perClientLimitBytes?: number | null;
   usedBytes?: number;
   notes?: string | null;
+  loginEmail?: string | null;
+  password?: string | null;
 }
 
 export interface CreateClientConfigRequest {
@@ -1819,8 +1850,92 @@ export interface AdminOutboundSummary {
   latestDownMbps?: number | null;
   latestUpMbps?: number | null;
   lastSpeedTestAt?: string | null;
+  /** true while a speed test is queued/running (speed_test_requested_at set) */
+  pendingTest?: boolean;
+  /** set when this outbound is a config that belongs to a subscription */
+  subscriptionId?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminOutboundSubscriptionUserInfo {
+  upload?: number;
+  download?: number;
+  total?: number;
+  expire?: number;
+}
+
+export interface AdminOutboundSubscriptionSummary {
+  id: string;
+  name: string;
+  routeGroup: string;
+  profileTitle?: string | null;
+  updateIntervalHours?: number | null;
+  userInfo: AdminOutboundSubscriptionUserInfo;
+  enabled: boolean;
+  configCount: number;
+  lastFetchedAt?: string | null;
+  lastStatus: string;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminConnectionSummary {
+  id: string;
+  /** display name — customer name, or client email, or wg peer label */
+  label: string;
+  protocol: string; // vless | wireguard
+  transport: string; // ws | tcp | wireguard
+  inboundTag: string;
+  customerName?: string | null;
+  status?: string | null;
+  online: boolean;
+  usedBytes: number;
+}
+
+export interface AdminConnectionsResponse {
+  connections: AdminConnectionSummary[];
+  available: boolean;
+}
+
+export interface AdminOperationsOverview {
+  /** false when box metrics/xray aren't reachable (e.g. dev) */
+  available: boolean;
+  cpuPercent: number | null;
+  memPercent: number | null;
+  /** free storage % on the root filesystem (matches the dashboard's "lowest storage") */
+  diskFreePercent: number | null;
+  /** users currently online on the xray inbounds */
+  activeUsers: number;
+  downloadBps: number;
+  uploadBps: number;
+  downloadTotalBytes: number;
+  uploadTotalBytes: number;
+}
+
+export interface AdminInboundSummary {
+  /** xray inbound tag (e.g. afrows-in, afrows-in-tcp) */
+  tag: string;
+  protocol: string;
+  listen: string;
+  port: number;
+  network: string;
+  security: string;
+  /** camouflage/host header (ws Host, tcp http-header host) */
+  host?: string | null;
+  path?: string | null;
+  sni?: string | null;
+  /** number of users currently configured on this inbound */
+  clientCount: number;
+  uplinkBytes: number;
+  downlinkBytes: number;
+}
+
+export interface AdminInboundsResponse {
+  inbounds: AdminInboundSummary[];
+  /** false when the box config/xray isn't reachable (e.g. dev) */
+  available: boolean;
 }
 
 export interface AdminOutboundTestResult {
@@ -3643,6 +3758,17 @@ export interface ClientRouteOptionsResponse {
   routeGroup: string;
   countries: ClientRouteCountryOption[];
   outbounds: ClientRouteOutboundOption[];
+}
+
+// Global foreign-egress mode (Option A — affects all clients):
+//   smart = Iranian destinations exit direct (VPS local), foreign via the relay pool
+//   full  = everything routed through the relay pool (use when Iran filters the local internet too)
+export type EgressMode = 'smart' | 'full';
+
+export const EGRESS_MODES: readonly EgressMode[] = ['smart', 'full'] as const;
+
+export interface ClientEgressModeResponse {
+  mode: EgressMode;
 }
 
 export interface ClientSubscriptionSummary {

@@ -1,0 +1,9 @@
+[Unit]
+Description=Afrows global egress-mode reconciler (apply smart/full routing from egress_settings)
+After=network-online.target postgresql.service afrows-backend.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/afrows-egress-mode-sync.py
+TimeoutStartSec=60

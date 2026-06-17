@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type {
+  ClientEgressModeResponse,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdStatusResponse,
   ClientPortalProfileResponse,
@@ -11,6 +12,7 @@ import { BillingService } from '../billing/billing.service';
 import { ClientTokenGuard } from '../security/client-token.guard';
 import type { ClientAuthActor, RequestWithClientAuth } from '../security/auth-request';
 import { UpdateOwnClientRoutePreferenceDto } from './dto/client-route-preference.dto';
+import { SetEgressModeDto } from './dto/egress-mode.dto';
 import { ClaimRewardedAdDto } from './dto/rewarded-ad.dto';
 
 @Controller('client')
@@ -78,6 +80,26 @@ export class ClientController {
     @Query('routeGroup') routeGroup?: string,
   ): Promise<ClientSubscriptionResponse> {
     return this.billingService.getClientSubscription(this.requireClientActor(request), routeGroup);
+  }
+
+  @Get('egress-mode')
+  async getEgressMode(@Req() request: RequestWithClientAuth): Promise<ClientEgressModeResponse> {
+    return { mode: await this.billingService.getEgressMode(this.requireClientActor(request)) };
+  }
+
+  @Patch('egress-mode')
+  async setEgressMode(
+    @Req() request: RequestWithClientAuth,
+    @Body() payload: SetEgressModeDto,
+  ): Promise<ClientEgressModeResponse> {
+    return { mode: await this.billingService.setEgressMode(this.requireClientActor(request), payload.mode) };
+  }
+
+  @Get('wireguard-usage')
+  getWireguardUsage(
+    @Req() request: RequestWithClientAuth,
+  ): Promise<{ rxBytes: number; txBytes: number; lastHandshakeAt: string | null }> {
+    return this.billingService.getClientWireguardUsage(this.requireClientActor(request));
   }
 
   private requireClientActor(request: RequestWithClientAuth): ClientAuthActor {

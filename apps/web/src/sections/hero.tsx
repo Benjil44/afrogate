@@ -1,5 +1,5 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { Sparkles, ShieldCheck, Clock, Globe, Zap } from 'lucide-react';
+import { Sparkles, ShieldCheck, Clock, Globe, Zap, Download, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/i18n';
 
@@ -113,7 +113,33 @@ export function Hero() {
           <Button as="a" href="#features" variant="glass" size="lg">
             {t.hero.ctaSecondary}
           </Button>
+          <Button as="a" href="/afrows.apk" variant="glass" size="lg" download>
+            <Download className="h-4 w-4" />
+            {t.hero.ctaAndroid}
+          </Button>
         </motion.div>
+
+        <motion.a
+          variants={item}
+          href="/afrows.apk"
+          download
+          className="mt-8 inline-flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--foreground)_4%,transparent)] p-3 pr-5 backdrop-blur-md transition-colors hover:border-[var(--primary)]"
+        >
+          <img
+            src="/afrows-apk-qr.svg"
+            alt={t.hero.ctaAndroid}
+            width={84}
+            height={84}
+            className="h-20 w-20 rounded-lg bg-white p-1.5"
+          />
+          <span className="flex flex-col items-start text-left">
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--foreground)]">
+              <Smartphone className="h-4 w-4 text-[var(--primary)]" />
+              {t.hero.scanToInstall}
+            </span>
+            <span className="mt-0.5 text-xs text-[var(--muted-foreground)]">afrows.com/afrows.apk</span>
+          </span>
+        </motion.a>
 
         <motion.div variants={item} className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
           {trust.map(({ Icon, label }) => (

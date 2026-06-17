@@ -20,6 +20,8 @@ export const en = {
       'Smart routing, ultra-low jitter and ping, and rock-solid uptime — built for streaming, gaming, and work.',
     ctaPrimary: 'Get started',
     ctaSecondary: 'Explore features',
+    ctaAndroid: 'Download Android app',
+    scanToInstall: 'Scan to install on Android',
   },
   metrics: {
     uptime: 'Uptime',
@@ -138,8 +140,6 @@ export const en = {
     terms: 'Terms of Service',
     support: 'Support',
     rights: 'All rights reserved.',
-    craftedWith: 'Crafted with',
-    by: 'by',
     marquee: [
       'Smart Routing',
       'Ultra-low Ping',

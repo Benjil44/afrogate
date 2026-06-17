@@ -14,6 +14,13 @@ import { PayPalWebhookController } from './billing/paypal-webhook.controller';
 import { RewardedAdWebhookController } from './billing/rewarded-ad-webhook.controller';
 import { RewardedAdWebhookService } from './billing/rewarded-ad-webhook.service';
 import { ClientController } from './client/client.controller';
+import { ClientAuthController } from './client/client-auth.controller';
+import { XrayProvisioningService } from './client/xray-provisioning.service';
+import { InboundsService } from './client/inbounds.service';
+import { ConnectionsService } from './client/connections.service';
+import { OperationsOverviewService } from './client/operations-overview.service';
+import { XrayUsageMeteringService } from './client/xray-usage-metering.service';
+import { WireguardMeteringService } from './client/wireguard-metering.service';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
@@ -28,6 +35,7 @@ import { AdminTenantBrandingService } from './branding/admin-tenant-branding.ser
 import { OperationsController } from './operations/operations.controller';
 import { OperationsService } from './operations/operations.service';
 import { RouteQualityAggregationService } from './operations/route-quality-aggregation.service';
+import { OutboundSubscriptionRefreshService } from './operations/outbound-subscription-refresh.service';
 import { OutboundHealthService } from './outbound/outbound-health.service';
 import { OutboundHttpService } from './outbound/outbound-http.service';
 import { OutboundSpeedTestService } from './outbound/outbound-speed-test.service';
@@ -58,6 +66,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AdminTenantBrandingController,
     BillingController,
     ClientController,
+    ClientAuthController,
     HealthController,
     MetricsController,
     OperationsController,
@@ -79,9 +88,16 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     MetricsService,
     OperationsService,
     RouteQualityAggregationService,
+    OutboundSubscriptionRefreshService,
     OutboundHealthService,
     OutboundHttpService,
     OutboundSpeedTestService,
+    XrayProvisioningService,
+    XrayUsageMeteringService,
+    WireguardMeteringService,
+    InboundsService,
+    ConnectionsService,
+    OperationsOverviewService,
     AdminTokenGuard,
     AgentTokenGuard,
     ClientTokenGuard,

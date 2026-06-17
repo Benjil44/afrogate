@@ -5,6 +5,9 @@ import type {
   AdminBackupStatusResponse,
   AdminBillingCatalogResponse,
   AdminClientConfigsExportResponse,
+  AdminClientConfigSummary,
+  AdminClientConfigEntryLinkResponse,
+  CreateClientConfigRequest,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelUsageSyncResponse,
@@ -16,7 +19,11 @@ import type {
   AdminLoginRequest,
   AdminLoginResponse,
   AdminOutboundsResponse,
+  AdminInboundsResponse,
+  AdminConnectionsResponse,
+  AdminOperationsOverview,
   AdminOutboundSummary,
+  AdminOutboundSubscriptionSummary,
   AdminOutboundTestResult,
   AdminOutboundsAutoTestState,
   AdminPaymentOrdersResponse,
@@ -377,6 +384,87 @@ export async function deleteAdminOutbound(sessionToken: string, outboundId: stri
   });
 }
 
+export async function fetchAdminInbounds(sessionToken: string, signal?: AbortSignal): Promise<AdminInboundsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/inbounds`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminInboundsResponse>;
+}
+
+export async function fetchAdminOperationsOverview(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminOperationsOverview> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/operations-overview`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminOperationsOverview>;
+}
+
+export async function fetchAdminConnections(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminConnectionsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/connections`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminConnectionsResponse>;
+}
+
+export interface CreateOutboundSubscriptionPayload {
+  url: string;
+  name?: string;
+  routeGroup?: string;
+  enabled?: boolean;
+}
+
+export async function fetchAdminOutboundSubscriptions(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<{ subscriptions: AdminOutboundSubscriptionSummary[] }> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-subscriptions`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<{ subscriptions: AdminOutboundSubscriptionSummary[] }>;
+}
+
+export async function createAdminOutboundSubscription(
+  sessionToken: string,
+  payload: CreateOutboundSubscriptionPayload,
+): Promise<AdminOutboundSubscriptionSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-subscriptions`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+  return response.json() as Promise<AdminOutboundSubscriptionSummary>;
+}
+
+export async function refreshAdminOutboundSubscription(
+  sessionToken: string,
+  subscriptionId: string,
+): Promise<AdminOutboundSubscriptionSummary> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/outbound-subscriptions/${encodeURIComponent(subscriptionId)}/refresh`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminOutboundSubscriptionSummary>;
+}
+
+export async function deleteAdminOutboundSubscription(sessionToken: string, subscriptionId: string): Promise<void> {
+  await requestAdminAuth(`${getApiBaseUrl()}/admin/outbound-subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'DELETE',
+  });
+}
+
 export async function testAdminOutbound(sessionToken: string, outboundId: string): Promise<AdminOutboundTestResult> {
   const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/outbounds/${encodeURIComponent(outboundId)}/test`, {
     headers: createSessionHeaders(sessionToken),
@@ -577,6 +665,77 @@ export async function updateAdminCustomerAccount(
   });
 
   return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+export async function createAdminClientConfig(
+  sessionToken: string,
+  accountId: string,
+  payload: CreateClientConfigRequest,
+): Promise<AdminClientConfigSummary> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/client-configs`,
+    {
+      body: JSON.stringify(payload),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminClientConfigSummary>;
+}
+
+/**
+ * Sets a customer's login password; returns the password ONCE. Pass `password`
+ * to set a custom one, or omit it to auto-generate a strong password.
+ */
+export async function resetCustomerAccountPassword(
+  sessionToken: string,
+  accountId: string,
+  password?: string,
+): Promise<{ generatedPassword: string }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/reset-password`,
+    {
+      body: JSON.stringify(password && password.trim() ? { password: password.trim() } : {}),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<{ generatedPassword: string }>;
+}
+
+export async function fetchAdminClientConfigEntryLink(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<AdminClientConfigEntryLinkResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}/entry-link`,
+    { headers: createSessionHeaders(sessionToken) },
+  );
+  return response.json() as Promise<AdminClientConfigEntryLinkResponse>;
+}
+
+/** Deletes a client config (WireGuard peers are removed from wg0 by the reconciler). */
+export async function deleteAdminClientConfig(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}`,
+    { headers: createSessionHeaders(sessionToken), method: 'DELETE' },
+  );
+  return response.json() as Promise<{ deleted: boolean }>;
+}
+
+/** Renders (provisioning if needed) a WireGuard config's .conf text. */
+export async function fetchAdminWireguardConfig(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<{ configText: string; qrSvg: string }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}/wireguard-config`,
+    { headers: createSessionHeaders(sessionToken) },
+  );
+  return response.json() as Promise<{ configText: string; qrSvg: string }>;
 }
 
 export async function exportAdminCustomerClientConfigs(

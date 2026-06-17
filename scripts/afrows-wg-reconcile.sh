@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Afrows WireGuard reconciler (runs as ROOT on a systemd timer).
+#
+# The backend runs unprivileged and only writes the desired peer state into the
+# `wireguard_peers` table. This script is the ONLY component that touches wg0:
+#   1) applies desired peers to wg0  (wg set ... allowed-ips / remove)
+#   2) writes live usage back        (wg show <iface> dump -> rx/tx/handshake)
+#
+# The DB is the source of truth: every run re-applies all 'present' peers, so
+# peers survive a reboot (wg-quick@wg0 restores the static conf, then this timer
+# re-adds the DB peers within one interval). It never rewrites wg0.conf, so the
+# statically-configured peers (e.g. the MikroTik gateway) are left untouched.
+set -euo pipefail
+
+ENV_FILE="${AFROWS_ENV_FILE:-/etc/afrows/afrows.env}"
+IFACE="$(grep -h '^AFROWS_WG_INTERFACE=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' | tr -d '"')"
+IFACE="${IFACE:-wg0}"
+DBURL="$(grep -h '^DATABASE_URL=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r')"
+[ -n "$DBURL" ] || { echo "afrows-wg-reconcile: DATABASE_URL not found in $ENV_FILE" >&2; exit 1; }
+
+# Bail quietly if the interface isn't up yet (e.g. before wg-quick@wg0 starts).
+wg show "$IFACE" >/dev/null 2>&1 || { echo "afrows-wg-reconcile: $IFACE not up yet" >&2; exit 0; }
+
+q() { psql "$DBURL" -At -F '|' -c "$1"; }
+
+# 1) APPLY: add/update peers marked present
+while IFS='|' read -r pub addr; do
+  [ -n "$pub" ] || continue
+  wg set "$IFACE" peer "$pub" allowed-ips "$addr"
+done < <(q "SELECT client_public_key, client_address FROM wireguard_peers WHERE interface='$IFACE' AND desired_state='present';")
+
+# 1b) REMOVE peers marked absent
+while IFS='|' read -r pub; do
+  [ -n "$pub" ] || continue
+  wg set "$IFACE" peer "$pub" remove 2>/dev/null || true
+done < <(q "SELECT client_public_key FROM wireguard_peers WHERE interface='$IFACE' AND desired_state='absent';")
+
+# 1c) ORPHAN SWEEP: remove managed-range peers (10.8.0.>=START) that are on wg0
+# but no longer in the DB (e.g. a deleted client config — its row cascaded away).
+# Scoped to the managed range so manually-added peers (e.g. .2) are never touched.
+START="$(grep -h '^AFROWS_WG_ADDRESS_START=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r')"; START="${START:-16}"
+SUBNET3="$(grep -h '^AFROWS_WG_SUBNET=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' | cut -d/ -f1 | cut -d. -f1-3)"; SUBNET3="${SUBNET3:-10.8.0}"
+DBPUBS="$(q "SELECT client_public_key FROM wireguard_peers WHERE interface='$IFACE';")"
+wg show "$IFACE" dump | tail -n +2 | while IFS=$'\t' read -r pub _psk _ep allowed _hs _rx _tx _ka; do
+  [ -n "$pub" ] || continue
+  host="$(printf '%s' "$allowed" | grep -oE "${SUBNET3//./\\.}\.[0-9]+" | head -1 | cut -d. -f4)"
+  [ -n "$host" ] && [ "$host" -ge "$START" ] 2>/dev/null || continue
+  printf '%s\n' "$DBPUBS" | grep -qxF "$pub" || wg set "$IFACE" peer "$pub" remove 2>/dev/null || true
+done
+
+# 2) METER: wg show dump -> per-peer usage. dump columns (peer lines):
+#    pubkey  psk  endpoint  allowed-ips  latest-handshake  rx  tx  keepalive
+wg show "$IFACE" dump | tail -n +2 | while IFS=$'\t' read -r pub _psk _ep _allowed hs rx tx _ka; do
+  [ -n "$pub" ] || continue
+  hs_sql="NULL"; [ "${hs:-0}" != "0" ] && hs_sql="to_timestamp($hs)"
+  # pubkeys are base64 (no single quotes), so plain single-quoting is safe here
+  psql "$DBURL" -q -c "UPDATE wireguard_peers SET rx_bytes=${rx:-0}, tx_bytes=${tx:-0}, last_handshake_at=$hs_sql, updated_at=now() WHERE interface='$IFACE' AND client_public_key='${pub}';"
+done
+
+# NOTE: used_bytes accounting + quota enforcement is done by the backend
+# WireguardMeteringService (DELTA model, like VLESS) reading the absolute rx/tx
+# written above. The reconciler only writes counters + applies desired_state.

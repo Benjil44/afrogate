@@ -21,9 +21,13 @@ import type {
   AdminReportsSummaryResponse,
   ApplyRouteDecisionPreviewResponse,
   AdminOutboundSummary,
+  AdminOutboundSubscriptionSummary,
   AdminOutboundTestResult,
   AdminOutboundsAutoTestState,
   AdminSessionResponse,
+  AdminInboundsResponse,
+  AdminConnectionsResponse,
+  AdminOperationsOverview,
   AdminOutboundsResponse,
   AdminServerDetail,
   AdminServerInterfaceSummary,
@@ -59,12 +63,20 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { BackupStatusService } from '../backups/backup-status.service';
 import { AuthService } from '../auth/auth.service';
+import { InboundsService } from '../client/inbounds.service';
+import { ConnectionsService } from '../client/connections.service';
+import { OperationsOverviewService } from '../client/operations-overview.service';
 import { CreateAdminUserDto, UpdateAdminUserDto, UpdateAdminUserPasswordDto } from '../auth/dto/admin-user.dto';
 import { AdminTokenGuard } from '../security/admin-token.guard';
 import type { RequestWithAuth } from '../security/auth-request';
 import { Permissions, Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
-import { CreateOutboundDto, MoveOutboundDto, UpdateOutboundDto } from './dto/outbound.dto';
+import {
+  CreateOutboundDto,
+  CreateOutboundSubscriptionDto,
+  MoveOutboundDto,
+  UpdateOutboundDto,
+} from './dto/outbound.dto';
 import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto } from './dto/server.dto';
 import {
   CreateServerInterfaceDto,
@@ -97,6 +109,9 @@ export class OperationsController {
     private readonly backupStatusService: BackupStatusService,
     private readonly adminReportsService: AdminReportsService,
     private readonly telegramBotConfigService: TelegramBotConfigService,
+    private readonly inboundsService: InboundsService,
+    private readonly connectionsService: ConnectionsService,
+    private readonly overviewService: OperationsOverviewService,
   ) {}
 
   @Get('session')
@@ -694,6 +709,58 @@ export class OperationsController {
     @Req() request: RequestWithAuth,
   ): Promise<void> {
     return this.operationsService.deleteOutbound(id, request.actor);
+  }
+
+  @Get('inbounds')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  listInbounds(): Promise<AdminInboundsResponse> {
+    return this.inboundsService.listInbounds();
+  }
+
+  @Get('operations-overview')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getOperationsOverview(): Promise<AdminOperationsOverview> {
+    return this.overviewService.getOverview();
+  }
+
+  @Get('connections')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  listConnections(): Promise<AdminConnectionsResponse> {
+    return this.connectionsService.listConnections();
+  }
+
+  @Get('outbound-subscriptions')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listOutboundSubscriptions(): Promise<{ subscriptions: AdminOutboundSubscriptionSummary[] }> {
+    return { subscriptions: await this.operationsService.listOutboundSubscriptions() };
+  }
+
+  @Post('outbound-subscriptions')
+  @Roles('admin')
+  addOutboundSubscription(
+    @Body() payload: CreateOutboundSubscriptionDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminOutboundSubscriptionSummary> {
+    return this.operationsService.addOutboundSubscription(payload, request.actor);
+  }
+
+  @Post('outbound-subscriptions/:id/refresh')
+  @Roles('admin')
+  refreshOutboundSubscription(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminOutboundSubscriptionSummary> {
+    return this.operationsService.refreshOutboundSubscription(id, request.actor);
+  }
+
+  @Delete('outbound-subscriptions/:id')
+  @Roles('admin')
+  @HttpCode(204)
+  deleteOutboundSubscription(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<void> {
+    return this.operationsService.deleteOutboundSubscription(id, request.actor);
   }
 
   @Post('outbounds/test-all')

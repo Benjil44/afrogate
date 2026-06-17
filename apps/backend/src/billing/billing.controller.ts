@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -60,6 +61,7 @@ import {
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
+  SetCustomerAccountPasswordDto,
   UpdateClientConfigDto,
   UpdateCustomerAccountDto,
   UpsertClientSubscriptionCredentialDto,
@@ -522,6 +524,16 @@ export class BillingController {
     return this.billingService.createCustomerAccount(payload, request.actor);
   }
 
+  @Post('customer-accounts/:id/reset-password')
+  @Roles('admin')
+  resetCustomerAccountPassword(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: SetCustomerAccountPasswordDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ generatedPassword: string }> {
+    return this.billingService.resetCustomerAccountPassword(id, request.actor, body?.password ?? null);
+  }
+
   @Patch('customer-accounts/:id')
   @Roles('admin')
   updateCustomerAccount(
@@ -542,6 +554,22 @@ export class BillingController {
     return this.billingService.createClientConfig(id, payload, request.actor);
   }
 
+  @Get('client-configs/:id/entry-link')
+  @Roles('admin')
+  getClientConfigEntryLink(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<{ link: string | null }> {
+    return this.billingService.getClientConfigEntryLink(id);
+  }
+
+  @Get('client-configs/:id/wireguard-config')
+  @Roles('admin')
+  getClientConfigWireguardConfig(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<{ configText: string; qrSvg: string }> {
+    return this.billingService.getWireguardConfigForClientConfig(id);
+  }
+
   @Patch('client-configs/:id')
   @Roles('admin')
   updateClientConfig(
@@ -550,6 +578,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminClientConfigSummary> {
     return this.billingService.updateClientConfig(id, payload, request.actor);
+  }
+
+  @Delete('client-configs/:id')
+  @Roles('admin')
+  deleteClientConfig(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ deleted: boolean }> {
+    return this.billingService.deleteClientConfig(id, request.actor);
   }
 
   @Get('client-configs/:id/usage-events')

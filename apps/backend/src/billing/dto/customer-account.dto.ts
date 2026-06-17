@@ -15,6 +15,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export const CUSTOMER_ACCOUNT_STATUSES = ['active', 'suspended', 'disabled'] as const;
@@ -48,6 +49,15 @@ export const CURRENT_PANEL_VOLUME_CHARGE_SCOPES = ['account_quota', 'selected_cl
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 
+export class SetCustomerAccountPasswordDto {
+  /** Optional custom password; if omitted, a strong one is generated. */
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  @MaxLength(128)
+  password?: string | null;
+}
+
 export class CreateCustomerAccountDto {
   @IsOptional()
   @IsUUID('4')
@@ -72,6 +82,17 @@ export class CreateCustomerAccountDto {
   @IsString()
   @MaxLength(80)
   paidNumber?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  loginEmail?: string | null;
+
+  /** Optional custom login password; if omitted (and loginEmail set), one is generated. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  password?: string | null;
 
   @IsOptional()
   @IsIn(CUSTOMER_ACCOUNT_STATUSES)

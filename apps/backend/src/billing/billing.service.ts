@@ -8,6 +8,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHmac, randomBytes, randomUUID } from 'crypto';
+import { execFile } from 'node:child_process';
+import * as QRCode from 'qrcode';
 import type {
   AdminClientSubscriptionCredentialSummary,
   AdminBillingCatalogResponse,
@@ -19,6 +21,7 @@ import type {
   AdminCurrentPanelVolumeChargeResponse,
   AdminRewardedAdSettingsSummary,
   ClientAccessTokenSummary,
+  ClientLoginResponse,
   ClientPortalProfileResponse,
   ClientRouteOptionsResponse,
   ClientRoutePreferenceSummary,
@@ -61,6 +64,7 @@ import type {
   ClientRewardedAdStatus,
   RewardedAdWebhookHandlerResponse,
   PayPalWebhookHandlerResponse,
+  EgressMode,
 } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
@@ -86,6 +90,15 @@ import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLi
 import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
+import { hashPassword, verifyScryptPassword } from '../security/password';
+import { generatePassword, normalizeLoginIdentifier } from '../security/generate-password';
+import { buildAfrowsEntryUri, readAfrowsInboundEnv } from '../client/afrows-entry-link';
+import {
+  buildWireguardConf,
+  generateWireguardKeypair,
+  nextWireguardAddress,
+  readAfrowsWireguardEnv,
+} from '../client/afrows-wireguard';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { TelegramAlertService, type TelegramMessageSendResult } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
@@ -186,10 +199,21 @@ interface CustomerAccountRow {
   perClientLimitBytes: string | number | null;
   usedBytes: string | number;
   notes: string | null;
+  loginEmail: string | null;
+  hasPassword: boolean;
   createdAt: Date;
   updatedAt: Date;
   clientCount: number;
   activeClientCount: number;
+  protocols: Array<{ protocol: string; usedBytes: number | string }> | null;
+}
+
+interface WireguardPeerRecord {
+  clientConfigId: string;
+  clientPublicKey: string;
+  clientAddress: string;
+  encryptedPrivateKey: string;
+  presharedKey: string | null;
 }
 
 interface ClientConfigRow {
@@ -2799,12 +2823,33 @@ export class BillingService {
     };
   }
 
+  /** The native afrows-in VLESS entry link for a client config (admin-only). */
+  async getClientConfigEntryLink(clientConfigId: string): Promise<{ link: string | null }> {
+    const inbound = readAfrowsInboundEnv(process.env);
+    if (!inbound) return { link: null };
+    const result = await this.database.query<{ entryUuid: string | null; label: string | null }>(
+      `SELECT entry_uuid AS "entryUuid", label FROM client_configs WHERE id = $1`,
+      [clientConfigId],
+    );
+    const row = result.rows[0];
+    if (!row?.entryUuid) return { link: null };
+    return { link: buildAfrowsEntryUri(inbound, row.entryUuid, row.label || 'Afrows') };
+  }
+
   async createCustomerAccount(
     dto: CreateCustomerAccountDto,
     actor: AuthActor | undefined,
   ): Promise<AdminCustomerAccountDetail> {
     try {
       const paidNumberHash = this.hashPaidNumberIfPresent(dto.paidNumber);
+      const loginEmail = normalizeLoginIdentifier(dto.loginEmail);
+      let generatedPassword: string | null = null;
+      let passwordHash: string | null = null;
+      if (loginEmail) {
+        const custom = typeof dto.password === 'string' ? dto.password.trim() : '';
+        generatedPassword = custom.length >= 6 ? custom : generatePassword(16);
+        passwordHash = hashPassword(generatedPassword);
+      }
       const result = await this.database.transaction(async (executor) => {
         const resellerAccountId = normalizeNullableString(dto.resellerAccountId);
         if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
@@ -2814,9 +2859,9 @@ export class BillingService {
             INSERT INTO customer_accounts (
               reseller_account_id, display_name, telegram_id, telegram_username, paid_number_hash,
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
-              used_bytes, notes
+              used_bytes, notes, login_email, password_hash, password_set_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id
           `,
           [
@@ -2831,6 +2876,9 @@ export class BillingService {
             dto.perClientLimitBytes ?? null,
             dto.usedBytes ?? 0,
             normalizeNullableString(dto.notes),
+            loginEmail,
+            passwordHash,
+            passwordHash ? new Date() : null,
           ],
         );
         const id = insertResult.rows[0].id;
@@ -2854,7 +2902,8 @@ export class BillingService {
         return id;
       });
 
-      return this.getCustomerAccount(result);
+      const detail = await this.getCustomerAccount(result);
+      return generatedPassword ? { ...detail, generatedPassword } : detail;
     } catch (error) {
       throwConflictIfUniqueViolation(error, 'Customer account identity already exists');
       throw error;
@@ -2930,6 +2979,15 @@ export class BillingService {
         );
         const id = result.rows[0].id;
 
+        // WireGuard configs get a wg0 peer provisioned eagerly so the rendered
+        // .conf is ready immediately and the app shares the same peer on login.
+        if (normalizeProtocol(dto.protocol) === 'wireguard') {
+          const server = readAfrowsWireguardEnv(process.env);
+          if (server) {
+            await this.provisionWireguardPeerForConfig(executor, id, server.interface);
+          }
+        }
+
         await this.audit.record(
           actor,
           'client_config.create',
@@ -2947,6 +3005,11 @@ export class BillingService {
 
         return id;
       });
+
+      // Newly created WireGuard config: apply its peer to wg0 now (post-commit).
+      if (normalizeProtocol(dto.protocol) === 'wireguard') {
+        this.triggerWgReconcile();
+      }
 
       return this.getClientConfig(clientId);
     } catch (error) {
@@ -2983,6 +3046,37 @@ export class BillingService {
       throwConflictIfUniqueViolation(error, 'Client config external identity already exists');
       throw error;
     }
+  }
+
+  /**
+   * Deletes a client config. For WireGuard it first marks the peer 'absent' so
+   * the root reconciler removes it from wg0, then deletes the config (the
+   * wireguard_peers row cascades). The reconciler's orphan sweep cleans up if
+   * the row is gone before it runs.
+   */
+  async deleteClientConfig(id: string, actor: AuthActor | undefined): Promise<{ deleted: boolean }> {
+    const isWireguard = await this.database.transaction(async (executor) => {
+      const existing = await this.getClientConfigRowForUpdate(executor, id);
+      const wg = (existing.protocol ?? '').toLowerCase() === 'wireguard';
+      if (wg) {
+        await executor.query(
+          `UPDATE wireguard_peers SET desired_state = 'absent', updated_at = now() WHERE client_config_id = $1`,
+          [id],
+        );
+      }
+      await executor.query(`DELETE FROM client_configs WHERE id = $1`, [id]);
+      await this.audit.record(
+        actor,
+        'client_config.delete',
+        'client_config',
+        id,
+        { customerAccountId: existing.customerAccountId, protocol: existing.protocol },
+        executor,
+      );
+      return wg;
+    });
+    if (isWireguard) this.triggerWgReconcile(); // remove the peer from wg0 now
+    return { deleted: true };
   }
 
   async listClientUsageEvents(
@@ -3475,6 +3569,100 @@ export class BillingService {
       if (error instanceof UnauthorizedException) throw error;
       throw new ServiceUnavailableException('Client token lookup is unavailable');
     }
+  }
+
+  /**
+   * Authenticate a customer by email/username + password and issue a client
+   * access token the mobile app can use like any other client token.
+   */
+  async loginClientByPassword(identifierInput: string, passwordInput: string): Promise<ClientLoginResponse> {
+    const identifier = normalizeLoginIdentifier(identifierInput);
+    const genericError = new UnauthorizedException('Invalid email or password');
+    if (!identifier || typeof passwordInput !== 'string' || passwordInput.length === 0) {
+      throw genericError;
+    }
+
+    const accountResult = await this.database.query<{
+      id: string;
+      passwordHash: string | null;
+      displayName: string | null;
+      quotaLimitBytes: string | null;
+      usedBytes: string | null;
+    }>(
+      `
+        SELECT id, password_hash AS "passwordHash", display_name AS "displayName",
+               quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes"
+        FROM customer_accounts
+        WHERE lower(login_email) = $1 AND status = 'active'
+        LIMIT 1
+      `,
+      [identifier],
+    );
+    const account = accountResult.rows[0];
+    if (!account || !account.passwordHash || !verifyScryptPassword(passwordInput, account.passwordHash)) {
+      throw genericError;
+    }
+
+    const configResult = await this.database.query<{ id: string }>(
+      `
+        SELECT id FROM client_configs
+        WHERE customer_account_id = $1 AND status <> 'disabled'
+        ORDER BY created_at ASC
+        LIMIT 1
+      `,
+      [account.id],
+    );
+    const clientConfig = configResult.rows[0];
+    if (!clientConfig) {
+      throw new UnauthorizedException('No active configuration for this account yet');
+    }
+
+    const token = this.createClientAccessToken();
+    await this.database.query(
+      `
+        INSERT INTO client_access_tokens (client_config_id, name, token_hash, scopes, created_by)
+        VALUES ($1, $2, $3, $4::jsonb, $5)
+      `,
+      [clientConfig.id, 'mobile login', hashClientToken(token), JSON.stringify(['client:read', 'route:write', 'reward:claim']), null],
+    );
+
+    const quotaLimitBytes = numberFromBigInt(account.quotaLimitBytes);
+    const usedBytes = numberFromBigInt(account.usedBytes) ?? 0;
+    return {
+      token,
+      account: {
+        id: account.id,
+        displayName: account.displayName,
+        quotaLimitBytes,
+        usedBytes,
+        remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
+      },
+    };
+  }
+
+  /**
+   * Set a customer's login password (seller/superadmin); returns it once.
+   * Uses `customPassword` if provided (>=6 chars), otherwise generates a strong one.
+   */
+  async resetCustomerAccountPassword(
+    accountId: string,
+    actor: AuthActor | undefined,
+    customPassword?: string | null,
+  ): Promise<{ generatedPassword: string }> {
+    const trimmed = typeof customPassword === 'string' ? customPassword.trim() : '';
+    const password = trimmed.length >= 6 ? trimmed : generatePassword(16);
+    const result = await this.database.query<{ id: string }>(
+      `
+        UPDATE customer_accounts
+        SET password_hash = $2, password_set_at = now(), updated_at = now()
+        WHERE id = $1 AND login_email IS NOT NULL
+        RETURNING id
+      `,
+      [accountId, hashPassword(password)],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Customer account has no login email');
+    await this.audit.record(actor, 'customer_account.password_reset', 'customer_account', accountId, {}, undefined);
+    return { generatedPassword: password };
   }
 
   async getClientPortalProfile(actor: ClientAuthActor): Promise<ClientPortalProfileResponse> {
@@ -4113,6 +4301,20 @@ export class BillingService {
       credentialRows.map((row) => [`${row.outboundId}:${row.protocol}`, row] as const),
     );
 
+    const baseConfigLinks = routeOptions.outbounds.map((outbound) => {
+      const protocol = normalizeSubscriptionProtocol(outbound.type);
+      const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
+      return this.subscriptionConfigLink(outbound, credential);
+    });
+    // Native links first so the app connects to our own engine by default:
+    // WireGuard (kernel wg0) is the primary mobile transport now, then the
+    // native afrows-in VLESS link. Each is omitted until configured via env.
+    const wireguardLink = await this.buildNativeWireguardConfigLink(actor.clientConfigId, routeGroup);
+    const nativeLink = await this.buildNativeEntryConfigLink(actor.clientConfigId, routeGroup);
+    const configLinks = [wireguardLink, nativeLink, ...baseConfigLinks].filter(
+      (link): link is ClientSubscriptionConfigLinkSummary => link !== null,
+    );
+
     return {
       subscription: {
         clientConfigId: actor.clientConfigId,
@@ -4122,12 +4324,391 @@ export class BillingService {
         endpoints: routeOptions.outbounds
           .map((outbound) => outbound.subscriptionEndpoint)
           .filter((endpoint): endpoint is ClientSubscriptionEndpointSummary => Boolean(endpoint)),
-        configLinks: routeOptions.outbounds.map((outbound) => {
-          const protocol = normalizeSubscriptionProtocol(outbound.type);
-          const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
-          return this.subscriptionConfigLink(outbound, credential);
-        }),
+        configLinks,
       },
+    };
+  }
+
+  /** Builds the native afrows-in Reality config link for a client (or null). */
+  private async buildNativeEntryConfigLink(
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
+    const inbound = readAfrowsInboundEnv(process.env);
+    if (!inbound) return null;
+    const result = await this.database.query<{ entryUuid: string | null }>(
+      `SELECT entry_uuid AS "entryUuid" FROM client_configs WHERE id = $1`,
+      [clientConfigId],
+    );
+    const entryUuid = result.rows[0]?.entryUuid;
+    if (!entryUuid) return null;
+
+    const uri = buildAfrowsEntryUri(inbound, entryUuid, 'Afrows');
+    return {
+      outboundId: 'afrows-in',
+      name: 'Afrows',
+      type: 'vless',
+      routeGroup,
+      usageMultiplier: 1,
+      chargeLabel: 'standard',
+      format: 'vless-uri',
+      renderStatus: 'rendered',
+      uri,
+      missingFields: [],
+      warnings: [],
+      requiresClientSecret: false,
+    };
+  }
+
+  /**
+   * Builds the native kernel-WireGuard config link for the logged-in account.
+   * Account-scoped: a session is pinned to one client_config (the oldest), but
+   * WireGuard delivery is per *account* — we resolve the account, ensure it has
+   * a WireGuard client_config + provisioned wg0 peer, and render its `.conf`.
+   * Returns null when WireGuard isn't configured via env.
+   */
+  private async buildNativeWireguardConfigLink(
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
+    const server = readAfrowsWireguardEnv(process.env);
+    if (!server) return null;
+
+    const peer = await this.ensureAccountWireguardPeer(clientConfigId, server.interface);
+    if (!peer) return null;
+    // Apply the peer to wg0 immediately so the app handshakes on first connect.
+    this.triggerWgReconcile();
+
+    let privateKey: string;
+    try {
+      const material = this.secretVault.decryptJson(
+        peer.encryptedPrivateKey,
+        this.wireguardPeerEncryptionContext(peer.clientConfigId),
+      );
+      privateKey = typeof material.clientPrivateKey === 'string' ? material.clientPrivateKey : '';
+    } catch {
+      return null;
+    }
+    if (!privateKey) return null;
+
+    const configText = buildWireguardConf({
+      privateKey,
+      address: peer.clientAddress,
+      server,
+      presharedKey: peer.presharedKey,
+    });
+
+    return {
+      outboundId: 'afrows-wg',
+      name: 'Afrows WireGuard',
+      type: 'wireguard',
+      routeGroup,
+      usageMultiplier: 1,
+      chargeLabel: 'standard',
+      format: 'wireguard-profile',
+      renderStatus: 'rendered',
+      uri: null,
+      configText,
+      missingFields: [],
+      warnings: [],
+      requiresClientSecret: false,
+    };
+  }
+
+  /** Stable encryption context for a peer's stored private key. */
+  private wireguardPeerEncryptionContext(clientConfigId: string): string {
+    return ['wireguard-peer', clientConfigId].join(':');
+  }
+
+  /**
+   * Admin: render the wg-quick `.conf` for a specific WireGuard client_config
+   * (provisioning its wg0 peer on first use), so the operator can copy/download
+   * it and hand it to a user (official WireGuard app / desktop / any device).
+   */
+  async getWireguardConfigForClientConfig(
+    clientConfigId: string,
+  ): Promise<{ configText: string; qrSvg: string }> {
+    const server = readAfrowsWireguardEnv(process.env);
+    if (!server) throw new BadRequestException('WireGuard is not configured on this server');
+
+    const peer = await this.database.transaction(async (executor) => {
+      const cfg = await executor.query<{ protocol: string }>(
+        `SELECT protocol FROM client_configs WHERE id = $1`,
+        [clientConfigId],
+      );
+      if (!cfg.rows[0]) throw new NotFoundException('Client config not found');
+      if ((cfg.rows[0].protocol ?? '').toLowerCase() !== 'wireguard') {
+        throw new BadRequestException('Client config is not a WireGuard config');
+      }
+      return this.provisionWireguardPeerForConfig(executor, clientConfigId, server.interface);
+    });
+    if (!peer) throw new BadRequestException('Could not provision a WireGuard peer (subnet full?)');
+
+    this.triggerWgReconcile(); // apply the peer to wg0 now
+
+    let privateKey = '';
+    try {
+      const material = this.secretVault.decryptJson(
+        peer.encryptedPrivateKey,
+        this.wireguardPeerEncryptionContext(peer.clientConfigId),
+      );
+      privateKey = typeof material.clientPrivateKey === 'string' ? material.clientPrivateKey : '';
+    } catch {
+      throw new BadRequestException('Stored key material is unavailable');
+    }
+    if (!privateKey) throw new BadRequestException('Stored key material is unavailable');
+
+    const configText = buildWireguardConf({
+      privateKey,
+      address: peer.clientAddress,
+      server,
+      presharedKey: peer.presharedKey,
+    });
+    const qrSvg = await QRCode.toString(configText, { type: 'svg', margin: 1, width: 240 });
+    return { configText, qrSvg };
+  }
+
+  /**
+   * Live WireGuard usage for the logged-in account's peer, as metered server-side
+   * by the root reconciler (`wg show wg0 dump`). The app polls this to show real
+   * up/down totals (the wireguard_flutter plugin reports no byte counters).
+   * `rxBytes` = bytes the server received from the client (the client's UPLOAD);
+   * `txBytes` = bytes the server sent to the client (the client's DOWNLOAD).
+   */
+  async getClientWireguardUsage(
+    actor: ClientAuthActor,
+  ): Promise<{ rxBytes: number; txBytes: number; lastHandshakeAt: string | null }> {
+    assertClientScope(actor, 'client:read');
+    const res = await this.database.query<{
+      rxBytes: string | number | null;
+      txBytes: string | number | null;
+      lastHandshakeAt: Date | null;
+    }>(
+      `
+        SELECT wp.rx_bytes AS "rxBytes", wp.tx_bytes AS "txBytes",
+               wp.last_handshake_at AS "lastHandshakeAt"
+        FROM wireguard_peers wp
+        JOIN client_configs cc ON cc.id = wp.client_config_id
+        WHERE cc.customer_account_id = (
+          SELECT customer_account_id FROM client_configs WHERE id = $1
+        )
+        AND wp.desired_state = 'present'
+        ORDER BY wp.last_handshake_at DESC NULLS LAST, wp.created_at DESC
+        LIMIT 1
+      `,
+      [actor.clientConfigId],
+    );
+    const row = res.rows[0];
+    return {
+      rxBytes: row ? Number(row.rxBytes ?? 0) || 0 : 0,
+      txBytes: row ? Number(row.txBytes ?? 0) || 0 : 0,
+      lastHandshakeAt: row?.lastHandshakeAt ? row.lastHandshakeAt.toISOString() : null,
+    };
+  }
+
+  /**
+   * Fire-and-forget: ask the root reconciler to apply pending peers to wg0 NOW
+   * (instead of waiting for its ~30s timer), so a freshly provisioned peer is
+   * live within a second. The backend is unprivileged; a scoped sudoers rule
+   * (`afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-wg-reconcile.service`)
+   * allows just this one command. Errors are ignored (the timer is the fallback).
+   */
+  private triggerWgReconcile(): void {
+    execFile('sudo', ['-n', 'systemctl', 'start', 'afrows-wg-reconcile.service'], () => {
+      /* best-effort; the systemd timer reconciles regardless */
+    });
+  }
+
+  /**
+   * Global foreign-egress mode (Option A). Reads the singleton `egress_settings`
+   * row; defaults to 'smart' if the row/table is missing.
+   */
+  async getEgressMode(actor: ClientAuthActor): Promise<EgressMode> {
+    assertClientScope(actor, 'client:read');
+    try {
+      const result = await this.database.query<{ mode: string }>(
+        `SELECT mode FROM egress_settings WHERE id = true LIMIT 1`,
+      );
+      const mode = result.rows[0]?.mode;
+      return mode === 'full' ? 'full' : 'smart';
+    } catch {
+      return 'smart';
+    }
+  }
+
+  /**
+   * Set the global egress mode. NOTE: this is GLOBAL — it changes routing for all
+   * clients. A VPS-side reconciler (afrows-egress-mode-sync) applies it to the
+   * afrows-wg / afrows-xray routing; we nudge it to run now (timer is the fallback).
+   */
+  async setEgressMode(actor: ClientAuthActor, mode: EgressMode): Promise<EgressMode> {
+    assertClientScope(actor, 'route:write');
+    await this.database.query(
+      `INSERT INTO egress_settings (id, mode, updated_at, updated_by)
+       VALUES (true, $1, now(), $2)
+       ON CONFLICT (id) DO UPDATE SET mode = EXCLUDED.mode, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+      [mode, actor.clientConfigId ?? null],
+    );
+    this.triggerEgressModeSync();
+    return mode;
+  }
+
+  private triggerEgressModeSync(): void {
+    execFile('sudo', ['-n', 'systemctl', 'start', 'afrows-egress-mode-sync.service'], () => {
+      /* best-effort; the systemd timer applies the mode regardless */
+    });
+  }
+
+  /**
+   * Ensures the account owning `clientConfigId` has a WireGuard client_config
+   * and a provisioned wg0 peer (generating the keypair + allocating an address
+   * on first use). The peer is written with desired_state='present' for the root
+   * reconciler to apply to wg0. Returns the peer record, or null on failure.
+   */
+  private async ensureAccountWireguardPeer(
+    sessionClientConfigId: string,
+    iface: string,
+  ): Promise<{
+    clientConfigId: string;
+    clientPublicKey: string;
+    clientAddress: string;
+    encryptedPrivateKey: string;
+    presharedKey: string | null;
+  } | null> {
+    return this.database.transaction(async (executor) => {
+      // 1) resolve the account from the session's client_config
+      const accountRes = await executor.query<{ accountId: string }>(
+        `SELECT customer_account_id AS "accountId" FROM client_configs WHERE id = $1`,
+        [sessionClientConfigId],
+      );
+      const accountId = accountRes.rows[0]?.accountId;
+      if (!accountId) return null;
+
+      // 2) existing WireGuard peer for any of the account's wireguard configs?
+      const existing = await executor.query<{
+        clientConfigId: string;
+        clientPublicKey: string;
+        clientAddress: string;
+        encryptedPrivateKey: string;
+        presharedKey: string | null;
+      }>(
+        `
+          SELECT wp.client_config_id AS "clientConfigId",
+                 wp.client_public_key AS "clientPublicKey",
+                 wp.client_address AS "clientAddress",
+                 wp.encrypted_private_key AS "encryptedPrivateKey",
+                 wp.preshared_key AS "presharedKey"
+          FROM wireguard_peers wp
+          JOIN client_configs cc ON cc.id = wp.client_config_id
+          WHERE cc.customer_account_id = $1
+            AND wp.interface = $2
+            AND wp.desired_state = 'present'
+          ORDER BY wp.created_at ASC
+          LIMIT 1
+        `,
+        [accountId, iface],
+      );
+      if (existing.rows[0]) return existing.rows[0];
+
+      // 3) Use a DEDICATED "App (WireGuard)" config — never reuse the operator's
+      // other wireguard configs (e.g. the MikroTik gateway), which represent
+      // different peers/interfaces. Reuse by label to stay idempotent.
+      const APP_WG_LABEL = 'App (WireGuard)';
+      const cfgRes = await executor.query<{ id: string }>(
+        `
+          SELECT id FROM client_configs
+          WHERE customer_account_id = $1 AND lower(protocol) = 'wireguard'
+            AND label = $2 AND status <> 'disabled'
+          ORDER BY created_at ASC
+          LIMIT 1
+        `,
+        [accountId, APP_WG_LABEL],
+      );
+      let wgConfigId = cfgRes.rows[0]?.id;
+      if (!wgConfigId) {
+        const created = await executor.query<{ id: string }>(
+          `
+            INSERT INTO client_configs (customer_account_id, label, protocol, status, notes)
+            VALUES ($1, $2, 'wireguard', 'active', 'auto-provisioned for the Afrows app (kernel wg0)')
+            RETURNING id
+          `,
+          [accountId, APP_WG_LABEL],
+        );
+        wgConfigId = created.rows[0].id;
+      }
+
+      // 5) allocate an address + generate a keypair, then insert the peer
+      return this.provisionWireguardPeerForConfig(executor, wgConfigId, iface);
+    });
+  }
+
+  /**
+   * Provisions (or returns the existing) wg0 peer for a specific WireGuard
+   * client_config: generates an X25519 keypair, allocates the next free
+   * 10.8.0.x address, stores the private key encrypted, and writes the peer
+   * with desired_state='present' for the reconciler. Idempotent per config.
+   * Called both lazily on app login and eagerly when an admin creates a
+   * WireGuard config, so the app + dashboard always share one peer.
+   */
+  private async provisionWireguardPeerForConfig(
+    executor: DatabaseQueryExecutor,
+    wgConfigId: string,
+    iface: string,
+  ): Promise<WireguardPeerRecord | null> {
+    const existing = await executor.query<WireguardPeerRecord>(
+      `
+        SELECT client_config_id AS "clientConfigId",
+               client_public_key AS "clientPublicKey",
+               client_address AS "clientAddress",
+               encrypted_private_key AS "encryptedPrivateKey",
+               preshared_key AS "presharedKey"
+        FROM wireguard_peers WHERE client_config_id = $1
+      `,
+      [wgConfigId],
+    );
+    if (existing.rows[0]) {
+      await executor.query(
+        `UPDATE wireguard_peers SET desired_state = 'present', updated_at = now() WHERE client_config_id = $1`,
+        [wgConfigId],
+      );
+      return existing.rows[0];
+    }
+
+    const server = readAfrowsWireguardEnv(process.env);
+    if (!server) return null;
+    const usedRes = await executor.query<{ clientAddress: string }>(
+      `SELECT client_address AS "clientAddress" FROM wireguard_peers WHERE interface = $1`,
+      [iface],
+    );
+    const address = nextWireguardAddress(
+      usedRes.rows.map((r) => r.clientAddress),
+      server,
+    );
+    if (!address) return null;
+
+    const keypair = generateWireguardKeypair();
+    const envelope = this.secretVault.encryptJson(
+      { clientPrivateKey: keypair.privateKey },
+      this.wireguardPeerEncryptionContext(wgConfigId),
+    );
+
+    await executor.query(
+      `
+        INSERT INTO wireguard_peers (
+          client_config_id, interface, client_public_key, encrypted_private_key,
+          client_address, desired_state
+        )
+        VALUES ($1, $2, $3, $4, $5, 'present')
+      `,
+      [wgConfigId, iface, keypair.publicKey, envelope.payload, address],
+    );
+
+    return {
+      clientConfigId: wgConfigId,
+      clientPublicKey: keypair.publicKey,
+      clientAddress: address,
+      encryptedPrivateKey: envelope.payload,
+      presharedKey: null,
     };
   }
 
@@ -5018,7 +5599,8 @@ export class BillingService {
           created_at AS "createdAt",
           updated_at AS "updatedAt",
           0::int AS "clientCount",
-          0::int AS "activeClientCount"
+          0::int AS "activeClientCount",
+          '[]'::jsonb AS "protocols"
         FROM customer_accounts
         WHERE id = $1
         FOR UPDATE
@@ -5665,10 +6247,27 @@ export class BillingService {
         ca.per_client_limit_bytes AS "perClientLimitBytes",
         ca.used_bytes AS "usedBytes",
         ca.notes,
+        ca.login_email AS "loginEmail",
+        (ca.password_hash IS NOT NULL) AS "hasPassword",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
-        COUNT(cc.id) FILTER (WHERE cc.status = 'active')::int AS "activeClientCount"
+        COUNT(cc.id) FILTER (WHERE cc.status = 'active')::int AS "activeClientCount",
+        COALESCE(
+          (
+            SELECT jsonb_agg(
+                     jsonb_build_object('protocol', t.protocol, 'usedBytes', t.used)
+                     ORDER BY t.protocol
+                   )
+            FROM (
+              SELECT protocol, SUM(used_bytes)::bigint AS used
+              FROM client_configs
+              WHERE customer_account_id = ca.id AND protocol IS NOT NULL
+              GROUP BY protocol
+            ) t
+          ),
+          '[]'::jsonb
+        ) AS "protocols"
       FROM customer_accounts ca
       LEFT JOIN reseller_accounts ra ON ra.id = ca.reseller_account_id
       LEFT JOIN client_configs cc ON cc.customer_account_id = ca.id
@@ -7102,7 +7701,13 @@ export class BillingService {
       remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
+      protocols: (row.protocols ?? []).map((p) => ({
+        protocol: p.protocol,
+        usedBytes: Number(p.usedBytes) || 0,
+      })),
       notes: row.notes,
+      loginEmail: row.loginEmail,
+      hasPassword: Boolean(row.hasPassword),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

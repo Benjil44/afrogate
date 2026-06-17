@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type {
   AdminAlertSummary,
+  AdminOperationsOverview,
   AdminAuditLogSummary,
   AdminBackupRestoreCheckSummary,
   AdminBackupRestorePlanStepSummary,
@@ -144,6 +145,7 @@ import {
   deleteAdminUser,
   exportAdminCustomerClientConfigs,
   fetchAdminAlerts,
+  fetchAdminOperationsOverview,
   fetchAdminAuditLogs,
   fetchAdminBackupRestorePlan,
   fetchAdminBackupStatus,
@@ -206,6 +208,9 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ServersPage } from './pages/ServersPage';
 import { RoutesPage } from './pages/RoutesPage';
 import { OutboundsPage } from './pages/OutboundsPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { InboundsPage } from './pages/InboundsPage';
+import { ConnectionsPage } from './pages/ConnectionsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BillingPage, ResellerDashboardPage, ResellerUsersPage } from './pages/BillingReseller';
 import { AdminLoginPage } from './pages/AdminLoginPage';
@@ -487,10 +492,12 @@ import {
 
 const refreshIntervalMs = 10_000;
 
-// Demo datasets render only in local development (`import.meta.env.DEV`) so the UI
-// is never blank while building. Production builds show real API data — and the
-// honest empty state when nothing has reported in yet.
-const fallbackServers: ServerRowData[] = import.meta.env.DEV ? [
+// Demo datasets render only in local development so the UI is never blank while
+// building. Production builds show real API data. Set VITE_DEMO_FALLBACK=false
+// (e.g. in .env.local) to also disable demos in dev — handy when pointing the
+// local UI at a real backend, so it matches production exactly.
+const SHOW_DEMO = import.meta.env.DEV && import.meta.env.VITE_DEMO_FALLBACK !== 'false';
+const fallbackServers: ServerRowData[] = SHOW_DEMO ? [
   {
     id: 'iran-edge-01',
     name: 'Iran Edge 01',
@@ -580,13 +587,13 @@ const fallbackServers: ServerRowData[] = import.meta.env.DEV ? [
   },
 ] : [];
 
-const tunnels: TunnelRowData[] = import.meta.env.DEV ? [
+const tunnels: TunnelRowData[] = SHOW_DEMO ? [
   { name: 'wg1', operator: 'Mobinnet', ping: 46, jitter: 8, loss: 0.1, score: 95 },
   { name: 'wireguard2', operator: 'Irancell', ping: 62, jitter: 14, loss: 0.3, score: 86 },
   { name: 'wireguard3', operator: 'Irancell', ping: 58, jitter: 11, loss: 0.2, score: 89 },
 ] : [];
 
-const outbounds: OutboundRowData[] = import.meta.env.DEV ? [
+const outbounds: OutboundRowData[] = SHOW_DEMO ? [
   {
     id: 'sample-germany-gateway',
     name: 'Germany gateway',
@@ -962,7 +969,7 @@ function AuthenticatedDashboard({
   const failoverRows = useMemo(
     () => (routeDataState === 'live' || routeDataState === 'stale'
       ? routeFailoverEvents.map(mapRouteFailoverEventToRow)
-      : (import.meta.env.DEV ? createFallbackFailoverRows(t) : [])),
+      : (SHOW_DEMO ? createFallbackFailoverRows(t) : [])),
     [routeDataState, routeFailoverEvents, t],
   );
   const handleAdminServerUpdated = (server: AdminServerDetail) => {
@@ -973,7 +980,33 @@ function AuthenticatedDashboard({
     ));
     setServerDataState('live');
   };
-  const trafficTotals = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
+  const [overview, setOverview] = useState<AdminOperationsOverview | null>(null);
+  useEffect(() => {
+    let active = true;
+    let timer: number | undefined;
+    const load = async () => {
+      try {
+        const o = await fetchAdminOperationsOverview(sessionToken);
+        if (active) setOverview(o);
+      } catch {
+        /* keep last */
+      } finally {
+        if (active) timer = window.setTimeout(() => void load(), 10000);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [sessionToken]);
+
+  const fleetTraffic = useMemo(() => createTrafficTotals(serverRows), [serverRows]);
+  // Single-box: prefer the box/xray overview; fall back to the (empty) fleet.
+  const trafficTotals = overview?.available
+    ? { downloadBps: overview.downloadBps, uploadBps: overview.uploadBps }
+    : fleetTraffic;
+  const overviewActiveUsers = overview?.available ? overview.activeUsers : undefined;
   const computedAlerts = useMemo(() => createComputedAlertRows(serverRows, t), [serverRows, t]);
   const apiAlertRows = useMemo(() => mapAdminAlertsToRows(apiAlerts, t), [apiAlerts, t]);
   const alerts = useMemo(() => {
@@ -983,9 +1016,12 @@ function AuthenticatedDashboard({
 
     return computedAlerts;
   }, [alertDataState, apiAlertRows, computedAlerts, t]);
-  const summary = useMemo(() => createSummary(serverRows, trafficTotals, alerts, t, format), [alerts, format, serverRows, trafficTotals, t]);
+  const summary = useMemo(
+    () => createSummary(serverRows, trafficTotals, alerts, t, format, overviewActiveUsers),
+    [alerts, format, serverRows, trafficTotals, t, overviewActiveUsers],
+  );
   const chartSeries = useMemo(
-    () => (timeseries.length > 0 ? timeseries : (import.meta.env.DEV ? createFallbackTimeseries(serverRows, timeRange) : [])),
+    () => (timeseries.length > 0 ? timeseries : (SHOW_DEMO ? createFallbackTimeseries(serverRows, timeRange) : [])),
     [serverRows, timeRange, timeseries],
   );
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
@@ -1046,7 +1082,17 @@ function AuthenticatedDashboard({
 
         {activeView === 'dashboard' && !isResellerSession ? (
           <>
-            <SystemResourceHeader format={format} servers={serverRows} t={t} trafficTotals={trafficTotals} />
+            <SystemResourceHeader
+              format={format}
+              servers={serverRows}
+              t={t}
+              trafficTotals={trafficTotals}
+              overrideCpuPercent={overview?.available ? overview.cpuPercent : undefined}
+              overrideRamPercent={overview?.available ? overview.memPercent : undefined}
+              overrideStorageFreePercent={overview?.available ? overview.diskFreePercent : undefined}
+              downloadTotal={overview?.available ? overview.downloadTotalBytes : undefined}
+              uploadTotal={overview?.available ? overview.uploadTotalBytes : undefined}
+            />
 
             <div className="mt-2.5 border-t border-afro-line" />
           </>
@@ -1074,6 +1120,7 @@ function AuthenticatedDashboard({
           session={session}
           sessionToken={sessionToken}
           summary={summary}
+          activeUsers={overviewActiveUsers}
           t={t}
           tunnelDataState={tunnelDataState}
           timeRange={timeRange}
@@ -1108,6 +1155,7 @@ function ActivePage({
   session,
   sessionToken,
   summary,
+  activeUsers,
   t,
   tunnelDataState,
   timeRange,
@@ -1134,6 +1182,7 @@ function ActivePage({
   session: AdminSessionResponse;
   sessionToken: string;
   summary: MetricCardData[];
+  activeUsers?: number;
   t: DashboardStrings;
   tunnelDataState: DataState;
   timeRange: MetricsTimeRange;
@@ -1191,6 +1240,12 @@ function ActivePage({
       );
     case 'outbounds':
       return <OutboundsPage sessionToken={sessionToken} t={t} />;
+    case 'customers':
+      return <CustomersPage format={format} sessionToken={sessionToken} t={t} />;
+    case 'inbounds':
+      return <InboundsPage format={format} sessionToken={sessionToken} t={t} />;
+    case 'connections':
+      return <ConnectionsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'alerts':
       return <AlertsPage alerts={alerts} dataState={alertDataState} format={format} sessionToken={sessionToken} t={t} />;
     case 'settings':
@@ -1211,6 +1266,7 @@ function ActivePage({
           serverDataState={serverDataState}
           servers={servers}
           summary={summary}
+          activeUsers={activeUsers}
           t={t}
           tunnelDataState={tunnelDataState}
           tunnels={routeTunnels}

@@ -213,3 +213,23 @@ export class MoveOutboundDto {
   @IsIn(OUTBOUND_MOVE_DIRECTIONS)
   direction!: string;
 }
+
+export class CreateOutboundSubscriptionDto {
+  @IsString()
+  @MaxLength(2048)
+  url!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  routeGroup?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}

@@ -15,6 +15,7 @@ import { formLabelClass, inputClass, mutedTextClass, panelClass, primaryButtonCl
 
 type CustomerAccountFormState = {
   displayName: string;
+  loginEmail: string;
   telegramUsername: string;
   quotaScope: CustomerQuotaScope;
   quotaLimitGb: string;
@@ -30,6 +31,7 @@ const currentPanelKindOptions: CurrentPanelKind[] = ['marzban', 'xui', 'sanayi',
 function createEmptyCustomerAccountForm(): CustomerAccountFormState {
   return {
     displayName: '',
+    loginEmail: '',
     notes: '',
     perClientLimitGb: '',
     quotaLimitGb: '50',
@@ -644,6 +646,7 @@ function ResellerAddUserDialog({
 function mapCustomerAccountToForm(account: AdminCustomerAccountSummary): CustomerAccountFormState {
   return {
     displayName: account.displayName ?? '',
+    loginEmail: account.loginEmail ?? '',
     notes: account.notes ?? '',
     perClientLimitGb: formatGbInput(account.perClientLimitBytes ?? null),
     quotaLimitGb: formatGbInput(account.quotaLimitBytes ?? null),
@@ -689,6 +692,7 @@ export function BillingPage({
   const [isSavingReward, setIsSavingReward] = useState(false);
   const [selectedCustomerAccountId, setSelectedCustomerAccountId] = useState<string | null>(null);
   const [customerForm, setCustomerForm] = useState<CustomerAccountFormState>(() => createEmptyCustomerAccountForm());
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
   const [customerMessage, setCustomerMessage] = useState<string | null>(null);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [resellerSaleForm, setResellerSaleForm] = useState<ResellerPackageSaleFormState>(() => createEmptyResellerPackageSaleForm());
@@ -907,6 +911,7 @@ export function BillingPage({
     try {
       const payload = {
         displayName: normalizeNullableText(customerForm.displayName),
+        loginEmail: normalizeNullableText(customerForm.loginEmail),
         notes: normalizeNullableText(customerForm.notes),
         perClientLimitBytes,
         quotaLimitBytes,
@@ -928,6 +933,7 @@ export function BillingPage({
       ]);
       setSelectedCustomerAccountId(savedAccount.id);
       setCustomerForm(mapCustomerAccountToForm(savedAccount));
+      setGeneratedPassword(savedAccount.generatedPassword ?? null);
       setCustomerMessage(t.billing.customerAccountSaved);
     } catch {
       setCustomerMessage(t.billing.customerAccountSaveFailed);
@@ -1166,8 +1172,13 @@ export function BillingPage({
 
   const billingTabs: Array<DashboardTabItem<BillingTab>> = [
     { id: 'catalog', label: t.tabs.billingCatalog, meta: t.billing.packagesLoaded(format.integer(packages.length)) },
-    { id: 'customers', label: t.tabs.billingCustomers, meta: t.billing.accountsLoaded(format.integer(accounts.length)) },
-    { id: 'panelImport', label: t.tabs.billingPanelImport, meta: t.billing.currentPanelReadOnly },
+    // Admins manage customers on the dedicated Customers page; resellers (no
+    // Customers sidebar item) still manage them here.
+    ...(isResellerSession
+      ? [{ id: 'customers' as BillingTab, label: t.tabs.billingCustomers, meta: t.billing.accountsLoaded(format.integer(accounts.length)) }]
+      : []),
+    // Customer config import (VLESS/panel) lives with customer management, not
+    // billing — removed from the billing tabs. (Section code kept but unreachable.)
     { id: 'telegram', label: t.tabs.billingTelegram, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
     { id: 'orders', label: t.tabs.billingOrders, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
   ];
@@ -1286,6 +1297,7 @@ export function BillingPage({
           customerForm={customerForm}
           customerMessage={customerMessage}
           format={format}
+          generatedPassword={generatedPassword}
           isSavingCustomer={isSavingCustomer}
           onFormChange={setCustomerForm}
           onSaveCustomerAccount={handleSaveCustomerAccount}
@@ -1630,6 +1642,7 @@ function CustomerAccountEditorPanel({
   customerForm,
   customerMessage,
   format,
+  generatedPassword,
   isSavingCustomer,
   onFormChange,
   onSaveCustomerAccount,
@@ -1643,6 +1656,7 @@ function CustomerAccountEditorPanel({
   customerForm: CustomerAccountFormState;
   customerMessage: string | null;
   format: DashboardFormatters;
+  generatedPassword: string | null;
   isSavingCustomer: boolean;
   onFormChange: (form: CustomerAccountFormState) => void;
   onSaveCustomerAccount: (event: FormEvent<HTMLFormElement>) => void;
@@ -1706,6 +1720,12 @@ function CustomerAccountEditorPanel({
           />
           <SettingsInput
             disabled={!canManageBilling}
+            label={t.billing.loginEmail}
+            onChange={(loginEmail) => updateForm({ loginEmail })}
+            value={customerForm.loginEmail}
+          />
+          <SettingsInput
+            disabled={!canManageBilling}
             inputMode="numeric"
             label={t.billing.accountQuotaGb}
             onChange={(quotaLimitGb) => updateForm({ quotaLimitGb })}
@@ -1757,6 +1777,14 @@ function CustomerAccountEditorPanel({
           onChange={(notes) => updateForm({ notes })}
           value={customerForm.notes}
         />
+
+        {generatedPassword ? (
+          <div className="rounded-md border border-afro-teal bg-[#eef7f6] p-3">
+            <div className="text-[13px] font-bold text-afro-teal">{t.billing.passwordOnce}</div>
+            <code className="mt-1 block break-all font-mono text-sm font-bold text-afro-ink">{generatedPassword}</code>
+            <div className="mt-1 text-[12px] text-afro-muted">{t.billing.passwordOnceHint}</div>
+          </div>
+        ) : null}
 
         <div className="grid gap-2 sm:grid-cols-3">
           <MetricPill
@@ -2376,6 +2404,18 @@ function CustomerAccountsPanel({
           <span className="text-[12px] text-afro-muted">{format.time(new Date(account.updatedAt), false)}</span>
         </>
       ),
+    },
+    {
+      key: 'seller',
+      header: t.billing.seller,
+      render: (account) =>
+        account.resellerDisplayName ? (
+          <span className="inline-flex items-center rounded-md bg-[#eef2ff] px-2 py-0.5 text-[12px] font-bold text-[#4f46e5]">
+            {account.resellerDisplayName}
+          </span>
+        ) : (
+          <span className="text-[12px] text-afro-muted">{t.billing.directSale}</span>
+        ),
     },
     {
       key: 'clients',

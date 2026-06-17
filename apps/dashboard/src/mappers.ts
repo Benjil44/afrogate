@@ -196,9 +196,10 @@ export function createSummary(
   alerts: AlertRowData[],
   t: DashboardStrings,
   format: DashboardFormatters,
+  activeUsersOverride?: number | null,
 ): MetricCardData[] {
   const criticalAlerts = alerts.filter((alert) => !alert.isPlaceholder && alert.severity === 'critical').length;
-  const activeUsers = countActiveUsers(servers);
+  const activeUsers = activeUsersOverride ?? countActiveUsers(servers);
 
   return [
     { label: t.summary.activeUsers, value: format.integer(activeUsers), tone: 'neutral' },

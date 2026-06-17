@@ -11,24 +11,39 @@ export function SystemResourceHeader({
   servers,
   t,
   trafficTotals,
+  overrideCpuPercent,
+  overrideRamPercent,
+  overrideStorageFreePercent,
+  downloadTotal,
+  uploadTotal,
 }: {
   format: DashboardFormatters;
   servers: ServerRowData[];
   t: DashboardStrings;
   trafficTotals: TrafficTotals;
+  // Single-box overrides (the box reports itself; no agent fleet). Used when set.
+  overrideCpuPercent?: number | null;
+  overrideRamPercent?: number | null;
+  overrideStorageFreePercent?: number | null;
+  // When provided, the Download/Upload cards show cumulative totals (vs the
+  // live "…now" rate cards), so the two aren't duplicates.
+  downloadTotal?: number | null;
+  uploadTotal?: number | null;
 }) {
-  const cpuAverage = averagePercent(servers.map((server) => server.cpu));
-  const ramAverage = averagePercent(servers.map((server) => server.ram));
+  const cpuAverage = overrideCpuPercent ?? averagePercent(servers.map((server) => server.cpu));
+  const ramAverage = overrideRamPercent ?? averagePercent(servers.map((server) => server.ram));
   const storages = servers.flatMap((server) =>
     server.storages.map((storage) => ({
       ...storage,
       serverName: server.name,
     })),
   );
-  const lowestStorage = storages.reduce<number | null>((lowest, storage) => {
-    if (typeof storage.freePercent !== 'number') return lowest;
-    return lowest === null ? storage.freePercent : Math.min(lowest, storage.freePercent);
-  }, null);
+  const lowestStorage =
+    overrideStorageFreePercent ??
+    storages.reduce<number | null>((lowest, storage) => {
+      if (typeof storage.freePercent !== 'number') return lowest;
+      return lowest === null ? storage.freePercent : Math.min(lowest, storage.freePercent);
+    }, null);
 
   return (
     <section className="mt-2.5" aria-label={t.aria.systemResources}>
@@ -36,8 +51,18 @@ export function SystemResourceHeader({
         <ResourceStat icon={Cpu} label={t.resources.cpuAverage} tone={getUsageTone(cpuAverage)} value={format.percent(cpuAverage)} />
         <ResourceStat icon={MemoryStick} label={t.resources.ramAverage} tone={getUsageTone(ramAverage)} value={format.percent(ramAverage)} />
         <ResourceStat icon={HardDrive} label={t.resources.lowestStorage} tone={getStorageTone(lowestStorage)} value={format.percent(lowestStorage)} />
-        <ResourceStat icon={Download} label={t.resources.download} tone="neutral" value={format.bytesPerSecond(trafficTotals.downloadBps)} />
-        <ResourceStat icon={Upload} label={t.resources.upload} tone="neutral" value={format.bytesPerSecond(trafficTotals.uploadBps)} />
+        <ResourceStat
+          icon={Download}
+          label={t.resources.download}
+          tone="neutral"
+          value={downloadTotal != null ? format.bytes(downloadTotal) : format.bytesPerSecond(trafficTotals.downloadBps)}
+        />
+        <ResourceStat
+          icon={Upload}
+          label={t.resources.upload}
+          tone="neutral"
+          value={uploadTotal != null ? format.bytes(uploadTotal) : format.bytesPerSecond(trafficTotals.uploadBps)}
+        />
       </div>
 
       <div className="mt-2 overflow-x-auto rounded-md border border-afro-line bg-afro-panel">
@@ -102,4 +127,4 @@ function ResourceStat({
       <strong className="min-w-0 truncate text-[15px] leading-tight sm:text-[17px]" title={value}>{value}</strong>
     </div>
   );
-}
+}

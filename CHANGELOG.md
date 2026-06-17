@@ -1,5 +1,137 @@
 # Changelog
 
+## 0.114.58 - 2026-06-15
+
+- **WireGuard QR code.** Show WireGuard config now also renders a **scannable QR** of the `.conf` (alongside copy + download) — users add the tunnel in the official WireGuard app via "Scan from QR code". The endpoint returns an SVG QR generated server-side (`qrcode`); the dashboard renders it inline.
+
+## 0.114.57 - 2026-06-15
+
+- **Delete configs from the dashboard.** Each config row in Customers → Configs now has a delete (trash) button. New `DELETE /admin/client-configs/:id`: for WireGuard it marks the peer absent + triggers the reconciler, then deletes (the `wireguard_peers` row cascades); the reconciler gained an **orphan sweep** that removes managed-range (`10.8.0.>=START`) `wg0` peers no longer in the DB, so deleted peers actually disconnect (manual/reserved peers below the range are untouched).
+- **Fix:** WireGuard config rows no longer show an (irrelevant) VLESS entry link — the entry-link is only fetched for VLESS configs now, so WireGuard rows correctly show **Show WireGuard config** (.conf + copy + download).
+
+## 0.114.56 - 2026-06-15
+
+- **Harden WireGuard infra into the deploy.** `update-afrows.sh` now idempotently (re)installs the WG reconciler script, its systemd service + timer, and the scoped sudoers rule from the repo on every deploy (validated `visudo -cf` before installing) — so a rebuilt/fresh server reproduces it automatically, and it warns if `AFROWS_WG_*` env is missing. Added `scripts/afrows-wg-bootstrap.sh` — a one-time, idempotent fresh-server bootstrap (installs wireguard-tools, server keys, `wg0` with TPROXY egress baked into `wg0.conf` PostUp so it survives reboot, `ip_forward`, and the `AFROWS_WG_*` delivery env).
+
+## 0.114.55 - 2026-06-15
+
+- **Dashboard overview counts WireGuard users.** The Active Users metric now includes active WireGuard peers (kernel `wg0` isn't in xray stats): a peer with a handshake in the last ~3 min counts as an active user, keyed by account so a customer isn't double-counted across peers. (WireGuard *traffic* was already included in Download/Upload via the `tproxy-in` inbound.) `OperationsOverviewService` now reads `wireguard_peers` from the DB.
+
+## 0.114.54 - 2026-06-15
+
+- **WireGuard config delivery in the dashboard**: in Customers → Configs, each WireGuard config now has a **Show WireGuard config** action that renders its wg-quick `.conf` (provisioning the `wg0` peer on first use), with **Copy** + **Download .conf** — so you can hand a working config to users on the official WireGuard app / desktop / any device (not only the Afrows app). New admin endpoint `GET /admin/client-configs/:id/wireguard-config`. (Scan-QR is a planned follow-up — the `.conf` file imports directly into the WireGuard app today.)
+
+## 0.114.53 - 2026-06-15
+
+- **Fix: account `used_bytes` now reflects WireGuard usage** (so the dashboard Used column, per-protocol chips, and the mobile app's "GB remaining" are correct). `WireguardMeteringService` now recomputes each affected account's `used_bytes = SUM(its client_configs.used_bytes)` after metering, instead of an incremental add that had drifted (WG history sat in the config but never reached the account — e.g. Ben showed 13 KB instead of 460 MB). One-time reconcile applied to existing accounts. This also feeds quota enforcement correctly.
+
+## 0.114.52 - 2026-06-15
+
+- **Per-customer WireGuard quota enforcement.** New `WireguardMeteringService` (backend) meters each peer's usage as DELTAS (reset-safe) from the absolute counters the reconciler writes, rolling them into `client_configs` + `customer_accounts.used_bytes` (same model as VLESS) — so WireGuard now counts against the account quota. When an account goes over quota it flips its peers to `desired_state='absent'` (the root reconciler removes them from `wg0`, disconnecting the user); when back under quota (top-up/reset) + active, peers are re-armed automatically. Migration 0034 adds `wireguard_peers.metered_{rx,tx}_bytes` (seeded to current so history isn't retro-billed). The reconciler no longer sets `used_bytes` (the backend owns it now). Env: `AFROWS_WG_METERING_ENABLED` / `AFROWS_WG_METERING_INTERVAL_MS`.
+
+## 0.114.51 - 2026-06-15
+
+- **Fix: Save now applies a typed password.** In Customers → Edit, typing a password in the box and clicking the main **Save** previously only saved account fields and ignored the password (you had to use the separate "Set password" button). Save now also sets the password when the box is filled (then shows it once). Removes the confusing two-button behavior.
+
+## 0.114.50 - 2026-06-15
+
+- **New app icon**: branded Afrows launcher icon (teal gradient shield + upward arrow = secure + fast), generated via `flutter_launcher_icons` (legacy + adaptive). Source art under `apps/native-client/assets/icon/`.
+- **App up/down — server-only**: removed the on-device `/proc/net/dev` read entirely (sandboxed/unreliable on MIUI and was conflicting). The up/down cards are now driven solely by the server-metered `/client/wireguard-usage` poll (cumulative totals + speed), and `_onStatus` no longer overwrites them with the plugin's always-0 values. Added a Diag log line (`wg-usage: down=… up=…`) so the values are visible in the in-app Diagnostics screen. App `2.2.4`.
+
+## 0.114.49 - 2026-06-15
+
+- **App up/down display fix**: the on-device `/proc/net/dev` read is sandboxed/unreliable on MIUI and was wrongly disabling the working server fallback (cards stuck at 0). Now the on-device path only takes over once it observes **real movement**; otherwise the app shows the **server-metered** peer usage as **cumulative totals** (always real/non-zero) + speed from the poll delta. App `2.2.3`.
+
+## 0.114.48 - 2026-06-15
+
+- **Custom or auto-generated passwords**: when creating a customer (Add dialog) or in Edit, you can now **type a custom login password** or leave it blank to auto-generate; the resulting password is shown once to copy and hand to the user. Backend `createCustomerAccount` accepts an optional `password`, and `POST /customer-accounts/:id/reset-password` accepts an optional `{ password }` (min 6 chars) — both fall back to a generated one.
+- **Billing cleanup**: removed the **Panel import (VLESS)** tab from the Billing page — customer config import belongs with customer management, not billing. (Customer account + password management for admins is already on the dedicated Customers page.)
+
+## 0.114.47 - 2026-06-15
+
+- **Customer app-login password (set/hand-off)**: the Edit customer dialog now has a **Reset password** action that generates a new login password and shows it **once** to copy and give the user for the mobile app. Existing passwords can't be shown (stored hashed) — this resets to a known value. Wires the dashboard to the existing `POST /admin/customer-accounts/:id/reset-password`. EN/FA strings added.
+
+## 0.114.46 - 2026-06-15
+
+- **App real-time up/down (NPV-style)**: the Download/Upload cards now read the VPN `tun` interface byte counters from `/proc/net/dev` on-device every second, showing live speed + per-session totals with no server round-trip (download = tun receive, upload = tun transmit). The server `/client/wireguard-usage` poll stays as a fallback if `/proc/net/dev` is unreadable. App `2.2.2` (pubspec `2.2.2+11`).
+
+## 0.114.45 - 2026-06-15
+
+- **App shows real WireGuard up/down** (was stuck at 0 B/s — the `wireguard_flutter` plugin reports no byte counters). New `GET /client/wireguard-usage` returns the account peer's server-metered `rxBytes`/`txBytes`/`lastHandshakeAt`; the app polls it every 5 s while connected and shows per-session download/upload totals + live speed (rx = upload, tx = download). The reconciler now meters every 10 s (was 30 s) so the numbers move. App `2.2.1`.
+
+## 0.114.44 - 2026-06-15
+
+- **WireGuard MTU fix** (the app "connects but websites hang" bug): the backend-rendered `.conf` now sets `MTU = 1280` (env `AFROWS_WG_MTU`, default 1280). The wg→xray→Germany egress is a stacked tunnel, so the default 1420 MTU silently drops large TLS packets while handshake/small requests pass — the same reason the MikroTik gateway needed MSS 1240 on this server. The official WireGuard app auto-picked a safe MTU; `wireguard_flutter` didn't, so the Afrows app needed it explicit.
+- Docs: added `docs/germany-exit-structure.md` documenting the foreign exit box (PasarGuard panel + hexogate stack + WireGuard relay tunnels) and the proven reachability constraints (Iran blocks the Germany IP directly; egress must front through a reachable intermediary). Egress-redesign work is parked.
+
+## 0.114.43 - 2026-06-15
+
+- **Instant WireGuard provisioning** (removes first-connect lag): when the backend provisions a peer (on app login or WG config creation) it now triggers the root reconciler immediately via a scoped `sudoers` rule (`afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-wg-reconcile.service`) instead of waiting up to ~30s for the timer — so the app handshakes on first connect. The systemd timer remains the fallback. Sudoers file added at `scripts/systemd/afrows-wg-reconcile.sudoers`.
+
+## 0.114.42 - 2026-06-15
+
+- **Customers: per-protocol usage + protocol management.** The Protocols column now shows each protocol's usage (e.g. `VLESS 0.9 GB` / `WIREGUARD 1.2 GB`) — the admin customer-list query returns per-protocol `usedBytes` (`AdminCustomerAccountSummary.protocols` is now `{protocol, usedBytes}[]`). The **Edit customer** dialog now lists the customer's protocols with usage and adds missing ones (VLESS / WireGuard) in place, so protocols are managed where you'd expect (not only in the Configs panel).
+- **WireGuard configs provision a peer on creation.** Creating a `wireguard` client config (dashboard or auto on app login) now eagerly provisions its `wg0` peer (`provisionWireguardPeerForConfig`), so the app and dashboard share one peer and the `.conf` is ready immediately. Fixed account-scoped provisioning to use a dedicated `App (WireGuard)` config instead of accidentally reusing the operator's MikroTik gateway config.
+- **L2TP deferred**: hidden from the Add/Edit/Configs UI until its server backend lands. Full **Phase 4 (L2TP/IPsec)** implementation checklist added to `docs/superpowers/plans/2026-06-14-mobile-wireguard-pivot.md`.
+
+## 0.114.41 - 2026-06-15
+
+- **Backend WireGuard delivery**: logged-in accounts now receive a ready-to-use kernel-WireGuard `.conf` from `GET /client/subscription` (new native `afrows-wg` config link, listed first). Because a session is pinned to one client config but WireGuard is per *account*, delivery is account-scoped: `buildNativeWireguardConfigLink` resolves the account, ensures it has a `wireguard` client config + a provisioned `wg0` peer (generates an X25519 keypair in-process, allocates the next `10.8.0.x` address), stores the private key encrypted (SecretVault), and renders the `.conf`. New `wireguard_peers` table (migration 0033) is the desired-state + metering store. The mobile app now prefers a rendered WireGuard `configText` over a `uri`, so account login auto-connects over WireGuard (no pasting). New WireGuard UI: ticking uptime, an honest "speed metered on server" caption, and a "Use my own config" label; app version `2.2.0`.
+- **Root reconciler** (`scripts/afrows-wg-reconcile.sh` + systemd timer): the backend stays unprivileged; this root timer applies desired `wireguard_peers` to `wg0` (`wg set`) and writes live usage back (`wg show … dump` → `rx/tx/handshake` → `client_configs.used_bytes`). DB is the source of truth, so peers survive reboot; the statically-configured MikroTik gateway peer is left untouched. Requires `AFROWS_WG_SERVER_PUBLIC_KEY` + `AFROWS_WG_ENDPOINT` env (plus optional `AFROWS_WG_DNS/SUBNET/INTERFACE/ADDRESS_START/KEEPALIVE/ALLOWED_IPS`).
+
+## 0.114.40 - 2026-06-15
+
+- **Customers page** now shows a **Protocols** column (chips like `vless` / `wireguard`) per customer, so each customer's protocols are visible at a glance instead of only inside the Configs drawer. The admin customer-list query now returns `protocols[]` (distinct `client_configs.protocol` per account; new field on `AdminCustomerAccountSummary`). EN/FA strings added. Backfilled the existing WireGuard peers into the DB so they appear in Customers: the **MikroTik home-router gateway** (`wg-in`, xray inbound) and the **mobile/kernel `wg0`** peer, both attached to the **Ben** account as `wireguard` configs (per-peer WG metering for the xray inbound is still aggregate-only; the kernel `wg0` peer can be metered via `wg show`).
+- **Mobile app**: swapped the in-app VPN engine from xray-core (`flutter_v2ray`) to **native WireGuard** (`wireguard_flutter`, the official `com.wireguard.android` GoBackend) — `flutter_v2ray` never forwarded reliably on the target device. New `wireguard_vpn.dart` engine bridge (mirrors the prior `start/stop/status/isRunning` interface) + a wg-quick `.conf` parser; `connect_screen` now consumes WireGuard and its config editor accepts a `.conf` instead of a `vless://` link. The server side runs kernel WireGuard (`wg0`) → TPROXY → xray → Germany egress (proven: per-peer metering + Germany exit). Account-mode WG config delivery from the backend is the next step (manual/BYO paste works today).
+
+## 0.114.39 - 2026-06-14
+
+- Dashboard overview now aggregates inbound traffic across **all xray instances** (the VLESS `afrows-xray` api + the WireGuard `afrows-wg` api `AFROWS_WG_API_SERVER`), so WireGuard traffic shows in Download/Upload instead of reading 0. (Per-customer WG metering still requires the planned kernel-WireGuard switch — xray's WG inbound only exposes aggregate.)
+
+## 0.114.38 - 2026-06-14
+
+- **Active users** now counts anyone *using* a protocol — the union of open connections (`statsgetallonlineusers`) and users with traffic in the current window (`user>>>` counters) — so a user shows as active as soon as bytes flow, not only when online-IP tracking registers. **Customers page** gained protocol checkboxes on Add (auto-creates a config per selected protocol; VLESS works today, WG/L2TP marked pending until their backends land) and a protocol picker + per-protocol display in the Configs panel. Dev tooling: vite dev-proxy (`VITE_API_PROXY_TARGET`) to point the local UI at a remote backend, and a `SHOW_DEMO`/`VITE_DEMO_FALLBACK` flag to disable demo placeholders in dev (both dev-only; production unaffected). Added the mobile WireGuard pivot plan under `docs/`.
+
+## 0.114.37 - 2026-06-14
+
+- Inline **VLESS config creation** on the Customers page: each customer row has a **Configs** action that opens a panel listing the customer's client configs (label, protocol, status, usage) with their **VLESS entry link** shown and one-click **Copy link**, plus a **New VLESS config** button that creates a config (auto-provisioned into the native `afrows-in` inbound via its `entry_uuid`) — no more hopping to another tab. New admin endpoint `GET /api/admin/client-configs/:id/entry-link` (builds the afrows-in VLESS URI from the config's entry_uuid via `buildAfrowsEntryUri`), and dashboard API helpers `createAdminClientConfig` + `fetchAdminClientConfigEntryLink`. EN/FA strings added.
+
+## 0.114.36 - 2026-06-14
+
+- Customer management consolidated onto the **Customers** page (out of Billing): an **Add customer** button opens an inline create form above the table, and each row has an **Edit** action (name, login email, telegram, account quota GB, per-client cap, quota scope, status, notes). A new **Login email** column is shown. The duplicate **Customers tab is removed from Billing for admins** (resellers, who have no Customers sidebar item, keep it there). **Bug fix:** customer `login_email` was saved but never returned by the accounts list API, so it looked unsaved and couldn't be displayed/edited — the list now selects + maps `loginEmail`/`hasPassword`, and `loginEmail`/`password` were added to the create/update request types. (Next: inline VLESS-config creation per customer.)
+
+## 0.114.35 - 2026-06-13
+
+- Added a **Connections** view (new sidebar item) — a unified table of every live client connecting through the server, regardless of protocol: VLESS customer devices (joined to their customer account + cumulative usage + online status from xray) and WireGuard peers (e.g. the MikroTik gateway, shown as infrastructure with tunnel traffic). Each row shows protocol/transport, inbound, owner (customer or "Infrastructure"), online, and used GB; searchable. New box-coupled `ConnectionsService` reads the afrows-xray config inbounds, maps client emails (`cc_<id>@afrows`) to `client_configs`/`customer_accounts`, and pulls online users + per-inbound traffic from the xray stats API. New `GET /api/admin/connections`. This is where the WireGuard tunnel and the VLESS test user now appear side by side (Customers stays billing-only). EN/FA strings added.
+
+## 0.114.34 - 2026-06-13
+
+- Dashboard polish (single-box): the top **Download/Upload** cards now show **cumulative totals** (distinct from the live **Download now/Upload now** rate cards) so they're no longer duplicates. The empty **Health timeline** ("0 monitored nodes") panel is hidden when there's no node history, with the remaining top panels reflowed to a 2-column layout. The empty **Server health** donut in Operational mix is dropped on single-box (leaving Alert severity + Route quality). Frontend only.
+
+## 0.114.33 - 2026-06-13
+
+- Information-architecture phase 3: **Dashboard rewired to the single-box reality** so the empty `--`/0 cards now show real data. New box-coupled `OperationsOverviewService` + `GET /api/admin/operations-overview` returns the box's own **CPU / RAM / free-disk** (read via `os`/`statfs`, no agent fleet needed) plus **active users** (xray online users) and **download/upload** (totals + live rate, from xray inbound stats with rolling-sample rate). The dashboard's top resource cards, the Active-users / Download-now / Upload-now summary cards, and the Capacity panel now read from this overview (falling back to the fleet path when present). The always-empty **Servers** and **Tunnels** panels are now hidden when no server nodes are registered (single-box), letting Alerts span full width. Degrades gracefully in dev (`available:false`). Known follow-ups: the "Health timeline / monitored nodes" chart and the "Server health" donut still reflect the fleet model.
+
+## 0.114.32 - 2026-06-13
+
+- Information-architecture phase 2: added an **Inbounds** page (sidebar item next to Outbounds) that surfaces the server's real entry listeners — the xray inbounds users connect to (e.g. `afrows-in` VLESS+WS+TLS:443, `afrows-in-tcp` telewebion:8080). New box-coupled `InboundsService` reads the afrows-xray config file for each inbound's protocol/transport/port/camouflage-host/SNI/path + configured user count, enriched with per-inbound total traffic from the xray stats API (`inbound>>>…` pattern); returns `available:false` gracefully in dev. New admin endpoint `GET /api/admin/inbounds`. Frontend page shows protocol/transport, entry `listen:port`, host/SNI, users, and total down/up. EN/FA strings added. (Next: phase 3 — single-box Dashboard rewire reusing this xray-stats plumbing.)
+
+## 0.114.31 - 2026-06-13
+
+- Information-architecture phase 1: promoted **Customers** to its own top-level sidebar item (next to Users) with a dedicated page — searchable list of subscriber accounts showing status, used/quota/remaining GB, active/total clients, and seller. (Full create/edit still lives in Billing; this is the prominent list view.) Clarifies the model: the people you sell to are **Customers**, distinct from staff **Users**. Frontend only. EN/FA strings added. (Next phases: an **Inbounds** page for entry listeners, and a single-box **Dashboard** rewire.)
+
+## 0.114.30 - 2026-06-13
+
+- Outbounds page: **sortable columns** + **collapse/expand all**. Clicking the Name/Status/Ping/Jitter/Download/Upload headers sorts the table (with an ↑/↓ indicator); untested rows always sort last, and sorting applies within each subscription group as well as standalone outbounds — so after running tests the fastest/healthiest servers float to the top. Added a "Collapse all / Expand all" toolbar button for subscription groups (each group also keeps its own chevron toggle). Frontend only. EN/FA strings added.
+
+## 0.114.29 - 2026-06-13
+
+- Added **outbound subscriptions**: import a subscription URL once and it expands into many configs shown as nested rows under a collapsible group on the Outbounds page. New `outbound_subscriptions` table + `subscription_id`/`subscription_key` on `outbounds` (migration 0032, additive/idempotent); each fetched VLESS link becomes a child outbound so it reuses test/health/enable/edit/routing. Backend fetches the URL server-side (v2rayNG UA), parses `profile-title`/`profile-update-interval`/`subscription-userinfo` (quota + expiry) headers and the share links (non-VLESS like `ss://` are skipped), and upserts children by a stable per-config key on refresh (preserving the operator's enable/disable choices, removing configs that disappear). New admin endpoints (list/add/refresh/delete) and a background service that auto-refreshes due subscriptions hourly (honoring the 12h interval). Dashboard: subscription group header (title, config count, used/total quota, expiry, Refresh + Delete) with nested config rows; "Add" gains a Subscription option. EN/FA strings added.
+
+## 0.114.28 - 2026-06-13
+
+- Added an **Edit** action to the Outbounds page so admins can change an outbound in place instead of deleting and re-adding it. For VLESS outbounds the editor exposes the visible connection fields inline (address, port, UUID, network, header type, host/camouflage, security, SNI, path, encryption, name) pre-filled from the current config, preserving untouched keys (flow, pbk/sid, fingerprint) on save; a "replace via link" box also accepts a fresh `vless://` link to swap the whole config. The backend `updateOutbound` now parses `config.importUrl` the same way create does (shared `applyVlessImportConfig` helper). Secrets stay protected: WireGuard/L2TP secret fields remain redacted and are only changeable via re-import. EN/FA strings added.
+
 ## 0.114.27 - 2026-06-04
 
 - Added automatic in-place version refresh so open dashboards pick up a new deploy without a manual page reload. The backend `/api/health` now reports the running monorepo `version` (resolved once at module load by walking up to the root `afrows` package.json). A new `VersionWatcher` component polls `/api/health` every 30s, and when the deployed version differs from the bundle it was built with, it shows a bottom banner (EN/FA) and auto-reloads after 4s — guarded by a `sessionStorage` key to prevent reload loops while versions converge.
