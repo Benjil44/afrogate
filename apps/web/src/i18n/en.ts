@@ -21,6 +21,7 @@ export const en = {
     ctaPrimary: 'Get started',
     ctaSecondary: 'Explore features',
     ctaAndroid: 'Download Android app',
+    scanToInstall: 'Scan to install on Android',
   },
   metrics: {
     uptime: 'Uptime',

@@ -23,6 +23,7 @@ export const fa: Dict = {
     ctaPrimary: 'شروع کنید',
     ctaSecondary: 'مشاهده امکانات',
     ctaAndroid: 'دانلود برنامه اندروید',
+    scanToInstall: 'برای نصب روی اندروید اسکن کنید',
   },
   metrics: {
     uptime: 'پایداری',
