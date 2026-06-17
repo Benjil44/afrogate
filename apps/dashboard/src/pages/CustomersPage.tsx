@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminCustomerAccountSummary } from '@afrows/shared';
+import type { AdminClientConfigSummary, AdminCustomerAccountSummary, EgressTierPrice } from '@afrows/shared';
 import {
   createAdminClientConfig,
   createAdminCustomerAccount,
@@ -9,6 +9,8 @@ import {
   deleteAdminClientConfig,
   fetchAdminCustomerAccounts,
   fetchAdminWireguardConfig,
+  fetchEgressTierPrices,
+  setEgressTierPrice,
   resetCustomerAccountPassword,
   updateAdminCustomerAccount,
 } from '../api/admin';
@@ -44,6 +46,30 @@ export function CustomersPage({
   const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // tier pricing (super-admin editable)
+  const [tierPrices, setTierPrices] = useState<EgressTierPrice[]>([]);
+  const [pricesBusy, setPricesBusy] = useState(false);
+  const priceFor = (tier: string) => tierPrices.find((p) => p.tier === tier)?.price ?? 0;
+  const setPriceFor = (tier: string, price: number) =>
+    setTierPrices((prev) => {
+      const next = prev.filter((p) => p.tier !== tier);
+      const cur = prev.find((p) => p.tier === tier);
+      return [...next, { tier, price, currency: cur?.currency ?? 'IRT' }].sort((a, b) => a.tier.localeCompare(b.tier));
+    });
+  const savePrices = async () => {
+    setPricesBusy(true);
+    setError(null);
+    try {
+      let latest = tierPrices;
+      for (const tier of ['normal', 'gaming']) latest = await setEgressTierPrice(sessionToken, tier, priceFor(tier), 'IRT');
+      setTierPrices(latest);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPricesBusy(false);
+    }
+  };
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [telegram, setTelegram] = useState('');
@@ -51,6 +77,7 @@ export function CustomersPage({
   const [perClientGb, setPerClientGb] = useState('');
   const [scope, setScope] = useState<Scope>('account_shared');
   const [status, setStatus] = useState<Status>('active');
+  const [egressTier, setEgressTier] = useState<'normal' | 'gaming'>('normal');
   const [notes, setNotes] = useState('');
   // protocols to auto-create when adding a customer (L2TP deferred until its server lands)
   const [protoVless, setProtoVless] = useState(true);
@@ -92,6 +119,7 @@ export function CustomersPage({
       if (active) timer = window.setTimeout(run, POLL_MS);
     };
     void run();
+    void fetchEgressTierPrices(sessionToken).then((p) => active && setTierPrices(p)).catch(() => undefined);
     return () => {
       active = false;
       if (timer) window.clearTimeout(timer);
@@ -135,6 +163,7 @@ export function CustomersPage({
     setPerClientGb(a.perClientLimitBytes != null ? String(Math.round((a.perClientLimitBytes / GIB) * 100) / 100) : '');
     setScope((a.quotaScope as Scope) || 'account_shared');
     setStatus((a.status as Status) || 'active');
+    setEgressTier((a.egressTier as 'normal' | 'gaming') === 'gaming' ? 'gaming' : 'normal');
     setNotes(a.notes ?? '');
     setEditorOpen(true);
   };
@@ -215,6 +244,7 @@ export function CustomersPage({
       perClientLimitBytes: gbToBytes(perClientGb),
       quotaScope: scope,
       status,
+      egressTier,
       notes: notes.trim() || null,
     };
     try {
@@ -466,6 +496,37 @@ export function CustomersPage({
 
   return (
     <section className="grid gap-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-afro-line bg-white px-4 py-3">
+        <span className="text-[13px] font-bold text-afro-muted">{s.tierPricing}:</span>
+        <label className="inline-flex items-center gap-1.5 text-sm">
+          {s.tierNormal}
+          <input
+            type="number"
+            min={0}
+            value={priceFor('normal')}
+            onChange={(e) => setPriceFor('normal', Number(e.target.value) || 0)}
+            className="w-28 rounded-md border border-afro-line px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="inline-flex items-center gap-1.5 text-sm">
+          {s.tierGaming}
+          <input
+            type="number"
+            min={0}
+            value={priceFor('gaming')}
+            onChange={(e) => setPriceFor('gaming', Number(e.target.value) || 0)}
+            className="w-28 rounded-md border border-afro-line px-2 py-1 text-sm"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={pricesBusy}
+          onClick={savePrices}
+          className="inline-flex min-h-9 items-center gap-2 rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white hover:bg-[#1f3138] disabled:opacity-50"
+        >
+          {s.save}
+        </button>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
           <Search size={15} className="text-afro-muted" />
@@ -531,6 +592,13 @@ export function CustomersPage({
                 <option value="active">active</option>
                 <option value="suspended">suspended</option>
                 <option value="disabled">disabled</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldEgressTier}</span>
+              <select value={egressTier} onChange={(e) => setEgressTier(e.target.value as 'normal' | 'gaming')} className={inputClass}>
+                <option value="normal">{s.tierNormal}</option>
+                <option value="gaming">{s.tierGaming}</option>
               </select>
             </label>
             <label className="grid gap-1.5 md:col-span-2">

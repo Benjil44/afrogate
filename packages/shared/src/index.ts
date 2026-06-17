@@ -796,6 +796,7 @@ export interface AdminCustomerAccountSummary {
   notes?: string | null;
   loginEmail?: string | null;
   hasPassword?: boolean;
+  egressTier?: EgressTier | string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1141,6 +1142,7 @@ export interface UpdateCustomerAccountRequest {
   notes?: string | null;
   loginEmail?: string | null;
   password?: string | null;
+  egressTier?: EgressTier;
 }
 
 export interface CreateClientConfigRequest {
@@ -3769,6 +3771,24 @@ export const EGRESS_MODES: readonly EgressMode[] = ['smart', 'full'] as const;
 
 export interface ClientEgressModeResponse {
   mode: EgressMode;
+}
+
+// Per-account egress tier (drives routing + pricing):
+//   normal = foreign egress via Germany/relay pool
+//   gaming = foreign egress via the village Starlink (low ping/jitter), own price
+export type EgressTier = 'normal' | 'gaming';
+
+export const EGRESS_TIERS: readonly EgressTier[] = ['normal', 'gaming'] as const;
+
+export interface EgressTierPrice {
+  tier: EgressTier | string;
+  price: number;
+  currency: string;
+  updatedAt?: string | null;
+}
+
+export interface AdminEgressTierPricesResponse {
+  prices: EgressTierPrice[];
 }
 
 export interface ClientSubscriptionSummary {
