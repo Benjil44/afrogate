@@ -1,6 +1,6 @@
 # Village Integration — Implemented Structure (as-built)
 
-> Living reference of what is actually configured on the **village MikroTik** and on **Afrois** for the village link. No secrets here (creds live only on-box / in the operator's records). Last updated: 2026-06-18.
+> Living reference of what is actually configured on the **village MikroTik** and on **Afrows** for the village link. No secrets here (creds live only on-box / in the operator's records). Last updated: 2026-06-18.
 
 ## 1. Hardware & WANs (village)
 
@@ -19,11 +19,12 @@
 The village is shared with friends who set up these WireGuard tunnels. **Never disable, edit, or reroute them** — only add scoped/additive config:
 `wg-germany`→162.19.253.235 (their main exit, 0.0.0.0/0), `wg-foreign-2`→85.234.69.185 (Frankfurt), `wg-foreign-hz`→91.107.172.47 (Hetzner), `wg-iran`/`-2`/`-5`→Iran nodes.
 
-## 3. Afrois ↔ village tunnel (ours)
+## 3. Afrows ↔ village tunnel (ours)
 
-- **`wg-village`** on Afrois (`10.20.0.1`, ListenPort 51900) ↔ **`wg-afrows`** on village (`10.20.0.2`, MTU 1420). Village **initiates** (CGNAT) with persistent-keepalive ~25 s; self-heals on Mobinnet CGNAT re-NAT.
-- **Transport pinning:** `/ip route 94.74.145.199/32` on village — `via 192.168.8.1 (mobinnet) dist=1 active`, `via 192.168.9.1 (irancell-228) dist=2 backup`. (Loop-guard so the handshake never routes into a tunnel.)
-- Afrois `wg-village` peer `allowed-ips = 0.0.0.0/0`; village `wg-afrows` peer allows `10.20.0.1/32`.
+- **`wg-village`** on Afrows (`10.20.0.1`, ListenPort 51900) ↔ **`wg-afrows`** on village (`10.20.0.2`, MTU 1420). Village **initiates** (CGNAT) with persistent-keepalive ~25 s; self-heals on Mobinnet CGNAT re-NAT.
+- **Transport pinning (updated 2026-06-18):** `/ip route 94.74.145.199/32` on village — **`via 192.168.9.1` (Irancell-228) `dist=1` = PRIMARY**, **`via 192.168.8.1` (Mobinnet) `dist=2` = backup**. Switched to Irancell-228 because it has lower latency/jitter (46 ms vs 80 ms). (Loop-guard so the handshake never routes into a tunnel.)
+- **Auto-failback (netwatch):** village `/tool/netwatch` pings `8.8.4.4` (routed via Irancell-228 by a `/32` probe route) every 30 s; **down → sets the Irancell-228 route `distance=10`** (fails over to Mobinnet), **up → restores `distance=1`**. This catches *SIM-data death* (which plain route failover misses, since the CPE gateway stays reachable on a depleted SIM).
+- Afrows `wg-village` peer `allowed-ips = 0.0.0.0/0`; village `wg-afrows` peer allows `10.20.0.1/32`.
 
 ## 4. Egress paths from the tunnel
 
@@ -32,17 +33,18 @@ The village is shared with friends who set up these WireGuard tunnels. **Never d
 
 ## 5. CPE remote management (added 2026-06-18, additive/friend-safe)
 
-So the modems can be managed remotely from Afrois (mirrors the friends' existing "VPS→modem" rules):
-- **Afrois:** kernel routes `192.168.9.0/24` and `192.168.12.0/24` `dev wg-village`.
+So the modems can be managed remotely from Afrows (mirrors the friends' existing "VPS→modem" rules):
+- **Afrows:** kernel routes `192.168.9.0/24` and `192.168.12.0/24` `dev wg-village`.
 - **Village `/ip/firewall/filter` (forward):** accept `in=wg-afrows dst=192.168.9.1` and `dst=192.168.12.1` (comments `afrows->cpe2/cpe5 mgmt`).
 - **Village `/ip/firewall/nat` (srcnat):** masquerade `out=ether2 src=10.20.0.1 dst=192.168.9.1` and `out=ether5 src=10.20.0.1 dst=192.168.12.1` (comments `afrows->cpe2/cpe5 masq`). **The masquerade is the key piece** — without it the CPE replies to `10.20.0.1`, which it can't route.
-- Reach from Afrois: `http://192.168.9.1` (Huawei API, `/api/monitoring/*` readable without login; admin/admin rejected = newer SCRAM auth), `http://192.168.12.1` (307 UI).
+- Reach from Afrows: `http://192.168.9.1` (Huawei API, `/api/monitoring/*` readable without login; admin/admin rejected = newer SCRAM auth), `http://192.168.12.1` (307 UI).
 
 ## 6. Measured state (2026-06-18)
 
 - **All 3 modems pass data.** Verified per modem with a temporary `/32` route + ping (the RouterOS `/ping interface=etherX` test is unreliable for these CPEs — use a route).
 - **Transport latency to the village (RTT to `10.20.0.2`):** Mobinnet **80 ms / 21 ms jitter**; Irancell-228 **46 ms / 12 ms**; Irancell-227 **51 ms / 9 ms**. → **Irancell is better for ping/jitter; 228 best.**
 - Single-modem via-village throughput is LTE-class (~10–15 Mbps, varies); the Iran-ISP transport leg — not Starlink — is the bottleneck for the via-village path.
+- **Live transport = Irancell-228** (since 2026-06-18): endpoint `5.126.x`, RTT ~45 ms, with netwatch auto-failback to Mobinnet.
 
 ## 7. RouterOS REST gotchas (this box)
 
