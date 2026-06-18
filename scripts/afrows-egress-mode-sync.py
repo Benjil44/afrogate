@@ -127,10 +127,15 @@ def pool_alive():
     return False
 
 
-def decide_catchall():
-    """Choose the normal foreign catch-all outbound. 'proxy' when the relay pool
-    works, else 'via-village'. Requires 2 consecutive divergent readings before
-    flipping, to avoid restart flapping."""
+def decide_catchall(prefer_pool):
+    """Choose the normal foreign catch-all outbound.
+    Default (prefer_pool=False): always 'via-village' — the owned Germany/Starlink
+    system; the unstable friend relay pool is NOT used.
+    Legacy self-heal (prefer_pool=True, env AFROWS_FOREIGN_EGRESS=pool): 'proxy' when
+    the pool works, else 'via-village', with 2-read hysteresis."""
+    if not prefer_pool:
+        log("foreign-egress=owned -> catch-all=via-village (relay pool disabled)")
+        return "via-village"
     alive = pool_alive()
     want = "proxy" if alive else "via-village"
     try:
@@ -158,8 +163,10 @@ def decide_catchall():
 
 
 def client_inbound_tags(rules):
+    # The client catch-all is the rule with inboundTag whose outbound is the foreign
+    # egress (either the relay pool 'proxy' or the owned 'via-village').
     for r in rules:
-        if r.get("outboundTag") == "proxy" and r.get("inboundTag"):
+        if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village"):
             return list(r["inboundTag"])
     return None
 
@@ -223,7 +230,9 @@ def main():
     extra = [s.strip() for s in file_env("AFROWS_GAMING_EXTRA_SOURCES").split(",") if s.strip()]
     extra += [ip for ip in router_gaming_ips(url) if ip not in extra]  # router tunnel source IPs
     xray_users = xray_gaming_emails(url)  # afrows-xray gaming VLESS user emails
-    catch = decide_catchall()  # self-healing: proxy when pool alive, else via-village
+    # Foreign egress: 'village' (default) = owned Germany/Starlink only; 'pool' = legacy relay self-heal.
+    prefer_pool = file_env("AFROWS_FOREIGN_EGRESS", "village").lower() == "pool"
+    catch = decide_catchall(prefer_pool)
     changed = False
     for cfg_path, svc, use_db in TARGETS:
         if not os.path.exists(cfg_path):
