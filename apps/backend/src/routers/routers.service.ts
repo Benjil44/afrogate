@@ -180,7 +180,8 @@ export class RoutersService {
       `/ip/address/add address=${row.host}/${mask} interface=wg-afrows`,
       `/user/add name=${row.rest_user} password="${password}" group=full comment="Afrows panel"`,
       `/ip/service/set www disabled=no`,
-      `/ip/firewall/filter/add chain=input in-interface=wg-afrows action=accept comment="Afrows management"`,
+      `/interface/list/member/add list=LAN interface=wg-afrows`,
+      `/ip/firewall/filter/add chain=input in-interface=wg-afrows action=accept comment="Afrows management" place-before=0`,
       `:delay 2s`,
       `:put ("Afrows: send this MikroTik public key back to the panel -> " . [/interface/wireguard get [find name=wg-afrows] public-key])`,
     ].join('\n');
