@@ -291,7 +291,9 @@ export class RoutersService {
       const [resource, identity, ethernet, addresses, peers] = await Promise.all([
         this.client.call<Record<string, unknown>>(target, 'GET', '/system/resource'),
         this.client.call<Record<string, unknown>>(target, 'GET', '/system/identity').catch(() => ({}) as Record<string, unknown>),
-        this.client.call<Record<string, unknown>[]>(target, 'GET', '/interface/ethernet').catch(() => []),
+        this.client
+          .call<Record<string, unknown>[]>(target, 'GET', '/interface/ethernet?.proplist=name,running,comment')
+          .catch(() => [] as Record<string, unknown>[]),
         this.client.call<Record<string, unknown>[]>(target, 'GET', '/ip/address').catch(() => []),
         this.client.call<Record<string, unknown>[]>(target, 'GET', '/interface/wireguard/peers').catch(() => []),
       ]);
