@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import type {
+  AdminRouterConnectConfigResponse,
+  AdminRouterCredentialResponse,
   AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
@@ -64,5 +66,23 @@ export class RoutersController {
     @Body() payload: ReconnectModemDto,
   ): Promise<AdminRouterModemActionResponse> {
     return this.routersService.reconnectModem(id, payload.interface);
+  }
+
+  @Get('routers/:id/credential')
+  @Roles('admin')
+  credential(@Param('id') id: string): Promise<AdminRouterCredentialResponse> {
+    return this.routersService.revealCredential(id);
+  }
+
+  @Post('routers/:id/rotate-password')
+  @Roles('admin')
+  rotatePassword(@Param('id') id: string): Promise<AdminRouterCredentialResponse> {
+    return this.routersService.rotatePassword(id);
+  }
+
+  @Get('routers/:id/connect-config')
+  @Roles('admin')
+  connectConfig(@Param('id') id: string): Promise<AdminRouterConnectConfigResponse> {
+    return this.routersService.connectConfig(id);
   }
 }

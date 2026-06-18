@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink, Pencil, Plus, RefreshCw, Router as RouterIcon, Trash2, X } from 'lucide-react';
+import { ClipboardCopy, ExternalLink, Eye, KeyRound, Pencil, Plus, RefreshCw, Router as RouterIcon, Trash2, X } from 'lucide-react';
 import type {
   CreateMikroTikRouterRequest,
   MikroTikRouterKind,
@@ -10,12 +10,23 @@ import type { DashboardStrings } from '../i18n';
 import {
   createRouter,
   deleteRouter,
+  fetchRouterConnectConfig,
+  fetchRouterCredential,
   fetchRouterStatus,
   fetchRouters,
   reconnectRouterModem,
+  rotateRouterPassword,
   setRouterMode,
   updateRouter,
 } from '../api/admin';
+
+function clientStrongPassword(): string {
+  const bytes = new Uint8Array(40);
+  crypto.getRandomValues(bytes);
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/[^A-Za-z0-9]/g, '').slice(0, 28);
+}
 
 const POLL_MS = 20000;
 const KINDS: MikroTikRouterKind[] = ['village', 'home', 'other'];
@@ -194,6 +205,45 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     }
   };
 
+  const showPassword = async () => {
+    if (!editId) return;
+    try {
+      const res = await fetchRouterCredential(sessionToken, editId);
+      setDraft((d) => ({ ...d, password: res.password ?? '' }));
+      setNotice('Stored password revealed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reveal password');
+    }
+  };
+
+  const generatePassword = async () => {
+    if (!editId) {
+      setDraft((d) => ({ ...d, password: clientStrongPassword() }));
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await rotateRouterPassword(sessionToken, editId);
+      setDraft((d) => ({ ...d, password: res.password ?? '' }));
+      setNotice('New strong password generated and applied to the router');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not rotate password');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyConnectConfig = async () => {
+    if (!editId) return;
+    try {
+      const res = await fetchRouterConnectConfig(sessionToken, editId);
+      await navigator.clipboard.writeText(res.script);
+      setNotice('Connect config copied — paste it into the MikroTik terminal');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not build connect config');
+    }
+  };
+
   const reconnectModem = async (iface: string) => {
     if (!editId) return;
     setModemBusy((b) => ({ ...b, [iface]: true }));
@@ -313,7 +363,10 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           modemBusy={modemBusy}
           onChange={setDraft}
           onClose={() => setDialogOpen(false)}
+          onCopyConfig={() => void copyConnectConfig()}
+          onGeneratePassword={() => void generatePassword()}
           onReconnect={(iface) => void reconnectModem(iface)}
+          onShowPassword={() => void showPassword()}
           onSave={() => void save()}
         />
       ) : null}
@@ -348,7 +401,10 @@ function RouterDialog({
   modemBusy,
   onChange,
   onClose,
+  onCopyConfig,
+  onGeneratePassword,
   onReconnect,
+  onShowPassword,
   onSave,
 }: {
   draft: DraftForm;
@@ -358,12 +414,16 @@ function RouterDialog({
   modemBusy: Record<string, boolean>;
   onChange: (d: DraftForm) => void;
   onClose: () => void;
+  onCopyConfig: () => void;
+  onGeneratePassword: () => void;
   onReconnect: (iface: string) => void;
+  onShowPassword: () => void;
   onSave: () => void;
 }) {
   const set = (patch: Partial<DraftForm>) => onChange({ ...draft, ...patch });
   const field = 'min-h-9 w-full rounded-md border border-afro-line px-2 text-sm';
   const labelClass = 'mb-1 block text-xs font-bold text-afro-muted';
+  const [showPw, setShowPw] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
@@ -403,8 +463,15 @@ function RouterDialog({
             <input className={field} value={draft.restUser} onChange={(e) => set({ restUser: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>{editId ? 'Password (blank = keep)' : 'Password'}</label>
-            <input className={field} type="password" value={draft.password} onChange={(e) => set({ password: e.target.value })} />
+            <label className={labelClass}>Password</label>
+            <div className="flex items-center gap-1">
+              <input className={field} type={showPw ? 'text' : 'password'} placeholder={editId ? '(blank = keep)' : ''} value={draft.password} onChange={(e) => set({ password: e.target.value })} />
+              <button className={`${btnClass} min-h-9 px-2`} onClick={() => setShowPw((v) => !v)} type="button" title={showPw ? 'Hide' : 'Show typed'}><Eye size={14} /></button>
+              <button className={`${btnClass} min-h-9 px-2`} onClick={onGeneratePassword} type="button" title={editId ? 'Generate + apply a strong password to the router' : 'Generate a strong password'}><KeyRound size={14} /></button>
+            </div>
+            {editId ? (
+              <button className="mt-1 text-xs font-bold text-afro-blue hover:underline" onClick={onShowPassword} type="button">Reveal stored password</button>
+            ) : null}
           </div>
           <div>
             <label className={labelClass}>WebFig URL (Advanced button)</label>
@@ -422,6 +489,16 @@ function RouterDialog({
 
         {editId ? (
           <div className="mt-4 rounded-md border border-afro-line bg-afro-bg/40 p-3">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <button className={btnClass} onClick={onCopyConfig} type="button" title="Copy a RouterOS script to paste into the MikroTik terminal to connect it to Afrows">
+                <ClipboardCopy size={14} /> Copy connect config
+              </button>
+              {draft.webfigUrl ? (
+                <a className={btnClass} href={draft.webfigUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink size={14} /> Open WebFig (Advanced)
+                </a>
+              ) : null}
+            </div>
             <div className="mb-2 text-xs font-bold uppercase text-afro-muted">Live status</div>
             {!status ? (
               <div className="text-sm text-afro-muted">Loading status…</div>
@@ -473,11 +550,6 @@ function RouterDialog({
                 ) : null}
               </div>
             )}
-            {draft.webfigUrl ? (
-              <a className={`${btnClass} mt-3`} href={draft.webfigUrl} target="_blank" rel="noreferrer">
-                <ExternalLink size={14} /> Open WebFig (Advanced)
-              </a>
-            ) : null}
           </div>
         ) : null}
 
