@@ -5,6 +5,7 @@ import type {
   MikroTikRouterKind,
   MikroTikRouterStatus,
   MikroTikRouterSummary,
+  MikroTikWgUsage,
 } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
 import {
@@ -13,6 +14,7 @@ import {
   fetchRouterConnectConfig,
   fetchRouterCredential,
   fetchRouterStatus,
+  fetchRouterWgUsage,
   fetchRouters,
   reconnectRouterModem,
   rotateRouterPassword,
@@ -88,6 +90,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [saving, setSaving] = useState(false);
   const [statusFor, setStatusFor] = useState<string | null>(null);
   const [status, setStatus] = useState<MikroTikRouterStatus | null>(null);
+  const [usage, setUsage] = useState<MikroTikWgUsage[] | null>(null);
   const [modemBusy, setModemBusy] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
@@ -139,9 +142,14 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     async (id: string) => {
       setStatusFor(id);
       setStatus(null);
+      setUsage(null);
       try {
-        const res = await fetchRouterStatus(sessionToken, id);
-        setStatus(res.status);
+        const [s, u] = await Promise.all([
+          fetchRouterStatus(sessionToken, id),
+          fetchRouterWgUsage(sessionToken, id, 30).catch(() => ({ windowDays: 30, usage: [] })),
+        ]);
+        setStatus(s.status);
+        setUsage(u.usage);
       } catch {
         setStatus(null);
       }
@@ -360,6 +368,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           editId={editId}
           saving={saving}
           status={statusFor === editId ? status : null}
+          usage={statusFor === editId ? usage : null}
           modemBusy={modemBusy}
           onChange={setDraft}
           onClose={() => setDialogOpen(false)}
@@ -398,6 +407,7 @@ function RouterDialog({
   editId,
   saving,
   status,
+  usage,
   modemBusy,
   onChange,
   onClose,
@@ -411,6 +421,7 @@ function RouterDialog({
   editId: string | null;
   saving: boolean;
   status: MikroTikRouterStatus | null;
+  usage: MikroTikWgUsage[] | null;
   modemBusy: Record<string, boolean>;
   onChange: (d: DraftForm) => void;
   onClose: () => void;
@@ -547,6 +558,33 @@ function RouterDialog({
                       </div>
                     ))}
                   </div>
+                ) : null}
+                {usage && usage.length ? (
+                  <div>
+                    <div className="mb-1 text-xs font-bold text-afro-muted">WireGuard usage (last 30 days)</div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-afro-muted">
+                          <th className="py-1 pr-2">Tunnel</th>
+                          <th className="py-1 pr-2 text-right">↓ in</th>
+                          <th className="py-1 pr-2 text-right">↑ out</th>
+                          <th className="py-1 text-right">total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usage.map((u) => (
+                          <tr className="border-b border-afro-line/40" key={u.peerKey}>
+                            <td className="py-1 pr-2">{u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}{u.comment && u.iface ? ` (${u.comment})` : ''}</td>
+                            <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.rxBytes)}</td>
+                            <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.txBytes)}</td>
+                            <td className="py-1 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : usage ? (
+                  <div className="text-xs text-afro-muted">No usage samples yet — they accrue every ~15 min.</div>
                 ) : null}
               </div>
             )}

@@ -7,8 +7,10 @@ import type {
   AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
+  AdminRouterWgUsageResponse,
   AdminRoutersResponse,
   MikroTikMode,
+  MikroTikWgUsage,
   MikroTikRouterStatus,
   MikroTikRouterSummary,
   MikroTikWan,
@@ -215,6 +217,88 @@ export class RoutersService {
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : 'Reconnect failed' };
     }
+  }
+
+  /** Snapshot every router's WireGuard peer byte counters into mikrotik_wg_samples. */
+  async sampleUsage(): Promise<void> {
+    const rows = await this.allRows();
+    for (const row of rows) {
+      try {
+        const peers = await this.client.call<Record<string, unknown>[]>(
+          this.target(row),
+          'GET',
+          '/interface/wireguard/peers',
+          undefined,
+          6000,
+        );
+        for (const p of peers) {
+          const key = this.str(p['public-key']) ?? this.str(p['interface']);
+          if (!key) continue;
+          await this.database.query(
+            `INSERT INTO mikrotik_wg_samples (router_id, peer_key, iface, comment, rx_bytes, tx_bytes)
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [row.id, key, this.str(p['interface']), this.str(p['comment']), this.num(p['rx']) ?? 0, this.num(p['tx']) ?? 0],
+          );
+        }
+      } catch {
+        /* router unreachable this tick; skip */
+      }
+    }
+  }
+
+  async getWgUsage(id: string, days: number): Promise<AdminRouterWgUsageResponse> {
+    await this.requireRow(id);
+    const windowDays = Math.min(Math.max(days || 30, 1), 365);
+    const result = await this.database.query<{
+      peer_key: string;
+      iface: string | null;
+      comment: string | null;
+      rx_bytes: string;
+      tx_bytes: string;
+    }>(
+      `SELECT peer_key, iface, comment, rx_bytes, tx_bytes
+         FROM mikrotik_wg_samples
+        WHERE router_id = $1 AND sampled_at >= now() - ($2 || ' days')::interval
+        ORDER BY peer_key, sampled_at ASC`,
+      [id, String(windowDays)],
+    );
+
+    const byPeer = new Map<string, MikroTikWgUsage>();
+    const prev = new Map<string, { rx: number; tx: number }>();
+    for (const r of result.rows) {
+      const rx = Number(r.rx_bytes);
+      const tx = Number(r.tx_bytes);
+      let usage = byPeer.get(r.peer_key);
+      if (!usage) {
+        usage = {
+          peerKey: r.peer_key,
+          iface: r.iface,
+          comment: r.comment,
+          rxBytes: 0,
+          txBytes: 0,
+          totalBytes: 0,
+          latestRxBytes: 0,
+          latestTxBytes: 0,
+          samples: 0,
+        };
+        byPeer.set(r.peer_key, usage);
+      }
+      const last = prev.get(r.peer_key);
+      if (last) {
+        usage.rxBytes += rx >= last.rx ? rx - last.rx : rx; // reset-aware
+        usage.txBytes += tx >= last.tx ? tx - last.tx : tx;
+      }
+      usage.latestRxBytes = rx;
+      usage.latestTxBytes = tx;
+      usage.iface = r.iface ?? usage.iface;
+      usage.comment = r.comment ?? usage.comment;
+      usage.samples += 1;
+      prev.set(r.peer_key, { rx, tx });
+    }
+
+    const usage = [...byPeer.values()].map((u) => ({ ...u, totalBytes: u.rxBytes + u.txBytes }));
+    usage.sort((a, b) => b.totalBytes - a.totalBytes);
+    return { windowDays, usage };
   }
 
   // --- internals ---

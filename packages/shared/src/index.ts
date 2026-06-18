@@ -3909,6 +3909,23 @@ export interface AdminRouterConnectConfigResponse {
   note: string;
 }
 
+export interface MikroTikWgUsage {
+  peerKey: string;
+  iface?: string | null;
+  comment?: string | null;
+  rxBytes: number;
+  txBytes: number;
+  totalBytes: number;
+  latestRxBytes: number;
+  latestTxBytes: number;
+  samples: number;
+}
+
+export interface AdminRouterWgUsageResponse {
+  windowDays: number;
+  usage: MikroTikWgUsage[];
+}
+
 export interface ClientSubscriptionSummary {
   clientConfigId: string;
   routeGroup: string;

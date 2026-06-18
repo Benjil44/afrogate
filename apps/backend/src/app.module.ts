@@ -42,6 +42,7 @@ import { OutboundSpeedTestService } from './outbound/outbound-speed-test.service
 import { AdminReportsService } from './reports/admin-reports.service';
 import { RoutersController } from './routers/routers.controller';
 import { RoutersService } from './routers/routers.service';
+import { RouterUsageSamplerService } from './routers/router-usage-sampler.service';
 import { MikroTikClientService } from './routers/mikrotik-client.service';
 import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
@@ -109,6 +110,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     RateLimitService,
     AdminReportsService,
     RoutersService,
+    RouterUsageSamplerService,
     MikroTikClientService,
     RolesGuard,
     SecretVaultService,
