@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ClipboardCopy, ExternalLink, Eye, KeyRound, Pencil, Plus, RefreshCw, Router as RouterIcon, Trash2, X } from 'lucide-react';
 import type {
+  AdminRouterUsageChartsResponse,
   CreateMikroTikRouterRequest,
   MikroTikRouterKind,
   MikroTikRouterStatus,
@@ -8,12 +9,14 @@ import type {
   MikroTikWgUsage,
 } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
+import { EChart, type AfroChartOption } from '../components/EChart';
 import {
   createRouter,
   deleteRouter,
   fetchRouterConnectConfig,
   fetchRouterCredential,
   fetchRouterStatus,
+  fetchRouterUsageCharts,
   fetchRouterWgUsage,
   fetchRouters,
   reconnectRouterModem,
@@ -77,6 +80,22 @@ function formatCost(cost: number | null | undefined, currency: string | null | u
   return `${Math.round(cost).toLocaleString()} ${currency ?? 'IRT'}`;
 }
 
+function barOption(points: { label: string; bytes: number }[], color: string): AfroChartOption {
+  return {
+    grid: { left: 46, right: 10, top: 14, bottom: 24 },
+    tooltip: { trigger: 'axis', valueFormatter: (v) => `${Number(v).toFixed(2)} GB` },
+    xAxis: { type: 'category', data: points.map((p) => p.label), axisLabel: { fontSize: 9 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 9, formatter: '{value} GB' } },
+    series: [
+      {
+        type: 'bar',
+        data: points.map((p) => Number((p.bytes / 1e9).toFixed(3))),
+        itemStyle: { color, borderRadius: [3, 3, 0, 0] },
+      },
+    ],
+  };
+}
+
 const cardClass = 'rounded-lg border border-afro-line bg-white p-4 shadow-sm';
 const btnClass =
   'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-afro-line px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:opacity-50';
@@ -100,6 +119,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [modemBusy, setModemBusy] = useState<Record<string, boolean>>({});
   const [rollup, setRollup] = useState<{ router: string; rows: MikroTikWgUsage[] }[] | null>(null);
   const [rollupLoading, setRollupLoading] = useState(false);
+  const [charts, setCharts] = useState<AdminRouterUsageChartsResponse | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -118,6 +138,12 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     const timer = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(timer);
   }, [load]);
+
+  useEffect(() => {
+    fetchRouterUsageCharts(sessionToken)
+      .then((c) => setCharts(c))
+      .catch(() => setCharts(null));
+  }, [sessionToken]);
 
   const openAdd = () => {
     setEditId(null);
@@ -335,6 +361,19 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
 
       {error ? <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {notice ? <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div> : null}
+
+      {charts ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className={cardClass}>
+            <div className="text-sm font-bold text-afro-ink">Data used per day — last 15 days (GB)</div>
+            <EChart ariaLabel="GB used per day, last 15 days" className="mt-2 h-[220px] w-full" option={barOption(charts.daily, '#2f6f6a')} />
+          </div>
+          <div className={cardClass}>
+            <div className="text-sm font-bold text-afro-ink">Usage by hour — last 24h (peak time, Tehran)</div>
+            <EChart ariaLabel="Usage by hour, last 24 hours" className="mt-2 h-[220px] w-full" option={barOption(charts.hourly, '#b9772b')} />
+          </div>
+        </div>
+      ) : null}
 
       <div className={cardClass}>
         <div className="flex items-center justify-between gap-2">

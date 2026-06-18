@@ -3937,6 +3937,16 @@ export interface SetMikroTikWgRateRequest {
   currency?: string | null;
 }
 
+export interface UsageChartPoint {
+  label: string;
+  bytes: number;
+}
+
+export interface AdminRouterUsageChartsResponse {
+  daily: UsageChartPoint[];
+  hourly: UsageChartPoint[];
+}
+
 export interface ClientSubscriptionSummary {
   clientConfigId: string;
   routeGroup: string;

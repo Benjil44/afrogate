@@ -22,6 +22,7 @@ import type {
   AdminRouterCredentialResponse,
   AdminRouterConnectConfigResponse,
   AdminRouterWgUsageResponse,
+  AdminRouterUsageChartsResponse,
   SetMikroTikWgRateRequest,
   CreateMikroTikRouterRequest,
   UpdateMikroTikRouterRequest,
@@ -1395,6 +1396,13 @@ export async function fetchRouterWgUsage(
     headers: createSessionHeaders(sessionToken),
   });
   return response.json() as Promise<AdminRouterWgUsageResponse>;
+}
+
+export async function fetchRouterUsageCharts(sessionToken: string): Promise<AdminRouterUsageChartsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/usage-charts`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminRouterUsageChartsResponse>;
 }
 
 export async function setRouterWgRate(

@@ -5,6 +5,7 @@ import type {
   AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
+  AdminRouterUsageChartsResponse,
   AdminRouterWgUsageResponse,
   AdminRoutersResponse,
 } from '@afrows/shared';
@@ -86,6 +87,12 @@ export class RoutersController {
   @Roles('admin')
   connectConfig(@Param('id') id: string): Promise<AdminRouterConnectConfigResponse> {
     return this.routersService.connectConfig(id);
+  }
+
+  @Get('routers/usage-charts')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  usageCharts(): Promise<AdminRouterUsageChartsResponse> {
+    return this.routersService.getUsageCharts();
   }
 
   @Get('routers/:id/wg-usage')

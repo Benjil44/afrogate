@@ -7,6 +7,7 @@ import type {
   AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
+  AdminRouterUsageChartsResponse,
   AdminRouterWgUsageResponse,
   AdminRoutersResponse,
   MikroTikMode,
@@ -319,6 +320,62 @@ export class RoutersService {
     });
     usage.sort((a, b) => b.totalBytes - a.totalBytes);
     return { windowDays, usage };
+  }
+
+  /** Aggregate usage (all routers/tunnels) into daily (15d) + hourly (24h) buckets, Tehran time. */
+  async getUsageCharts(): Promise<AdminRouterUsageChartsResponse> {
+    const result = await this.database.query<{
+      router_id: string;
+      peer_key: string;
+      rx_bytes: string;
+      tx_bytes: string;
+      sampled_at: Date;
+    }>(
+      `SELECT router_id, peer_key, rx_bytes, tx_bytes, sampled_at
+         FROM mikrotik_wg_samples
+        WHERE sampled_at >= now() - interval '15 days'
+        ORDER BY router_id, peer_key, sampled_at ASC`,
+    );
+
+    const TZ = 210 * 60000; // Asia/Tehran +03:30 (no DST)
+    const dayKey = (ms: number) => new Date(ms + TZ).toISOString().slice(0, 10); // YYYY-MM-DD
+    const hourKey = (ms: number) => new Date(ms + TZ).toISOString().slice(0, 13); // YYYY-MM-DDTHH
+    const dailyMap = new Map<string, number>();
+    const hourlyMap = new Map<string, number>();
+    const now = Date.now();
+    const dayAgo = now - 24 * 3600 * 1000;
+
+    let prevKey = '';
+    let prevRx = 0;
+    let prevTx = 0;
+    for (const r of result.rows) {
+      const key = `${r.router_id}|${r.peer_key}`;
+      const rx = Number(r.rx_bytes);
+      const tx = Number(r.tx_bytes);
+      const ts = new Date(r.sampled_at as unknown as string).getTime();
+      if (key === prevKey) {
+        const delta = (rx >= prevRx ? rx - prevRx : rx) + (tx >= prevTx ? tx - prevTx : tx);
+        if (delta > 0) {
+          dailyMap.set(dayKey(ts), (dailyMap.get(dayKey(ts)) ?? 0) + delta);
+          if (ts >= dayAgo) hourlyMap.set(hourKey(ts), (hourlyMap.get(hourKey(ts)) ?? 0) + delta);
+        }
+      }
+      prevKey = key;
+      prevRx = rx;
+      prevTx = tx;
+    }
+
+    const daily: AdminRouterUsageChartsResponse['daily'] = [];
+    for (let i = 14; i >= 0; i--) {
+      const k = dayKey(now - i * 86400000);
+      daily.push({ label: k.slice(5), bytes: dailyMap.get(k) ?? 0 });
+    }
+    const hourly: AdminRouterUsageChartsResponse['hourly'] = [];
+    for (let i = 23; i >= 0; i--) {
+      const k = hourKey(now - i * 3600000);
+      hourly.push({ label: `${k.slice(11)}:00`, bytes: hourlyMap.get(k) ?? 0 });
+    }
+    return { daily, hourly };
   }
 
   async setWgRate(
