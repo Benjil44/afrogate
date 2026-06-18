@@ -3899,6 +3899,16 @@ export interface AdminRouterMutationResponse {
   router: MikroTikRouterSummary;
 }
 
+export interface AdminRouterCredentialResponse {
+  password: string | null;
+}
+
+export interface AdminRouterConnectConfigResponse {
+  script: string;
+  endpoint: string;
+  note: string;
+}
+
 export interface ClientSubscriptionSummary {
   clientConfigId: string;
   routeGroup: string;

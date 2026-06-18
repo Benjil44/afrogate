@@ -19,6 +19,8 @@ import type {
   AdminRouterStatusResponse,
   AdminRouterMutationResponse,
   AdminRouterModemActionResponse,
+  AdminRouterCredentialResponse,
+  AdminRouterConnectConfigResponse,
   CreateMikroTikRouterRequest,
   UpdateMikroTikRouterRequest,
   MikroTikMode,
@@ -1349,4 +1351,35 @@ export async function reconnectRouterModem(
     body: JSON.stringify({ interface: iface }),
   });
   return response.json() as Promise<AdminRouterModemActionResponse>;
+}
+
+export async function fetchRouterCredential(
+  sessionToken: string,
+  id: string,
+): Promise<AdminRouterCredentialResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/credential`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminRouterCredentialResponse>;
+}
+
+export async function rotateRouterPassword(
+  sessionToken: string,
+  id: string,
+): Promise<AdminRouterCredentialResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/rotate-password`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminRouterCredentialResponse>;
+}
+
+export async function fetchRouterConnectConfig(
+  sessionToken: string,
+  id: string,
+): Promise<AdminRouterConnectConfigResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/connect-config`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminRouterConnectConfigResponse>;
 }

@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import type {
+  AdminRouterConnectConfigResponse,
+  AdminRouterCredentialResponse,
   AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
@@ -127,6 +130,63 @@ export class RoutersService {
     );
     this.triggerEgressModeSync();
     return { router: this.toSummary(result.rows[0], { online: false, mode }) };
+  }
+
+  async revealCredential(id: string): Promise<AdminRouterCredentialResponse> {
+    const row = await this.requireRow(id);
+    return { password: this.decrypt(row) || null };
+  }
+
+  /** Generate a strong password, push it to the router's REST user, and store it. */
+  async rotatePassword(id: string): Promise<AdminRouterCredentialResponse> {
+    const row = await this.requireRow(id);
+    const password = RoutersService.strongPassword();
+    const target = this.target(row);
+
+    const users = await this.client
+      .call<Record<string, unknown>[]>(target, 'GET', '/user')
+      .catch(() => [] as Record<string, unknown>[]);
+    const user = users.find((u) => this.str(u['name']) === row.rest_user);
+    const userId = user ? this.str(user['.id']) : null;
+    if (!userId) {
+      throw new NotFoundException(`REST user ${row.rest_user} not found on ${row.label}`);
+    }
+    await this.client.call(target, 'POST', '/user/set', { '.id': userId, password });
+
+    await this.database.query(
+      `UPDATE mikrotik_routers SET rest_password_enc = $1, updated_at = now() WHERE id = $2`,
+      [this.encrypt(row.id, password), row.id],
+    );
+    return { password };
+  }
+
+  async connectConfig(id: string): Promise<AdminRouterConnectConfigResponse> {
+    const row = await this.requireRow(id);
+    const endpoint = (process.env.AFROWS_ROUTER_WG_ENDPOINT || '94.74.145.199').trim();
+    const port = (process.env.AFROWS_ROUTER_WG_PORT || '51902').trim();
+    const subnet = (process.env.AFROWS_ROUTER_WG_SUBNET || '10.22.0.0/24').trim();
+    const pubkey = (process.env.AFROWS_ROUTER_WG_PUBKEY || '<set AFROWS_ROUTER_WG_PUBKEY>').trim();
+    const mask = subnet.includes('/') ? subnet.split('/')[1] : '24';
+    const password = this.decrypt(row) || RoutersService.strongPassword();
+
+    const script = [
+      `# === Afrows onboarding for ${row.label} (${row.id}) ===`,
+      `# Paste this whole block into the MikroTik terminal (New Terminal in WebFig/Winbox).`,
+      `/interface/wireguard/add name=wg-afrows listen-port=${port} comment="Afrows management"`,
+      `/interface/wireguard/peers/add interface=wg-afrows public-key="${pubkey}" endpoint-address=${endpoint} endpoint-port=${port} allowed-address=${subnet} persistent-keepalive=25s`,
+      `/ip/address/add address=${row.host}/${mask} interface=wg-afrows`,
+      `/user/add name=${row.rest_user} password="${password}" group=full comment="Afrows panel"`,
+      `/ip/service/set www disabled=no`,
+      `/ip/firewall/filter/add chain=input in-interface=wg-afrows action=accept comment="Afrows management"`,
+      `:delay 2s`,
+      `:put ("Afrows: send this MikroTik public key back to the panel -> " . [/interface/wireguard get [find name=wg-afrows] public-key])`,
+    ].join('\n');
+
+    return {
+      script,
+      endpoint: `${endpoint}:${port}`,
+      note: 'Paste into the MikroTik terminal. Then copy the printed public key into the panel so Afrows can add the peer.',
+    };
   }
 
   async reconnectModem(id: string, iface: string): Promise<AdminRouterModemActionResponse> {
@@ -293,6 +353,10 @@ export class RoutersService {
     } catch {
       return '';
     }
+  }
+
+  static strongPassword(): string {
+    return randomBytes(40).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 28);
   }
 
   private triggerEgressModeSync(): void {
