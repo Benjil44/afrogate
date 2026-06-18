@@ -16,6 +16,7 @@ import {
   CreateMikroTikRouterDto,
   ReconnectModemDto,
   SetMikroTikModeDto,
+  SetWgRateDto,
   UpdateMikroTikRouterDto,
 } from './dto/router.dto';
 
@@ -91,5 +92,11 @@ export class RoutersController {
   @Roles('admin', 'supervisor', 'support', 'auditor')
   wgUsage(@Param('id') id: string, @Query('days') days?: string): Promise<AdminRouterWgUsageResponse> {
     return this.routersService.getWgUsage(id, Number(days) || 30);
+  }
+
+  @Post('routers/:id/wg-rate')
+  @Roles('admin', 'supervisor')
+  setWgRate(@Param('id') id: string, @Body() payload: SetWgRateDto): Promise<AdminRouterWgUsageResponse> {
+    return this.routersService.setWgRate(id, payload.peerKey, payload.pricePerGb, payload.label ?? null, payload.currency ?? null);
   }
 }

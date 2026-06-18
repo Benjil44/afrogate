@@ -296,9 +296,47 @@ export class RoutersService {
       prev.set(r.peer_key, { rx, tx });
     }
 
-    const usage = [...byPeer.values()].map((u) => ({ ...u, totalBytes: u.rxBytes + u.txBytes }));
+    const rates = await this.database.query<{
+      peer_key: string;
+      label: string | null;
+      price_per_gb: string;
+      currency: string;
+    }>(`SELECT peer_key, label, price_per_gb, currency FROM mikrotik_wg_rates WHERE router_id = $1`, [id]);
+    const rateByPeer = new Map(rates.rows.map((r) => [r.peer_key, r]));
+
+    const usage = [...byPeer.values()].map((u) => {
+      const total = u.rxBytes + u.txBytes;
+      const rate = rateByPeer.get(u.peerKey);
+      const pricePerGb = rate ? Number(rate.price_per_gb) : null;
+      return {
+        ...u,
+        totalBytes: total,
+        label: rate?.label ?? u.comment ?? null,
+        pricePerGb,
+        currency: rate?.currency ?? null,
+        cost: pricePerGb != null ? (total / 1e9) * pricePerGb : null,
+      };
+    });
     usage.sort((a, b) => b.totalBytes - a.totalBytes);
     return { windowDays, usage };
+  }
+
+  async setWgRate(
+    id: string,
+    peerKey: string,
+    pricePerGb: number,
+    label: string | null,
+    currency: string | null,
+  ): Promise<AdminRouterWgUsageResponse> {
+    await this.requireRow(id);
+    await this.database.query(
+      `INSERT INTO mikrotik_wg_rates (router_id, peer_key, label, price_per_gb, currency)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (router_id, peer_key)
+       DO UPDATE SET label = EXCLUDED.label, price_per_gb = EXCLUDED.price_per_gb, currency = EXCLUDED.currency, updated_at = now()`,
+      [id, peerKey, label, pricePerGb, currency ?? 'IRT'],
+    );
+    return this.getWgUsage(id, 30);
   }
 
   // --- internals ---
