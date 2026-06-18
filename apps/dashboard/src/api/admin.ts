@@ -15,6 +15,12 @@ import type {
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
   EgressTierPrice,
+  AdminRoutersResponse,
+  AdminRouterStatusResponse,
+  AdminRouterMutationResponse,
+  CreateMikroTikRouterRequest,
+  UpdateMikroTikRouterRequest,
+  MikroTikMode,
   ApplyRouteDecisionPreviewRequest,
   ApplyRouteDecisionPreviewResponse,
   AdminLoginRequest,
@@ -1264,4 +1270,69 @@ async function requestAdminAuth(url: string, init: RequestInit): Promise<Respons
 
   if (response.status === 503) throw new AdminAuthError('unavailable');
   throw new AdminAuthError('invalid');
+}
+
+export async function fetchRouters(sessionToken: string, signal?: AbortSignal): Promise<AdminRoutersResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminRoutersResponse>;
+}
+
+export async function fetchRouterStatus(
+  sessionToken: string,
+  id: string,
+  signal?: AbortSignal,
+): Promise<AdminRouterStatusResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/status`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminRouterStatusResponse>;
+}
+
+export async function createRouter(
+  sessionToken: string,
+  payload: CreateMikroTikRouterRequest,
+): Promise<AdminRouterMutationResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminRouterMutationResponse>;
+}
+
+export async function updateRouter(
+  sessionToken: string,
+  id: string,
+  payload: UpdateMikroTikRouterRequest,
+): Promise<AdminRouterMutationResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminRouterMutationResponse>;
+}
+
+export async function deleteRouter(sessionToken: string, id: string): Promise<void> {
+  await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: createSessionHeaders(sessionToken),
+  });
+}
+
+export async function setRouterMode(
+  sessionToken: string,
+  id: string,
+  mode: MikroTikMode,
+): Promise<AdminRouterMutationResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/mode`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify({ mode }),
+  });
+  return response.json() as Promise<AdminRouterMutationResponse>;
 }

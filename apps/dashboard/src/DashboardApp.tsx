@@ -206,6 +206,7 @@ import { AlertsPage } from './pages/AlertsPage';
 import { UsersPage } from './pages/UsersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ServersPage } from './pages/ServersPage';
+import { MicrotiksPage } from './pages/MicrotiksPage';
 import { RoutesPage } from './pages/RoutesPage';
 import { OutboundsPage } from './pages/OutboundsPage';
 import { CustomersPage } from './pages/CustomersPage';
@@ -1240,6 +1241,8 @@ function ActivePage({
       );
     case 'outbounds':
       return <OutboundsPage sessionToken={sessionToken} t={t} />;
+    case 'microtiks':
+      return <MicrotiksPage sessionToken={sessionToken} t={t} />;
     case 'customers':
       return <CustomersPage format={format} sessionToken={sessionToken} t={t} />;
     case 'inbounds':
