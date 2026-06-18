@@ -21,6 +21,7 @@ import {
   fetchRouters,
   reconnectRouterModem,
   rotateRouterPassword,
+  setRouterEgress,
   setRouterMode,
   setRouterWgRate,
   updateRouter,
@@ -319,6 +320,21 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     }
   };
 
+  const toggleEgress = async (router: MikroTikRouterSummary) => {
+    const next = !router.egressEnabled;
+    setBusy((b) => ({ ...b, [router.id]: true }));
+    setRows((prev) => prev.map((r) => (r.id === router.id ? { ...r, egressEnabled: next } : r)));
+    try {
+      await setRouterEgress(sessionToken, router.id, next);
+      setNotice(`${router.label}: Afrows internet ${next ? 'ON' : 'OFF (local)'}`);
+    } catch (err) {
+      setRows((prev) => prev.map((r) => (r.id === router.id ? { ...r, egressEnabled: router.egressEnabled } : r)));
+      setError(err instanceof Error ? err.message : 'Egress toggle failed');
+    } finally {
+      setBusy((b) => ({ ...b, [router.id]: false }));
+    }
+  };
+
   const reconnectModem = async (iface: string) => {
     if (!editId) return;
     setModemBusy((b) => ({ ...b, [iface]: true }));
@@ -431,14 +447,15 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
               <th className="py-2 pr-3">Host</th>
               <th className="py-2 pr-3">Status</th>
               <th className="py-2 pr-3">Mode (Game / Normal)</th>
+              <th className="py-2 pr-3">Afrows internet</th>
               <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading && rows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={5}>Loading…</td></tr>
+              <tr><td className="py-4 text-afro-muted" colSpan={6}>Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={5}>No MikroTiks yet — add one with the button above.</td></tr>
+              <tr><td className="py-4 text-afro-muted" colSpan={6}>No MikroTiks yet — add one with the button above.</td></tr>
             ) : (
               rows.map((router) => (
                 <tr className="border-b border-afro-line/60 align-middle" key={router.id}>
@@ -461,6 +478,13 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
                       mode={router.mode}
                       disabled={Boolean(busy[router.id])}
                       onToggle={() => void toggleMode(router)}
+                    />
+                  </td>
+                  <td className="py-3 pr-3">
+                    <OnOffToggle
+                      on={router.egressEnabled}
+                      disabled={Boolean(busy[router.id])}
+                      onToggle={() => void toggleEgress(router)}
                     />
                   </td>
                   <td className="py-3 pr-3">
@@ -526,6 +550,24 @@ function ModeToggle({ mode, disabled, onToggle }: { mode: 'game' | 'normal' | nu
   );
 }
 
+function OnOffToggle({ on, disabled, onToggle }: { on: boolean; disabled: boolean; onToggle: () => void }) {
+  return (
+    <button
+      aria-pressed={on}
+      className="inline-flex items-center gap-2 disabled:opacity-50"
+      disabled={disabled}
+      onClick={onToggle}
+      type="button"
+      title={on ? 'Clients use Afrows internet — click to turn OFF (local internet)' : 'Clients use local internet — click to route through Afrows'}
+    >
+      <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${on ? 'bg-emerald-500' : 'bg-afro-line'}`}>
+        <span className={`inline-block size-4 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
+      </span>
+      <span className={`text-xs font-bold ${on ? 'text-emerald-600' : 'text-afro-muted'}`}>{on ? 'On' : 'Off'}</span>
+    </button>
+  );
+}
+
 function RouterDialog({
   draft,
   editId,
@@ -571,6 +613,13 @@ function RouterDialog({
           <button className="text-afro-muted hover:text-afro-ink" onClick={onClose} type="button"><X size={18} /></button>
         </div>
 
+        {!editId ? (
+          <div className="mt-3 rounded-md border border-afro-line bg-afro-bg/40 px-3 py-2 text-xs text-afro-muted">
+            Afrows auto-assigns the tunnel IP, generates the WireGuard keys, and a strong password.
+            Just set an ID + label, click <b>Add</b>, then <b>Copy connect config</b> and paste it into the new MikroTik terminal — that's the only step.
+          </div>
+        ) : null}
+
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {!editId ? (
             <div>
@@ -589,8 +638,8 @@ function RouterDialog({
             </select>
           </div>
           <div>
-            <label className={labelClass}>Host (tunnel IP)</label>
-            <input className={field} placeholder="10.20.0.2" value={draft.host} onChange={(e) => set({ host: e.target.value })} />
+            <label className={labelClass}>Host (tunnel IP){!editId ? ' — leave blank to auto-assign' : ''}</label>
+            <input className={field} placeholder={editId ? '10.22.0.3' : 'auto-assigned by Afrows'} value={draft.host} onChange={(e) => set({ host: e.target.value })} />
           </div>
           <div>
             <label className={labelClass}>REST port</label>
@@ -741,7 +790,7 @@ function RouterDialog({
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <button className={btnClass} onClick={onClose} type="button">Cancel</button>
-          <button className={primaryBtnClass} disabled={saving || !draft.label || !draft.host || (!editId && !draft.id)} onClick={onSave} type="button">
+          <button className={primaryBtnClass} disabled={saving || !draft.label || (!editId && !draft.id)} onClick={onSave} type="button">
             {saving ? 'Saving…' : editId ? 'Save changes' : 'Add'}
           </button>
         </div>

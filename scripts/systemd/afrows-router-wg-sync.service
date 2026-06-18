@@ -1,0 +1,9 @@
+[Unit]
+Description=Afrows wg-routers peer reconciler (sync managed MikroTik tunnels from DB)
+After=network-online.target postgresql.service afrows-backend.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/afrows-router-wg-sync.py
+TimeoutStartSec=60

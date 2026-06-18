@@ -1,0 +1,4 @@
+# Allow the unprivileged backend (user: afrows) to trigger ONE command: an immediate
+# run of the wg-routers peer reconciler (so a newly added MikroTik connects right away).
+# Install as /etc/sudoers.d/afrows-router-wg with mode 0440 (validate with `visudo -cf`).
+afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-router-wg-sync.service

@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export const MIKROTIK_ROUTER_KINDS = ['village', 'home', 'other'] as const;
 export const MIKROTIK_MODES = ['game', 'normal'] as const;
@@ -106,6 +106,11 @@ export class UpdateMikroTikRouterDto {
 export class SetMikroTikModeDto {
   @IsIn(MIKROTIK_MODES)
   mode!: (typeof MIKROTIK_MODES)[number];
+}
+
+export class SetEgressDto {
+  @IsBoolean()
+  enabled!: boolean;
 }
 
 export class ReconnectModemDto {

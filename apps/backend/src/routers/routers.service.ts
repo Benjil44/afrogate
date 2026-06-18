@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import type {
   AdminRouterConnectConfigResponse,
   AdminRouterCredentialResponse,
@@ -33,7 +33,10 @@ interface RouterRow {
   webfig_url: string | null;
   gaming_source_ip: string | null;
   gaming_enabled: boolean;
+  egress_enabled: boolean;
   notes: string | null;
+  tunnel_public_key: string | null;
+  tunnel_private_key_enc: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -64,25 +67,33 @@ export class RoutersService {
   }
 
   async create(dto: CreateMikroTikRouterDto): Promise<AdminRouterMutationResponse> {
-    const enc = dto.password ? this.encrypt(dto.id, dto.password) : null;
+    // Afrows auto-provisions: allocate a tunnel IP, generate the WireGuard keypair,
+    // and a strong REST password — so the connect-config is a single paste.
+    const host = dto.host?.trim() || (await this.allocateTunnelIp());
+    const password = dto.password || RoutersService.strongPassword();
+    const keypair = this.generateWgKeypair();
     const result = await this.database.query<RouterRow>(
       `INSERT INTO mikrotik_routers
-         (id, label, kind, host, rest_port, rest_user, rest_password_enc, webfig_url, gaming_source_ip, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (id, label, kind, host, rest_port, rest_user, rest_password_enc, webfig_url, gaming_source_ip, notes,
+          tunnel_public_key, tunnel_private_key_enc)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
         dto.id,
         dto.label,
         dto.kind ?? 'other',
-        dto.host,
+        host,
         dto.restPort ?? 80,
         dto.restUser ?? 'claude',
-        enc,
+        this.encrypt(dto.id, password),
         dto.webfigUrl ?? null,
         dto.gamingSourceIp ?? null,
         dto.notes ?? null,
+        keypair.publicKey,
+        this.vault.encryptJson({ key: keypair.privateKey }, `mikrotik-wg:${dto.id}`).payload,
       ],
     );
+    this.triggerRouterWgSync(); // register the new peer on wg-routers
     return { router: this.toSummary(result.rows[0], { online: false, mode: this.modeOf(result.rows[0]) }) };
   }
 
@@ -122,6 +133,7 @@ export class RoutersService {
   async remove(id: string): Promise<{ removed: boolean }> {
     const result = await this.database.query(`DELETE FROM mikrotik_routers WHERE id = $1`, [id]);
     if (!result.rowCount) throw new NotFoundException(`Router ${id} not found`);
+    this.triggerRouterWgSync(); // prune the peer from wg-routers
     return { removed: true };
   }
 
@@ -133,6 +145,35 @@ export class RoutersService {
     );
     this.triggerEgressModeSync();
     return { router: this.toSummary(result.rows[0], { online: false, mode }) };
+  }
+
+  /** Toggle whether the router's CLIENTS use Afrows internet (the router-side egress mark). */
+  async setEgress(id: string, enabled: boolean): Promise<AdminRouterMutationResponse> {
+    const row = await this.requireRow(id);
+    try {
+      const target = this.target(row);
+      const mangle = await this.client
+        .call<Record<string, unknown>[]>(target, 'GET', '/ip/firewall/mangle')
+        .catch(() => [] as Record<string, unknown>[]);
+      for (const m of mangle) {
+        if (this.str(m['comment']) === 'afrows-egress') {
+          const mid = this.str(m['.id']);
+          if (mid) {
+            await this.client.call(target, 'POST', '/ip/firewall/mangle/set', {
+              '.id': mid,
+              disabled: enabled ? 'no' : 'yes',
+            });
+          }
+        }
+      }
+    } catch {
+      /* router unreachable — still record the intended state */
+    }
+    const result = await this.database.query<RouterRow>(
+      `UPDATE mikrotik_routers SET egress_enabled = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [enabled, row.id],
+    );
+    return { router: this.toSummary(result.rows[0], { online: false, mode: this.modeOf(result.rows[0]) }) };
   }
 
   async revealCredential(id: string): Promise<AdminRouterCredentialResponse> {
@@ -171,25 +212,37 @@ export class RoutersService {
     const pubkey = (process.env.AFROWS_ROUTER_WG_PUBKEY || '<set AFROWS_ROUTER_WG_PUBKEY>').trim();
     const mask = subnet.includes('/') ? subnet.split('/')[1] : '24';
     const password = this.decrypt(row) || RoutersService.strongPassword();
+    const privKey = this.tunnelPrivateKey(row);
+
+    // Afrows-generated key + pre-registered peer => one paste, fully connected.
+    const addLine = privKey
+      ? `/interface/wireguard/add name=wg-afrows listen-port=${port} private-key="${privKey}" comment="Afrows management"`
+      : `/interface/wireguard/add name=wg-afrows listen-port=${port} comment="Afrows management"`;
 
     const script = [
       `# === Afrows onboarding for ${row.label} (${row.id}) ===`,
       `# Paste this whole block into the MikroTik terminal (New Terminal in WebFig/Winbox).`,
-      `/interface/wireguard/add name=wg-afrows listen-port=${port} comment="Afrows management"`,
+      addLine,
       `/interface/wireguard/peers/add interface=wg-afrows public-key="${pubkey}" endpoint-address=${endpoint} endpoint-port=${port} allowed-address=${subnet} persistent-keepalive=25s`,
       `/ip/address/add address=${row.host}/${mask} interface=wg-afrows`,
       `/user/add name=${row.rest_user} password="${password}" group=full comment="Afrows panel"`,
       `/ip/service/set www disabled=no`,
       `/interface/list/member/add list=LAN interface=wg-afrows`,
       `/ip/firewall/filter/add chain=input in-interface=wg-afrows action=accept comment="Afrows management" place-before=0`,
-      `:delay 2s`,
-      `:put ("Afrows: send this MikroTik public key back to the panel -> " . [/interface/wireguard get [find name=wg-afrows] public-key])`,
+      ...(privKey
+        ? [`:put "Afrows: connected. This router should appear online in the panel within ~1 minute."`]
+        : [
+            `:delay 2s`,
+            `:put ("Afrows: send this MikroTik public key back to the panel -> " . [/interface/wireguard get [find name=wg-afrows] public-key])`,
+          ]),
     ].join('\n');
 
     return {
       script,
       endpoint: `${endpoint}:${port}`,
-      note: 'Paste into the MikroTik terminal. Then copy the printed public key into the panel so Afrows can add the peer.',
+      note: privKey
+        ? 'Paste into the MikroTik terminal — that is all. Afrows already allocated the IP, generated the keys, and registered the peer.'
+        : 'Paste into the MikroTik terminal. Then copy the printed public key into the panel so Afrows can add the peer.',
     };
   }
 
@@ -446,6 +499,7 @@ export class RoutersService {
       hasPassword: Boolean(row.rest_password_enc),
       online: probe.online,
       mode: probe.mode,
+      egressEnabled: row.egress_enabled,
       board: this.str(resource['board-name']),
       version: this.str(resource['version']),
       uptime: this.str(resource['uptime']),
@@ -545,6 +599,46 @@ export class RoutersService {
     execFile('sudo', ['-n', 'systemctl', 'start', 'afrows-egress-mode-sync.service'], () => {
       /* best-effort; the systemd timer applies the mode regardless */
     });
+  }
+
+  private triggerRouterWgSync(): void {
+    execFile('sudo', ['-n', 'systemctl', 'start', 'afrows-router-wg-sync.service'], () => {
+      /* best-effort; the systemd timer reconciles wg-routers peers regardless */
+    });
+  }
+
+  /** Next free management tunnel IP in 10.22.0.0/24 (.1 is Afrows). */
+  private async allocateTunnelIp(): Promise<string> {
+    const res = await this.database.query<{ host: string }>(
+      `SELECT host FROM mikrotik_routers WHERE host LIKE '10.22.0.%'`,
+    );
+    const used = new Set(res.rows.map((r) => r.host));
+    for (let n = 2; n <= 254; n++) {
+      const ip = `10.22.0.${n}`;
+      if (!used.has(ip)) return ip;
+    }
+    throw new Error('No free management tunnel IP in 10.22.0.0/24');
+  }
+
+  /** Generate a WireGuard (Curve25519) keypair as base64, via Node x25519. */
+  private generateWgKeypair(): { privateKey: string; publicKey: string } {
+    const { publicKey, privateKey } = generateKeyPairSync('x25519');
+    const priv = privateKey.export({ format: 'der', type: 'pkcs8' });
+    const pub = publicKey.export({ format: 'der', type: 'spki' });
+    return {
+      privateKey: priv.subarray(priv.length - 32).toString('base64'),
+      publicKey: pub.subarray(pub.length - 32).toString('base64'),
+    };
+  }
+
+  private tunnelPrivateKey(row: RouterRow): string | null {
+    if (!row.tunnel_private_key_enc) return null;
+    try {
+      const payload = this.vault.decryptJson(row.tunnel_private_key_enc, `mikrotik-wg:${row.id}`);
+      return typeof payload.key === 'string' ? payload.key : null;
+    } catch {
+      return null;
+    }
   }
 
   private str(value: unknown): string | null {
