@@ -12,6 +12,7 @@ import {
   deleteRouter,
   fetchRouterStatus,
   fetchRouters,
+  reconnectRouterModem,
   setRouterMode,
   updateRouter,
 } from '../api/admin';
@@ -76,6 +77,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [saving, setSaving] = useState(false);
   const [statusFor, setStatusFor] = useState<string | null>(null);
   const [status, setStatus] = useState<MikroTikRouterStatus | null>(null);
+  const [modemBusy, setModemBusy] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
@@ -192,6 +194,20 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     }
   };
 
+  const reconnectModem = async (iface: string) => {
+    if (!editId) return;
+    setModemBusy((b) => ({ ...b, [iface]: true }));
+    try {
+      const res = await reconnectRouterModem(sessionToken, editId, iface);
+      setNotice(res.message ?? `Reconnect sent to ${iface}`);
+      await loadStatus(editId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reconnect failed');
+    } finally {
+      setModemBusy((b) => ({ ...b, [iface]: false }));
+    }
+  };
+
   const toggleMode = async (router: MikroTikRouterSummary) => {
     const next = router.mode === 'game' ? 'normal' : 'game';
     setBusy((b) => ({ ...b, [router.id]: true }));
@@ -294,8 +310,10 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           editId={editId}
           saving={saving}
           status={statusFor === editId ? status : null}
+          modemBusy={modemBusy}
           onChange={setDraft}
           onClose={() => setDialogOpen(false)}
+          onReconnect={(iface) => void reconnectModem(iface)}
           onSave={() => void save()}
         />
       ) : null}
@@ -327,16 +345,20 @@ function RouterDialog({
   editId,
   saving,
   status,
+  modemBusy,
   onChange,
   onClose,
+  onReconnect,
   onSave,
 }: {
   draft: DraftForm;
   editId: string | null;
   saving: boolean;
   status: MikroTikRouterStatus | null;
+  modemBusy: Record<string, boolean>;
   onChange: (d: DraftForm) => void;
   onClose: () => void;
+  onReconnect: (iface: string) => void;
   onSave: () => void;
 }) {
   const set = (patch: Partial<DraftForm>) => onChange({ ...draft, ...patch });
@@ -412,12 +434,31 @@ function RouterDialog({
                 </div>
                 {status.wans.length ? (
                   <div>
-                    <div className="text-xs font-bold text-afro-muted">WANs</div>
-                    {status.wans.map((w) => (
-                      <div className="font-mono text-xs" key={w.name}>
-                        <span className={w.running ? 'text-emerald-600' : 'text-red-500'}>●</span> {w.name} {w.address ?? ''} {w.comment ? `(${w.comment})` : ''}
-                      </div>
-                    ))}
+                    <div className="mb-1 text-xs font-bold text-afro-muted">Modems / WANs</div>
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {status.wans.map((w) => (
+                          <tr className="border-b border-afro-line/40" key={w.name}>
+                            <td className="py-1 pr-2">
+                              <span className={w.running ? 'text-emerald-600' : 'text-red-500'}>●</span> {w.name}
+                            </td>
+                            <td className="py-1 pr-2 font-mono">{w.sim ?? (w.comment ?? '')}</td>
+                            <td className="py-1 pr-2 font-mono text-afro-muted">{w.address ?? '—'}</td>
+                            <td className="py-1 text-right">
+                              <button
+                                className={`${btnClass} min-h-7 px-2 py-0`}
+                                disabled={Boolean(modemBusy[w.name])}
+                                onClick={() => onReconnect(w.name)}
+                                title="Renew this WAN link (a full power reboot needs the modem's own login)"
+                                type="button"
+                              >
+                                <RefreshCw size={12} /> {modemBusy[w.name] ? '…' : 'Reconnect'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 ) : null}
                 {status.wgPeers.length ? (

@@ -107,3 +107,10 @@ export class SetMikroTikModeDto {
   @IsIn(MIKROTIK_MODES)
   mode!: (typeof MIKROTIK_MODES)[number];
 }
+
+export class ReconnectModemDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  interface!: string;
+}

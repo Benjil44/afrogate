@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import type {
+  AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
   AdminRoutersResponse,
@@ -8,7 +9,12 @@ import { AdminTokenGuard } from '../security/admin-token.guard';
 import { Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { RoutersService } from './routers.service';
-import { CreateMikroTikRouterDto, SetMikroTikModeDto, UpdateMikroTikRouterDto } from './dto/router.dto';
+import {
+  CreateMikroTikRouterDto,
+  ReconnectModemDto,
+  SetMikroTikModeDto,
+  UpdateMikroTikRouterDto,
+} from './dto/router.dto';
 
 @Controller('admin')
 @UseGuards(AdminTokenGuard, RolesGuard)
@@ -49,5 +55,14 @@ export class RoutersController {
   @Roles('admin', 'supervisor')
   setMode(@Param('id') id: string, @Body() payload: SetMikroTikModeDto): Promise<AdminRouterMutationResponse> {
     return this.routersService.setMode(id, payload.mode);
+  }
+
+  @Post('routers/:id/modems/reconnect')
+  @Roles('admin', 'supervisor')
+  reconnectModem(
+    @Param('id') id: string,
+    @Body() payload: ReconnectModemDto,
+  ): Promise<AdminRouterModemActionResponse> {
+    return this.routersService.reconnectModem(id, payload.interface);
   }
 }
