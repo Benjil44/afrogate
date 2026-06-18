@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import type {
+  AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
   AdminRoutersResponse,
@@ -128,6 +129,34 @@ export class RoutersService {
     return { router: this.toSummary(result.rows[0], { online: false, mode }) };
   }
 
+  async reconnectModem(id: string, iface: string): Promise<AdminRouterModemActionResponse> {
+    const row = await this.requireRow(id);
+    const target = this.target(row);
+
+    const ethernet = await this.client
+      .call<Record<string, unknown>[]>(target, 'GET', '/interface/ethernet')
+      .catch(() => [] as Record<string, unknown>[]);
+    if (!ethernet.some((e) => this.str(e['name']) === iface)) {
+      return { ok: false, message: `Interface ${iface} not found on ${row.label}` };
+    }
+
+    const clients = await this.client
+      .call<Record<string, unknown>[]>(target, 'GET', '/ip/dhcp-client')
+      .catch(() => [] as Record<string, unknown>[]);
+    const dhcp = clients.find((c) => this.str(c['interface']) === iface);
+    const dhcpId = dhcp ? this.str(dhcp['.id']) : null;
+    if (!dhcpId) {
+      return { ok: false, message: `No DHCP client on ${iface} to renew` };
+    }
+
+    try {
+      await this.client.call(target, 'POST', '/ip/dhcp-client/renew', { '.id': dhcpId });
+      return { ok: true, message: `Renewed WAN on ${iface}` };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Reconnect failed' };
+    }
+  }
+
   // --- internals ---
 
   private async allRows(): Promise<RouterRow[]> {
@@ -216,9 +245,12 @@ export class RoutersService {
 
       const wans: MikroTikWan[] = ethernet.map((e) => {
         const name = this.str(e['name']) ?? '';
+        const comment = this.str(e['comment']);
+        const simMatch = comment ? comment.match(/(\d{7,})/) : null;
         return {
           name,
-          comment: this.str(e['comment']),
+          comment,
+          sim: simMatch ? simMatch[1] : null,
           running: this.str(e['running']) === 'true',
           address: addrByIface.get(name) ?? null,
         };

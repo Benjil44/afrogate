@@ -18,6 +18,7 @@ import type {
   AdminRoutersResponse,
   AdminRouterStatusResponse,
   AdminRouterMutationResponse,
+  AdminRouterModemActionResponse,
   CreateMikroTikRouterRequest,
   UpdateMikroTikRouterRequest,
   MikroTikMode,
@@ -1335,4 +1336,17 @@ export async function setRouterMode(
     body: JSON.stringify({ mode }),
   });
   return response.json() as Promise<AdminRouterMutationResponse>;
+}
+
+export async function reconnectRouterModem(
+  sessionToken: string,
+  id: string,
+  iface: string,
+): Promise<AdminRouterModemActionResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/modems/reconnect`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify({ interface: iface }),
+  });
+  return response.json() as Promise<AdminRouterModemActionResponse>;
 }

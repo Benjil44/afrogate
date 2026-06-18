@@ -3818,8 +3818,18 @@ export interface MikroTikRouterSummary {
 export interface MikroTikWan {
   name: string;
   comment?: string | null;
+  sim?: string | null;
   running: boolean;
   address?: string | null;
+}
+
+export interface ReconnectMikroTikModemRequest {
+  interface: string;
+}
+
+export interface AdminRouterModemActionResponse {
+  ok: boolean;
+  message?: string;
 }
 
 export interface MikroTikWgPeer {
