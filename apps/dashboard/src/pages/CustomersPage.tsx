@@ -79,6 +79,8 @@ export function CustomersPage({
   const [status, setStatus] = useState<Status>('active');
   const [egressTier, setEgressTier] = useState<'normal' | 'gaming'>('normal');
   const [gamingEntitled, setGamingEntitled] = useState(false);
+  const [expiresAt, setExpiresAt] = useState(''); // YYYY-MM-DD for the date input ('' = never)
+  const [tagsInput, setTagsInput] = useState(''); // comma-separated
   const [notes, setNotes] = useState('');
   // protocols to auto-create when adding a customer (L2TP deferred until its server lands)
   const [protoVless, setProtoVless] = useState(true);
@@ -139,6 +141,10 @@ export function CustomersPage({
     setPerClientGb('');
     setScope('account_shared');
     setStatus('active');
+    setEgressTier('normal');
+    setGamingEntitled(false);
+    setExpiresAt('');
+    setTagsInput('');
     setNotes('');
     setProtoVless(true);
     setProtoWg(false);
@@ -166,6 +172,8 @@ export function CustomersPage({
     setStatus((a.status as Status) || 'active');
     setEgressTier((a.egressTier as 'normal' | 'gaming') === 'gaming' ? 'gaming' : 'normal');
     setGamingEntitled(a.gamingEntitled === true);
+    setExpiresAt(a.expiresAt ? a.expiresAt.slice(0, 10) : '');
+    setTagsInput((a.tags ?? []).join(', '));
     setNotes(a.notes ?? '');
     setEditorOpen(true);
   };
@@ -248,6 +256,8 @@ export function CustomersPage({
       status,
       egressTier,
       gamingEntitled,
+      expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : null,
+      tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
       notes: notes.trim() || null,
     };
     try {
@@ -411,7 +421,7 @@ export function CustomersPage({
     const q = query.trim().toLowerCase();
     if (!q) return accounts;
     return accounts.filter((a) =>
-      [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, a.resellerDisplayName]
+      [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, a.resellerDisplayName, ...(a.tags ?? [])]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q)),
     );
@@ -461,6 +471,53 @@ export function CustomersPage({
               >
                 {p.protocol}
                 <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="text-afro-muted">—</span>
+        ),
+    },
+    {
+      key: 'expiry',
+      header: 'Expires',
+      render: (a) => {
+        if (!a.expiresAt) return <span className="text-afro-muted">—</span>;
+        const expired = new Date(a.expiresAt).getTime() <= Date.now();
+        return (
+          <span className={expired ? 'font-bold text-red-500' : 'text-afro-ink'}>
+            {format.time(new Date(a.expiresAt), false)}
+            {expired ? ' (expired)' : ''}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'lastSeen',
+      header: 'Last connected',
+      render: (a) => (a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : <span className="text-afro-muted">—</span>),
+    },
+    {
+      key: 'cost',
+      header: 'Cost',
+      render: (a) => {
+        const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
+        const price = priceFor(tier);
+        if (!price) return <span className="text-afro-muted">—</span>;
+        const cost = Math.round((a.usedBytes / GIB) * price);
+        const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
+        return <span className="text-afro-ink">{`${cost.toLocaleString()} ${currency}`}</span>;
+      },
+    },
+    {
+      key: 'tags',
+      header: 'Tags',
+      render: (a) =>
+        a.tags && a.tags.length > 0 ? (
+          <span className="flex flex-wrap gap-1">
+            {a.tags.map((t) => (
+              <span key={t} className="inline-flex rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-ink">
+                {t}
               </span>
             ))}
           </span>
@@ -612,6 +669,14 @@ export function CustomersPage({
                 className="h-4 w-4 accent-afro-accent"
               />
               <span className="text-[13px] font-bold text-afro-muted">Allow Game mode toggle (in app)</span>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">Expiry date (blank = never)</span>
+              <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">Tags (comma separated)</span>
+              <input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="vip, trial" className={inputClass} />
             </label>
             <label className="grid gap-1.5 md:col-span-2">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>

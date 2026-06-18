@@ -127,6 +127,25 @@ export class CreateCustomerAccountDto {
   @IsString()
   @MaxLength(500)
   notes?: string | null;
+
+  @IsOptional()
+  @IsIn(['normal', 'gaming'])
+  egressTier?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  gamingEntitled?: boolean;
+
+  @IsOptional()
+  @IsISO8601()
+  expiresAt?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20)
+  @MaxLength(40, { each: true })
+  tags?: string[];
 }
 
 export class UpdateCustomerAccountDto {
@@ -199,6 +218,17 @@ export class UpdateCustomerAccountDto {
   @IsOptional()
   @IsBoolean()
   gamingEntitled?: boolean;
+
+  @IsOptional()
+  @IsISO8601()
+  expiresAt?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20)
+  @MaxLength(40, { each: true })
+  tags?: string[];
 }
 
 export class SetEgressTierPriceDto {

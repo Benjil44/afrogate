@@ -2863,9 +2863,10 @@ export class BillingService {
             INSERT INTO customer_accounts (
               reseller_account_id, display_name, telegram_id, telegram_username, paid_number_hash,
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
-              used_bytes, notes, login_email, password_hash, password_set_at
+              used_bytes, notes, login_email, password_hash, password_set_at,
+              egress_tier, gaming_entitled, expires_at, tags
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             RETURNING id
           `,
           [
@@ -2883,6 +2884,10 @@ export class BillingService {
             loginEmail,
             passwordHash,
             passwordHash ? new Date() : null,
+            dto.egressTier ?? 'normal',
+            dto.gamingEntitled ?? false,
+            dto.expiresAt ?? null,
+            dto.tags ?? [],
           ],
         );
         const id = insertResult.rows[0].id;
@@ -3592,10 +3597,12 @@ export class BillingService {
       displayName: string | null;
       quotaLimitBytes: string | null;
       usedBytes: string | null;
+      expiresAt: Date | null;
     }>(
       `
         SELECT id, password_hash AS "passwordHash", display_name AS "displayName",
-               quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes"
+               quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes",
+               expires_at AS "expiresAt"
         FROM customer_accounts
         WHERE lower(login_email) = $1 AND status = 'active'
         LIMIT 1
@@ -3605,6 +3612,10 @@ export class BillingService {
     const account = accountResult.rows[0];
     if (!account || !account.passwordHash || !verifyScryptPassword(passwordInput, account.passwordHash)) {
       throw genericError;
+    }
+    // Expiry is checked after password verification to avoid leaking account state.
+    if (account.expiresAt && account.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Your subscription has expired');
     }
 
     const configResult = await this.database.query<{ id: string }>(
@@ -6357,6 +6368,13 @@ export class BillingService {
         (ca.password_hash IS NOT NULL) AS "hasPassword",
         ca.egress_tier AS "egressTier",
         ca.gaming_entitled AS "gamingEntitled",
+        ca.expires_at AS "expiresAt",
+        ca.tags AS "tags",
+        (
+          SELECT MAX(e.observed_at)
+          FROM client_usage_events e
+          WHERE e.customer_account_id = ca.id
+        ) AS "lastConnectedAt",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
@@ -7729,6 +7747,8 @@ export class BillingService {
     if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
     if (dto.egressTier !== undefined) add('egressTier', 'egress_tier', dto.egressTier);
     if (dto.gamingEntitled !== undefined) add('gamingEntitled', 'gaming_entitled', dto.gamingEntitled);
+    if (dto.expiresAt !== undefined) add('expiresAt', 'expires_at', dto.expiresAt);
+    if (dto.tags !== undefined) add('tags', 'tags', dto.tags);
 
     if (!setClauses.length) return fields;
 
