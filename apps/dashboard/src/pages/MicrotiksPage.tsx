@@ -19,6 +19,7 @@ import {
   reconnectRouterModem,
   rotateRouterPassword,
   setRouterMode,
+  setRouterWgRate,
   updateRouter,
 } from '../api/admin';
 
@@ -69,6 +70,11 @@ function formatBytes(value: number | null | undefined): string {
     i += 1;
   }
   return `${n.toFixed(n >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatCost(cost: number | null | undefined, currency: string | null | undefined): string {
+  if (cost == null) return '—';
+  return `${Math.round(cost).toLocaleString()} ${currency ?? 'IRT'}`;
 }
 
 const cardClass = 'rounded-lg border border-afro-line bg-white p-4 shadow-sm';
@@ -215,6 +221,17 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     }
   };
 
+  const setRate = async (peerKey: string, pricePerGb: number, label: string | null) => {
+    if (!editId) return;
+    try {
+      const res = await setRouterWgRate(sessionToken, editId, { peerKey, pricePerGb, label });
+      setUsage(res.usage);
+      setNotice('Rate saved');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save rate');
+    }
+  };
+
   const loadRollup = async () => {
     setRollupLoading(true);
     try {
@@ -335,7 +352,8 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
                   <th className="py-1 pr-2">Tunnel</th>
                   <th className="py-1 pr-2 text-right">↓ in</th>
                   <th className="py-1 pr-2 text-right">↑ out</th>
-                  <th className="py-1 text-right">total</th>
+                  <th className="py-1 pr-2 text-right">total</th>
+                  <th className="py-1 text-right">cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -343,10 +361,11 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
                   g.rows.map((u) => (
                     <tr className="border-b border-afro-line/40" key={`${g.router}:${u.peerKey}`}>
                       <td className="py-1 pr-2">{g.router}</td>
-                      <td className="py-1 pr-2">{u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}{u.comment && u.iface ? ` (${u.comment})` : ''}</td>
+                      <td className="py-1 pr-2">{u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}</td>
                       <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.rxBytes)}</td>
                       <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.txBytes)}</td>
-                      <td className="py-1 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
+                      <td className="py-1 pr-2 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
+                      <td className="py-1 text-right font-mono">{formatCost(u.cost, u.currency)}</td>
                     </tr>
                   )),
                 )}
@@ -435,6 +454,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           onCopyConfig={() => void copyConnectConfig()}
           onGeneratePassword={() => void generatePassword()}
           onReconnect={(iface) => void reconnectModem(iface)}
+          onSetRate={(peerKey, price, label) => void setRate(peerKey, price, label)}
           onShowPassword={() => void showPassword()}
           onSave={() => void save()}
         />
@@ -474,6 +494,7 @@ function RouterDialog({
   onCopyConfig,
   onGeneratePassword,
   onReconnect,
+  onSetRate,
   onShowPassword,
   onSave,
 }: {
@@ -488,6 +509,7 @@ function RouterDialog({
   onCopyConfig: () => void;
   onGeneratePassword: () => void;
   onReconnect: (iface: string) => void;
+  onSetRate: (peerKey: string, pricePerGb: number, label: string | null) => void;
   onShowPassword: () => void;
   onSave: () => void;
 }) {
@@ -495,6 +517,7 @@ function RouterDialog({
   const field = 'min-h-9 w-full rounded-md border border-afro-line px-2 text-sm';
   const labelClass = 'mb-1 block text-xs font-bold text-afro-muted';
   const [showPw, setShowPw] = useState(false);
+  const [rateInputs, setRateInputs] = useState<Record<string, string>>({});
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
@@ -621,27 +644,48 @@ function RouterDialog({
                 ) : null}
                 {usage && usage.length ? (
                   <div>
-                    <div className="mb-1 text-xs font-bold text-afro-muted">WireGuard usage (last 30 days)</div>
+                    <div className="mb-1 text-xs font-bold text-afro-muted">WireGuard usage + billing (last 30 days)</div>
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-left text-afro-muted">
                           <th className="py-1 pr-2">Tunnel</th>
-                          <th className="py-1 pr-2 text-right">↓ in</th>
-                          <th className="py-1 pr-2 text-right">↑ out</th>
-                          <th className="py-1 text-right">total</th>
+                          <th className="py-1 pr-2 text-right">total</th>
+                          <th className="py-1 pr-2 text-right">price/GB</th>
+                          <th className="py-1 pr-2 text-right">cost</th>
+                          <th className="py-1"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {usage.map((u) => (
-                          <tr className="border-b border-afro-line/40" key={u.peerKey}>
-                            <td className="py-1 pr-2">{u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}{u.comment && u.iface ? ` (${u.comment})` : ''}</td>
-                            <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.rxBytes)}</td>
-                            <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.txBytes)}</td>
-                            <td className="py-1 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
-                          </tr>
-                        ))}
+                        {usage.map((u) => {
+                          const inputVal = rateInputs[u.peerKey] ?? (u.pricePerGb != null ? String(u.pricePerGb) : '');
+                          return (
+                            <tr className="border-b border-afro-line/40" key={u.peerKey}>
+                              <td className="py-1 pr-2">{u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}</td>
+                              <td className="py-1 pr-2 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
+                              <td className="py-1 pr-2 text-right">
+                                <input
+                                  className="w-20 rounded border border-afro-line px-1 text-right text-xs"
+                                  inputMode="decimal"
+                                  value={inputVal}
+                                  onChange={(e) => setRateInputs((m) => ({ ...m, [u.peerKey]: e.target.value }))}
+                                />
+                              </td>
+                              <td className="py-1 pr-2 text-right font-mono">{formatCost(u.cost, u.currency)}</td>
+                              <td className="py-1 text-right">
+                                <button
+                                  className={`${btnClass} min-h-7 px-2 py-0`}
+                                  onClick={() => onSetRate(u.peerKey, Number(inputVal) || 0, u.label ?? u.comment ?? null)}
+                                  type="button"
+                                >
+                                  Save
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
+                    <div className="mt-1 text-[11px] text-afro-muted">Set a price per GB per tunnel → cost = usage × rate. Default currency IRT.</div>
                   </div>
                 ) : usage ? (
                   <div className="text-xs text-afro-muted">No usage samples yet — they accrue every ~15 min.</div>

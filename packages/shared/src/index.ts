@@ -3913,17 +3913,28 @@ export interface MikroTikWgUsage {
   peerKey: string;
   iface?: string | null;
   comment?: string | null;
+  label?: string | null;
   rxBytes: number;
   txBytes: number;
   totalBytes: number;
   latestRxBytes: number;
   latestTxBytes: number;
   samples: number;
+  pricePerGb?: number | null;
+  currency?: string | null;
+  cost?: number | null;
 }
 
 export interface AdminRouterWgUsageResponse {
   windowDays: number;
   usage: MikroTikWgUsage[];
+}
+
+export interface SetMikroTikWgRateRequest {
+  peerKey: string;
+  label?: string | null;
+  pricePerGb: number;
+  currency?: string | null;
 }
 
 export interface ClientSubscriptionSummary {

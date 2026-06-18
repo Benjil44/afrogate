@@ -22,6 +22,7 @@ import type {
   AdminRouterCredentialResponse,
   AdminRouterConnectConfigResponse,
   AdminRouterWgUsageResponse,
+  SetMikroTikWgRateRequest,
   CreateMikroTikRouterRequest,
   UpdateMikroTikRouterRequest,
   MikroTikMode,
@@ -1392,6 +1393,19 @@ export async function fetchRouterWgUsage(
 ): Promise<AdminRouterWgUsageResponse> {
   const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/wg-usage?days=${encodeURIComponent(String(days))}`, {
     headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminRouterWgUsageResponse>;
+}
+
+export async function setRouterWgRate(
+  sessionToken: string,
+  id: string,
+  payload: SetMikroTikWgRateRequest,
+): Promise<AdminRouterWgUsageResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/wg-rate`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
   });
   return response.json() as Promise<AdminRouterWgUsageResponse>;
 }

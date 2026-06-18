@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export const MIKROTIK_ROUTER_KINDS = ['village', 'home', 'other'] as const;
 export const MIKROTIK_MODES = ['game', 'normal'] as const;
@@ -113,4 +113,26 @@ export class ReconnectModemDto {
   @MinLength(1)
   @MaxLength(120)
   interface!: string;
+}
+
+export class SetWgRateDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  peerKey!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  label?: string | null;
+
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000_000)
+  pricePerGb!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  currency?: string | null;
 }
