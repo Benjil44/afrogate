@@ -797,6 +797,7 @@ export interface AdminCustomerAccountSummary {
   loginEmail?: string | null;
   hasPassword?: boolean;
   egressTier?: EgressTier | string | null;
+  gamingEntitled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1143,6 +1144,7 @@ export interface UpdateCustomerAccountRequest {
   loginEmail?: string | null;
   password?: string | null;
   egressTier?: EgressTier;
+  gamingEntitled?: boolean;
 }
 
 export interface CreateClientConfigRequest {
@@ -3750,6 +3752,19 @@ export interface ClientPortalProfileResponse {
   account: ClientPortalAccountSummary;
   clientConfig: ClientPortalConfigSummary;
   routePreference: ClientRoutePreferenceSummary;
+  gaming: ClientGamingMode;
+}
+
+// Gaming (low-ping Starlink) egress for app clients.
+//   entitled = admin granted the billed feature (controls whether the app shows the toggle)
+//   enabled  = the customer's own current on/off (maps to customer_accounts.egress_tier)
+export interface ClientGamingMode {
+  entitled: boolean;
+  enabled: boolean;
+}
+
+export interface ClientGamingModeResponse {
+  gaming: ClientGamingMode;
 }
 
 export interface ClientRoutePreferenceResponse {

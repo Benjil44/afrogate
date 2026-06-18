@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type {
   ClientEgressModeResponse,
+  ClientGamingModeResponse,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdStatusResponse,
   ClientPortalProfileResponse,
@@ -13,6 +14,7 @@ import { ClientTokenGuard } from '../security/client-token.guard';
 import type { ClientAuthActor, RequestWithClientAuth } from '../security/auth-request';
 import { UpdateOwnClientRoutePreferenceDto } from './dto/client-route-preference.dto';
 import { SetEgressModeDto } from './dto/egress-mode.dto';
+import { SetGamingModeDto } from './dto/gaming-mode.dto';
 import { ClaimRewardedAdDto } from './dto/rewarded-ad.dto';
 
 @Controller('client')
@@ -93,6 +95,19 @@ export class ClientController {
     @Body() payload: SetEgressModeDto,
   ): Promise<ClientEgressModeResponse> {
     return { mode: await this.billingService.setEgressMode(this.requireClientActor(request), payload.mode) };
+  }
+
+  @Get('gaming-mode')
+  async getGamingMode(@Req() request: RequestWithClientAuth): Promise<ClientGamingModeResponse> {
+    return { gaming: await this.billingService.getGamingMode(this.requireClientActor(request)) };
+  }
+
+  @Patch('gaming-mode')
+  async setGamingMode(
+    @Req() request: RequestWithClientAuth,
+    @Body() payload: SetGamingModeDto,
+  ): Promise<ClientGamingModeResponse> {
+    return { gaming: await this.billingService.setGamingMode(this.requireClientActor(request), payload.enabled) };
   }
 
   @Get('wireguard-usage')

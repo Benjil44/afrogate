@@ -50,6 +50,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
   Timer? _accountTimer;
   String _egressMode = 'smart'; // 'smart' = Iran direct + foreign via bypass; 'full' = all via bypass
   bool _egressBusy = false;
+  GamingMode _gaming = const GamingMode(entitled: false, enabled: false);
+  bool _gamingBusy = false;
 
   bool get _connected => _state.toUpperCase() == 'CONNECTED';
   bool get _connecting => _state.toUpperCase() == 'CONNECTING';
@@ -80,6 +82,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _remark = widget.account!.account.displayName ?? 'Afrows';
       unawaited(_refreshAccount());
       unawaited(_loadEgressMode());
+      unawaited(_loadGamingMode());
       _accountTimer = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(_refreshAccount()));
       // Poll server-side WG usage so the up/down cards show real data (the
       // WireGuard plugin reports no on-device byte counters).
@@ -165,6 +168,33 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (applied == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not change bypass mode')),
+      );
+    }
+  }
+
+  Future<void> _loadGamingMode() async {
+    final token = widget.account?.token;
+    if (token == null) return;
+    final g = await AfrowsApi().fetchGamingMode(token);
+    if (mounted) setState(() => _gaming = g);
+  }
+
+  /// Toggle gaming (low-ping Starlink) egress. Only entitled accounts can turn it
+  /// on; the server rejects otherwise. Briefly reconnects existing sessions.
+  Future<void> _setGaming(bool enabled) async {
+    final token = widget.account?.token;
+    if (token == null || _gamingBusy) return;
+    setState(() => _gamingBusy = true);
+    final applied = await AfrowsApi().setGamingMode(token, enabled);
+    if (!mounted) return;
+    setState(() {
+      _gamingBusy = false;
+      if (applied != null) _gaming = applied;
+    });
+    Diag.I.log('gaming-mode -> ${applied?.enabled ?? "FAILED"}');
+    if (applied == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not change game mode')),
       );
     }
   }
@@ -427,6 +457,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
                         busy: _egressBusy,
                         onChanged: _setEgress,
                       ),
+                      if (_gaming.entitled) ...[
+                        const SizedBox(height: 12),
+                        _GamingToggle(
+                          enabled: _gaming.enabled,
+                          busy: _gamingBusy,
+                          onChanged: _setGaming,
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 12),
                     Text('Afrows v$kAppVersion · $kBuildTag',
@@ -661,6 +699,55 @@ class _BypassToggle extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2, color: _teal))
               : Switch(
                   value: full,
+                  activeThumbColor: _teal,
+                  onChanged: onChanged,
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Gaming-mode toggle, shown only to entitled accounts. ON routes foreign traffic
+/// through the low-ping Starlink path (Iran stays direct).
+class _GamingToggle extends StatelessWidget {
+  const _GamingToggle({required this.enabled, required this.busy, required this.onChanged});
+  final bool enabled;
+  final bool busy;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.sports_esports, size: 18, color: _teal),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Game mode',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                Text(
+                  enabled ? 'Low-ping route on' : 'Lower ping for gaming',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          busy
+              ? const SizedBox(
+                  width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: _teal))
+              : Switch(
+                  value: enabled,
                   activeThumbColor: _teal,
                   onChanged: onChanged,
                 ),

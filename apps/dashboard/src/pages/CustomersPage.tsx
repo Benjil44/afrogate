@@ -78,6 +78,7 @@ export function CustomersPage({
   const [scope, setScope] = useState<Scope>('account_shared');
   const [status, setStatus] = useState<Status>('active');
   const [egressTier, setEgressTier] = useState<'normal' | 'gaming'>('normal');
+  const [gamingEntitled, setGamingEntitled] = useState(false);
   const [notes, setNotes] = useState('');
   // protocols to auto-create when adding a customer (L2TP deferred until its server lands)
   const [protoVless, setProtoVless] = useState(true);
@@ -164,6 +165,7 @@ export function CustomersPage({
     setScope((a.quotaScope as Scope) || 'account_shared');
     setStatus((a.status as Status) || 'active');
     setEgressTier((a.egressTier as 'normal' | 'gaming') === 'gaming' ? 'gaming' : 'normal');
+    setGamingEntitled(a.gamingEntitled === true);
     setNotes(a.notes ?? '');
     setEditorOpen(true);
   };
@@ -245,6 +247,7 @@ export function CustomersPage({
       quotaScope: scope,
       status,
       egressTier,
+      gamingEntitled,
       notes: notes.trim() || null,
     };
     try {
@@ -600,6 +603,15 @@ export function CustomersPage({
                 <option value="normal">{s.tierNormal}</option>
                 <option value="gaming">{s.tierGaming}</option>
               </select>
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2">
+              <input
+                type="checkbox"
+                checked={gamingEntitled}
+                onChange={(e) => setGamingEntitled(e.target.checked)}
+                className="h-4 w-4 accent-afro-accent"
+              />
+              <span className="text-[13px] font-bold text-afro-muted">Allow Game mode toggle (in app)</span>
             </label>
             <label className="grid gap-1.5 md:col-span-2">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>

@@ -66,6 +66,7 @@ import type {
   PayPalWebhookHandlerResponse,
   EgressMode,
   EgressTierPrice,
+  ClientGamingMode,
 } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
@@ -350,6 +351,8 @@ interface ClientPortalRow {
   clientQuotaLimitBytes: string | number | null;
   clientUsedBytes: string | number;
   clientStatus: string;
+  gamingEntitled: boolean;
+  egressTier: string | null;
 }
 
 interface ClientUsageEventRow {
@@ -3699,6 +3702,10 @@ export class BillingService {
         status: profile.clientStatus,
       },
       routePreference,
+      gaming: {
+        entitled: Boolean(profile.gamingEntitled),
+        enabled: profile.egressTier === 'gaming',
+      },
     };
   }
 
@@ -4585,6 +4592,38 @@ export class BillingService {
     );
     this.triggerEgressModeSync();
     return mode;
+  }
+
+  /** The customer's own gaming entitlement + current on/off state. */
+  async getGamingMode(actor: ClientAuthActor): Promise<ClientGamingMode> {
+    assertClientScope(actor, 'client:read');
+    const result = await this.database.query<{ gamingEntitled: boolean; egressTier: string | null }>(
+      `SELECT gaming_entitled AS "gamingEntitled", egress_tier AS "egressTier"
+         FROM customer_accounts WHERE id = $1 LIMIT 1`,
+      [actor.customerAccountId],
+    );
+    const row = result.rows[0];
+    return { entitled: Boolean(row?.gamingEntitled), enabled: row?.egressTier === 'gaming' };
+  }
+
+  /**
+   * Customer self-serve gaming toggle. Only entitled accounts may turn it on; the
+   * tier change is picked up by the afrows-egress-mode-sync reconciler (foreign
+   * egress -> village Starlink). Rejects when not entitled (billed feature).
+   */
+  async setGamingMode(actor: ClientAuthActor, enabled: boolean): Promise<ClientGamingMode> {
+    assertClientScope(actor, 'route:write');
+    const current = await this.getGamingMode(actor);
+    if (enabled && !current.entitled) {
+      throw new ForbiddenException('Gaming mode is not enabled for this account');
+    }
+    if (enabled === current.enabled) return current;
+    await this.database.query(
+      `UPDATE customer_accounts SET egress_tier = $1, updated_at = now() WHERE id = $2`,
+      [enabled ? 'gaming' : 'normal', actor.customerAccountId],
+    );
+    this.triggerEgressModeSync();
+    return { entitled: current.entitled, enabled };
   }
 
   private triggerEgressModeSync(): void {
@@ -6317,6 +6356,7 @@ export class BillingService {
         ca.login_email AS "loginEmail",
         (ca.password_hash IS NOT NULL) AS "hasPassword",
         ca.egress_tier AS "egressTier",
+        ca.gaming_entitled AS "gamingEntitled",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
@@ -7293,7 +7333,9 @@ export class BillingService {
           cc.device_limit AS "deviceLimit",
           cc.quota_limit_bytes AS "clientQuotaLimitBytes",
           cc.used_bytes AS "clientUsedBytes",
-          cc.status AS "clientStatus"
+          cc.status AS "clientStatus",
+          ca.gaming_entitled AS "gamingEntitled",
+          ca.egress_tier AS "egressTier"
         FROM client_configs cc
         JOIN customer_accounts ca ON ca.id = cc.customer_account_id
         WHERE cc.id = $1
@@ -7686,6 +7728,7 @@ export class BillingService {
     if (dto.usedBytes !== undefined) add('usedBytes', 'used_bytes', dto.usedBytes);
     if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
     if (dto.egressTier !== undefined) add('egressTier', 'egress_tier', dto.egressTier);
+    if (dto.gamingEntitled !== undefined) add('gamingEntitled', 'gaming_entitled', dto.gamingEntitled);
 
     if (!setClauses.length) return fields;
 
