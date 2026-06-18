@@ -194,7 +194,7 @@ export class RoutersService {
     const target = this.target(row);
 
     const ethernet = await this.client
-      .call<Record<string, unknown>[]>(target, 'GET', '/interface/ethernet')
+      .call<Record<string, unknown>[]>(target, 'GET', '/interface/ethernet?.proplist=name')
       .catch(() => [] as Record<string, unknown>[]);
     if (!ethernet.some((e) => this.str(e['name']) === iface)) {
       return { ok: false, message: `Interface ${iface} not found on ${row.label}` };
