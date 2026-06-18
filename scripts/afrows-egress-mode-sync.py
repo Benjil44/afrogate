@@ -35,6 +35,12 @@ GEOIP_DIRECT = {"type": "field", "ip": ["geoip:private", "geoip:ir"], "outboundT
 GEOSITE_DIRECT = {"type": "field", "domain": ["geosite:category-ir"], "outboundTag": "direct"}
 VIA_VILLAGE_OUT = {"protocol": "freedom", "tag": "via-village",
                    "streamSettings": {"sockopt": {"interface": "wg-village"}}}
+# Self-healing foreign egress: probe the relay pool (socks); when it can't carry
+# traffic, send the normal foreign catch-all to via-village (owned Germany/Starlink)
+# instead of the dead pool, and flip back when the pool recovers.
+POOL_SOCKS = os.environ.get("AFROWS_POOL_SOCKS", "127.0.0.1:10808")
+POOL_PROBE_URLS = ["https://www.gstatic.com/generate_204", "http://cp.cloudflare.com/generate_204"]
+STATE_FILE = "/var/lib/afrows/egress-pool.state"
 # Extra source IPs to route to via-village regardless of DB tier (e.g. the home
 # router's tunnel IP on afrows-xray, for the operator's own gaming) — read from
 # the env FILE in main() (systemd has no shell env).
@@ -105,6 +111,52 @@ def xray_gaming_emails(url):
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
+def pool_alive():
+    """True if the foreign relay pool (socks) can fetch a basic 204 endpoint."""
+    for url in POOL_PROBE_URLS:
+        try:
+            r = subprocess.run(
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", "8",
+                 "--socks5-hostname", POOL_SOCKS, url],
+                capture_output=True, text=True, timeout=12,
+            )
+            if r.stdout.strip() in ("200", "204"):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def decide_catchall():
+    """Choose the normal foreign catch-all outbound. 'proxy' when the relay pool
+    works, else 'via-village'. Requires 2 consecutive divergent readings before
+    flipping, to avoid restart flapping."""
+    alive = pool_alive()
+    want = "proxy" if alive else "via-village"
+    try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        st = json.load(open(STATE_FILE))
+    except Exception:
+        st = {}
+    applied = st.get("applied", "proxy")
+    if want == applied:
+        st = {"applied": applied, "pending": want, "count": 0}
+    else:
+        cnt = (st.get("count", 0) + 1) if st.get("pending") == want else 1
+        if cnt >= 2:
+            applied = want
+            st = {"applied": applied, "pending": want, "count": 0}
+        else:
+            st = {"applied": applied, "pending": want, "count": cnt}
+    try:
+        json.dump(st, open(STATE_FILE, "w"))
+    except Exception:
+        pass
+    log("pool=%s -> catch-all=%s (pending=%s count=%d)" % (
+        "alive" if alive else "DEAD", applied, st.get("pending"), st.get("count", 0)))
+    return applied
+
+
 def client_inbound_tags(rules):
     for r in rules:
         if r.get("outboundTag") == "proxy" and r.get("inboundTag"):
@@ -112,7 +164,7 @@ def client_inbound_tags(rules):
     return None
 
 
-def desired_rules(mode, client_tags, gaming_sources, gaming_users):
+def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound):
     rules = [{"type": "field", "inboundTag": ["api"], "outboundTag": "api"}]
     if mode == "smart":
         rules.append(dict(GEOIP_DIRECT))
@@ -122,12 +174,14 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users):
         rules.append({"type": "field", "source": gaming_sources, "outboundTag": "via-village"})
     if gaming_users:  # by VLESS user email (afrows-xray app clients)
         rules.append({"type": "field", "user": gaming_users, "outboundTag": "via-village"})
-    rules.append({"type": "field", "inboundTag": client_tags, "outboundTag": "proxy"})
+    # normal foreign catch-all: 'proxy' (relay pool) normally; 'via-village' when the pool is dead
+    rules.append({"type": "field", "inboundTag": client_tags, "outboundTag": catch_outbound})
     return rules
 
 
-def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users):
-    """gaming_sources: source IPs -> via-village; gaming_users: VLESS emails -> via-village."""
+def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound):
+    """gaming_sources: source IPs -> via-village; gaming_users: VLESS emails -> via-village.
+    catch_outbound: where the normal foreign catch-all goes ('proxy' or 'via-village')."""
     cfg = json.load(open(cfg_path))
     rules = cfg.get("routing", {}).get("rules", [])
     tags = client_inbound_tags(rules)
@@ -141,7 +195,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users):
         outs.append(dict(VIA_VILLAGE_OUT))
         changed_out = True
 
-    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [])
+    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound)
     if rules == want and not changed_out:
         return False
 
@@ -157,7 +211,8 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users):
     os.replace(cfg_path, cfg_path + ".bak-" + time.strftime("%Y%m%d-%H%M%S"))
     os.replace(tmp, cfg_path)
     subprocess.run(["systemctl", "restart", svc], timeout=30)
-    log("%s: routing -> %s mode, gaming-src=%d gaming-user=%d" % (svc, mode, len(gaming_sources or []), len(gaming_users or [])))
+    log("%s: routing -> %s mode, catch-all=%s, gaming-src=%d gaming-user=%d" % (
+        svc, mode, catch_outbound, len(gaming_sources or []), len(gaming_users or [])))
     return True
 
 
@@ -168,6 +223,7 @@ def main():
     extra = [s.strip() for s in file_env("AFROWS_GAMING_EXTRA_SOURCES").split(",") if s.strip()]
     extra += [ip for ip in router_gaming_ips(url) if ip not in extra]  # router tunnel source IPs
     xray_users = xray_gaming_emails(url)  # afrows-xray gaming VLESS user emails
+    catch = decide_catchall()  # self-healing: proxy when pool alive, else via-village
     changed = False
     for cfg_path, svc, use_db in TARGETS:
         if not os.path.exists(cfg_path):
@@ -176,9 +232,10 @@ def main():
             sources, users = db + extra, []
         else:       # afrows-xray: router source IPs + VLESS gaming users
             sources, users = list(extra), xray_users
-        changed |= apply_target(cfg_path, svc, mode, sources, users)
+        changed |= apply_target(cfg_path, svc, mode, sources, users, catch)
     if not changed:
-        log("no change (mode=%s, wg-src=%d xray-src=%d xray-user=%d)" % (mode, len(db) + len(extra), len(extra), len(xray_users)))
+        log("no change (mode=%s, catch-all=%s, wg-src=%d xray-src=%d xray-user=%d)" % (
+            mode, catch, len(db) + len(extra), len(extra), len(xray_users)))
     return 0
 
 
