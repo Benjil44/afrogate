@@ -34,6 +34,17 @@ class WgUsage {
   final int txBytes; // bytes server sent to client = client DOWNLOAD
 }
 
+class GamingMode {
+  const GamingMode({required this.entitled, required this.enabled});
+  final bool entitled; // admin granted the billed feature
+  final bool enabled; // user's current on/off
+
+  factory GamingMode.fromJson(Map<String, dynamic> j) => GamingMode(
+        entitled: j['entitled'] == true,
+        enabled: j['enabled'] == true,
+      );
+}
+
 class AfrowsApiException implements Exception {
   AfrowsApiException(this.message);
   final String message;
@@ -130,6 +141,40 @@ class AfrowsApi {
       if (res.statusCode != 200) return null;
       final b = jsonDecode(res.body) as Map<String, dynamic>;
       return b['mode'] == 'full' ? 'full' : 'smart';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Gaming (low-ping Starlink) mode. `entitled` = admin granted the feature
+  /// (controls whether the app shows the toggle); `enabled` = the user's current
+  /// on/off. Returns not-entitled/off on error.
+  Future<GamingMode> fetchGamingMode(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$base/client/gaming-mode'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return const GamingMode(entitled: false, enabled: false);
+      final g = (jsonDecode(res.body) as Map)['gaming'];
+      return g is Map ? GamingMode.fromJson(g.cast<String, dynamic>()) : const GamingMode(entitled: false, enabled: false);
+    } catch (_) {
+      return const GamingMode(entitled: false, enabled: false);
+    }
+  }
+
+  /// Turns gaming mode on/off for this account. Returns the applied state, or
+  /// null on failure (e.g. 403 when not entitled).
+  Future<GamingMode?> setGamingMode(String token, bool enabled) async {
+    try {
+      final res = await http.patch(
+        Uri.parse('$base/client/gaming-mode'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'enabled': enabled}),
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) return null;
+      final g = (jsonDecode(res.body) as Map)['gaming'];
+      return g is Map ? GamingMode.fromJson(g.cast<String, dynamic>()) : null;
     } catch (_) {
       return null;
     }

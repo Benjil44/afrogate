@@ -195,6 +195,10 @@ export class UpdateCustomerAccountDto {
   @IsOptional()
   @IsIn(['normal', 'gaming'])
   egressTier?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  gamingEntitled?: boolean;
 }
 
 export class SetEgressTierPriceDto {
