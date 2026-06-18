@@ -208,6 +208,8 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           notes: draft.notes || null,
         });
         setNotice(`Updated ${draft.label}`);
+        setDialogOpen(false);
+        await load();
       } else {
         const payload: CreateMikroTikRouterRequest = {
           id: draft.id,
@@ -221,11 +223,14 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           gamingSourceIp: draft.gamingSourceIp || null,
           notes: draft.notes || null,
         };
-        await createRouter(sessionToken, payload);
-        setNotice(`Added ${draft.label}`);
+        const res = await createRouter(sessionToken, payload);
+        setNotice(`Added ${draft.label} — now copy the connect config below and paste it into the MikroTik terminal`);
+        await load();
+        // Keep the dialog open and switch into the saved router so the connect-config
+        // button (which needs a persisted router) is available right away.
+        setEditId(res.router.id);
+        void loadStatus(res.router.id);
       }
-      setDialogOpen(false);
-      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
