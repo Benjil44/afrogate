@@ -3807,6 +3807,7 @@ export interface MikroTikRouterSummary {
   hasPassword: boolean;
   online: boolean;
   mode: MikroTikMode | null;
+  egressEnabled: boolean;
   identity?: string | null;
   board?: string | null;
   version?: string | null;
@@ -3893,6 +3894,10 @@ export interface UpdateMikroTikRouterRequest {
 
 export interface SetMikroTikModeRequest {
   mode: MikroTikMode;
+}
+
+export interface SetMikroTikEgressRequest {
+  enabled: boolean;
 }
 
 export interface AdminRouterMutationResponse {

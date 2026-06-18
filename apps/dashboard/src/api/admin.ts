@@ -1343,6 +1343,19 @@ export async function setRouterMode(
   return response.json() as Promise<AdminRouterMutationResponse>;
 }
 
+export async function setRouterEgress(
+  sessionToken: string,
+  id: string,
+  enabled: boolean,
+): Promise<AdminRouterMutationResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/egress`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify({ enabled }),
+  });
+  return response.json() as Promise<AdminRouterMutationResponse>;
+}
+
 export async function reconnectRouterModem(
   sessionToken: string,
   id: string,

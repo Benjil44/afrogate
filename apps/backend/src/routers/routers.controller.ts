@@ -16,6 +16,7 @@ import { RoutersService } from './routers.service';
 import {
   CreateMikroTikRouterDto,
   ReconnectModemDto,
+  SetEgressDto,
   SetMikroTikModeDto,
   SetWgRateDto,
   UpdateMikroTikRouterDto,
@@ -60,6 +61,12 @@ export class RoutersController {
   @Roles('admin', 'supervisor')
   setMode(@Param('id') id: string, @Body() payload: SetMikroTikModeDto): Promise<AdminRouterMutationResponse> {
     return this.routersService.setMode(id, payload.mode);
+  }
+
+  @Post('routers/:id/egress')
+  @Roles('admin', 'supervisor')
+  setEgress(@Param('id') id: string, @Body() payload: SetEgressDto): Promise<AdminRouterMutationResponse> {
+    return this.routersService.setEgress(id, payload.enabled);
   }
 
   @Post('routers/:id/modems/reconnect')

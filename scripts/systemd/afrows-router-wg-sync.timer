@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile Afrows wg-routers peers periodically
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+RandomizedDelaySec=10
+Persistent=true
+
+[Install]
+WantedBy=timers.target
