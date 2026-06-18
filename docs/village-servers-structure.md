@@ -4,6 +4,19 @@
 > **Secrets are NOT stored here.** The shared SSH password is referred to as `<RAMIN_PW>`
 > (operator's standard credential). Per-server exceptions are noted.
 
+## 0. UPDATE 2026-06-19 — friend setup removed, village is now Afrows-owned
+
+The operator authorized removing the friend's setup. **Current state:**
+- **WG tunnels on the village: only `wg-germany` (162.19.253.235) + `wg-afrows` (Afrows).**
+  Deleted: `wg-iran`, `wg-iran-2`, `wg-iran-5`, `wg-foreign-2` (Frankfurt), `wg-foreign-hz` (Hetzner),
+  plus the dead `*10/*11` peers and the dangling Frankfurt/Hetzner default routes.
+- **Foreign egress:** owned only — `via-village` → Starlink-direct (`216.x`); the relay pool is retired.
+- **Afrows uplink transport** now spans all three modems: irancell-228 (192.168.9.1) dist1 PRIMARY
+  + netwatch failover, mobinnet (192.168.8.1) dist2, irancell-227/ether5 (192.168.12.1) dist3.
+- Open: village LAN's own `0.0.0.0/0` still has a leftover default via `wg-germany` (untouched).
+
+Sections 1–6 below are the pre-removal discovery snapshot (kept for history).
+
 ## 1. Topology overview
 
 ```
