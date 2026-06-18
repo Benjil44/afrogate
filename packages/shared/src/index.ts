@@ -3791,6 +3791,104 @@ export interface AdminEgressTierPricesResponse {
   prices: EgressTierPrice[];
 }
 
+export type MikroTikRouterKind = 'village' | 'home' | 'other';
+export type MikroTikMode = 'game' | 'normal';
+
+export interface MikroTikRouterSummary {
+  id: string;
+  label: string;
+  kind: MikroTikRouterKind;
+  host: string;
+  restPort: number;
+  restUser: string;
+  webfigUrl?: string | null;
+  gamingSourceIp?: string | null;
+  notes?: string | null;
+  hasPassword: boolean;
+  online: boolean;
+  mode: MikroTikMode | null;
+  identity?: string | null;
+  board?: string | null;
+  version?: string | null;
+  uptime?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface MikroTikWan {
+  name: string;
+  comment?: string | null;
+  running: boolean;
+  address?: string | null;
+}
+
+export interface MikroTikWgPeer {
+  interfaceName: string;
+  comment?: string | null;
+  endpoint?: string | null;
+  lastHandshakeSeconds?: number | null;
+  rxBytes?: number | null;
+  txBytes?: number | null;
+}
+
+export interface MikroTikRouterStatus {
+  id: string;
+  label: string;
+  online: boolean;
+  error?: string | null;
+  identity?: string | null;
+  board?: string | null;
+  version?: string | null;
+  uptime?: string | null;
+  cpuLoad?: number | null;
+  mode: MikroTikMode | null;
+  wans: MikroTikWan[];
+  wgPeers: MikroTikWgPeer[];
+  webfigUrl?: string | null;
+  fetchedAt: string;
+}
+
+export interface AdminRoutersResponse {
+  routers: MikroTikRouterSummary[];
+}
+
+export interface AdminRouterStatusResponse {
+  status: MikroTikRouterStatus;
+}
+
+export interface CreateMikroTikRouterRequest {
+  id: string;
+  label: string;
+  kind?: MikroTikRouterKind;
+  host: string;
+  restPort?: number;
+  restUser?: string;
+  password?: string | null;
+  webfigUrl?: string | null;
+  gamingSourceIp?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateMikroTikRouterRequest {
+  label?: string;
+  kind?: MikroTikRouterKind;
+  host?: string;
+  restPort?: number;
+  restUser?: string;
+  password?: string | null;
+  webfigUrl?: string | null;
+  gamingSourceIp?: string | null;
+  notes?: string | null;
+}
+
+export interface SetMikroTikModeRequest {
+  mode: MikroTikMode;
+}
+
+export interface AdminRouterMutationResponse {
+  router: MikroTikRouterSummary;
+}
+
 export interface ClientSubscriptionSummary {
   clientConfigId: string;
   routeGroup: string;

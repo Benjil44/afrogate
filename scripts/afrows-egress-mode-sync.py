@@ -78,6 +78,15 @@ def gaming_ips(url):
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
+def router_gaming_ips(url):
+    """Source IPs of operator MikroTik routers toggled to game mode (the Microtiks panel)."""
+    s = psql1(url, (
+        "select coalesce(string_agg(gaming_source_ip, ','), '') from mikrotik_routers "
+        "where gaming_enabled = true and gaming_source_ip is not null and gaming_source_ip <> ''"
+    ))
+    return [x.strip() for x in s.split(",") if x.strip()] if s else []
+
+
 def client_inbound_tags(rules):
     for r in rules:
         if r.get("outboundTag") == "proxy" and r.get("inboundTag"):
@@ -136,6 +145,7 @@ def main():
     mode = read_mode(url)
     db = gaming_ips(url)
     extra = [s.strip() for s in file_env("AFROWS_GAMING_EXTRA_SOURCES").split(",") if s.strip()]
+    extra += [ip for ip in router_gaming_ips(url) if ip not in extra]
     changed = False
     for cfg_path, svc, use_db in TARGETS:
         if os.path.exists(cfg_path):

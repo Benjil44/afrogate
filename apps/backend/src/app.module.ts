@@ -40,6 +40,9 @@ import { OutboundHealthService } from './outbound/outbound-health.service';
 import { OutboundHttpService } from './outbound/outbound-http.service';
 import { OutboundSpeedTestService } from './outbound/outbound-speed-test.service';
 import { AdminReportsService } from './reports/admin-reports.service';
+import { RoutersController } from './routers/routers.controller';
+import { RoutersService } from './routers/routers.service';
+import { MikroTikClientService } from './routers/mikrotik-client.service';
 import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
 import { RolesGuard } from './security/roles.guard';
@@ -70,6 +73,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     HealthController,
     MetricsController,
     OperationsController,
+    RoutersController,
     PayPalWebhookController,
     RewardedAdWebhookController,
     TelegramBotController,
@@ -104,6 +108,8 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     RateLimitGuard,
     RateLimitService,
     AdminReportsService,
+    RoutersService,
+    MikroTikClientService,
     RolesGuard,
     SecretVaultService,
     PostgresMetricsRepository,
