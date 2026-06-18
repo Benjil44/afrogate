@@ -92,6 +92,8 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [status, setStatus] = useState<MikroTikRouterStatus | null>(null);
   const [usage, setUsage] = useState<MikroTikWgUsage[] | null>(null);
   const [modemBusy, setModemBusy] = useState<Record<string, boolean>>({});
+  const [rollup, setRollup] = useState<{ router: string; rows: MikroTikWgUsage[] }[] | null>(null);
+  const [rollupLoading, setRollupLoading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -213,6 +215,23 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     }
   };
 
+  const loadRollup = async () => {
+    setRollupLoading(true);
+    try {
+      const results = await Promise.all(
+        rows.map(async (r) => ({
+          router: r.label,
+          rows: (await fetchRouterWgUsage(sessionToken, r.id, 30).catch(() => ({ usage: [] as MikroTikWgUsage[] }))).usage,
+        })),
+      );
+      setRollup(results.filter((r) => r.rows.length));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load usage');
+    } finally {
+      setRollupLoading(false);
+    }
+  };
+
   const showPassword = async () => {
     if (!editId) return;
     try {
@@ -299,6 +318,47 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
 
       {error ? <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {notice ? <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div> : null}
+
+      <div className={cardClass}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-bold text-afro-ink">WireGuard usage — all tunnels (30 days)</div>
+          <button className={btnClass} disabled={rollupLoading || rows.length === 0} onClick={() => void loadRollup()} type="button">
+            <RefreshCw size={14} /> {rollupLoading ? 'Loading…' : rollup ? 'Refresh' : 'Load usage'}
+          </button>
+        </div>
+        {rollup ? (
+          rollup.length ? (
+            <table className="mt-3 w-full text-sm">
+              <thead>
+                <tr className="border-b border-afro-line text-left text-xs uppercase text-afro-muted">
+                  <th className="py-1 pr-2">Router</th>
+                  <th className="py-1 pr-2">Tunnel</th>
+                  <th className="py-1 pr-2 text-right">↓ in</th>
+                  <th className="py-1 pr-2 text-right">↑ out</th>
+                  <th className="py-1 text-right">total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rollup.flatMap((g) =>
+                  g.rows.map((u) => (
+                    <tr className="border-b border-afro-line/40" key={`${g.router}:${u.peerKey}`}>
+                      <td className="py-1 pr-2">{g.router}</td>
+                      <td className="py-1 pr-2">{u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}{u.comment && u.iface ? ` (${u.comment})` : ''}</td>
+                      <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.rxBytes)}</td>
+                      <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.txBytes)}</td>
+                      <td className="py-1 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
+                    </tr>
+                  )),
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <div className="mt-2 text-xs text-afro-muted">No usage yet — samples accrue every ~15 min.</div>
+          )
+        ) : (
+          <div className="mt-2 text-xs text-afro-muted">Click “Load usage” for per-tunnel data across all routers (great for billing the village tunnels).</div>
+        )}
+      </div>
 
       <div className={`${cardClass} overflow-x-auto`}>
         <table className="w-full min-w-[760px] text-sm">
