@@ -152,8 +152,10 @@ export class RoutersService {
     const row = await this.requireRow(id);
     try {
       const target = this.target(row);
+      // Use .proplist: some ax3 devices hang on the full /ip/firewall/mangle query
+      // but answer the trimmed projection instantly.
       const mangle = await this.client
-        .call<Record<string, unknown>[]>(target, 'GET', '/ip/firewall/mangle')
+        .call<Record<string, unknown>[]>(target, 'GET', '/ip/firewall/mangle?.proplist=.id,comment,disabled', undefined, 12000)
         .catch(() => [] as Record<string, unknown>[]);
       for (const m of mangle) {
         if (this.str(m['comment']) === 'afrows-egress') {
