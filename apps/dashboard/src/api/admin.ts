@@ -21,6 +21,7 @@ import type {
   AdminRouterModemActionResponse,
   AdminRouterCredentialResponse,
   AdminRouterConnectConfigResponse,
+  AdminRouterWgUsageResponse,
   CreateMikroTikRouterRequest,
   UpdateMikroTikRouterRequest,
   MikroTikMode,
@@ -1382,4 +1383,15 @@ export async function fetchRouterConnectConfig(
     headers: createSessionHeaders(sessionToken),
   });
   return response.json() as Promise<AdminRouterConnectConfigResponse>;
+}
+
+export async function fetchRouterWgUsage(
+  sessionToken: string,
+  id: string,
+  days = 30,
+): Promise<AdminRouterWgUsageResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/routers/${encodeURIComponent(id)}/wg-usage?days=${encodeURIComponent(String(days))}`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminRouterWgUsageResponse>;
 }

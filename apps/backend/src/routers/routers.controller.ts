@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import type {
   AdminRouterConnectConfigResponse,
   AdminRouterCredentialResponse,
   AdminRouterModemActionResponse,
   AdminRouterMutationResponse,
   AdminRouterStatusResponse,
+  AdminRouterWgUsageResponse,
   AdminRoutersResponse,
 } from '@afrows/shared';
 import { AdminTokenGuard } from '../security/admin-token.guard';
@@ -84,5 +85,11 @@ export class RoutersController {
   @Roles('admin')
   connectConfig(@Param('id') id: string): Promise<AdminRouterConnectConfigResponse> {
     return this.routersService.connectConfig(id);
+  }
+
+  @Get('routers/:id/wg-usage')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  wgUsage(@Param('id') id: string, @Query('days') days?: string): Promise<AdminRouterWgUsageResponse> {
+    return this.routersService.getWgUsage(id, Number(days) || 30);
   }
 }
