@@ -798,6 +798,9 @@ export interface AdminCustomerAccountSummary {
   hasPassword?: boolean;
   egressTier?: EgressTier | string | null;
   gamingEntitled?: boolean;
+  expiresAt?: string | null;
+  tags?: string[];
+  lastConnectedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1145,6 +1148,8 @@ export interface UpdateCustomerAccountRequest {
   password?: string | null;
   egressTier?: EgressTier;
   gamingEntitled?: boolean;
+  expiresAt?: string | null;
+  tags?: string[];
 }
 
 export interface CreateClientConfigRequest {
