@@ -462,6 +462,11 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-2 font-bold text-afro-ink">
                       <RouterIcon size={16} /> {router.label}
+                      {router.kind === 'village' ? (
+                        <span className="rounded-full bg-afro-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-afro-accent" title="Critical egress hub — locked">
+                          Primary
+                        </span>
+                      ) : null}
                     </div>
                     <div className="text-xs text-afro-muted">{router.kind}{router.board ? ` · ${router.board}` : ''}{router.version ? ` · ${router.version}` : ''}</div>
                   </td>
@@ -474,18 +479,26 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
                     {router.uptime ? <div className="text-xs text-afro-muted">up {router.uptime}</div> : null}
                   </td>
                   <td className="py-3 pr-3">
-                    <ModeToggle
-                      mode={router.mode}
-                      disabled={Boolean(busy[router.id])}
-                      onToggle={() => void toggleMode(router)}
-                    />
+                    {router.kind === 'village' ? (
+                      <span className="text-xs font-bold text-afro-muted" title="Primary hub — mode is fixed">Locked</span>
+                    ) : (
+                      <ModeToggle
+                        mode={router.mode}
+                        disabled={Boolean(busy[router.id])}
+                        onToggle={() => void toggleMode(router)}
+                      />
+                    )}
                   </td>
                   <td className="py-3 pr-3">
-                    <OnOffToggle
-                      on={router.egressEnabled}
-                      disabled={Boolean(busy[router.id])}
-                      onToggle={() => void toggleEgress(router)}
-                    />
+                    {router.kind === 'village' ? (
+                      <span className="text-xs font-bold text-emerald-600" title="Primary hub — always on">Always on</span>
+                    ) : (
+                      <OnOffToggle
+                        on={router.egressEnabled}
+                        disabled={Boolean(busy[router.id])}
+                        onToggle={() => void toggleEgress(router)}
+                      />
+                    )}
                   </td>
                   <td className="py-3 pr-3">
                     <div className="flex items-center justify-end gap-1.5">
@@ -497,7 +510,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
                           <ExternalLink size={14} /> Advanced
                         </a>
                       ) : null}
-                      <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id])} onClick={() => void remove(router)} type="button" title="Remove from panel">
+                      <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id]) || router.kind === 'village'} onClick={() => void remove(router)} type="button" title={router.kind === 'village' ? 'Primary hub — cannot be removed' : 'Remove from panel'}>
                         <Trash2 size={14} />
                       </button>
                     </div>

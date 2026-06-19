@@ -642,6 +642,17 @@ function loadInitialKioskMode() {
   return window.localStorage.getItem(kioskStorageKey) === 'enabled';
 }
 
+const ROUTE_VIEWS: ActiveView[] = [
+  'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
+  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings',
+];
+
+/** Derive the active view from the URL path (so refresh + the address bar work). */
+function viewFromUrl(): ActiveView {
+  const seg = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  return (ROUTE_VIEWS as string[]).includes(seg) ? (seg as ActiveView) : 'dashboard';
+}
+
 export function DashboardApp() {
   const { isRtl, language, nextLanguage, setLanguage, strings: t } = useDashboardLanguage();
   const format = useMemo(() => createDashboardFormatters(language), [language]);
@@ -698,7 +709,20 @@ function AuthenticatedDashboard({
   t: DashboardStrings;
 }) {
   const isResellerSession = session.actor.role === 'reseller';
-  const [activeView, setActiveView] = useState<ActiveView>('dashboard');
+  const [activeView, setActiveView] = useState<ActiveView>(viewFromUrl);
+  // Keep the URL path in sync with the active view: the address bar shows each
+  // page, and a refresh restores it (instead of dropping back to Dashboard).
+  useEffect(() => {
+    const path = activeView === 'dashboard' ? '/' : `/${activeView}`;
+    if (window.location.pathname !== path) {
+      window.history.pushState({ view: activeView }, '', path + window.location.search);
+    }
+  }, [activeView]);
+  useEffect(() => {
+    const onPop = () => setActiveView(viewFromUrl());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
