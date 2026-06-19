@@ -20,9 +20,15 @@
 - **ether2 irancell-228** — IMEI `866815071139251`, S/N `6MQ7S24116002966`, Wi-Fi SSID `H155-381_8FEB` (+`_5G`).
 - **ether5 irancell-227** — IMEI `867173066275139`, S/N `KCS7S25228002961`, MAC `10E84098CA45`, Wi-Fi SSID `H158-381_CA45` (+`_5G`).
 
-> NOTE: the H155/H158 default LAN IP/admin password are on the label, but the village units
-> were re-IP'd (228→.9.1, 227→.12.1); their admin passwords may have been changed at that time
-> too — verify on the web UI. The H155 logs in as `admin` (password only); the H158 as `user`.
+> **IMPORTANT — admin login = the Wi-Fi password.** The friend set each modem's web-admin
+> password to that unit's **Wi-Fi password** (the `Wi-Fi Password` on the label), NOT the printed
+> `Password:` field (which is stale/changed). Confirmed on 228 (`192.168.9.1`, `admin` / its Wi-Fi
+> pass). H155 logs in as `admin`; H158 ("Pro", 227) as `user`. The default LAN IPs on the labels
+> are also stale — the village units were re-IP'd (228→.9.1, 227→.12.1).
+>
+> One-click panel reboot via the Huawei API was NOT pursued: rotating `__RequestVerificationToken`
+> + reversed-SCRAM + a lockout counter, on the live primary transport, is too fragile/risky. Use the
+> web UI (below) for reboot/config, or a smart plug on the modem power for effortless remote reboot.
 
 ## How to reach them
 
