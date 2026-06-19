@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import type {
@@ -131,6 +131,8 @@ export class RoutersService {
   }
 
   async remove(id: string): Promise<{ removed: boolean }> {
+    const row = await this.requireRow(id);
+    this.assertNotPrimary(row);
     const result = await this.database.query(`DELETE FROM mikrotik_routers WHERE id = $1`, [id]);
     if (!result.rowCount) throw new NotFoundException(`Router ${id} not found`);
     this.triggerRouterWgSync(); // prune the peer from wg-routers
@@ -139,6 +141,7 @@ export class RoutersService {
 
   async setMode(id: string, mode: MikroTikMode): Promise<AdminRouterMutationResponse> {
     const row = await this.requireRow(id);
+    this.assertNotPrimary(row);
     const result = await this.database.query<RouterRow>(
       `UPDATE mikrotik_routers SET gaming_enabled = $1, updated_at = now() WHERE id = $2 RETURNING *`,
       [mode === 'game', row.id],
@@ -147,9 +150,17 @@ export class RoutersService {
     return { router: this.toSummary(result.rows[0], { online: false, mode }) };
   }
 
+  /** The village is the primary egress hub — its mode/egress can't be toggled and it can't be removed. */
+  private assertNotPrimary(row: RouterRow): void {
+    if (row.kind === 'village') {
+      throw new BadRequestException('The village is the primary egress hub and cannot be changed or removed.');
+    }
+  }
+
   /** Toggle whether the router's CLIENTS use Afrows internet (the router-side egress mark). */
   async setEgress(id: string, enabled: boolean): Promise<AdminRouterMutationResponse> {
     const row = await this.requireRow(id);
+    this.assertNotPrimary(row);
     try {
       const target = this.target(row);
       // Use .proplist: some ax3 devices hang on the full /ip/firewall/mangle query
