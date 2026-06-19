@@ -15,6 +15,19 @@ The operator authorized removing the friend's setup. **Current state:**
   + netwatch failover, mobinnet (192.168.8.1) dist2, irancell-227/ether5 (192.168.12.1) dist3.
 - Open: village LAN's own `0.0.0.0/0` still has a leftover default via `wg-germany` (untouched).
 
+### Egress split (2026-06-19, later) — normal→Germany, gaming→Starlink
+
+- **Direct Afrows→Germany is BLOCKED** (Afrows's hosting uplink filters foreign — Germany got
+  0 packets across ICMP/TCP/SSH/WG). Germany is reachable only *through the village*.
+- **Two Afrows↔village tunnels (both over the Iranian modems):**
+  - `wg-village` (10.20.0.1↔10.20.0.2) → village routes foreign out **Starlink** → for **gaming**.
+  - `wg-village-de` (10.23.0.1↔10.23.0.2, port 51903) → village routes foreign out **wg-germany** → for **normal**.
+- Afrows xray outbounds: `via-village` (Starlink) + `via-germany` (Germany). Reconciler
+  `AFROWS_FOREIGN_EGRESS=germany`: normal→via-germany, gaming-tier→via-village, Iran→direct.
+- Verified: normal exits **162.19.253.235** (Germany), gaming exits **216.147.121.x** (Starlink).
+- Speed note: normal→Germany is capped by the Afrows↔village irancell transport (direct would be
+  faster but is blocked). When Iran blocks ALL foreign, this same village path still serves Germany.
+
 Sections 1–6 below are the pre-removal discovery snapshot (kept for history).
 
 ## 1. Topology overview
