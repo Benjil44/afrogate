@@ -35,6 +35,10 @@ GEOIP_DIRECT = {"type": "field", "ip": ["geoip:private", "geoip:ir"], "outboundT
 GEOSITE_DIRECT = {"type": "field", "domain": ["geosite:category-ir"], "outboundTag": "direct"}
 VIA_VILLAGE_OUT = {"protocol": "freedom", "tag": "via-village",
                    "streamSettings": {"sockopt": {"interface": "wg-village"}}}
+# Normal egress -> Germany: a 2nd tunnel to the village (wg-village-de over the
+# Iranian modems) that the village routes out wg-germany. Gaming -> via-village (Starlink).
+VIA_GERMANY_OUT = {"protocol": "freedom", "tag": "via-germany",
+                   "streamSettings": {"sockopt": {"interface": "wg-village-de"}}}
 # Self-healing foreign egress: probe the relay pool (socks); when it can't carry
 # traffic, send the normal foreign catch-all to via-village (owned Germany/Starlink)
 # instead of the dead pool, and flip back when the pool recovers.
@@ -127,14 +131,17 @@ def pool_alive():
     return False
 
 
-def decide_catchall(prefer_pool):
-    """Choose the normal foreign catch-all outbound.
-    Default (prefer_pool=False): always 'via-village' — the owned Germany/Starlink
-    system; the unstable friend relay pool is NOT used.
-    Legacy self-heal (prefer_pool=True, env AFROWS_FOREIGN_EGRESS=pool): 'proxy' when
-    the pool works, else 'via-village', with 2-read hysteresis."""
-    if not prefer_pool:
-        log("foreign-egress=owned -> catch-all=via-village (relay pool disabled)")
+def decide_catchall(egress):
+    """Choose the NORMAL foreign catch-all outbound (gaming always -> via-village/Starlink).
+    egress (env AFROWS_FOREIGN_EGRESS):
+      'germany' (default) -> via-germany  (normal users exit the Germany VPS)
+      'village'           -> via-village  (everyone on Starlink)
+      'pool'              -> legacy relay self-heal (proxy when alive, else via-village)"""
+    if egress == "germany":
+        log("foreign-egress=germany -> normal catch-all=via-germany (gaming=via-village/Starlink)")
+        return "via-germany"
+    if egress != "pool":
+        log("foreign-egress=village -> catch-all=via-village (Starlink)")
         return "via-village"
     alive = pool_alive()
     want = "proxy" if alive else "via-village"
@@ -166,7 +173,7 @@ def client_inbound_tags(rules):
     # The client catch-all is the rule with inboundTag whose outbound is the foreign
     # egress (either the relay pool 'proxy' or the owned 'via-village').
     for r in rules:
-        if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village"):
+        if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village", "via-germany"):
             return list(r["inboundTag"])
     return None
 
@@ -197,10 +204,11 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
         return False
 
     changed_out = False
-    outs = cfg.setdefault("outbounds", [])  # ensure the via-village outbound exists
-    if not any(o.get("tag") == "via-village" for o in outs):
-        outs.append(dict(VIA_VILLAGE_OUT))
-        changed_out = True
+    outs = cfg.setdefault("outbounds", [])  # ensure the via-village + via-germany outbounds exist
+    for spec in (VIA_VILLAGE_OUT, VIA_GERMANY_OUT):
+        if not any(o.get("tag") == spec["tag"] for o in outs):
+            outs.append(dict(spec))
+            changed_out = True
 
     want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound)
     if rules == want and not changed_out:
@@ -230,9 +238,11 @@ def main():
     extra = [s.strip() for s in file_env("AFROWS_GAMING_EXTRA_SOURCES").split(",") if s.strip()]
     extra += [ip for ip in router_gaming_ips(url) if ip not in extra]  # router tunnel source IPs
     xray_users = xray_gaming_emails(url)  # afrows-xray gaming VLESS user emails
-    # Foreign egress: 'village' (default) = owned Germany/Starlink only; 'pool' = legacy relay self-heal.
-    prefer_pool = file_env("AFROWS_FOREIGN_EGRESS", "village").lower() == "pool"
-    catch = decide_catchall(prefer_pool)
+    # Normal foreign egress: 'germany' (default) = normal->Germany (via wg-village-de) + gaming->Starlink;
+    # 'village' = everyone on Starlink; 'pool' = legacy relay self-heal. (Direct Afrows->Germany is
+    # blocked by Afrows's filtered uplink, so Germany is reached through the village.)
+    egress = file_env("AFROWS_FOREIGN_EGRESS", "germany").lower()
+    catch = decide_catchall(egress)
     changed = False
     for cfg_path, svc, use_db in TARGETS:
         if not os.path.exists(cfg_path):
