@@ -241,6 +241,32 @@ export function renderVlessClientUri(
   };
 }
 
+/**
+ * Returns `original` (a full-tunnel AllowedIPs) rewritten to cover all of
+ * 0.0.0.0/0 EXCEPT `host`/32 (the VPN server's own IP), so the client can still
+ * reach that host directly while connected. Returns null if `host` isn't IPv4.
+ * Standard /32 exclusion: 32 sibling CIDRs of the host's prefix at each bit.
+ */
+function allowedIpsExcludingHost(host: string, original: string): string | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return null;
+  let addr = 0;
+  for (let i = 1; i <= 4; i++) {
+    const octet = Number(m[i]);
+    if (octet > 255) return null;
+    addr = ((addr << 8) | octet) >>> 0;
+  }
+  const cidrs: string[] = [];
+  for (let prefix = 0; prefix < 32; prefix++) {
+    const sibling = (addr ^ ((1 << (31 - prefix)) >>> 0)) >>> 0;
+    const plen = prefix + 1;
+    const mask = (0xffffffff << (32 - plen)) >>> 0;
+    const net = (sibling & mask) >>> 0;
+    cidrs.push(`${(net >>> 24) & 255}.${(net >>> 16) & 255}.${(net >>> 8) & 255}.${net & 255}/${plen}`);
+  }
+  return /::\/0/.test(original) ? `${cidrs.join(', ')}, ::/0` : cidrs.join(', ');
+}
+
 /** Builds a WireGuard client profile (`.conf` text) from endpoint data and secret material. */
 export function renderWireGuardClientConfig(
   endpoint: ClientSubscriptionEndpointSummary,
@@ -267,6 +293,13 @@ export function renderWireGuardClientConfig(
   const dns = firstCredentialList([secretMaterial, publicMetadata], ['dns', 'clientDns'], 256);
   const allowedIps =
     firstCredentialList([secretMaterial, publicMetadata], ['allowedIps', 'allowedIPs'], 512) ?? '0.0.0.0/0, ::/0';
+  // Split-tunnel the VPN server's own IP out of a full tunnel, so the app can still
+  // reach the Afrows API (app.afrows.com == this server) WHILE connected. Otherwise
+  // 0.0.0.0/0 swallows the usage-poll call and the up/down stats read 0 forever.
+  const endpointHost = String(target.authority || '').split(':')[0].trim();
+  const effectiveAllowedIps = /(^|[\s,])0\.0\.0\.0\/0([\s,]|$)/.test(allowedIps)
+    ? allowedIpsExcludingHost(endpointHost, allowedIps) ?? allowedIps
+    : allowedIps;
   const mtu = firstCredentialString([secretMaterial, publicMetadata], ['mtu'], 16);
   const presharedKey = firstCredentialString([secretMaterial], ['presharedKey', 'preSharedKey', 'psk'], 2048);
   const keepalive = firstCredentialString([secretMaterial, publicMetadata], ['persistentKeepalive', 'keepalive'], 16);
@@ -281,7 +314,7 @@ export function renderWireGuardClientConfig(
     '[Peer]',
     `PublicKey = ${peerPublicKey}`,
     presharedKey ? `PresharedKey = ${presharedKey}` : null,
-    `AllowedIPs = ${allowedIps}`,
+    `AllowedIPs = ${effectiveAllowedIps}`,
     `Endpoint = ${target.authority}`,
     keepalive ? `PersistentKeepalive = ${keepalive}` : null,
   ].filter((line): line is string => line !== null);
