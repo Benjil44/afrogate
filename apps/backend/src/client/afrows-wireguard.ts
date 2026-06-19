@@ -92,6 +92,31 @@ export function nextWireguardAddress(
   return null;
 }
 
+/**
+ * Returns a full-tunnel AllowedIPs rewritten to cover all of 0.0.0.0/0 EXCEPT
+ * `host`/32 (the VPN server's own IP) — so the client reaches that host directly
+ * while connected. Null if `host` isn't IPv4. 32 sibling CIDRs (standard /32 exclude).
+ */
+function allowedIpsExcludingHost(host: string, original: string): string | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return null;
+  let addr = 0;
+  for (let i = 1; i <= 4; i++) {
+    const octet = Number(m[i]);
+    if (octet > 255) return null;
+    addr = ((addr << 8) | octet) >>> 0;
+  }
+  const cidrs: string[] = [];
+  for (let prefix = 0; prefix < 32; prefix++) {
+    const sibling = (addr ^ ((1 << (31 - prefix)) >>> 0)) >>> 0;
+    const plen = prefix + 1;
+    const mask = (0xffffffff << (32 - plen)) >>> 0;
+    const net = (sibling & mask) >>> 0;
+    cidrs.push(`${(net >>> 24) & 255}.${(net >>> 16) & 255}.${(net >>> 8) & 255}.${net & 255}/${plen}`);
+  }
+  return /::\/0/.test(original) ? `${cidrs.join(', ')}, ::/0` : cidrs.join(', ');
+}
+
 /** Renders a wg-quick `.conf` for a client peer. */
 export function buildWireguardConf(opts: {
   privateKey: string;
@@ -100,6 +125,13 @@ export function buildWireguardConf(opts: {
   presharedKey?: string | null;
 }): string {
   const { privateKey, address, server, presharedKey } = opts;
+  // Split-tunnel the server's own IP out of a full tunnel, so the app can still
+  // reach the Afrows API (same host) WHILE connected — otherwise 0.0.0.0/0 swallows
+  // the in-app usage poll and the up/down stats read 0 forever.
+  const endpointHost = server.endpoint.split(':')[0].trim();
+  const allowedIps = /(^|[\s,])0\.0\.0\.0\/0([\s,]|$)/.test(server.allowedIps)
+    ? allowedIpsExcludingHost(endpointHost, server.allowedIps) ?? server.allowedIps
+    : server.allowedIps;
   const lines = [
     '[Interface]',
     `PrivateKey = ${privateKey}`,
@@ -110,7 +142,7 @@ export function buildWireguardConf(opts: {
     '[Peer]',
     `PublicKey = ${server.serverPublicKey}`,
     presharedKey ? `PresharedKey = ${presharedKey}` : null,
-    `AllowedIPs = ${server.allowedIps}`,
+    `AllowedIPs = ${allowedIps}`,
     `Endpoint = ${server.endpoint}`,
     server.keepalive > 0 ? `PersistentKeepalive = ${server.keepalive}` : null,
   ].filter((line): line is string => line !== null);
