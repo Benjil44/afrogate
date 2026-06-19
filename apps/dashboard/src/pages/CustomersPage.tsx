@@ -427,6 +427,24 @@ export function CustomersPage({
     );
   }, [accounts, query]);
 
+  // Per-egress-path usage + billing (path is decided by tier: gaming->Starlink, normal->Germany).
+  const pathSummary = useMemo(() => {
+    const rows = [
+      { tier: 'gaming', label: 'Starlink (gaming/VIP)', count: 0, bytes: 0 },
+      { tier: 'normal', label: 'Germany (normal)', count: 0, bytes: 0 },
+    ];
+    for (const a of accounts) {
+      const r = a.egressTier === 'gaming' ? rows[0] : rows[1];
+      r.count += 1;
+      r.bytes += a.usedBytes || 0;
+    }
+    return rows.map((r) => ({
+      ...r,
+      cost: Math.round((r.bytes / GIB) * priceFor(r.tier)),
+      currency: tierPrices.find((p) => p.tier === r.tier)?.currency ?? 'IRT',
+    }));
+  }, [accounts, tierPrices]);
+
   const statusTone = (st: string) =>
     st === 'active' ? '#1f9d57' : st === 'suspended' || st === 'disabled' ? '#d23f3f' : '#9aa7ad';
 
@@ -586,6 +604,17 @@ export function CustomersPage({
         >
           {s.save}
         </button>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {pathSummary.map((p) => (
+          <div key={p.tier} className="min-w-[220px] flex-1 rounded-md border border-afro-line bg-white px-4 py-3">
+            <div className="text-[13px] font-bold text-afro-ink">{p.label}</div>
+            <div className="mt-1 text-[12px] text-afro-muted">
+              {format.integer(p.count)} customers · {format.bytes(p.bytes)}
+            </div>
+            <div className="mt-1 text-[14px] font-bold text-afro-ink">{p.cost.toLocaleString()} {p.currency}</div>
+          </div>
+        ))}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
