@@ -196,6 +196,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not change game mode')),
       );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          'Game mode ${applied.enabled ? "ON (Starlink)" : "OFF (Germany)"} — wait ~30s, then Connect',
+        )),
+      );
     }
   }
 
@@ -455,6 +461,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                       _BypassToggle(
                         full: _egressMode == 'full',
                         busy: _egressBusy,
+                        locked: _connected || _connecting,
                         onChanged: _setEgress,
                       ),
                       if (_gaming.entitled) ...[
@@ -462,6 +469,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                         _GamingToggle(
                           enabled: _gaming.enabled,
                           busy: _gamingBusy,
+                          locked: _connected || _connecting,
                           onChanged: _setGaming,
                         ),
                       ],
@@ -662,9 +670,10 @@ class _StatCard extends StatelessWidget {
 /// via the bypass). ON = Full (everything via the bypass — for when Iran filters
 /// the local internet too).
 class _BypassToggle extends StatelessWidget {
-  const _BypassToggle({required this.full, required this.busy, required this.onChanged});
+  const _BypassToggle({required this.full, required this.busy, required this.locked, required this.onChanged});
   final bool full;
   final bool busy;
+  final bool locked; // can't change while connected (it restarts the egress engine)
   final ValueChanged<bool> onChanged;
 
   @override
@@ -687,7 +696,9 @@ class _BypassToggle extends StatelessWidget {
                 const Text('Full bypass',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                 Text(
-                  full ? 'All traffic via the bypass' : 'Smart: Iran direct, foreign via bypass',
+                  locked
+                      ? 'Disconnect to change'
+                      : (full ? 'All traffic via the bypass' : 'Smart: Iran direct, foreign via bypass'),
                   style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
               ],
@@ -700,7 +711,7 @@ class _BypassToggle extends StatelessWidget {
               : Switch(
                   value: full,
                   activeThumbColor: _teal,
-                  onChanged: onChanged,
+                  onChanged: locked ? null : onChanged,
                 ),
         ],
       ),
@@ -711,9 +722,10 @@ class _BypassToggle extends StatelessWidget {
 /// Gaming-mode toggle, shown only to entitled accounts. ON routes foreign traffic
 /// through the low-ping Starlink path (Iran stays direct).
 class _GamingToggle extends StatelessWidget {
-  const _GamingToggle({required this.enabled, required this.busy, required this.onChanged});
+  const _GamingToggle({required this.enabled, required this.busy, required this.locked, required this.onChanged});
   final bool enabled;
   final bool busy;
+  final bool locked; // can't change while connected (it restarts the egress engine)
   final ValueChanged<bool> onChanged;
 
   @override
@@ -736,7 +748,9 @@ class _GamingToggle extends StatelessWidget {
                 const Text('Game mode',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                 Text(
-                  enabled ? 'Low-ping route on' : 'Lower ping for gaming',
+                  locked
+                      ? 'Disconnect to change'
+                      : (enabled ? 'Low-ping route on' : 'Lower ping for gaming'),
                   style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
               ],
@@ -749,7 +763,7 @@ class _GamingToggle extends StatelessWidget {
               : Switch(
                   value: enabled,
                   activeThumbColor: _teal,
-                  onChanged: onChanged,
+                  onChanged: locked ? null : onChanged,
                 ),
         ],
       ),
