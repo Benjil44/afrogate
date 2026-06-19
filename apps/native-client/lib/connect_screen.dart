@@ -33,14 +33,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
   DateTime? _connectedAt;
   Timer? _uptimeTimer; // ticks the duration each second (WG plugin emits no periodic status)
   Timer? _usageTimer; // polls server-side WG usage for the up/down cards
-  // last sample for the server-poll speed calc
-  int _lastRx = 0, _lastTx = 0;
-  DateTime? _lastUsageAt;
 
   bool _ready = false;
   String _state = 'DISCONNECTED';
-  int _uploadSpeed = 0;
-  int _downloadSpeed = 0;
   int _uploadTotal = 0;
   int _downloadTotal = 0;
   String _duration = '00:00:00';
@@ -114,22 +109,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
       return;
     }
     if (!mounted) return;
-    final now = DateTime.now();
-    final hadPrev = _lastUsageAt != null;
-    final dt = hadPrev ? now.difference(_lastUsageAt!).inMilliseconds / 1000.0 : 0.0;
-    final dDown = (u.txBytes - _lastTx).clamp(0, 1 << 62);
-    final dUp = (u.rxBytes - _lastRx).clamp(0, 1 << 62);
-    _lastRx = u.rxBytes;
-    _lastTx = u.txBytes;
-    _lastUsageAt = now;
     Diag.I.log('wg-usage: down=${u.txBytes} up=${u.rxBytes}');
     setState(() {
-      _downloadTotal = u.txBytes; // cumulative — always shows real data
+      // Cumulative session usage (download = server tx, upload = server rx).
+      _downloadTotal = u.txBytes;
       _uploadTotal = u.rxBytes;
-      if (hadPrev && dt > 0) {
-        _downloadSpeed = (dDown / dt).round();
-        _uploadSpeed = (dUp / dt).round();
-      }
     });
   }
 
@@ -259,8 +243,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _snack('Invalid WireGuard config');
       return;
     }
-    // recapture the usage baseline for this new session
-    _lastUsageAt = null;
     setState(() => _state = 'CONNECTING');
     try {
       // The WireGuard backend consumes the wg-quick .conf text directly.
@@ -439,7 +421,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
                           child: _StatCard(
                             icon: Icons.south,
                             label: 'Download',
-                            speed: _fmtSpeed(_downloadSpeed),
                             total: _fmtBytes(_downloadTotal),
                             color: _teal,
                           ),
@@ -449,7 +430,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
                           child: _StatCard(
                             icon: Icons.north,
                             label: 'Upload',
-                            speed: _fmtSpeed(_uploadSpeed),
                             total: _fmtBytes(_uploadTotal),
                             color: const Color(0xFF6C8CFF),
                           ),
@@ -493,18 +473,6 @@ String _fmtDuration(DateTime? since) {
   final m = (d.inMinutes % 60).toString().padLeft(2, '0');
   final s = (d.inSeconds % 60).toString().padLeft(2, '0');
   return '$h:$m:$s';
-}
-
-String _fmtSpeed(int bytesPerSec) {
-  if (bytesPerSec <= 0) return '0 B/s';
-  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-  double v = bytesPerSec.toDouble();
-  var i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return '${v.toStringAsFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}';
 }
 
 String _fmtBytes(int bytes) {
@@ -626,14 +594,12 @@ class _StatCard extends StatelessWidget {
   const _StatCard({
     required this.icon,
     required this.label,
-    required this.speed,
     required this.total,
     required this.color,
   });
   final IconData icon;
   final String label;
-  final String speed;
-  final String total;
+  final String total; // cumulative session usage (size)
   final Color color;
 
   @override
@@ -656,10 +622,8 @@ class _StatCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(speed,
+          Text(total,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 2),
-          Text(total, style: const TextStyle(color: Colors.white38, fontSize: 12)),
         ],
       ),
     );
