@@ -84,7 +84,7 @@ def read_mode(url):
 
 def gaming_ips(url):
     s = psql1(url, (
-        "select coalesce(string_agg(wp.client_address, ','), '') from wireguard_peers wp "
+        "select coalesce(string_agg(wp.client_address, ',' order by wp.client_address), '') from wireguard_peers wp "
         "join client_configs cc on cc.id = wp.client_config_id "
         "join customer_accounts ca on ca.id = cc.customer_account_id "
         "where ca.egress_tier = 'gaming' and wp.desired_state = 'present' "
@@ -96,7 +96,7 @@ def gaming_ips(url):
 def router_gaming_ips(url):
     """Source IPs of operator MikroTik routers toggled to game mode (the Microtiks panel)."""
     s = psql1(url, (
-        "select coalesce(string_agg(gaming_source_ip, ','), '') from mikrotik_routers "
+        "select coalesce(string_agg(gaming_source_ip, ',' order by gaming_source_ip), '') from mikrotik_routers "
         "where gaming_enabled = true and gaming_source_ip is not null and gaming_source_ip <> ''"
     ))
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
@@ -107,7 +107,7 @@ def xray_gaming_emails(url):
     accounts' active client configs — the same emails XrayProvisioningService
     registers via `xray api adu`, so xray routing can match them by `user`."""
     s = psql1(url, (
-        "select coalesce(string_agg('cc_' || cc.id || '@afrows', ','), '') "
+        "select coalesce(string_agg('cc_' || cc.id || '@afrows', ',' order by cc.id), '') "
         "from client_configs cc "
         "join customer_accounts ca on ca.id = cc.customer_account_id "
         "where ca.egress_tier = 'gaming' and cc.status <> 'disabled'"
@@ -179,17 +179,22 @@ def client_inbound_tags(rules):
 
 
 def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound):
+    # All list members are SORTED so the desired config is deterministic: the DB
+    # aggregates (string_agg) can return rows in any order run-to-run, and an
+    # order-sensitive `rules == want` compare would otherwise see a phantom change
+    # and restart the engine (~every 1-2 min), freezing every user. Dict equality
+    # is order-independent in Python, so only these list orders matter.
     rules = [{"type": "field", "inboundTag": ["api"], "outboundTag": "api"}]
     if mode == "smart":
         rules.append(dict(GEOIP_DIRECT))
         rules.append(dict(GEOSITE_DIRECT))
     # gaming -> village Starlink (foreign only; Iran already went direct above)
     if gaming_sources:  # by source IP (afrows-wg peers + router tunnels)
-        rules.append({"type": "field", "source": gaming_sources, "outboundTag": "via-village"})
+        rules.append({"type": "field", "source": sorted(gaming_sources), "outboundTag": "via-village"})
     if gaming_users:  # by VLESS user email (afrows-xray app clients)
-        rules.append({"type": "field", "user": gaming_users, "outboundTag": "via-village"})
+        rules.append({"type": "field", "user": sorted(gaming_users), "outboundTag": "via-village"})
     # normal foreign catch-all: 'proxy' (relay pool) normally; 'via-village' when the pool is dead
-    rules.append({"type": "field", "inboundTag": client_tags, "outboundTag": catch_outbound})
+    rules.append({"type": "field", "inboundTag": sorted(client_tags), "outboundTag": catch_outbound})
     return rules
 
 
