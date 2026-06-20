@@ -801,6 +801,8 @@ export interface AdminCustomerAccountSummary {
   expiresAt?: string | null;
   tags?: string[];
   lastConnectedAt?: string | null;
+  /** The MikroTik gateway router this customer owns, if any (for the Customers view). */
+  gatewayRouter?: { id: string; label: string; online: boolean } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3813,6 +3815,7 @@ export interface AdminEgressTierPricesResponse {
 }
 
 export type MikroTikRouterKind = 'village' | 'home' | 'other';
+export type MikroTikRouterRole = 'transport' | 'gateway';
 export type MikroTikMode = 'game' | 'normal';
 
 export interface MikroTikRouterSummary {
@@ -3829,6 +3832,9 @@ export interface MikroTikRouterSummary {
   online: boolean;
   mode: MikroTikMode | null;
   egressEnabled: boolean;
+  role: MikroTikRouterRole;
+  customerAccountId?: string | null;
+  customerDisplayName?: string | null;
   identity?: string | null;
   board?: string | null;
   version?: string | null;
@@ -3899,6 +3905,8 @@ export interface CreateMikroTikRouterRequest {
   webfigUrl?: string | null;
   gamingSourceIp?: string | null;
   notes?: string | null;
+  role?: MikroTikRouterRole;
+  customerAccountId?: string | null;
 }
 
 export interface UpdateMikroTikRouterRequest {
@@ -3911,6 +3919,8 @@ export interface UpdateMikroTikRouterRequest {
   webfigUrl?: string | null;
   gamingSourceIp?: string | null;
   notes?: string | null;
+  role?: MikroTikRouterRole;
+  customerAccountId?: string | null;
 }
 
 export interface SetMikroTikModeRequest {
