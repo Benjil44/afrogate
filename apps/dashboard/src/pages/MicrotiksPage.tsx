@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ClipboardCopy, ExternalLink, Eye, KeyRound, Pencil, Plus, RefreshCw, Router as RouterIcon, Trash2, X } from 'lucide-react';
 import type {
+  AdminCustomerAccountSummary,
   AdminRouterUsageChartsResponse,
   CreateMikroTikRouterRequest,
   MikroTikRouterKind,
+  MikroTikRouterRole,
   MikroTikRouterStatus,
   MikroTikRouterSummary,
   MikroTikWgUsage,
@@ -19,6 +21,7 @@ import {
   fetchRouterUsageCharts,
   fetchRouterWgUsage,
   fetchRouters,
+  fetchAdminCustomerAccounts,
   reconnectRouterModem,
   rotateRouterPassword,
   setRouterEgress,
@@ -49,6 +52,8 @@ interface DraftForm {
   webfigUrl: string;
   gamingSourceIp: string;
   notes: string;
+  role: MikroTikRouterRole;
+  customerAccountId: string; // '' = unassigned
 }
 
 const emptyDraft: DraftForm = {
@@ -62,6 +67,8 @@ const emptyDraft: DraftForm = {
   webfigUrl: '',
   gamingSourceIp: '',
   notes: '',
+  role: 'gateway',
+  customerAccountId: '',
 };
 
 function formatBytes(value: number | null | undefined): string {
@@ -121,6 +128,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
   const [rollup, setRollup] = useState<{ router: string; rows: MikroTikWgUsage[] }[] | null>(null);
   const [rollupLoading, setRollupLoading] = useState(false);
   const [charts, setCharts] = useState<AdminRouterUsageChartsResponse | null>(null);
+  const [customers, setCustomers] = useState<AdminCustomerAccountSummary[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -144,6 +152,9 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     fetchRouterUsageCharts(sessionToken)
       .then((c) => setCharts(c))
       .catch(() => setCharts(null));
+    fetchAdminCustomerAccounts(sessionToken)
+      .then((res) => setCustomers(res.accounts ?? []))
+      .catch(() => setCustomers([]));
   }, [sessionToken]);
 
   const openAdd = () => {
@@ -167,6 +178,8 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
       webfigUrl: router.webfigUrl ?? '',
       gamingSourceIp: router.gamingSourceIp ?? '',
       notes: router.notes ?? '',
+      role: router.role,
+      customerAccountId: router.customerAccountId ?? '',
     });
     setStatus(null);
     setDialogOpen(true);
@@ -207,6 +220,8 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           webfigUrl: draft.webfigUrl || null,
           gamingSourceIp: draft.gamingSourceIp || null,
           notes: draft.notes || null,
+          role: draft.role,
+          customerAccountId: draft.role === 'gateway' ? (draft.customerAccountId || null) : null,
         });
         setNotice(`Updated ${draft.label}`);
         setDialogOpen(false);
@@ -223,6 +238,8 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           webfigUrl: draft.webfigUrl || null,
           gamingSourceIp: draft.gamingSourceIp || null,
           notes: draft.notes || null,
+          role: draft.role,
+          customerAccountId: draft.role === 'gateway' ? (draft.customerAccountId || null) : null,
         };
         const res = await createRouter(sessionToken, payload);
         setNotice(`Added ${draft.label} — now copy the connect config below and paste it into the MikroTik terminal`);
@@ -445,6 +462,8 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
             <tr className="border-b border-afro-line text-left text-xs uppercase text-afro-muted">
               <th className="py-2 pr-3">Router</th>
               <th className="py-2 pr-3">Host</th>
+              <th className="py-2 pr-3">Role</th>
+              <th className="py-2 pr-3">Customer</th>
               <th className="py-2 pr-3">Status</th>
               <th className="py-2 pr-3">Mode (Game / Normal)</th>
               <th className="py-2 pr-3">Afrows internet</th>
@@ -453,9 +472,9 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           </thead>
           <tbody>
             {loading && rows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={6}>Loading…</td></tr>
+              <tr><td className="py-4 text-afro-muted" colSpan={8}>Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={6}>No MikroTiks yet — add one with the button above.</td></tr>
+              <tr><td className="py-4 text-afro-muted" colSpan={8}>No MikroTiks yet — add one with the button above.</td></tr>
             ) : (
               rows.map((router) => (
                 <tr className="border-b border-afro-line/60 align-middle" key={router.id}>
@@ -471,6 +490,22 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
                     <div className="text-xs text-afro-muted">{router.kind}{router.board ? ` · ${router.board}` : ''}{router.version ? ` · ${router.version}` : ''}</div>
                   </td>
                   <td className="py-3 pr-3 font-mono text-xs">{router.host}:{router.restPort}</td>
+                  <td className="py-3 pr-3">
+                    {router.role === 'transport' ? (
+                      <span className="text-xs text-afro-muted">Transport</span>
+                    ) : (
+                      <span className="rounded bg-afro-line/40 px-1.5 py-0.5 text-xs">Gateway</span>
+                    )}
+                  </td>
+                  <td className="py-3 pr-3 text-xs">
+                    {router.role === 'transport' ? (
+                      <span className="text-afro-muted">—</span>
+                    ) : router.customerDisplayName ? (
+                      <span className="text-afro-ink">{router.customerDisplayName}</span>
+                    ) : (
+                      <span className="text-amber-500">— unassigned</span>
+                    )}
+                  </td>
                   <td className="py-3 pr-3">
                     <span className={`inline-flex items-center gap-1.5 ${router.online ? 'text-emerald-600' : 'text-red-500'}`}>
                       <span className={`size-2 rounded-full ${router.online ? 'bg-emerald-500' : 'bg-red-400'}`} />
@@ -530,6 +565,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
           status={statusFor === editId ? status : null}
           usage={statusFor === editId ? usage : null}
           modemBusy={modemBusy}
+          customers={customers}
           onChange={setDraft}
           onClose={() => setDialogOpen(false)}
           onCopyConfig={() => void copyConnectConfig()}
@@ -588,6 +624,7 @@ function RouterDialog({
   status,
   usage,
   modemBusy,
+  customers,
   onChange,
   onClose,
   onCopyConfig,
@@ -598,6 +635,7 @@ function RouterDialog({
   onSave,
 }: {
   draft: DraftForm;
+  customers: AdminCustomerAccountSummary[];
   editId: string | null;
   saving: boolean;
   status: MikroTikRouterStatus | null;
@@ -650,6 +688,29 @@ function RouterDialog({
               {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
           </div>
+          <div>
+            <label className={labelClass}>Role</label>
+            <select
+              className={field}
+              value={draft.role}
+              disabled={draft.kind === 'village'}
+              onChange={(e) => set({ role: e.target.value as MikroTikRouterRole })}
+            >
+              <option value="gateway">Gateway (customer)</option>
+              <option value="transport">Transport (infra)</option>
+            </select>
+          </div>
+          {draft.role === 'gateway' ? (
+            <div>
+              <label className={labelClass}>Customer</label>
+              <select className={field} value={draft.customerAccountId} onChange={(e) => set({ customerAccountId: e.target.value })}>
+                <option value="">— unassigned —</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.displayName ?? c.loginEmail ?? c.id}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <div>
             <label className={labelClass}>Host (tunnel IP){!editId ? ' — leave blank to auto-assign' : ''}</label>
             <input className={field} placeholder={editId ? '10.22.0.3' : 'auto-assigned by Afrows'} value={draft.host} onChange={(e) => set({ host: e.target.value })} />
