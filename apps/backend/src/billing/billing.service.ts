@@ -2342,7 +2342,25 @@ export class BillingService {
       values,
     );
 
-    return result.rows.map((row) => this.mapCustomerAccount(row));
+    const summaries = result.rows.map((row) => this.mapCustomerAccount(row));
+    await this.attachGatewayRouters(summaries);
+    return summaries;
+  }
+
+  /** Attaches each account's owned MikroTik gateway (if any) for the Customers view. */
+  private async attachGatewayRouters(summaries: AdminCustomerAccountSummary[]): Promise<void> {
+    const ids = summaries.map((s) => s.id);
+    if (ids.length === 0) return;
+    const gw = await this.database.query<{ customer_account_id: string; id: string; label: string }>(
+      `SELECT customer_account_id, id, label FROM mikrotik_routers
+        WHERE role = 'gateway' AND customer_account_id = ANY($1::uuid[])`,
+      [ids],
+    );
+    const byAccount = new Map(gw.rows.map((r) => [r.customer_account_id, { id: r.id, label: r.label }]));
+    for (const s of summaries) {
+      const g = byAccount.get(s.id);
+      s.gatewayRouter = g ? { ...g, online: false } : null;
+    }
   }
 
   async previewCurrentPanelImport(
