@@ -21,6 +21,7 @@ import { DatabaseService } from '../database/database.service';
 import { SecretVaultService } from '../security/secret-vault.service';
 import { MikroTikClientService, type MikroTikTarget } from './mikrotik-client.service';
 import type { CreateMikroTikRouterDto, UpdateMikroTikRouterDto } from './dto/router.dto';
+import { resolveRouterRoleAndCustomer } from './router-role.util';
 
 interface RouterRow {
   id: string;
@@ -34,6 +35,8 @@ interface RouterRow {
   gaming_source_ip: string | null;
   gaming_enabled: boolean;
   egress_enabled: boolean;
+  role: string;
+  customer_account_id: string | null;
   notes: string | null;
   tunnel_public_key: string | null;
   tunnel_private_key_enc: string | null;
@@ -51,13 +54,27 @@ export class RoutersService {
 
   async listRouters(): Promise<AdminRoutersResponse> {
     const rows = await this.allRows();
+    const names = await this.customerNamesByIds(
+      rows.map((r) => r.customer_account_id).filter((x): x is string => Boolean(x)),
+    );
     const routers = await Promise.all(
       rows.map(async (row) => {
         const probe = await this.probe(row);
-        return this.toSummary(row, probe);
+        return this.toSummary(row, probe, names);
       }),
     );
     return { routers };
+  }
+
+  /** Maps customer_account ids -> display names (for the routers table Customer column). */
+  private async customerNamesByIds(ids: string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return new Map();
+    const res = await this.database.query<{ id: string; display_name: string | null }>(
+      `SELECT id, display_name FROM customer_accounts WHERE id = ANY($1::uuid[])`,
+      [unique],
+    );
+    return new Map(res.rows.map((r) => [r.id, r.display_name ?? r.id]));
   }
 
   async getStatus(id: string): Promise<AdminRouterStatusResponse> {
@@ -72,11 +89,12 @@ export class RoutersService {
     const host = dto.host?.trim() || (await this.allocateTunnelIp());
     const password = dto.password || RoutersService.strongPassword();
     const keypair = this.generateWgKeypair();
+    const resolved = resolveRouterRoleAndCustomer(dto.role ?? 'gateway', dto.customerAccountId, dto.kind);
     const result = await this.database.query<RouterRow>(
       `INSERT INTO mikrotik_routers
          (id, label, kind, host, rest_port, rest_user, rest_password_enc, webfig_url, gaming_source_ip, notes,
-          tunnel_public_key, tunnel_private_key_enc)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          tunnel_public_key, tunnel_private_key_enc, role, customer_account_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         dto.id,
@@ -91,6 +109,8 @@ export class RoutersService {
         dto.notes ?? null,
         keypair.publicKey,
         this.vault.encryptJson({ key: keypair.privateKey }, `mikrotik-wg:${dto.id}`).payload,
+        resolved.role,
+        resolved.customerAccountId,
       ],
     );
     this.triggerRouterWgSync(); // register the new peer on wg-routers
@@ -116,6 +136,15 @@ export class RoutersService {
     if (dto.notes !== undefined) set('notes', dto.notes);
     if (dto.password !== undefined) {
       set('rest_password_enc', dto.password ? this.encrypt(id, dto.password) : null);
+    }
+    if (dto.role !== undefined || dto.customerAccountId !== undefined) {
+      const resolved = resolveRouterRoleAndCustomer(
+        dto.role ?? (existing.role as 'transport' | 'gateway'),
+        dto.customerAccountId !== undefined ? dto.customerAccountId : existing.customer_account_id,
+        dto.kind ?? existing.kind,
+      );
+      set('role', resolved.role);
+      set('customer_account_id', resolved.customerAccountId);
     }
 
     if (sets.length === 0) {
@@ -497,6 +526,7 @@ export class RoutersService {
   private toSummary(
     row: RouterRow,
     probe: { online: boolean; mode: MikroTikMode; resource?: Record<string, unknown> },
+    customerNames?: Map<string, string>,
   ): MikroTikRouterSummary {
     const resource = probe.resource ?? {};
     return {
@@ -513,6 +543,11 @@ export class RoutersService {
       online: probe.online,
       mode: probe.mode,
       egressEnabled: row.egress_enabled,
+      role: (row.role as MikroTikRouterSummary['role']) ?? 'gateway',
+      customerAccountId: row.customer_account_id,
+      customerDisplayName: row.customer_account_id
+        ? customerNames?.get(row.customer_account_id) ?? null
+        : null,
       board: this.str(resource['board-name']),
       version: this.str(resource['version']),
       uptime: this.str(resource['uptime']),
