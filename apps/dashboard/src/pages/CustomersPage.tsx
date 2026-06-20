@@ -458,6 +458,11 @@ export function CustomersPage({
         <>
           <strong className="block text-afro-ink">{nameOf(a)}</strong>
           <span className="text-[12px] text-afro-muted">{format.time(new Date(a.updatedAt), false)}</span>
+          {a.gatewayRouter && (
+            <span className="mt-0.5 flex items-center gap-1 text-[11px] text-afro-muted">
+              <span aria-hidden>🛰️</span> MikroTik: {a.gatewayRouter.label}
+            </span>
+          )}
         </>
       ),
     },

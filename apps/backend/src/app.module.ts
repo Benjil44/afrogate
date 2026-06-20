@@ -43,6 +43,8 @@ import { AdminReportsService } from './reports/admin-reports.service';
 import { RoutersController } from './routers/routers.controller';
 import { RoutersService } from './routers/routers.service';
 import { RouterUsageSamplerService } from './routers/router-usage-sampler.service';
+import { GatewayBillingService } from './routers/gateway-billing.service';
+import { GatewayBillingRunnerService } from './routers/gateway-billing.runner';
 import { MikroTikClientService } from './routers/mikrotik-client.service';
 import { AdminTokenGuard } from './security/admin-token.guard';
 import { AgentTokenGuard } from './security/agent-token.guard';
@@ -111,6 +113,8 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AdminReportsService,
     RoutersService,
     RouterUsageSamplerService,
+    GatewayBillingService,
+    GatewayBillingRunnerService,
     MikroTikClientService,
     RolesGuard,
     SecretVaultService,

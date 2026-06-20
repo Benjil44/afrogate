@@ -1,6 +1,7 @@
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export const MIKROTIK_ROUTER_KINDS = ['village', 'home', 'other'] as const;
+export const MIKROTIK_ROUTER_ROLES = ['transport', 'gateway'] as const;
 export const MIKROTIK_MODES = ['game', 'normal'] as const;
 
 export class CreateMikroTikRouterDto {
@@ -52,6 +53,15 @@ export class CreateMikroTikRouterDto {
   @IsString()
   @MaxLength(500)
   notes?: string | null;
+
+  @IsOptional()
+  @IsIn(MIKROTIK_ROUTER_ROLES)
+  role?: (typeof MIKROTIK_ROUTER_ROLES)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  customerAccountId?: string | null;
 }
 
 export class UpdateMikroTikRouterDto {
@@ -101,6 +111,15 @@ export class UpdateMikroTikRouterDto {
   @IsString()
   @MaxLength(500)
   notes?: string | null;
+
+  @IsOptional()
+  @IsIn(MIKROTIK_ROUTER_ROLES)
+  role?: (typeof MIKROTIK_ROUTER_ROLES)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  customerAccountId?: string | null;
 }
 
 export class SetMikroTikModeDto {
