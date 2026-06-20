@@ -313,9 +313,12 @@ export class CurrentPanelVolumeChargeDto {
 }
 
 export class CreateClientConfigDto {
+  // Optional: when blank or an auto-pattern like "vless-1", the server assigns a
+  // collision-free label (e.g. "vless-2"). A genuine custom label is kept.
+  @IsOptional()
   @IsString()
   @MaxLength(120)
-  label!: string;
+  label?: string;
 
   @IsOptional()
   @IsString()

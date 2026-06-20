@@ -1153,7 +1153,8 @@ export interface UpdateCustomerAccountRequest {
 }
 
 export interface CreateClientConfigRequest {
-  label: string;
+  /** Optional — omit to let the server assign a collision-free label (e.g. "vless-2"). */
+  label?: string;
   protocol?: string;
   externalPanel?: string | null;
   externalPanelUserId?: string | null;

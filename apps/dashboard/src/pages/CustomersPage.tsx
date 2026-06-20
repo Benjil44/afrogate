@@ -190,8 +190,8 @@ export function CustomersPage({
     setAddProtoBusy(true);
     setError(null);
     try {
-      const count = editProtocols.filter((p) => p.protocol === protocol).length + 1;
-      await createAdminClientConfig(sessionToken, editId, { label: `${protocol}-${count}`, protocol });
+      // Label is assigned server-side (collision-free); just send the protocol.
+      await createAdminClientConfig(sessionToken, editId, { protocol });
       await load();
     } catch {
       setError(s.saveError);
@@ -282,7 +282,7 @@ export function CustomersPage({
         const protos = [protoVless ? 'vless' : '', protoWg ? 'wireguard' : ''].filter(Boolean);
         for (const p of protos) {
           try {
-            await createAdminClientConfig(sessionToken, created.id, { label: `${p}-1`, protocol: p });
+            await createAdminClientConfig(sessionToken, created.id, { protocol: p });
           } catch {
             /* config create best-effort */
           }
@@ -394,8 +394,8 @@ export function CustomersPage({
     setConfigBusy(true);
     setConfigError(null);
     try {
+      // Label is assigned server-side (collision-free); just send the protocol.
       await createAdminClientConfig(sessionToken, configsFor.id, {
-        label: `${newConfigProto}-${configList.length + 1}`,
         protocol: newConfigProto,
       });
       await loadConfigs(configsFor.id);

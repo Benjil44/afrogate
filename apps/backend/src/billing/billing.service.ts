@@ -2827,17 +2827,39 @@ export class BillingService {
     };
   }
 
-  /** The native afrows-in VLESS entry link for a client config (admin-only). */
+  /** The native afrows-in VLESS entry link for a client config (admin-only).
+   *  The link's display name (the remark shown in the client app) is the
+   *  customer's display name (e.g. "ramin"), falling back to the config label
+   *  (e.g. "vless-1") then "Afrows". */
   async getClientConfigEntryLink(clientConfigId: string): Promise<{ link: string | null }> {
     const inbound = readAfrowsInboundEnv(process.env);
     if (!inbound) return { link: null };
-    const result = await this.database.query<{ entryUuid: string | null; label: string | null }>(
-      `SELECT entry_uuid AS "entryUuid", label FROM client_configs WHERE id = $1`,
+    const result = await this.database.query<{
+      entryUuid: string | null;
+      label: string | null;
+      displayName: string | null;
+    }>(
+      `SELECT cc.entry_uuid AS "entryUuid", cc.label AS "label", ca.display_name AS "displayName"
+         FROM client_configs cc
+         LEFT JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+        WHERE cc.id = $1`,
       [clientConfigId],
     );
     const row = result.rows[0];
     if (!row?.entryUuid) return { link: null };
-    return { link: buildAfrowsEntryUri(inbound, row.entryUuid, row.label || 'Afrows') };
+    const name = row.displayName?.trim() || row.label || 'Afrows';
+    return { link: buildAfrowsEntryUri(inbound, row.entryUuid, name) };
+  }
+
+  /** A friendly, unambiguous random display name for customers the operator
+   *  created without filling one in (e.g. "Customer-K7M3PQ"). The alphabet omits
+   *  easily-confused characters (0/O, 1/I/L). */
+  private generateCustomerDisplayName(): string {
+    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const bytes = randomBytes(6);
+    let code = '';
+    for (let i = 0; i < 6; i++) code += alphabet[bytes[i] % alphabet.length];
+    return `Customer-${code}`;
   }
 
   async createCustomerAccount(
@@ -2871,7 +2893,7 @@ export class BillingService {
           `,
           [
             resellerAccountId,
-            normalizeNullableString(dto.displayName),
+            normalizeNullableString(dto.displayName) ?? this.generateCustomerDisplayName(),
             normalizeNullableString(dto.telegramId),
             normalizeTelegramUsername(dto.telegramUsername),
             paidNumberHash,
@@ -2953,6 +2975,27 @@ export class BillingService {
     }
   }
 
+  /** Next collision-free config label for an account, e.g. "vless-1", "vless-2".
+   *  Checks ALL existing labels on the account so an auto label can never clash
+   *  (the dashboard used to guess the number from protocol badges → duplicate
+   *  "vless-1"s). Scanned case-insensitively. */
+  private async nextClientConfigLabel(
+    executor: DatabaseQueryExecutor,
+    customerAccountId: string,
+    protocol: string,
+  ): Promise<string> {
+    const res = await executor.query<{ label: string | null }>(
+      `SELECT label FROM client_configs WHERE customer_account_id = $1`,
+      [customerAccountId],
+    );
+    const used = new Set(
+      res.rows.map((r) => (r.label ?? '').trim().toLowerCase()).filter((l) => l.length > 0),
+    );
+    let n = 1;
+    while (used.has(`${protocol}-${n}`.toLowerCase())) n += 1;
+    return `${protocol}-${n}`;
+  }
+
   async createClientConfig(
     customerAccountId: string,
     dto: CreateClientConfigDto,
@@ -2961,6 +3004,16 @@ export class BillingService {
     try {
       const clientId = await this.database.transaction(async (executor) => {
         await this.ensureCustomerAccountExists(executor, customerAccountId);
+
+        // The server assigns auto-numbered labels so they can't collide. A blank
+        // label, or an auto-pattern one (e.g. "vless-1") that the dashboard sends,
+        // is replaced with the next free number; a genuine custom label is kept.
+        const protocolName = normalizeProtocol(dto.protocol);
+        const requestedLabel = (dto.label ?? '').trim();
+        const label =
+          !requestedLabel || /^[a-z0-9]+-\d+$/i.test(requestedLabel)
+            ? await this.nextClientConfigLabel(executor, customerAccountId, protocolName)
+            : requestedLabel;
 
         const result = await executor.query<{ id: string }>(
           `
@@ -2974,8 +3027,8 @@ export class BillingService {
           `,
           [
             customerAccountId,
-            dto.label.trim(),
-            normalizeProtocol(dto.protocol),
+            label,
+            protocolName,
             normalizeNullableString(dto.externalPanel),
             normalizeNullableString(dto.externalPanelUserId),
             normalizeNullableString(dto.externalPanelConfigId),
