@@ -36,8 +36,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   bool _ready = false;
   String _state = 'DISCONNECTED';
-  int _uploadTotal = 0;
-  int _downloadTotal = 0;
+  int _uploadTotal = 0; // THIS session's upload (server cumulative - baseline)
+  int _downloadTotal = 0; // THIS session's download
+  // Server-side counters are cumulative for the peer (they don't reset between
+  // sessions), so snapshot them at connect and show the delta. Null = not yet
+  // baselined for the current session (next poll sets it; cards read 0).
+  int? _rxAtConnect;
+  int? _txAtConnect;
   String _duration = '00:00:00';
   String? _configLink;
   String _remark = '';
@@ -75,6 +80,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _configLink = widget.accountConfigUri;
       _account = widget.account!.account;
       _remark = widget.account!.account.displayName ?? 'Afrows';
+      // The server renders the WireGuard config live (e.g. split-tunnel so the
+      // API stays reachable WHILE connected). A config cached from an older
+      // login can be stale (full-tunnel) and strand the stats/usage polls, so
+      // always pull a fresh one on launch and use it for the next connect.
+      unawaited(_refreshConfig());
       unawaited(_refreshAccount());
       unawaited(_loadEgressMode());
       unawaited(_loadGamingMode());
@@ -97,8 +107,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   /// Server-metered WireGuard usage (the wireguard_flutter plugin reports no
-  /// byte counters, and the on-device /proc read is sandboxed on MIUI). Shows
-  /// the peer's CUMULATIVE totals (always real) + speed from the poll delta.
+  /// byte counters, and the on-device /proc read is sandboxed on MIUI). The
+  /// server counters are CUMULATIVE for the peer, so we snapshot them at connect
+  /// and show THIS session's delta — the cards start at 0 each connect, grow
+  /// during the session, freeze on disconnect, and reset on the next connect.
   /// rxBytes = upload, txBytes = download (server's view of the client).
   Future<void> _pollUsage() async {
     final token = widget.account?.token;
@@ -109,11 +121,25 @@ class _ConnectScreenState extends State<ConnectScreen> {
       return;
     }
     if (!mounted) return;
-    Diag.I.log('wg-usage: down=${u.txBytes} up=${u.rxBytes}');
+    // First poll of this session: baseline the cumulative counters.
+    _rxAtConnect ??= u.rxBytes;
+    _txAtConnect ??= u.txBytes;
+    // Clamp: if the server counter reset below the baseline (e.g. wg0 restart),
+    // treat it as a fresh start instead of showing a negative.
+    var up = u.rxBytes - _rxAtConnect!;
+    var down = u.txBytes - _txAtConnect!;
+    if (up < 0) {
+      up = 0;
+      _rxAtConnect = u.rxBytes;
+    }
+    if (down < 0) {
+      down = 0;
+      _txAtConnect = u.txBytes;
+    }
+    Diag.I.log('wg-usage: cum down=${u.txBytes} up=${u.rxBytes} | session down=$down up=$up');
     setState(() {
-      // Cumulative session usage (download = server tx, upload = server rx).
-      _downloadTotal = u.txBytes;
-      _uploadTotal = u.rxBytes;
+      _downloadTotal = down;
+      _uploadTotal = up;
     });
   }
 
@@ -124,7 +150,35 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final fresh = await AfrowsApi().fetchAccount(token);
     if (fresh == null || !mounted) return;
     setState(() => _account = fresh);
-    await SessionStore().save(AccountSession(token: token, account: fresh), widget.accountConfigUri);
+    // Persist with the CURRENT config (which _refreshConfig may have updated),
+    // not the stale one we were launched with — else we'd re-cache the old one.
+    await SessionStore().save(AccountSession(token: token, account: fresh), _configLink);
+  }
+
+  /// Pull a freshly-rendered WireGuard config from the server and adopt it if it
+  /// changed. Guards against a stale (e.g. full-tunnel) config cached from an
+  /// older login. Does NOT touch a live tunnel — the new config applies on the
+  /// next connect. Best-effort: keeps the cached config if the fetch fails.
+  Future<void> _refreshConfig() async {
+    final token = widget.account?.token;
+    if (token == null) return;
+    try {
+      final fresh = await AfrowsApi().firstConfigUri(token);
+      if (fresh == null || fresh.isEmpty || !mounted || fresh == _configLink) return;
+      Diag.I.log('config refreshed from server (${fresh.length} chars)');
+      setState(() {
+        _configLink = fresh;
+        try {
+          _remark = parseWgConf(fresh).remark;
+        } catch (_) {}
+      });
+      await SessionStore().save(
+        AccountSession(token: token, account: _account ?? widget.account!.account),
+        fresh,
+      );
+    } catch (e) {
+      Diag.I.log('config refresh failed: $e');
+    }
   }
 
   Future<void> _loadEgressMode() async {
@@ -214,11 +268,20 @@ class _ConnectScreenState extends State<ConnectScreen> {
       Diag.I.log('traffic flowing: down=${status.downlink}B/s up=${status.uplink}B/s');
     }
     final connected = status.state.toUpperCase() == 'CONNECTED';
+    final freshConnect = connected && !_connected; // transition into CONNECTED
     _connectedAt = connected ? (_connectedAt ?? DateTime.now()) : null;
     setState(() {
       _state = status.state;
       // up/down cards are owned by _pollUsage (server-metered); the WireGuard
-      // plugin reports 0 here, so don't overwrite them.
+      // plugin reports 0 here, so don't overwrite them mid-session.
+      if (freshConnect) {
+        // New session: zero the cards and drop the baseline so the next poll
+        // re-snapshots. On disconnect we leave the last values frozen on screen.
+        _downloadTotal = 0;
+        _uploadTotal = 0;
+        _rxAtConnect = null;
+        _txAtConnect = null;
+      }
       _duration = _fmtDuration(_connectedAt);
     });
   }
