@@ -40,12 +40,20 @@ plus `android/app/libs/libv2ray.aar`) but is **not wired in**.
 
 ## Key risk / Phase 0
 
-The sing-box engine has **never been verified on a device** (the prior in-app
-engine, flutter_v2ray, was "broken on-device" — the reason the app fell back to
-WireGuard). **Phase 0 of the plan is a device spike**: wire `singbox.dart` into a
-test build and confirm a **Reality/VLESS connection on TCP 443**, ideally on Ben's
-UDP-blocked phone. If it cannot connect, the project's real first step becomes
-finishing the native engine, and the rest of this design is deferred until it does.
+**The VLESS server + config are proven good** — the operator connects with the
+same VLESS config from third-party clients (**NPV Tunnel** on Android and a
+Windows v2ray/xray client). So the protocol works end-to-end; the only unverified
+piece is the **Afrows app's own engine integration** (driving the bundled
+`libv2ray.aar`, a v2ray/xray core of the same family NPV Tunnel uses). The prior
+in-app attempt (flutter_v2ray) was "broken on-device," so wiring the native
+VpnService correctly is the real work.
+
+**Phase 0 of the plan is therefore narrowed**: wire `singbox.dart`/`libv2ray.aar`
+into a test build and confirm the **Afrows app itself** establishes a VLESS/Reality
+connection on TCP 443 (use the operator's known-good config as the reference;
+target Ben's UDP-blocked phone). If the app still can't drive the core, the first
+project becomes fixing the native Android engine integration before the protocol
+UI — but the server/config are not in question.
 
 ## Current-state references
 
