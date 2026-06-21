@@ -203,4 +203,15 @@ class AfrowsApi {
     }
     return null;
   }
+
+  /// Returns all subscription configLinks (for the protocol selector).
+  Future<List<dynamic>> fetchSubscriptionLinks(String token) async {
+    final res = await http.get(
+      Uri.parse('$base/client/subscription'),
+      headers: {'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 20));
+    if (res.statusCode != 200) return const [];
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (((body['subscription'] as Map?)?['configLinks']) as List?) ?? const [];
+  }
 }
