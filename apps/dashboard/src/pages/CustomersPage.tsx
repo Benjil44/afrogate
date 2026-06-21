@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminCustomerAccountSummary, EgressTierPrice } from '@afrows/shared';
+import type { AdminClientConfigSummary, AdminCustomerAccountSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
   createAdminCustomerAccount,
@@ -10,9 +10,11 @@ import {
   fetchAdminCustomerAccounts,
   fetchAdminWireguardConfig,
   fetchEgressTierPrices,
+  fetchRouters,
   setEgressTierPrice,
   resetCustomerAccountPassword,
   updateAdminCustomerAccount,
+  updateRouter,
 } from '../api/admin';
 import { DataTable, EmptyState, PanelHeading } from '../components/primitives';
 import type { DataTableColumn } from '../dashboard-types';
@@ -85,6 +87,9 @@ export function CustomersPage({
   // protocols to auto-create when adding a customer (L2TP deferred until its server lands)
   const [protoVless, setProtoVless] = useState(true);
   const [protoWg, setProtoWg] = useState(false);
+  // Routers available to assign to a NEW customer (gateways with no owner yet).
+  const [routers, setRouters] = useState<MikroTikRouterSummary[]>([]);
+  const [assignRouterId, setAssignRouterId] = useState('');
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
@@ -123,6 +128,7 @@ export function CustomersPage({
     };
     void run();
     void fetchEgressTierPrices(sessionToken).then((p) => active && setTierPrices(p)).catch(() => undefined);
+    void fetchRouters(sessionToken).then((r) => active && setRouters(r.routers)).catch(() => undefined);
     return () => {
       active = false;
       if (timer) window.clearTimeout(timer);
@@ -148,6 +154,7 @@ export function CustomersPage({
     setNotes('');
     setProtoVless(true);
     setProtoWg(false);
+    setAssignRouterId('');
     setShownPassword(null);
     setPwCopied(false);
     setCustomPw('');
@@ -285,6 +292,14 @@ export function CustomersPage({
             await createAdminClientConfig(sessionToken, created.id, { protocol: p });
           } catch {
             /* config create best-effort */
+          }
+        }
+        // Optionally attach a MikroTik gateway to the new customer.
+        if (assignRouterId) {
+          try {
+            await updateRouter(sessionToken, assignRouterId, { role: 'gateway', customerAccountId: created.id });
+          } catch {
+            /* router assign best-effort */
           }
         }
         await load();
@@ -726,6 +741,20 @@ export function CustomersPage({
                   placeholder={s.passwordCustomPlaceholder}
                   className={inputClass}
                 />
+              </label>
+            ) : null}
+            {!editId ? (
+              <label className="grid gap-1.5 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">Assign MikroTik (optional)</span>
+                <select className={inputClass} value={assignRouterId} onChange={(e) => setAssignRouterId(e.target.value)}>
+                  <option value="">— none —</option>
+                  {routers
+                    .filter((r) => r.kind !== 'village' && !r.customerAccountId)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
+                    ))}
+                </select>
+                <span className="text-[11px] text-afro-muted">Links this router as a Gateway owned by the new customer (only unassigned, non-village routers shown).</span>
               </label>
             ) : null}
             {!editId ? (
