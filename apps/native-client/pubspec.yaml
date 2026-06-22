@@ -40,6 +40,8 @@ dependencies:
   # never forwarded reliably on the target device. The server runs kernel
   # WireGuard (wg0) → TPROXY → xray → Germany egress, with per-peer metering.
   wireguard_flutter: ^0.1.3
+  # Phase 0 spike: xray-core in-app (VLESS/Reality) connectivity test harness.
+  flutter_v2ray: ^1.0.10
   # local persistence for the pasted VLESS config
   shared_preferences: ^2.3.2
   # backend API calls (account login, subscription, usage)

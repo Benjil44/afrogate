@@ -9,6 +9,10 @@ import 'diag_screen.dart';
 import 'start_screen.dart';
 import 'wireguard_vpn.dart';
 import 'vpn_config.dart';
+import 'vpn/vpn_protocol.dart';
+import 'vpn/vpn_engine.dart';
+import 'vpn/vpn_controller.dart';
+import 'vpn/protocol_picker.dart';
 
 const _teal = Color(0xFF18B6A6);
 const _panel = Color(0xFF12201F);
@@ -28,8 +32,8 @@ class ConnectScreen extends StatefulWidget {
 
 class _ConnectScreenState extends State<ConnectScreen> {
   final _store = VpnConfigStore();
-  final _vpn = WireguardVpn();
-  StreamSubscription<VpnStatus>? _statusSub;
+  final _controller = VpnController();
+  StreamSubscription<EngineStatus>? _statusSub;
   DateTime? _connectedAt;
   Timer? _uptimeTimer; // ticks the duration each second (WG plugin emits no periodic status)
   Timer? _usageTimer; // polls server-side WG usage for the up/down cards
@@ -53,6 +57,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
   GamingMode _gaming = const GamingMode(entitled: false, enabled: false);
   bool _gamingBusy = false;
 
+  // ── Protocol selector state ──
+  List<ProtocolConfig> _avail = []; // concrete protocols this account has
+  VpnProtocol _selected = VpnProtocol.auto; // user choice (persisted); default Auto
+  VpnProtocol? _activeProto; // what Auto resolved to / the running concrete protocol
+  // Per-network cache key for the Auto choice. 'default' for v1 (no SSID dep).
+  static const _networkKey = 'default';
+
   bool get _connected => _state.toUpperCase() == 'CONNECTED';
   bool get _connecting => _state.toUpperCase() == 'CONNECTING';
 
@@ -65,7 +76,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   bool get _accountMode => widget.account != null;
 
   Future<void> _init() async {
-    _statusSub = _vpn.status().listen(_onStatus);
+    _statusSub = _controller.status().listen(_onStatus);
     // The WireGuard plugin only emits on stage change (no periodic status), so
     // tick the uptime ourselves once a second while connected.
     _uptimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -74,12 +85,20 @@ class _ConnectScreenState extends State<ConnectScreen> {
     });
     // Initialize the WireGuard backend early so the one-time VPN consent dialog
     // is handled before the user taps Connect.
-    await _vpn.ensureReady();
-    if (await _vpn.isRunning()) _state = 'CONNECTED';
+    await _controller.ensureReady();
     if (_accountMode) {
       _configLink = widget.accountConfigUri;
       _account = widget.account!.account;
       _remark = widget.account!.account.displayName ?? 'Afrows';
+      // Load the available transports + the user's persisted protocol choice so
+      // the selector reflects what this account actually has.
+      try {
+        final links = await AfrowsApi().fetchSubscriptionLinks(widget.account!.token);
+        if (mounted) setState(() => _avail = availableProtocols(links));
+      } catch (e) {
+        Diag.I.log('subscription links fetch failed: $e');
+      }
+      _selected = await SessionStore().loadProtocol();
       // The server renders the WireGuard config live (e.g. split-tunnel so the
       // API stays reachable WHILE connected). A config cached from an older
       // login can be stale (full-tunnel) and strand the stats/usage polls, so
@@ -115,6 +134,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
   Future<void> _pollUsage() async {
     final token = widget.account?.token;
     if (token == null || !_connected) return;
+    // Only WireGuard relies on the server-metered counters; the xray engine
+    // reports its own on-device byte totals (see _onStatus), so skip the poll.
+    if (_activeProto != VpnProtocol.wireguard) return;
     final u = await AfrowsApi().fetchWireguardUsage(token);
     if (u == null) {
       Diag.I.log('wg-usage: null (request failed/no peer)');
@@ -249,39 +271,52 @@ class _ConnectScreenState extends State<ConnectScreen> {
     _uptimeTimer?.cancel();
     _usageTimer?.cancel();
     _statusSub?.cancel();
-    _vpn.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  void _onStatus(VpnStatus status) {
+  void _onStatus(EngineStatus status) {
     if (!mounted) return;
-    if (status.state == 'LOG') {
-      if (status.log != null) Diag.I.log('box: ${status.log}');
-      return;
-    }
     if (status.state != _state) {
       Diag.I.log('status -> ${status.state}${status.error != null ? " (${status.error})" : ""}');
       if (status.state == 'ERROR' && status.error != null) _snack(status.error!);
     }
-    // log traffic once it starts moving (confirms the tunnel carries data)
-    if (status.downlink + status.uplink > 0 && _downloadTotal + _uploadTotal == 0) {
-      Diag.I.log('traffic flowing: down=${status.downlink}B/s up=${status.uplink}B/s');
-    }
     final connected = status.state.toUpperCase() == 'CONNECTED';
     final freshConnect = connected && !_connected; // transition into CONNECTED
     _connectedAt = connected ? (_connectedAt ?? DateTime.now()) : null;
+    // Does the active engine report its own byte totals? xray (Reality/VLESS)
+    // does; WireGuard reports 0 (its usage comes from the server poll).
+    final engineMetered = _activeProto != null && _activeProto != VpnProtocol.wireguard;
     setState(() {
       _state = status.state;
-      // up/down cards are owned by _pollUsage (server-metered); the WireGuard
-      // plugin reports 0 here, so don't overwrite them mid-session.
       if (freshConnect) {
-        // New session: zero the cards and drop the baseline so the next poll
+        // New session: zero the cards and drop the baseline so the next sample
         // re-snapshots. On disconnect we leave the last values frozen on screen.
         _downloadTotal = 0;
         _uploadTotal = 0;
         _rxAtConnect = null;
         _txAtConnect = null;
       }
+      if (engineMetered && connected) {
+        // xray reports cumulative totals; snapshot at connect, show the delta
+        // (same per-session baseline logic used for the WireGuard server poll).
+        _rxAtConnect ??= status.uplinkTotal;
+        _txAtConnect ??= status.downlinkTotal;
+        var up = status.uplinkTotal - _rxAtConnect!;
+        var down = status.downlinkTotal - _txAtConnect!;
+        if (up < 0) {
+          up = 0;
+          _rxAtConnect = status.uplinkTotal;
+        }
+        if (down < 0) {
+          down = 0;
+          _txAtConnect = status.downlinkTotal;
+        }
+        _uploadTotal = up;
+        _downloadTotal = down;
+      }
+      // For WireGuard the up/down cards are owned by _pollUsage (server-metered),
+      // so don't overwrite them here (the plugin reports 0 totals anyway).
       _duration = _fmtDuration(_connectedAt);
     });
   }
@@ -290,27 +325,22 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (_connected || _connecting) {
       Diag.I.log('Disconnect tapped');
       setState(() => _state = 'DISCONNECTED'); // immediate UI feedback
-      await _vpn.stop();
+      await _controller.stop();
       return;
     }
-    if (_configLink == null) {
-      await _editConfig();
-      if (_configLink == null) return;
-    }
-    Diag.I.log('Connect tapped (mode=${_accountMode ? "account" : "manual"})');
+    Diag.I.log('Connect tapped (mode=${_accountMode ? "account" : "manual"}, sel=${_selected.label})');
+
+    // Resolve the concrete protocol + payload to connect with.
+    final ProtocolConfig? cfg = await _resolveConfig();
+    if (cfg == null) return; // _resolveConfig already surfaced the reason
+
+    setState(() {
+      _state = 'CONNECTING';
+      _activeProto = cfg.protocol;
+    });
     try {
-      final c = parseWgConf(_configLink!);
-      Diag.I.log('parsed WG: endpoint=${c.endpoint} address=${c.address}');
-    } catch (e) {
-      Diag.I.log('parse FAILED: $e');
-      _snack('Invalid WireGuard config');
-      return;
-    }
-    setState(() => _state = 'CONNECTING');
-    try {
-      // The WireGuard backend consumes the wg-quick .conf text directly.
-      final ok = await _vpn.start(_configLink!);
-      Diag.I.log('start() -> $ok');
+      final ok = await _controller.start(cfg);
+      Diag.I.log('start(${cfg.protocol.label}) -> $ok');
       if (!ok) {
         _snack('Allow the VPN permission, then tap Connect again');
         if (mounted) setState(() => _state = 'DISCONNECTED');
@@ -322,9 +352,74 @@ class _ConnectScreenState extends State<ConnectScreen> {
     }
   }
 
+  /// Pick the protocol + payload for this connect. In account mode this honours
+  /// the selector (Auto resolves via UDP-reachability probe with a per-network
+  /// cache); in manual mode it wraps the pasted WireGuard config.
+  Future<ProtocolConfig?> _resolveConfig() async {
+    if (!_accountMode) {
+      // Manual (BYO) mode: the pasted config is a WireGuard .conf.
+      if (_configLink == null) {
+        await _editConfig();
+        if (_configLink == null) return null;
+      }
+      try {
+        final c = parseWgConf(_configLink!);
+        Diag.I.log('parsed WG: endpoint=${c.endpoint} address=${c.address}');
+      } catch (e) {
+        Diag.I.log('parse FAILED: $e');
+        _snack('Invalid WireGuard config');
+        return null;
+      }
+      return ProtocolConfig(protocol: VpnProtocol.wireguard, payload: _configLink!);
+    }
+
+    // Account mode: drive off the available protocols + selection.
+    if (_avail.isEmpty) {
+      _snack('No protocols available — contact your seller');
+      return null;
+    }
+    if (_selected == VpnProtocol.auto) {
+      final cached = await SessionStore().loadAutoChoice(_networkKey);
+      final host = _wgEndpointHost();
+      final cfg = await resolveAuto(
+        _avail,
+        cached: cached,
+        udpReachable: () => probeUdpReachable(host),
+      );
+      await SessionStore().saveAutoChoice(_networkKey, cfg.protocol);
+      Diag.I.log('Auto resolved -> ${cfg.protocol.label} (host=$host, cached=${cached?.label})');
+      return cfg;
+    }
+    final cfg = protocolConfigFor(_avail, _selected);
+    if (cfg == null) {
+      _snack('No config for ${_selected.label}');
+      return null;
+    }
+    return cfg;
+  }
+
+  /// Host to probe for UDP reachability — the WireGuard endpoint host if we have
+  /// a WireGuard payload, else the host parsed from any available vless:// URI.
+  String _wgEndpointHost() {
+    final wg = protocolConfigFor(_avail, VpnProtocol.wireguard);
+    if (wg != null) {
+      try {
+        final ep = parseWgConf(wg.payload).endpoint; // host:port
+        final host = ep.contains(':') ? ep.substring(0, ep.lastIndexOf(':')) : ep;
+        if (host.isNotEmpty) return host;
+      } catch (_) {}
+    }
+    // Fallback: take the host from the first vless:// URI (user@host:port).
+    for (final c in _avail) {
+      final uri = Uri.tryParse(c.payload);
+      if (uri != null && uri.host.isNotEmpty) return uri.host;
+    }
+    return '';
+  }
+
   Future<void> _signOut() async {
     try {
-      await _vpn.stop();
+      await _controller.stop();
     } catch (_) {}
     await SessionStore().clear();
     if (!mounted) return;
@@ -411,6 +506,57 @@ class _ConnectScreenState extends State<ConnectScreen> {
         .showSnackBar(SnackBar(content: Text(msg), backgroundColor: _panel));
   }
 
+  /// Protocol picker: Auto + each available concrete protocol. Locked while
+  /// connected/connecting (same "Disconnect to change" rule as the toggles).
+  Widget _protocolSelector() {
+    final locked = _connected || _connecting;
+    final items = <VpnProtocol>[VpnProtocol.auto, ..._avail.map((c) => c.protocol)];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.swap_horiz, size: 18, color: _teal),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Protocol',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                Text(
+                  locked ? 'Disconnect to change' : 'Auto picks the best for this network',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          DropdownButton<VpnProtocol>(
+            value: _selected,
+            dropdownColor: _panel,
+            underline: const SizedBox.shrink(),
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            iconEnabledColor: _teal,
+            onChanged: locked
+                ? null
+                : (p) async {
+                    if (p == null) return;
+                    setState(() => _selected = p);
+                    await SessionStore().saveProtocol(p);
+                  },
+            items: items
+                .map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -472,6 +618,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     ),
                     if (_connected) ...[
                       const SizedBox(height: 6),
+                      Text('Connected · ${(_activeProto ?? _selected).label}',
+                          style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                      const SizedBox(height: 6),
                       Text(_duration,
                           style: const TextStyle(
                               color: Colors.white38,
@@ -500,6 +649,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
                       ],
                     ),
                     if (_accountMode) ...[
+                      if (_avail.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _protocolSelector(),
+                      ],
                       const SizedBox(height: 12),
                       _BypassToggle(
                         full: _egressMode == 'full',

@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'vpn/vpn_protocol.dart';
 
 /// Persists the logged-in account session so the app stays signed in after it
 /// is closed; cleared only on explicit sign-out.
@@ -55,6 +56,29 @@ class SessionStore {
       await p.remove(k);
     }
   }
+
+  // ── Protocol selector persistence (reuses the same SharedPreferences store) ──
+
+  /// The user's chosen transport (Auto / a concrete protocol). Default Auto.
+  Future<VpnProtocol> loadProtocol() async {
+    final p = (await SharedPreferences.getInstance()).getString('afrows_protocol');
+    return VpnProtocol.values.firstWhere((v) => v.name == p, orElse: () => VpnProtocol.auto);
+  }
+
+  Future<void> saveProtocol(VpnProtocol p) async =>
+      (await SharedPreferences.getInstance()).setString('afrows_protocol', p.name);
+
+  /// The protocol Auto last resolved to on a given network (cache to skip
+  /// re-probing). `net` is a best-effort network key (`'default'` for v1).
+  Future<VpnProtocol?> loadAutoChoice(String net) async {
+    final p = (await SharedPreferences.getInstance()).getString('afrows_auto_$net');
+    return p == null
+        ? null
+        : VpnProtocol.values.firstWhere((v) => v.name == p, orElse: () => VpnProtocol.auto);
+  }
+
+  Future<void> saveAutoChoice(String net, VpnProtocol p) async =>
+      (await SharedPreferences.getInstance()).setString('afrows_auto_$net', p.name);
 }
 
 /// Stores the user-pasted `vless://` link locally on the device.
