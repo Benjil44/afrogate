@@ -14,8 +14,14 @@ void main() {
     expect(p.protocol, VpnProtocol.wireguard);
   });
 
-  test('udp blocked -> Reality (then VLESS)', () async {
+  test('udp blocked -> VLESS (preferred over Reality on port-restricted nets)', () async {
     final p = await resolveAuto(avail, udpReachable: () async => false, cached: null);
+    expect(p.protocol, VpnProtocol.vless);
+  });
+
+  test('udp blocked but no vless -> reality', () async {
+    final noVless = [avail[0], avail[1]];
+    final p = await resolveAuto(noVless, udpReachable: () async => false, cached: null);
     expect(p.protocol, VpnProtocol.reality);
   });
 

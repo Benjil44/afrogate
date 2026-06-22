@@ -4,7 +4,9 @@ import 'vpn_protocol.dart';
 
 /// Pure resolver: given available protocols, a UDP-reachability probe, and an
 /// optional cached choice, returns the concrete protocol Auto should use.
-/// Order: cached (if still available) -> [udp ok ? WireGuard] -> Reality -> VLESS.
+/// Order: cached (if still available) -> [udp ok ? WireGuard] -> VLESS -> Reality.
+/// On a UDP/port-restricted network we prefer VLESS-WS (TCP 443, proven to pass)
+/// over Reality (TCP 8443, which such a network may also block).
 Future<ProtocolConfig> resolveAuto(
   List<ProtocolConfig> avail, {
   required Future<bool> Function() udpReachable,
@@ -18,7 +20,7 @@ Future<ProtocolConfig> resolveAuto(
   }
   final wg = pick(VpnProtocol.wireguard);
   if (wg != null && await udpReachable()) return wg;
-  return pick(VpnProtocol.reality) ?? pick(VpnProtocol.vless) ?? wg ?? avail.first;
+  return pick(VpnProtocol.vless) ?? pick(VpnProtocol.reality) ?? wg ?? avail.first;
 }
 
 /// Real UDP probe: send a datagram to the server's echo port and await a reply.
