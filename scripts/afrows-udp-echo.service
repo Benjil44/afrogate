@@ -2,7 +2,7 @@
 Description=Afrows UDP reachability echo (app Auto-protocol probe)
 After=network.target
 [Service]
-Environment=AFROWS_UDP_PROBE_PORT=51821
+Environment=AFROWS_UDP_PROBE_PORT=52000
 ExecStart=/usr/bin/python3 /usr/local/bin/afrows-udp-echo.py
 Restart=always
 [Install]

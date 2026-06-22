@@ -24,8 +24,8 @@ Future<ProtocolConfig> resolveAuto(
 }
 
 /// Real UDP probe: send a datagram to the server's echo port and await a reply.
-/// host = the WireGuard endpoint host (server IP); probePort default 51821.
-Future<bool> probeUdpReachable(String host, {int probePort = 51821, Duration timeout = const Duration(seconds: 3)}) async {
+/// host = the WireGuard endpoint host (server IP); probePort default 52000.
+Future<bool> probeUdpReachable(String host, {int probePort = 52000, Duration timeout = const Duration(seconds: 3)}) async {
   RawDatagramSocket? sock;
   try {
     sock = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
