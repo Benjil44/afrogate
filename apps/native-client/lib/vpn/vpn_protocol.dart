@@ -19,25 +19,24 @@ class ProtocolConfig {
 }
 
 /// Derives the user's available concrete protocols from /client/subscription
-/// configLinks, in preference order: WireGuard, Reality, VLESS.
+/// configLinks, in preference order: WireGuard, VLESS. Reality is intentionally
+/// NOT offered: it needs the server to reach its camouflage dest for the TLS
+/// handshake, which Afrows's Iran uplink filters, so reality never connects here.
 List<ProtocolConfig> availableProtocols(List<dynamic> links) {
-  ProtocolConfig? wg, reality, vless;
+  ProtocolConfig? wg, vless;
   for (final l in links) {
     final m = (l as Map).cast<String, dynamic>();
     final outbound = (m['outboundId'] as String?) ?? '';
     final text = (m['configText'] as String?)?.trim();
     final uri = (m['uri'] as String?)?.trim();
+    final isReality = outbound == 'afrows-reality' || (uri?.contains('security=reality') ?? false);
     if (text != null && text.isNotEmpty && text.contains('[Interface]')) {
       wg = ProtocolConfig(protocol: VpnProtocol.wireguard, payload: text);
-    } else if (uri != null && uri.startsWith('vless://')) {
-      if (outbound == 'afrows-reality' || uri.contains('security=reality')) {
-        reality = ProtocolConfig(protocol: VpnProtocol.reality, payload: uri);
-      } else {
-        vless = ProtocolConfig(protocol: VpnProtocol.vless, payload: uri);
-      }
+    } else if (uri != null && uri.startsWith('vless://') && !isReality) {
+      vless = ProtocolConfig(protocol: VpnProtocol.vless, payload: uri);
     }
   }
-  return [wg, reality, vless].whereType<ProtocolConfig>().toList();
+  return [wg, vless].whereType<ProtocolConfig>().toList();
 }
 
 ProtocolConfig? protocolConfigFor(List<ProtocolConfig> avail, VpnProtocol p) {
