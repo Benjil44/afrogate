@@ -17,3 +17,30 @@ b = mod.desired_rules("smart", ["t1", "t2"], ["10.0.0.1", "10.0.0.2"], ["a@afrow
 
 assert a == b, f"desired_rules is order-sensitive -> spurious restarts:\n{a}\n!=\n{b}"
 print("OK: desired_rules is order-insensitive")
+
+# --- health-ordered failover (choose_catchall) ---
+ch = mod.choose_catchall
+
+# Primary healthy -> via-germany immediately.
+applied, st = ch(True, False, {})
+assert applied == "via-germany", applied
+
+# Village/Germany down + pool up: 2-strike hysteresis (stay 1 cycle, then switch).
+applied, st = ch(False, True, {"applied": "via-germany"})
+assert applied == "via-germany", ("no flip on 1st strike", applied)
+applied, st = ch(False, True, st)
+assert applied == "proxy", ("failover to pool on 2nd strike", applied)
+
+# Both down -> direct (last resort), again after hysteresis from proxy.
+applied, st = ch(False, False, {"applied": "proxy"})
+assert applied == "proxy", applied
+applied, st = ch(False, False, st)
+assert applied == "direct", ("last resort direct", applied)
+
+# Recovery: village back -> fail back to via-germany after 2 strikes.
+applied, st = ch(True, False, {"applied": "proxy"})
+assert applied == "proxy", applied
+applied, st = ch(True, False, st)
+assert applied == "via-germany", ("failback", applied)
+
+print("OK: choose_catchall failover via-germany -> proxy -> direct with hysteresis")
