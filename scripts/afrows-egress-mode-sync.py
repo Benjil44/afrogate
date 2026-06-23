@@ -131,41 +131,67 @@ def pool_alive():
     return False
 
 
+def iface_alive(iface):
+    """True if a foreign 204 endpoint is reachable bound to `iface` (the village
+    egress path, wg-village-de). This is how we detect the village/via-germany
+    path being down so we can fail over to a village-independent reserve."""
+    for url in POOL_PROBE_URLS:
+        try:
+            r = subprocess.run(
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", "8",
+                 "--interface", iface, url],
+                capture_output=True, text=True, timeout=12,
+            )
+            if r.stdout.strip() in ("200", "204"):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def choose_catchall(via_germany_ok, pool_ok, state):
+    """Pure health-ordered failover decision with 2-strike hysteresis (so a single
+    bad probe never flips the live egress). Returns (applied_tag, new_state).
+    Priority: via-germany (owned Germany via the village) -> proxy (relay pool,
+    village-independent reserve) -> direct (last resort; only the foreign sites
+    Iran doesn't filter)."""
+    if via_germany_ok:
+        want = "via-germany"
+    elif pool_ok:
+        want = "proxy"
+    else:
+        want = "direct"
+    applied = state.get("applied", want)
+    if want == applied:
+        return applied, {"applied": applied, "pending": want, "count": 0}
+    cnt = (state.get("count", 0) + 1) if state.get("pending") == want else 1
+    if cnt >= 2:
+        return want, {"applied": want, "pending": want, "count": 0}
+    return applied, {"applied": applied, "pending": want, "count": cnt}
+
+
 def decide_catchall(egress):
-    """Choose the NORMAL foreign catch-all outbound (gaming always -> via-village/Starlink).
-    egress (env AFROWS_FOREIGN_EGRESS):
-      'germany' (default) -> via-germany  (normal users exit the Germany VPS)
-      'village'           -> via-village  (everyone on Starlink)
-      'pool'              -> legacy relay self-heal (proxy when alive, else via-village)"""
-    if egress == "germany":
-        log("foreign-egress=germany -> normal catch-all=via-germany (gaming=via-village/Starlink)")
-        return "via-germany"
-    if egress != "pool":
+    """NORMAL foreign catch-all outbound (gaming always -> via-village/Starlink).
+    'village' forces via-village; otherwise health-ordered auto-failover so a
+    village/Germany outage transparently falls to the relay pool, then direct."""
+    if egress == "village":
         log("foreign-egress=village -> catch-all=via-village (Starlink)")
         return "via-village"
-    alive = pool_alive()
-    want = "proxy" if alive else "via-village"
+    vg = iface_alive("wg-village-de")
+    pool = False if vg else pool_alive()  # only probe the reserve when the primary is down
     try:
-        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         st = json.load(open(STATE_FILE))
     except Exception:
         st = {}
-    applied = st.get("applied", "proxy")
-    if want == applied:
-        st = {"applied": applied, "pending": want, "count": 0}
-    else:
-        cnt = (st.get("count", 0) + 1) if st.get("pending") == want else 1
-        if cnt >= 2:
-            applied = want
-            st = {"applied": applied, "pending": want, "count": 0}
-        else:
-            st = {"applied": applied, "pending": want, "count": cnt}
+    applied, st = choose_catchall(vg, pool, st)
     try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         json.dump(st, open(STATE_FILE, "w"))
     except Exception:
         pass
-    log("pool=%s -> catch-all=%s (pending=%s count=%d)" % (
-        "alive" if alive else "DEAD", applied, st.get("pending"), st.get("count", 0)))
+    log("failover: via-germany=%s pool=%s -> catch-all=%s (pending=%s count=%d)" % (
+        "up" if vg else "DOWN", ("up" if pool else "n/a") if vg else ("up" if pool else "DOWN"),
+        applied, st.get("pending"), st.get("count", 0)))
     return applied
 
 
@@ -173,7 +199,7 @@ def client_inbound_tags(rules):
     # The client catch-all is the rule with inboundTag whose outbound is the foreign
     # egress (either the relay pool 'proxy' or the owned 'via-village').
     for r in rules:
-        if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village", "via-germany"):
+        if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village", "via-germany", "direct"):
             return list(r["inboundTag"])
     return None
 
