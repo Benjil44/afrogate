@@ -380,14 +380,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
     }
     if (_selected == VpnProtocol.auto) {
       final cached = await SessionStore().loadAutoChoice(_networkKey);
-      final host = _wgEndpointHost();
-      final cfg = await resolveAuto(
-        _avail,
-        cached: cached,
-        udpReachable: () => probeUdpReachable(host),
-      );
+      final cfg = resolveAuto(_avail, cached: cached);
       await SessionStore().saveAutoChoice(_networkKey, cfg.protocol);
-      Diag.I.log('Auto resolved -> ${cfg.protocol.label} (host=$host, cached=${cached?.label})');
+      Diag.I.log('Auto resolved -> ${cfg.protocol.label} (cached=${cached?.label})');
       return cfg;
     }
     final cfg = protocolConfigFor(_avail, _selected);
@@ -396,25 +391,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
       return null;
     }
     return cfg;
-  }
-
-  /// Host to probe for UDP reachability — the WireGuard endpoint host if we have
-  /// a WireGuard payload, else the host parsed from any available vless:// URI.
-  String _wgEndpointHost() {
-    final wg = protocolConfigFor(_avail, VpnProtocol.wireguard);
-    if (wg != null) {
-      try {
-        final ep = parseWgConf(wg.payload).endpoint; // host:port
-        final host = ep.contains(':') ? ep.substring(0, ep.lastIndexOf(':')) : ep;
-        if (host.isNotEmpty) return host;
-      } catch (_) {}
-    }
-    // Fallback: take the host from the first vless:// URI (user@host:port).
-    for (final c in _avail) {
-      final uri = Uri.tryParse(c.payload);
-      if (uri != null && uri.host.isNotEmpty) return uri.host;
-    }
-    return '';
   }
 
   Future<void> _signOut() async {
