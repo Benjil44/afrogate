@@ -19,6 +19,7 @@ const NAV_ICONS: Record<ActiveView, LucideIcon> = {
   connections: Network,
   inbounds: LogIn,
   outbounds: Waypoints,
+  exits: Waypoints,
   microtiks: RouterIcon,
   alerts: Bell,
   settings: SettingsIcon,

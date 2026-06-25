@@ -209,6 +209,7 @@ import { ServersPage } from './pages/ServersPage';
 import { MicrotiksPage } from './pages/MicrotiksPage';
 import { RoutesPage } from './pages/RoutesPage';
 import { OutboundsPage } from './pages/OutboundsPage';
+import { ExitsPage } from './pages/ExitsPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { InboundsPage } from './pages/InboundsPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
@@ -650,7 +651,7 @@ function loadInitialAdvancedMode() {
 
 const ROUTE_VIEWS: ActiveView[] = [
   'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
-  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings',
+  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits',
 ];
 
 /** Derive the active view from the URL path (so refresh + the address bar work). */
@@ -1261,6 +1262,21 @@ function ActivePage({
       return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     case 'reports':
       return <ReportsPage format={format} sessionToken={sessionToken} t={t} />;
+    case 'exits':
+      return (
+        <ExitsPage
+          dataState={routeDataState}
+          failoverRows={routeFailoverRows}
+          format={format}
+          outbounds={routeOutbounds}
+          session={session}
+          sessionToken={sessionToken}
+          tunnelDataState={tunnelDataState}
+          tunnelSummaries={routeTunnelSummaries}
+          tunnels={routeTunnels}
+          t={t}
+        />
+      );
     case 'routes':
       return (
         <RoutesPage
@@ -1279,7 +1295,7 @@ function ActivePage({
     case 'outbounds':
       return <OutboundsPage sessionToken={sessionToken} t={t} />;
     case 'microtiks':
-      return <MicrotiksPage sessionToken={sessionToken} t={t} />;
+      return <MicrotiksPage roleFilter="gateway" sessionToken={sessionToken} t={t} />;
     case 'customers':
       return <CustomersPage format={format} sessionToken={sessionToken} t={t} />;
     case 'inbounds':

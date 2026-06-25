@@ -2,29 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAIN_VIEWS, ADVANCED_VIEWS, parseAdvancedMode, serializeAdvancedMode } from './nav-views.ts';
 
-const ALL_VIEWS = [
-  'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds',
-  'audit', 'backups', 'billing', 'reports', 'routes', 'outbounds',
-  'microtiks', 'alerts', 'settings',
+// Views shown in the sidebar after C1 (outbounds + routes are routable but hidden).
+const SIDEBAR_VIEWS = [
+  'dashboard', 'customers', 'billing', 'exits', 'microtiks', 'alerts', 'users', 'settings',
+  'servers', 'inbounds', 'connections', 'audit', 'backups', 'reports',
 ];
 
 test('Main has the 8 everyday views in order', () => {
   assert.deepEqual(MAIN_VIEWS, [
-    'dashboard', 'customers', 'billing', 'outbounds', 'microtiks', 'alerts', 'users', 'settings',
+    'dashboard', 'customers', 'billing', 'exits', 'microtiks', 'alerts', 'users', 'settings',
   ]);
 });
 
-test('Advanced has the 7 infrastructure views in order', () => {
+test('Advanced has the 6 infrastructure views in order', () => {
   assert.deepEqual(ADVANCED_VIEWS, [
-    'servers', 'inbounds', 'connections', 'routes', 'audit', 'backups', 'reports',
+    'servers', 'inbounds', 'connections', 'audit', 'backups', 'reports',
   ]);
 });
 
-test('Main + Advanced cover every ActiveView exactly once', () => {
+test('sidebar groups: no duplicates, and outbounds/routes are hidden', () => {
   const union = [...MAIN_VIEWS, ...ADVANCED_VIEWS];
-  assert.equal(union.length, ALL_VIEWS.length, 'wrong total count');
   assert.equal(new Set(union).size, union.length, 'duplicate view across groups');
-  assert.deepEqual([...union].sort(), [...ALL_VIEWS].sort(), 'union != all views');
+  assert.deepEqual([...union].sort(), [...SIDEBAR_VIEWS].sort(), 'union != expected sidebar set');
+  assert.ok(!union.includes('outbounds'), 'outbounds must not be a sidebar item');
+  assert.ok(!union.includes('routes'), 'routes must not be a sidebar item');
 });
 
 test('parseAdvancedMode: only "enabled" is true; default false', () => {

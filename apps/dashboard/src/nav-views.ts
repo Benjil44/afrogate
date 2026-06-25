@@ -5,12 +5,12 @@ import type { ActiveView } from './dashboard-types';
 
 // Main: everyday business tasks. Always visible.
 export const MAIN_VIEWS: ActiveView[] = [
-  'dashboard', 'customers', 'billing', 'outbounds', 'microtiks', 'alerts', 'users', 'settings',
+  'dashboard', 'customers', 'billing', 'exits', 'microtiks', 'alerts', 'users', 'settings',
 ];
 
 // Advanced: raw infrastructure / xray plumbing. Visible only when Advanced mode is ON.
 export const ADVANCED_VIEWS: ActiveView[] = [
-  'servers', 'inbounds', 'connections', 'routes', 'audit', 'backups', 'reports',
+  'servers', 'inbounds', 'connections', 'audit', 'backups', 'reports',
 ];
 
 // Persisted per-admin toggle. Mirrors the kiosk-mode pattern in DashboardApp.tsx.
