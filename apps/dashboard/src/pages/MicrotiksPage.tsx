@@ -110,9 +110,10 @@ const btnClass =
 const primaryBtnClass =
   'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-afro-blue px-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50';
 
-export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: DashboardStrings }) {
+export function MicrotiksPage({ roleFilter, sessionToken, t }: { roleFilter?: MikroTikRouterRole; sessionToken: string; t: DashboardStrings }) {
   void t;
   const [rows, setRows] = useState<MikroTikRouterSummary[]>([]);
+  const visibleRows = roleFilter ? rows.filter((router) => router.role === roleFilter) : rows;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -159,7 +160,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
 
   const openAdd = () => {
     setEditId(null);
-    setDraft(emptyDraft);
+    setDraft({ ...emptyDraft, role: roleFilter ?? emptyDraft.role });
     setStatus(null);
     setStatusFor(null);
     setDialogOpen(true);
@@ -285,7 +286,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
     setRollupLoading(true);
     try {
       const results = await Promise.all(
-        rows.map(async (r) => ({
+        visibleRows.map(async (r) => ({
           router: r.label,
           rows: (await fetchRouterWgUsage(sessionToken, r.id, 30).catch(() => ({ usage: [] as MikroTikWgUsage[] }))).usage,
         })),
@@ -416,7 +417,7 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
       <div className={cardClass}>
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-bold text-afro-ink">WireGuard usage — all tunnels (30 days)</div>
-          <button className={btnClass} disabled={rollupLoading || rows.length === 0} onClick={() => void loadRollup()} type="button">
+          <button className={btnClass} disabled={rollupLoading || visibleRows.length === 0} onClick={() => void loadRollup()} type="button">
             <RefreshCw size={14} /> {rollupLoading ? 'Loading…' : rollup ? 'Refresh' : 'Load usage'}
           </button>
         </div>
@@ -471,12 +472,12 @@ export function MicrotiksPage({ sessionToken, t }: { sessionToken: string; t: Da
             </tr>
           </thead>
           <tbody>
-            {loading && rows.length === 0 ? (
+            {loading && visibleRows.length === 0 ? (
               <tr><td className="py-4 text-afro-muted" colSpan={8}>Loading…</td></tr>
-            ) : rows.length === 0 ? (
+            ) : visibleRows.length === 0 ? (
               <tr><td className="py-4 text-afro-muted" colSpan={8}>No MikroTiks yet — add one with the button above.</td></tr>
             ) : (
-              rows.map((router) => (
+              visibleRows.map((router) => (
                 <tr className="border-b border-afro-line/60 align-middle" key={router.id}>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-2 font-bold text-afro-ink">
