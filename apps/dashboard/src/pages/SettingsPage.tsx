@@ -9,6 +9,7 @@ import type { DashboardStrings } from '../i18n';
 import { formatWireGuardCandidateHandshake, formatWireGuardCandidatePeers, formatWireGuardCandidateRate } from '../route-helpers';
 import { parseTelegramChatIds, telegramSecretSourceLabel, telegramTestStatusLabel } from '../route-labels';
 import { getWireGuardScoreTone, serverAccessReady } from '../tone';
+import { buildSampleWireGuardCandidates, deriveActiveWireGuard, pickWireGuardCandidates } from '../route-candidates';
 import { mutedTextClass, panelClass } from '../ui-classes';
 import { DashboardTabs, MetricPill, PanelHeading, StatusBadge } from '../components/primitives';
 import { ProtocolApplyEventsPanel, ProtocolServerApplyPlanCard } from '../components/protocol-apply';
@@ -108,54 +109,11 @@ export function SettingsPage({
   const canManageTelegramBot = canCreateProtocols;
   const canManageTenantBranding = ['superadmin', 'owner', 'admin'].includes(session.actor.role);
   const sampleWireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
-    () => [
-      {
-        id: 'wg-primary',
-        name: t.settings.primaryGateway,
-        endpoint: draft.endpoint.trim() || 'gateway.example.com:51820',
-        routeGroup: 'main',
-        healthStatus: 'healthy',
-        score: 92,
-        latencyMs: 48,
-        jitterMs: 5,
-        packetLossPercent: 0.1,
-        loadPercent: 42,
-        checkedAt: null,
-        source: 'sample',
-      },
-      {
-        id: 'wg-backup',
-        name: t.settings.backupGateway,
-        endpoint: 'backup.example.com:51820',
-        routeGroup: 'main',
-        healthStatus: 'healthy',
-        score: 84,
-        latencyMs: 63,
-        jitterMs: 9,
-        packetLossPercent: 0.3,
-        loadPercent: 31,
-        checkedAt: null,
-        source: 'sample',
-      },
-      {
-        id: 'wg-control',
-        name: t.settings.controlGateway,
-        endpoint: 'control.example.com:51820',
-        routeGroup: 'main',
-        healthStatus: 'degraded',
-        score: 71,
-        latencyMs: 88,
-        jitterMs: 15,
-        packetLossPercent: 0.7,
-        loadPercent: 58,
-        checkedAt: null,
-        source: 'sample',
-      },
-    ],
+    () => buildSampleWireGuardCandidates(t, draft.endpoint),
     [draft.endpoint, t],
   );
   const wireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
-    () => (apiWireGuardCandidates.length > 0 ? apiWireGuardCandidates : sampleWireGuardCandidates),
+    () => pickWireGuardCandidates(apiWireGuardCandidates, sampleWireGuardCandidates),
     [apiWireGuardCandidates, sampleWireGuardCandidates],
   );
   const managedWireGuardCandidates = useMemo(
@@ -357,9 +315,7 @@ export function SettingsPage({
       draft.allowedIps.trim(),
   );
   const hasHealthTarget = draft.healthTarget.trim().length > 0;
-  const bestWireGuard = wireGuardCandidates.reduce((best, candidate) => candidate.score > best.score ? candidate : best, wireGuardCandidates[0]);
-  const selectedWireGuard = wireGuardCandidates.find((candidate) => candidate.id === selectedWireGuardId) ?? bestWireGuard;
-  const activeWireGuard = routeMode === 'manual' ? selectedWireGuard : bestWireGuard;
+  const { best: bestWireGuard, selected: selectedWireGuard, active: activeWireGuard } = deriveActiveWireGuard(wireGuardCandidates, routeMode, selectedWireGuardId);
   const routeModeDescription = routeMode === 'automatic' ? t.settings.autoModeDescription : t.settings.manualModeDescription;
   const loadBalanceOptions: Array<[LoadBalanceStrategy, string]> = [
     ['balanced', t.settings.balancedStrategy],
