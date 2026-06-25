@@ -46,5 +46,12 @@ export function deriveActiveWireGuard(
   return { best, selected, active };
 }
 
+export function wireGuardCandidateSourceLabel(candidate: WireGuardHealthCandidate, t: DashboardStrings): string {
+  if (candidate.source === 'agent') return t.settings.agentTelemetry;
+  if (candidate.source === 'outbound') return t.settings.outboundHealth;
+
+  return t.settings.localSample;
+}
+
 // Re-export so callers have one import site for the load-balance option list shape.
 export type { LoadBalanceStrategy };

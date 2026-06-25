@@ -9,7 +9,7 @@ import type { DashboardStrings } from '../i18n';
 import { formatWireGuardCandidateHandshake, formatWireGuardCandidatePeers, formatWireGuardCandidateRate } from '../route-helpers';
 import { parseTelegramChatIds, telegramSecretSourceLabel, telegramTestStatusLabel } from '../route-labels';
 import { getWireGuardScoreTone, serverAccessReady } from '../tone';
-import { buildSampleWireGuardCandidates, deriveActiveWireGuard, pickWireGuardCandidates } from '../route-candidates';
+import { buildSampleWireGuardCandidates, deriveActiveWireGuard, pickWireGuardCandidates, wireGuardCandidateSourceLabel } from '../route-candidates';
 import { mutedTextClass, panelClass } from '../ui-classes';
 import { DashboardTabs, MetricPill, PanelHeading, StatusBadge } from '../components/primitives';
 import { ProtocolApplyEventsPanel, ProtocolServerApplyPlanCard } from '../components/protocol-apply';
@@ -1823,13 +1823,6 @@ function mapTenantBrandingToForm(settings: AdminTenantBrandSettingsSummary): Ten
     supportUrl: settings.supportUrl ?? '',
     tenantSlug: settings.tenantSlug,
   };
-}
-
-function wireGuardCandidateSourceLabel(candidate: WireGuardHealthCandidate, t: DashboardStrings): string {
-  if (candidate.source === 'agent') return t.settings.agentTelemetry;
-  if (candidate.source === 'outbound') return t.settings.outboundHealth;
-
-  return t.settings.localSample;
 }
 
 function latestProtocolApplyEventsBySetupId(
