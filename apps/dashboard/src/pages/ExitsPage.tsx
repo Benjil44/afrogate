@@ -7,6 +7,7 @@ import type { DashboardStrings } from '../i18n';
 import { OutboundsPage } from './OutboundsPage';
 import { RoutesPage } from './RoutesPage';
 import { MicrotiksPage } from './MicrotiksPage';
+import { RouteSettingsPanel } from '../components/route-settings-panel';
 
 export function ExitsPage({
   dataState,
@@ -44,18 +45,21 @@ export function ExitsPage({
       <DashboardTabs activeTab={activeTab} ariaLabel={t.tabs.exitsSections} onChange={setActiveTab} tabs={tabs} />
       {activeTab === 'egress' ? <OutboundsPage sessionToken={sessionToken} t={t} /> : null}
       {activeTab === 'routing' ? (
-        <RoutesPage
-          dataState={dataState}
-          failoverRows={failoverRows}
-          format={format}
-          outbounds={outbounds}
-          session={session}
-          sessionToken={sessionToken}
-          tunnelDataState={tunnelDataState}
-          tunnelSummaries={tunnelSummaries}
-          tunnels={tunnels}
-          t={t}
-        />
+        <div className="flex flex-col gap-4">
+          <RouteSettingsPanel format={format} session={session} sessionToken={sessionToken} t={t} />
+          <RoutesPage
+            dataState={dataState}
+            failoverRows={failoverRows}
+            format={format}
+            outbounds={outbounds}
+            session={session}
+            sessionToken={sessionToken}
+            tunnelDataState={tunnelDataState}
+            tunnelSummaries={tunnelSummaries}
+            tunnels={tunnels}
+            t={t}
+          />
+        </div>
       ) : null}
       {activeTab === 'sources' ? <MicrotiksPage roleFilter="transport" sessionToken={sessionToken} t={t} /> : null}
     </div>
