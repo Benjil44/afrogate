@@ -17,6 +17,7 @@ import {
   updateRouter,
 } from '../api/admin';
 import { DataTable, EmptyState, PanelHeading } from '../components/primitives';
+import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
@@ -190,6 +191,27 @@ export function CustomersPage({
     () => accounts.find((a) => a.id === editId)?.protocols ?? [],
     [accounts, editId],
   );
+
+  const assignGatewayInEdit = async (routerId: string) => {
+    if (!editId || !routerId) return;
+    setError(null);
+    try {
+      await updateRouter(sessionToken, routerId, { role: 'gateway', customerAccountId: editId });
+      await fetchRouters(sessionToken).then((r) => setRouters(r.routers)).catch(() => undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const unassignGateway = async (routerId: string) => {
+    setError(null);
+    try {
+      await updateRouter(sessionToken, routerId, { customerAccountId: null });
+      await fetchRouters(sessionToken).then((r) => setRouters(r.routers)).catch(() => undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   // Add a protocol (a new client config) to the customer being edited.
   const onAddProtocol = async (protocol: 'vless' | 'wireguard') => {
@@ -803,6 +825,40 @@ export function CustomersPage({
                 </div>
               </div>
             )}
+            {editId ? (
+              <div className="grid gap-2 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.gatewaySection}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className={inputClass}
+                    value=""
+                    onChange={(e) => { void assignGatewayInEdit(e.target.value); }}
+                  >
+                    <option value="">{s.gatewayAssign}</option>
+                    {routers
+                      .filter((r) => r.kind !== 'village' && !r.customerAccountId)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
+                      ))}
+                  </select>
+                  {routers.filter((r) => r.customerAccountId === editId).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => void unassignGateway(r.id)}
+                      className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-red-400 hover:text-red-500"
+                    >
+                      {r.label} · {s.gatewayUnassign}
+                    </button>
+                  ))}
+                </div>
+                {routers.some((r) => r.customerAccountId === editId) ? (
+                  <MicrotiksPage roleFilter="gateway" customerAccountId={editId} sessionToken={sessionToken} t={t} />
+                ) : (
+                  <span className="text-[12px] text-afro-muted">{s.gatewayNone}</span>
+                )}
+              </div>
+            ) : null}
             {editId && email.trim() ? (
               <div className="grid gap-1.5 md:col-span-2">
                 <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
