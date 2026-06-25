@@ -463,6 +463,7 @@ import { KioskToggleButton, LanguageButton, Sidebar } from './components/Sidebar
 import { SystemResourceHeader } from './components/SystemResourceHeader';
 import { VersionWatcher } from './components/version-watcher';
 import { appVersion, resellerNavViews } from './app-config';
+import { advancedModeStorageKey, parseAdvancedMode, serializeAdvancedMode } from './nav-views';
 import { SettingsInput, SettingsSelect } from './components/settings-form';
 import {
   formatRouteHourWindow,
@@ -642,6 +643,11 @@ function loadInitialKioskMode() {
   return window.localStorage.getItem(kioskStorageKey) === 'enabled';
 }
 
+function loadInitialAdvancedMode() {
+  if (typeof window === 'undefined') return false;
+  return parseAdvancedMode(window.localStorage.getItem(advancedModeStorageKey));
+}
+
 const ROUTE_VIEWS: ActiveView[] = [
   'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
   'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings',
@@ -741,6 +747,7 @@ function AuthenticatedDashboard({
   const [backupDataState, setBackupDataState] = useState<DataState>('loading');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const [isKioskMode, setIsKioskMode] = useState(loadInitialKioskMode);
+  const [advancedMode, setAdvancedMode] = useState(loadInitialAdvancedMode);
   const wallClock = useWallClock(format);
 
   useEffect(() => {
@@ -940,6 +947,10 @@ function AuthenticatedDashboard({
   }, [isKioskMode]);
 
   useEffect(() => {
+    window.localStorage.setItem(advancedModeStorageKey, serializeAdvancedMode(advancedMode));
+  }, [advancedMode]);
+
+  useEffect(() => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) setIsKioskMode(false);
     };
@@ -1067,11 +1078,13 @@ function AuthenticatedDashboard({
       {isKioskMode ? null : (
         <Sidebar
           activeView={activeView}
+          advancedMode={advancedMode}
           isCollapsed={isSidebarCollapsed}
           isRtl={isRtl}
           nextLanguage={nextLanguage}
           onLanguageChange={onLanguageChange}
           onSignOut={onSignOut}
+          onToggleAdvancedMode={() => setAdvancedMode((current) => !current)}
           onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
           onViewChange={setActiveView}
           sidebarAlertState={sidebarAlertState}
