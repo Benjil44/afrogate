@@ -9,6 +9,9 @@ export const fa: DashboardStrings = {
     expandSidebar: 'باز کردن منو',
     enterKioskMode: 'ورود به نمایش کیوسک',
     exitKioskMode: 'خروج از نمایش کیوسک',
+    showAdvancedNav: 'نمایش پیشرفته',
+    hideAdvancedNav: 'پنهان کردن پیشرفته',
+    advancedNavGroup: 'پیشرفته',
     outboundsPage: {
       addButton: 'افزودن اوت‌باند',
       syncNow: 'به‌روزرسانی',
@@ -171,7 +174,7 @@ export const fa: DashboardStrings = {
     nav: {
       dashboard: 'داشبورد',
       servers: 'سرورها',
-      users: 'کاربران',
+      users: 'مدیران',
       audit: 'لاگ حسابرسی',
       backups: 'بکاپ‌ها',
       billing: 'مالی',

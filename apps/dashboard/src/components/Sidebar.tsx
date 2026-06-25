@@ -1,36 +1,32 @@
-import { Activity, Archive, Bell, CreditCard, Gauge, Languages, LogIn, LogOut, Maximize2, Minimize2, Network, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Route, Router as RouterIcon, ScrollText, Server, Settings as SettingsIcon, ShieldCheck, Users, UserRound, Waypoints } from 'lucide-react';
+import { Languages, Layers, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ShieldCheck } from 'lucide-react';
 import type { AdminSessionResponse } from '@afrows/shared';
 import { appVersion, resellerNavViews } from '../app-config';
 import type { ActiveView, NavItemData, SidebarAlertState } from '../dashboard-types';
 import { dashboardLanguageLabel } from '../formatters';
 import type { DashboardLanguage, DashboardStrings } from '../i18n';
+import { ADVANCED_NAV, MAIN_NAV } from '../nav-config';
 import { canViewAdminUsers, canViewAuditLogs, canViewBackupStatus, canViewReports } from '../session-access';
 
-const navItems: NavItemData[] = [
-  { id: 'dashboard', labelKey: 'dashboard', icon: Activity },
-  { id: 'servers', labelKey: 'servers', icon: Server },
-  { id: 'users', labelKey: 'users', icon: UserRound },
-  { id: 'customers', labelKey: 'customers', icon: Users },
-  { id: 'audit', labelKey: 'audit', icon: ScrollText },
-  { id: 'backups', labelKey: 'backups', icon: Archive },
-  { id: 'billing', labelKey: 'billing', icon: CreditCard },
-  { id: 'reports', labelKey: 'reports', icon: Gauge },
-  { id: 'routes', labelKey: 'routes', icon: Route },
-  { id: 'connections', labelKey: 'connections', icon: Network },
-  { id: 'inbounds', labelKey: 'inbounds', icon: LogIn },
-  { id: 'outbounds', labelKey: 'outbounds', icon: Waypoints },
-  { id: 'microtiks', labelKey: 'microtiks', icon: RouterIcon },
-  { id: 'alerts', labelKey: 'alerts', icon: Bell },
-  { id: 'settings', labelKey: 'settings', icon: SettingsIcon },
-];
+function filterNavForSession(items: NavItemData[], session: AdminSessionResponse): NavItemData[] {
+  return items.filter((item) => {
+    if (session.actor.role === 'reseller') return resellerNavViews.has(item.id);
+    if (item.id === 'users') return canViewAdminUsers(session);
+    if (item.id === 'audit') return canViewAuditLogs(session);
+    if (item.id === 'backups') return canViewBackupStatus(session);
+    if (item.id === 'reports') return canViewReports(session);
+    return true;
+  });
+}
 
 export function Sidebar({
   activeView,
+  advancedMode,
   isCollapsed,
   isRtl,
   nextLanguage,
   onLanguageChange,
   onSignOut,
+  onToggleAdvancedMode,
   onToggleCollapse,
   onViewChange,
   sidebarAlertState,
@@ -38,26 +34,23 @@ export function Sidebar({
   t,
 }: {
   activeView: ActiveView;
+  advancedMode: boolean;
   isCollapsed: boolean;
   isRtl: boolean;
   nextLanguage: DashboardLanguage;
   onLanguageChange: (language: DashboardLanguage) => void;
   onSignOut: () => void;
+  onToggleAdvancedMode: () => void;
   onToggleCollapse: () => void;
   onViewChange: (view: ActiveView) => void;
   sidebarAlertState: SidebarAlertState | null;
   session: AdminSessionResponse;
   t: DashboardStrings;
 }) {
-  const visibleNavItems = navItems.filter((item) => {
-    if (session.actor.role === 'reseller') return resellerNavViews.has(item.id);
-    if (item.id === 'users') return canViewAdminUsers(session);
-    if (item.id === 'audit') return canViewAuditLogs(session);
-    if (item.id === 'backups') return canViewBackupStatus(session);
-    if (item.id === 'reports') return canViewReports(session);
-
-    return true;
-  });
+  const mainItems = filterNavForSession(MAIN_NAV, session);
+  const advancedItems = filterNavForSession(ADVANCED_NAV, session);
+  const canUseAdvancedToggle = session.actor.role !== 'reseller';
+  const showAdvanced = advancedMode && canUseAdvancedToggle && advancedItems.length > 0;
 
   return (
     <aside
@@ -77,7 +70,7 @@ export function Sidebar({
       </div>
       <SidebarToggle isCollapsed={isCollapsed} isRtl={isRtl} onToggle={onToggleCollapse} t={t} />
       <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-6 lg:flex-1 lg:grid-cols-1 lg:content-start ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
-        {visibleNavItems.map((item) => (
+        {mainItems.map((item) => (
           <NavItem
             item={item}
             alertState={item.id === 'alerts' ? sidebarAlertState : null}
@@ -88,10 +81,33 @@ export function Sidebar({
             t={t}
           />
         ))}
+        {showAdvanced ? (
+          <>
+            <div
+              className={`col-span-2 mt-2 px-3 text-[10px] font-bold uppercase tracking-wide text-[#7c9490] sm:col-span-6 lg:col-span-1 ${isCollapsed ? 'lg:sr-only' : ''}`}
+            >
+              {t.advancedNavGroup}
+            </div>
+            {advancedItems.map((item) => (
+              <NavItem
+                item={item}
+                alertState={item.id === 'alerts' ? sidebarAlertState : null}
+                isActive={activeView === item.id}
+                isSidebarCollapsed={isCollapsed}
+                key={item.id}
+                onClick={() => onViewChange(item.id)}
+                t={t}
+              />
+            ))}
+          </>
+        ) : null}
       </nav>
       <div className="hidden text-xs text-[#91a5a2] lg:mt-6 lg:block lg:border-t lg:border-[#334852] lg:pt-3">
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
+            {canUseAdvancedToggle ? (
+              <AdvancedToggleButton isActive={advancedMode} isCollapsed onToggle={onToggleAdvancedMode} t={t} />
+            ) : null}
             <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
             <SignOutButton onSignOut={onSignOut} t={t} />
             <div className="text-[11px] font-bold text-[#c8d7d5]">v{appVersion}</div>
@@ -104,6 +120,9 @@ export function Sidebar({
                 <div>v{appVersion}</div>
               </div>
               <div className="flex items-center gap-2">
+                {canUseAdvancedToggle ? (
+                  <AdvancedToggleButton isActive={advancedMode} onToggle={onToggleAdvancedMode} t={t} />
+                ) : null}
                 <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
                 <SignOutButton onSignOut={onSignOut} t={t} />
               </div>
@@ -135,6 +154,38 @@ export function KioskToggleButton({ isActive, onToggle, t }: { isActive: boolean
     >
       <Icon className="shrink-0" size={15} />
       <span className="sr-only">{label}</span>
+    </button>
+  );
+}
+
+function AdvancedToggleButton({
+  isActive,
+  isCollapsed = false,
+  onToggle,
+  t,
+}: {
+  isActive: boolean;
+  isCollapsed?: boolean;
+  onToggle: () => void;
+  t: DashboardStrings;
+}) {
+  const label = isActive ? t.hideAdvancedNav : t.showAdvancedNav;
+  const activeClass = isActive
+    ? 'border-afro-teal text-afro-teal'
+    : 'border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white';
+
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={isActive}
+      className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border px-2 ${activeClass}`}
+      data-advanced-toggle="true"
+      onClick={onToggle}
+      title={label}
+      type="button"
+    >
+      <Layers className="shrink-0" size={16} />
+      {isCollapsed ? <span className="sr-only">{label}</span> : <span className="text-[11px] font-bold">{label}</span>}
     </button>
   );
 }
