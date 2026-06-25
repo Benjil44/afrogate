@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminCustomerAccountSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
   createAdminCustomerAccount,
   exportAdminCustomerClientConfigs,
   fetchAdminClientConfigEntryLink,
+  fetchAdminClientRoutePreference,
+  fetchAdminOutbounds,
   deleteAdminClientConfig,
   fetchAdminCustomerAccounts,
   fetchAdminWireguardConfig,
@@ -13,10 +15,12 @@ import {
   fetchRouters,
   setEgressTierPrice,
   resetCustomerAccountPassword,
+  updateAdminClientRoutePreference,
   updateAdminCustomerAccount,
   updateRouter,
 } from '../api/admin';
 import { DataTable, EmptyState, PanelHeading } from '../components/primitives';
+import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
@@ -90,6 +94,11 @@ export function CustomersPage({
   // Routers available to assign to a NEW customer (gateways with no owner yet).
   const [routers, setRouters] = useState<MikroTikRouterSummary[]>([]);
   const [assignRouterId, setAssignRouterId] = useState('');
+  const [editConfigs, setEditConfigs] = useState<AdminClientConfigSummary[]>([]);
+  const [exitOutbounds, setExitOutbounds] = useState<AdminOutboundSummary[]>([]);
+  // configId -> { mode, preferredOutboundId }
+  const [exitPrefs, setExitPrefs] = useState<Record<string, { mode: string; preferredOutboundId: string | null }>>({});
+  const [exitMsg, setExitMsg] = useState<string | null>(null);
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
@@ -183,6 +192,42 @@ export function CustomersPage({
     setTagsInput((a.tags ?? []).join(', '));
     setNotes(a.notes ?? '');
     setEditorOpen(true);
+    setEditConfigs([]);
+    setExitPrefs({});
+    setExitMsg(null);
+    void (async () => {
+      try {
+        const [cfgRes, obRes] = await Promise.all([
+          exportAdminCustomerClientConfigs(sessionToken, a.id),
+          fetchAdminOutbounds(sessionToken).catch(() => ({ outbounds: [] as AdminOutboundSummary[] })),
+        ]);
+        setEditConfigs(cfgRes.configs);
+        setExitOutbounds(obRes.outbounds);
+        const prefs: Record<string, { mode: string; preferredOutboundId: string | null }> = {};
+        await Promise.all(cfgRes.configs.map(async (cfg) => {
+          try {
+            const { routePreference } = await fetchAdminClientRoutePreference(sessionToken, cfg.id, 'main');
+            prefs[cfg.id] = { mode: routePreference?.mode ?? 'auto', preferredOutboundId: routePreference?.preferredOutboundId ?? null };
+          } catch {
+            prefs[cfg.id] = { mode: 'auto', preferredOutboundId: null };
+          }
+        }));
+        setExitPrefs(prefs);
+      } catch {
+        /* best-effort; selector simply won't populate */
+      }
+    })();
+  };
+
+  const saveExitPref = async (configId: string, mode: 'auto' | 'outbound', preferredOutboundId: string | null) => {
+    setExitMsg(null);
+    setExitPrefs((cur) => ({ ...cur, [configId]: { mode, preferredOutboundId } }));
+    try {
+      await updateAdminClientRoutePreference(sessionToken, configId, { routeGroup: 'main', mode, preferredOutboundId: mode === 'outbound' ? preferredOutboundId : null });
+      setExitMsg(s.exitSaved);
+    } catch {
+      setExitMsg(s.exitSaveFailed);
+    }
   };
 
   // Protocols of the customer currently being edited (for the Edit dialog).
@@ -190,6 +235,27 @@ export function CustomersPage({
     () => accounts.find((a) => a.id === editId)?.protocols ?? [],
     [accounts, editId],
   );
+
+  const assignGatewayInEdit = async (routerId: string) => {
+    if (!editId || !routerId) return;
+    setError(null);
+    try {
+      await updateRouter(sessionToken, routerId, { role: 'gateway', customerAccountId: editId });
+      await fetchRouters(sessionToken).then((r) => setRouters(r.routers)).catch(() => undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const unassignGateway = async (routerId: string) => {
+    setError(null);
+    try {
+      await updateRouter(sessionToken, routerId, { customerAccountId: null });
+      await fetchRouters(sessionToken).then((r) => setRouters(r.routers)).catch(() => undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   // Add a protocol (a new client config) to the customer being edited.
   const onAddProtocol = async (protocol: 'vless' | 'wireguard') => {
@@ -803,6 +869,80 @@ export function CustomersPage({
                 </div>
               </div>
             )}
+            {editId ? (
+              <div className="grid gap-2 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.gatewaySection}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className={inputClass}
+                    value=""
+                    onChange={(e) => { void assignGatewayInEdit(e.target.value); }}
+                  >
+                    <option value="">{s.gatewayAssign}</option>
+                    {routers
+                      .filter((r) => r.kind !== 'village' && !r.customerAccountId)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
+                      ))}
+                  </select>
+                  {routers.filter((r) => r.customerAccountId === editId).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => void unassignGateway(r.id)}
+                      className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-red-400 hover:text-red-500"
+                    >
+                      {r.label} · {s.gatewayUnassign}
+                    </button>
+                  ))}
+                </div>
+                {routers.some((r) => r.customerAccountId === editId) ? (
+                  <MicrotiksPage roleFilter="gateway" customerAccountId={editId} sessionToken={sessionToken} t={t} />
+                ) : (
+                  <span className="text-[12px] text-afro-muted">{s.gatewayNone}</span>
+                )}
+              </div>
+            ) : null}
+            {editId && editConfigs.length > 0 ? (
+              <div className="grid gap-2 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.exitSection}</span>
+                {editConfigs.map((cfg) => {
+                  const pref = exitPrefs[cfg.id] ?? { mode: 'auto', preferredOutboundId: null };
+                  const isFixed = pref.mode === 'outbound';
+                  return (
+                    <div key={cfg.id} className="flex flex-wrap items-center gap-2 rounded-md border border-afro-line px-2.5 py-2">
+                      <span className="text-[12px] font-bold uppercase tracking-wide text-afro-ink">{cfg.protocol}</span>
+                      <select
+                        className={inputClass}
+                        value={isFixed ? 'outbound' : 'auto'}
+                        onChange={(e) => {
+                          const mode = e.target.value === 'outbound' ? 'outbound' : 'auto';
+                          const ob = mode === 'outbound' ? (pref.preferredOutboundId || exitOutbounds[0]?.id || null) : null;
+                          void saveExitPref(cfg.id, mode, ob);
+                        }}
+                      >
+                        <option value="auto">{s.exitAuto}</option>
+                        <option value="outbound">{s.exitFixed}</option>
+                      </select>
+                      {isFixed ? (
+                        <select
+                          className={inputClass}
+                          value={pref.preferredOutboundId ?? ''}
+                          onChange={(e) => void saveExitPref(cfg.id, 'outbound', e.target.value || null)}
+                        >
+                          <option value="">{s.exitChooseOutbound}</option>
+                          {exitOutbounds.map((ob) => (
+                            <option key={ob.id} value={ob.id}>{ob.name}</option>
+                          ))}
+                        </select>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
+                {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
+              </div>
+            ) : null}
             {editId && email.trim() ? (
               <div className="grid gap-1.5 md:col-span-2">
                 <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>

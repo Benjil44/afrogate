@@ -6,6 +6,7 @@ import type {
   AdminBillingCatalogResponse,
   AdminClientConfigsExportResponse,
   AdminClientConfigSummary,
+  AdminClientRoutePreferenceResponse,
   AdminClientConfigEntryLinkResponse,
   CreateClientConfigRequest,
   AdminCurrentPanelImportPreviewResponse,
@@ -716,6 +717,35 @@ export async function createAdminClientConfig(
     },
   );
   return response.json() as Promise<AdminClientConfigSummary>;
+}
+
+export async function fetchAdminClientRoutePreference(
+  sessionToken: string,
+  configId: string,
+  routeGroup = 'main',
+  signal?: AbortSignal,
+): Promise<AdminClientRoutePreferenceResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(configId)}/route-preference?routeGroup=${encodeURIComponent(routeGroup)}`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminClientRoutePreferenceResponse>;
+}
+
+export async function updateAdminClientRoutePreference(
+  sessionToken: string,
+  configId: string,
+  payload: { routeGroup?: string; mode?: 'auto' | 'country' | 'outbound'; preferredOutboundId?: string | null },
+): Promise<AdminClientRoutePreferenceResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(configId)}/route-preference`,
+    {
+      method: 'PATCH',
+      headers: createSessionHeaders(sessionToken),
+      body: JSON.stringify(payload),
+    },
+  );
+  return response.json() as Promise<AdminClientRoutePreferenceResponse>;
 }
 
 /**
