@@ -110,10 +110,13 @@ const btnClass =
 const primaryBtnClass =
   'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-afro-blue px-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50';
 
-export function MicrotiksPage({ roleFilter, sessionToken, t }: { roleFilter?: MikroTikRouterRole; sessionToken: string; t: DashboardStrings }) {
+export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }: { customerAccountId?: string; roleFilter?: MikroTikRouterRole; sessionToken: string; t: DashboardStrings }) {
   void t;
   const [rows, setRows] = useState<MikroTikRouterSummary[]>([]);
-  const visibleRows = roleFilter ? rows.filter((router) => router.role === roleFilter) : rows;
+  const visibleRows = rows.filter((router) =>
+    (roleFilter ? router.role === roleFilter : true) &&
+    (customerAccountId ? router.customerAccountId === customerAccountId : true),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
