@@ -7,6 +7,9 @@ export const en = {
     expandSidebar: 'Expand sidebar',
     enterKioskMode: 'Enter kiosk display',
     exitKioskMode: 'Exit kiosk display',
+    showAdvancedNav: 'Show advanced',
+    hideAdvancedNav: 'Hide advanced',
+    advancedNavGroup: 'Advanced',
     outboundsPage: {
       addButton: 'Add outbound',
       syncNow: 'Sync now',
@@ -169,7 +172,7 @@ export const en = {
     nav: {
       dashboard: 'Dashboard',
       servers: 'Servers',
-      users: 'Users',
+      users: 'Admins',
       audit: 'Audit logs',
       backups: 'Backups',
       billing: 'Billing',
