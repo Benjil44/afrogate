@@ -210,6 +210,7 @@ import { MicrotiksPage } from './pages/MicrotiksPage';
 import { RoutesPage } from './pages/RoutesPage';
 import { OutboundsPage } from './pages/OutboundsPage';
 import { ExitsPage } from './pages/ExitsPage';
+import { NetworkPage } from './pages/NetworkPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { InboundsPage } from './pages/InboundsPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
@@ -651,7 +652,7 @@ function loadInitialAdvancedMode() {
 
 const ROUTE_VIEWS: ActiveView[] = [
   'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
-  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits',
+  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network',
 ];
 
 /** Derive the active view from the URL path (so refresh + the address bar work). */
@@ -1161,6 +1162,7 @@ function AuthenticatedDashboard({
           format={format}
           onServerUpdated={handleAdminServerUpdated}
           onRangeChange={setTimeRange}
+          onNavigate={setActiveView}
           routeDataState={routeDataState}
           routeFailoverRows={failoverRows}
           routeOutbounds={routeOutbounds}
@@ -1196,6 +1198,7 @@ function ActivePage({
   format,
   onServerUpdated,
   onRangeChange,
+  onNavigate,
   routeDataState,
   routeFailoverRows,
   routeOutbounds,
@@ -1223,6 +1226,7 @@ function ActivePage({
   format: DashboardFormatters;
   onServerUpdated: (server: AdminServerDetail) => void;
   onRangeChange: (range: MetricsTimeRange) => void;
+  onNavigate: (view: ActiveView) => void;
   routeDataState: DataState;
   routeFailoverRows: RouteFailoverRowData[];
   routeOutbounds: OutboundRowData[];
@@ -1311,6 +1315,8 @@ function ActivePage({
       return <MicrotiksPage roleFilter="gateway" sessionToken={sessionToken} t={t} />;
     case 'customers':
       return <CustomersPage format={format} sessionToken={sessionToken} t={t} />;
+    case 'network':
+      return <NetworkPage format={format} sessionToken={sessionToken} onOpenExits={() => onNavigate('exits')} t={t} />;
     case 'inbounds':
       return <InboundsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'connections':
