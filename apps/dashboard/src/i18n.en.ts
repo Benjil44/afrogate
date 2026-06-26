@@ -85,6 +85,7 @@ export const en = {
       empty: 'No customers yet. Create them in Billing.',
       colCustomer: 'Customer',
       colStatus: 'Status',
+      overQuota: 'over quota',
       colUsed: 'Used',
       colQuota: 'Quota',
       colRemaining: 'Remaining',

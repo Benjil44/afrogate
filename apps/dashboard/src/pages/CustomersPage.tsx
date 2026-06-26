@@ -551,15 +551,47 @@ export function CustomersPage({
     {
       key: 'status',
       header: s.colStatus,
-      render: (a) => (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusTone(String(a.status)) }} />
-          {String(a.status)}
-        </span>
-      ),
+      render: (a) => {
+        const over = a.quotaLimitBytes != null && a.usedBytes >= a.quotaLimitBytes;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusTone(String(a.status)) }} />
+            {String(a.status)}
+            {over ? (
+              <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+                {s.overQuota}
+              </span>
+            ) : null}
+          </span>
+        );
+      },
     },
-    { key: 'used', header: s.colUsed, render: (a) => format.bytes(a.usedBytes) },
-    { key: 'quota', header: s.colQuota, render: (a) => format.bytes(a.quotaLimitBytes ?? null) },
+    {
+      key: 'usage',
+      header: s.colUsed,
+      alignRight: true,
+      render: (a) => {
+        const q = a.quotaLimitBytes ?? null;
+        const used = a.usedBytes;
+        if (q == null || q <= 0) {
+          return <span className="text-afro-ink">{format.bytes(used)} · ∞</span>;
+        }
+        const pct = Math.min(100, Math.round((used / q) * 100));
+        const over = used >= q;
+        const near = pct >= 80;
+        const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-afro-teal';
+        return (
+          <div className="ml-auto flex w-28 flex-col items-end gap-1">
+            <span className={over ? 'font-bold text-red-500' : 'text-afro-ink'}>
+              {format.bytes(used)} / {format.bytes(q)}
+            </span>
+            <span className="h-1.5 w-full overflow-hidden rounded-full bg-afro-line">
+              <span className={`block h-full ${barColor}`} style={{ width: `${pct}%` }} />
+            </span>
+          </div>
+        );
+      },
+    },
     { key: 'clients', header: s.colClients, render: (a) => `${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}` },
     {
       key: 'protocols',
@@ -657,6 +689,18 @@ export function CustomersPage({
       ),
     },
   ];
+
+  // Hide optional columns that are empty for every visible row (auto-reappear when data shows up).
+  const optionalCols = new Set(['email', 'expiry', 'lastSeen', 'cost', 'tags', 'seller']);
+  const colHasData: Record<string, boolean> = {
+    email: filtered.some((a) => Boolean(a.loginEmail)),
+    expiry: filtered.some((a) => Boolean(a.expiresAt)),
+    lastSeen: filtered.some((a) => Boolean(a.lastConnectedAt)),
+    cost: tierPrices.some((p) => p.price > 0),
+    tags: filtered.some((a) => Boolean(a.tags && a.tags.length)),
+    seller: filtered.some((a) => Boolean(a.resellerDisplayName)),
+  };
+  const visibleColumns = columns.filter((c) => !optionalCols.has(c.key) || colHasData[c.key]);
 
   return (
     <section className="grid gap-4">
@@ -1138,7 +1182,7 @@ export function CustomersPage({
           </div>
         ) : (
           <div className="mt-2">
-            <DataTable rows={filtered} columns={columns} rowKey={(a) => a.id} minWidth="900px" />
+            <DataTable rows={filtered} columns={visibleColumns} rowKey={(a) => a.id} minWidth="900px" />
           </div>
         )}
       </div>
