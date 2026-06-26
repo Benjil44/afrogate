@@ -747,9 +747,21 @@ function AuthenticatedDashboard({
   const [backupStatus, setBackupStatus] = useState<AdminBackupStatusSummary | null>(null);
   const [backupDataState, setBackupDataState] = useState<DataState>('loading');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [isKioskMode, setIsKioskMode] = useState(loadInitialKioskMode);
   const [advancedMode, setAdvancedMode] = useState(loadInitialAdvancedMode);
   const wallClock = useWallClock(format);
+
+  // Auto-collapse the sidebar on narrow desktops (lg..xl) so content isn't
+  // squeezed; does not overwrite the user's saved expand/collapse preference.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 1279px)');
+    const apply = () => setIsNarrowViewport(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   useEffect(() => {
     if (isResellerSession) {
@@ -1064,9 +1076,10 @@ function AuthenticatedDashboard({
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t, session);
+  const effectiveSidebarCollapsed = isSidebarCollapsed || isNarrowViewport;
   const shellGridClass = isKioskMode
     ? 'lg:grid-cols-[minmax(0,1fr)]'
-    : isSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
+    : effectiveSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
 
   return (
     <main
@@ -1080,7 +1093,7 @@ function AuthenticatedDashboard({
         <Sidebar
           activeView={activeView}
           advancedMode={advancedMode}
-          isCollapsed={isSidebarCollapsed}
+          isCollapsed={effectiveSidebarCollapsed}
           isRtl={isRtl}
           nextLanguage={nextLanguage}
           onLanguageChange={onLanguageChange}
