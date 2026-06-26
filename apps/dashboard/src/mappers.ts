@@ -352,11 +352,12 @@ export function countActiveAlertRows(alerts: AlertRowData[]): number {
 }
 
 export function createSidebarAlertState(alerts: AlertRowData[], format: DashboardFormatters): SidebarAlertState | null {
+  const cap = (n: number) => (n > 99 ? '99+' : format.integer(n));
   const criticalCount = alerts.filter((alert) => !alert.isPlaceholder && alert.severity === 'critical').length;
   if (criticalCount > 0) {
     return {
       tone: 'critical',
-      countLabel: format.integer(criticalCount),
+      countLabel: cap(criticalCount),
     };
   }
 
@@ -364,7 +365,7 @@ export function createSidebarAlertState(alerts: AlertRowData[], format: Dashboar
   if (warningCount > 0) {
     return {
       tone: 'warning',
-      countLabel: format.integer(warningCount),
+      countLabel: cap(warningCount),
     };
   }
 
