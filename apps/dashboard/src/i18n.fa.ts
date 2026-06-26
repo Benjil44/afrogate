@@ -88,6 +88,8 @@ export const fa: DashboardStrings = {
       colCustomer: 'مشتری',
       colStatus: 'وضعیت',
       overQuota: 'اتمام حجم',
+      activate: 'فعال‌سازی',
+      deactivate: 'غیرفعال‌سازی',
       colUsed: 'مصرف‌شده',
       colQuota: 'سهمیه',
       colRemaining: 'باقی‌مانده',

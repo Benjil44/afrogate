@@ -86,6 +86,8 @@ export const en = {
       colCustomer: 'Customer',
       colStatus: 'Status',
       overQuota: 'over quota',
+      activate: 'Activate',
+      deactivate: 'Deactivate',
       colUsed: 'Used',
       colQuota: 'Quota',
       colRemaining: 'Remaining',
