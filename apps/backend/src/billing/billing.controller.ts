@@ -27,6 +27,7 @@ import type {
   AdminClientSubscriptionCredentialsResponse,
   AdminClientUsageEventsResponse,
   AdminCustomerAccountDetail,
+  AdminCustomerDevicesResponse,
   AdminAllocatePaymentOrderResponse,
   AdminIssueClientAccessTokenResponse,
   AdminCustomerAccountsResponse,
@@ -514,6 +515,14 @@ export class BillingController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<AdminCustomerAccountDetail> {
     return this.billingService.getCustomerAccount(id);
+  }
+
+  @Get('customer-accounts/:id/devices')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getCustomerDevices(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminCustomerDevicesResponse> {
+    return this.billingService.getCustomerDevices(id);
   }
 
   @Post('customer-accounts')

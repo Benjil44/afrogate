@@ -813,6 +813,22 @@ export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary 
   generatedPassword?: string;
 }
 
+/** F1 device/IP visibility: a (config, source IP) sighting for a customer. */
+export interface AdminCustomerDeviceSighting {
+  clientConfigId: string;
+  protocol: string;
+  sourceIp: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  hits: number;
+  active: boolean;
+}
+export interface AdminCustomerDevicesResponse {
+  customerAccountId: string;
+  activeCount: number;
+  devices: AdminCustomerDeviceSighting[];
+}
+
 export interface ClientLoginRequest {
   identifier: string;
   password: string;

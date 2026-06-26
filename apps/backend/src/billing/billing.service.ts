@@ -36,6 +36,7 @@ import type {
   AdminClientUsageEventSummary,
   AdminAllocatePaymentOrderResponse,
   AdminCustomerAccountDetail,
+  AdminCustomerDevicesResponse,
   AdminCustomerAccountSummary,
   AdminPayPalPaymentOrderResponse,
   AdminPaymentProviderAdapterSummary,
@@ -2797,6 +2798,39 @@ export class BillingService {
       throwConflictIfUniqueViolation(error, 'Current panel volume charge already exists');
       throw error;
     }
+  }
+
+  /** F1 device/IP visibility: per-customer (config, source IP) sightings. */
+  async getCustomerDevices(customerAccountId: string): Promise<AdminCustomerDevicesResponse> {
+    const res = await this.database.query<{
+      clientConfigId: string;
+      protocol: string;
+      sourceIp: string;
+      firstSeenAt: Date;
+      lastSeenAt: Date;
+      hits: string | number;
+      active: boolean;
+    }>(
+      `SELECT s.client_config_id AS "clientConfigId", cc.protocol AS "protocol",
+              s.source_ip AS "sourceIp", s.first_seen_at AS "firstSeenAt",
+              s.last_seen_at AS "lastSeenAt", s.hits AS "hits",
+              (s.last_seen_at > now() - interval '10 minutes') AS "active"
+         FROM client_device_sightings s
+         JOIN client_configs cc ON cc.id = s.client_config_id
+        WHERE cc.customer_account_id = $1
+        ORDER BY s.last_seen_at DESC`,
+      [customerAccountId],
+    );
+    const devices = res.rows.map((r) => ({
+      clientConfigId: r.clientConfigId,
+      protocol: r.protocol,
+      sourceIp: r.sourceIp,
+      firstSeenAt: r.firstSeenAt.toISOString(),
+      lastSeenAt: r.lastSeenAt.toISOString(),
+      hits: Number(r.hits),
+      active: r.active,
+    }));
+    return { customerAccountId, activeCount: devices.filter((d) => d.active).length, devices };
   }
 
   async getCustomerAccount(id: string): Promise<AdminCustomerAccountDetail> {
