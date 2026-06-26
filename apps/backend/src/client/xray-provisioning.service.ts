@@ -84,9 +84,11 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     try {
       const result = await this.database.query<ActiveClientRow>(
         `
-          SELECT id, entry_uuid AS "entryUuid"
-          FROM client_configs
-          WHERE status <> 'disabled'
+          SELECT cc.id, cc.entry_uuid AS "entryUuid"
+          FROM client_configs cc
+          JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+          WHERE cc.status <> 'disabled'
+            AND ca.status = 'active'
         `,
       );
       let added = 0;

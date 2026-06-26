@@ -48,6 +48,7 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.meter();
       await this.enforceQuota();
+      await this.enforceAccountStatus();
     } catch (error) {
       this.logger.warn(`Metering tick failed: ${error instanceof Error ? error.message : error}`);
     } finally {
@@ -126,6 +127,41 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     }
     if (result.rows.length) {
       this.logger.log(`Quota enforced: limited ${result.rows.length} over-quota client(s)`);
+    }
+  }
+
+  /**
+   * Disconnect VLESS users whose ACCOUNT is no longer active (deactivated/suspended).
+   * The provisioning reconcile already stops re-adding them; this removes the
+   * already-live user so deactivation actually cuts VLESS (mirrors WireGuard,
+   * which gates on account status). Config status is left untouched, so
+   * re-activating the account lets the reconcile add the user back.
+   */
+  private async enforceAccountStatus(): Promise<void> {
+    const result = await this.database.query<OverQuotaRow>(
+      `
+        SELECT cc.id AS "clientConfigId"
+        FROM client_configs cc
+        JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+        WHERE cc.status <> 'disabled'
+          AND ca.status <> 'active'
+      `,
+    );
+    for (const row of result.rows) {
+      for (const tag of this.inboundTags()) {
+        try {
+          await execFileAsync(
+            this.bin(),
+            ['api', 'rmu', `--server=${this.apiServer()}`, `-tag=${tag}`, provisioningEmail(row.clientConfigId)],
+            { timeout: 15000 },
+          );
+        } catch {
+          /* best-effort; next tick retries */
+        }
+      }
+    }
+    if (result.rows.length) {
+      this.logger.log(`Account status enforced: disconnected ${result.rows.length} inactive-account client(s)`);
     }
   }
 
