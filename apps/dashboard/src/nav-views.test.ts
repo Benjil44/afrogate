@@ -4,13 +4,13 @@ import { MAIN_VIEWS, ADVANCED_VIEWS, parseAdvancedMode, serializeAdvancedMode } 
 
 // Views shown in the sidebar after D1 (outbounds/routes/microtiks routable but hidden).
 const SIDEBAR_VIEWS = [
-  'dashboard', 'customers', 'billing', 'exits', 'microtiks', 'alerts', 'users', 'settings',
+  'dashboard', 'customers', 'billing', 'resellers', 'exits', 'microtiks', 'alerts', 'users', 'settings',
   'network', 'servers', 'audit', 'backups', 'reports',
 ];
 
-test('Main has the 8 everyday views in order', () => {
+test('Main has the 9 everyday views in order', () => {
   assert.deepEqual(MAIN_VIEWS, [
-    'dashboard', 'customers', 'billing', 'exits', 'microtiks', 'alerts', 'users', 'settings',
+    'dashboard', 'customers', 'billing', 'resellers', 'exits', 'microtiks', 'alerts', 'users', 'settings',
   ]);
 });
 
