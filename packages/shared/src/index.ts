@@ -830,6 +830,9 @@ export interface AdminCustomerDeviceSighting {
 export interface AdminCustomerDevicesResponse {
   customerAccountId: string;
   activeCount: number;
+  /** Distinct active networks (source IPs collapsed to /16 or IPv6 /32) — honest
+   * device estimate that does not over-count mobile carrier IP rotation. */
+  activeNetworkCount: number;
   devices: AdminCustomerDeviceSighting[];
 }
 
