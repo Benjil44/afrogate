@@ -69,7 +69,7 @@ export function Sidebar({
         </div>
       </div>
       <SidebarToggle isCollapsed={isCollapsed} isRtl={isRtl} onToggle={onToggleCollapse} t={t} />
-      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-6 lg:min-h-0 lg:flex-1 lg:grid-cols-1 lg:content-start lg:overflow-y-auto ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
+      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-6 lg:min-h-0 lg:flex-1 lg:grid-cols-1 lg:content-start lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.18)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/15 hover:[&::-webkit-scrollbar-thumb]:bg-white/25 ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
         {mainItems.map((item) => (
           <NavItem
             item={item}
