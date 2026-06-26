@@ -1,4 +1,4 @@
-import { Languages, Layers, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronUp, Languages, Layers, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ShieldCheck } from 'lucide-react';
 import type { AdminSessionResponse } from '@afrows/shared';
 import { appVersion, resellerNavViews } from '../app-config';
 import type { ActiveView, NavItemData, SidebarAlertState } from '../dashboard-types';
@@ -69,7 +69,7 @@ export function Sidebar({
         </div>
       </div>
       <SidebarToggle isCollapsed={isCollapsed} isRtl={isRtl} onToggle={onToggleCollapse} t={t} />
-      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-6 lg:flex-1 lg:grid-cols-1 lg:content-start ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
+      <nav className={`mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-6 lg:min-h-0 lg:flex-1 lg:grid-cols-1 lg:content-start lg:overflow-y-auto ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
         {mainItems.map((item) => (
           <NavItem
             item={item}
@@ -81,24 +81,31 @@ export function Sidebar({
             t={t}
           />
         ))}
-        {showAdvanced ? (
+        {canUseAdvancedToggle && advancedItems.length > 0 ? (
           <>
-            <div
-              className={`col-span-2 mt-2 px-3 text-[10px] font-bold uppercase tracking-wide text-[#7c9490] sm:col-span-6 lg:col-span-1 ${isCollapsed ? 'lg:sr-only' : ''}`}
+            <button
+              type="button"
+              onClick={onToggleAdvancedMode}
+              aria-expanded={showAdvanced}
+              title={showAdvanced ? t.hideAdvancedNav : t.showAdvancedNav}
+              className={`col-span-2 mt-2 flex items-center justify-between gap-2 px-3 text-[10px] font-bold uppercase tracking-wide text-[#7c9490] hover:text-[#c8d7d5] sm:col-span-6 lg:col-span-1 ${isCollapsed ? 'lg:sr-only' : ''}`}
             >
-              {t.advancedNavGroup}
-            </div>
-            {advancedItems.map((item) => (
-              <NavItem
-                item={item}
-                alertState={item.id === 'alerts' ? sidebarAlertState : null}
-                isActive={activeView === item.id}
-                isSidebarCollapsed={isCollapsed}
-                key={item.id}
-                onClick={() => onViewChange(item.id)}
-                t={t}
-              />
-            ))}
+              <span>{t.advancedNavGroup}</span>
+              {showAdvanced ? <ChevronUp className="shrink-0" size={14} /> : <ChevronDown className="shrink-0" size={14} />}
+            </button>
+            {showAdvanced
+              ? advancedItems.map((item) => (
+                  <NavItem
+                    item={item}
+                    alertState={item.id === 'alerts' ? sidebarAlertState : null}
+                    isActive={activeView === item.id}
+                    isSidebarCollapsed={isCollapsed}
+                    key={item.id}
+                    onClick={() => onViewChange(item.id)}
+                    t={t}
+                  />
+                ))
+              : null}
           </>
         ) : null}
       </nav>
