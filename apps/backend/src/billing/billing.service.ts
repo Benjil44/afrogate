@@ -6442,9 +6442,9 @@ export class BillingService {
         ca.expires_at AS "expiresAt",
         ca.tags AS "tags",
         (
-          SELECT MAX(e.observed_at)
-          FROM client_usage_events e
-          WHERE e.customer_account_id = ca.id
+          SELECT MAX(cc2.last_connected_at)
+          FROM client_configs cc2
+          WHERE cc2.customer_account_id = ca.id
         ) AS "lastConnectedAt",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",

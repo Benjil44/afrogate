@@ -74,7 +74,9 @@ export class WireguardMeteringService implements OnModuleInit, OnModuleDestroy {
         ),
         upd_cfg AS (
           UPDATE client_configs cc
-          SET used_bytes = cc.used_bytes + up.delta, updated_at = now()
+          SET used_bytes = cc.used_bytes + up.delta,
+              last_connected_at = CASE WHEN up.delta > 0 THEN now() ELSE cc.last_connected_at END,
+              updated_at = now()
           FROM upd_peer up WHERE cc.id = up.client_config_id
           RETURNING cc.customer_account_id
         )
