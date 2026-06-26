@@ -801,7 +801,7 @@ export async function fetchAdminClientRoutePreference(
 export async function updateAdminClientRoutePreference(
   sessionToken: string,
   configId: string,
-  payload: { routeGroup?: string; mode?: 'auto' | 'country' | 'outbound'; preferredOutboundId?: string | null },
+  payload: { routeGroup?: string; mode?: 'auto' | 'country' | 'outbound'; preferredOutboundId?: string | null; preferredEgressPath?: 'germany' | 'village' | 'direct' | null },
 ): Promise<AdminClientRoutePreferenceResponse> {
   const response = await requestAdminAuth(
     `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(configId)}/route-preference`,
