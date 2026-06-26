@@ -115,6 +115,35 @@ def xray_gaming_emails(url):
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
+# D2: per-client-config FIXED egress path -> outbound tag (germany/village/direct).
+PATH_TAGS = {"germany": "via-germany", "village": "via-village", "direct": "direct"}
+
+
+def path_xray_users(url, path):
+    """VLESS emails of active client configs pinned to this fixed egress path."""
+    s = psql1(url, (
+        "select coalesce(string_agg('cc_' || cc.id || '@afrows', ',' order by cc.id), '') "
+        "from client_configs cc "
+        "join client_route_preferences rp on rp.client_config_id = cc.id "
+        "join customer_accounts ca on ca.id = cc.customer_account_id "
+        "where rp.preferred_egress_path = '%s' and cc.status <> 'disabled' and ca.status = 'active'" % path
+    ))
+    return [x.strip() for x in s.split(",") if x.strip()] if s else []
+
+
+def path_wg_sources(url, path):
+    """afrows-wg peer source IPs of active client configs pinned to this path."""
+    s = psql1(url, (
+        "select coalesce(string_agg(wp.client_address, ',' order by wp.client_address), '') "
+        "from wireguard_peers wp "
+        "join client_route_preferences rp on rp.client_config_id = wp.client_config_id "
+        "join client_configs cc on cc.id = wp.client_config_id "
+        "join customer_accounts ca on ca.id = cc.customer_account_id "
+        "where rp.preferred_egress_path = '%s' and wp.desired_state = 'present' and ca.status = 'active'" % path
+    ))
+    return [x.strip() for x in s.split(",") if x.strip()] if s else []
+
+
 def pool_alive():
     """True if the foreign relay pool (socks) can fetch a basic 204 endpoint."""
     for url in POOL_PROBE_URLS:
@@ -204,7 +233,7 @@ def client_inbound_tags(rules):
     return None
 
 
-def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound):
+def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None):
     # All list members are SORTED so the desired config is deterministic: the DB
     # aggregates (string_agg) can return rows in any order run-to-run, and an
     # order-sensitive `rules == want` compare would otherwise see a phantom change
@@ -219,12 +248,19 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outboun
         rules.append({"type": "field", "source": sorted(gaming_sources), "outboundTag": "via-village"})
     if gaming_users:  # by VLESS user email (afrows-xray app clients)
         rules.append({"type": "field", "user": sorted(gaming_users), "outboundTag": "via-village"})
+    # D2 per-config FIXED egress path rules (sorted + deterministic order so the
+    # config doesn't look changed run-to-run). Emitted before the catch-all.
+    for fr in sorted(fixed_rules or [], key=lambda x: (x["outboundTag"], "user" in x)):
+        if fr.get("user"):
+            rules.append({"type": "field", "user": sorted(fr["user"]), "outboundTag": fr["outboundTag"]})
+        if fr.get("source"):
+            rules.append({"type": "field", "source": sorted(fr["source"]), "outboundTag": fr["outboundTag"]})
     # normal foreign catch-all: 'proxy' (relay pool) normally; 'via-village' when the pool is dead
     rules.append({"type": "field", "inboundTag": sorted(client_tags), "outboundTag": catch_outbound})
     return rules
 
 
-def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound):
+def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None):
     """gaming_sources: source IPs -> via-village; gaming_users: VLESS emails -> via-village.
     catch_outbound: where the normal foreign catch-all goes ('proxy' or 'via-village')."""
     cfg = json.load(open(cfg_path))
@@ -241,7 +277,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
             outs.append(dict(spec))
             changed_out = True
 
-    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound)
+    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [])
     if rules == want and not changed_out:
         return False
 
@@ -282,7 +318,18 @@ def main():
             sources, users = db + extra, []
         else:       # afrows-xray: router source IPs + VLESS gaming users
             sources, users = list(extra), xray_users
-        changed |= apply_target(cfg_path, svc, mode, sources, users, catch)
+        # D2: per-config FIXED egress path rules for this engine
+        fixed = []
+        for p, tag in PATH_TAGS.items():
+            if use_db:  # afrows-wg -> source-IP rules
+                src = path_wg_sources(url, p)
+                if src:
+                    fixed.append({"source": src, "outboundTag": tag})
+            else:       # afrows-xray -> VLESS user rules
+                usr = path_xray_users(url, p)
+                if usr:
+                    fixed.append({"user": usr, "outboundTag": tag})
+        changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed)
     if not changed:
         log("no change (mode=%s, catch-all=%s, wg-src=%d xray-src=%d xray-user=%d)" % (
             mode, catch, len(db) + len(extra), len(extra), len(xray_users)))
