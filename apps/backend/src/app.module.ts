@@ -21,6 +21,7 @@ import { ConnectionsService } from './client/connections.service';
 import { OperationsOverviewService } from './client/operations-overview.service';
 import { XrayUsageMeteringService } from './client/xray-usage-metering.service';
 import { WireguardMeteringService } from './client/wireguard-metering.service';
+import { XrayAccessLogService } from './client/xray-access-log.service';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './metrics/metrics.controller';
 import { METRICS_REPOSITORY } from './metrics/metrics.repository';
@@ -102,6 +103,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     XrayProvisioningService,
     XrayUsageMeteringService,
     WireguardMeteringService,
+    XrayAccessLogService,
     InboundsService,
     ConnectionsService,
     OperationsOverviewService,
