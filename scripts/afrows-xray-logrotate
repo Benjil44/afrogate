@@ -1,4 +1,5 @@
 /var/log/afrows-xray/*.log {
+  su root afrows
   daily
   rotate 7
   missingok
@@ -6,4 +7,5 @@
   compress
   delaycompress
   copytruncate
+  create 0640 root afrows
 }
