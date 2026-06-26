@@ -96,9 +96,8 @@ export function CustomersPage({
   const [routers, setRouters] = useState<MikroTikRouterSummary[]>([]);
   const [assignRouterId, setAssignRouterId] = useState('');
   const [editConfigs, setEditConfigs] = useState<AdminClientConfigSummary[]>([]);
-  const [exitOutbounds, setExitOutbounds] = useState<AdminOutboundSummary[]>([]);
-  // configId -> { mode, preferredOutboundId }
-  const [exitPrefs, setExitPrefs] = useState<Record<string, { mode: string; preferredOutboundId: string | null }>>({});
+  // configId -> fixed egress path ('auto' | 'germany' | 'village' | 'direct')
+  const [exitPath, setExitPath] = useState<Record<string, string>>({});
   const [exitMsg, setExitMsg] = useState<string | null>(null);
   const [devices, setDevices] = useState<AdminCustomerDeviceSighting[]>([]);
   const [devicesActive, setDevicesActive] = useState(0);
@@ -197,7 +196,7 @@ export function CustomersPage({
     setNotes(a.notes ?? '');
     setEditorOpen(true);
     setEditConfigs([]);
-    setExitPrefs({});
+    setExitPath({});
     setExitMsg(null);
     setDevices([]);
     setDevicesActive(0);
@@ -206,33 +205,32 @@ export function CustomersPage({
       .catch(() => undefined);
     void (async () => {
       try {
-        const [cfgRes, obRes] = await Promise.all([
-          exportAdminCustomerClientConfigs(sessionToken, a.id),
-          fetchAdminOutbounds(sessionToken).catch(() => ({ outbounds: [] as AdminOutboundSummary[] })),
-        ]);
+        const cfgRes = await exportAdminCustomerClientConfigs(sessionToken, a.id);
         setEditConfigs(cfgRes.configs);
-        setExitOutbounds(obRes.outbounds);
-        const prefs: Record<string, { mode: string; preferredOutboundId: string | null }> = {};
+        const paths: Record<string, string> = {};
         await Promise.all(cfgRes.configs.map(async (cfg) => {
           try {
             const { routePreference } = await fetchAdminClientRoutePreference(sessionToken, cfg.id, 'main');
-            prefs[cfg.id] = { mode: routePreference?.mode ?? 'auto', preferredOutboundId: routePreference?.preferredOutboundId ?? null };
+            paths[cfg.id] = routePreference?.preferredEgressPath ?? 'auto';
           } catch {
-            prefs[cfg.id] = { mode: 'auto', preferredOutboundId: null };
+            paths[cfg.id] = 'auto';
           }
         }));
-        setExitPrefs(prefs);
+        setExitPath(paths);
       } catch {
         /* best-effort; selector simply won't populate */
       }
     })();
   };
 
-  const saveExitPref = async (configId: string, mode: 'auto' | 'outbound', preferredOutboundId: string | null) => {
+  const saveExitPath = async (configId: string, path: string) => {
     setExitMsg(null);
-    setExitPrefs((cur) => ({ ...cur, [configId]: { mode, preferredOutboundId } }));
+    setExitPath((cur) => ({ ...cur, [configId]: path }));
     try {
-      await updateAdminClientRoutePreference(sessionToken, configId, { routeGroup: 'main', mode, preferredOutboundId: mode === 'outbound' ? preferredOutboundId : null });
+      await updateAdminClientRoutePreference(sessionToken, configId, {
+        routeGroup: 'main',
+        preferredEgressPath: path === 'auto' ? null : (path as 'germany' | 'village' | 'direct'),
+      });
       setExitMsg(s.exitSaved);
     } catch {
       setExitMsg(s.exitSaveFailed);
@@ -988,39 +986,21 @@ export function CustomersPage({
             {editId && editConfigs.length > 0 ? (
               <div className="grid gap-2 md:col-span-2">
                 <span className="text-[13px] font-bold text-afro-muted">{s.exitSection}</span>
-                {editConfigs.map((cfg) => {
-                  const pref = exitPrefs[cfg.id] ?? { mode: 'auto', preferredOutboundId: null };
-                  const isFixed = pref.mode === 'outbound';
-                  return (
+                {editConfigs.map((cfg) => (
                     <div key={cfg.id} className="flex flex-wrap items-center gap-2 rounded-md border border-afro-line px-2.5 py-2">
                       <span className="text-[12px] font-bold uppercase tracking-wide text-afro-ink">{cfg.protocol}</span>
                       <select
                         className={inputClass}
-                        value={isFixed ? 'outbound' : 'auto'}
-                        onChange={(e) => {
-                          const mode = e.target.value === 'outbound' ? 'outbound' : 'auto';
-                          const ob = mode === 'outbound' ? (pref.preferredOutboundId || exitOutbounds[0]?.id || null) : null;
-                          void saveExitPref(cfg.id, mode, ob);
-                        }}
+                        value={exitPath[cfg.id] ?? 'auto'}
+                        onChange={(e) => void saveExitPath(cfg.id, e.target.value)}
                       >
                         <option value="auto">{s.exitAuto}</option>
-                        <option value="outbound">{s.exitFixed}</option>
+                        <option value="germany">{s.exitGermany}</option>
+                        <option value="village">{s.exitStarlink}</option>
+                        <option value="direct">{s.exitDirect}</option>
                       </select>
-                      {isFixed ? (
-                        <select
-                          className={inputClass}
-                          value={pref.preferredOutboundId ?? ''}
-                          onChange={(e) => void saveExitPref(cfg.id, 'outbound', e.target.value || null)}
-                        >
-                          <option value="">{s.exitChooseOutbound}</option>
-                          {exitOutbounds.map((ob) => (
-                            <option key={ob.id} value={ob.id}>{ob.name}</option>
-                          ))}
-                        </select>
-                      ) : null}
                     </div>
-                  );
-                })}
+                ))}
                 <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
                 {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
               </div>

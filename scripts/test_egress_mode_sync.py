@@ -44,3 +44,18 @@ applied, st = ch(True, False, st)
 assert applied == "via-germany", ("failback", applied)
 
 print("OK: choose_catchall failover via-germany -> proxy -> direct with hysteresis")
+
+# --- D2: fixed-path per-account rules ---
+fixed = [
+    {"user": ["cc_b@afrows", "cc_a@afrows"], "outboundTag": "via-germany"},
+    {"source": ["10.0.0.2", "10.0.0.1"], "outboundTag": "direct"},
+]
+r = mod.desired_rules("smart", ["t1"], [], [], "proxy", fixed)
+assert {"type": "field", "user": ["cc_a@afrows", "cc_b@afrows"], "outboundTag": "via-germany"} in r
+assert {"type": "field", "source": ["10.0.0.1", "10.0.0.2"], "outboundTag": "direct"} in r
+assert r[-1]["outboundTag"] == "proxy" and r[-1].get("inboundTag"), "catch-all must stay last"
+r2 = mod.desired_rules("smart", ["t1"], [], [], "proxy", list(reversed(fixed)))
+assert sorted([str(x) for x in r]) == sorted([str(x) for x in r2]), "fixed rules must be order-insensitive"
+# back-compat: omitting fixed_rules behaves as before
+assert mod.desired_rules("smart", ["t1"], [], [], "proxy") == mod.desired_rules("smart", ["t1"], [], [], "proxy", [])
+print("OK: desired_rules fixed-path rules (D2)")
