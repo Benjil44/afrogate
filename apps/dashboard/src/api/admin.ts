@@ -9,6 +9,13 @@ import type {
   AdminClientRoutePreferenceResponse,
   AdminCustomerDevicesResponse,
   AdminNetworkOverviewResponse,
+  AdminResellerAccountsResponse,
+  AdminResellerAccountSummary,
+  AdminResellerWalletLedgerResponse,
+  AdminResellerWalletActionResponse,
+  CreateResellerAccountRequest,
+  UpdateResellerAccountRequest,
+  TopUpResellerWalletRequest,
   AdminClientConfigEntryLinkResponse,
   CreateClientConfigRequest,
   AdminCurrentPanelImportPreviewResponse,
@@ -406,6 +413,43 @@ export async function fetchAdminInbounds(sessionToken: string, signal?: AbortSig
     signal,
   });
   return response.json() as Promise<AdminInboundsResponse>;
+}
+
+export async function fetchAdminResellers(sessionToken: string, signal?: AbortSignal): Promise<AdminResellerAccountsResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers`, { headers: createSessionHeaders(sessionToken), signal });
+  return response.json() as Promise<AdminResellerAccountsResponse>;
+}
+
+export async function createAdminReseller(sessionToken: string, payload: CreateResellerAccountRequest): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+export async function updateAdminReseller(sessionToken: string, id: string, payload: UpdateResellerAccountRequest): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+export async function fetchResellerWalletLedger(sessionToken: string, id: string, signal?: AbortSignal): Promise<AdminResellerWalletLedgerResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}/wallet-ledger`, { headers: createSessionHeaders(sessionToken), signal });
+  return response.json() as Promise<AdminResellerWalletLedgerResponse>;
+}
+
+export async function topUpResellerWallet(sessionToken: string, id: string, payload: TopUpResellerWalletRequest): Promise<AdminResellerWalletActionResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}/wallet/topups`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerWalletActionResponse>;
 }
 
 export async function fetchAdminNetworkOverview(sessionToken: string, signal?: AbortSignal): Promise<AdminNetworkOverviewResponse> {
