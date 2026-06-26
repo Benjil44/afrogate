@@ -74,7 +74,9 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
         `
           WITH cc AS (
             UPDATE client_configs
-            SET used_bytes = used_bytes + $2, updated_at = now()
+            SET used_bytes = used_bytes + $2,
+                last_connected_at = CASE WHEN $2 > 0 THEN now() ELSE last_connected_at END,
+                updated_at = now()
             WHERE id = $1
             RETURNING customer_account_id
           )
@@ -108,14 +110,18 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
         `UPDATE client_configs SET status = 'limited', updated_at = now() WHERE id = $1`,
         [row.clientConfigId],
       );
-      try {
-        await execFileAsync(
-          this.bin(),
-          ['api', 'rmu', `--server=${this.apiServer()}`, `-tag=${this.inboundTag()}`, provisioningEmail(row.clientConfigId)],
-          { timeout: 15000 },
-        );
-      } catch {
-        /* best-effort; reconcile/next tick retries */
+      // Remove from EVERY provisioned inbound (afrows-in, afrows-in-tcp, …) so an
+      // over-quota user can't keep flowing via a secondary entry.
+      for (const tag of this.inboundTags()) {
+        try {
+          await execFileAsync(
+            this.bin(),
+            ['api', 'rmu', `--server=${this.apiServer()}`, `-tag=${tag}`, provisioningEmail(row.clientConfigId)],
+            { timeout: 15000 },
+          );
+        } catch {
+          /* best-effort; reconcile/next tick retries */
+        }
       }
     }
     if (result.rows.length) {
@@ -131,6 +137,18 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
   }
   private inboundTag(): string {
     return this.config.get<string>('AFROWS_XRAY_INBOUND_TAG')?.trim() || 'afrows-in';
+  }
+  /** All inbound tags a user is provisioned onto (mirrors AFROWS_XRAY_INBOUND_TAGS = "tag:port,…"). */
+  private inboundTags(): string[] {
+    const raw = this.config.get<string>('AFROWS_XRAY_INBOUND_TAGS')?.trim();
+    if (raw) {
+      const tags = raw
+        .split(',')
+        .map((part) => part.split(':')[0]?.trim())
+        .filter((t): t is string => Boolean(t));
+      if (tags.length) return Array.from(new Set(tags));
+    }
+    return [this.inboundTag()];
   }
   private intervalMs(): number {
     const raw = this.config.get<string>('AFROWS_XRAY_METERING_INTERVAL_SECONDS');

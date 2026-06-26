@@ -1122,11 +1122,11 @@ export function CustomersPage({
                     wgConfigMap[c.id] ? (
                       <div className="grid gap-1.5">
                         {wgQrMap[c.id] ? (
-                          <div
-                            className="mx-auto h-40 w-40 rounded-md bg-white p-1 [&>svg]:h-full [&>svg]:w-full"
+                          <img
+                            className="mx-auto h-40 w-40 rounded-md bg-white p-1"
+                            src={`data:image/svg+xml;utf8,${encodeURIComponent(wgQrMap[c.id])}`}
+                            alt={s.scanWg}
                             title={s.scanWg}
-                            // eslint-disable-next-line react/no-danger
-                            dangerouslySetInnerHTML={{ __html: wgQrMap[c.id] }}
                           />
                         ) : null}
                         <textarea
