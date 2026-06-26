@@ -224,6 +224,12 @@ export const fa: DashboardStrings = {
       direct: 'مستقیم (آپلینک ایران)',
       openExits: 'باز کردن خروجی‌ها',
       openInbounds: 'باز کردن این‌باندها',
+      costFree: 'رایگان',
+      costPaid: 'پولی ~۳۰۰۰ ت/گیگ',
+      roleAutoPrimary: 'اولویت ۱',
+      roleAutoFailover: 'جایگزین',
+      roleLastResort: 'آخرین گزینه',
+      roleGamingOnly: 'فقط گیمینگ/VIP',
     },
     pageHeaders: {
       dashboard: { eyebrow: 'عملیات', title: 'نمایش عملیات شبکه' },

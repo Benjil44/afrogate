@@ -3,11 +3,13 @@ import type { AdminInboundSummary } from '@afrows/shared';
 import { fetchAdminInbounds, fetchAdminNetworkOverview } from '../api/admin';
 import type { DashboardStrings } from '../i18n';
 
+// Ordered by the reconciler's auto-failover preference (free chain first); the
+// paid Starlink path is gaming/VIP-only and not in the normal auto chain.
 const EGRESS = [
-  { tag: 'via-germany', key: 'viaGermany' as const },
-  { tag: 'via-village', key: 'viaVillage' as const },
-  { tag: 'proxy', key: 'proxy' as const },
-  { tag: 'direct', key: 'direct' as const },
+  { tag: 'via-germany', key: 'viaGermany' as const, cost: 'free' as const, roleKey: 'roleAutoPrimary' as const, prio: 1 },
+  { tag: 'proxy', key: 'proxy' as const, cost: 'free' as const, roleKey: 'roleAutoFailover' as const, prio: 2 },
+  { tag: 'direct', key: 'direct' as const, cost: 'free' as const, roleKey: 'roleLastResort' as const, prio: 3 },
+  { tag: 'via-village', key: 'viaVillage' as const, cost: 'paid' as const, roleKey: 'roleGamingOnly' as const, prio: null },
 ];
 
 export function NetworkMap({
@@ -109,8 +111,19 @@ export function NetworkMap({
                 className={`${card} flex items-center justify-between gap-2 text-left hover:border-afro-teal ${isActive ? 'border-afro-teal ring-1 ring-afro-teal/40' : ''}`}
               >
                 <span className="min-w-0">
-                  <strong className="block truncate text-[13px] text-afro-ink">{m[e.key]}</strong>
-                  <span className="block text-[11px] text-afro-muted">{isActive ? m.active : m.standby}</span>
+                  <strong className="block truncate text-[13px] text-afro-ink">
+                    {e.prio ? <span className="text-afro-muted">{e.prio}. </span> : null}
+                    {m[e.key]}
+                  </strong>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span
+                      className={`inline-flex rounded-full border px-1.5 font-bold ${e.cost === 'paid' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-afro-line bg-afro-page text-afro-muted'}`}
+                    >
+                      {e.cost === 'paid' ? m.costPaid : m.costFree}
+                    </span>
+                    <span className="text-afro-muted">{m[e.roleKey]}</span>
+                    <span className="text-afro-muted">· {isActive ? m.active : m.standby}</span>
+                  </span>
                 </span>
                 <span className={dot(isActive)} />
               </button>
