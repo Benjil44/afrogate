@@ -5,7 +5,7 @@ import type { ActiveView } from './dashboard-types';
 
 // Main: everyday business tasks. Always visible.
 export const MAIN_VIEWS: ActiveView[] = [
-  'dashboard', 'customers', 'billing', 'exits', 'alerts', 'users', 'settings',
+  'dashboard', 'customers', 'billing', 'exits', 'microtiks', 'alerts', 'users', 'settings',
 ];
 
 // Advanced: raw infrastructure / xray plumbing. Visible only when Advanced mode is ON.
