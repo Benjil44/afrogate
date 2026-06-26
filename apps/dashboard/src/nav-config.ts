@@ -1,6 +1,6 @@
 // Builds the sidebar NavItemData arrays for each group from the pure view-id
 // arrays in nav-views.ts. Icons live here (Sidebar.tsx no longer owns the list).
-import { Activity, Archive, Bell, CreditCard, Gauge, LogIn, Network, Route, Router as RouterIcon, ScrollText, Server, Settings as SettingsIcon, Users, UserRound, Waypoints, Workflow } from 'lucide-react';
+import { Activity, Archive, Bell, CreditCard, Gauge, LogIn, Network, Route, Router as RouterIcon, ScrollText, Server, Settings as SettingsIcon, Store, Users, UserRound, Waypoints, Workflow } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ActiveView, NavItemData } from './dashboard-types';
 import { ADVANCED_VIEWS, MAIN_VIEWS } from './nav-views';
@@ -14,6 +14,7 @@ const NAV_ICONS: Record<ActiveView, LucideIcon> = {
   audit: ScrollText,
   backups: Archive,
   billing: CreditCard,
+  resellers: Store,
   reports: Gauge,
   routes: Route,
   connections: Network,
