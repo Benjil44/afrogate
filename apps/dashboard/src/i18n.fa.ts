@@ -141,6 +141,8 @@ export const fa: DashboardStrings = {
       exitSaved: 'ترجیح خروج ذخیره شد',
       exitSaveFailed: 'ذخیره ترجیح خروج ناموفق بود',
       devicesSection: 'دستگاه‌ها',
+      devicesNetworks: 'شبکه',
+      devicesSharing: 'احتمال اشتراک‌گذاری',
       devicesActive: 'اکنون فعال',
       devicesNone: 'هنوز فعالیت دستگاهی ثبت نشده است.',
       devicesCaveat: 'IP ≈ دستگاه؛ شبکه موبایل IP را می‌چرخاند. کاربران WS فقط هنگام اتصال مستقیم نمایش داده می‌شوند.',

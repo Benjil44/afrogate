@@ -101,6 +101,7 @@ export function CustomersPage({
   const [exitMsg, setExitMsg] = useState<string | null>(null);
   const [devices, setDevices] = useState<AdminCustomerDeviceSighting[]>([]);
   const [devicesActive, setDevicesActive] = useState(0);
+  const [devicesNetworks, setDevicesNetworks] = useState(0);
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
@@ -200,8 +201,9 @@ export function CustomersPage({
     setExitMsg(null);
     setDevices([]);
     setDevicesActive(0);
+    setDevicesNetworks(0);
     void fetchAdminCustomerDevices(sessionToken, a.id)
-      .then((r) => { setDevices(r.devices); setDevicesActive(r.activeCount); })
+      .then((r) => { setDevices(r.devices); setDevicesActive(r.activeCount); setDevicesNetworks(r.activeNetworkCount); })
       .catch(() => undefined);
     void (async () => {
       try {
@@ -1007,7 +1009,10 @@ export function CustomersPage({
             ) : null}
             {editId ? (
               <div className="grid gap-2 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.devicesSection} · {devicesActive} {s.devicesActive}</span>
+                <span className="text-[13px] font-bold text-afro-muted">
+                  {s.devicesSection} · {devicesNetworks} {s.devicesNetworks} ({devicesActive} {s.devicesActive})
+                  {devicesNetworks >= 2 ? <span className="ml-1.5 text-red-600">⚠ {s.devicesSharing}</span> : null}
+                </span>
                 {devices.length === 0 ? (
                   <span className="text-[12px] text-afro-muted">{s.devicesNone}</span>
                 ) : (

@@ -139,6 +139,8 @@ export const en = {
       exitSaved: 'Exit preference saved',
       exitSaveFailed: 'Could not save exit preference',
       devicesSection: 'Devices',
+      devicesNetworks: 'networks',
+      devicesSharing: 'likely shared',
       devicesActive: 'active now',
       devicesNone: 'No device activity recorded yet.',
       devicesCaveat: 'IP ≈ device; mobile networks rotate IPs. WS users appear only when connecting directly.',

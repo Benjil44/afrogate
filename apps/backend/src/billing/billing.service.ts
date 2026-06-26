@@ -81,6 +81,7 @@ import { assertPayPalPaymentOrder, extractPayPalWebhookCaptureId, extractPayPalW
 import { endpointHostPort, firstCredentialList, firstCredentialString, firstSafeEndpointNumber, renderIkev2ClientProfile, renderL2tpClientProfile, renderVlessClientUri, renderWireGuardClientConfig, subscriptionConfigFormat, subscriptionEndpointTarget, subscriptionPublicProfile, subscriptionSecretMissingFields, type ClientSubscriptionCredentialRenderResult } from './subscription-sanitizers';
 import { DEFAULT_REWARDED_AD_PROVIDER, assertRewardedAdSettingsLimits, normalizeRewardedAdProvider } from './rewarded-ad';
 import { clientRouteAssignmentKey, clientRouteHealthRank, mapClientScoreProfileToProtocol, mapClientScoreProfileToSpeed } from './client-route-mapping';
+import { countDistinctNetworks } from './device-sharing';
 import { normalizeClientUsageDirection, normalizeClientUsageSource, normalizeCurrentPanelChargeClientIds, normalizeCurrentPanelVolumeChargeScope } from './usage-normalizers';
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
@@ -2832,7 +2833,13 @@ export class BillingService {
       hits: Number(r.hits),
       active: r.active,
     }));
-    return { customerAccountId, activeCount: devices.filter((d) => d.active).length, devices };
+    const activeDevices = devices.filter((d) => d.active);
+    return {
+      customerAccountId,
+      activeCount: activeDevices.length,
+      activeNetworkCount: countDistinctNetworks(activeDevices.map((d) => d.sourceIp)),
+      devices,
+    };
   }
 
   async getCustomerAccount(id: string): Promise<AdminCustomerAccountDetail> {
