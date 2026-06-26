@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Languages, Layers, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronUp, Languages, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ShieldCheck } from 'lucide-react';
 import type { AdminSessionResponse } from '@afrows/shared';
 import { appVersion, resellerNavViews } from '../app-config';
 import type { ActiveView, NavItemData, SidebarAlertState } from '../dashboard-types';
@@ -88,9 +88,9 @@ export function Sidebar({
               onClick={onToggleAdvancedMode}
               aria-expanded={showAdvanced}
               title={showAdvanced ? t.hideAdvancedNav : t.showAdvancedNav}
-              className={`col-span-2 mt-2 flex items-center justify-between gap-2 px-3 text-[10px] font-bold uppercase tracking-wide text-[#7c9490] hover:text-[#c8d7d5] sm:col-span-6 lg:col-span-1 ${isCollapsed ? 'lg:sr-only' : ''}`}
+              className={`col-span-2 mt-2 flex items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wide text-[#7c9490] hover:text-[#c8d7d5] sm:col-span-6 lg:col-span-1 ${isCollapsed ? 'lg:justify-center' : 'justify-between'}`}
             >
-              <span>{t.advancedNavGroup}</span>
+              <span className={isCollapsed ? 'lg:sr-only' : ''}>{t.advancedNavGroup}</span>
               {showAdvanced ? <ChevronUp className="shrink-0" size={14} /> : <ChevronDown className="shrink-0" size={14} />}
             </button>
             {showAdvanced
@@ -112,9 +112,6 @@ export function Sidebar({
       <div className="hidden text-xs text-[#91a5a2] lg:mt-6 lg:block lg:border-t lg:border-[#334852] lg:pt-3">
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
-            {canUseAdvancedToggle ? (
-              <AdvancedToggleButton isActive={advancedMode} isCollapsed onToggle={onToggleAdvancedMode} t={t} />
-            ) : null}
             <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
             <SignOutButton onSignOut={onSignOut} t={t} />
             <div className="text-[11px] font-bold text-[#c8d7d5]">v{appVersion}</div>
@@ -127,9 +124,6 @@ export function Sidebar({
                 <div>v{appVersion}</div>
               </div>
               <div className="flex items-center gap-2">
-                {canUseAdvancedToggle ? (
-                  <AdvancedToggleButton isActive={advancedMode} onToggle={onToggleAdvancedMode} t={t} />
-                ) : null}
                 <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
                 <SignOutButton onSignOut={onSignOut} t={t} />
               </div>
@@ -161,38 +155,6 @@ export function KioskToggleButton({ isActive, onToggle, t }: { isActive: boolean
     >
       <Icon className="shrink-0" size={15} />
       <span className="sr-only">{label}</span>
-    </button>
-  );
-}
-
-function AdvancedToggleButton({
-  isActive,
-  isCollapsed = false,
-  onToggle,
-  t,
-}: {
-  isActive: boolean;
-  isCollapsed?: boolean;
-  onToggle: () => void;
-  t: DashboardStrings;
-}) {
-  const label = isActive ? t.hideAdvancedNav : t.showAdvancedNav;
-  const activeClass = isActive
-    ? 'border-afro-teal text-afro-teal'
-    : 'border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white';
-
-  return (
-    <button
-      aria-label={label}
-      aria-pressed={isActive}
-      className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border px-2 ${activeClass}`}
-      data-advanced-toggle="true"
-      onClick={onToggle}
-      title={label}
-      type="button"
-    >
-      <Layers className="shrink-0" size={16} />
-      {isCollapsed ? <span className="sr-only">{label}</span> : <span className="text-[11px] font-bold">{label}</span>}
     </button>
   );
 }
