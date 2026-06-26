@@ -10,7 +10,7 @@ export const MAIN_VIEWS: ActiveView[] = [
 
 // Advanced: raw infrastructure / xray plumbing. Visible only when Advanced mode is ON.
 export const ADVANCED_VIEWS: ActiveView[] = [
-  'servers', 'inbounds', 'connections', 'audit', 'backups', 'reports',
+  'network', 'servers', 'audit', 'backups', 'reports',
 ];
 
 // Persisted per-admin toggle. Mirrors the kiosk-mode pattern in DashboardApp.tsx.

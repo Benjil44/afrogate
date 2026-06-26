@@ -13,7 +13,7 @@ import type {
 export type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 export type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 export type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'connections' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'reports' | 'routes' | 'outbounds' | 'microtiks' | 'alerts' | 'settings' | 'exits';
+export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'connections' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'reports' | 'routes' | 'outbounds' | 'microtiks' | 'alerts' | 'settings' | 'exits' | 'network';
 export type AlertStatusFilter = 'open' | 'resolved';
 export type AlertSeverityFilter = 'all' | Tone;
 export type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
@@ -22,6 +22,7 @@ export type BillingTab = 'catalog' | 'customers' | 'panelImport' | 'telegram' | 
 export type BackupsTab = 'monitor' | 'readiness' | 'restore';
 export type RoutesTab = 'overview' | 'policy' | 'canary' | 'history';
 export type ExitsTab = 'egress' | 'routing' | 'sources';
+export type NetworkTab = 'map' | 'inbounds' | 'connections';
 export type UsersTab = 'adminUsers' | 'permissions';
 export type AfroIcon = ComponentType<{ size?: number; className?: string }>;
 

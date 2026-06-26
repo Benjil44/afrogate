@@ -5,7 +5,7 @@ import { MAIN_VIEWS, ADVANCED_VIEWS, parseAdvancedMode, serializeAdvancedMode } 
 // Views shown in the sidebar after D1 (outbounds/routes/microtiks routable but hidden).
 const SIDEBAR_VIEWS = [
   'dashboard', 'customers', 'billing', 'exits', 'microtiks', 'alerts', 'users', 'settings',
-  'servers', 'inbounds', 'connections', 'audit', 'backups', 'reports',
+  'network', 'servers', 'audit', 'backups', 'reports',
 ];
 
 test('Main has the 8 everyday views in order', () => {
@@ -14,10 +14,8 @@ test('Main has the 8 everyday views in order', () => {
   ]);
 });
 
-test('Advanced has the 6 infrastructure views in order', () => {
-  assert.deepEqual(ADVANCED_VIEWS, [
-    'servers', 'inbounds', 'connections', 'audit', 'backups', 'reports',
-  ]);
+test('Advanced has the 5 infrastructure views in order', () => {
+  assert.deepEqual(ADVANCED_VIEWS, ['network', 'servers', 'audit', 'backups', 'reports']);
 });
 
 test('sidebar groups: no duplicates, and outbounds/routes/microtiks are hidden', () => {
@@ -26,6 +24,8 @@ test('sidebar groups: no duplicates, and outbounds/routes/microtiks are hidden',
   assert.deepEqual([...union].sort(), [...SIDEBAR_VIEWS].sort(), 'union != expected sidebar set');
   assert.ok(!union.includes('outbounds'), 'outbounds must not be a sidebar item');
   assert.ok(!union.includes('routes'), 'routes must not be a sidebar item');
+  assert.ok(!union.includes('inbounds'), 'inbounds must not be a sidebar item');
+  assert.ok(!union.includes('connections'), 'connections must not be a sidebar item');
 });
 
 test('parseAdvancedMode: only "enabled" is true; default false', () => {
