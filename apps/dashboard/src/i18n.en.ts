@@ -222,6 +222,12 @@ export const en = {
       direct: 'Direct (Iran uplink)',
       openExits: 'Open Exits',
       openInbounds: 'Open Inbounds',
+      costFree: 'free',
+      costPaid: 'paid ~3000 T/GB',
+      roleAutoPrimary: 'priority 1',
+      roleAutoFailover: 'failover',
+      roleLastResort: 'last resort',
+      roleGamingOnly: 'gaming / VIP only',
     },
     pageHeaders: {
       dashboard: { eyebrow: 'Operations', title: 'Network operations display' },
