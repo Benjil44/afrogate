@@ -76,9 +76,9 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
       }
 
       const outboundSignals = await this.listOutboundSignals();
-      for (const signal of outboundSignals) {
-        await this.syncAlert(this.outboundCondition(signal));
-      }
+      // One aggregated egress-pool alert instead of one-per-relay (dead pool
+      // members are normal churn that failover handles).
+      await this.syncAlert(this.outboundPoolCondition(outboundSignals));
     } catch (error) {
       this.logger.warn(error instanceof Error ? error.message : 'Alert engine evaluation failed');
     } finally {
@@ -295,19 +295,23 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private outboundCondition(signal: OutboundAlertSignalRow): AlertCondition {
-    const active =
-      signal.enabled &&
-      !signal.maintenanceMode &&
-      (signal.healthStatus === 'critical' || signal.healthStatus === 'degraded');
-
+  /**
+   * Aggregate egress-pool health into ONE alert. Per-relay deadness is normal
+   * pool churn (failover handles it), so we only flag the pool as a whole:
+   * warning when any relay is unhealthy, critical when none are healthy (a real
+   * egress outage). Replaces the old one-alert-per-relay flood.
+   */
+  private outboundPoolCondition(signals: OutboundAlertSignalRow[]): AlertCondition {
+    const inService = signals.filter((s) => s.enabled && !s.maintenanceMode);
+    const total = inService.length;
+    const healthy = inService.filter((s) => s.healthStatus !== 'critical' && s.healthStatus !== 'degraded').length;
     return {
-      sourceType: 'outbound',
-      sourceId: signal.id,
-      title: 'Outbound health unhealthy',
-      active,
-      severity: signal.healthStatus === 'critical' ? 'critical' : 'warning',
-      message: `Outbound ${signal.name} in route group ${signal.routeGroup} is ${signal.healthStatus}.`,
+      sourceType: 'egress-pool',
+      sourceId: 'pool',
+      title: 'Egress pool degraded',
+      active: total > 0 && healthy < total,
+      severity: healthy === 0 ? 'critical' : 'warning',
+      message: `${healthy}/${total} relay outbounds healthy.`,
     };
   }
 
