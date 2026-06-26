@@ -211,6 +211,7 @@ import { RoutesPage } from './pages/RoutesPage';
 import { OutboundsPage } from './pages/OutboundsPage';
 import { ExitsPage } from './pages/ExitsPage';
 import { NetworkPage } from './pages/NetworkPage';
+import { ResellersPage } from './pages/ResellersPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { InboundsPage } from './pages/InboundsPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
@@ -652,7 +653,7 @@ function loadInitialAdvancedMode() {
 
 const ROUTE_VIEWS: ActiveView[] = [
   'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
-  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network',
+  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network', 'resellers',
 ];
 
 /** Derive the active view from the URL path (so refresh + the address bar work). */
@@ -1317,6 +1318,8 @@ function ActivePage({
       return <CustomersPage format={format} sessionToken={sessionToken} t={t} />;
     case 'network':
       return <NetworkPage format={format} sessionToken={sessionToken} onOpenExits={() => onNavigate('exits')} t={t} />;
+    case 'resellers':
+      return <ResellersPage format={format} sessionToken={sessionToken} t={t} />;
     case 'inbounds':
       return <InboundsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'connections':
