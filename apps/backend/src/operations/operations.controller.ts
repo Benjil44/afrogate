@@ -26,6 +26,7 @@ import type {
   AdminOutboundsAutoTestState,
   AdminSessionResponse,
   AdminInboundsResponse,
+  AdminNetworkOverviewResponse,
   AdminConnectionsResponse,
   AdminOperationsOverview,
   AdminOutboundsResponse,
@@ -715,6 +716,12 @@ export class OperationsController {
   @Roles('admin', 'supervisor', 'support', 'auditor')
   listInbounds(): Promise<AdminInboundsResponse> {
     return this.inboundsService.listInbounds();
+  }
+
+  @Get('network-overview')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  networkOverview(): Promise<AdminNetworkOverviewResponse> {
+    return this.inboundsService.networkOverview();
   }
 
   @Get('operations-overview')

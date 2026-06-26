@@ -8,6 +8,7 @@ import type {
   AdminClientConfigSummary,
   AdminClientRoutePreferenceResponse,
   AdminCustomerDevicesResponse,
+  AdminNetworkOverviewResponse,
   AdminClientConfigEntryLinkResponse,
   CreateClientConfigRequest,
   AdminCurrentPanelImportPreviewResponse,
@@ -405,6 +406,14 @@ export async function fetchAdminInbounds(sessionToken: string, signal?: AbortSig
     signal,
   });
   return response.json() as Promise<AdminInboundsResponse>;
+}
+
+export async function fetchAdminNetworkOverview(sessionToken: string, signal?: AbortSignal): Promise<AdminNetworkOverviewResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/network-overview`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminNetworkOverviewResponse>;
 }
 
 export async function fetchAdminOperationsOverview(

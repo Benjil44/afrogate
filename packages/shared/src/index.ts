@@ -829,6 +829,11 @@ export interface AdminCustomerDevicesResponse {
   devices: AdminCustomerDeviceSighting[];
 }
 
+/** G1 network map: the xray outbound tag the client catch-all currently routes to. */
+export interface AdminNetworkOverviewResponse {
+  appliedCatchAll: string | null;
+}
+
 export interface ClientLoginRequest {
   identifier: string;
   password: string;

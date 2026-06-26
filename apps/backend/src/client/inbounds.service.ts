@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import type { AdminInboundSummary } from '@afrows/shared';
+import type { AdminInboundSummary, AdminNetworkOverviewResponse } from '@afrows/shared';
 
 const execFileAsync = promisify(execFile);
 
@@ -85,6 +85,18 @@ export class InboundsService {
 
   private str(v: unknown): string {
     return typeof v === 'string' ? v : '';
+  }
+
+  /** G1: the outbound tag the client catch-all routing rule currently targets. */
+  async networkOverview(): Promise<AdminNetworkOverviewResponse> {
+    const cfg = (await this.readConfig()) as
+      | { routing?: { rules?: Array<{ inboundTag?: string[]; outboundTag?: string }> } }
+      | null;
+    const rules = cfg?.routing?.rules ?? [];
+    const rule = rules.find(
+      (r) => Array.isArray(r.inboundTag) && r.inboundTag.includes('afrows-in') && Boolean(r.outboundTag),
+    );
+    return { appliedCatchAll: rule?.outboundTag ?? null };
   }
 
   private async readConfig(): Promise<{ inbounds?: unknown[] } | null> {
