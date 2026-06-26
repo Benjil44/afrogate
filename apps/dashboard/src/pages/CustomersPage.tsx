@@ -102,6 +102,7 @@ export function CustomersPage({
   const [exitMsg, setExitMsg] = useState<string | null>(null);
   const [devices, setDevices] = useState<AdminCustomerDeviceSighting[]>([]);
   const [devicesActive, setDevicesActive] = useState(0);
+  const [statusBusy, setStatusBusy] = useState<string | null>(null);
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
@@ -243,6 +244,24 @@ export function CustomersPage({
     () => accounts.find((a) => a.id === editId)?.protocols ?? [],
     [accounts, editId],
   );
+
+  // Activate/deactivate a customer straight from the table (active <-> disabled).
+  const toggleAccountStatus = async (a: AdminCustomerAccountSummary) => {
+    const next = a.status === 'active' ? 'disabled' : 'active';
+    setStatusBusy(a.id);
+    setError(null);
+    // optimistic
+    setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, status: next } : row)));
+    try {
+      await updateAdminCustomerAccount(sessionToken, a.id, { status: next });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      await load();
+    } finally {
+      setStatusBusy(null);
+    }
+  };
 
   const assignGatewayInEdit = async (routerId: string) => {
     if (!editId || !routerId) return;
@@ -561,10 +580,21 @@ export function CustomersPage({
       header: s.colStatus,
       render: (a) => {
         const over = a.quotaLimitBytes != null && a.usedBytes >= a.quotaLimitBytes;
+        const isActive = a.status === 'active';
         return (
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusTone(String(a.status)) }} />
-            {String(a.status)}
+          <span className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isActive}
+              disabled={statusBusy === a.id}
+              onClick={() => void toggleAccountStatus(a)}
+              title={isActive ? s.deactivate : s.activate}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${isActive ? 'bg-afro-teal' : 'bg-afro-line'}`}
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${isActive ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-[12px] text-afro-muted">{String(a.status)}</span>
             {over ? (
               <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
                 {s.overQuota}
