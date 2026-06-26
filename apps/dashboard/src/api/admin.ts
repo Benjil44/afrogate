@@ -7,6 +7,7 @@ import type {
   AdminClientConfigsExportResponse,
   AdminClientConfigSummary,
   AdminClientRoutePreferenceResponse,
+  AdminCustomerDevicesResponse,
   AdminClientConfigEntryLinkResponse,
   CreateClientConfigRequest,
   AdminCurrentPanelImportPreviewResponse,
@@ -717,6 +718,18 @@ export async function createAdminClientConfig(
     },
   );
   return response.json() as Promise<AdminClientConfigSummary>;
+}
+
+export async function fetchAdminCustomerDevices(
+  sessionToken: string,
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<AdminCustomerDevicesResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/devices`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminCustomerDevicesResponse>;
 }
 
 export async function fetchAdminClientRoutePreference(

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
   createAdminCustomerAccount,
   exportAdminCustomerClientConfigs,
   fetchAdminClientConfigEntryLink,
   fetchAdminClientRoutePreference,
+  fetchAdminCustomerDevices,
   fetchAdminOutbounds,
   deleteAdminClientConfig,
   fetchAdminCustomerAccounts,
@@ -99,6 +100,8 @@ export function CustomersPage({
   // configId -> { mode, preferredOutboundId }
   const [exitPrefs, setExitPrefs] = useState<Record<string, { mode: string; preferredOutboundId: string | null }>>({});
   const [exitMsg, setExitMsg] = useState<string | null>(null);
+  const [devices, setDevices] = useState<AdminCustomerDeviceSighting[]>([]);
+  const [devicesActive, setDevicesActive] = useState(0);
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
@@ -195,6 +198,11 @@ export function CustomersPage({
     setEditConfigs([]);
     setExitPrefs({});
     setExitMsg(null);
+    setDevices([]);
+    setDevicesActive(0);
+    void fetchAdminCustomerDevices(sessionToken, a.id)
+      .then((r) => { setDevices(r.devices); setDevicesActive(r.activeCount); })
+      .catch(() => undefined);
     void (async () => {
       try {
         const [cfgRes, obRes] = await Promise.all([
@@ -985,6 +993,30 @@ export function CustomersPage({
                 })}
                 <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
                 {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
+              </div>
+            ) : null}
+            {editId ? (
+              <div className="grid gap-2 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.devicesSection} · {devicesActive} {s.devicesActive}</span>
+                {devices.length === 0 ? (
+                  <span className="text-[12px] text-afro-muted">{s.devicesNone}</span>
+                ) : (
+                  <div className="grid gap-1">
+                    {devices.map((d) => (
+                      <div
+                        key={`${d.clientConfigId}-${d.sourceIp}`}
+                        className={`flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] ${d.active ? 'border-afro-teal' : 'border-afro-line'}`}
+                      >
+                        {d.active ? <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-afro-teal" /> : <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-afro-line" />}
+                        <span className="font-bold uppercase tracking-wide text-afro-ink">{d.protocol}</span>
+                        <span className="font-mono" dir="ltr">{d.sourceIp}</span>
+                        <span className="text-afro-muted">{s.devicesColLastSeen}: {format.time(new Date(d.lastSeenAt), false)}</span>
+                        <span className="text-afro-muted">{s.devicesColHits}: {d.hits}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <span className="text-[11px] text-afro-muted">{s.devicesCaveat}</span>
               </div>
             ) : null}
             {editId && email.trim() ? (

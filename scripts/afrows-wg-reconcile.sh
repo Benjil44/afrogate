@@ -53,8 +53,18 @@ done
 wg show "$IFACE" dump | tail -n +2 | while IFS=$'\t' read -r pub _psk _ep _allowed hs rx tx _ka; do
   [ -n "$pub" ] || continue
   hs_sql="NULL"; [ "${hs:-0}" != "0" ] && hs_sql="to_timestamp($hs)"
+  # endpoint is "ip:port" (v4) or "[ipv6]:port" -> extract just the IP for F1
+  # device/IP sightings. "(none)" when the peer has no current endpoint.
+  ep_sql="NULL"
+  if [ -n "${_ep:-}" ] && [ "$_ep" != "(none)" ]; then
+    case "$_ep" in
+      \[*\]:*) ep_ip="${_ep#[}"; ep_ip="${ep_ip%%]*}" ;;  # [ipv6]:port
+      *)       ep_ip="${_ep%:*}" ;;                        # ip:port
+    esac
+    [ -n "$ep_ip" ] && ep_sql="'${ep_ip}'"
+  fi
   # pubkeys are base64 (no single quotes), so plain single-quoting is safe here
-  psql "$DBURL" -q -c "UPDATE wireguard_peers SET rx_bytes=${rx:-0}, tx_bytes=${tx:-0}, last_handshake_at=$hs_sql, updated_at=now() WHERE interface='$IFACE' AND client_public_key='${pub}';"
+  psql "$DBURL" -q -c "UPDATE wireguard_peers SET rx_bytes=${rx:-0}, tx_bytes=${tx:-0}, last_handshake_at=$hs_sql, endpoint_ip=$ep_sql, updated_at=now() WHERE interface='$IFACE' AND client_public_key='${pub}';"
 done
 
 # NOTE: used_bytes accounting + quota enforcement is done by the backend
