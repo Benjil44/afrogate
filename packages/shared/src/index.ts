@@ -376,6 +376,8 @@ export interface AdminClientRoutePreferenceSummary {
   preferredExitCountryCode?: string | null;
   preferredOutboundId?: string | null;
   preferredOutboundName?: string | null;
+  /** D2: fixed egress path (germany/village/direct); null = auto/failover. */
+  preferredEgressPath?: 'germany' | 'village' | 'direct' | null;
   scoreProfile: RouteScoreProfile | string;
   autoDetectCountry: boolean;
   allowClientOverride: boolean;
@@ -553,6 +555,8 @@ export interface ClientRoutePreferenceSummary {
   preferredExitCountryCode?: string | null;
   preferredOutboundId?: string | null;
   preferredOutboundName?: string | null;
+  /** D2: fixed egress path (germany/village/direct); null = auto/failover. */
+  preferredEgressPath?: 'germany' | 'village' | 'direct' | null;
   scoreProfile: RouteScoreProfile | string;
   autoDetectCountry: boolean;
   allowClientOverride: boolean;

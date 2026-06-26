@@ -457,6 +457,10 @@ export class UpsertClientRoutePreferenceDto {
   preferredOutboundId?: string | null;
 
   @IsOptional()
+  @IsIn(['germany', 'village', 'direct'])
+  preferredEgressPath?: 'germany' | 'village' | 'direct' | null;
+
+  @IsOptional()
   @IsIn(CLIENT_ROUTE_SCORE_PROFILES)
   scoreProfile?: string;
 

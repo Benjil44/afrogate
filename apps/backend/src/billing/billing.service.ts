@@ -275,6 +275,7 @@ interface ClientRoutePreferenceRow {
   preferredOutboundId: string | null;
   preferredOutboundName: string | null;
   preferredOutboundRouteGroup: string | null;
+  preferredEgressPath: string | null;
   scoreProfile: string;
   autoDetectCountry: boolean;
   allowClientOverride: boolean;
@@ -292,6 +293,7 @@ interface ClientRoutePreferencePatch {
   detectedCountrySource: string | null;
   preferredExitCountryCode: string | null;
   preferredOutboundId: string | null;
+  preferredEgressPath: string | null;
   scoreProfile: string;
   autoDetectCountry: boolean;
   allowClientOverride: boolean;
@@ -4985,15 +4987,16 @@ export class BillingService {
             client_config_id, route_group, mode, detected_country_code,
             detected_country_source, preferred_exit_country_code, preferred_outbound_id,
             score_profile, auto_detect_country, allow_client_override, route_locked,
-            sticky_session_protection, last_detected_at, created_by
+            sticky_session_protection, last_detected_at, created_by, preferred_egress_path
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
           ON CONFLICT (client_config_id, route_group) DO UPDATE
           SET mode = EXCLUDED.mode,
               detected_country_code = EXCLUDED.detected_country_code,
               detected_country_source = EXCLUDED.detected_country_source,
               preferred_exit_country_code = EXCLUDED.preferred_exit_country_code,
               preferred_outbound_id = EXCLUDED.preferred_outbound_id,
+              preferred_egress_path = EXCLUDED.preferred_egress_path,
               score_profile = EXCLUDED.score_profile,
               auto_detect_country = EXCLUDED.auto_detect_country,
               allow_client_override = EXCLUDED.allow_client_override,
@@ -5018,6 +5021,7 @@ export class BillingService {
           patch.stickySessionProtection,
           patch.lastDetectedAt,
           actor?.id ?? null,
+          patch.preferredEgressPath,
         ],
       );
 
@@ -7398,6 +7402,7 @@ export class BillingService {
         crp.detected_country_source AS "detectedCountrySource",
         crp.preferred_exit_country_code AS "preferredExitCountryCode",
         crp.preferred_outbound_id AS "preferredOutboundId",
+        crp.preferred_egress_path AS "preferredEgressPath",
         po.name AS "preferredOutboundName",
         po.route_group AS "preferredOutboundRouteGroup",
         crp.score_profile AS "scoreProfile",
@@ -8008,6 +8013,7 @@ export class BillingService {
       detectedCountrySource: row.detectedCountrySource,
       preferredExitCountryCode: row.preferredExitCountryCode,
       preferredOutboundId: row.preferredOutboundId,
+      preferredEgressPath: (row.preferredEgressPath ?? null) as 'germany' | 'village' | 'direct' | null,
       preferredOutboundName: row.preferredOutboundName,
       scoreProfile: row.scoreProfile,
       autoDetectCountry: row.autoDetectCountry,
@@ -8063,6 +8069,7 @@ export class BillingService {
       detectedCountrySource: null,
       preferredExitCountryCode: null,
       preferredOutboundId: null,
+      preferredEgressPath: null,
       preferredOutboundName: null,
       scoreProfile: 'balanced',
       autoDetectCountry: true,
@@ -8097,6 +8104,10 @@ export class BillingService {
       dto.preferredOutboundId !== undefined
         ? normalizeNullableString(dto.preferredOutboundId)
         : existing?.preferredOutboundId ?? null;
+    const preferredEgressPath =
+      dto.preferredEgressPath !== undefined
+        ? (dto.preferredEgressPath ?? null)
+        : existing?.preferredEgressPath ?? null;
     const scoreProfile = dto.scoreProfile ?? existing?.scoreProfile ?? 'balanced';
     const routeLocked = dto.routeLocked ?? (mode === 'outbound' ? true : dto.mode ? false : existing?.routeLocked ?? false);
 
@@ -8106,6 +8117,7 @@ export class BillingService {
       detectedCountrySource: detectedCountryCode ? detectedCountrySource ?? 'admin' : detectedCountrySource,
       preferredExitCountryCode,
       preferredOutboundId,
+      preferredEgressPath,
       scoreProfile,
       autoDetectCountry: dto.autoDetectCountry ?? existing?.autoDetectCountry ?? true,
       allowClientOverride: dto.allowClientOverride ?? existing?.allowClientOverride ?? true,
