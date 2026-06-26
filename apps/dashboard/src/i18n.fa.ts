@@ -87,6 +87,7 @@ export const fa: DashboardStrings = {
       empty: 'هنوز مشتری‌ای نیست. از بخش مالی ایجاد کنید.',
       colCustomer: 'مشتری',
       colStatus: 'وضعیت',
+      overQuota: 'اتمام حجم',
       colUsed: 'مصرف‌شده',
       colQuota: 'سهمیه',
       colRemaining: 'باقی‌مانده',
