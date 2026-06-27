@@ -207,6 +207,11 @@ interface CustomerAccountRow {
   notes: string | null;
   loginEmail: string | null;
   hasPassword: boolean;
+  egressTier: string | null;
+  gamingEntitled: boolean | null;
+  expiresAt: Date | null;
+  tags: string[] | null;
+  lastConnectedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   clientCount: number;
@@ -7979,6 +7984,11 @@ export class BillingService {
       notes: row.notes,
       loginEmail: row.loginEmail,
       hasPassword: Boolean(row.hasPassword),
+      egressTier: row.egressTier ?? null,
+      gamingEntitled: Boolean(row.gamingEntitled),
+      expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+      tags: row.tags ?? [],
+      lastConnectedAt: row.lastConnectedAt ? row.lastConnectedAt.toISOString() : null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
