@@ -105,6 +105,7 @@ export function CustomersPage({
   const [devicesActive, setDevicesActive] = useState(0);
   const [devicesNetworks, setDevicesNetworks] = useState(0);
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
+  const [egressBusy, setEgressBusy] = useState<string | null>(null);
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
@@ -284,6 +285,24 @@ export function CustomersPage({
       await load();
     } finally {
       setStatusBusy(null);
+    }
+  };
+
+  // Flip a customer Normal(Germany) <-> Game(Starlink) straight from the table.
+  // Persists egress_tier; the egress reconciler re-routes within ~1 min.
+  const toggleEgressTier = async (a: AdminCustomerAccountSummary) => {
+    const next = a.egressTier === 'gaming' ? 'normal' : 'gaming';
+    setEgressBusy(a.id);
+    setError(null);
+    setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, egressTier: next } : row)));
+    try {
+      await updateAdminCustomerAccount(sessionToken, a.id, { egressTier: next });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      await load();
+    } finally {
+      setEgressBusy(null);
     }
   };
 
@@ -660,9 +679,24 @@ export function CustomersPage({
       header: s.colInternet,
       render: (a) => {
         const e = egressFor(a);
+        const gaming = a.egressTier === 'gaming';
         return (
-          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
-            {e.failover ? '⚠ ' : ''}{e.label}
+          <span className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={gaming}
+              disabled={egressBusy === a.id}
+              onClick={() => void toggleEgressTier(a)}
+              title={gaming ? s.egToNormal : s.egToGame}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${gaming ? 'bg-sky-500' : 'bg-emerald-500'}`}
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-[11px] font-bold text-afro-muted">{gaming ? s.egModeGame : s.egModeNormal}</span>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+              {e.failover ? '⚠ ' : ''}{e.label}
+            </span>
           </span>
         );
       },
