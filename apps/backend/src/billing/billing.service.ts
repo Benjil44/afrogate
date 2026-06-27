@@ -3045,6 +3045,11 @@ export class BillingService {
           void this.xrayProvisioning.reconcile();
         }
       }
+      // Egress-tier change (Normal/Germany <-> Game/Starlink): kick the reconciler
+      // so the new route applies in seconds instead of waiting for its 60s timer.
+      if (changedFields.includes('egressTier')) {
+        this.triggerEgressModeSync();
+      }
 
       return this.getCustomerAccount(id);
     } catch (error) {
