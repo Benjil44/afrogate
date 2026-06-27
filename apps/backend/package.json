@@ -1,6 +1,6 @@
 {
   "name": "@afrows/backend",
-  "version": "0.114.59",
+  "version": "0.114.60",
   "private": true,
   "scripts": {
     "predev": "npm --workspace @afrows/shared run build",
