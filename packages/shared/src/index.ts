@@ -836,9 +836,25 @@ export interface AdminCustomerDevicesResponse {
   devices: AdminCustomerDeviceSighting[];
 }
 
-/** G1 network map: the xray outbound tag the client catch-all currently routes to. */
+/** G1 network map: the xray outbound tag the client catch-all currently routes to,
+ * plus egress-path health so operators can see which uplink (Starlink/Germany) is down. */
 export interface AdminNetworkOverviewResponse {
   appliedCatchAll: string | null;
+  /** Egress-path health snapshot from the reconciler (null if not yet written). */
+  egressHealth: AdminEgressHealth | null;
+}
+
+export interface AdminEgressHealth {
+  /** Village Starlink tunnel (wg-village) reachable to a foreign 204 endpoint. */
+  starlinkUp: boolean;
+  /** Village Germany tunnel (wg-village-de) reachable. */
+  germanyUp: boolean;
+  /** Outbound tag the normal catch-all currently uses (via-germany/proxy/direct/via-village). */
+  appliedCatchAll: string | null;
+  /** Outbound tag the gaming tier currently uses (via-village normally; via-germany on Starlink outage). */
+  gamingOutbound: string | null;
+  mode: string | null;
+  updatedAt: string | null;
 }
 
 export interface ClientLoginRequest {

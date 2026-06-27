@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import type { AdminInboundSummary, AdminNetworkOverviewResponse } from '@afrows/shared';
+import type { AdminEgressHealth, AdminInboundSummary, AdminNetworkOverviewResponse } from '@afrows/shared';
 
 const execFileAsync = promisify(execFile);
 
@@ -96,7 +96,26 @@ export class InboundsService {
     const rule = rules.find(
       (r) => Array.isArray(r.inboundTag) && r.inboundTag.includes('afrows-in') && Boolean(r.outboundTag),
     );
-    return { appliedCatchAll: rule?.outboundTag ?? null };
+    return { appliedCatchAll: rule?.outboundTag ?? null, egressHealth: await this.egressHealth() };
+  }
+
+  /** Read the reconciler's egress-health snapshot (which uplinks are up). */
+  async egressHealth(): Promise<AdminEgressHealth | null> {
+    const path =
+      this.config.get<string>('AFROWS_EGRESS_HEALTH_PATH')?.trim() || '/var/lib/afrows/egress-health.json';
+    try {
+      const raw = JSON.parse(await readFile(path, 'utf8')) as Partial<AdminEgressHealth>;
+      return {
+        starlinkUp: Boolean(raw.starlinkUp),
+        germanyUp: Boolean(raw.germanyUp),
+        appliedCatchAll: typeof raw.appliedCatchAll === 'string' ? raw.appliedCatchAll : null,
+        gamingOutbound: typeof raw.gamingOutbound === 'string' ? raw.gamingOutbound : null,
+        mode: typeof raw.mode === 'string' ? raw.mode : null,
+        updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
+      };
+    } catch {
+      return null;
+    }
   }
 
   private async readConfig(): Promise<{ inbounds?: unknown[] } | null> {

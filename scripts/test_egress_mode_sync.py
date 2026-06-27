@@ -59,3 +59,39 @@ assert sorted([str(x) for x in r]) == sorted([str(x) for x in r2]), "fixed rules
 # back-compat: omitting fixed_rules behaves as before
 assert mod.desired_rules("smart", ["t1"], [], [], "proxy") == mod.desired_rules("smart", ["t1"], [], [], "proxy", [])
 print("OK: desired_rules fixed-path rules (D2)")
+
+# --- gaming-tier failover (choose_gaming): Starlink down -> via-germany, fail back ---
+cg = mod.choose_gaming
+
+# Starlink (village) up -> gaming stays on via-village.
+applied, st = cg(True, True, {})
+assert applied == "via-village", applied
+
+# Starlink down + Germany up: 2-strike hysteresis before flipping to via-germany.
+applied, st = cg(False, True, {"applied": "via-village"})
+assert applied == "via-village", ("no flip on 1st strike", applied)
+applied, st = cg(False, True, st)
+assert applied == "via-germany", ("failover to Germany on 2nd strike", applied)
+
+# Recovery: Starlink back -> fail back to via-village after 2 strikes.
+applied, st = cg(True, True, {"applied": "via-germany"})
+assert applied == "via-germany", applied
+applied, st = cg(True, True, st)
+assert applied == "via-village", ("failback to Starlink", applied)
+
+# Both down -> stay/return to via-village (recovers with the village; no good reserve).
+applied, st = cg(False, False, {"applied": "via-village"})
+assert applied == "via-village", applied
+
+print("OK: choose_gaming failover via-village <-> via-germany with hysteresis")
+
+# gaming rules honor the resolved gaming_outbound (so a Starlink outage routes
+# gaming users to Germany instead of a dead Starlink tunnel).
+rg = mod.desired_rules("smart", ["t1"], ["10.0.0.5"], ["g@afrows"], "via-germany",
+                       None, "via-germany")
+assert {"type": "field", "source": ["10.0.0.5"], "outboundTag": "via-germany"} in rg
+assert {"type": "field", "user": ["g@afrows"], "outboundTag": "via-germany"} in rg
+# default stays via-village (back-compat)
+rv = mod.desired_rules("smart", ["t1"], ["10.0.0.5"], [], "via-germany")
+assert {"type": "field", "source": ["10.0.0.5"], "outboundTag": "via-village"} in rv
+print("OK: desired_rules gaming_outbound failover")

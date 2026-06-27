@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
   createAdminCustomerAccount,
@@ -8,6 +8,7 @@ import {
   fetchAdminClientConfigEntryLink,
   fetchAdminClientRoutePreference,
   fetchAdminCustomerDevices,
+  fetchAdminNetworkOverview,
   fetchAdminOutbounds,
   deleteAdminClientConfig,
   fetchAdminCustomerAccounts,
@@ -45,6 +46,7 @@ export function CustomersPage({
 }) {
   const s = t.customersPage;
   const [accounts, setAccounts] = useState<AdminCustomerAccountSummary[]>([]);
+  const [overview, setOverview] = useState<AdminNetworkOverviewResponse | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -130,6 +132,11 @@ export function CustomersPage({
     } finally {
       setLoading(false);
     }
+    try {
+      setOverview(await fetchAdminNetworkOverview(sessionToken));
+    } catch {
+      /* keep last overview */
+    }
   };
 
   useEffect(() => {
@@ -151,6 +158,23 @@ export function CustomersPage({
 
   const nameOf = (a: AdminCustomerAccountSummary) =>
     a.displayName || a.telegramUsername || a.loginEmail || a.telegramId || a.id.slice(0, 8);
+
+  // Per-customer current egress: gaming tier follows the gaming outbound (Starlink,
+  // or Germany while Starlink is failed over); everyone else follows the catch-all.
+  const egressFor = (a: AdminCustomerAccountSummary): { label: string; cls: string; failover: boolean } => {
+    const h = overview?.egressHealth;
+    const gaming = a.egressTier === 'gaming';
+    const tag = gaming ? h?.gamingOutbound ?? 'via-village' : h?.appliedCatchAll ?? 'via-germany';
+    const failover = gaming && tag === 'via-germany'; // gaming should be on Starlink but isn't
+    const base: Record<string, { label: string; cls: string }> = {
+      'via-village': { label: s.egStarlink, cls: 'border-sky-300 bg-sky-50 text-sky-700' },
+      'via-germany': { label: s.egGermany, cls: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
+      proxy: { label: s.egPool, cls: 'border-amber-300 bg-amber-50 text-amber-700' },
+      direct: { label: s.egDirect, cls: 'border-red-300 bg-red-50 text-red-600' },
+    };
+    const hit = base[tag] ?? { label: tag, cls: 'border-afro-line bg-afro-page text-afro-muted' };
+    return { label: failover ? `${hit.label} (${s.egFailover})` : hit.label, cls: hit.cls, failover };
+  };
 
   const resetForm = () => {
     setName('');
@@ -631,6 +655,18 @@ export function CustomersPage({
       },
     },
     { key: 'clients', header: s.colClients, render: (a) => `${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}` },
+    {
+      key: 'internet',
+      header: s.colInternet,
+      render: (a) => {
+        const e = egressFor(a);
+        return (
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+            {e.failover ? '⚠ ' : ''}{e.label}
+          </span>
+        );
+      },
+    },
     {
       key: 'protocols',
       header: s.colProtocols,
@@ -1218,6 +1254,21 @@ export function CustomersPage({
               ))}
             </div>
           )}
+        </div>
+      ) : null}
+
+      {overview?.egressHealth && (!overview.egressHealth.starlinkUp || !overview.egressHealth.germanyUp) ? (
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-bold">⚠ {s.egAlertTitle}</span>
+            {!overview.egressHealth.starlinkUp ? (
+              <span>{s.egAlertStarlinkDown}{!overview.egressHealth.germanyUp ? '' : ` — ${s.egAlertGamingFailover}`}</span>
+            ) : null}
+            {!overview.egressHealth.germanyUp ? <span className="font-bold">{s.egAlertGermanyDown}</span> : null}
+            {overview.egressHealth.updatedAt ? (
+              <span className="text-[11px] text-red-500">{s.egAlertChecked}: {format.time(new Date(overview.egressHealth.updatedAt), false)}</span>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
