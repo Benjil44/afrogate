@@ -75,6 +75,7 @@ deploy-afrows.sh
 ufw-afrows.sh
 update-afrows.sh
 sync.ps1
+bump-version.ps1
 setup-tls.sh
 migrate-to-afrows.sh
 cutover-afrows.ps1
