@@ -137,6 +137,18 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
    * which gates on account status). Config status is left untouched, so
    * re-activating the account lets the reconcile add the user back.
    */
+  /** Trigger an immediate account-status enforcement sweep. Called right after an
+   * admin disables/suspends an account so the live VLESS user is cut within
+   * seconds instead of waiting up to one metering interval (~60s). Best-effort:
+   * the periodic tick remains the safety net. */
+  async enforceAccountStatusNow(): Promise<void> {
+    try {
+      await this.enforceAccountStatus();
+    } catch (error) {
+      this.logger.warn(`Immediate account-status enforcement failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
   private async enforceAccountStatus(): Promise<void> {
     const result = await this.database.query<OverQuotaRow>(
       `

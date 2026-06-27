@@ -106,6 +106,8 @@ import {
 import { SecretVaultService } from '../security/secret-vault.service';
 import { TelegramAlertService, type TelegramMessageSendResult } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
+import { XrayUsageMeteringService } from '../client/xray-usage-metering.service';
+import { XrayProvisioningService } from '../client/xray-provisioning.service';
 import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
 import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
 import { RewardedAdProviderWebhookDto } from './dto/rewarded-ad-webhook.dto';
@@ -681,6 +683,8 @@ export class BillingService {
     private readonly secretVault: SecretVaultService,
     private readonly telegram: TelegramAlertService,
     private readonly telegramConfig: TelegramBotConfigService,
+    private readonly xrayMetering: XrayUsageMeteringService,
+    private readonly xrayProvisioning: XrayProvisioningService,
   ) {}
 
   async getBillingCatalog(): Promise<AdminBillingCatalogResponse> {
@@ -3011,10 +3015,11 @@ export class BillingService {
       throw new BadRequestException('Use either paidNumber or clearPaidNumber, not both');
     }
 
+    let changedFields: string[] = [];
     try {
       await this.database.transaction(async (executor) => {
         await this.ensureCustomerAccountExists(executor, id);
-        const changedFields = await this.updateCustomerAccountFields(executor, id, dto);
+        changedFields = await this.updateCustomerAccountFields(executor, id, dto);
 
         await this.audit.record(
           actor,
@@ -3028,6 +3033,18 @@ export class BillingService {
           executor,
         );
       });
+
+      // Instant enforcement on a status change (the periodic sweeps remain the
+      // safety net). Disabling/suspending cuts the live VLESS user within seconds
+      // instead of up to ~60s; re-activating provisions it back immediately.
+      if (changedFields.includes('status')) {
+        const status = normalizeNullableString(dto.status);
+        if (status && status !== 'active') {
+          void this.xrayMetering.enforceAccountStatusNow();
+        } else if (status === 'active') {
+          void this.xrayProvisioning.reconcile();
+        }
+      }
 
       return this.getCustomerAccount(id);
     } catch (error) {
