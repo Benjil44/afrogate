@@ -45,6 +45,8 @@ VIA_GERMANY_OUT = {"protocol": "freedom", "tag": "via-germany",
 POOL_SOCKS = os.environ.get("AFROWS_POOL_SOCKS", "127.0.0.1:10808")
 POOL_PROBE_URLS = ["https://www.gstatic.com/generate_204", "http://cp.cloudflare.com/generate_204"]
 STATE_FILE = "/var/lib/afrows/egress-pool.state"
+GAMING_STATE_FILE = "/var/lib/afrows/egress-gaming.state"
+HEALTH_FILE = "/var/lib/afrows/egress-health.json"
 # Extra source IPs to route to via-village regardless of DB tier (e.g. the home
 # router's tunnel IP on afrows-xray, for the operator's own gaming) — read from
 # the env FILE in main() (systemd has no shell env).
@@ -199,6 +201,64 @@ def choose_catchall(via_germany_ok, pool_ok, state):
     return applied, {"applied": applied, "pending": want, "count": cnt}
 
 
+def write_health(starlink_up, germany_up, catch_all, gaming_out, mode):
+    """Persist an egress-health snapshot the backend serves to the dashboard."""
+    try:
+        os.makedirs(os.path.dirname(HEALTH_FILE), exist_ok=True)
+        json.dump({
+            "starlinkUp": bool(starlink_up),
+            "germanyUp": bool(germany_up),
+            "appliedCatchAll": catch_all,
+            "gamingOutbound": gaming_out,
+            "mode": mode,
+            "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }, open(HEALTH_FILE, "w"))
+    except Exception:
+        pass
+
+
+def choose_gaming(village_ok, germany_ok, state):
+    """Pure failover for the GAMING tier (normally pinned to via-village/Starlink)
+    with 2-strike hysteresis. When Starlink is down, gaming falls over to the owned
+    Germany path (via-village-de) so gaming users are not stranded; it fails back to
+    via-village when Starlink recovers. If both are down there is no good reserve, so
+    it stays on via-village (which recovers with the village). Returns (tag, state)."""
+    if village_ok:
+        want = "via-village"
+    elif germany_ok:
+        want = "via-germany"
+    else:
+        want = "via-village"
+    applied = state.get("applied", want)
+    if want == applied:
+        return applied, {"applied": applied, "pending": want, "count": 0}
+    cnt = (state.get("count", 0) + 1) if state.get("pending") == want else 1
+    if cnt >= 2:
+        return want, {"applied": want, "pending": want, "count": 0}
+    return applied, {"applied": applied, "pending": want, "count": cnt}
+
+
+def decide_gaming():
+    """Resolve the GAMING-tier outbound, failing Starlink over to Germany when the
+    village Starlink tunnel (wg-village) is down. Persists hysteresis state."""
+    village = iface_alive("wg-village")
+    germany = True if village else iface_alive("wg-village-de")  # only probe reserve when needed
+    try:
+        st = json.load(open(GAMING_STATE_FILE))
+    except Exception:
+        st = {}
+    applied, st = choose_gaming(village, germany, st)
+    try:
+        os.makedirs(os.path.dirname(GAMING_STATE_FILE), exist_ok=True)
+        json.dump(st, open(GAMING_STATE_FILE, "w"))
+    except Exception:
+        pass
+    log("gaming-failover: starlink=%s germany=%s -> gaming-out=%s (pending=%s count=%d)" % (
+        "up" if village else "DOWN", ("n/a" if village else ("up" if germany else "DOWN")),
+        applied, st.get("pending"), st.get("count", 0)))
+    return applied
+
+
 def decide_catchall(egress):
     """NORMAL foreign catch-all outbound (gaming always -> via-village/Starlink).
     'village' forces via-village; otherwise health-ordered auto-failover so a
@@ -233,7 +293,7 @@ def client_inbound_tags(rules):
     return None
 
 
-def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None):
+def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village"):
     # All list members are SORTED so the desired config is deterministic: the DB
     # aggregates (string_agg) can return rows in any order run-to-run, and an
     # order-sensitive `rules == want` compare would otherwise see a phantom change
@@ -243,11 +303,12 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outboun
     if mode == "smart":
         rules.append(dict(GEOIP_DIRECT))
         rules.append(dict(GEOSITE_DIRECT))
-    # gaming -> village Starlink (foreign only; Iran already went direct above)
+    # gaming -> Starlink normally (gaming_outbound='via-village'); fails over to
+    # via-germany when Starlink is down so gaming users aren't stranded.
     if gaming_sources:  # by source IP (afrows-wg peers + router tunnels)
-        rules.append({"type": "field", "source": sorted(gaming_sources), "outboundTag": "via-village"})
+        rules.append({"type": "field", "source": sorted(gaming_sources), "outboundTag": gaming_outbound})
     if gaming_users:  # by VLESS user email (afrows-xray app clients)
-        rules.append({"type": "field", "user": sorted(gaming_users), "outboundTag": "via-village"})
+        rules.append({"type": "field", "user": sorted(gaming_users), "outboundTag": gaming_outbound})
     # D2 per-config FIXED egress path rules (sorted + deterministic order so the
     # config doesn't look changed run-to-run). Emitted before the catch-all.
     for fr in sorted(fixed_rules or [], key=lambda x: (x["outboundTag"], "user" in x)):
@@ -260,7 +321,7 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outboun
     return rules
 
 
-def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None):
+def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village"):
     """gaming_sources: source IPs -> via-village; gaming_users: VLESS emails -> via-village.
     catch_outbound: where the normal foreign catch-all goes ('proxy' or 'via-village')."""
     cfg = json.load(open(cfg_path))
@@ -277,7 +338,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
             outs.append(dict(spec))
             changed_out = True
 
-    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [])
+    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound)
     if rules == want and not changed_out:
         return False
 
@@ -310,6 +371,7 @@ def main():
     # blocked by Afrows's filtered uplink, so Germany is reached through the village.)
     egress = file_env("AFROWS_FOREIGN_EGRESS", "germany").lower()
     catch = decide_catchall(egress)
+    gaming_out = decide_gaming()  # via-village normally; via-germany when Starlink is down
     changed = False
     for cfg_path, svc, use_db in TARGETS:
         if not os.path.exists(cfg_path):
@@ -318,18 +380,31 @@ def main():
             sources, users = db + extra, []
         else:       # afrows-xray: router source IPs + VLESS gaming users
             sources, users = list(extra), xray_users
-        # D2: per-config FIXED egress path rules for this engine
+        # D2: per-config FIXED egress path rules for this engine. A 'village'
+        # (Starlink) pin rides the same failover as the gaming tier so a Starlink
+        # outage routes those configs to Germany instead of a dead tunnel.
         fixed = []
         for p, tag in PATH_TAGS.items():
+            eff_tag = gaming_out if p == "village" else tag
             if use_db:  # afrows-wg -> source-IP rules
                 src = path_wg_sources(url, p)
                 if src:
-                    fixed.append({"source": src, "outboundTag": tag})
+                    fixed.append({"source": src, "outboundTag": eff_tag})
             else:       # afrows-xray -> VLESS user rules
                 usr = path_xray_users(url, p)
                 if usr:
-                    fixed.append({"user": usr, "outboundTag": tag})
-        changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed)
+                    fixed.append({"user": usr, "outboundTag": eff_tag})
+        changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed, gaming_out)
+    # Health snapshot for the dashboard: raw path reachability + the applied
+    # outbounds, so operators can see at a glance which egress (Starlink/Germany)
+    # is down. Written every run (cheap: 2 extra probes ~once/min).
+    write_health(
+        starlink_up=iface_alive("wg-village"),
+        germany_up=iface_alive("wg-village-de"),
+        catch_all=catch,
+        gaming_out=gaming_out,
+        mode=mode,
+    )
     if not changed:
         log("no change (mode=%s, catch-all=%s, wg-src=%d xray-src=%d xray-user=%d)" % (
             mode, catch, len(db) + len(extra), len(extra), len(xray_users)))
