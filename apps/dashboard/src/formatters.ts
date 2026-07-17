@@ -48,10 +48,10 @@ export function sumNullable(values: Array<number | null>): number | null {
 }
 
 export function createDashboardFormatters(language: DashboardLanguage) {
-  const isPersian = language === 'fa';
-  const locale = isPersian ? 'fa-IR-u-nu-arabext' : 'en-US';
-  const percentSign = isPersian ? '٪' : '%';
-  const fontFamily = isPersian
+  const isarabic = language === 'fa';
+  const locale = isarabic ? 'fa-IR-u-nu-arabext' : 'en-US';
+  const percentSign = isarabic ? '٪' : '%';
+  const fontFamily = isarabic
     ? '"Afrows YekanBakh", Tahoma, Arial, sans-serif'
     : 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   const integerFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
@@ -61,19 +61,19 @@ export function createDashboardFormatters(language: DashboardLanguage) {
   });
   const clockFormatter = new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
-    hour12: !isPersian,
+    hour12: !isarabic,
     minute: '2-digit',
     second: '2-digit',
   });
   const shortTimeFormatter = new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
-    hour12: !isPersian,
+    hour12: !isarabic,
     minute: '2-digit',
   });
   const dateTimeFormatter = new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     hour: '2-digit',
-    hour12: !isPersian,
+    hour12: !isarabic,
     minute: '2-digit',
     month: 'short',
   });
@@ -81,15 +81,15 @@ export function createDashboardFormatters(language: DashboardLanguage) {
   const integer = (value: number): string => integerFormatter.format(Number.isFinite(value) ? value : 0);
   const decimal = (value: number): string => decimalFormatter.format(Number.isFinite(value) ? value : 0);
   const percent = (value: number | null): string => value === null ? '--' : `${integer(Math.round(value))}${percentSign}`;
-  const persianLabels: Record<string, string> = {
-    'Iran Edge 01': 'لبه ایران ۰۱',
-    'Iran Edge 02': 'لبه ایران ۰۲',
+  const arabicLabels: Record<string, string> = {
+    'Ireland Edge 01': 'لبه ایران ۰۱',
+    'Ireland Edge 02': 'لبه ایران ۰۲',
     'Germany Core 01': 'هسته آلمان ۰۱',
     'Germany gateway': 'درگاه آلمان',
     'Control egress': 'خروجی کنترل',
-    'Iran direct': 'مسیر مستقیم ایران',
+    'Ireland direct': 'مسیر مستقیم ایران',
     'Mobinnet': 'مبین‌نت',
-    'Irancell': 'ایرانسل',
+    'Irelandcell': 'ایرانسل',
     'IR': 'ایران',
     'DE': 'آلمان',
     'WireGuard': 'وایرگارد',
@@ -108,8 +108,8 @@ export function createDashboardFormatters(language: DashboardLanguage) {
     'dns': 'DNS',
     'wireguard': 'WireGuard',
     'ether1 / Mobinnet / wg1': 'ether1 / مبین‌نت / wg1',
-    'ether2 / Irancell / wireguard2': 'ether2 / ایرانسل / wireguard2',
-    'ether5 / Irancell / wireguard3': 'ether5 / ایرانسل / wireguard3',
+    'ether2 / Irelandcell / wireguard2': 'ether2 / ایرانسل / wireguard2',
+    'ether5 / Irelandcell / wireguard3': 'ether5 / ایرانسل / wireguard3',
     'core uplink / Germany / gateway': 'آپ‌لینک هسته / آلمان / درگاه',
   };
 
@@ -124,12 +124,12 @@ export function createDashboardFormatters(language: DashboardLanguage) {
     integer,
     percent,
     label(value: string): string {
-      return isPersian ? persianLabels[value] ?? value : value;
+      return isarabic ? arabicLabels[value] ?? value : value;
     },
     bytesPerSecond(value: number | null): string {
       if (value === null) return '--';
 
-      const units = isPersian
+      const units = isarabic
         ? ['بایت/ث', 'کیلوبایت/ث', 'مگابایت/ث', 'گیگابایت/ث']
         : ['B/s', 'KB/s', 'MB/s', 'GB/s'];
       let currentValue = value;
@@ -145,7 +145,7 @@ export function createDashboardFormatters(language: DashboardLanguage) {
     bytes(value: number | null): string {
       if (value === null) return '--';
 
-      const units = isPersian
+      const units = isarabic
         ? ['بایت', 'کیلوبایت', 'مگابایت', 'گیگابایت', 'ترابایت']
         : ['B', 'KB', 'MB', 'GB', 'TB'];
       let currentValue = value;
@@ -164,15 +164,15 @@ export function createDashboardFormatters(language: DashboardLanguage) {
     latency(value: number | null): string {
       if (value === null) return '--';
 
-      return isPersian ? `${integer(value)} میلی‌ثانیه` : `${integer(value)} ms`;
+      return isarabic ? `${integer(value)} میلی‌ثانیه` : `${integer(value)} ms`;
     },
     durationSeconds(value: number): string {
-      return isPersian ? `${integer(value)} ثانیه` : `${integer(value)}s`;
+      return isarabic ? `${integer(value)} ثانیه` : `${integer(value)}s`;
     },
     durationMinutes(value: number): string {
-      if (value <= 0) return isPersian ? 'اکنون' : 'now';
+      if (value <= 0) return isarabic ? 'اکنون' : 'now';
 
-      return isPersian ? `${integer(value)} دقیقه` : `${integer(value)}m`;
+      return isarabic ? `${integer(value)} دقیقه` : `${integer(value)}m`;
     },
     percentThreshold(operator: '<' | '>', value: number): string {
       return `${operator} ${percent(value)}`;
@@ -181,10 +181,10 @@ export function createDashboardFormatters(language: DashboardLanguage) {
       return `${operator} ${integer(value)}`;
     },
     latencyThreshold(operator: '<' | '>', value: number): string {
-      return `${operator} ${isPersian ? `${integer(value)} میلی‌ثانیه` : `${integer(value)} ms`}`;
+      return `${operator} ${isarabic ? `${integer(value)} میلی‌ثانیه` : `${integer(value)} ms`}`;
     },
     scoreDelta(value: number): string {
-      return isPersian ? `+${integer(value)} امتیاز` : `+${integer(value)} score`;
+      return isarabic ? `+${integer(value)} امتیاز` : `+${integer(value)} score`;
     },
     time(date: Date, includeSeconds = true): string {
       return includeSeconds ? clockFormatter.format(date) : shortTimeFormatter.format(date);
@@ -193,7 +193,7 @@ export function createDashboardFormatters(language: DashboardLanguage) {
       return Number.isNaN(date.getTime()) ? '--' : dateTimeFormatter.format(date);
     },
     timeRange(range: MetricsTimeRange): string {
-      if (!isPersian) return timeRanges.find((item) => item.value === range)?.label ?? range;
+      if (!isarabic) return timeRanges.find((item) => item.value === range)?.label ?? range;
 
       const ranges: Record<MetricsTimeRange, string> = {
         '15m': `${integer(15)}د`,

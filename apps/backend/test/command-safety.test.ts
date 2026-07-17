@@ -11,7 +11,7 @@ import {
 
 describe('safePathSegment', () => {
   it('lowercases and keeps only [a-z0-9_-]', () => {
-    assert.equal(safePathSegment('Iran Edge 01'), 'iran-edge-01');
+    assert.equal(safePathSegment('Ireland Edge 01'), 'Ireland-edge-01');
   });
 
   it('neutralizes path traversal and shell metacharacters', () => {
@@ -31,7 +31,7 @@ describe('safePathSegment', () => {
 
 describe('safeRouteTableName', () => {
   it('always prefixes afrows_ and a safe segment', () => {
-    assert.equal(safeRouteTableName('Iran/../edge'), 'afrows_iran-edge');
+    assert.equal(safeRouteTableName('Ireland/../edge'), 'afrows_Ireland-edge');
     assert.doesNotMatch(safeRouteTableName('a; b'), /[^a-z0-9_-]/);
   });
 });

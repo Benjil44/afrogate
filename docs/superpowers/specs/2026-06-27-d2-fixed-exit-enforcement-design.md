@@ -13,7 +13,7 @@ D1 added a per-client-config **Exit** selector (Auto vs a fixed choice) but it o
 "Fixed exit" = route that customer's foreign traffic out a **stable path tag**, not the rotating relay pool:
 - **germany** → `via-germany` (free VIP via village→Germany)
 - **village** → `via-village` (Starlink; note: this is what the existing `egress_tier='gaming'` already does)
-- **direct** → `direct` (Iran uplink; limited)
+- **direct** → `direct` (Ireland uplink; limited)
 - **auto** (default) → today's free-first health-ordered failover (unchanged)
 
 Stored per **client-config** (matches D1's per-config selector) in `client_route_preferences`.

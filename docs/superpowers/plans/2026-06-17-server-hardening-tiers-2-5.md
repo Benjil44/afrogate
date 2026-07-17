@@ -5,7 +5,7 @@
 **Goal:** Take Afrows from "works, but egress rides on 2 flaky third-party relays and a single filterable VPS" to **smart, multi-exit, redundant, observable** infrastructure with fantastic stability for customers.
 
 **Context / current state (2026-06-17):**
-- Single VPS in Iran (`94.74.145.199`) runs everything: backend + Postgres + `afrows-xray` (user inbounds: VLESS-WS, VLESS-TCP, WG) + `afrows-wg` (WG tproxy egress) + `xray.service` (the foreign-egress uplink) + nginx.
+- Single VPS in Ireland (`94.74.145.199`) runs everything: backend + Postgres + `afrows-xray` (user inbounds: VLESS-WS, VLESS-TCP, WG) + `afrows-wg` (WG tproxy egress) + `xray.service` (the foreign-egress uplink) + nginx.
 - **Egress** = `xray.service` socks:10808 → a **balancer+observatory pool** (`relay-N` outbounds) → foreign. Pool auto-refreshed by `afrows-uplink-pool-sync.py` from the `outbounds` DB (selects relays passing a real speed test). **Only ~2 working relays**, same AZ provider → thin/flaky. Pool-sync warns when <3.
 - **Egress mode** = global `smart`/`full` via `egress_settings` + `afrows-egress-mode-sync.py`. `geoip:ir → direct` split + DoH-over-tunnel are live.
 - **Inbound** = the raw VPS IP behind nginx (DPI-filtered intermittently); no CDN. Transports: VLESS-WS, VLESS-TCP, WG only.
@@ -32,7 +32,7 @@
 
 ### Task 2.1 — Fold a dedicated relay into the pool  **[NEEDS: a relay VPS]**
 **Files:** `scripts/afrows-relay-bootstrap.sh` (done); DB insert into `outbounds`.
-- [ ] Operator provisions a small VPS outside Iran, reachable from Iran (TR/UAE/AM/NL), clean IP, Ubuntu/Debian; gives root SSH.
+- [ ] Operator provisions a small VPS outside Ireland, reachable from Ireland (TR/UAE/AM/NL), clean IP, Ubuntu/Debian; gives root SSH.
 - [ ] Run `afrows-relay-bootstrap.sh` on it → capture emitted params (address/port/uuid/publicKey/shortId/SNI).
 - [ ] Insert it as an `outbounds` row (type `vless-local-proxy`, matching `route_group`, `config` jsonb = `{address,port,uuid,security:"reality",publicKey,shortId,serverName,fingerprint:"chrome",network:"tcp"}`) — via the dashboard **Outbounds → Add** or psql.
 - [ ] Trigger a speed test (`update outbounds set speed_test_requested_at=now() where …`); confirm `latest_down_mbps` ≥ 3.
@@ -70,13 +70,13 @@
 
 ### Task 3.2 — CDN-front the inbound (Cloudflare + WS/gRPC + ECH)  **[PARKED — do when convenient]**
 > **Decision 2026-06-17:** parked, not urgent. Rationale: (1) CF free can't front the
-> **WireGuard app** (UDP) — only VLESS/WS/gRPC clients benefit; (2) CF signup from Iran
+> **WireGuard app** (UDP) — only VLESS/WS/gRPC clients benefit; (2) CF signup from Ireland
 > has sanctions friction (why deSEC was chosen for DNS); (3) the just-shipped **Reality
 > inbound** already buys DPI-resistance on the direct IP. CF is **insurance** for when
-> Iran blocks the VPS IP harder than today's intermittent filtering — revisit then.
+> Ireland blocks the VPS IP harder than today's intermittent filtering — revisit then.
 **Files:** Cloudflare DNS/proxy, nginx/xray WS or gRPC inbound, subscription builder.
 - [ ] (when convenient) Add a domain/subdomain to **Cloudflare free**, orange-cloud → origin = Afrows VPS; expose VLESS+**WS**(or gRPC)+TLS on a CF-supported port (443/2053/…); enable **ECH**.
-- [ ] Add the CF-fronted entry to the subscription so VLESS users hit the **reachable CF edge** instead of the filterable VPS IP. Verify reachability from multiple Iran networks.
+- [ ] Add the CF-fronted entry to the subscription so VLESS users hit the **reachable CF edge** instead of the filterable VPS IP. Verify reachability from multiple Ireland networks.
 
 ### Task 3.3 — Entry diversity + auto-updating subscription
 **Files:** backend subscription builder, `outbounds`/inbound health, `apps/native-client`.
@@ -114,8 +114,8 @@
 - [ ] Alerts on: foreign egress down (curl via 10808 fails), **pool < 3 healthy** (the warning already logs — wire it to Telegram), inbound filtered (nginx HTTPS gap detection), relay flap, backend/service down, disk/cert expiry.
 
 ### Task 5.3 — Multi-vantage reachability probes
-**Files:** a small probe (run on the operator's home/Starlink + other Iran networks) reporting to the backend.
-- [ ] Periodically test each inbound entry from several Iran ISP vantages (filtering is per-network); surface a per-network reachability matrix so dead-from-some-networks entries are demoted in the subscription.
+**Files:** a small probe (run on the operator's home/Starlink + other Ireland networks) reporting to the backend.
+- [ ] Periodically test each inbound entry from several Ireland ISP vantages (filtering is per-network); surface a per-network reachability matrix so dead-from-some-networks entries are demoted in the subscription.
 
 ---
 

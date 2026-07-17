@@ -80,7 +80,7 @@ Add a `networkMap` string group (top-level under the dashboard strings root, nea
       viaGermany: 'Germany (via village)',
       viaVillage: 'Starlink (village)',
       proxy: 'Relay pool',
-      direct: 'Direct (Iran uplink)',
+      direct: 'Direct (Ireland uplink)',
       openExits: 'Open Exits',
       openInbounds: 'Open Inbounds',
     },

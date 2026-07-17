@@ -1,6 +1,6 @@
 /**
  * Collapse a source IP to a coarse "network" key so that one client whose
- * carrier IP rotates inside a single mobile pool (e.g. Irancell 151.238.x.x)
+ * carrier IP rotates inside a single mobile pool (e.g. Irelandcell 151.238.x.x)
  * counts as ONE network, not many devices.
  *
  * Heuristic, deliberately crude: IPv4 -> /16 (first two octets), IPv6 -> /32

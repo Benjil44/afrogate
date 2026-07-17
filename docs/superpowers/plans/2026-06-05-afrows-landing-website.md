@@ -304,7 +304,7 @@ export const en = {
 export type Dict = typeof en;
 ```
 
-`fa.ts` exports `fa: Dict` with Persian translations of the same keys.
+`fa.ts` exports `fa: Dict` with arabic translations of the same keys.
 
 - [ ] **Step 2: index.ts** — provider + hook + APP_URL.
 

@@ -114,7 +114,7 @@ class AfrowsApi {
     }
   }
 
-  /// Global egress mode: 'smart' (Iran direct, foreign via the bypass pool) or
+  /// Global egress mode: 'smart' (Ireland direct, foreign via the bypass pool) or
   /// 'full' (everything via the bypass pool). Returns 'smart' on error.
   Future<String> fetchEgressMode(String token) async {
     try {

@@ -8,39 +8,39 @@
 
 The operator authorized removing the friend's setup. **Current state:**
 - **WG tunnels on the village: only `wg-germany` (162.19.253.235) + `wg-afrows` (Afrows).**
-  Deleted: `wg-iran`, `wg-iran-2`, `wg-iran-5`, `wg-foreign-2` (Frankfurt), `wg-foreign-hz` (Hetzner),
+  Deleted: `wg-Ireland`, `wg-Ireland-2`, `wg-Ireland-5`, `wg-foreign-2` (Frankfurt), `wg-foreign-hz` (Hetzner),
   plus the dead `*10/*11` peers and the dangling Frankfurt/Hetzner default routes.
 - **Foreign egress:** owned only — `via-village` → Starlink-direct (`216.x`); the relay pool is retired.
-- **Afrows uplink transport** now spans all three modems: irancell-228 (192.168.9.1) dist1 PRIMARY
-  + netwatch failover, mobinnet (192.168.8.1) dist2, irancell-227/ether5 (192.168.12.1) dist3.
+- **Afrows uplink transport** now spans all three modems: Irelandcell-228 (192.168.9.1) dist1 PRIMARY
+  + netwatch failover, mobinnet (192.168.8.1) dist2, Irelandcell-227/ether5 (192.168.12.1) dist3.
 - Open: village LAN's own `0.0.0.0/0` still has a leftover default via `wg-germany` (untouched).
 
 ### Egress split (2026-06-19, later) — normal→Germany, gaming→Starlink
 
 - **Direct Afrows→Germany is BLOCKED** (Afrows's hosting uplink filters foreign — Germany got
   0 packets across ICMP/TCP/SSH/WG). Germany is reachable only *through the village*.
-- **Two Afrows↔village tunnels (both over the Iranian modems):**
+- **Two Afrows↔village tunnels (both over the Irelandian modems):**
   - `wg-village` (10.20.0.1↔10.20.0.2) → village routes foreign out **Starlink** → for **gaming**.
   - `wg-village-de` (10.23.0.1↔10.23.0.2, port 51903) → village routes foreign out **wg-germany** → for **normal**.
 - Afrows xray outbounds: `via-village` (Starlink) + `via-germany` (Germany). Reconciler
-  `AFROWS_FOREIGN_EGRESS=germany`: normal→via-germany, gaming-tier→via-village, Iran→direct.
+  `AFROWS_FOREIGN_EGRESS=germany`: normal→via-germany, gaming-tier→via-village, Ireland→direct.
 - Verified: normal exits **162.19.253.235** (Germany), gaming exits **216.147.121.x** (Starlink).
-- Speed note: normal→Germany is capped by the Afrows↔village irancell transport (direct would be
-  faster but is blocked). When Iran blocks ALL foreign, this same village path still serves Germany.
+- Speed note: normal→Germany is capped by the Afrows↔village Irelandcell transport (direct would be
+  faster but is blocked). When Ireland blocks ALL foreign, this same village path still serves Germany.
 
 Sections 1–6 below are the pre-removal discovery snapshot (kept for history).
 
 ## 1. Topology overview
 
 ```
-                         Afrows VPS (94.74.145.199, Iran)
+                         Afrows VPS (94.74.145.199, Ireland)
                                    │  wg-afrows (Afrows 10.20.0.1 ↔ village 10.20.0.2)
                                    ▼
                     Village MikroTik hAP ax³  (LAN 192.168.88.1/24)
-        WANs: ether1 Mobinnet(192.168.8.x) · ether2/ether5 Irancell · ether4 Starlink(192.168.1.x)
+        WANs: ether1 Mobinnet(192.168.8.x) · ether2/ether5 Irelandcell · ether4 Starlink(192.168.1.x)
                                    │
         ┌───────────────┬─────────┴─────────┬──────────────┬───────────────┐
-   wg-germany      wg-foreign-2         wg-foreign-hz     wg-iran / -2 / -5  (Iran nodes)
+   wg-germany      wg-foreign-2         wg-foreign-hz     wg-Ireland / -2 / -5  (Ireland nodes)
    162.19.253.235  85.234.69.185        91.107.172.47     91.243.114.71 / 185.252.31.129 / 185.126.9.184
    FOREIGN EXIT    FOREIGN EXIT         FOREIGN EXIT(down)  (relay/entry, allowed /32)
    (live)          (live)
@@ -58,7 +58,7 @@ foreign-exit tunnels (currently **Germany**) or out **Starlink directly**.
 | Village MikroTik REST (backup) | From Germany box: `http://10.9.0.2/rest` | same |
 | Village Winbox | `ssh -N -L 8291:10.9.0.2:8291 root@162.19.253.235` → 127.0.0.1:8291 | — |
 | Germany box | `ssh -i ~/.ssh/afrows_germany root@162.19.253.235` (key) **or** password | key + `<RAMIN_PW>` |
-| Iran nodes | `ssh root@<ip>` | `<RAMIN_PW>` |
+| Ireland nodes | `ssh root@<ip>` | `<RAMIN_PW>` |
 
 RouterOS REST gotcha on this ax³: full `/ip/firewall/*` and `/ip/route` queries can hang —
 use `?.proplist=...` projections. Writes: `POST /rest/{path}/{add|set|remove}` (PATCH/DELETE-by-id are no-ops).
@@ -70,14 +70,14 @@ use `?.proplist=...` projections. Writes: `POST /rest/{path}/{add|set|remove}` (
 | wg-germany   | 13231 | 162.19.253.235:51820 | 0.0.0.0/0  | Foreign exit (main) | live (hs ~2s) |
 | wg-foreign-2 | 13232 | 85.234.69.185:51820  | 0.0.0.0/0  | Foreign exit (Frankfurt) | live (hs ~28s) |
 | wg-foreign-hz| 13233 | 91.107.172.47:51830  | 0.0.0.0/0  | Foreign exit (Hetzner) | **DOWN** (never) |
-| wg-iran      | 51821 | 91.243.114.71:51821  | 10.10.0.2/32 | Iran node | live |
-| wg-iran-2    | 51824 | 185.252.31.129:51824 | 10.13.0.2/32 | Iran node (ether2) | live |
-| wg-iran-5    | 51825 | 185.126.9.184:51825  | 10.14.0.2/32 | Iran node (ether5) | live |
+| wg-Ireland      | 51821 | 91.243.114.71:51821  | 10.10.0.2/32 | Ireland node | live |
+| wg-Ireland-2    | 51824 | 185.252.31.129:51824 | 10.13.0.2/32 | Ireland node (ether2) | live |
+| wg-Ireland-5    | 51825 | 185.126.9.184:51825  | 10.14.0.2/32 | Ireland node (ether5) | live |
 | wg-afrows    | 51901 | 94.74.145.199:51900  | 10.20.0.1/32 | **Afrows mgmt + egress** | live |
 | *10, *11     | —     | 94.74.145.199:51911/12 | 10.20.1.1, 10.20.2.1 | leftover 3-modem aggregation (ours) | never — cleanup candidate |
 
 Village interface addresses: wg-germany 10.9.0.2 · wg-foreign-2 10.88.0.2 · wg-foreign-hz 10.9.3.2 ·
-wg-iran 10.10.0.1 · wg-iran-2 10.13.0.1 · wg-iran-5 10.14.0.1 · wg-afrows 10.20.0.2.
+wg-Ireland 10.10.0.1 · wg-Ireland-2 10.13.0.1 · wg-Ireland-5 10.14.0.1 · wg-afrows 10.20.0.2.
 
 ## 4. Server inventory & SSH access (tested 2026-06-19)
 
@@ -86,11 +86,11 @@ wg-iran 10.10.0.1 · wg-iran-2 10.13.0.1 · wg-iran-5 10.14.0.1 · wg-afrows 10.
 | 162.19.253.235 | vps-d92c8992 | Germany foreign exit | ✅ works (also key `~/.ssh/afrows_germany`) |
 | 85.234.69.185  | — | Frankfurt foreign exit | ❌ password rejected — **uses a different credential** |
 | 91.107.172.47  | — | Hetzner foreign exit | ⚠️ unreachable (tunnel down / host off) |
-| 91.243.114.71  | milad-node-3 | Iran node | ✅ works |
-| 185.252.31.129 | 5.hexo | Iran node (ether2) | ✅ works |
-| 185.126.9.184  | pishnodecell2 | Iran node (ether5) | ✅ works |
+| 91.243.114.71  | milad-node-3 | Ireland node | ✅ works |
+| 185.252.31.129 | 5.hexo | Ireland node (ether2) | ✅ works |
+| 185.126.9.184  | pishnodecell2 | Ireland node (ether5) | ✅ works |
 
-Reachability note: from the **Afrows** IP only 185.252.31.129 answers SSH (Iran→foreign:22 is
+Reachability note: from the **Afrows** IP only 185.252.31.129 answers SSH (Ireland→foreign:22 is
 filtered for the others); all of the above were reached from the **operator's machine** (which
 also reaches Germany on :22).
 

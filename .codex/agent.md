@@ -10,7 +10,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 
 - Read `.codex/memory.md`, `.codex/progress.md`, and `.codex/checklist.md` before implementation.
 - Prefer small, working increments over broad rewrites.
-- Keep the product bilingual-ready from the start: Persian and English.
+- Keep the product bilingual-ready from the start: arabic and English.
 - Preserve privacy by default. Store only what is required.
 - Never commit secrets, tokens, server IP credentials, production config, or real user data.
 - Keep dashboard operations fast enough for remote travel management.
@@ -48,14 +48,14 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 ## Technical Principles
 
 - Keep control plane, monitoring plane, and data plane integration separate.
-- Design server count as unbounded, even if the first deployment has 3 Iran servers and 1 Germany server.
+- Design server count as unbounded, even if the first deployment has 3 Ireland servers and 1 Germany server.
 - Agents must be lightweight enough for 4 core / 4 GB RAM servers.
 - Prefer auditable route decisions with clear reasons.
 - Use threshold-based alerts first; add predictive analysis later.
 - Treat packet loss, high jitter, storage pressure, and API/request backlog as urgent operational signals.
 - Keep enhancement work progressive: visibility first, reliability second, manual control third, automation fourth, enterprise polish last.
 - Do not make GitHub remote work a blocker; local git is enough until the user asks to push.
-- Separate **inbound reachability** (users → panel/landing) from **outbound** (the box's own internet). The raw Iran VPS IP is filtered (reachable from inside Iran, unreliable from abroad/foreign-exits), so "reachable from any network" needs **fronting** (ArvanCloud/CDN), not server tweaks. The box's own outbound internet must run through a managed, health-checked outbound (xray client → a *working* outbound), never a hardcoded/dead first-setup proxy.
+- Separate **inbound reachability** (users → panel/landing) from **outbound** (the box's own internet). The raw Ireland VPS IP is filtered (reachable from inside Ireland, unreliable from abroad/foreign-exits), so "reachable from any network" needs **fronting** (ArvanCloud/CDN), not server tweaks. The box's own outbound internet must run through a managed, health-checked outbound (xray client → a *working* outbound), never a hardcoded/dead first-setup proxy.
 - Measure outbound throughput **backend-on-box** (spawn a throwaway xray SOCKS proxy bound to the outbound and transfer through it); the Python agent is static/env-driven and not the place for it. Reachability is **vantage-dependent** — an outbound healthy from one network can be dead from another.
 - When access fails, isolate **client vs server first**: ping bypasses browser proxies and caches can mask failures, so confirm with a fresh/hard reload and check whether the client is routed through a (possibly dead) v2ray/proxy before assuming a server or DPI fault. For VLESS/proxy configs, probe `config.address` (the dial endpoint), not `config.host` (the SNI/HTTP camouflage hostname).
 - Afrows is its **own** VPN engine (no Marzban): user inbound = VLESS+Reality on **443** behind the panel (Reality `dest`→ local nginx on 8444); per-user provisioning via `xray api`; supply=Outbounds, engine=Routes, sell=Inbounds+accounts. Reality clients MUST carry pbk/sid/fp/flow — import links, never hand-type. To debug "connected but 0 traffic," run a Reality client on the box to prove the server, then suspect the client.

@@ -2,8 +2,8 @@
 """Add (or replace) the afrows-in-tcp inbound on the afrows-xray instance.
 
 Mirrors the bought egress (r-juuh4sm3) structure on the INBOUND side so the
-phone -> afrows hop disguises itself as plaintext HTTP to a whitelisted Iranian
-domain (fake Host header), which survives Iran DPI.
+phone -> afrows hop disguises itself as plaintext HTTP to a whitelisted Irelandian
+domain (fake Host header), which survives Ireland DPI.
 
     vless + tcp + header.type=http + Host: <fakehost> + security=none
 

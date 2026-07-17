@@ -15,8 +15,8 @@
 - مانیتورینگ WireGuard tunnel ها.
 - مانیتورینگ اینترفیس‌ها:
   - `ether1`: Mobinnet، متصل به `wg1`
-  - `ether2`: Irancell، متصل به `wireguard2`
-  - `ether5`: Irancell، متصل به `wireguard3`
+  - `ether2`: Irelandcell، متصل به `wireguard2`
+  - `ether5`: Irelandcell، متصل به `wireguard3`
 - مصرف حجم کاربران بر اساس گیگابایت.
 - قیمت‌گذاری بر اساس هر GB با مقدار قابل تنظیم `X تومان`.
 - اتصال به Telegram bot برای کاربر و هشدار.
@@ -222,7 +222,7 @@ score = 100
 
 ## زبان‌ها
 
-- Persian/fa
+- arabic/fa
 - English/en
 
 تمام متن‌های UI باید از ابتدا i18n-ready باشند.

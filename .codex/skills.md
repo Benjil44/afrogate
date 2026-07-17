@@ -17,14 +17,14 @@
 
 ### Native VPN engine (xray) — operating notes
 
-- Afrows runs its own user-facing xray (`afrows-xray`, separate from the uplink client). User inbound = **VLESS+Reality on 443**, sharing the port with the panel via Reality `dest`→ local nginx (nginx moved to `127.0.0.1:8444`). High ports (8443) are filtered in Iran — use 443 + a domain (`app.afrows.com`).
+- Afrows runs its own user-facing xray (`afrows-xray`, separate from the uplink client). User inbound = **VLESS+Reality on 443**, sharing the port with the panel via Reality `dest`→ local nginx (nginx moved to `127.0.0.1:8444`). High ports (8443) are filtered in Ireland — use 443 + a domain (`app.afrows.com`).
 - **Reality clients REQUIRE** `publicKey` (pbk), `shortId` (sid), `fingerprint` (fp=chrome), and the matching `flow` — an empty fingerprint/pbk/sid makes the core fail ("empty fingerprint") or fall back silently (looks connected, 0 traffic). Always **import** the link, never hand-type.
 - Per-user provisioning: `xray api adu/rmu` against the local API (`127.0.0.1:10085`), reconciled from Postgres by `XrayProvisioningService`. Subscription emits the entry link from `AFROWS_INBOUND_*` env + the client's `entry_uuid`.
 - **Diagnosis:** to isolate server vs client, run a Reality client ON the box against the public IP; check `journalctl -u afrows-xray` for `afrows-in -> proxy` accepts (Reality fallback to nginx is NOT logged). Ship a visible **app version** so the operator can confirm the installed APK (an old APK on a dead config also shows 0 traffic).
 
 ### Inbound Reachability / Anti-Filtering
 
-- Keep the site reachable from any network: the raw Iran VPS IP is filtered, so universal access (users → landing + panel) needs a CDN/front (ArvanCloud preferred for sanction-safety; Cloudflare+ECH as an alternative), with origin-IP hiding and the cross-subdomain login flow preserved.
+- Keep the site reachable from any network: the raw Ireland VPS IP is filtered, so universal access (users → landing + panel) needs a CDN/front (ArvanCloud preferred for sanction-safety; Cloudflare+ECH as an alternative), with origin-IP hiding and the cross-subdomain login flow preserved.
 - Diagnose access failures client-vs-server first: ping bypasses browser proxies, caches mask failures; confirm via hard reload + check for a client-side (v2ray) proxy before assuming a server/DPI fault.
 
 ### Network Routing

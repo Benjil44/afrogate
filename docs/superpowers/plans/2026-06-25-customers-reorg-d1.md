@@ -150,7 +150,7 @@ In `apps/dashboard/src/i18n.en.ts`, inside the `customersPage:` object (e.g. rig
       exitSaveFailed: 'Could not save exit preference',
 ```
 
-- [ ] **Step 2: Add Persian strings**
+- [ ] **Step 2: Add arabic strings**
 
 In `apps/dashboard/src/i18n.fa.ts`, inside the `customersPage:` object at the matching spot, add:
 ```ts

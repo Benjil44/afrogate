@@ -6,7 +6,7 @@
 # alert — IF AFROWS_ALERT_BOT_TOKEN + AFROWS_ALERT_CHAT_ID are set (in env or
 # /etc/afrows/afrows.env). Without them it just logs (alerting is dormant).
 #
-# Note: alerts go OUT through the egress proxy (Telegram is filtered in Iran), so
+# Note: alerts go OUT through the egress proxy (Telegram is filtered in Ireland), so
 # the "recovered"/"thin" alerts fire fine; a full egress-DOWN can't self-report
 # from this box — true down-alerting needs an external vantage (Tier 4 / a probe
 # on the Germany box or a relay). The status is always in journald regardless.

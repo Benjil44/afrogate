@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Afrows dedicated relay bootstrap.
 #
-# Run as root on a FRESH small VPS that is OUTSIDE Iran and reachable FROM Iran
+# Run as root on a FRESH small VPS that is OUTSIDE Ireland and reachable FROM Ireland
 # (Turkey / UAE / Armenia / Netherlands, clean IP). It stands up a VLESS+Reality
-# inbound that the Afrows Iran VPS dials, and egresses straight to the open
+# inbound that the Afrows Ireland VPS dials, and egresses straight to the open
 # internet through this box — giving Afrows a reliable, self-owned exit to add to
 # the failover pool (instead of depending on flaky third-party relays).
 #
 # Reality needs no certificate (it borrows a real site's TLS), so there's nothing
-# to renew. The box is outside Iran, so it can fetch xray from GitHub directly.
+# to renew. The box is outside Ireland, so it can fetch xray from GitHub directly.
 #
 # Tunables (env): RELAY_PORT (default 443), REALITY_SNI / REALITY_DEST (a real,
 # TLS1.3 + h2 site to masquerade as; default www.microsoft.com).

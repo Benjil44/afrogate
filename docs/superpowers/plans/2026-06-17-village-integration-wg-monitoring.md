@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use superpowers:executing-plans. Mostly VPS + MikroTik ops + backend/dashboard. The foundation (Phase 1) touches WireGuard on TWO production routers — additive/reversible, but confirm before applying.
 
-**Goal:** Integrate the operator's **village MikroTik** (hAP ax³ — Starlink on ether4 + 3 Iran-ISP modems + 6 WG tunnels) with Afrows for: **(1)** unified per-WireGuard usage monitoring/billing (village tunnels + Afrows customers in one view), and **(2)** using the village's **Starlink as an owned, unfiltered foreign egress** for Afrows.
+**Goal:** Integrate the operator's **village MikroTik** (hAP ax³ — Starlink on ether4 + 3 Ireland-ISP modems + 6 WG tunnels) with Afrows for: **(1)** unified per-WireGuard usage monitoring/billing (village tunnels + Afrows customers in one view), and **(2)** using the village's **Starlink as an owned, unfiltered foreign egress** for Afrows.
 
 ## Network reality (measured 2026-06-17)
 | From → To | Result |
@@ -15,8 +15,8 @@
 → Afrows and the village/Germany have **no usable channel today**. Everything below depends on creating one.
 
 ## Village map (read-only, via Germany box `ssh→162.19.253.235→http://10.9.0.2/rest`, user `claude`)
-- WANs: ether1 Mobinnet (main), ether2/ether5 Irancell, **ether4 Starlink (192.168.1.140)**, ether3 LAN (192.168.88.1).
-- WG tunnels (peer rx/tx counters available): `wg-germany`→162.19.253.235 (main exit, 0.0.0.0/0), `wg-foreign-2`→85.234.69.185 (Frankfurt), `wg-foreign-hz`→91.107.172.47 (Hetzner, idle), `wg-iran/-2/-5`→Iran nodes.
+- WANs: ether1 Mobinnet (main), ether2/ether5 Irelandcell, **ether4 Starlink (192.168.1.140)**, ether3 LAN (192.168.88.1).
+- WG tunnels (peer rx/tx counters available): `wg-germany`→162.19.253.235 (main exit, 0.0.0.0/0), `wg-foreign-2`→85.234.69.185 (Frankfurt), `wg-foreign-hz`→91.107.172.47 (Hetzner, idle), `wg-Ireland/-2/-5`→Ireland nodes.
 - Policy-routing tables: `main`(→wg-germany), `via-ether2`, `via-ether5`, `wg0-ether1`, `to-foreign-2`, `to-foreign-hz`.
 
 ---

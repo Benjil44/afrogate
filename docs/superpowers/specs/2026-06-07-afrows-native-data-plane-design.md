@@ -34,7 +34,7 @@ Seller creates user → User logs in → App auto-receives config → Connect
 ## Architecture
 
 - **Afrows-managed xray** (`afrows-xray`, separate from the uplink-client xray) with:
-  - **Inbound:** VLESS — **Reality recommended** (no domain/cert, best Iran anti-filtering) on the reachable host. WS+TLS as an alternative if fronted.
+  - **Inbound:** VLESS — **Reality recommended** (no domain/cert, best Ireland anti-filtering) on the reachable host. WS+TLS as an alternative if fronted.
   - **Clients:** the active `client_configs` UUIDs.
   - **Routing:** rules sending each user (by routing tag) to a chosen **outbound** from the pool.
   - **Stats + API** enabled (gRPC `StatsService` + `HandlerService`).
@@ -56,10 +56,10 @@ The inbound host must be reachable from users' networks. This is the same proble
 5. **Smart routing** — wire route-quality history → per-user outbound selection + hysteresis/cooldown + auto-failover.
 
 ## Open decisions (recommendations)
-- **Protocol:** VLESS+**Reality** (no cert/domain, Iran-resilient). [recommended]
+- **Protocol:** VLESS+**Reality** (no cert/domain, Ireland-resilient). [recommended]
 - **Provisioning:** xray **gRPC API** live (AddUser/RemoveUser), Postgres as source of truth. [recommended]
 - **Topology:** one inbound, per-user routing tag → outbound (simpler) vs per-outbound inbounds. Start with one inbound + per-user routing. [recommended]
-- **Host:** Germany VPS for global reach (+ optionally the Iran box for domestic users later).
+- **Host:** Germany VPS for global reach (+ optionally the Ireland box for domestic users later).
 
 ## Security
 - Reality private key + user UUIDs are secrets — stored via the existing secret path, never in git/.codex.

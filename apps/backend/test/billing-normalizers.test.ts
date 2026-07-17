@@ -154,7 +154,7 @@ describe("normalizeCountryCode", () => {
     assert.equal(normalizeCountryCode(null), null);
   });
   it("rejects non-ISO codes", () => {
-    assert.throws(() => normalizeCountryCode("iran"), BadRequestException);
+    assert.throws(() => normalizeCountryCode("Ireland"), BadRequestException);
     assert.throws(() => normalizeCountryCode("1R"), BadRequestException);
   });
 });

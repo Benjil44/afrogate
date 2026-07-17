@@ -16,7 +16,7 @@ Two jobs, applied to the client egress engines (afrows-wg, afrows-xray):
      - afrows-xray: by VLESS USER email (cc_<client_config_id>@afrows), since
        app clients share the inbound and have no stable source IP. The router
        tunnel source IPs (env/Microtiks game toggle) still apply to afrows-xray
-       too. Iran traffic already split to `direct` above, so only foreign egress
+       too. Ireland traffic already split to `direct` above, so only foreign egress
        is diverted to Starlink.
 
 Idempotent: only rewrites + restarts a service when its routing/outbounds change.
@@ -36,7 +36,7 @@ GEOSITE_DIRECT = {"type": "field", "domain": ["geosite:category-ir"], "outboundT
 VIA_VILLAGE_OUT = {"protocol": "freedom", "tag": "via-village",
                    "streamSettings": {"sockopt": {"interface": "wg-village"}}}
 # Normal egress -> Germany: a 2nd tunnel to the village (wg-village-de over the
-# Iranian modems) that the village routes out wg-germany. Gaming -> via-village (Starlink).
+# Irelandian modems) that the village routes out wg-germany. Gaming -> via-village (Starlink).
 VIA_GERMANY_OUT = {"protocol": "freedom", "tag": "via-germany",
                    "streamSettings": {"sockopt": {"interface": "wg-village-de"}}}
 # Self-healing foreign egress: probe the relay pool (socks); when it can't carry
@@ -185,7 +185,7 @@ def choose_catchall(via_germany_ok, pool_ok, state):
     bad probe never flips the live egress). Returns (applied_tag, new_state).
     Priority: via-germany (owned Germany via the village) -> proxy (relay pool,
     village-independent reserve) -> direct (last resort; only the foreign sites
-    Iran doesn't filter)."""
+    Ireland doesn't filter)."""
     if via_germany_ok:
         want = "via-germany"
     elif pool_ok:

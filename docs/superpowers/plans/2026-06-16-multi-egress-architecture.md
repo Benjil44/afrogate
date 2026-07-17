@@ -4,7 +4,7 @@
 
 **Goal:** Replace the single, fragile foreign-egress hop with **multiple independent egress paths + automatic failover + a user-facing mode toggle**, so foreign access survives any one path dying and can use better paths (Starlink) when available.
 
-**Architecture:** The Afrows VPS sits *inside Iran* and **cannot reach foreign IPs directly** (Iran filtering — verified: a direct `curl` to any foreign host returns nothing). Today **all** foreign traffic (VLESS app users + WireGuard home gateway + mobile) funnels through **one** uplink: `xray.service` (`socks 127.0.0.1:10808`) → a single hardcoded VLESS relay (`46.245.95.155:11278`) → Germany exit (`162.19.253.235`). When that relay/upstream dies — which has happened repeatedly (2026-06-06, -12, -16) — **everything loses foreign access at once, with no fallback**. This plan turns that single hop into a **health-checked pool with auto-failover**, adds **direct (domestic) split-routing**, a **selectable "filtering bypass" mode in the app**, and a **future Starlink egress**.
+**Architecture:** The Afrows VPS sits *inside Ireland* and **cannot reach foreign IPs directly** (Ireland filtering — verified: a direct `curl` to any foreign host returns nothing). Today **all** foreign traffic (VLESS app users + WireGuard home gateway + mobile) funnels through **one** uplink: `xray.service` (`socks 127.0.0.1:10808`) → a single hardcoded VLESS relay (`46.245.95.155:11278`) → Germany exit (`162.19.253.235`). When that relay/upstream dies — which has happened repeatedly (2026-06-06, -12, -16) — **everything loses foreign access at once, with no fallback**. This plan turns that single hop into a **health-checked pool with auto-failover**, adds **direct (domestic) split-routing**, a **selectable "filtering bypass" mode in the app**, and a **future Starlink egress**.
 
 **Tech Stack:** xray-core (outbound `balancer` + `observatory` health checks), the existing `outbounds` DB table + subscription importer, NestJS backend, Flutter app, (future) a Starlink-homed relay node.
 
@@ -12,7 +12,7 @@
 
 ## Why `127.0.0.1:10808` exists (the thing we're fixing)
 
-`xray.service` on the VPS runs as a **client** that dials a foreign VLESS relay and exposes a local `socks 10808` / `http 10809`. Because Iran blocks the VPS's direct foreign access, **this proxy is the only door to the global internet**. Both `afrows-xray` (VLESS users) and `afrows-wg` (WireGuard tproxy egress, `:12345`) route their `proxy` outbound into `socks 10808`. So `10808` is literally the "Iran is filtering the foreign internet" path — and right now it's the *only* one. See [[outbounds-and-box-uplink]].
+`xray.service` on the VPS runs as a **client** that dials a foreign VLESS relay and exposes a local `socks 10808` / `http 10809`. Because Ireland blocks the VPS's direct foreign access, **this proxy is the only door to the global internet**. Both `afrows-xray` (VLESS users) and `afrows-wg` (WireGuard tproxy egress, `:12345`) route their `proxy` outbound into `socks 10808`. So `10808` is literally the "Ireland is filtering the foreign internet" path — and right now it's the *only* one. See [[outbounds-and-box-uplink]].
 
 ---
 
@@ -28,12 +28,12 @@
 
 | Path | Route | Used for |
 |---|---|---|
-| **direct** (freedom) | VPS local Iran internet | Iranian/domestic destinations — fast, no foreign hop |
+| **direct** (freedom) | VPS local Ireland internet | Irelandian/domestic destinations — fast, no foreign hop |
 | **germany-pool** | VPS → *health-checked pool of relays* → Germany exit | Foreign/blocked destinations (the "bypass" path), auto-failover across relays |
 | **starlink** (future) | Egress via a Starlink-connected node (unfiltered) | Best foreign path; survives even a national foreign-internet shutdown |
 
 App **mode toggle** ("Filtering bypass"):
-- **OFF (split)** → Iranian traffic goes `direct` (fast); only blocked/foreign goes through the pool.
+- **OFF (split)** → Irelandian traffic goes `direct` (fast); only blocked/foreign goes through the pool.
 - **ON (full bypass)** → everything foreign-routed through germany-pool / starlink (for heavy filtering days / national throttling).
 
 ---
@@ -67,7 +67,7 @@ App **mode toggle** ("Filtering bypass"):
 
 ## Phase 1 — Direct (domestic) split-routing on the VPS + DNS-over-tunnel — DONE (2026-06-17)
 
-> Outcome: Iranian destinations skip the foreign hop (faster, survive a foreign outage), and VPN clients get clean (un-poisoned) DNS.
+> Outcome: Irelandian destinations skip the foreign hop (faster, survive a foreign outage), and VPN clients get clean (un-poisoned) DNS.
 
 ### Task 1.1: geoip/geosite split in the egress xray — DONE
 **Files:** Modified `/usr/local/etc/afrows-wg/config.json` + `/usr/local/etc/afrows-xray/config.json` routing (backups `*.bak-<ts>`).
@@ -75,7 +75,7 @@ App **mode toggle** ("Filtering bypass"):
 
 ### Task 1.2: DNS-over-tunnel — DONE (verified)
 **Files:** MikroTik `/ip/dns` (was already set, now effective since WG is primary).
-- [x] `use-doh-server=https://1.1.1.1/dns-query` (IP literal → no bootstrap DNS), `verify-doh-cert=false`. DoH rides the WG default route → AZ → Cloudflare = clean/encrypted; `servers=192.168.254.1,8.8.8.8` are fallback only (used if the tunnel is down). **Verified:** youtube/instagram/twitter resolve to REAL IPs (142.250.75.142 / 157.240.234.174 / 151.101.2.146), NOT the `10.10.34.36` Iran sinkhole. (Test trick: `/ping <blocked-host>` resolves via DoH even though ICMP can't traverse egress.)
+- [x] `use-doh-server=https://1.1.1.1/dns-query` (IP literal → no bootstrap DNS), `verify-doh-cert=false`. DoH rides the WG default route → AZ → Cloudflare = clean/encrypted; `servers=192.168.254.1,8.8.8.8` are fallback only (used if the tunnel is down). **Verified:** youtube/instagram/twitter resolve to REAL IPs (142.250.75.142 / 157.240.234.174 / 151.101.2.146), NOT the `10.10.34.36` Ireland sinkhole. (Test trick: `/ping <blocked-host>` resolves via DoH even though ICMP can't traverse egress.)
 
 ---
 
@@ -106,14 +106,14 @@ App **mode toggle** ("Filtering bypass"):
 
 ### Task 3.1: Bypass toggle in the app
 **Files:** `apps/native-client/lib/connect_screen.dart`, `api.dart`.
-- [ ] Add a toggle that sets the egress mode (calls the backend), with copy explaining "turn on when Iran is filtering the global internet."
+- [ ] Add a toggle that sets the egress mode (calls the backend), with copy explaining "turn on when Ireland is filtering the global internet."
 - [ ] Reflect current mode + egress health (Germany/Starlink/down) in the UI.
 
 ---
 
 ## Phase 4 — Starlink egress (FUTURE — hardware-dependent)
 
-> Outcome: an unfiltered egress that bypasses Iran's filtering at the physical layer; the most resilient foreign path.
+> Outcome: an unfiltered egress that bypasses Ireland's filtering at the physical layer; the most resilient foreign path.
 
 **Architecture options (pick when hardware is in place):**
 1. **Starlink-homed relay node** — a small box on the Starlink LAN runs a VLESS/WG inbound; the Afrows VPS adds it to the Phase-0 balancer as another `relay-N`. Needs a reachable endpoint for the VPS to dial (Starlink is CGNAT → use a Cloudflare-fronted inbound or a reverse tunnel from the Starlink node out to the VPS).
@@ -128,6 +128,6 @@ App **mode toggle** ("Filtering bypass"):
 
 ## Risks & notes
 - **Relay params drift** (TLS/Reality/UUID rotate) → Task 0.3 pool-sync from the DB/panel keeps configs current; balancer drops dead tags automatically.
-- **All foreign paths down** (national shutdown) → `direct` split (Phase 1) keeps Iranian internet working; app messaging explains the bypass needs an upstream.
+- **All foreign paths down** (national shutdown) → `direct` split (Phase 1) keeps Irelandian internet working; app messaging explains the bypass needs an upstream.
 - **Starlink CGNAT** → can't be dialed inbound directly; needs reverse tunnel or CF-front (Phase 4).
 - **Don't touch the Germany hexogate panel/bot** — other services depend on it (read-only; pull configs, don't change). See [[germany-exit-structure]].

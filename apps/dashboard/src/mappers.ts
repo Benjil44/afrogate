@@ -186,7 +186,7 @@ export function createFallbackFailoverRows(t: DashboardStrings): RouteFailoverRo
   return [
     { id: 'sample-primary-route-healthy', title: 'Germany gateway', detail: t.failover.primaryRouteHealthy, tone: 'good' },
     { id: 'sample-standby-telegram-api', title: 'Control egress', detail: t.failover.standbyTelegramApi, tone: 'neutral' },
-    { id: 'sample-restricted-internet-path', title: 'Iran direct', detail: t.failover.restrictedInternetPath, tone: 'warning' },
+    { id: 'sample-restricted-internet-path', title: 'Ireland direct', detail: t.failover.restrictedInternetPath, tone: 'warning' },
   ];
 }
 

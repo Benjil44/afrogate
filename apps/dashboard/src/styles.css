@@ -10,7 +10,7 @@
   --color-afro-teal: #0f8f83;
   --color-afro-green: #238a4b;
   --color-afro-blue: #2764a8;
-  --font-afro-persian: "Afrows YekanBakh", Tahoma, Arial, sans-serif;
+  --font-afro-arabic: "Afrows YekanBakh", Tahoma, Arial, sans-serif;
 }
 
 @layer base {
@@ -30,7 +30,7 @@
   html[lang="fa"],
   html[lang="fa"] body,
   [lang="fa"] {
-    font-family: var(--font-afro-persian);
+    font-family: var(--font-afro-arabic);
   }
 
   html[lang="fa"] :where(button, input, select, textarea),

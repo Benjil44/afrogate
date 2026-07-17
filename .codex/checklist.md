@@ -118,14 +118,14 @@
 - [x] Second-LCD NOC dashboard layout.
 - [x] Header system resource strip.
 - [x] Separate dashboard download and upload traffic values.
-- [x] English/Persian dashboard language toggle.
+- [x] English/arabic dashboard language toggle.
 - [x] Sidebar footer language icon.
-- [x] Local Persian font-face wiring for YekanBakh assets.
+- [x] Local arabic font-face wiring for YekanBakh assets.
 - [x] Non-scrolling responsive sidebar.
 - [x] Desktop fixed sidebar with main-content-only scrolling.
 - [x] Compact second-LCD dashboard density so 1920x1080 monitoring fits without main-content overflow.
 - [x] Sidebar alert severity indicator with red critical state.
-- [x] Responsive smoke check for dashboard pages in English and Persian.
+- [x] Responsive smoke check for dashboard pages in English and arabic.
 - [x] Sidebar pages implementation checklist.
 - [x] Sidebar navigation state.
 - [x] Initial Servers page.
@@ -140,12 +140,12 @@
 
 ## UI/UX Audit Backlog
 
-- [x] Run browser UI audit across Dashboard, Servers, Routes, and Alerts in English/Persian at mobile, tablet, desktop, and second-LCD widths.
+- [x] Run browser UI audit across Dashboard, Servers, Routes, and Alerts in English/arabic at mobile, tablet, desktop, and second-LCD widths.
 - [x] Sidebar alert severity indicator with red critical state.
-- [x] Persian font and number/unit localization pass.
+- [x] arabic font and number/unit localization pass.
 - [x] Replace cramped server CPU/RAM/disk text chips with icon+value indicators.
 - [x] Simplify the health chart so timeline labels and the plot are readable in dashboard density.
-- [x] Keep the 1920x1080 second-LCD dashboard at zero main-content overflow in English and Persian.
+- [x] Keep the 1920x1080 second-LCD dashboard at zero main-content overflow in English and arabic.
 - [x] Reduce dashboard vertical scroll at 1440x900 without making the 1920x1080 NOC display feel sparse.
 - [x] Add a desktop sidebar collapse/expand control with persisted state and accessible labels.
 - [x] Compact panel headers so metadata like node/link counts stays inline with the title.
@@ -214,7 +214,7 @@
 - [x] Initial route quality history analytics API and Settings recommendations from synthetic probes.
 - [x] Initial hourly route quality summary table and aggregation scheduler.
 - [x] Route quality history aggregation by server, outbound, operator, protocol profile, and time bucket.
-- [x] Time-of-day and day-of-week route analytics for operator/outbound patterns such as Irancell/BTS windows.
+- [x] Time-of-day and day-of-week route analytics for operator/outbound patterns such as Irelandcell/BTS windows.
 - [x] Predictive route recommendations before historically degraded time windows.
 - [x] Gaming-safe sticky-session and drain policy preview for active session protection.
 - [x] Transparent switch-engine planning preview with guard, session pinning, new-session routing, drain, active switch, verify, and rollback phases.
@@ -339,7 +339,7 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 
 ### Release / deployment validation
 
-- [x] **Live VPS production deployment — DONE 2026-06-04.** Deployed to operator's VPS (`94.74.145.199`, Ubuntu 24.04 LTS, 4 GB RAM, IP-only → self-signed TLS). Live at `https://94.74.145.199/`. Done over a heavily filtered Iranian network: Node 22 installed from tarball to `/usr/local` (apt/mirror blocked), dependencies installed offline from a PC-warmed Linux npm cache (`npm ci --offline`), least-privilege DB roles (`afrows_owner`/`afrows_migrator`/`afrows_app`) + all migrations applied, secrets generated on-box in `/etc/afrows/.secrets`, systemd `afrows-backend` unit, Nginx self-signed TLS reverse proxy, UFW (22/80/443 allow, default deny). Deploy scripts (`deploy-afrows.sh`, `update-afrows.sh`, `sync.ps1`, `ufw-afrows.sh`) are gitignored (server-specific, generate secrets on-box). **Superadmin password was exposed in chat → must be rotated on first login.**
+- [x] **Live VPS production deployment — DONE 2026-06-04.** Deployed to operator's VPS (`94.74.145.199`, Ubuntu 24.04 LTS, 4 GB RAM, IP-only → self-signed TLS). Live at `https://94.74.145.199/`. Done over a heavily filtered Irelandian network: Node 22 installed from tarball to `/usr/local` (apt/mirror blocked), dependencies installed offline from a PC-warmed Linux npm cache (`npm ci --offline`), least-privilege DB roles (`afrows_owner`/`afrows_migrator`/`afrows_app`) + all migrations applied, secrets generated on-box in `/etc/afrows/.secrets`, systemd `afrows-backend` unit, Nginx self-signed TLS reverse proxy, UFW (22/80/443 allow, default deny). Deploy scripts (`deploy-afrows.sh`, `update-afrows.sh`, `sync.ps1`, `ufw-afrows.sh`) are gitignored (server-specific, generate secrets on-box). **Superadmin password was exposed in chat → must be rotated on first login.**
   - [x] Passwordless dev→VPS deploy loop: `sync.ps1` (PC) packages source, ships over SSH (ed25519 `afrows_deploy` key), runs `update-afrows.sh` on the box (extract → build with `VITE_API_BASE_URL=/api` → idempotent migrate → restart → health check). `.\sync.ps1` for code-only, `.\sync.ps1 -WithDeps` when `package-lock.json` changed (re-warms + ships the Linux npm cache).
   - [x] Hot reload for local dev: root `npm run dev` (`scripts/dev-all.mjs`) runs shared `tsc --watch` + backend/dashboard/client dev servers together (Vite HMR on frontends, Nest watch on backend).
   - [x] Honest dashboard data: demo `fallbackServers`/`tunnels`/`outbounds`/failover/timeseries gated behind `import.meta.env.DEV`; real `countActiveUsers()` replaces the hardcoded `150`. Production shows real API data and true empty states.
@@ -355,7 +355,7 @@ enforced guarantees and cover the one high-risk path the review could not fully 
 The drills above are now *executable* because there is a live host. Order roughly by risk.
 
 - [x] **Full rename AfroGate -> Afrows (DONE 2026-06-04).** Codebase rename merged to `main` (brand, `@afrows/*` packages, `AFROWS_*` env, identifiers, python module, plugin, infra samples) and the live VPS cut over (DB `afrows`, roles `afrows_*`, user `afrows`, `/opt|/etc|/var/lib|/var/log/afrows`, `afrows-backend` unit, nginx site). Verified live: `service:"afrows-backend"`, dashboard title "Afrows Operations", old `afrogate` DB/dir/unit gone.
-- [x] **Domain + Let's Encrypt TLS (DONE 2026-06-05).** `https://afrows.com` live with a trusted LE cert (SANs `afrows.com` + `*.afrows.com`, expires 2026-09-03). **Key constraint discovered:** the iranserver VPS is reachable *only from inside Iran* (ports 80/443/53 time out from every node outside Iran — verified via check-host), so self-hosting authoritative DNS on the box is impossible and HTTP-01/TLS-ALPN validation can't work. **Solution:** DNS moved to **deSEC** (free, sanction-safe, global, full API) — registrar NS at iranserver switched to `ns1.desec.io`/`ns2.desec.org`; A records `@`+`www` -> `94.74.145.199` created via deSEC API. Cert issued from the dev PC via **Posh-ACME + deSEC DNS-01** (DNS-01 needs no inbound to the box), installed to `/etc/afrows/tls/afrows.{crt,key}`, nginx reloaded, `CORS_ORIGIN=https://afrows.com,https://www.afrows.com,https://94.74.145.199`. Auto-renew: Windows scheduled task `Afrows-TLS-Renew` (weekly) runs `C:\Users\BenJiL\afrows-ops\renew-deploy-afrows.ps1` (Submit-Renewal -> scp -> nginx reload). deSEC API token stored only in Posh-ACME's encrypted profile on the dev PC — never committed.
+- [x] **Domain + Let's Encrypt TLS (DONE 2026-06-05).** `https://afrows.com` live with a trusted LE cert (SANs `afrows.com` + `*.afrows.com`, expires 2026-09-03). **Key constraint discovered:** the Irelandserver VPS is reachable *only from inside Ireland* (ports 80/443/53 time out from every node outside Ireland — verified via check-host), so self-hosting authoritative DNS on the box is impossible and HTTP-01/TLS-ALPN validation can't work. **Solution:** DNS moved to **deSEC** (free, sanction-safe, global, full API) — registrar NS at Irelandserver switched to `ns1.desec.io`/`ns2.desec.org`; A records `@`+`www` -> `94.74.145.199` created via deSEC API. Cert issued from the dev PC via **Posh-ACME + deSEC DNS-01** (DNS-01 needs no inbound to the box), installed to `/etc/afrows/tls/afrows.{crt,key}`, nginx reloaded, `CORS_ORIGIN=https://afrows.com,https://www.afrows.com,https://94.74.145.199`. Auto-renew: Windows scheduled task `Afrows-TLS-Renew` (weekly) runs `C:\Users\BenJiL\afrows-ops\renew-deploy-afrows.ps1` (Submit-Renewal -> scp -> nginx reload). deSEC API token stored only in Posh-ACME's encrypted profile on the dev PC — never committed.
 - [x] **Rotate the superadmin password (DONE 2026-06-05).** The superadmin is a bootstrap account locked to env (`AFROWS_SUPERADMIN_PASSWORD_HASH`, format `scrypt$16384$8$1$salt$hash` per `security/password.ts`) — NOT editable via the dashboard Users page. Rotated by generating a strong password on the box, writing the new scrypt hash to `/etc/afrows/afrows.env` (plaintext field cleared), restarting `afrows-backend`. Verified: `POST https://afrows.com/api/auth/login` returns 200 for `superadmin`. New password handed to the operator (stored only as a hash on the box; not recorded anywhere else).
 - [x] **Install self-verifier (DONE 2026-06-05).** `BASE_URL=https://afrows.com HOST_LOCAL=1 scripts/drills/verify-install.sh` — all pass: health ok, CSP + X-Frame-Options present, ports 7000/5432 loopback-only. Gap it flagged (no HSTS) fixed: added `Strict-Transport-Security "max-age=31536000; includeSubDomains"` to the nginx 443 block; all four security headers now present.
 - [x] **Encrypted backup + restore drill (DONE 2026-06-05).** `scripts/drills/backup-restore-drill.sh` via a scratch DB (`afrows_scratch`, created+dropped) as the `postgres` superuser over the unix socket: dump+AES256-encrypt OK, artifact unreadable without passphrase, restore OK, row-count parity across all 5 tables (all 0 — no real data yet). Note: drill scripts ship with CRLF from the Windows repo; strip with `tr -d '\r'` before running on the box.
@@ -395,10 +395,10 @@ Operator vision (2026-06-06): the app is a VPN with a **pool** of outbounds; it 
 
 ### Phase 11: Universal inbound reachability — DEFERRED (needs Germany VPS)
 
-Operator vision (2026-06-07): every visitor on any network must always load landing + panel. Root cause confirmed: the raw Iran VPS IP (`94.74.145.199`) is **SNI-DPI filtered** — intermittent TLS-handshake failures direct (`schannel: failed to receive handshake` then 200 on retry), and unreachable from abroad/foreign-exits. **CDN fronting rejected:** ArvanCloud needs Iranian KYC (operator declined); Cloudflare has sanctions/edge-reachability issues.
+Operator vision (2026-06-07): every visitor on any network must always load landing + panel. Root cause confirmed: the raw Ireland VPS IP (`94.74.145.199`) is **SNI-DPI filtered** — intermittent TLS-handshake failures direct (`schannel: failed to receive handshake` then 200 on retry), and unreachable from abroad/foreign-exits. **CDN fronting rejected:** ArvanCloud needs Irelandian KYC (operator declined); Cloudflare has sanctions/edge-reachability issues.
 
-- [ ] **Chosen approach (future): dual-VPS mirror.** Buy a **Germany VPS**; mirror both sites. Iranian users → Iran box; worldwide users → Germany box (split via GeoDNS or per-region records). Hide origin IP. Sync the two boxes; connect them over **WireGuard** (control/data link) and/or VLESS. Decide what syncs (DB = single source vs replica; the panel is one app, so likely Germany proxies/reads from Iran DB over the WG link, or read-replica).
-- [ ] Open design questions for when the VPS exists: single DB (Germany→Iran over WG) vs replicated; cert strategy per box; session/cookie domain across boxes; failover if one box dies; how `app.afrows.com` login handoff works per region.
+- [ ] **Chosen approach (future): dual-VPS mirror.** Buy a **Germany VPS**; mirror both sites. Irelandian users → Ireland box; worldwide users → Germany box (split via GeoDNS or per-region records). Hide origin IP. Sync the two boxes; connect them over **WireGuard** (control/data link) and/or VLESS. Decide what syncs (DB = single source vs replica; the panel is one app, so likely Germany proxies/reads from Ireland DB over the WG link, or read-replica).
+- [ ] Open design questions for when the VPS exists: single DB (Germany→Ireland over WG) vs replicated; cert strategy per box; session/cookie domain across boxes; failover if one box dies; how `app.afrows.com` login handoff works per region.
 - [ ] **Blocked on:** purchasing the Germany VPS. Revisit (brainstorm → spec → plan) then.
 
 ### Phase 12: Native VPN data plane (Afrows = its own engine, no Marzban)
@@ -412,7 +412,7 @@ Spec: `docs/superpowers/specs/2026-06-07-afrows-native-data-plane-design.md`. **
 - [ ] **Phase 5 — smart routing (ties Phase 10).** Per-user/route-group best-outbound from route-quality history (1h/1d/1w/1mo) + hysteresis/cooldown + auto-failover; drop unreachable outbounds; register the ax3 mesh exits as outbounds.
 - [ ] **Multi-protocol sell:** let a user/seller choose VLESS-Reality / WireGuard / L2TP per account (VLESS-Reality first).
 - [ ] **Subscription-outbound import (operator 2026-06-09):** add a *subscription URL* (a sub you bought that contains many VLESS configs) to the Outbounds table → expand into **one outbound row per server** in the sub → **auto-refresh the sub** on an interval (re-fetch, update the VLESS configs as the provider rotates) → speed-test each → smart-pick the best server. Extends the outbounds engine; pairs with Phase 5 smart routing.
-- [x] **Deployed + live (2026-06-09):** backend deployed (migs 0030/0031 + login + provisioning); `AFROWS_INBOUND_*` env set; inbound **moved to 443 behind the panel** (nginx → 127.0.0.1:8444, Reality dest→nginx, serverNames app/afrows.com) since 8443 is filtered in Iran. Server **proven** (on-box Reality client → Germany, accepted afrows-in→proxy). Test user `test@afrows.com`/`AfrowsTest2026` (10GB) provisioned. App **versioning** added (v1.1.0, shown in UI) for diagnosis.
+- [x] **Deployed + live (2026-06-09):** backend deployed (migs 0030/0031 + login + provisioning); `AFROWS_INBOUND_*` env set; inbound **moved to 443 behind the panel** (nginx → 127.0.0.1:8444, Reality dest→nginx, serverNames app/afrows.com) since 8443 is filtered in Ireland. Server **proven** (on-box Reality client → Germany, accepted afrows-in→proxy). Test user `test@afrows.com`/`AfrowsTest2026` (10GB) provisioned. App **versioning** added (v1.1.0, shown in UI) for diagnosis.
 - [ ] **Open: client connects but 0 traffic.** Server is proven; the gap is the *client* Reality config. v2rayN failed only because the operator typed entries with empty fp/pbk/sid (fix: import the link). The **app** (flutter_v2ray) shows connected+0B/s — verify on the latest APK after Sign out→Sign in; if it still fails, switch the inbound to **VLESS+WS+TLS** (operator's proven snapp.ir pattern) or update the app's xray core.
 - [ ] Later: move the inbound to the **Germany VPS** for global reach (ties Phase 11).
 

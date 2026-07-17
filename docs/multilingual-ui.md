@@ -1,6 +1,6 @@
 # Multilingual UI Policy
 
-Afrows dashboard and client surfaces support English and Persian from the first MVP stage.
+Afrows dashboard and client surfaces support English and arabic from the first MVP stage.
 
 ## Current Approach
 
@@ -9,18 +9,18 @@ Afrows dashboard and client surfaces support English and Persian from the first 
 - Language choice is persisted in browser localStorage.
 - The selected language updates the page `lang` and `dir` attributes.
 - The sidebar footer contains the language icon toggle beside the version.
-- Current language support covers English and Persian dashboard operations copy, the admin usage/billing and customer-limit-management surface, and the first VPN-client route/quota/rewarded-data/subscription-render/copy surface.
-- Persian typography uses local YekanBakh assets from `apps/dashboard/public/assets/fonts/YekanBakh/`; `index.html` loads `yekanbakh.css` directly and no CDN font source is used.
+- Current language support covers English and arabic dashboard operations copy, the admin usage/billing and customer-limit-management surface, and the first VPN-client route/quota/rewarded-data/subscription-render/copy surface.
+- arabic typography uses local YekanBakh assets from `apps/dashboard/public/assets/fonts/YekanBakh/`; `index.html` loads `yekanbakh.css` directly and no CDN font source is used.
 
 ## Rules
 
 - Do not add new hardcoded user-facing dashboard labels directly inside React components when a translation key is appropriate.
 - Do not add new hardcoded user-facing client app labels directly inside React components when a translation key is appropriate.
 - Keep technical identifiers such as server IDs, tunnel names, interface names, and route names unchanged unless they become editable display names.
-- Prefer short operational Persian labels that fit dense monitoring panels.
-- Keep English and Persian keys in the same typed object so TypeScript catches missing translations.
+- Prefer short operational arabic labels that fit dense monitoring panels.
+- Keep English and arabic keys in the same typed object so TypeScript catches missing translations.
 - When adding a new page or sidebar item, add the translation keys in the same commit.
-- Do not commit proprietary Persian font files unless the project has a license that allows repository storage and distribution.
+- Do not commit proprietary arabic font files unless the project has a license that allows repository storage and distribution.
 
 ## Future Improvements
 

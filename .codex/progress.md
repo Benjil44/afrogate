@@ -5,9 +5,9 @@
 ### Completed
 
 - Created initial project planning docs from the 40-point product answers.
-- Added MVP monitoring PRD in Persian.
-- Added technical architecture proposal in Persian.
-- Added roadmap and backlog in Persian.
+- Added MVP monitoring PRD in arabic.
+- Added technical architecture proposal in arabic.
+- Added roadmap and backlog in arabic.
 - Added root `README.md`.
 - Added root `AGENTS.md` so future coding agents know what to read first.
 - Added `.codex/` control folder with agent, skills, checklist, progress, and memory files.
@@ -48,19 +48,19 @@
 - Added Afrows versioning workflow with SemVer bump scripts, version consistency checks, changelog, and local Codex plugin/skill.
 - Added dashboard sidebar version footer sourced from root `package.json`.
 - Split dashboard traffic into separate download and upload values in the header resource strip, summary cards, capacity panel, and server rows.
-- Added typed English/Persian dashboard translations with persisted language choice and page `lang`/`dir` updates.
+- Added typed English/arabic dashboard translations with persisted language choice and page `lang`/`dir` updates.
 - Added a sidebar footer language icon toggle beside the version display.
 - Added multilingual UI policy documentation and linked it from README and AGENTS.
-- Added local IRANSans font-face wiring for Persian mode and an asset folder for licensed font files without using a CDN.
-- Moved the workspace-provided `Iranian Sans.ttf` into the dashboard font assets as `IranianSans.ttf`.
+- Added local arial font-face wiring for arabic mode and an asset folder for licensed font files without using a CDN.
+- Moved the workspace-provided `Irelandian Sans.ttf` into the dashboard font assets as `IrelandianSans.ttf`.
 - Reworked the dashboard sidebar so mobile navigation wraps instead of horizontally scrolling and desktop navigation remains sticky.
 - Tightened responsive dashboard layouts for storage chips, capacity cards, nav labels, and server row traffic details.
 - Added stable `data-view` attributes to sidebar navigation for browser-level layout verification.
 - Changed the desktop shell to `h-screen`/`overflow-hidden` and made the main content pane the only vertical scroll container.
 - Compacted the dashboard into a denser NOC layout with smaller cards, rows, charts, resource strips, and earlier multi-column dashboard sections.
 - Verified the dashboard, Servers, Routes, and Alerts pages fit without main-content overflow on a 1920x1080 second-LCD viewport.
-- Fixed the packet-loss dashboard translations so Persian shows `افت بسته` and English no longer shows Persian text.
-- Strengthened Persian dashboard typography and number formatting so Persian mode uses local IRANSans, Persian digits, Persian units, localized clock/latency/threshold values, and localized fallback sample names.
+- Fixed the packet-loss dashboard translations so arabic shows `افت بسته` and English no longer shows arabic text.
+- Strengthened arabic dashboard typography and number formatting so arabic mode uses local arial, arabic digits, arabic units, localized clock/latency/threshold values, and localized fallback sample names.
 - Added alert-aware sidebar navigation so the Alerts item shows warning/critical counts and turns red when critical alerts exist.
 
 - Added guarded backend admin APIs under `/api/admin` for server inventory/detail/create/update/delete, outbound list/detail/create/update/delete, outbound priority moves, and route failover history reads.
@@ -68,13 +68,13 @@
 - Added a backend audit service and audit events for server and outbound mutations.
 - Kept outbound route management secret-safe by rejecting secret-like config keys, redacting legacy secret-like config values in responses, and exposing only `hasSecretRef` instead of saved secret references.
 - Bumped Afrows to `0.4.0` for the guarded admin management API capability.
-- Switched Persian dashboard typography from IRANSans to the local YekanBakh FaNum variable webfont under `apps/dashboard/public/assets/fonts/YekanBakh/`.
+- Switched arabic dashboard typography from arial to the local YekanBakh FaNum variable webfont under `apps/dashboard/public/assets/fonts/YekanBakh/`.
 - Updated dashboard DOM CSS and ECharts font-family wiring to use `Afrows YekanBakh`.
-- Bumped Afrows to `0.4.1` for the Persian font update.
+- Bumped Afrows to `0.4.1` for the arabic font update.
 - Replaced the dashboard-facing admin token login with username/password login through `/api/auth/login`.
 - Added signed admin session tokens for dashboard sessions, with `/api/admin/session` verifying the signed bearer session.
 - Added the permanent `superadmin` role concept and optional configured `admin` login support while keeping the legacy admin bearer token as an API/bootstrap fallback.
-- Updated dashboard English/Persian login copy, `.env.example`, and the security/performance policy for the superadmin/admin login model.
+- Updated dashboard English/arabic login copy, `.env.example`, and the security/performance policy for the superadmin/admin login model.
 - Bumped Afrows to `0.5.0` for the username/password admin session auth capability.
 - Fixed a local login UX issue where `superadmin` appeared as placeholder text but was not submitted; the login form now pre-fills `superadmin`, marks both fields required, and focuses the password field.
 - Bumped Afrows to `0.5.1` for the login form usability fix.
@@ -165,18 +165,18 @@ Repository remote is ready:
 - Verified versioning workflow with `npm run version:check`, workspace typecheck, and production build.
 - Verified dashboard upload/download split with `npm run version:check`, workspace typecheck, production build, and dependency audit.
 - Verified dashboard multilingual support with `npm run version:check`, workspace typecheck, production build, and dependency audit.
-- Verified Persian font asset wiring and copied font asset with version check, workspace typecheck, production build, and dependency audit.
-- Verified Dashboard, Servers, Routes, and Alerts pages in English and Persian at 375x812, 768x1024, 1440x900, and 1920x1080 using local Edge CDP against the Vite server on port 3100.
+- Verified arabic font asset wiring and copied font asset with version check, workspace typecheck, production build, and dependency audit.
+- Verified Dashboard, Servers, Routes, and Alerts pages in English and arabic at 375x812, 768x1024, 1440x900, and 1920x1080 using local Edge CDP against the Vite server on port 3100.
 - Verified English/LTR fixed-sidebar behavior at 1440x900 and 1920x1080: window scroll stays at 0, document height equals viewport height, sidebar stays top-left, and content scrolls independently when needed.
 - Verified compact dashboard density in local Edge CDP: 1920x1080 reports `0px` main-content overflow for Dashboard, Servers, Routes, and Alerts; 1440x900 Dashboard content was reduced from about `2581px` to `1182px`.
 - Verified packet-loss translation fix with dashboard typecheck and version consistency check.
-- Verified Persian dashboard font and runtime text in local Edge CDP: `main` and buttons compute to `"Afrows IRANSans"`, and sample text renders Persian digits, units, latency, packet loss, and localized sample labels.
+- Verified arabic dashboard font and runtime text in local Edge CDP: `main` and buttons compute to `"Afrows arial"`, and sample text renders arabic digits, units, latency, packet loss, and localized sample labels.
 - Verified sidebar alert warning state in local Edge CDP with the fallback warning sample; critical severity uses the same alert-row source with a red class path.
-- Added a UI/UX audit checklist and fixed the first dashboard density issues: compact icon resource rows, simplified health timeline spacing, and zero main-content overflow on the 1920x1080 Dashboard view in English and Persian.
-- Verified the latest UI/UX pass with dashboard typecheck and local Edge CDP across Dashboard, Servers, Routes, and Alerts in English/Persian at mobile, tablet, desktop, and second-LCD sizes; measured text overflow cases are now zero.
-- Added desktop sidebar collapse/expand support with persisted state, localized labels/tooltips, English left-side collapse, and Persian right-side collapse verification in local Edge CDP.
+- Added a UI/UX audit checklist and fixed the first dashboard density issues: compact icon resource rows, simplified health timeline spacing, and zero main-content overflow on the 1920x1080 Dashboard view in English and arabic.
+- Verified the latest UI/UX pass with dashboard typecheck and local Edge CDP across Dashboard, Servers, Routes, and Alerts in English/arabic at mobile, tablet, desktop, and second-LCD sizes; measured text overflow cases are now zero.
+- Added desktop sidebar collapse/expand support with persisted state, localized labels/tooltips, English left-side collapse, and arabic right-side collapse verification in local Edge CDP.
 - Repositioned the sidebar collapse control from an awkward internal row to an icon-only edge handle on the sidebar/content divider, mirrored for RTL.
-- Compacted dashboard panel headers and panel/table spacing so metadata counts stay inline with titles; verified English/Persian dashboard headings stay same-line with zero measured text overflow in local Edge CDP.
+- Compacted dashboard panel headers and panel/table spacing so metadata counts stay inline with titles; verified English/arabic dashboard headings stay same-line with zero measured text overflow in local Edge CDP.
 - Verified guarded admin management API code with workspace typecheck and production build.
 - Verified `npm run version:check` after the `0.4.0` bump.
 - Verified `npm audit` still reports zero vulnerabilities.
@@ -248,7 +248,7 @@ Repository remote is ready:
 - Updated backend configuration loading to read both backend-workspace and repository-root `.env` files for root workspace dev commands.
 - Bumped Afrows to `0.10.1` for the local port migration.
 - Fixed the local login CORS mismatch where the dashboard on `127.0.0.1:4000` called `localhost:7000` while the backend allowed only `localhost:4000`.
-- Added a login password show/hide icon button with typed English/Persian labels.
+- Added a login password show/hide icon button with typed English/arabic labels.
 - Updated the local ignored `.env` to allow both local origins, call the backend through `127.0.0.1:7000`, and match the local superadmin password chosen for this machine.
 - Bumped Afrows to `0.10.2` for the local login/CORS and password visibility fix.
 
@@ -386,7 +386,7 @@ Repository remote is ready:
 - Fingerprinted WireGuard peer public keys before reporting them and kept raw public keys, private keys, and preshared keys out of metrics payloads.
 - Added shared/backend metric contracts and DTO validation for `wireGuardInterfaces`, and returned that telemetry through latest metrics and admin server inventory rows.
 - Included WireGuard interface health in backend health-score penalties when all/some peers are down or degraded.
-- Surfaced WireGuard status, active-peer counts, handshake age, and traffic rates in the dashboard Server Monitoring and Interfaces tabs with English/Persian labels.
+- Surfaced WireGuard status, active-peer counts, handshake age, and traffic rates in the dashboard Server Monitoring and Interfaces tabs with English/arabic labels.
 - Marked WireGuard tunnel status metrics complete while keeping route-selection health scoring and active protocol probes pending.
 - Bumped Afrows to `0.19.0` for the WireGuard tunnel telemetry capability.
 - Merged live agent WireGuard telemetry into the Settings WireGuard route candidate list alongside managed outbound health rows.
@@ -396,7 +396,7 @@ Repository remote is ready:
 - Bumped Afrows to `0.20.0` for agent-backed WireGuard route candidates.
 - Finished opt-in agent ping/jitter/packet-loss probes using configured synthetic targets from `AFROWS_PING_TARGETS`.
 - Kept empty ping target configuration privacy-safe by reporting null route-quality values rather than probing uncontrolled destinations.
-- Added the missing typed English/Persian `routeQuality` dashboard label used by the server monitoring tab.
+- Added the missing typed English/arabic `routeQuality` dashboard label used by the server monitoring tab.
 - Marked ping/jitter/packet-loss probes complete while keeping full TCP/UDP/QUIC/DNS protocol-aware probes pending.
 - Bumped Afrows to `0.21.0` for the opt-in ping/jitter/packet-loss probe capability.
 
@@ -444,7 +444,7 @@ Repository remote is ready:
 - Added opt-in agent protocol-aware route probes for TCP connect, UDP response, QUIC-labeled UDP response, and DNS lookup targets.
 - Added route-probe settings through `AFROWS_TCP_PROBE_TARGETS`, `AFROWS_UDP_PROBE_TARGETS`, `AFROWS_QUIC_PROBE_TARGETS`, `AFROWS_DNS_PROBE_TARGETS`, `AFROWS_ROUTE_PROBE_COUNT`, and `AFROWS_ROUTE_PROBE_TIMEOUT_SECONDS`.
 - Added shared/backend `routeProbes` contracts, metrics ingest validation, latest-metrics mapping, admin server metric mapping, and health-score penalties for degraded route-probe status.
-- Surfaced route-probe health in the dashboard Server Monitoring tab with typed English/Persian labels.
+- Surfaced route-probe health in the dashboard Server Monitoring tab with typed English/arabic labels.
 - Documented the route-probe local development and synthetic-target rules.
 - Marked the initial protocol-aware route probe foundation complete while keeping full QUIC/HTTP3 handshake/request probing and backend protocol-aware route scoring pending.
 - Bumped Afrows to `0.22.0` for the protocol-aware route-probe foundation.
@@ -476,7 +476,7 @@ Repository remote is ready:
 - Bumped Afrows to `0.27.0` for the advisory gaming route profile capability.
 - Added route decision foundation tables for assignments and future decision events.
 - Added a read-only `/api/admin/route-decisions/preview` endpoint that evaluates current route, recommended route, route lock, cooldown, hysteresis, score profile, and reason codes without applying route changes.
-- Added a Settings Decision Preview panel with typed English/Persian labels so admins can see what Afrows would do before an audited switch engine exists.
+- Added a Settings Decision Preview panel with typed English/arabic labels so admins can see what Afrows would do before an audited switch engine exists.
 - Marked the route assignment model and read-only route decision preview checklist items complete while keeping auto-route toggles, route-lock controls, live transparent switching, and decision event writes pending.
 - Bumped Afrows to `0.28.0` for the route decision preview foundation.
 - Added guarded route assignment read/update APIs for the default assignment.
@@ -490,13 +490,13 @@ Repository remote is ready:
 - Marked route decision audit reasons complete while keeping live transparent route apply and drain-safe switching pending.
 - Bumped Afrows to `0.30.0` for advisory route decision event logging.
 - Added candidate-review rows to the advisory route decision preview response, including dispositions, score deltas from the current route, rejection/recommendation reasons, and compact score-penalty details.
-- Surfaced candidate review details in the Settings Decision Preview panel with typed English/Persian labels.
+- Surfaced candidate review details in the Settings Decision Preview panel with typed English/arabic labels.
 - Marked candidate recommendation/rejection detail review complete while keeping live transparent route apply and drain-safe switching pending.
 - Bumped Afrows to `0.31.0` for candidate recommendation/rejection explanations in the advisory route decision preview.
 - Added guarded `POST /api/admin/route-decisions/apply-preview` for assignment-only route decision apply.
 - Enforced the apply boundary through the existing preview: only `switchRecommended` managed outbound decisions can update saved assignment state, set cooldown, and write an `assignment_apply` event.
 - Kept live server/data-plane routing disabled by returning and recording `dataPlaneApplied = false`.
-- Added a Settings Decision Preview action to apply the recommended route to saved assignment state with English/Persian labels.
+- Added a Settings Decision Preview action to apply the recommended route to saved assignment state with English/arabic labels.
 - Bumped Afrows to `0.32.0` for the assignment-only route decision apply boundary.
 - Added a structured route apply plan to decision preview responses with guard, assignment, drain, switch, verify, and rollback steps.
 - Surfaced the apply plan in the Settings Decision Preview panel, including whether steps are control-plane-only or future data-plane mutations.
@@ -518,51 +518,51 @@ Repository remote is ready:
 - Added optional loaded-latency fields to route-probe contracts and backend ingest validation.
 - Added backend bufferbloat assessment for route candidates, including loaded-latency delta, severity, SQM/AQM recommendation, and avoid-under-load guidance.
 - Penalized route health and profile scores when loaded latency rises, with stronger impact on stability/gaming profiles and decision-review reason labels.
-- Surfaced loaded-latency guidance in Settings route candidate and decision review panels with English/Persian labels.
+- Surfaced loaded-latency guidance in Settings route candidate and decision review panels with English/arabic labels.
 - Bumped Afrows to `0.38.0` for loaded-latency and bufferbloat-aware route guidance.
 - Added advisory smart-route profile recommendations to route decision previews across balanced, stability, throughput, gaming, TCP, UDP, QUIC, DNS, and WireGuard profiles.
 - Compared usable managed candidates by existing privacy-safe per-profile scores, including score delta from the currently selected profile and the best candidate for each profile.
-- Surfaced smart-route profile recommendations in the Settings decision preview with typed English/Persian labels.
+- Surfaced smart-route profile recommendations in the Settings decision preview with typed English/arabic labels.
 - Bumped Afrows to `0.39.0` for advisory smart-route profile recommendations.
 - Added explicit health-based switch reasons to route decision previews when the current managed route is unhealthy and a healthy managed candidate exists.
 - Let assignment-only apply and apply-plan guards bypass score-delta hysteresis for health-based switches while still respecting route lock, manual mode, cooldown, and managed-candidate checks.
-- Surfaced current-route-unhealthy and health-based-switch reason labels in English/Persian Settings UI.
+- Surfaced current-route-unhealthy and health-based-switch reason labels in English/arabic Settings UI.
 - Bumped Afrows to `0.40.0` for explicit health-based route decisions.
 - Added advisory smart-load-balancing summaries to route decision previews with primary, secondary, standby, weight, adjusted-score, and risk guidance.
 - Weighted managed candidates by selected route profile plus health, packet loss, jitter, latency, throughput/load, loaded-latency, and high-security/route-consistency constraints while keeping data-plane routing disabled.
-- Surfaced the smart-load-balancing panel in Settings with typed English/Persian labels.
+- Surfaced the smart-load-balancing panel in Settings with typed English/arabic labels.
 - Bumped Afrows to `0.41.0` for advisory smart load balancing.
 - Added gaming-safe session-safety summaries to route decision previews so future data-plane switching can distinguish safe switches, sticky holds, new-session-only drains, and emergency health switches.
 - Wired session-safety drain timing into the apply-plan estimate while keeping real data-plane movement disabled.
-- Surfaced the session-safety panel in Settings with typed English/Persian labels for sticky TTL, drain wait, new-session-only movement, emergency permission, and disconnect risk.
+- Surfaced the session-safety panel in Settings with typed English/arabic labels for sticky TTL, drain wait, new-session-only movement, emergency permission, and disconnect risk.
 - Bumped Afrows to `0.42.0` for gaming-safe session-safety route decision guidance.
 - Added transparent switch-engine planning summaries to route decision previews with guard, session pinning, new-session routing, drain, switch, verify, and rollback stages.
-- Surfaced switch-engine readiness in Settings with planning-only/data-plane-ready status, session impact, step state, and rollback indicators in English/Persian.
+- Surfaced switch-engine readiness in Settings with planning-only/data-plane-ready status, session impact, step state, and rollback indicators in English/arabic.
 - Kept every data-plane mutation step future/planning-only while the server apply adapter remains disabled or missing.
 - Bumped Afrows to `0.43.0` for transparent switch-engine planning.
 - Added switch-execution summaries to assignment-only route apply events so applied decisions record control-plane assignment, sticky-session deadlines, drain deadlines, cooldown deadlines, rollback readiness, and future data-plane steps.
-- Surfaced switch-execution results in Settings and decision event detail with typed English/Persian labels.
+- Surfaced switch-execution results in Settings and decision event detail with typed English/arabic labels.
 - Kept switch execution data-plane state blocked/not-applied until the audited apply adapter exists.
 - Bumped Afrows to `0.44.0` for assignment-only switch execution audit state.
 - Added switch-preflight readiness summaries to route decision previews so future data-plane switching is gated by feature-flag, apply-adapter, dry-run, guard, session-safety, rollback, cooldown, audit, and health-verification checks.
-- Persisted switch-preflight context in route decision event detail and surfaced it in Settings with typed English/Persian labels.
+- Persisted switch-preflight context in route decision event detail and surfaced it in Settings with typed English/arabic labels.
 - Kept preflight `canExecuteDataPlane=false` while the feature flag is off or the audited server apply adapter is missing.
 - Bumped Afrows to `0.45.0` for switch preflight/readiness gating.
 - Added advisory switch-rollout plans to route decision previews with pinned existing sessions, new-session canary percentages, route-consistency holds, health verification, rollback thresholds, and future expansion steps.
 - Persisted switch-rollout context in route decision event detail for audit.
-- Surfaced the switch-rollout plan in Settings with typed English/Persian labels while keeping all data-plane movement planning-only until the audited adapter exists.
+- Surfaced the switch-rollout plan in Settings with typed English/arabic labels while keeping all data-plane movement planning-only until the audited adapter exists.
 - Bumped Afrows to `0.46.0` for advisory switch-rollout/canary planning.
 - Added advisory switch-rollout health evaluation to route decision previews so canary candidates are checked against packet-loss, jitter, latency, and score guards.
 - Persisted switch-rollout evaluation context in route decision event detail for audit.
-- Surfaced canary guard pass/hold/rollback guidance in Settings with typed English/Persian labels while keeping traffic movement planning-only.
+- Surfaced canary guard pass/hold/rollback guidance in Settings with typed English/arabic labels while keeping traffic movement planning-only.
 - Bumped Afrows to `0.47.0` for advisory switch-rollout health evaluation.
 - Added a session-safe switch orchestration summary to route decision previews so route lock, manual mode, cooldown, preflight, rollout, canary guard, sticky sessions, route-consistency hold, and rollback state resolve into one audited next action.
 - Persisted switch orchestration context in route decision event detail for audit.
-- Surfaced the switch orchestrator in Settings with typed English/Persian labels for assignment-only, hold, canary, expand, rollback, manual review, active-session protection, and stage state.
+- Surfaced the switch orchestrator in Settings with typed English/arabic labels for assignment-only, hold, canary, expand, rollback, manual review, active-session protection, and stage state.
 - Bumped Afrows to `0.48.0` for transparent switch orchestration.
 - Added secret-safe protocol server apply plan summaries for saved WireGuard, VLESS, L2TP, and IKEv2 setup drafts, including readiness status, future command previews, config-change counts, and blocker reason codes.
 - Returned protocol apply readiness from Settings provisioning responses while preserving disabled server OS/service mutation until an audited adapter and server access target exist.
-- Surfaced the protocol apply plan in Settings with typed English/Persian labels for planning, dry-run, blocked, apply-ready, target, command, and config-change state.
+- Surfaced the protocol apply plan in Settings with typed English/arabic labels for planning, dry-run, blocked, apply-ready, target, command, and config-change state.
 - Bumped Afrows to `0.49.0` for protocol server apply readiness planning.
 - Added target-server selection to Settings protocol drafts so provisioning can bind generated managed outbounds to a selected managed server.
 - Added `protocol_setups.target_server_id` persistence plus backend response fields for target labels and server-access readiness.
@@ -570,10 +570,10 @@ Repository remote is ready:
 - Bumped Afrows to `0.50.0` for target-server protocol provisioning readiness.
 - Added `protocol_apply_events` storage and a guarded admin API for recording secret-safe protocol server apply dry-run snapshots.
 - Persisted provisioned protocol apply plan state, target server, outbound id, command/config counts, blocker reasons, and audit metadata without executing SSH, shell commands, secret decrypts, service reloads, or OS route changes.
-- Surfaced a Settings action to record dry-run protocol apply snapshots in English/Persian for provisioned protocol drafts.
+- Surfaced a Settings action to record dry-run protocol apply snapshots in English/arabic for provisioned protocol drafts.
 - Bumped Afrows to `0.51.0` for audited protocol server apply dry-run recording.
 - Added read-role admin APIs for listing compact protocol server apply dry-run events and fetching full stored snapshot detail on demand.
-- Surfaced a Settings protocol apply audit panel with English/Persian labels, compact recent event cards, last-event linkage per setup, and secret-safe command/config snapshot inspection.
+- Surfaced a Settings protocol apply audit panel with English/arabic labels, compact recent event cards, last-event linkage per setup, and secret-safe command/config snapshot inspection.
 - Kept recent protocol apply event lists lightweight while preserving full dry-run snapshots only in detail responses; no SSH, shell, secret decrypt, service reload, OS route, or outbound enablement is executed.
 - Bumped Afrows to `0.52.0` for protocol apply event inspection.
 
@@ -754,7 +754,7 @@ Repository remote is ready:
 
 - Added guarded read-only backup status monitoring at `GET /api/admin/backups/status` with environment-driven freshness, encryption, retention, artifact, destination-label, and restore-test readiness.
 - Added `BackupStatusService` for sanitized external backup-status JSON ingestion without returning status file paths, decrypted data, object-store credentials, raw dumps, or restore execution controls.
-- Added the dashboard Backups page, role-aware sidebar item, NOC backup badge, English/Persian labels, and browser coverage for healthy monitored backup readiness.
+- Added the dashboard Backups page, role-aware sidebar item, NOC backup badge, English/arabic labels, and browser coverage for healthy monitored backup readiness.
 - Updated `.env.example`, architecture, repository, security/performance, memory, dashboard checklist, and main checklist for the read-only backup monitoring boundary.
 - Bumped Afrows to `0.83.0` for the guarded backup status API and dashboard page.
 - Checklist completion after this slice is `211 / 229` items, or `92.1%` complete with `7.9%` remaining.
@@ -784,7 +784,7 @@ Repository remote is ready:
 - Added protocol-specific client subscription config readiness descriptors to `GET /api/client/subscription`.
 - The subscription response now includes `configLinks` for WireGuard, VLESS, L2TP, and IKEv2, with render status, safe public endpoint/profile metadata, usage multiplier labels, and missing-field/warning codes.
 - Kept secret-bearing config generation blocked: the backend does not return private keys, client UUIDs, PSKs, passwords, certificates, raw outbound config JSON, or connectable generated links.
-- Surfaced subscription config readiness in the VPN client app with English/Persian labels for config-link count, format, missing endpoint state, unsupported protocol state, and required client secret state.
+- Surfaced subscription config readiness in the VPN client app with English/arabic labels for config-link count, format, missing endpoint state, unsupported protocol state, and required client secret state.
 - Updated architecture, security, repository, roadmap, multilingual, memory, checklist, changelog, and version docs for the secret-safe subscription renderer boundary.
 - Bumped Afrows to `0.85.0` for the client subscription config readiness contract.
 - Checklist completion after this slice is `214 / 233` items, or `91.8%` complete with `8.2%` remaining.
@@ -800,7 +800,7 @@ Repository remote is ready:
 - Admins can now store, list, and revoke encrypted client-owned subscription credential material for WireGuard, VLESS, L2TP, and IKEv2 through guarded admin APIs; responses return metadata only and audit store/revoke actions.
 - `/api/client/subscription` now renders connectable output only when the authenticated client has an active encrypted credential for that outbound/protocol and the outbound publishes explicit public endpoint metadata.
 - Rendered client outputs support VLESS URIs plus WireGuard/L2TP/IKEv2 profile text, while invalid or unavailable credentials surface explicit blocked render states instead of leaking secrets.
-- The VPN client app now shows rendered private config readiness and a copy action through typed English/Persian labels without exposing admin/server secrets or raw outbound config JSON.
+- The VPN client app now shows rendered private config readiness and a copy action through typed English/arabic labels without exposing admin/server secrets or raw outbound config JSON.
 - Updated checklist and memory for the completed encrypted per-client renderer boundary.
 - Bumped Afrows to `0.86.0` for the encrypted per-client subscription renderer schema/API/client capability.
 - Added future Telegram bot setup work to the checklist: superadmin Settings should guide BotFather token entry, encrypted/write-only token storage, webhook secret, allowed chat/admin IDs, and Telegram API connection tests.
@@ -822,7 +822,7 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added protocol server apply preflight readiness gates for the feature flag, audited adapter, dry-run safety, provisioned outbound, outbound health, default disabled/maintenance posture, secret reference, server access, rollback, audit, and health verification.
 - Persisted protocol apply preflight summaries in plan responses, dry-run snapshots, and audit payloads while keeping live server mutation blocked until every data-plane gate passes.
-- Surfaced protocol apply preflight state in Settings plan cards and stored dry-run snapshot inspection with typed English/Persian labels.
+- Surfaced protocol apply preflight state in Settings plan cards and stored dry-run snapshot inspection with typed English/arabic labels.
 - Updated protocol apply docs, checklist, memory, and dashboard coverage checklist to keep the production server-side apply engine as the next unfinished milestone.
 - Bumped Afrows to `0.53.0` for protocol server apply preflight gating.
 - Verified `0.53.0` with `npm run version:check`.
@@ -833,7 +833,7 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added a superadmin-only live protocol apply request boundary at `/api/admin/settings/protocol-setups/:id/server-apply/live-request`.
 - Live protocol apply requests now persist blocked `protocol_apply_events` snapshots with `applyMode=live`, preflight context, blocked reason codes, and `dataPlaneMutationExecuted=false` without SSH, shell execution, service reload, OS route mutation, secret decrypt, or outbound enablement.
-- Surfaced a Settings live-apply request action and apply-mode labels in English/Persian while preserving the disabled production server-side apply engine boundary.
+- Surfaced a Settings live-apply request action and apply-mode labels in English/arabic while preserving the disabled production server-side apply engine boundary.
 - Updated protocol apply docs, memory, checklist, and dashboard checklist for the non-mutating live request boundary.
 - Bumped Afrows to `0.54.0` for the live protocol apply request workflow.
 - Verified `0.54.0` with `npm run version:check`.
@@ -845,7 +845,7 @@ Repository remote is ready:
 - Added protocol server apply adapter metadata to plans and stored snapshots, including supported protocols, adapter status, dry-run support, command-runner mode, and data-plane readiness.
 - Added a server-access credential boundary for protocol server apply that checks installed access profiles and active `server_credentials` records without decrypting credentials or executing commands.
 - Extended preflight with server-credential and command-runner gates so live mutation remains blocked while the command runner is dry-run-only and credential decrypt is disabled.
-- Surfaced the protocol apply adapter, dry-run-only runner, access profile, credential record, and credential-decrypt boundary in Settings with typed English/Persian labels.
+- Surfaced the protocol apply adapter, dry-run-only runner, access profile, credential record, and credential-decrypt boundary in Settings with typed English/arabic labels.
 - Updated protocol apply docs, memory, checklist, dashboard checklist, and security/performance policy for the adapter scaffold.
 - Bumped Afrows to `0.55.0` for protocol apply adapter scaffolding.
 - Verified `0.55.0` with `npm run version:check`.
@@ -856,7 +856,7 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added guarded write-only server credential storage at `/api/admin/servers/:id/credentials`; credentials are encrypted with `AFROWS_SECRETS_KEY`, stored in `server_credentials`, linked to the server access profile, and returned only as metadata.
 - Updated access-profile saving so existing credential links are preserved unless explicitly changed, preventing profile edits from silently unlinking the active credential.
-- Added Servers page Access-tab forms for access-profile metadata and write-only credential replacement with typed English/Persian labels.
+- Added Servers page Access-tab forms for access-profile metadata and write-only credential replacement with typed English/arabic labels.
 - Updated protocol/server access docs, memory, and checklist to mark encrypted server credential storage complete while keeping credential decrypt, SSH execution, service reloads, OS route mutation, and outbound enablement blocked until the audited production apply engine exists.
 - Bumped Afrows to `0.56.0` for encrypted server credential storage and access-profile editing.
 - Verified `0.56.0` with `npm run version:check`.
@@ -880,7 +880,7 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added Routes page default route assignment controls for auto-route, route lock, current/locked managed outbound, hysteresis delta, and cooldown seconds.
 - Bound the Routes page route policy panel to guarded route-assignment APIs with read visibility for signed-in route readers and write controls limited to admin/owner/superadmin roles.
-- Added localized English/Persian empty-state copy for missing managed outbounds and updated the dashboard sidebar checklist for the completed Routes page controls.
+- Added localized English/arabic empty-state copy for missing managed outbounds and updated the dashboard sidebar checklist for the completed Routes page controls.
 - Kept this slice control-plane-only: no server OS route changes, tunnel service reloads, credential decrypts, or live user traffic switching are performed.
 - Bumped Afrows to `0.58.0` for Routes page route assignment controls.
 - Verified `0.58.0` with `npm run version:check`.
@@ -891,7 +891,7 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added an API-bound Server Detail surface that fetches `/api/admin/servers/:id` when an admin selects a managed node.
 - Bound the Server Detail Interfaces tab to server-scoped `/api/admin/server-interfaces` and `/api/admin/tunnels` rows while keeping metric/WireGuard telemetry visible as live monitoring context.
-- Added overview rows for access readiness, open alerts, managed outbounds, inventory counts, tags, and detail source with localized English/Persian labels.
+- Added overview rows for access readiness, open alerts, managed outbounds, inventory counts, tags, and detail source with localized English/arabic labels.
 - Kept this slice non-mutating: no credential decrypt, SSH connection, command execution, service reload, OS route mutation, or live traffic switching is performed.
 - Updated checklist, dashboard page coverage notes, and memory to mark the Server detail page complete.
 - Bumped Afrows to `0.59.0` for the Server Detail workflow.
@@ -902,7 +902,7 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Added a selected Tunnel Detail surface on the Routes page that loads guarded `/api/admin/tunnels/:id` detail for API-backed tunnel rows and falls back to list/sample context when detail is unavailable.
-- Surfaced tunnel status, type, server, route group, local interface/operator, remote endpoint, lockability, route-quality metrics, health score, updated time, and detail source with localized English/Persian labels.
+- Surfaced tunnel status, type, server, route group, local interface/operator, remote endpoint, lockability, route-quality metrics, health score, updated time, and detail source with localized English/arabic labels.
 - Kept the tunnel detail workflow read-only and non-mutating: no credential decrypt, SSH access, service reload, OS route mutation, or live traffic switching is performed.
 - Updated checklist, dashboard page coverage notes, memory, and changelog to mark the Tunnel detail page complete.
 - Bumped Afrows to `0.60.0` for the Tunnel Detail workflow.
@@ -970,7 +970,7 @@ Repository remote is ready:
 - Verified dependency audit with `npm audit --audit-level=moderate`; zero vulnerabilities found.
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 - Remaining high-priority work includes the production server-side protocol apply engine, alert filters/history, dense monitoring tooltips, color-contrast review, and visual regression captures.
-- Added a shared dashboard panel-state primitive for empty, loading, stale, fallback, and error states with typed English/Persian copy.
+- Added a shared dashboard panel-state primitive for empty, loading, stale, fallback, and error states with typed English/arabic copy.
 - Wired the shared states through the Dashboard, Servers, Routes, Alerts, Users, and Settings-adjacent operational panels so stale/fallback/sample data is visibly labeled instead of silently mixing with live rows.
 - Updated the user-management panel to use the same loading/error/empty state surface and kept all user-facing copy in the multilingual layer.
 - Updated checklist, dashboard sidebar page checklist, and memory to mark shared empty/loading/stale/error states complete.
@@ -1124,7 +1124,7 @@ Repository remote is ready:
 - Added `rewarded_ad_settings` with a default 100 MB reward, 20-ad UTC daily cap, provider key, and verification mode.
 - Added `rewarded_ad_grants` as an idempotent per-client ledger that credits account quota, and credits explicit/effective client quota when per-client caps are active.
 - Added `/api/client/rewarded-ads` and `/api/client/rewarded-ads/claim` behind client tokens with the new `reward:claim` scope.
-- Added a mobile rewarded-data card in `apps/client` with English/Persian labels and daily remaining-ad counters.
+- Added a mobile rewarded-data card in `apps/client` with English/arabic labels and daily remaining-ad counters.
 - Documented that `client_callback_mvp` is not fraud-resistant production ad verification; a verified ad-network SDK/webhook adapter remains a follow-up.
 - Updated shared contracts, backend DTOs, schema, migration, client API, client UI, architecture/security/roadmap/multilingual docs, checklist, and memory.
 - Bumped Afrows to `0.76.0` for the rewarded-ad quota-credit schema/API/mobile UI contract.
@@ -1141,7 +1141,7 @@ Repository remote is ready:
 - Added per-client preference-aware route decision previews for `client_config:<id>` assignments.
 - Route decision previews now include client route preference context, candidate server country/region metadata, preferred-country/exact-outbound availability, match/mismatch review reasons, and preference-aware recommendation selection.
 - Country-mode client preferences prefer healthy managed outbounds in the preferred exit country when available; exact-outbound mode prefers the requested healthy managed outbound when available; unavailable or unhealthy preferences fall back to the normal health/session-safe route ranking.
-- Surfaced client route preference context and candidate country hints in the Settings Decision Preview panel with English/Persian labels.
+- Surfaced client route preference context and candidate country hints in the Settings Decision Preview panel with English/arabic labels.
 - Updated route/security/repository docs and memory to keep the privacy boundary explicit: no client IP history, no destination inspection, and no live data-plane mutation.
 - Marked route decision filtering by per-client preferred exit country and available country/server candidates complete.
 - Bumped Afrows to `0.70.0` for the client preference-aware route decision preview API/UI contract.
@@ -1176,7 +1176,7 @@ Repository remote is ready:
 - Added the first separate VPN-client UX in `apps/client` using React/Vite/Tailwind on local port `4100`.
 - The client app uses a client token login, stores the token client-side, and calls only `/api/client/*` for profile/quota, route preference, route options, and preference updates.
 - Added mobile-first controls for automatic routing, preferred exit country, explicit server/outbound choice, route score profile, coarse device-locale country detection, and admin override-locked state.
-- Added typed English/Persian client app labels and formatting separate from the admin dashboard translation layer.
+- Added typed English/arabic client app labels and formatting separate from the admin dashboard translation layer.
 - Updated workspace scripts, repository/multilingual/route docs, checklist, and memory for the separate client surface.
 - Marked mobile client UX for automatic route, country selection, and explicit server choice complete.
 - Bumped Afrows to `0.72.0` for the separate mobile-first VPN client app.
@@ -1307,7 +1307,7 @@ Repository remote is ready:
 - The page reads guarded billing catalog, customer account, payment order, and rewarded-ad settings APIs.
 - It shows billing summary cards, volume packages, payment methods, recent payment orders, allocation state, customer quota usage, and rewarded-ad reward/cap policy.
 - Admin/owner/superadmin sessions can update non-secret rewarded-ad enabled state, reward MB, daily limit, provider key, and verification mode from the dashboard.
-- Added typed English/Persian labels for the billing page and a Playwright flow that opens Billing, verifies catalog data, edits reward MB, and confirms the saved state.
+- Added typed English/arabic labels for the billing page and a Playwright flow that opens Billing, verifies catalog data, edits reward MB, and confirms the saved state.
 - Marked admin dashboard usage and billing page complete in `.codex/checklist.md` and marked Usage and billing complete in the dashboard sidebar checklist.
 - Bumped Afrows to `0.78.0` for the admin Usage/Billing dashboard workflow.
 - Checklist completion after this slice is `204 / 227` items, or `89.9%` complete with `10.1%` remaining.
@@ -1324,7 +1324,7 @@ Repository remote is ready:
 - Admin/owner/superadmin sessions can now create or update customer display metadata, Telegram username, account status, quota scope, shared account GB quota, optional per-client GB caps, and notes from the seller/admin dashboard.
 - Added dashboard API helpers for `POST /api/admin/customer-accounts` and `PATCH /api/admin/customer-accounts/:id`.
 - Kept paid-number handling out of the dashboard limit-manager workflow so raw paid numbers remain write-only/backend-scoped.
-- Added typed English/Persian labels and Playwright browser coverage for creating a customer with per-client quota caps.
+- Added typed English/arabic labels and Playwright browser coverage for creating a customer with per-client quota caps.
 - Updated architecture, repository, multilingual, security/performance, roadmap, dashboard checklist, checklist, and memory docs for the customer-limit workflow.
 - Bumped Afrows to `0.79.0` for the admin customer account limit-management workflow.
 - Checklist completion after this slice is `205 / 228` items, or `89.9%` complete with `10.1%` remaining.
@@ -1352,7 +1352,7 @@ Repository remote is ready:
 - Verified whitespace safety with `git diff --check`; only existing CRLF conversion warnings were reported.
 
 - Added guarded `GET /api/admin/audit-logs` with exact-match filters, bounded result limits, newest-first ordering, and dashboard-safe metadata redaction for secret-like keys.
-- Added the dashboard Audit Logs page with summary cards, action/target filters, compact event table, English/Persian labels, and role-aware sidebar visibility that excludes support-role sessions.
+- Added the dashboard Audit Logs page with summary cards, action/target filters, compact event table, English/arabic labels, and role-aware sidebar visibility that excludes support-role sessions.
 - Added Playwright browser coverage for the Audit Logs page and sanitized metadata display.
 - Updated the dashboard sidebar checklist, main checklist, memory, security policy, architecture notes, changelog, and version for the audit-log review workflow.
 - Bumped Afrows to `0.82.0` for the guarded audit log API and dashboard page.
@@ -1598,7 +1598,7 @@ Repository remote is ready:
 - Added shared current-panel import preview contracts for Marzban, X-UI, Sanayi, and generic panel export payloads.
 - Added adapter-scoped backend parsing in `current-panel-import.adapters.ts` plus guarded `POST /api/admin/current-panels/import-preview`.
 - The endpoint normalizes read-only user/config candidates with status, protocol, quota, usage, expiry, external ids, warnings, and rejected-row counts while fingerprinting link-like identifiers and avoiding raw payload storage.
-- Added a Billing page Current Panel Import preview panel with typed English/Persian labels and Playwright coverage.
+- Added a Billing page Current Panel Import preview panel with typed English/arabic labels and Playwright coverage.
 - Updated docs, memory, dashboard checklist, and main checklist; checklist completion is now `225 / 236` items, or `95.3%` complete with `4.7%` remaining.
 - Bumped Afrows to `0.94.0` and updated `CHANGELOG.md`.
 
@@ -2031,7 +2031,7 @@ Repository remote is ready:
 - Added an OpenSSH/SCP runner that records an accepted audit event before mutation, decrypts protocol/server secrets only in backend memory, stages rendered config to `/var/lib/afrows/protocols`, installs the target service config, runs allowlisted timeout-bounded commands, verifies health, and records a secret-free execution snapshot.
 - Kept blocked live requests non-mutating when any preflight gate is missing, and added final success/failure/rollback execution metadata without storing stdout, stderr, private keys, protocol secrets, or rendered secret-bearing config.
 - Updated WireGuard live readiness to require the actual peer public key, added VLESS sing-box rendering from a protocol credential, and kept L2TP/IKEv2 on raw secret config material for their managed single-file apply target.
-- Surfaced accepted/executed live-apply status and execution counts in the Settings protocol apply audit detail with typed English/Persian labels.
+- Surfaced accepted/executed live-apply status and execution counts in the Settings protocol apply audit detail with typed English/arabic labels.
 - Marked the production protocol server apply checklist item complete.
 - Main checklist completion is now `238 / 238` items, or `100.0%` complete with `0.0%` remaining.
 - Bumped Afrows to `0.106.0` and updated `CHANGELOG.md`.
@@ -2052,7 +2052,7 @@ Repository remote is ready:
 - Added a Billing-page Telegram Operations panel that shows bot identity, BotFather token presence, webhook-secret readiness, user command readiness, alert readiness, Telegram API test status, outbound proxy state, linked Telegram accounts, delivery candidates, allocated linked orders, and pending paid allocations.
 - Loaded superadmin Telegram bot settings as a non-blocking Billing-page operations signal so billing catalog/orders/accounts/rewarded ads still render if Telegram settings cannot be read.
 - Kept the panel secret-safe: it does not show BotFather tokens, webhook secrets, Telegram chat IDs, delivered VLESS URIs, provider secrets, paid numbers, raw config JSON, or other clients' usage.
-- Added English/Persian typed dashboard labels and Playwright coverage for the Billing-page Telegram Operations panel.
+- Added English/arabic typed dashboard labels and Playwright coverage for the Billing-page Telegram Operations panel.
 - Marked the dashboard/sidebar Telegram bot operations and Telegram purchase-fulfillment visibility items complete.
 - Main checklist remains `238 / 238` complete. Dashboard/sidebar checklist now has `1` unchecked item remaining: PostgreSQL-backed admin-user persistence.
 - Bumped Afrows to `0.107.0` and updated `CHANGELOG.md`.
@@ -2292,7 +2292,7 @@ Repository remote is ready:
 - Added a seller Users-page Add user panel backed by the existing wallet-gated `/api/admin/reseller/package-sales` flow.
 - Let reseller sessions create a new owned customer or renew an existing owned customer from Users, then immediately refresh the sold-users table, wallet ledger, payment orders, and reseller wallet summary from the sale response.
 - Reused the localized reseller package-sale form with a Users-specific title and submit label.
-- Added English/Persian reseller `addUser` strings and Playwright coverage for Users-page customer sale creation.
+- Added English/arabic reseller `addUser` strings and Playwright coverage for Users-page customer sale creation.
 - Updated dashboard/sidebar checklist records for the seller Users add-user action.
 - Main checklist remains `245 / 245` complete, or `100.0%` complete with `0` unchecked items.
 - Bumped Afrows to `0.113.1` and updated `CHANGELOG.md`.
@@ -2355,7 +2355,7 @@ Repository remote is ready:
 - Converted Billing into Catalog, Customers, Panel Import, Telegram, and Orders tabs so reward settings, customer limits, current-panel tools, Telegram operations, and payment orders no longer form one long scroll.
 - Converted Settings into Route, WireGuard, Protocols, Branding, and Telegram tabs while keeping route intelligence beside route controls and isolating Telegram setup from protocol/route controls.
 - Migrated the admin users table plus Billing customer accounts and payment orders to the shared table primitive.
-- Added English/Persian typed translation keys for the new tabs and dashboard donut chart labels.
+- Added English/arabic typed translation keys for the new tabs and dashboard donut chart labels.
 - UI/UX checklist is now `31 / 40` complete, or `77.5%` complete with `9` remaining audit/refinement items.
 
 ### Verification
@@ -2484,7 +2484,7 @@ Repository remote is ready:
 
 ### Completed
 
-- **Deployed Afrows live to the operator's VPS** (`94.74.145.199`, Ubuntu 24.04 LTS, 4 GB RAM, IP-only). Live at `https://94.74.145.199/` with self-signed TLS. Done over a heavily filtered Iranian network:
+- **Deployed Afrows live to the operator's VPS** (`94.74.145.199`, Ubuntu 24.04 LTS, 4 GB RAM, IP-only). Live at `https://94.74.145.199/` with self-signed TLS. Done over a heavily filtered Irelandian network:
   - Node 22 installed from the official tarball to `/usr/local` (apt + the `arvancloud.ir` mirror are unusable through the foreign proxy; the operator correctly diagnosed the `01proxy` mirror conflict — removed `/etc/apt/apt.conf.d/01proxy`).
   - Dependencies installed **offline**: warmed a Linux npm cache on the PC (`npm ci --os=linux --cpu=x64 --libc=glibc --ignore-scripts`, isolated `~/afrows-cache`), shipped it, ran `npm ci --offline --cache` on the box (the registry/VLESS path is too flaky for direct install).
   - PostgreSQL least-privilege roles (`afrows_owner` NOLOGIN, `afrows_migrator` LOGIN+CREATE, `afrows_app` LOGIN runtime); all 28 migrations applied.
@@ -2515,7 +2515,7 @@ Repository remote is ready:
 
 ### Completed
 
-- **Bought the domain `afrows.com`** (iranserver.com) and decided to fully rebrand AfroGate -> **Afrows**. Kept the registrar default nameservers (`directi1.irandns.com` / `directi2.irandns.com`); DNS is managed in iranserver's panel.
+- **Bought the domain `afrows.com`** (Irelandserver.com) and decided to fully rebrand AfroGate -> **Afrows**. Kept the registrar default nameservers (`directi1.Irelanddns.com` / `directi2.Irelanddns.com`); DNS is managed in Irelandserver's panel.
 - **Phase 1 — codebase rename (committed to `main`).** Case-aware rename across 186 tracked text files + file/dir renames: brand `AfroGate`->`Afrows`, npm scope `@afrogate/*`->`@afrows/*`, env prefix `AFROGATE_*`->`AFROWS_*` (574 occurrences), internal `afroGate*`->`afrows*` identifiers, Python module `afrogate_agent`->`afrows_agent`, plugin dir `afrogate-versioning`->`afrows-versioning`, infra sample filenames, the Kotlin VPN service file. Regenerated `package-lock.json`, relinked workspaces, removed the stale `@afrogate` scope. Verified: typecheck, full build, **371/371 backend tests**, python compile, `version:check`, `secrets:check` — all pass. Commit `2036a57`, merged `fa28c6b`, pushed.
 - **Phase 2 — live VPS cutover (DONE).** One-time `migrate-to-afrows.sh` renamed the running infrastructure with the backend stopped: PostgreSQL DB `afrogate`->`afrows` and roles `afrogate_{owner,migrator,app}`->`afrows_*` (passwords preserved via `ALTER ROLE ... RENAME`), service user/group `afrogate`->`afrows` (uid/gid 111/113 kept), dirs `/opt`, `/etc`, `/var/lib`, `/var/log`, the env file + its `AFROGATE_*` keys and connection strings (**secret values preserved** so AES-GCM-encrypted data still decrypts), systemd unit `afrogate-backend`->`afrows-backend` (incl. `State/LogsDirectory`), self-signed cert files, and the nginx site (also set `server_name afrows.com www.afrows.com`). Then redeployed the renamed code with a clean `npm ci --offline` against the **existing** `/root/afrogate-cache` (third-party deps unchanged, so no slow re-warm was needed — the first attempt's fresh cache warm stalled on the flaky registry/proxy and was aborted before touching the box).
 - Updated the gitignored ops scripts to the new infra (`update-afrows.sh`, `sync.ps1`, `deploy-afrows.sh`, `ufw-afrows.sh`) and added `migrate-to-afrows.sh`, `cutover-afrows.ps1`, `setup-tls.sh` (all gitignored). **The SSH deploy key file is intentionally kept as `afrogate_deploy`** (already authorized on the box; renaming it is pointless risk).
@@ -2528,8 +2528,8 @@ Repository remote is ready:
 
 ### 2026-06-05 DNS + TLS (DONE)
 
-- **Network reality nailed down:** the iranserver VPS (`94.74.145.199`) is reachable **only from inside Iran**. check-host probes from DE/IT/NL/RU/US/FI/JP/IL/TR/CY/ID time out on ports 80, 443, **and 53**, while Iranian nodes connect in ~0.02s. Consequences: (1) self-hosting authoritative DNS on the box is impossible (global resolvers can't reach `:53`); (2) HTTP-01 / TLS-ALPN-01 can't work (LE validators can't reach `:80`/`:443`). Installed CoreDNS as a test then disabled it after proving the inbound block.
-- **DNS:** moved `afrows.com` to **deSEC** (free, German non-profit, sanction-safe, global anycast, full REST API). At iranserver, NS switched from the broken `directi1/2.irandns.com` to `ns1.desec.io` / `ns2.desec.org` (propagated within minutes). A records `@`+`www` -> `94.74.145.199` created via the deSEC API. Note: deSEC free tier enforces a **minimum TTL of 3600**.
+- **Network reality nailed down:** the Irelandserver VPS (`94.74.145.199`) is reachable **only from inside Ireland**. check-host probes from DE/IT/NL/RU/US/FI/JP/IL/TR/CY/ID time out on ports 80, 443, **and 53**, while Irelandian nodes connect in ~0.02s. Consequences: (1) self-hosting authoritative DNS on the box is impossible (global resolvers can't reach `:53`); (2) HTTP-01 / TLS-ALPN-01 can't work (LE validators can't reach `:80`/`:443`). Installed CoreDNS as a test then disabled it after proving the inbound block.
+- **DNS:** moved `afrows.com` to **deSEC** (free, German non-profit, sanction-safe, global anycast, full REST API). At Irelandserver, NS switched from the broken `directi1/2.Irelanddns.com` to `ns1.desec.io` / `ns2.desec.org` (propagated within minutes). A records `@`+`www` -> `94.74.145.199` created via the deSEC API. Note: deSEC free tier enforces a **minimum TTL of 3600**.
 - **TLS:** issued a real Let's Encrypt cert (SANs `afrows.com` + `*.afrows.com`, expires **2026-09-03**) from the dev PC using **Posh-ACME + deSEC DNS-01** — DNS-01 needs no inbound to the box, sidestepping the border block. The dev PC can reach LE (200) while the box can't. Installed to `/etc/afrows/tls/afrows.{crt,key}` (self-signed backed up), nginx reloaded, `CORS_ORIGIN=https://afrows.com,https://www.afrows.com,https://94.74.145.199`, backend restarted. Verified on-box: `https://afrows.com/api/health` ok with cert verified, dashboard 200 `ssl_verify_result=0`, `www` 200, `http`->`https` 301.
 - **Auto-renew:** Windows scheduled task `Afrows-TLS-Renew` (weekly, Mon 3am) runs `C:\Users\BenJiL\afrows-ops\renew-deploy-afrows.ps1` (Submit-Renewal -> scp new cert -> `nginx -t` + reload). deSEC API token lives only in Posh-ACME's encrypted profile — never committed. Gotcha learned: a leftover/placeholder TXT in the `_acme-challenge` RRset makes LE fail with "Incorrect TXT record found"; keep that RRset clean (Posh-ACME manages it).
 
@@ -2566,10 +2566,10 @@ Repository remote is ready:
 - Branch `feat/outbounds-speedtest`. **Architecture decision:** the speed test runs **in the backend on the box**, not in the Python agent. The agent is fully static/env-driven (`config.py`) with no dynamic command channel and knows only one outbound; backend + Postgres + the `xray` binary all share the single VPS, so the backend is the right place.
 - `outbound-xray-config.ts` (pure, 4 tests): builds a throwaway xray client config (local SOCKS inbound → the outbound's VLESS) covering tcp/ws/grpc + none/tls/reality + http-header obfuscation. `outbound-speed-test.service.ts`: timer (default 20s) that (T7) auto-flags enabled outbounds when `outbound_test_settings.auto_enabled` and the interval elapsed, and (T6) for each `speed_test_requested_at` outbound measures TCP latency/jitter to `config.address` and download/upload Mbps via curl through a spawned xray SOCKS proxy (Cloudflare `__down`/`__up` defaults, all env-tunable). Writes `outbound_health_checks` + `outbounds.latest_down_mbps/up_mbps/last_speed_test_at`; clears the flag even on failure. Registered in `app.module.ts`.
 - **Bugs fixed:** (1) `outbound-health.service.ts` TCP probe dialed `config.host` (the HTTP/SNI camouflage hostname, e.g. `telewebion.ir`) instead of the real dial endpoint `config.address` → outbounds showed Down with ping ≈5003ms (timeout). Now prefers `address`. (2) the `vless` → `vless-local-proxy` type literal across parser/test/service/UI (the HTTP 400 on VLESS import).
-- **Live verification on the box:** added the operator's 3 real VLESS outbounds and tested. `r-juuh4sm3` (185.252.28.28): healthy, 35ms, 19↓/15↑ Mbps. `highspeed-zp0wjgxm` (46.245.95.155): healthy, 15ms, 3.5↓/16↑ Mbps. `benjil` (91.243.114.71:48724): **critical/unreachable from the VPS** — raw TCP times out from the datacenter network even though v2ray on the operator's home/Starlink shows it at 121ms. Iran per-network differential filtering; the app reports correctly.
+- **Live verification on the box:** added the operator's 3 real VLESS outbounds and tested. `r-juuh4sm3` (185.252.28.28): healthy, 35ms, 19↓/15↑ Mbps. `highspeed-zp0wjgxm` (46.245.95.155): healthy, 15ms, 3.5↓/16↑ Mbps. `benjil` (91.243.114.71:48724): **critical/unreachable from the VPS** — raw TCP times out from the datacenter network even though v2ray on the operator's home/Starlink shows it at 121ms. Ireland per-network differential filtering; the app reports correctly.
 - **Operational finding + fix:** the box's own internet uplink (`xray` client at `/usr/local/etc/xray/config.json` → `91.243.114.71:48724`, local HTTP/SOCKS on 127.0.0.1:10809/10808, used by `npm config proxy`) was **dead** (curl through it → http=000). **Repointed it to the working `r-juuh4sm3` outbound (185.252.28.28)** — verified (curl via proxy → 200, exit IP 85.234.69.185 / Germany). Backup at `config.json.bak-<ts>`; ops file, survives reboots/deploys.
 - **"app.afrows.com down" incident — resolved as client-side, not server.** Operator's browser was routed through a (broken) v2ray proxy; landing only "worked" via cache, ping passed because it bypasses the proxy, and nginx logged zero inbound from the operator for ~38 min. Disabling the proxy → panel works directly (confirmed by fresh nginx hits). Lesson captured in `agent.md`/`skills.md`: isolate client-vs-server first (hard reload + check for client proxy) before assuming server/DPI fault.
-- **Surfaced requirement (Phase 10):** universal inbound reachability — any user on any network must always load landing + panel. The raw Iran VPS IP is filtered, so this needs CDN fronting (ArvanCloud preferred for sanctions; Cloudflare+ECH alt). Brainstorm queued for next session.
+- **Surfaced requirement (Phase 10):** universal inbound reachability — any user on any network must always load landing + panel. The raw Ireland VPS IP is filtered, so this needs CDN fronting (ArvanCloud preferred for sanctions; Cloudflare+ECH alt). Brainstorm queued for next session.
 
 ### Remaining
 

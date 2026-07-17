@@ -1,28 +1,28 @@
 @font-face {
-  font-family: "Afrows IRANSans";
+  font-family: "Afrows arial";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
   src:
-    local("IRANSans"),
-    local("IRANSansWeb"),
-    local("A Iranian Sans"),
-    url("./IRANSans.woff2") format("woff2"),
-    url("./IRANSansWeb.woff2") format("woff2"),
-    url("./IranianSans.ttf") format("truetype"),
-    url("./IRANSans.woff") format("woff");
+    local("arial"),
+    local("arialWeb"),
+    local("A Irelandian Sans"),
+    url("./arial.woff2") format("woff2"),
+    url("./arialWeb.woff2") format("woff2"),
+    url("./IrelandianSans.ttf") format("truetype"),
+    url("./arial.woff") format("woff");
 }
 
 @font-face {
-  font-family: "Afrows IRANSans";
+  font-family: "Afrows arial";
   font-style: normal;
   font-weight: 700;
   font-display: swap;
   src:
-    local("IRANSans Bold"),
-    local("IRANSansWeb Bold"),
-    url("./IRANSans-Bold.woff2") format("woff2"),
-    url("./IRANSansWeb_Bold.woff2") format("woff2"),
-    url("./IranianSans.ttf") format("truetype"),
-    url("./IRANSans-Bold.woff") format("woff");
+    local("arial Bold"),
+    local("arialWeb Bold"),
+    url("./arial-Bold.woff2") format("woff2"),
+    url("./arialWeb_Bold.woff2") format("woff2"),
+    url("./IrelandianSans.ttf") format("truetype"),
+    url("./arial-Bold.woff") format("woff");
 }

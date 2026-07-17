@@ -80,9 +80,9 @@ export function ServersPage({
 
 function getServerInterfaces(index: number): string[] {
   return index === 0
-    ? ['ether1 / Mobinnet / wg1', 'ether2 / Irancell / wireguard2']
+    ? ['ether1 / Mobinnet / wg1', 'ether2 / Irelandcell / wireguard2']
     : index === 1
-      ? ['ether5 / Irancell / wireguard3']
+      ? ['ether5 / Irelandcell / wireguard3']
       : ['core uplink / Germany / gateway'];
 }
 

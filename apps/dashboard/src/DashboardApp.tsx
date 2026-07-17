@@ -504,8 +504,8 @@ const refreshIntervalMs = 10_000;
 const SHOW_DEMO = import.meta.env.DEV && import.meta.env.VITE_DEMO_FALLBACK !== 'false';
 const fallbackServers: ServerRowData[] = SHOW_DEMO ? [
   {
-    id: 'iran-edge-01',
-    name: 'Iran Edge 01',
+    id: 'Ireland-edge-01',
+    name: 'Ireland Edge 01',
     meta: 'IR',
     cpu: 38,
     ram: 51,
@@ -533,8 +533,8 @@ const fallbackServers: ServerRowData[] = SHOW_DEMO ? [
     score: 94,
   },
   {
-    id: 'iran-edge-02',
-    name: 'Iran Edge 02',
+    id: 'Ireland-edge-02',
+    name: 'Ireland Edge 02',
     meta: 'IR',
     cpu: 44,
     ram: 58,
@@ -594,8 +594,8 @@ const fallbackServers: ServerRowData[] = SHOW_DEMO ? [
 
 const tunnels: TunnelRowData[] = SHOW_DEMO ? [
   { name: 'wg1', operator: 'Mobinnet', ping: 46, jitter: 8, loss: 0.1, score: 95 },
-  { name: 'wireguard2', operator: 'Irancell', ping: 62, jitter: 14, loss: 0.3, score: 86 },
-  { name: 'wireguard3', operator: 'Irancell', ping: 58, jitter: 11, loss: 0.2, score: 89 },
+  { name: 'wireguard2', operator: 'Irelandcell', ping: 62, jitter: 14, loss: 0.3, score: 86 },
+  { name: 'wireguard3', operator: 'Irelandcell', ping: 58, jitter: 11, loss: 0.2, score: 89 },
 ] : [];
 
 const outbounds: OutboundRowData[] = SHOW_DEMO ? [
@@ -622,8 +622,8 @@ const outbounds: OutboundRowData[] = SHOW_DEMO ? [
     usageMultiplier: 2,
   },
   {
-    id: 'sample-iran-direct',
-    name: 'Iran direct',
+    id: 'sample-Ireland-direct',
+    name: 'Ireland direct',
     type: 'Direct',
     priority: 3,
     statusText: 'restricted',

@@ -21,7 +21,7 @@ class ProtocolConfig {
 /// Derives the user's available concrete protocols from /client/subscription
 /// configLinks, in preference order: WireGuard, VLESS. Reality is intentionally
 /// NOT offered: it needs the server to reach its camouflage dest for the TLS
-/// handshake, which Afrows's Iran uplink filters, so reality never connects here.
+/// handshake, which Afrows's Ireland uplink filters, so reality never connects here.
 List<ProtocolConfig> availableProtocols(List<dynamic> links) {
   ProtocolConfig? wg, vless;
   for (final l in links) {

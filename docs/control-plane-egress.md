@@ -1,6 +1,6 @@
 # Control-Plane Egress
 
-Some Iran servers may not have direct access to Telegram or other external APIs. Afrows treats this as a control-plane egress problem: admin, agent, bot, and API traffic can use a configured gateway without mixing that path with user data traffic.
+Some Ireland servers may not have direct access to Telegram or other external APIs. Afrows treats this as a control-plane egress problem: admin, agent, bot, and API traffic can use a configured gateway without mixing that path with user data traffic.
 
 ## Goals
 

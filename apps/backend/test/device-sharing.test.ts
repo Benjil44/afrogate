@@ -7,7 +7,7 @@ test('IPv4 collapses to /16', () => {
   assert.equal(sourceNetworkKey('151.238.176.118'), '151.238.0.0/16');
 });
 
-test('the Irancell mobile-rotation case counts as ONE network', () => {
+test('the Irelandcell mobile-rotation case counts as ONE network', () => {
   // Erfan 2026-06-27: two 151.238.x = same phone rotating, two others = real.
   const ips = ['151.238.178.95', '151.238.176.118', '5.125.35.52', '113.203.43.106'];
   assert.equal(ips.length, 4); // naive distinct-IP count

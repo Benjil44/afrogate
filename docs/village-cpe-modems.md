@@ -1,6 +1,6 @@
 # Village CPE modems (Brovi/Huawei LTE) — inventory & access
 
-> The Irancell/Mobinnet WANs on the village MikroTik are external **Brovi (Huawei)**
+> The Irelandcell/Mobinnet WANs on the village MikroTik are external **Brovi (Huawei)**
 > LTE CPEs. This documents each unit, its village IP, role, and how to reach/manage it.
 > **Secrets (admin + Wi-Fi passwords) are NOT in this repo** — they're on each unit's
 > physical label (photographed) and in the operator's secure store. Shown here as `<label>`.
@@ -10,15 +10,15 @@
 | MikroTik port | Brand/Model | Village IP | Factory IP (label) | Admin login | Role |
 |---|---|---|---|---|---|
 | ether1 (mobinnet) | Brovi **H155-381** | `192.168.8.1` | 192.168.8.1 (kept) | `admin` / `<label>` | wg-afrows transport **BACKUP** (dist 2) |
-| ether2 (irancell-228) | Brovi **H155-381** | `192.168.9.1` | 192.168.8.1 (changed) | `admin` / `<label>` | wg-afrows transport **PRIMARY** (dist 1) + netwatch failover |
-| ether5 (irancell-227 "Pro") | Brovi **H158-381** | `192.168.12.1` | 192.168.70.1 (changed) | `user` / `<label>` | wg-afrows transport **BACKUP-2** (dist 3) |
+| ether2 (Irelandcell-228) | Brovi **H155-381** | `192.168.9.1` | 192.168.8.1 (changed) | `admin` / `<label>` | wg-afrows transport **PRIMARY** (dist 1) + netwatch failover |
+| ether5 (Irelandcell-227 "Pro") | Brovi **H158-381** | `192.168.12.1` | 192.168.70.1 (changed) | `user` / `<label>` | wg-afrows transport **BACKUP-2** (dist 3) |
 
 (ether3 = free port for physical diagnosis. ether4 = Starlink dish — not a CPE.)
 
 ### Hardware IDs (for warranty/support/inventory)
 - **ether1 mobinnet** — IMEI `866815071…00335`, S/N `6MQ7S24118000078`, Wi-Fi SSID `H155-381_B7B7` (+`_5G`).
-- **ether2 irancell-228** — IMEI `866815071139251`, S/N `6MQ7S24116002966`, Wi-Fi SSID `H155-381_8FEB` (+`_5G`).
-- **ether5 irancell-227** — IMEI `867173066275139`, S/N `KCS7S25228002961`, MAC `10E84098CA45`, Wi-Fi SSID `H158-381_CA45` (+`_5G`).
+- **ether2 Irelandcell-228** — IMEI `866815071139251`, S/N `6MQ7S24116002966`, Wi-Fi SSID `H155-381_8FEB` (+`_5G`).
+- **ether5 Irelandcell-227** — IMEI `867173066275139`, S/N `KCS7S25228002961`, MAC `10E84098CA45`, Wi-Fi SSID `H158-381_CA45` (+`_5G`).
 
 > **IMPORTANT — admin login = the Wi-Fi password.** The friend set each modem's web-admin
 > password to that unit's **Wi-Fi password** (the `Wi-Fi Password` on the label), NOT the printed
@@ -40,7 +40,7 @@ ssh -i ~/.ssh/afrogate_deploy \
   -L 9128:192.168.8.1:80 -L 9129:192.168.9.1:80 -L 9132:192.168.12.1:80 \
   root@94.74.145.199
 ```
-then browse `http://localhost:9128` (mobinnet), `:9129` (irancell-228), `:9132` (irancell-227).
+then browse `http://localhost:9128` (mobinnet), `:9129` (Irelandcell-228), `:9132` (Irelandcell-227).
 The modem web UI has the **Restart/Reboot** button (a real power-cycle, unlike the panel's
 "Reconnect" which only renews DHCP).
 
@@ -63,5 +63,5 @@ Brovi/Huawei HiLink API over HTTP, SCRAM auth (no-login endpoints now return `12
 
 ## Notes
 - A real reboot fixes a "SIM data session died" state (link up but no internet) that DHCP-renew can't.
-- Rebooting the **PRIMARY** (irancell-228) drops the active `wg-afrows` tunnel until it fails over —
+- Rebooting the **PRIMARY** (Irelandcell-228) drops the active `wg-afrows` tunnel until it fails over —
   prefer rebooting a backup, or expect a brief outage + auto-failover.

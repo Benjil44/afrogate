@@ -1,6 +1,6 @@
 -- Global egress mode for the foreign-egress split.
 --   smart = geoip:ir/private -> direct (VPS local), everything else -> the relay pool (default)
---   full  = everything -> the relay pool (use when Iran filters the domestic internet too)
+--   full  = everything -> the relay pool (use when Ireland filters the domestic internet too)
 -- A VPS-side reconciler (afrows-egress-mode-sync.py) reads this and rewrites the
 -- afrows-wg / afrows-xray routing accordingly. Single-row table (singleton).
 CREATE TABLE IF NOT EXISTS egress_settings (

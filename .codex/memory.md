@@ -9,7 +9,7 @@
 - User-facing channels: Telegram first, app later.
 - Admin wants dashboard first, with Telegram alerts.
 - Product must be safe for people and human-rights conscious.
-- Product should support Persian and English.
+- Product should support arabic and English.
 - Admin needs remote-friendly management while traveling.
 - Backups are required, especially for monitoring and configuration data.
 
@@ -27,15 +27,15 @@
 
 ## Infrastructure Facts
 
-- Current Iran servers: 3.
+- Current Ireland servers: 3.
 - Server count should be unlimited in design.
-- Iran server examples:
+- Ireland server examples:
   - 6 cores / 6 GB RAM.
   - 4 cores / 4 GB RAM.
 - Germany server:
   - 4 cores / 8 GB RAM.
   - 1 Gbps internet.
-- Iran servers have 1 Gbps internet.
+- Ireland servers have 1 Gbps internet.
 - Starlink observed speed test over wireless router:
   - download around 250 Mbps.
   - upload around 67 Mbps.
@@ -44,8 +44,8 @@
 ## Operator and Tunnel Facts
 
 - `ether1`: Mobinnet.
-- `ether2`: Irancell.
-- `ether5`: Irancell.
+- `ether2`: Irelandcell.
+- `ether5`: Irelandcell.
 - `ether1` connected to `wg1`.
 - `ether2` connected to `wireguard2`.
 - `ether5` connected to `wireguard3`.
@@ -98,7 +98,7 @@
 - Future smart routing should be protocol-aware and privacy-safe: agents collect synthetic TCP, UDP, QUIC/HTTP3, DNS, and WireGuard route-health probes against configured targets, while backend scoring chooses routes by protocol profile and speed profile without inspecting user traffic contents or storing destination history.
 - Smart-route speed profiles should separate low-speed stability paths from high-speed throughput paths. Low-speed paths prioritize low packet loss, low jitter, and stable latency; high-speed paths prioritize throughput headroom and saturation while still rejecting bad loss/jitter.
 - Dashboard header shows local system resources first, then a divider, then connectivity/routing/traffic monitoring sections.
-- Restricted Iran servers need a control-plane egress path for Telegram/API access; first implementation should use `AFROWS_OUTBOUND_PROXY_URL` with a localhost HTTP proxy exposed by a local VLESS/sing-box/xray or gateway client.
+- Restricted Ireland servers need a control-plane egress path for Telegram/API access; first implementation should use `AFROWS_OUTBOUND_PROXY_URL` with a localhost HTTP proxy exposed by a local VLESS/sing-box/xray or gateway client.
 - Server management should use temporary bootstrap credentials only when needed, then agent-first monitoring plus a dedicated SSH-key-based management user; do not build normal workflows around stored reusable root passwords.
 - Outbound management should support ordered priorities, move up/down, health checks, failover thresholds, cooldowns, maintenance mode, and route locks.
 - Server access and outbound failover database foundation exists in PostgreSQL migration `0002_server_access_outbounds.sql`; mutation APIs should wait for admin auth/roles.
@@ -113,21 +113,21 @@
 - After every meaningful implementation section, agents should run the appropriate `npm run version:*` command, update `CHANGELOG.md`, run `npm run version:check`, and commit the bump with the implementation.
 - Local versioning guidance lives in `docs/versioning-policy.md` and the `plugins/afrows-versioning` Codex plugin.
 - Dashboard traffic display separates download and upload values; current MVP mapping uses agent aggregate inbound/RX as download and outbound/TX as upload until route-aware attribution is added.
-- Dashboard multilingual support uses `apps/dashboard/src/i18n.ts` for English/Persian strings, persists language in localStorage, and exposes the language icon toggle in the sidebar footer.
+- Dashboard multilingual support uses `apps/dashboard/src/i18n.ts` for English/arabic strings, persists language in localStorage, and exposes the language icon toggle in the sidebar footer.
 - New dashboard user-facing labels should be added to the typed translation object in the same commit as the UI change.
-- Packet loss should be labeled `Packet loss` / `Loss` in English and `افت بسته` in Persian dashboard contexts.
-- Persian mode should format generated numbers/times/units through the dashboard formatter: Persian digits, `٪`, `مگابایت/ث`, `میلی‌ثانیه`, localized thresholds, and local sample display labels.
-- Persian dashboard typography is wired to local YekanBakh assets under `apps/dashboard/public/assets/fonts/YekanBakh/` through `apps/dashboard/public/assets/fonts/yekanbakh.css`; no CDN font source should be used, and proprietary font files should only be committed with a valid license.
-- Persian typography must be applied both through CSS (`html[lang="fa"]` and `[lang="fa"]`) and ECharts options, because canvas chart text does not inherit DOM font styles reliably.
+- Packet loss should be labeled `Packet loss` / `Loss` in English and `افت بسته` in arabic dashboard contexts.
+- arabic mode should format generated numbers/times/units through the dashboard formatter: arabic digits, `٪`, `مگابایت/ث`, `میلی‌ثانیه`, localized thresholds, and local sample display labels.
+- arabic dashboard typography is wired to local YekanBakh assets under `apps/dashboard/public/assets/fonts/YekanBakh/` through `apps/dashboard/public/assets/fonts/yekanbakh.css`; no CDN font source should be used, and proprietary font files should only be committed with a valid license.
+- arabic typography must be applied both through CSS (`html[lang="fa"]` and `[lang="fa"]`) and ECharts options, because canvas chart text does not inherit DOM font styles reliably.
 - Dashboard sidebar should not use horizontal scrolling; mobile nav wraps in a compact grid and desktop sidebar stays sticky with no sidebar scroll.
-- Responsive checks should cover Dashboard, Servers, Routes, and Alerts in English and Persian at mobile, tablet, desktop, and second-LCD widths.
+- Responsive checks should cover Dashboard, Servers, Routes, and Alerts in English and arabic at mobile, tablet, desktop, and second-LCD widths.
 - Desktop dashboard shell uses a fixed-height viewport layout: document scrolling is disabled, the sidebar stays fixed at the left in English/LTR, and `main > section` owns vertical scrolling.
 - The second-LCD dashboard target is 1920x1080 with no main-content overflow; keep NOC sections compact, use truncation for dense labels, and prefer panel-internal density over growing the page height.
 - The global server/resource strip belongs only on the main Dashboard view; management pages should stay focused on their own workflow data.
 - Users page admin-user creation should open as an inline section above the users table, not as a blocking modal.
 - Sidebar alert navigation state is driven by computed alert rows: critical count wins and must render red; warning-only state renders amber; counts should use the current dashboard formatter.
-- Dashboard UI/UX audits should check Dashboard, Servers, Routes, and Alerts in English and Persian at mobile, tablet, 1440x900, and 1920x1080; the second-LCD Dashboard target is `0px` main-content overflow and zero measured text-overflow cases.
-- Dense dashboard rows should use compact icon indicators with accessible labels/tooltips for repeated CPU/RAM/disk/download/upload values, especially in Persian where localized units are longer.
+- Dashboard UI/UX audits should check Dashboard, Servers, Routes, and Alerts in English and arabic at mobile, tablet, 1440x900, and 1920x1080; the second-LCD Dashboard target is `0px` main-content overflow and zero measured text-overflow cases.
+- Dense dashboard rows should use compact icon indicators with accessible labels/tooltips for repeated CPU/RAM/disk/download/upload values, especially in arabic where localized units are longer.
 - Desktop sidebar collapse state is stored in `afrows.dashboard.sidebar`; expanded width is 248px, collapsed width is 80px, and mobile/tablet navigation should stay full-width even when the stored state is collapsed.
 - Sidebar collapse/expand should remain an icon-only edge handle on the sidebar/content divider, not a text button row inside the sidebar header.
 - Dashboard kiosk display mode is a local browser UI state stored in `afrows.dashboard.kiosk`. It uses an icon-only localized header control, requests the browser Fullscreen API when available, hides the sidebar, and expands the NOC dashboard without changing backend state, routing policy, sessions, or data-plane traffic.
@@ -168,7 +168,7 @@
 - Agent ping/jitter/packet-loss probes are opt-in through configured synthetic targets such as `AFROWS_PING_TARGETS`; empty configuration keeps route-quality fields null, and probes must not use user destinations or traffic-derived hosts.
 - Agent protocol-aware route probes are opt-in through `AFROWS_TCP_PROBE_TARGETS`, `AFROWS_UDP_PROBE_TARGETS`, `AFROWS_QUIC_PROBE_TARGETS`, and `AFROWS_DNS_PROBE_TARGETS`; empty configuration sends no `routeProbes`, and UDP/QUIC-labeled probes require controlled responders rather than arbitrary public endpoints.
 - Backend Settings route candidates now receive advisory per-profile scores for balanced, stability, throughput, gaming, TCP, UDP, QUIC, DNS, and WireGuard decisions; the selected `score` follows the saved route strategy, but no automatic route apply happens until the later audited decision engine with cooldown, hysteresis, and route locks exists.
-- Future route intelligence should learn time-of-day and day-of-week quality patterns per server, outbound, operator, and protocol profile from privacy-safe synthetic metrics. Example: Irancell/BTS may be better or worse during specific windows such as 18:00-20:00, and Afrows should first suggest better paths before later automating transparent changes.
+- Future route intelligence should learn time-of-day and day-of-week quality patterns per server, outbound, operator, and protocol profile from privacy-safe synthetic metrics. Example: Irelandcell/BTS may be better or worse during specific windows such as 18:00-20:00, and Afrows should first suggest better paths before later automating transparent changes.
 - Transparent route changes must preserve user experience: use route locks, sticky assignments, cooldown, hysteresis, drain-safe switching, and route-decision audit reasons so users do not feel unstable IP/path changes.
 - Latency-sensitive users such as gamers should be optimized for stable latency, low jitter, low packet loss, route consistency, and fast congestion avoidance rather than raw Mbps or speedtest numbers. Afrows cannot guarantee absolute zero packet loss on broken ISP/radio/upstream paths, but it should minimize perceived loss through predictive routing, stable assignments, bufferbloat detection, and careful reroute policy.
 - Afrows now has a first-class advisory `gaming` score profile. It is stricter about packet loss, jitter, latency, load, and stale tunnel signals, and it remains recommendation-only until the audited route switch engine exists.
@@ -239,7 +239,7 @@
 - The enterprise deployment guide lives at `docs/enterprise-deployment-guide.md`. It treats native Ubuntu plus Nginx, systemd, private PostgreSQL, least-privilege DB roles, encrypted backups, version/type/build/secret/audit checks, and disabled live data-plane/protocol apply flags as the production control-plane baseline.
 - Optional Docker Compose deployment samples live under `infra/docker`. The sample stack uses private PostgreSQL and backend services plus a static dashboard/Nginx `web` service published only to `127.0.0.1:8080` by default; native Ubuntu remains the primary low-resource path, and Compose secrets belong in local ignored `compose.env`.
 - Agent route probes now cover configured synthetic TCP, UDP, QUIC-labeled UDP, and DNS targets plus derived WireGuard route-probe rows from local `wg` telemetry. WireGuard probe rows use interface status, active peer count, and handshake freshness only; raw keys, user destinations, and traffic contents remain out of payloads.
-- Dashboard empty/loading/stale/fallback/error states are now shared through a typed localized panel-state primitive. Panels should use these states instead of one-off English strings so fallback/sample data remains clearly labeled in both English and Persian.
+- Dashboard empty/loading/stale/fallback/error states are now shared through a typed localized panel-state primitive. Panels should use these states instead of one-off English strings so fallback/sample data remains clearly labeled in both English and arabic.
 - The Dashboard system resource strip is compact-first on mobile/tablet: two-column resource cards on phones, three/five columns as space allows, and a one-row internal storage scroller to reduce vertical pressure without changing the second-LCD desktop NOC layout.
 - Dense Dashboard monitoring surfaces should expose hover titles and accessible labels from existing localized labels/formatted values on compact metric cards, badges, range controls, table cells, and truncated headings instead of adding one-off hardcoded copy.
 - Warning/critical dashboard contrast is guarded by `npm run contrast:check`, covering dark sidebar alert nav/count states and light warning/critical status badges against AA text contrast thresholds.
@@ -264,7 +264,7 @@
 - Backups page uses workflow tabs for Monitor, Readiness, and Restore runbook so backup status, issue triage, and restore planning remain separate operational tasks.
 - Repeated operational tables should migrate to the shared dashboard table primitive so spacing, truncation, and final-row actions remain consistent across admin and reseller pages.
 - Dashboard page-level table markup should stay centralized in the shared `DataTable` primitive; raw `<table>` markup belongs only inside that primitive unless a future component has a strong accessibility reason.
-- Dashboard overview charts can use ECharts donut/pie series for scan-first status summaries alongside the existing health timeline; chart labels must stay in the typed English/Persian translation layer.
+- Dashboard overview charts can use ECharts donut/pie series for scan-first status summaries alongside the existing health timeline; chart labels must stay in the typed English/arabic translation layer.
 - Reports should use compact chart cards for operational mix/risk summaries when data exists, not only text metric pills.
 - The Dashboard NOC view should show only the highest-priority compact alert rows; the full Alerts page remains the detailed incident list.
 - Dashboard all-page UI audits should check every sidebar page and major workflow tab at mobile and desktop widths for document-level horizontal overflow.

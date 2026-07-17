@@ -11,7 +11,7 @@
   --color-client-green: #27824a;
   --color-client-amber: #a46305;
   --color-client-red: #b42318;
-  --font-client-persian: "Afrows YekanBakh", Tahoma, Arial, sans-serif;
+  --font-client-arabic: "Afrows YekanBakh", Tahoma, Arial, sans-serif;
 }
 
 @layer base {
@@ -33,7 +33,7 @@
   html[lang="fa"],
   html[lang="fa"] body,
   [lang="fa"] {
-    font-family: var(--font-client-persian);
+    font-family: var(--font-client-arabic);
   }
 
   html[lang="fa"] :where(button, input, select, textarea),

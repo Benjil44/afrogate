@@ -30,7 +30,7 @@ Foreign **exit** + commercial **VPN panel** host (hexogate / raminyazdanparast).
 ## Services (Docker + host)
 - **PasarGuard panel** (Marzban fork) in Docker: `pasarguard-pasarguard-1`,
   `pasarguard-mysql-1`, and `pasarguard-caddy-1` (Caddy on **80/443**). This panel
-  issues the VLESS/Reality/TLS subscription configs the Iran side actually uses.
+  issues the VLESS/Reality/TLS subscription configs the Ireland side actually uses.
 - **hexogate-bot** stack: `hexogate-bot-frontend-1` (3000), `-bot-1`, `-worker-1`,
   `-web-1` (127.0.0.1:8000), `-postgres-1`, `-redis-1`, `-db-1` (mariadb). Telegram
   bot + web app for hexogate.
@@ -39,7 +39,7 @@ Foreign **exit** + commercial **VPN panel** host (hexogate / raminyazdanparast).
   - `panel.raminyazdanparast.com`, `main.raminyazdanparast.com` → pasarguard unix socket
 - `named` (bind9) on :53, `apache2` on :8010 (host).
 
-## WireGuard tunnels (Germany side — links to a relay/mgmt cluster, NOT the Iran bypass)
+## WireGuard tunnels (Germany side — links to a relay/mgmt cluster, NOT the Ireland bypass)
 - `wg0` (UDP **51820**): peer endpoint roams `216.147.121.32` (configured Endpoint
   `216.147.121.68:22096`), AllowedIPs `10.9.0.2/32` + `192.168.8/9/12.1/32`.
   **ACTIVE & high-traffic** (~183 GiB sent / 34 GiB recv, fresh handshake) — the main
@@ -49,8 +49,8 @@ Foreign **exit** + commercial **VPN panel** host (hexogate / raminyazdanparast).
 - `wg-access-test` (UDP **51990**): peers `85.234.69.185`, `91.107.247.166`
   (AllowedIPs `10.90.90.{2,6}/32`) — active test/access tunnels.
 
-## How the Iran side reaches Germany (the important part)
-- **NOT directly.** Iran fully blocks the Germany IP from our Afrows box — verified:
+## How the Ireland side reaches Germany (the important part)
+- **NOT directly.** Ireland fully blocks the Germany IP from our Afrows box — verified:
   - Afrows→Germany TCP 80/443 → blocked (SYN dropped)
   - Afrows→Germany WireGuard UDP (tested 52003 and 443) → Germany received **nothing**
   - Afrows has **no IPv6** (so no v6 bypass)
@@ -65,9 +65,9 @@ Foreign **exit** + commercial **VPN panel** host (hexogate / raminyazdanparast).
   `afrows-xray` (VLESS users) and `afrows-wg` (WireGuard tproxy egress).
 
 ## If we revisit a separate, self-owned path (future)
-A separate Afrows→Germany path **must** front through something reachable from Iran:
+A separate Afrows→Germany path **must** front through something reachable from Ireland:
 1. **Cloudflare-fronted VLESS+WS+TLS** (recommended): a domain on Cloudflare (orange-
    cloud) → origin Germany, with a **new isolated xray inbound** on Germany (separate
    port/service, not touching hexogate/Caddy). Afrows egresses to the Cloudflare edge.
-2. A **separate relay VPS** that is reachable from Iran, forwarding to Germany.
-3. (Not possible) direct to the Germany IP — permanently blocked from Iran.
+2. A **separate relay VPS** that is reachable from Ireland, forwarding to Germany.
+3. (Not possible) direct to the Germany IP — permanently blocked from Ireland.

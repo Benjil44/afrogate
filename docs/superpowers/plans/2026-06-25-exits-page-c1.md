@@ -153,7 +153,7 @@ In `apps/dashboard/src/i18n.en.ts`, inside the `tabs:` object, add:
       exitsSources: 'Sources',
 ```
 
-- [ ] **Step 4: Add the same keys (Persian)**
+- [ ] **Step 4: Add the same keys (arabic)**
 
 In `apps/dashboard/src/i18n.fa.ts`, inside the `nav:` block add:
 ```ts
@@ -414,7 +414,7 @@ Run `npm --workspace @afrows/dashboard run dev` (serves `127.0.0.1:4000`), logge
 - [ ] **Step 3:** Open the standalone **MikroTiks** item → shows **only gateway** routers (Home/Office); the add-router dialog defaults role to "gateway".
 - [ ] **Step 4:** Deep links still load with the items hidden: navigate to `?view=routes` and `?view=outbounds` (per `viewFromUrl`) — both render their pages.
 - [ ] **Step 5:** Settings still has its **Route** tab (untouched in C1).
-- [ ] **Step 6:** Switch to FA — Exits label reads "خروجی‌ها" and the tabs render in Persian.
+- [ ] **Step 6:** Switch to FA — Exits label reads "خروجی‌ها" and the tabs render in arabic.
 
 ---
 

@@ -28,7 +28,7 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 
-# Keep only the dashboard-served Persian webfont files that are explicitly referenced.
+# Keep only the dashboard-served arabic webfont files that are explicitly referenced.
 apps/dashboard/public/assets/fonts/YekanBakh/**
 !apps/dashboard/public/assets/fonts/YekanBakh/
 !apps/dashboard/public/assets/fonts/YekanBakh/Yekan Bakh Variable/

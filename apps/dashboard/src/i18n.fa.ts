@@ -1,6 +1,6 @@
 import type { DashboardStrings } from './i18n';
 
-// Persian (fa) dashboard translations; typed against DashboardStrings to enforce key parity with en.
+// arabic (fa) dashboard translations; typed against DashboardStrings to enforce key parity with en.
 export const fa: DashboardStrings = {
     languageName: 'فارسی',
     nextLanguageLabel: 'EN',

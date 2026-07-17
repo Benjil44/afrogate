@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Phases 1–2 run on the VPS (ship mode); Phase 3 needs the Android device on adb.
 
-**Goal:** Replace the unreliable xray-in-Flutter engine with **native Android WireGuard**, where each customer gets a per-customer WireGuard config that connects to the Afrows VPS (a domestic Iran→Iran hop, no DPI problem) and exits through the existing obfuscated Germany egress.
+**Goal:** Replace the unreliable xray-in-Flutter engine with **native Android WireGuard**, where each customer gets a per-customer WireGuard config that connects to the Afrows VPS (a domestic Ireland→Ireland hop, no DPI problem) and exits through the existing obfuscated Germany egress.
 
 **Architecture:** Reuse the *proven* MikroTik pattern: an **xray WireGuard inbound** decapsulates each customer's WG peer in userspace and routes it straight to the `proxy` outbound (Germany) — no kernel WG, no server-side tun2socks, no extra routing. Per-customer peers live on a **dedicated `afrows-wg` xray service** so peer-change restarts never disrupt the VLESS inbounds. The server generates each customer's WG keypair (managed-WG model, like wg-easy), stores the public key as a peer + the private key (encrypted) to render the `.conf`, and assigns a tunnel IP. The Flutter app uses the official WireGuard Android backend to bring up the tunnel from that `.conf`.
 
@@ -14,7 +14,7 @@
 
 - **Server WG = KERNEL WireGuard (`wg0`)** — REVISED 2026-06-14 after testing. The xray WireGuard inbound (the interim `afrows-wg` service, port 51821) **proved the end-to-end works** (phone → WG → Afrows → Germany, validated with the official WireGuard Android app), BUT xray's WG inbound only reports **aggregate** inbound traffic — `user>>>`/online are empty `{}`, so it **cannot meter per customer**. Since Afrows sells per-customer with quotas + active-users, switch to **kernel WireGuard**, which gives **per-peer transfer + last-handshake** (exact per-customer usage, quota enforcement, active = recent handshake) and **dynamic peers** via `wg set` (no restart). Egress (kernel can't speak SOCKS): **iptables TPROXY → an xray `dokodemo-door` (tproxy) inbound → `proxy` outbound → Germany** (reuses xray; no external tun2socks binary — GitHub release assets are blocked from the box). Feasibility confirmed on the box: kernel `wireguard` module present, `wireguard-tools` installable via apt, `xt_TPROXY` loadable, iptables mangle OK. The interim `afrows-wg` xray service is kept only as the working proof and will be retired once kernel WG is live.
 - **Managed keypairs.** The server generates each WG config's keypair via `xray wg` (standard base64), stores the **public key** (peer) and **private key** (to render the downloadable `.conf`, encrypted at rest via `SecretVaultService`), and assigns a `/32` tunnel IP from a pool (e.g. `10.8.0.0/16`). The private key is delivered once in the `.conf`/QR and never shown again in lists.
-- **Domestic hop.** Phone (Iran mobile) → Afrows VPS (Iran) over WG UDP. No national-firewall crossing, so plain WG is fine for this hop; Afrows does the obfuscated international exit. Risk: some mobile carriers throttle UDP — mitigate by choosing the WG port and testing on-device (Phase 3 spike).
+- **Domestic hop.** Phone (Ireland mobile) → Afrows VPS (Ireland) over WG UDP. No national-firewall crossing, so plain WG is fine for this hop; Afrows does the obfuscated international exit. Risk: some mobile carriers throttle UDP — mitigate by choosing the WG port and testing on-device (Phase 3 spike).
 - **Per-customer WG belongs to `client_configs`** with `protocol='wireguard'` — same model as VLESS configs, surfaced in the existing Customers → Configs panel and Connections view.
 
 ## File / component map
@@ -143,7 +143,7 @@
 - [ ] Fold L2TP active users + usage into the Protocols column + dashboard overview (same as wg/vless), so all three protocols meter uniformly.
 
 ### Risks (L2TP)
-- **IPsec + double-NAT / carrier-grade NAT** in Iran can break IKE; NAT-T (4500) helps but some ISPs block ESP — keep WireGuard as the primary, L2TP as fallback.
+- **IPsec + double-NAT / carrier-grade NAT** in Ireland can break IKE; NAT-T (4500) helps but some ISPs block ESP — keep WireGuard as the primary, L2TP as fallback.
 - **MSCHAPv2 secrets at rest** → encrypt like WG private keys (SecretVault); never return in list endpoints.
 - **MTU/MSS** → clamp (1400/1360) as we already do on the MikroTik path.
 
@@ -160,10 +160,10 @@
   loss, ~40 ms), router stays reachable (no lockout). Full details + the two gotchas that
   cost the most time are in [[mikrotik-split-routing]].
 - **DNS on the direct path** — set router resolver to the **modem DNS `192.168.254.1`**
-  (public `8.8.4.4/1.1.1.1` are filtered on the raw Iran path; ICMP passes but UDP/53 is
+  (public `8.8.4.4/1.1.1.1` are filtered on the raw Ireland path; ICMP passes but UDP/53 is
   dropped). `/ip/dns` is a set-only menu → use `POST /ip/dns/set`.
 - **Claude/foreign on port 4** — expected to need a PC-side VPN/proxy: port 4 is *direct
-  Iran* internet, so filtered foreign endpoints (e.g. `api.anthropic.com`) need the user's
+  Ireland* internet, so filtered foreign endpoints (e.g. `api.anthropic.com`) need the user's
   own tunnel (the `x-ovpn-tap` OpenVPN client / local `127.0.0.1:10808` proxy) running.
 - **VPN ports (1/2/3/WiFi) blocked on the Germany exit** — they route via WireGuard →
   Afrows VPS → Germany, but the **foreign egress relay is down** (see below). Making the

@@ -8,7 +8,7 @@ Progress: 40 / 40 complete (100.0%), 0 remaining.
 - [x] Choose default heavy-page pattern: tabs.
 - [x] Choose checklist location: `.codex/uiuxchecklist.md`.
 - [x] Run browser review after each slice at desktop and mobile widths.
-- [x] Keep English/Persian labels in the typed dashboard translation layer.
+- [x] Keep English/arabic labels in the typed dashboard translation layer.
 - [x] Keep every operational page free of horizontal overflow.
 - [x] Keep repeated tables on the shared table primitive.
 

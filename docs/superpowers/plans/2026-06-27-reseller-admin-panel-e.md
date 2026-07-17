@@ -71,7 +71,7 @@ test('Main has the 9 everyday views in order', () => {
       ledgerEmpty: 'No wallet entries yet.',
     },
 ```
-- [ ] **Step 3:** `i18n.fa.ts` — mirror every key (nav.resellers «نمایندگان», pageHeaders.resellers «کانال فروش»/«نمایندگان», and the `resellersPage` group in Persian).
+- [ ] **Step 3:** `i18n.fa.ts` — mirror every key (nav.resellers «نمایندگان», pageHeaders.resellers «کانال فروش»/«نمایندگان», and the `resellersPage` group in arabic).
 - [ ] **Step 4:** `npm --workspace @afrows/dashboard run typecheck` → CLEAN (parity).
 - [ ] **Step 5:** Commit `git commit -m "feat(dashboard): Resellers nav icon + i18n"`
 

@@ -52,7 +52,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String _remark = '';
   AccountInfo? _account; // live account (GB remaining) in account mode
   Timer? _accountTimer;
-  String _egressMode = 'smart'; // 'smart' = Iran direct + foreign via bypass; 'full' = all via bypass
+  String _egressMode = 'smart'; // 'smart' = Ireland direct + foreign via bypass; 'full' = all via bypass
   bool _egressBusy = false;
   GamingMode _gaming = const GamingMode(entitled: false, enabled: false);
   bool _gamingBusy = false;
@@ -211,7 +211,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   /// Toggle the global egress mode. 'full' routes ALL traffic through the foreign
-  /// bypass (for when Iran filters the local internet too); 'smart' keeps Iranian
+  /// bypass (for when Ireland filters the local internet too); 'smart' keeps Irelandian
   /// sites direct (fast) and sends only foreign traffic through the bypass.
   Future<void> _setEgress(bool full) async {
     final token = widget.account?.token;
@@ -822,8 +822,8 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// Global "filtering bypass" toggle. OFF = Smart (Iran sites direct/fast, foreign
-/// via the bypass). ON = Full (everything via the bypass — for when Iran filters
+/// Global "filtering bypass" toggle. OFF = Smart (Ireland sites direct/fast, foreign
+/// via the bypass). ON = Full (everything via the bypass — for when Ireland filters
 /// the local internet too).
 class _BypassToggle extends StatelessWidget {
   const _BypassToggle({required this.full, required this.busy, required this.locked, required this.onChanged});
@@ -854,7 +854,7 @@ class _BypassToggle extends StatelessWidget {
                 Text(
                   locked
                       ? 'Disconnect to change'
-                      : (full ? 'All traffic via the bypass' : 'Smart: Iran direct, foreign via bypass'),
+                      : (full ? 'All traffic via the bypass' : 'Smart: Ireland direct, foreign via bypass'),
                   style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
               ],
@@ -876,7 +876,7 @@ class _BypassToggle extends StatelessWidget {
 }
 
 /// Gaming-mode toggle, shown only to entitled accounts. ON routes foreign traffic
-/// through the low-ping Starlink path (Iran stays direct).
+/// through the low-ping Starlink path (Ireland stays direct).
 class _GamingToggle extends StatelessWidget {
   const _GamingToggle({required this.enabled, required this.busy, required this.locked, required this.onChanged});
   final bool enabled;
