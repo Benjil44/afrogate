@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.63 - 2026-07-24
+
+- **Egress fails over to backup exits on a village power loss.** When the village site loses power, foreign egress previously fell through to the filtered `direct` uplink (most sites dead) because the reserve relay pool was disabled and the `proxy` outbound could be missing — a failover that selected `proxy` then failed `xray -test` and silently aborted, pinning the engine to the dead primary path. Now `afrows-egress-mode-sync.py` **guarantees the `proxy` reserve outbound exists** (alongside via-village/via-germany), the **gaming tier gains a `proxy` reserve** (was stranded on the dead village tunnel), and the deploy **re-enables the uplink pool-sync** so the operator's added Exit-page VLESS exits (village-independent, dialed from the VPS) become the automatic reserve. Primary egress stays owned Germany/Starlink; the pool is used only when the village path is down. (Test added Exit-page exits so pool-sync admits them — needs ≥3 Mbps within ~90 min.)
+
 ## 0.114.62 - 2026-07-24
 
 - **Quota accuracy — decimal GB.** Plans are now defined, enforced, and displayed in decimal GB (1 GB = 1,000,000,000 bytes). `quota-math.ts` `BYTES_PER_GB` was `1024**3` (binary GiB), which over-delivered every plan by ~7.4% — a "20 GB" plan let users reach ~21.5 GB before cutoff. Also tightened the metering poll (Xray 60s→15s, WireGuard 30s→15s) so a fast link can't overshoot the limit by as much between sweeps (exact `used_bytes >= quota_limit_bytes` cutoff unchanged; a hard inline data-plane cap is a tracked follow-up). Migration `0049` rebases the **volume_packages catalog** to decimal; live paid balances are grandfathered (unchanged).

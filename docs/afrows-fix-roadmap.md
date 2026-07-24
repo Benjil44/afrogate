@@ -5,7 +5,7 @@ Diagnosed + implemented 2026-07-24 by the parallel `.claude/agents/` team. Owner
 ## Status (2026-07-24)
 | # | Issue | Status |
 |---|-------|--------|
-| ① | Outbound dies on power loss | **Diagnosed (physical).** `xray.service` restart-hardened in-repo. Real fix = UPS on village MikroTik + primary LTE modem (operator hardware action). |
+| ① | Outbound dies on power loss | **Failover fixed + UPS pending.** Root cause was a wiring gap, not just power: the operator's added Exit-page VLESS exits are village-independent (VPS-side) but the relay pool that uses them was disabled at deploy, and `apply_target` never guaranteed the `proxy` outbound (so failover silently aborted). Fixed: `proxy` outbound guaranteed, gaming gets a `proxy` reserve, pool-sync re-enabled as reserve. Deploy + Test the exits so pool-sync admits them. UPS on the MikroTik + primary LTE modem still recommended for the *primary* path. |
 | ② | Mobile customer table actions | **Fixed.** `DataTable` extended with expandable detail rows; Edit/Config open inline under each row. Dashboard typecheck clean. Human 390px eyeball pending. |
 | ③ | 20 GB plan → ~26 GB usable | **Fixed.** Decimal-GB (`1e9`) + tighter metering poll. Backend typecheck + quota tests pass. Open: DB backfill decision. |
 | ④ | Weather won't open over VLESS | **Fixed.** Trusted DNS block in `afrows-egress-mode-sync.py` (idempotent). |

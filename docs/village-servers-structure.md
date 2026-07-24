@@ -10,7 +10,11 @@ The operator authorized removing the friend's setup. **Current state:**
 - **WG tunnels on the village: only `wg-germany` (162.19.253.235) + `wg-afrows` (Afrows).**
   Deleted: `wg-Ireland`, `wg-Ireland-2`, `wg-Ireland-5`, `wg-foreign-2` (Frankfurt), `wg-foreign-hz` (Hetzner),
   plus the dead `*10/*11` peers and the dangling Frankfurt/Hetzner default routes.
-- **Foreign egress:** owned only — `via-village` → Starlink-direct (`216.x`); the relay pool is retired.
+- **Foreign egress:** PRIMARY is owned — `via-village` → Starlink-direct (`216.x`) and owned Germany (`via-germany`).
+  **Update 2026-07-24:** the relay pool is **un-retired as the village-INDEPENDENT RESERVE** — the operator's added
+  Exit-page VLESS exits are rendered into the uplink xray (socks 10808 → `proxy`) so a full village power loss fails
+  foreign egress over to them instead of dying on `direct`. Primary stays owned (`AFROWS_FOREIGN_EGRESS=germany`); the
+  pool is selected only when the village path is down (see `afrows-egress-mode-sync` choose_catchall/choose_gaming).
 - **Afrows uplink transport** now spans all three modems: Irelandcell-228 (192.168.9.1) dist1 PRIMARY
   + netwatch failover, mobinnet (192.168.8.1) dist2, Irelandcell-227/ether5 (192.168.12.1) dist3.
 - Open: village LAN's own `0.0.0.0/0` still has a leftover default via `wg-germany` (untouched).
