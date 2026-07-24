@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.64 - 2026-07-24
+
+- **Bought subscription exits now actually join the failover reserve.** The village-independent reserve pool only admits an exit with a speed test in the last ~90 min (≥3 Mbps), but the auto speed-tester was off by default and nothing tested an exit on import — so imported subscription servers never joined the pool, `pool_alive()` was always false, and the power-loss failover (added in 0.114.63) had nothing to fail over to. Now a subscription import stamps an immediate speed test on each server (and re-tests when a provider rotates a server), and auto speed-testing defaults ON (migration `0050`) so the reserve stays fresh. This is the missing piece that makes "fail over to my backup exits on power loss" actually work.
+
 ## 0.114.63 - 2026-07-24
 
 - **Egress fails over to backup exits on a village power loss.** When the village site loses power, foreign egress previously fell through to the filtered `direct` uplink (most sites dead) because the reserve relay pool was disabled and the `proxy` outbound could be missing — a failover that selected `proxy` then failed `xray -test` and silently aborted, pinning the engine to the dead primary path. Now `afrows-egress-mode-sync.py` **guarantees the `proxy` reserve outbound exists** (alongside via-village/via-germany), the **gaming tier gains a `proxy` reserve** (was stranded on the dead village tunnel), and the deploy **re-enables the uplink pool-sync** so the operator's added Exit-page VLESS exits (village-independent, dialed from the VPS) become the automatic reserve. Primary egress stays owned Germany/Starlink; the pool is used only when the village path is down. (Test added Exit-page exits so pool-sync admits them — needs ≥3 Mbps within ~90 min.)
