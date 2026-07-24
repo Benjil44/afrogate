@@ -73,6 +73,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
 import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './allocation-idempotency';
+import { archiveCustomerAccountInTransaction } from './customer-account-deletion';
 import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableBytes, numberFromBigInt, remainingBytes, throwConflictIfUniqueViolation } from './billing-math';
 import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from './date-utils';
 import { asRecord, stringFromRecord } from './record-utils';
@@ -2322,7 +2323,10 @@ export class BillingService {
 
   async listCustomerAccounts(filters: CustomerAccountFilters): Promise<AdminCustomerAccountSummary[]> {
     const values: unknown[] = [];
-    const where: string[] = [];
+    // Archived (soft-deleted) accounts never appear as active customers in the
+    // operator/reseller Customers listing. Their history rows are retained and
+    // still reachable by id (getCustomerAccount) for recovery.
+    const where: string[] = ['ca.deleted_at IS NULL'];
 
     if (filters.status?.trim()) {
       values.push(filters.status.trim());
@@ -3063,6 +3067,25 @@ export class BillingService {
     }
   }
 
+  /**
+   * Soft-deletes (archives) a customer account. The account is stamped with
+   * `deleted_at`, forced to a disabled status so enforcement (which gates on
+   * `customer_accounts.status = 'active'`) stops serving it, and its WireGuard
+   * peers are marked absent so the reconciler removes them from wg0. Nothing is
+   * hard-deleted: client_configs and all payment/accounting history are RETAINED
+   * so the archive stays recoverable. Idempotent for an already-archived account.
+   * Runs in a single transaction; see customer-account-deletion.ts.
+   */
+  async deleteCustomerAccount(id: string, actor: AuthActor | undefined): Promise<{ deleted: boolean }> {
+    const outcome = await this.database.transaction((executor) =>
+      archiveCustomerAccountInTransaction(executor, id, (metadata) =>
+        this.audit.record(actor, 'customer_account.archive', 'customer_account', id, metadata, executor),
+      ),
+    );
+    if (outcome.wgPeersMarkedAbsent > 0) this.triggerWgReconcile(); // remove the peers from wg0 now
+    return { deleted: true };
+  }
+
   /** Next collision-free config label for an account, e.g. "vless-1", "vless-2".
    *  Checks ALL existing labels on the account so an auto label can never clash
    *  (the dashboard used to guess the number from protocol badges → duplicate
@@ -3745,7 +3768,7 @@ export class BillingService {
                quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes",
                expires_at AS "expiresAt"
         FROM customer_accounts
-        WHERE lower(login_email) = $1 AND status = 'active'
+        WHERE lower(login_email) = $1 AND status = 'active' AND deleted_at IS NULL
         LIMIT 1
       `,
       [identifier],
@@ -3872,7 +3895,7 @@ export class BillingService {
       const result = await this.database.query<CustomerAccountRow>(
         `
           ${this.customerAccountSelectSql()}
-          WHERE ca.telegram_id = $1
+          WHERE ca.telegram_id = $1 AND ca.deleted_at IS NULL
           GROUP BY ca.id, ra.id
           ORDER BY ca.created_at DESC
           LIMIT 1
@@ -3890,7 +3913,7 @@ export class BillingService {
     const result = await this.database.query<CustomerAccountRow>(
       `
         ${this.customerAccountSelectSql()}
-        WHERE lower(ca.telegram_username) = lower($1)
+        WHERE lower(ca.telegram_username) = lower($1) AND ca.deleted_at IS NULL
         GROUP BY ca.id, ra.id
         ORDER BY ca.created_at DESC
         LIMIT 2

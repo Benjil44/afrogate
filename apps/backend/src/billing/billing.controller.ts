@@ -566,6 +566,15 @@ export class BillingController {
     return this.billingService.updateCustomerAccount(id, payload, request.actor);
   }
 
+  @Delete('customer-accounts/:id')
+  @Roles('admin')
+  deleteCustomerAccount(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ deleted: boolean }> {
+    return this.billingService.deleteCustomerAccount(id, request.actor);
+  }
+
   @Post('customer-accounts/:id/client-configs')
   @Roles('admin')
   createClientConfig(

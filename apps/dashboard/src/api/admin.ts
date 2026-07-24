@@ -857,6 +857,23 @@ export async function deleteAdminClientConfig(
   return response.json() as Promise<{ deleted: boolean }>;
 }
 
+/**
+ * Archives (soft-deletes) a customer account: it is disabled, hidden from the
+ * Customers listing, and its WireGuard peers are removed from wg0 by the
+ * reconciler. Client configs and all payment/accounting history are retained so
+ * the archive stays recoverable.
+ */
+export async function deleteAdminCustomerAccount(
+  sessionToken: string,
+  customerAccountId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}`,
+    { headers: createSessionHeaders(sessionToken), method: 'DELETE' },
+  );
+  return response.json() as Promise<{ deleted: boolean }>;
+}
+
 /** Renders (provisioning if needed) a WireGuard config's .conf text. */
 export async function fetchAdminWireguardConfig(
   sessionToken: string,

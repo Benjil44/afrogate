@@ -11,6 +11,7 @@ import {
   fetchAdminNetworkOverview,
   fetchAdminOutbounds,
   deleteAdminClientConfig,
+  deleteAdminCustomerAccount,
   fetchAdminCustomerAccounts,
   fetchAdminWireguardConfig,
   fetchEgressTierPrices,
@@ -542,6 +543,29 @@ export function CustomersPage({
     }
   };
 
+  // Delete (soft-archive) a customer account — the backend hides it from the
+  // list and cuts off its VPN access, but keeps payment history and an admin
+  // can restore it. Type-to-confirm: the operator must retype the displayed
+  // name exactly; cancel or a mismatch aborts without any API call.
+  const onDeleteAccount = async (accountId: string, displayName: string) => {
+    const typed = window.prompt(s.deleteAccountConfirm(displayName));
+    if (typed === null) return; // cancelled
+    if (typed.trim() !== displayName) return; // name mismatch — do nothing
+    setError(null);
+    try {
+      await deleteAdminCustomerAccount(sessionToken, accountId);
+      // Close any panel still pointing at the deleted account.
+      if (configsFor?.id === accountId) setConfigsFor(null);
+      if (editId === accountId) {
+        setEditorOpen(false);
+        setEditId(null);
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const onCreateConfig = async () => {
     if (!configsFor) return;
     setConfigBusy(true);
@@ -654,6 +678,13 @@ export function CustomersPage({
     );
   };
 
+  // `w-px` on a header cell is the standard auto-table-layout trick: the column
+  // shrinks to its content's minimum width (content is nowrap, so that's one
+  // tidy line) and ALL leftover width flows into the one flexible column — the
+  // customer name. That turns the old edge-to-edge stretch with big gaps
+  // between every column into a dense grid packed after the name column.
+  const fitCol = 'w-px whitespace-nowrap';
+
   const columns: Array<DataTableColumn<AdminCustomerAccountSummary>> = [
     {
       key: 'customer',
@@ -676,6 +707,7 @@ export function CustomersPage({
     {
       key: 'status',
       header: s.colStatus,
+      className: fitCol,
       render: (a) => {
         const over = a.quotaLimitBytes != null && a.usedBytes >= a.quotaLimitBytes;
         const isActive = a.status === 'active';
@@ -706,6 +738,7 @@ export function CustomersPage({
       key: 'usage',
       header: s.colUsed,
       alignRight: true,
+      className: fitCol,
       render: (a) => {
         const q = a.quotaLimitBytes ?? null;
         const used = a.usedBytes;
@@ -734,6 +767,7 @@ export function CustomersPage({
       key: 'clients',
       header: s.colClients,
       alignRight: true,
+      className: fitCol,
       render: (a) => (
         <span className="whitespace-nowrap tabular-nums">{`${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}`}</span>
       ),
@@ -741,6 +775,7 @@ export function CustomersPage({
     {
       key: 'internet',
       header: s.colInternet,
+      className: fitCol,
       render: (a) => {
         const e = egressFor(a);
         const gaming = a.egressTier === 'gaming';
@@ -768,9 +803,12 @@ export function CustomersPage({
     {
       key: 'protocols',
       header: s.colProtocols,
+      className: fitCol,
       render: (a) =>
         a.protocols && a.protocols.length > 0 ? (
-          <span className="flex flex-wrap gap-1">
+          // w-max keeps the (at most 2-3) pills on one line so the shrunk
+          // column sizes to the full pill row, not the widest single pill.
+          <span className="flex w-max items-center gap-1">
             {a.protocols.map((p) => (
               <span
                 key={p.protocol}
@@ -789,11 +827,12 @@ export function CustomersPage({
     {
       key: 'expiry',
       header: s.colExpiry,
+      className: fitCol,
       render: (a) => {
         if (!a.expiresAt) return <span className="text-afro-muted">—</span>;
         const expired = new Date(a.expiresAt).getTime() <= Date.now();
         return (
-          <span className={expired ? 'font-bold text-red-500' : 'text-afro-ink'}>
+          <span className={`whitespace-nowrap ${expired ? 'font-bold text-red-500' : 'text-afro-ink'}`}>
             {format.time(new Date(a.expiresAt), false)}
             {expired ? ` (${s.expired})` : ''}
           </span>
@@ -803,12 +842,19 @@ export function CustomersPage({
     {
       key: 'lastSeen',
       header: s.colLastConnected,
-      render: (a) => (a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : <span className="text-afro-muted">—</span>),
+      className: fitCol,
+      render: (a) =>
+        a.lastConnectedAt ? (
+          <span className="whitespace-nowrap">{format.time(new Date(a.lastConnectedAt), false)}</span>
+        ) : (
+          <span className="text-afro-muted">—</span>
+        ),
     },
     {
       key: 'cost',
       header: s.colCost,
       alignRight: true,
+      className: fitCol,
       render: (a) => {
         const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
         const price = priceFor(tier);
@@ -821,6 +867,7 @@ export function CustomersPage({
     {
       key: 'tags',
       header: s.colTags,
+      className: fitCol,
       render: (a) =>
         a.tags && a.tags.length > 0 ? (
           <span className="flex flex-wrap gap-1">
@@ -834,11 +881,17 @@ export function CustomersPage({
           <span className="text-afro-muted">—</span>
         ),
     },
-    { key: 'seller', header: s.colSeller, render: (a) => a.resellerDisplayName || s.direct },
+    {
+      key: 'seller',
+      header: s.colSeller,
+      className: fitCol,
+      render: (a) => <span className="whitespace-nowrap">{a.resellerDisplayName || s.direct}</span>,
+    },
     {
       key: 'actions',
       header: '',
       alignRight: true,
+      className: 'w-px',
       render: (a) => (
         // pe-2 keeps the pinned buttons off the scroller edge (the cell's own end
         // padding is zeroed by last:pr-0).
@@ -860,6 +913,16 @@ export function CustomersPage({
           >
             <Pencil size={14} />
             <span className="sr-only">{s.editAction}</span>
+          </button>
+          {/* Destructive: last on purpose so it's never the easy accidental tap. */}
+          <button
+            type="button"
+            onClick={() => void onDeleteAccount(a.id, nameOf(a))}
+            title={s.deleteAccount}
+            aria-label={s.deleteAccount}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-red-200 bg-afro-panel text-red-600 hover:border-red-500 hover:bg-red-50 hover:text-red-700 md:h-8 md:w-8"
+          >
+            <Trash2 size={14} />
           </button>
         </div>
       ),
@@ -1375,6 +1438,9 @@ export function CustomersPage({
 
       <div className="rounded-md border border-afro-line bg-afro-panel p-4">
         <PanelHeading title={s.title} icon={Plus} meta={loading ? t.dataStatus.loading : undefined} />
+        {/* Row-action errors (status/egress toggle, delete) — the editor has its
+            own error line, so only show this one while the editor is closed. */}
+        {error && !editorOpen ? <p className="mt-2 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
         {filtered.length === 0 ? (
           <div className="mt-2">
             <EmptyState message={loading ? t.dataStatus.loading : s.empty} />

@@ -175,6 +175,9 @@ export const en = {
       scanWg: 'Scan in the WireGuard app to import',
       deleteConfig: 'Delete config',
       deleteConfigConfirm: (label: string) => `Delete config "${label}"? This disconnects it and can't be undone.`,
+      deleteAccount: 'Delete account',
+      deleteAccountConfirm: (name: string) =>
+        `Delete "${name}"? The account is hidden from the customer list and all of its VPN access is cut off. An admin can restore it later; payment history is kept.\n\nType the customer name exactly to confirm:`,
       fldLoginPassword: 'App login password',
       resetPassword: 'Reset password',
       setPassword: 'Set password',
