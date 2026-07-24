@@ -1,8 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 
 export const DEFAULT_REWARDED_AD_PROVIDER = 'mvp_rewarded_ad';
-/** 10 GiB, expressed in bytes (1024**3 per GiB) — matches quota-math's BYTES_PER_GB. */
-export const MAX_REWARDED_AD_REWARD_BYTES = 10 * 1024 ** 3;
+/** 10 GB reward cap, in decimal bytes (1_000_000_000 per GB) — matches quota-math's BYTES_PER_GB. */
+export const MAX_REWARDED_AD_REWARD_BYTES = 10 * 1_000_000_000;
 export const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 
 /** Normalizes a rewarded-ad provider id to a safe slug, falling back to a provided/default value. */

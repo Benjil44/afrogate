@@ -33,6 +33,17 @@ TARGETS = [
 ]
 GEOIP_DIRECT = {"type": "field", "ip": ["geoip:private", "geoip:ir"], "outboundTag": "direct"}
 GEOSITE_DIRECT = {"type": "field", "domain": ["geosite:category-ir"], "outboundTag": "direct"}
+# Trusted resolver for domainStrategy IPIfNonMatch. The box's default resolver is
+# the Irelandian FILTERED one, which resolves geo-localized CDNs/APIs (Apple
+# WeatherKit, weather.com, AccuWeather, qweather, Android weather) into Irelandian
+# IP space, so geoip:ir wrongly matches them and sends them out the censored
+# `direct` uplink -> dead. Resolving against a clean resolver puts those CDNs in
+# FOREIGN IP space, so they miss geoip:ir and fall through to the `proxy`
+# catch-all and work. Domestic .ir sites still resolve to Irelandian IPs (and
+# geosite:category-ir matches them by domain first, before any IP resolution), so
+# geoip:ir -> direct keeps working for genuine domestic traffic.
+DNS_TRUSTED = {"servers": ["https://1.1.1.1/dns-query", "8.8.8.8", "https://dns.google/dns-query"],
+               "queryStrategy": "UseIP"}
 VIA_VILLAGE_OUT = {"protocol": "freedom", "tag": "via-village",
                    "streamSettings": {"sockopt": {"interface": "wg-village"}}}
 # Normal egress -> Germany: a 2nd tunnel to the village (wg-village-de over the
@@ -339,11 +350,29 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
             changed_out = True
 
     want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound)
-    if rules == want and not changed_out:
+    # Include the trusted DNS block in the change gate so an already-converged
+    # config that predates the DNS fix still gets it written once, and so a config
+    # that already has it does NOT get needlessly rewritten/restarted. Dict equality
+    # is order-independent, so a value compare converges cleanly on re-runs.
+    want_dns = dict(DNS_TRUSTED)
+    if rules == want and cfg.get("dns") == want_dns and not changed_out:
         return False
 
     cfg.setdefault("routing", {})["rules"] = want
+    # domainStrategy decision (belt-and-suspenders considered, DNS-only chosen):
+    #   - Keep IPIfNonMatch, NOT AsIs. AsIs stops resolving domains for routing, so
+    #     geoip:ir could only match traffic handed to it as literal IPs. Domestic
+    #     .ir services reached by DOMAIN that aren't in geosite:category-ir would
+    #     then miss geoip:ir and fall through to the FOREIGN `proxy` catch-all --
+    #     i.e. AsIs would leak domestic traffic out the foreign gateway, the exact
+    #     thing we must avoid. So AsIs is rejected.
+    #   - Do NOT narrow GEOIP_DIRECT either: its whole job is keeping domestic-hosted
+    #     traffic domestic; narrowing it risks the same domestic leak.
+    #   The clean DNS block below fixes the weather breakage with zero domestic-leak
+    #   risk, because it only changes WHICH resolver IPIfNonMatch consults; the
+    #   routing rules and their precedence are unchanged.
     cfg["routing"]["domainStrategy"] = "IPIfNonMatch"
+    cfg["dns"] = want_dns
     tmp = cfg_path + ".mode.json"
     json.dump(cfg, open(tmp, "w"), indent=2)
     test = subprocess.run([XRAY, "run", "-test", "-config", tmp], capture_output=True, text=True, timeout=30)

@@ -21,14 +21,16 @@ import {
   updateAdminCustomerAccount,
   updateRouter,
 } from '../api/admin';
-import { DataTable, EmptyState, PanelHeading } from '../components/primitives';
+import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 
 const POLL_MS = 30000;
-const GIB = 1024 ** 3;
+// Decimal GB (1 GB = 1,000,000,000 bytes) — matches how usage is displayed (bytes / 1e9)
+// and the backend quota math, so a "20 GB" plan stores exactly 20e9 bytes.
+const BYTES_PER_GB = 1_000_000_000;
 
 type Status = 'active' | 'suspended' | 'disabled';
 type Scope = 'account_shared' | 'per_client';
@@ -211,8 +213,8 @@ export function CustomersPage({
     setName(a.displayName ?? '');
     setEmail(a.loginEmail ?? '');
     setTelegram(a.telegramUsername ?? '');
-    setQuotaGb(a.quotaLimitBytes != null ? String(Math.round((a.quotaLimitBytes / GIB) * 100) / 100) : '');
-    setPerClientGb(a.perClientLimitBytes != null ? String(Math.round((a.perClientLimitBytes / GIB) * 100) / 100) : '');
+    setQuotaGb(a.quotaLimitBytes != null ? String(Math.round((a.quotaLimitBytes / BYTES_PER_GB) * 100) / 100) : '');
+    setPerClientGb(a.perClientLimitBytes != null ? String(Math.round((a.perClientLimitBytes / BYTES_PER_GB) * 100) / 100) : '');
     setScope((a.quotaScope as Scope) || 'account_shared');
     setStatus((a.status as Status) || 'active');
     setEgressTier((a.egressTier as 'normal' | 'gaming') === 'gaming' ? 'gaming' : 'normal');
@@ -379,7 +381,7 @@ export function CustomersPage({
 
   const gbToBytes = (v: string): number | null => {
     const n = Number(v.trim());
-    return v.trim() && Number.isFinite(n) ? Math.round(n * GIB) : null;
+    return v.trim() && Number.isFinite(n) ? Math.round(n * BYTES_PER_GB) : null;
   };
 
   const onSave = async () => {
@@ -591,7 +593,7 @@ export function CustomersPage({
     }
     return rows.map((r) => ({
       ...r,
-      cost: Math.round((r.bytes / GIB) * priceFor(r.tier)),
+      cost: Math.round((r.bytes / BYTES_PER_GB) * priceFor(r.tier)),
       currency: tierPrices.find((p) => p.tier === r.tier)?.currency ?? 'IRT',
     }));
   }, [accounts, tierPrices]);
@@ -600,6 +602,57 @@ export function CustomersPage({
     st === 'active' ? '#1f9d57' : st === 'suspended' || st === 'disabled' ? '#d23f3f' : '#9aa7ad';
 
   const inputClass = 'min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal';
+
+  // Inline detail panel under each row — the primary way to reach Edit/Configs on
+  // phones, where the trailing actions column sits beyond the horizontal scroll.
+  const renderCustomerDetail = (a: AdminCustomerAccountSummary) => {
+    const e = egressFor(a);
+    const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
+    const price = priceFor(tier);
+    const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
+    const hasQuota = a.quotaLimitBytes != null && a.quotaLimitBytes > 0;
+
+    return (
+      <div className="grid gap-2.5">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => openConfigs(a)}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-afro-teal px-3 text-sm font-bold text-white hover:opacity-90 sm:flex-none"
+          >
+            <Link2 size={15} />
+            {s.configsAction}
+          </button>
+          <button
+            type="button"
+            onClick={() => openEdit(a)}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal sm:flex-none"
+          >
+            <Pencil size={15} />
+            {s.editAction}
+          </button>
+        </div>
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          <DetailRow label={s.colEmail}>{a.loginEmail || '—'}</DetailRow>
+          <DetailRow label={s.colStatus}>{String(a.status)}</DetailRow>
+          <DetailRow label={s.colUsed}>
+            {hasQuota ? `${format.bytes(a.usedBytes)} / ${format.bytes(a.quotaLimitBytes ?? 0)}` : `${format.bytes(a.usedBytes)} · ∞`}
+          </DetailRow>
+          <DetailRow label={s.colClients}>{`${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}`}</DetailRow>
+          <DetailRow label={s.colInternet}>
+            {`${a.egressTier === 'gaming' ? s.egModeGame : s.egModeNormal} · ${e.failover ? '⚠ ' : ''}${e.label}`}
+          </DetailRow>
+          <DetailRow label={s.colExpiry}>{a.expiresAt ? format.time(new Date(a.expiresAt), false) : '—'}</DetailRow>
+          <DetailRow label={s.colLastConnected}>{a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : '—'}</DetailRow>
+          <DetailRow label={s.colSeller}>{a.resellerDisplayName || s.direct}</DetailRow>
+          {a.tags && a.tags.length > 0 ? <DetailRow label={s.colTags}>{a.tags.join(', ')}</DetailRow> : null}
+          {price > 0 ? (
+            <DetailRow label={s.colCost}>{`${Math.round((a.usedBytes / BYTES_PER_GB) * price).toLocaleString()} ${currency}`}</DetailRow>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   const columns: Array<DataTableColumn<AdminCustomerAccountSummary>> = [
     {
@@ -724,38 +777,38 @@ export function CustomersPage({
     },
     {
       key: 'expiry',
-      header: 'Expires',
+      header: s.colExpiry,
       render: (a) => {
         if (!a.expiresAt) return <span className="text-afro-muted">—</span>;
         const expired = new Date(a.expiresAt).getTime() <= Date.now();
         return (
           <span className={expired ? 'font-bold text-red-500' : 'text-afro-ink'}>
             {format.time(new Date(a.expiresAt), false)}
-            {expired ? ' (expired)' : ''}
+            {expired ? ` (${s.expired})` : ''}
           </span>
         );
       },
     },
     {
       key: 'lastSeen',
-      header: 'Last connected',
+      header: s.colLastConnected,
       render: (a) => (a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : <span className="text-afro-muted">—</span>),
     },
     {
       key: 'cost',
-      header: 'Cost',
+      header: s.colCost,
       render: (a) => {
         const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
         const price = priceFor(tier);
         if (!price) return <span className="text-afro-muted">—</span>;
-        const cost = Math.round((a.usedBytes / GIB) * price);
+        const cost = Math.round((a.usedBytes / BYTES_PER_GB) * price);
         const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
         return <span className="text-afro-ink">{`${cost.toLocaleString()} ${currency}`}</span>;
       },
     },
     {
       key: 'tags',
-      header: 'Tags',
+      header: s.colTags,
       render: (a) =>
         a.tags && a.tags.length > 0 ? (
           <span className="flex flex-wrap gap-1">
@@ -1314,7 +1367,15 @@ export function CustomersPage({
           </div>
         ) : (
           <div className="mt-2">
-            <DataTable rows={filtered} columns={visibleColumns} rowKey={(a) => a.id} minWidth="900px" />
+            <DataTable
+              columns={visibleColumns}
+              detailCollapseLabel={s.detailCollapse}
+              detailExpandLabel={s.detailExpand}
+              minWidth="900px"
+              renderDetail={renderCustomerDetail}
+              rowKey={(a) => a.id}
+              rows={filtered}
+            />
           </div>
         )}
       </div>

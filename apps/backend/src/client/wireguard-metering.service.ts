@@ -23,7 +23,14 @@ export class WireguardMeteringService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     if (!process.env.DATABASE_URL) return;
     if ((process.env.AFROWS_WG_METERING_ENABLED ?? 'true').toLowerCase() === 'false') return;
-    const intervalMs = Number(process.env.AFROWS_WG_METERING_INTERVAL_MS ?? 30000) || 30000;
+    // Enforcement is polled, so worst-case quota overshoot is (interval x line-rate):
+    // the peer keeps transferring until the next tick observes it over quota and flips
+    // desired_state to 'absent'. Dropped 30s -> 15s to halve that window; a 10s floor
+    // keeps an env override from hammering the DB on a low-resource VPS.
+    // TODO(quota-cap): a hard inline data-plane cap (per-peer byte ceiling in the WG
+    // reconciler / nftables) would remove the interval-scaled overshoot entirely.
+    // Tracked as a separate follow-up; not built here.
+    const intervalMs = Math.max(Number(process.env.AFROWS_WG_METERING_INTERVAL_MS ?? 15000) || 15000, 10000);
     this.timer = setInterval(() => void this.tick(), intervalMs);
     this.timer.unref?.();
     void this.tick();

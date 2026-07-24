@@ -61,7 +61,22 @@ describe("addPositiveBytes", () => {
 describe("gbToBytes", () => {
   it("converts gigabytes to bytes", () => {
     assert.equal(gbToBytes(1), BYTES_PER_GB);
-    assert.equal(gbToBytes(2), 2 * 1024 ** 3);
+    assert.equal(gbToBytes(2), 2 * BYTES_PER_GB);
     assert.equal(gbToBytes(0), 0);
+  });
+
+  it("treats GB as decimal (1 GB = 1,000,000,000 bytes), not binary GiB", () => {
+    // Regression guard for the quota-overage bug: a "20 GB" plan must resolve to
+    // exactly 20e9 bytes and enforce there — NOT 21.47e9 (20 * 1024**3), which
+    // let users consume ~7.4% over their plan before cutoff.
+    assert.equal(BYTES_PER_GB, 1_000_000_000);
+    assert.equal(gbToBytes(20), 20_000_000_000);
+    assert.notEqual(gbToBytes(20), 20 * 1024 ** 3);
+
+    // Enforcement is an exact byte comparison (used_bytes >= quota_limit_bytes).
+    // At the 20 GB limit, 20e9 bytes must trip the cutoff; one byte under must not.
+    const quotaLimitBytes = gbToBytes(20);
+    assert.equal(20_000_000_000 >= quotaLimitBytes, true);
+    assert.equal(19_999_999_999 >= quotaLimitBytes, false);
   });
 });

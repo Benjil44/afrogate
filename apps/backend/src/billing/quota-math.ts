@@ -46,9 +46,15 @@ export function addPositiveBytes(baseBytes: number, deltaBytes: number, errorMes
   return nextBytes;
 }
 
-export const BYTES_PER_GB = 1024 ** 3;
+/**
+ * Decimal gigabyte: 1 GB = 1,000,000,000 bytes (NOT the 1024**3 binary GiB).
+ * Plans are defined, enforced, and displayed in decimal GB, so a "20 GB" plan
+ * must resolve to exactly 20,000,000,000 bytes. Using GiB here previously
+ * inflated every plan by ~7.4% (20 GB became 21.47 decimal GB of headroom).
+ */
+export const BYTES_PER_GB = 1_000_000_000;
 
-/** Converts gigabytes to bytes. */
+/** Converts (decimal) gigabytes to bytes. */
 export function gbToBytes(value: number): number {
   return value * BYTES_PER_GB;
 }

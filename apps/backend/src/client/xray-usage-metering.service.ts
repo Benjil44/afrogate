@@ -199,9 +199,19 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     return [this.inboundTag()];
   }
   private intervalMs(): number {
+    // Meter+cutoff is purely polled, so the worst-case quota overshoot is
+    // (interval x link line-rate): the user keeps transferring between the
+    // moment they cross the limit and the next tick that observes it and
+    // cuts them off. A 60s tick let a fast link burn several GB past a small
+    // plan; 15s bounds that far tighter without hammering a low-resource VPS
+    // (the Xray stats call is a cheap local gRPC query). Floor is 10s so an
+    // env override can go tighter but never busy-loop the box.
+    // TODO(quota-cap): add a hard inline data-plane cap (e.g. per-connection
+    // byte ceiling enforced in Xray/nftables) so overshoot no longer scales
+    // with the polling interval at all. Tracked as a separate follow-up.
     const raw = this.config.get<string>('AFROWS_XRAY_METERING_INTERVAL_SECONDS');
     const n = typeof raw === 'number' ? raw : Number(raw);
-    return (Number.isInteger(n) ? Math.min(Math.max(n, 30), 3600) : 60) * 1000;
+    return (Number.isInteger(n) ? Math.min(Math.max(n, 10), 3600) : 15) * 1000;
   }
   private flag(name: string, fallback: boolean): boolean {
     const v = this.config.get<string>(name)?.trim().toLowerCase();

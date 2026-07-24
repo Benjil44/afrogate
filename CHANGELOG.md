@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.114.62 - 2026-07-24
+
+- **Quota accuracy — decimal GB.** Plans are now defined, enforced, and displayed in decimal GB (1 GB = 1,000,000,000 bytes). `quota-math.ts` `BYTES_PER_GB` was `1024**3` (binary GiB), which over-delivered every plan by ~7.4% — a "20 GB" plan let users reach ~21.5 GB before cutoff. Also tightened the metering poll (Xray 60s→15s, WireGuard 30s→15s) so a fast link can't overshoot the limit by as much between sweeps (exact `used_bytes >= quota_limit_bytes` cutoff unchanged; a hard inline data-plane cap is a tracked follow-up). Migration `0049` rebases the **volume_packages catalog** to decimal; live paid balances are grandfathered (unchanged).
+- **Customer table usable on mobile.** The Customers table's Edit/Config actions were in a right-aligned column that scrolled off-screen on phones. The shared `DataTable` primitive gained optional **expandable detail rows**; tapping a row (or its chevron) now opens Edit/Config plus key fields inline **under that user's row**. New Arabic/English strings; no other table changed behavior.
+- **Weather (and other geo-localized services) load over VLESS again.** In `smart` mode, `domainStrategy: IPIfNonMatch` with no DNS block let the filtered domestic resolver map weather CDNs/APIs into `geoip:ir`, sending them out the censored `direct` uplink. `afrows-egress-mode-sync.py` now writes a trusted DNS block (Cloudflare DoH / Google) so those hosts resolve to foreign IPs and take the clean proxy. Domestic `.ir` routing is unchanged.
+- **Outbound power-loss resilience.** Diagnosed as physical (the village MikroTik + LTE modems share an un-battery-backed circuit; a UPS on the router + primary modem is the real fix). `xray.service` hardened to `Restart=always` with no start-rate limit so it recovers immediately after a link flap. *(Applied on the box — `xray.service` is not shipped by the deploy.)*
+- **Dev:** local `VITE_DEV_SKIP_AUTH` login bypass (DEV-only, stripped from prod builds) for UI work without the backend; `.claude/agents/` role-specialized agent team + `docs/afrows-fix-roadmap.md`.
+
 ## 0.114.58 - 2026-06-15
 
 - **WireGuard QR code.** Show WireGuard config now also renders a **scannable QR** of the `.conf` (alongside copy + download) — users add the tunnel in the official WireGuard app via "Scan from QR code". The endpoint returns an SVG QR generated server-side (`qrcode`); the dashboard renders it inline.

@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react';
-import { AlertTriangle, Inbox, Loader2, WifiOff } from 'lucide-react';
+import { Fragment, useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { AlertTriangle, ChevronDown, ChevronRight, Inbox, Loader2, WifiOff } from 'lucide-react';
 import type {
   AfroIcon,
   DashboardTabItem,
@@ -297,22 +297,51 @@ export function DashboardTabs<T extends string>({
 
 export function DataTable<Row>({
   columns,
+  detailCollapseLabel,
+  detailExpandLabel,
   minWidth = '760px',
+  renderDetail,
   rowClassName,
   rowKey,
   rows,
 }: {
   columns: Array<DataTableColumn<Row>>;
+  /** Accessible label for collapsing an open detail row. Provide it together with renderDetail. */
+  detailCollapseLabel?: string;
+  /** Accessible label for expanding a row's detail panel. Provide it together with renderDetail. */
+  detailExpandLabel?: string;
   minWidth?: string;
+  /**
+   * Optional inline detail panel rendered full-width directly under a row.
+   * When set, each row gains a leading chevron toggle (and the row itself becomes
+   * tappable) so actions stay reachable on narrow screens where trailing columns
+   * would sit beyond the horizontal scroll.
+   */
+  renderDetail?: (row: Row) => ReactNode;
   rowClassName?: (row: Row) => string | undefined;
   rowKey: (row: Row) => string;
   rows: Row[];
 }) {
+  const detailIdPrefix = useId();
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const hasDetail = Boolean(renderDetail);
+  const toggleRow = (key: string) => setExpandedRows((current) => ({ ...current, [key]: !current[key] }));
+  const onRowClick = (event: MouseEvent<HTMLTableRowElement>, key: string) => {
+    // Row tap toggles the detail panel, but never steals taps from interactive cells.
+    if ((event.target as HTMLElement).closest('a,button,input,label,select,textarea')) return;
+    toggleRow(key);
+  };
+
   return (
-    <div className="overflow-x-auto">
+    <div className={`overflow-x-auto ${hasDetail ? '[container-type:inline-size]' : ''}`}>
       <table className="w-full border-collapse" style={{ minWidth }}>
         <thead>
           <tr>
+            {hasDetail ? (
+              <th className="w-9 border-b border-afro-line py-1.5 pl-0 pr-1" scope="col">
+                <span className="sr-only">{detailExpandLabel}</span>
+              </th>
+            ) : null}
             {columns.map((column) => (
               <th
                 className={`border-b border-afro-line px-2 py-1.5 text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0 ${tableAlignmentClass(column.align, column.alignRight)} ${column.className ?? ''}`}
@@ -324,15 +353,53 @@ export function DataTable<Row>({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr className={rowClassName?.(row)} key={rowKey(row)}>
-              {columns.map((column) => (
-                <TableCell align={column.align} alignRight={column.alignRight} key={column.key}>
-                  {column.render(row)}
-                </TableCell>
-              ))}
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const key = rowKey(row);
+            const isOpen = hasDetail && Boolean(expandedRows[key]);
+            const detailId = `${detailIdPrefix}-${key}`;
+            const toggleLabel = isOpen ? detailCollapseLabel : detailExpandLabel;
+
+            return (
+              <Fragment key={key}>
+                <tr
+                  className={`${rowClassName?.(row) ?? ''} ${hasDetail ? 'cursor-pointer' : ''}`}
+                  onClick={hasDetail ? (event) => onRowClick(event, key) : undefined}
+                >
+                  {hasDetail ? (
+                    <td className="border-b border-afro-line py-1.5 pl-0 pr-1 align-middle">
+                      <button
+                        aria-controls={detailId}
+                        aria-expanded={isOpen}
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-afro-line text-afro-muted transition hover:border-afro-teal hover:text-afro-teal md:h-8 md:w-8"
+                        onClick={() => toggleRow(key)}
+                        title={toggleLabel}
+                        type="button"
+                      >
+                        <span className="sr-only">{toggleLabel}</span>
+                        {isOpen ? <ChevronDown size={15} /> : <ChevronRight className="rtl:-scale-x-100" size={15} />}
+                      </button>
+                    </td>
+                  ) : null}
+                  {columns.map((column) => (
+                    <TableCell align={column.align} alignRight={column.alignRight} key={column.key}>
+                      {column.render(row)}
+                    </TableCell>
+                  ))}
+                </tr>
+                {isOpen && renderDetail ? (
+                  <tr id={detailId}>
+                    <td className="border-b border-afro-line bg-[#f8fafb] p-0" colSpan={columns.length + 1}>
+                      {/* Sticky + container-width cap keeps the panel fully visible inside the
+                          horizontal scroller, even when the table itself is wider than the screen. */}
+                      <div className="sticky start-0 max-w-[100cqw] px-2 py-2.5">
+                        {renderDetail(row)}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -366,4 +433,4 @@ export function BackupMetricCard({ label, tone, value }: { label: string; tone: 
       </strong>
     </div>
   );
-}
+}
