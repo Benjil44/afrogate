@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
@@ -18,6 +18,7 @@ import {
   fetchRouters,
   setEgressTierPrice,
   resetCustomerAccountPassword,
+  restoreAdminCustomerAccount,
   updateAdminClientRoutePreference,
   updateAdminCustomerAccount,
   updateRouter,
@@ -52,6 +53,10 @@ export function CustomersPage({
   const [overview, setOverview] = useState<AdminNetworkOverviewResponse | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  // Off by default: the list fetch only returns active accounts. When on, the
+  // archived filter widens to 'all' so soft-deleted accounts show up (greyed,
+  // with a Restore action) alongside active ones.
+  const [showArchived, setShowArchived] = useState(false);
 
   // editor
   const [editorOpen, setEditorOpen] = useState(false);
@@ -129,7 +134,7 @@ export function CustomersPage({
 
   const load = async () => {
     try {
-      const res = await fetchAdminCustomerAccounts(sessionToken);
+      const res = await fetchAdminCustomerAccounts(sessionToken, undefined, showArchived ? 'all' : 'active');
       setAccounts(res.accounts);
     } catch {
       /* keep last */
@@ -158,10 +163,15 @@ export function CustomersPage({
       if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionToken]);
+  }, [sessionToken, showArchived]);
 
   const nameOf = (a: AdminCustomerAccountSummary) =>
     a.displayName || a.telegramUsername || a.loginEmail || a.telegramId || a.id.slice(0, 8);
+
+  // Soft-deleted (archived) flag — the contract carries both the `deletedAt`
+  // timestamp and the derived `isArchived` convenience boolean.
+  const isArchived = (a: AdminCustomerAccountSummary): boolean =>
+    a.isArchived === true || Boolean(a.deletedAt);
 
   // Per-customer current egress: gaming tier follows the gaming outbound (Starlink,
   // or Germany while Starlink is failed over); everyone else follows the catch-all.
@@ -566,6 +576,18 @@ export function CustomersPage({
     }
   };
 
+  // Restore (unarchive) a soft-deleted account: re-enables it and its VPN access.
+  const onRestoreAccount = async (accountId: string, displayName: string) => {
+    if (!window.confirm(s.restoreAccountConfirm(displayName))) return;
+    setError(null);
+    try {
+      await restoreAdminCustomerAccount(sessionToken, accountId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const onCreateConfig = async () => {
     if (!configsFor) return;
     setConfigBusy(true);
@@ -678,6 +700,27 @@ export function CustomersPage({
     );
   };
 
+  // Protocol pills render in fixed slots (VLESS first, then WIREGUARD) so the
+  // column reads as aligned sub-columns across rows: each slot has a fixed min
+  // width and the pill fills it with the amount right-justified, so usage
+  // numbers line up. Slots only exist for protocols present in the current
+  // list, so an all-VLESS list doesn't reserve an empty WIREGUARD lane.
+  const protoSlotWidths: Record<string, string> = { vless: 'minmax(7.5rem,auto)', wireguard: 'minmax(9.25rem,auto)' };
+  const protoSlots = ['vless', 'wireguard'].filter((name) =>
+    filtered.some((a) => a.protocols?.some((p) => p.protocol === name)),
+  );
+  const protoGridTemplate = protoSlots.map((name) => protoSlotWidths[name]).join(' ');
+  const protoPill = (p: { protocol: string; usedBytes: number }) => (
+    <span
+      key={p.protocol}
+      title={`${p.protocol}: ${format.bytes(p.usedBytes)}`}
+      className="flex w-full min-w-0 items-center justify-between gap-1 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
+    >
+      {p.protocol}
+      <span className="font-normal normal-case tabular-nums text-afro-muted">{format.bytes(p.usedBytes)}</span>
+    </span>
+  );
+
   // `w-px` on a header cell is the standard auto-table-layout trick: the column
   // shrinks to its content's minimum width (content is nowrap, so that's one
   // tidy line) and ALL leftover width flows into the one flexible column — the
@@ -692,7 +735,14 @@ export function CustomersPage({
       className: 'min-w-[160px]',
       render: (a) => (
         <>
-          <strong className="block text-afro-ink">{nameOf(a)}</strong>
+          <strong className="block text-afro-ink">
+            {nameOf(a)}
+            {isArchived(a) ? (
+              <span className="ms-1.5 inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-afro-muted">
+                {s.archivedBadge}
+              </span>
+            ) : null}
+          </strong>
           <span className="text-[12px] text-afro-muted">{format.time(new Date(a.updatedAt), false)}</span>
           {a.gatewayRouter && (
             <span className="mt-0.5 flex items-center gap-1 text-[11px] text-afro-muted">
@@ -804,25 +854,21 @@ export function CustomersPage({
       key: 'protocols',
       header: s.colProtocols,
       className: fitCol,
-      render: (a) =>
-        a.protocols && a.protocols.length > 0 ? (
-          // w-max keeps the (at most 2-3) pills on one line so the shrunk
-          // column sizes to the full pill row, not the widest single pill.
-          <span className="flex w-max items-center gap-1">
-            {a.protocols.map((p) => (
-              <span
-                key={p.protocol}
-                title={`${p.protocol}: ${format.bytes(p.usedBytes)}`}
-                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
-              >
-                {p.protocol}
-                <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
-              </span>
-            ))}
+      render: (a) => {
+        const protos = a.protocols ?? [];
+        if (protos.length === 0) return <span className="text-afro-muted">—</span>;
+        const extras = protos.filter((p) => !protoSlots.includes(p.protocol));
+        return (
+          <span className="grid w-max items-center gap-1" style={{ gridTemplateColumns: protoGridTemplate || undefined }}>
+            {protoSlots.map((name) => {
+              const p = protos.find((row) => row.protocol === name);
+              // Empty placeholder keeps the slot (and every later slot) aligned.
+              return p ? protoPill(p) : <span aria-hidden key={`${name}-empty`} />;
+            })}
+            {extras.map(protoPill)}
           </span>
-        ) : (
-          <span className="text-afro-muted">—</span>
-        ),
+        );
+      },
     },
     {
       key: 'expiry',
@@ -914,16 +960,29 @@ export function CustomersPage({
             <Pencil size={14} />
             <span className="sr-only">{s.editAction}</span>
           </button>
-          {/* Destructive: last on purpose so it's never the easy accidental tap. */}
-          <button
-            type="button"
-            onClick={() => void onDeleteAccount(a.id, nameOf(a))}
-            title={s.deleteAccount}
-            aria-label={s.deleteAccount}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-red-200 bg-afro-panel text-red-600 hover:border-red-500 hover:bg-red-50 hover:text-red-700 md:h-8 md:w-8"
-          >
-            <Trash2 size={14} />
-          </button>
+          {isArchived(a) ? (
+            // Archived rows swap the delete for a green Restore (unarchive).
+            <button
+              type="button"
+              onClick={() => void onRestoreAccount(a.id, nameOf(a))}
+              title={s.restoreAccount}
+              aria-label={s.restoreAccount}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-emerald-200 bg-afro-panel text-emerald-600 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700 md:h-8 md:w-8"
+            >
+              <ArchiveRestore size={14} />
+            </button>
+          ) : (
+            // Destructive: last on purpose so it's never the easy accidental tap.
+            <button
+              type="button"
+              onClick={() => void onDeleteAccount(a.id, nameOf(a))}
+              title={s.deleteAccount}
+              aria-label={s.deleteAccount}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-red-200 bg-afro-panel text-red-600 hover:border-red-500 hover:bg-red-50 hover:text-red-700 md:h-8 md:w-8"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
@@ -985,15 +1044,26 @@ export function CustomersPage({
         ))}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
-          <Search size={15} className="text-afro-muted" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={s.searchPlaceholder}
-            className="min-w-[180px] bg-transparent text-sm outline-none"
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
+            <Search size={15} className="text-afro-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={s.searchPlaceholder}
+              className="min-w-[180px] bg-transparent text-sm outline-none"
+            />
+          </label>
+          <label className="inline-flex min-h-11 items-center gap-2 text-[13px] font-bold text-afro-muted md:min-h-9">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="h-4 w-4 accent-afro-teal"
+            />
+            {s.showArchived}
+          </label>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-bold text-afro-muted">{s.total.replace('{n}', format.integer(filtered.length))}</span>
           <button
@@ -1453,6 +1523,9 @@ export function CustomersPage({
               detailExpandLabel={s.detailExpand}
               minWidth="900px"
               renderDetail={renderCustomerDetail}
+              // opacity groups the row before compositing, so the pinned actions
+              // cell still fully occludes cells scrolling beneath it.
+              rowClassName={(a) => (isArchived(a) ? 'opacity-60' : undefined)}
               rowKey={(a) => a.id}
               rows={filtered}
               stickyLastColumn

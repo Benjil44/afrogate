@@ -178,6 +178,10 @@ export const fa: DashboardStrings = {
       deleteConfig: 'حذف کانفیگ',
       deleteConfigConfirm: (label: string) => `کانفیگ «${label}» حذف شود؟ اتصال قطع می‌شود و قابل بازگشت نیست.`,
       deleteAccount: 'حذف حساب',
+      restoreAccount: 'بازیابی حساب',
+      restoreAccountConfirm: (name: string) => `حساب «${name}» بازیابی شود؟ حساب و دسترسی VPN آن دوباره فعال می‌شود.`,
+      showArchived: 'نمایش آرشیوشده‌ها',
+      archivedBadge: 'آرشیو شده',
       deleteAccountConfirm: (name: string) =>
         `حساب «${name}» حذف شود؟ حساب از فهرست مشتریان پنهان و دسترسی VPN آن قطع می‌شود. مدیر می‌تواند بعداً آن را بازیابی کند؛ سابقه پرداخت حفظ می‌شود.\n\nبرای تایید، نام مشتری را دقیقاً تایپ کنید:`,
       fldLoginPassword: 'رمز ورود اپ',

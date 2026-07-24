@@ -28,6 +28,9 @@ import type { DatabaseQueryExecutor } from '../database/database.service';
 /** Status an archived account is forced into so enforcement cuts its access. */
 export const ARCHIVED_ACCOUNT_STATUS = 'disabled' as const;
 
+/** Live status an account is restored to so enforcement serves it again. */
+export const ACTIVE_ACCOUNT_STATUS = 'active' as const;
+
 export interface AccountClientConfigRow {
   id: string;
   protocol: string | null;
@@ -42,6 +45,27 @@ export interface CustomerAccountArchiveOutcome {
 
 export function isWireguardConfig(protocol: string | null | undefined): boolean {
   return (protocol ?? '').toLowerCase() === 'wireguard';
+}
+
+export type CustomerAccountArchivedFilter = 'active' | 'only' | 'all';
+
+/**
+ * SQL WHERE fragment (on alias `ca`) for the customer-accounts listing archived
+ * visibility. Returns null for 'all' (no archived predicate). Defaults to
+ * 'active' (live only) so the historical listing behavior is preserved.
+ */
+export function customerAccountArchivedWhereClause(
+  archived: CustomerAccountArchivedFilter | undefined,
+): string | null {
+  switch (archived ?? 'active') {
+    case 'only':
+      return 'ca.deleted_at IS NOT NULL';
+    case 'all':
+      return null;
+    case 'active':
+    default:
+      return 'ca.deleted_at IS NULL';
+  }
 }
 
 /**
@@ -99,4 +123,72 @@ export async function archiveCustomerAccountInTransaction(
 
   await recordAudit({ soft: true, wgPeersMarkedAbsent });
   return { alreadyArchived: false, wgPeersMarkedAbsent };
+}
+
+export interface CustomerAccountRestoreOutcome {
+  /** True when the account was already live on entry (idempotent no-op). */
+  alreadyActive: boolean;
+  /** How many WireGuard peers were flipped back to 'present' (caller reconciles if > 0). */
+  wgPeersRestored: number;
+}
+
+/**
+ * Restores (un-archives) a customer account inside a caller-owned transaction.
+ * Locks the account row (throws NotFound if it does not exist). If it is not
+ * archived (`deleted_at IS NULL`), returns immediately (idempotent). Otherwise
+ * clears `deleted_at`, re-enables the account to 'active' so enforcement
+ * re-provisions VLESS, and flips its WireGuard peers back to 'present' so the
+ * reconciler re-adds them to wg0.
+ *
+ * The peer restore mirrors the WireGuard quota-metering re-arm guards
+ * (`enforceQuota`): only peers of non-disabled configs are re-armed, and only
+ * where the account is under quota, so restoring never re-enables an
+ * individually-disabled config or an over-quota account. The quota/provisioning
+ * reconcilers remain the ongoing source of truth after restore.
+ */
+export async function restoreCustomerAccountInTransaction(
+  executor: DatabaseQueryExecutor,
+  id: string,
+  recordAudit: (metadata: Record<string, unknown>) => Promise<void>,
+): Promise<CustomerAccountRestoreOutcome> {
+  const account = await executor.query<{ id: string; deletedAt: Date | string | null }>(
+    `SELECT id, deleted_at AS "deletedAt" FROM customer_accounts WHERE id = $1 FOR UPDATE`,
+    [id],
+  );
+  const row = account.rows[0];
+  if (!row) throw new NotFoundException('Customer account not found');
+
+  // Idempotent: a live account is left exactly as it is.
+  if (row.deletedAt == null) {
+    return { alreadyActive: true, wgPeersRestored: 0 };
+  }
+
+  // Clear the archive + re-enable so enforcement (ca.status = 'active') serves it
+  // again. Guarded on deleted_at IS NOT NULL for safe concurrency.
+  await executor.query(
+    `UPDATE customer_accounts
+       SET deleted_at = NULL, status = $2, updated_at = now()
+     WHERE id = $1 AND deleted_at IS NOT NULL`,
+    [id, ACTIVE_ACCOUNT_STATUS],
+  );
+
+  // Re-arm WireGuard peers that were parked 'absent', mirroring the metering
+  // re-arm guards (non-disabled config, under quota). Set-based so a single
+  // statement handles all of the account's configs.
+  const restored = await executor.query(
+    `UPDATE wireguard_peers wp
+       SET desired_state = 'present', updated_at = now()
+     FROM client_configs cc
+     JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+     WHERE wp.client_config_id = cc.id
+       AND cc.customer_account_id = $1
+       AND wp.desired_state = 'absent'
+       AND cc.status <> 'disabled'
+       AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)`,
+    [id],
+  );
+  const wgPeersRestored = restored.rowCount ?? 0;
+
+  await recordAudit({ restored: true, wgPeersRestored });
+  return { alreadyActive: false, wgPeersRestored };
 }

@@ -807,9 +807,21 @@ export interface AdminCustomerAccountSummary {
   lastConnectedAt?: string | null;
   /** The MikroTik gateway router this customer owns, if any (for the Customers view). */
   gatewayRouter?: { id: string; label: string; online: boolean } | null;
+  /** When the account was archived (soft-deleted), or null if it is live/active. */
+  deletedAt?: string | null;
+  /** Convenience flag derived from deletedAt, for styling archived rows in the UI. */
+  isArchived?: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Archived-account visibility for the admin customer-accounts listing.
+ * - `active` (default): only live accounts (deleted_at IS NULL).
+ * - `only`: only archived accounts (deleted_at IS NOT NULL).
+ * - `all`: both live and archived.
+ */
+export type CustomerAccountArchivedFilter = 'active' | 'only' | 'all';
 
 export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary {
   clientConfigs: AdminClientConfigSummary[];

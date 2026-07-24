@@ -454,11 +454,13 @@ export class BillingController {
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
+    @Query('archived') archived?: string,
   ): Promise<AdminCustomerAccountsResponse> {
     return {
       accounts: await this.billingService.listCustomerAccounts({
         status,
         search,
+        archived: archived === 'only' || archived === 'all' ? archived : 'active',
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
     };
@@ -573,6 +575,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<{ deleted: boolean }> {
     return this.billingService.deleteCustomerAccount(id, request.actor);
+  }
+
+  @Post('customer-accounts/:id/restore')
+  @Roles('admin')
+  restoreCustomerAccount(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ restored: boolean }> {
+    return this.billingService.restoreCustomerAccount(id, request.actor);
   }
 
   @Post('customer-accounts/:id/client-configs')

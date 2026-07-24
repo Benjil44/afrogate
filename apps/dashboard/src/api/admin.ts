@@ -24,6 +24,7 @@ import type {
   AdminCurrentPanelVolumeChargeResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
+  CustomerAccountArchivedFilter,
   EgressTierPrice,
   AdminRoutersResponse,
   AdminRouterStatusResponse,
@@ -644,11 +645,20 @@ export async function fetchAdminBillingCatalog(
   return response.json() as Promise<AdminBillingCatalogResponse>;
 }
 
+/**
+ * Lists customer accounts. `archived` controls visibility of soft-deleted
+ * accounts: omitted/'active' = live only (default), 'only' = archived only,
+ * 'all' = both. Archived rows carry `deletedAt`/`isArchived` so the UI can style
+ * them and offer Restore.
+ */
 export async function fetchAdminCustomerAccounts(
   sessionToken: string,
   signal?: AbortSignal,
+  archived?: CustomerAccountArchivedFilter,
 ): Promise<AdminCustomerAccountsResponse> {
-  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts?limit=100`, {
+  const params = new URLSearchParams({ limit: '100' });
+  if (archived === 'only' || archived === 'all') params.set('archived', archived);
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts?${params.toString()}`, {
     headers: createSessionHeaders(sessionToken),
     signal,
   });
@@ -872,6 +882,21 @@ export async function deleteAdminCustomerAccount(
     { headers: createSessionHeaders(sessionToken), method: 'DELETE' },
   );
   return response.json() as Promise<{ deleted: boolean }>;
+}
+
+/**
+ * Restores (un-archives) a previously archived customer account: it is re-enabled
+ * and its WireGuard peers are re-added to wg0 by the reconciler. Idempotent.
+ */
+export async function restoreAdminCustomerAccount(
+  sessionToken: string,
+  customerAccountId: string,
+): Promise<{ restored: boolean }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}/restore`,
+    { headers: createSessionHeaders(sessionToken), method: 'POST' },
+  );
+  return response.json() as Promise<{ restored: boolean }>;
 }
 
 /** Renders (provisioning if needed) a WireGuard config's .conf text. */

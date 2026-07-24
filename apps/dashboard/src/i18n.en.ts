@@ -176,6 +176,10 @@ export const en = {
       deleteConfig: 'Delete config',
       deleteConfigConfirm: (label: string) => `Delete config "${label}"? This disconnects it and can't be undone.`,
       deleteAccount: 'Delete account',
+      restoreAccount: 'Restore account',
+      restoreAccountConfirm: (name: string) => `Restore "${name}"? This re-enables the account and its VPN access.`,
+      showArchived: 'Show archived',
+      archivedBadge: 'Archived',
       deleteAccountConfirm: (name: string) =>
         `Delete "${name}"? The account is hidden from the customer list and all of its VPN access is cut off. An admin can restore it later; payment history is kept.\n\nType the customer name exactly to confirm:`,
       fldLoginPassword: 'App login password',

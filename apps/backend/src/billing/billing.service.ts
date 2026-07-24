@@ -59,6 +59,7 @@ import type {
   CurrentPanelImportPreviewRequest,
   CurrentPanelImportSkippedCandidate,
   CurrentPanelUsageSyncRequest,
+  CustomerAccountArchivedFilter,
   CurrentPanelVolumeChargeScope,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdGrantSummary,
@@ -73,7 +74,11 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
 import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './allocation-idempotency';
-import { archiveCustomerAccountInTransaction } from './customer-account-deletion';
+import {
+  archiveCustomerAccountInTransaction,
+  customerAccountArchivedWhereClause,
+  restoreCustomerAccountInTransaction,
+} from './customer-account-deletion';
 import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableBytes, numberFromBigInt, remainingBytes, throwConflictIfUniqueViolation } from './billing-math';
 import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from './date-utils';
 import { asRecord, stringFromRecord } from './record-utils';
@@ -213,6 +218,7 @@ interface CustomerAccountRow {
   expiresAt: Date | null;
   tags: string[] | null;
   lastConnectedAt: Date | null;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   clientCount: number;
@@ -636,6 +642,8 @@ interface CustomerAccountFilters {
   status?: string;
   search?: string;
   resellerAccountId?: string;
+  /** Archived visibility: 'active' (default, live only), 'only' (archived), 'all'. */
+  archived?: CustomerAccountArchivedFilter;
   limit: number;
 }
 
@@ -2323,10 +2331,14 @@ export class BillingService {
 
   async listCustomerAccounts(filters: CustomerAccountFilters): Promise<AdminCustomerAccountSummary[]> {
     const values: unknown[] = [];
-    // Archived (soft-deleted) accounts never appear as active customers in the
-    // operator/reseller Customers listing. Their history rows are retained and
-    // still reachable by id (getCustomerAccount) for recovery.
-    const where: string[] = ['ca.deleted_at IS NULL'];
+    const where: string[] = [];
+
+    // Archived-account visibility. Default 'active' keeps the historical behavior:
+    // archived (soft-deleted) accounts stay hidden from the Customers listing.
+    // 'only' surfaces just archived accounts (so the UI can offer Restore); 'all'
+    // shows both. Reseller-scoped listing keeps its own default (active only).
+    const archivedClause = customerAccountArchivedWhereClause(filters.archived);
+    if (archivedClause) where.push(archivedClause);
 
     if (filters.status?.trim()) {
       values.push(filters.status.trim());
@@ -3084,6 +3096,23 @@ export class BillingService {
     );
     if (outcome.wgPeersMarkedAbsent > 0) this.triggerWgReconcile(); // remove the peers from wg0 now
     return { deleted: true };
+  }
+
+  /**
+   * Restores (un-archives) a soft-deleted customer account: clears `deleted_at`,
+   * re-enables it to 'active' so enforcement re-provisions VLESS, and re-arms its
+   * WireGuard peers (non-disabled configs, under quota) so the reconciler re-adds
+   * them to wg0. Idempotent for an already-active account. One transaction; see
+   * customer-account-deletion.ts.
+   */
+  async restoreCustomerAccount(id: string, actor: AuthActor | undefined): Promise<{ restored: boolean }> {
+    const outcome = await this.database.transaction((executor) =>
+      restoreCustomerAccountInTransaction(executor, id, (metadata) =>
+        this.audit.record(actor, 'customer_account.restore', 'customer_account', id, metadata, executor),
+      ),
+    );
+    if (outcome.wgPeersRestored > 0) this.triggerWgReconcile(); // re-add the peers to wg0 now
+    return { restored: true };
   }
 
   /** Next collision-free config label for an account, e.g. "vless-1", "vless-2".
@@ -6541,6 +6570,7 @@ export class BillingService {
           FROM client_configs cc2
           WHERE cc2.customer_account_id = ca.id
         ) AS "lastConnectedAt",
+        ca.deleted_at AS "deletedAt",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
@@ -8012,6 +8042,8 @@ export class BillingService {
       expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
       tags: row.tags ?? [],
       lastConnectedAt: row.lastConnectedAt ? row.lastConnectedAt.toISOString() : null,
+      deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
+      isArchived: row.deletedAt != null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
