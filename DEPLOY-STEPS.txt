@@ -1,0 +1,57 @@
+========================================================
+ AFROWS DEPLOY - STEP BY STEP (run on THIS laptop)
+========================================================
+
+This laptop already has everything needed (the code, the deploy
+script, and the SSH key). You just need to be at a location where
+the Afrows server (94.74.145.199) is reachable, then run the deploy.
+
+--------------------------------------------------------
+STEP 1.  Make sure the laptop has internet at a place where
+         the Afrows server is reachable.
+
+STEP 2.  Open a terminal.
+         (Start menu -> type "cmd" or "PowerShell" -> press Enter)
+         NOTE: do NOT double-click sync.ps1 and do NOT type just
+         "sync.ps1" -- that only opens it in Notepad. Use the full
+         command in Step 5.
+
+STEP 3.  (Optional) Check the server is reachable. Paste and Enter:
+
+             powershell -Command "Test-NetConnection 94.74.145.199 -Port 22"
+
+         Look for:   TcpTestSucceeded : True
+           - True  -> good, continue to Step 5.
+           - False -> this place can't reach the server. STOP and
+                      tell Ben. Do not continue.
+
+STEP 5.  Run the deploy. Paste this ONE line EXACTLY and press Enter:
+             powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Projects\AfroGate\sync.ps1" -NoBump
+
+STEP 6.  If it asks the first time:
+             "Are you sure you want to continue connecting?"
+         -> type   yes   and press Enter.
+
+STEP 7.  Wait about 1 to 3 minutes. It will print stages:
+             Packaging source -> Uploading to VPS ->
+             Running remote update (build -> migrations -> restart)
+
+STEP 8.  SUCCESS looks like this at the end:
+             Done. https://94.74.145.199/
+         -> Take a screenshot of the last ~15 lines and send it to Ben.
+
+--------------------------------------------------------
+IF SOMETHING GOES WRONG (red text / error):
+  - Copy the LAST 20 lines of output and send them to Ben.
+  - Do NOT run it over and over. One clean run is enough.
+
+WHAT THIS DOES (for reference):
+  - Ships the current code (version 0.114.64) to the server,
+    rebuilds it there, runs database migrations, and restarts.
+  - No version bump, no new commits (that's what -NoBump means).
+
+DO NOT:
+  - Do not run  .\sync.ps1  WITHOUT  -NoBump  (it would change
+    the version and make an extra commit).
+  - Do not edit any files.
+========================================================
