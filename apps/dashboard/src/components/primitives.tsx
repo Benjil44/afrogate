@@ -295,6 +295,14 @@ export function DashboardTabs<T extends string>({
   );
 }
 
+/** Sticky trailing column: pinned to the inline-end edge of the horizontal scroller
+ * (logical `end-0`, so it is RTL-correct) with an opaque background and a 1px
+ * inline-start separator painted via inset shadow — collapsed table borders do not
+ * travel with sticky cells, so the shadow keeps the row/column lines visible. */
+const stickyCellShadow =
+  'shadow-[inset_1px_0_0_var(--color-afro-line),inset_0_-1px_0_var(--color-afro-line)] rtl:shadow-[inset_-1px_0_0_var(--color-afro-line),inset_0_-1px_0_var(--color-afro-line)]';
+const stickyCellClass = `sticky end-0 z-[1] bg-afro-panel ${stickyCellShadow}`;
+
 export function DataTable<Row>({
   columns,
   detailCollapseLabel,
@@ -304,6 +312,7 @@ export function DataTable<Row>({
   rowClassName,
   rowKey,
   rows,
+  stickyLastColumn = false,
 }: {
   columns: Array<DataTableColumn<Row>>;
   /** Accessible label for collapsing an open detail row. Provide it together with renderDetail. */
@@ -321,6 +330,12 @@ export function DataTable<Row>({
   rowClassName?: (row: Row) => string | undefined;
   rowKey: (row: Row) => string;
   rows: Row[];
+  /**
+   * Pin the last column (usually row actions) to the inline-end edge of the
+   * horizontal scroller so actions stay reachable at any viewport width.
+   * RTL-correct (uses logical inset-inline-end).
+   */
+  stickyLastColumn?: boolean;
 }) {
   const detailIdPrefix = useId();
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
@@ -333,7 +348,10 @@ export function DataTable<Row>({
   };
 
   return (
-    <div className={`overflow-x-auto ${hasDetail ? '[container-type:inline-size]' : ''}`}>
+    // overflow-y-clip: with overflow-x auto alone, overflow-y computes to auto and can
+    // spawn a nested vertical scrollbar; clip (used value: hidden) guarantees this
+    // wrapper only ever scrolls horizontally — the page keeps a single vertical scroll.
+    <div className={`overflow-x-auto overflow-y-clip ${hasDetail ? '[container-type:inline-size]' : ''}`}>
       <table className="w-full border-collapse" style={{ minWidth }}>
         <thead>
           <tr>
@@ -342,9 +360,9 @@ export function DataTable<Row>({
                 <span className="sr-only">{detailExpandLabel}</span>
               </th>
             ) : null}
-            {columns.map((column) => (
+            {columns.map((column, columnIndex) => (
               <th
-                className={`border-b border-afro-line px-2 py-1.5 text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0 ${tableAlignmentClass(column.align, column.alignRight)} ${column.className ?? ''}`}
+                className={`border-b border-afro-line px-2 py-1.5 text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0 ${tableAlignmentClass(column.align, column.alignRight)} ${stickyLastColumn && columnIndex === columns.length - 1 ? stickyCellClass : ''} ${column.className ?? ''}`}
                 key={column.key}
               >
                 {column.header}
@@ -362,7 +380,7 @@ export function DataTable<Row>({
             return (
               <Fragment key={key}>
                 <tr
-                  className={`${rowClassName?.(row) ?? ''} ${hasDetail ? 'cursor-pointer' : ''}`}
+                  className={`group ${rowClassName?.(row) ?? ''} ${hasDetail ? 'cursor-pointer hover:bg-[#f8fafb]' : ''}`}
                   onClick={hasDetail ? (event) => onRowClick(event, key) : undefined}
                 >
                   {hasDetail ? (
@@ -380,8 +398,19 @@ export function DataTable<Row>({
                       </button>
                     </td>
                   ) : null}
-                  {columns.map((column) => (
-                    <TableCell align={column.align} alignRight={column.alignRight} key={column.key}>
+                  {columns.map((column, columnIndex) => (
+                    <TableCell
+                      align={column.align}
+                      alignRight={column.alignRight}
+                      className={
+                        stickyLastColumn && columnIndex === columns.length - 1
+                          ? // Background must track the row's hover state so the pinned cell
+                            // never looks detached from its row.
+                            `${stickyCellClass} ${hasDetail ? 'group-hover:bg-[#f8fafb]' : ''}`
+                          : undefined
+                      }
+                      key={column.key}
+                    >
                       {column.render(row)}
                     </TableCell>
                   ))}
@@ -413,12 +442,25 @@ export function tableAlignmentClass(align?: TableCellAlign, alignRight = false):
   return 'text-left';
 }
 
-export function TableCell({ align, alignRight = false, children }: { align?: TableCellAlign; alignRight?: boolean; children: ReactNode }) {
+export function TableCell({
+  align,
+  alignRight = false,
+  children,
+  className,
+}: {
+  align?: TableCellAlign;
+  alignRight?: boolean;
+  children: ReactNode;
+  className?: string;
+}) {
   const alignmentClass = tableAlignmentClass(align, alignRight);
   const tooltip = primitiveTooltip(children);
 
   return (
-    <td className={`border-b border-afro-line px-2 py-1.5 text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass}`} title={tooltip}>
+    <td
+      className={`border-b border-afro-line px-2 py-1.5 align-middle text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass} ${className ?? ''}`}
+      title={tooltip}
+    >
       {children}
     </td>
   );

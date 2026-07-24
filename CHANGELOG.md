@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.65 - 2026-07-24
+
+- **Customers table — true responsive fix + polish.** Removed the second (nested) vertical scrollbar so the page has a single scroll; **pinned the actions column** (Configs + Edit) sticky to the row's trailing edge so those buttons are always reachable at any window width and on mobile (previously the Edit pencil scrolled off-screen on narrow widths) — RTL/Farsi correct. Removed the **Login email** column from the table (it's still in the expandable row detail and still searchable). Polished number alignment (`tabular-nums`), the usage bar/label, protocol/tier/quota badge spacing, and 44px mobile tap targets. The shared `DataTable` gained an optional `stickyLastColumn` capability any table can use.
+
 ## 0.114.64 - 2026-07-24
 
 - **Bought subscription exits now actually join the failover reserve.** The village-independent reserve pool only admits an exit with a speed test in the last ~90 min (≥3 Mbps), but the auto speed-tester was off by default and nothing tested an exit on import — so imported subscription servers never joined the pool, `pool_alive()` was always false, and the power-loss failover (added in 0.114.63) had nothing to fail over to. Now a subscription import stamps an immediate speed test on each server (and re-tests when a provider rotates a server), and auto speed-testing defaults ON (migration `0050`) so the reserve stays fresh. This is the missing piece that makes "fail over to my backup exits on power loss" actually work.

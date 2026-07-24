@@ -658,6 +658,7 @@ export function CustomersPage({
     {
       key: 'customer',
       header: s.colCustomer,
+      className: 'min-w-[160px]',
       render: (a) => (
         <>
           <strong className="block text-afro-ink">{nameOf(a)}</strong>
@@ -670,7 +671,8 @@ export function CustomersPage({
         </>
       ),
     },
-    { key: 'email', header: s.colEmail, render: (a) => a.loginEmail || '—' },
+    // Login email intentionally has no column: it lives in the expandable detail row
+    // (and stays searchable), reclaiming width for the columns operators scan.
     {
       key: 'status',
       header: s.colStatus,
@@ -692,7 +694,7 @@ export function CustomersPage({
             </button>
             <span className="text-[12px] text-afro-muted">{String(a.status)}</span>
             {over ? (
-              <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+              <span className="inline-flex whitespace-nowrap rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
                 {s.overQuota}
               </span>
             ) : null}
@@ -708,15 +710,17 @@ export function CustomersPage({
         const q = a.quotaLimitBytes ?? null;
         const used = a.usedBytes;
         if (q == null || q <= 0) {
-          return <span className="text-afro-ink">{format.bytes(used)} · ∞</span>;
+          return <span className="whitespace-nowrap text-afro-ink tabular-nums">{format.bytes(used)} · ∞</span>;
         }
         const pct = Math.min(100, Math.round((used / q) * 100));
         const over = used >= q;
         const near = pct >= 80;
         const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-afro-teal';
         return (
-          <div className="ml-auto flex w-28 flex-col items-end gap-1">
-            <span className={over ? 'font-bold text-red-500' : 'text-afro-ink'}>
+          // w-fit + min-w: the label defines the width (Farsi byte strings run long),
+          // so the nowrap text can never overflow into the neighbouring cell.
+          <div className="ms-auto flex w-fit min-w-28 flex-col items-end gap-1">
+            <span className={`whitespace-nowrap tabular-nums ${over ? 'font-bold text-red-500' : 'text-afro-ink'}`}>
               {format.bytes(used)} / {format.bytes(q)}
             </span>
             <span className="h-1.5 w-full overflow-hidden rounded-full bg-afro-line">
@@ -726,7 +730,14 @@ export function CustomersPage({
         );
       },
     },
-    { key: 'clients', header: s.colClients, render: (a) => `${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}` },
+    {
+      key: 'clients',
+      header: s.colClients,
+      alignRight: true,
+      render: (a) => (
+        <span className="whitespace-nowrap tabular-nums">{`${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}`}</span>
+      ),
+    },
     {
       key: 'internet',
       header: s.colInternet,
@@ -747,7 +758,7 @@ export function CustomersPage({
               <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
             </button>
             <span className="text-[11px] font-bold text-afro-muted">{gaming ? s.egModeGame : s.egModeNormal}</span>
-            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+            <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
               {e.failover ? '⚠ ' : ''}{e.label}
             </span>
           </span>
@@ -764,7 +775,7 @@ export function CustomersPage({
               <span
                 key={p.protocol}
                 title={`${p.protocol}: ${format.bytes(p.usedBytes)}`}
-                className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
               >
                 {p.protocol}
                 <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
@@ -797,13 +808,14 @@ export function CustomersPage({
     {
       key: 'cost',
       header: s.colCost,
+      alignRight: true,
       render: (a) => {
         const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
         const price = priceFor(tier);
         if (!price) return <span className="text-afro-muted">—</span>;
         const cost = Math.round((a.usedBytes / BYTES_PER_GB) * price);
         const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
-        return <span className="text-afro-ink">{`${cost.toLocaleString()} ${currency}`}</span>;
+        return <span className="whitespace-nowrap text-afro-ink tabular-nums">{`${cost.toLocaleString()} ${currency}`}</span>;
       },
     },
     {
@@ -813,7 +825,7 @@ export function CustomersPage({
         a.tags && a.tags.length > 0 ? (
           <span className="flex flex-wrap gap-1">
             {a.tags.map((t) => (
-              <span key={t} className="inline-flex rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-ink">
+              <span key={t} className="inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-ink">
                 {t}
               </span>
             ))}
@@ -828,12 +840,14 @@ export function CustomersPage({
       header: '',
       alignRight: true,
       render: (a) => (
-        <div className="flex items-center justify-end gap-1.5">
+        // pe-2 keeps the pinned buttons off the scroller edge (the cell's own end
+        // padding is zeroed by last:pr-0).
+        <div className="flex items-center justify-end gap-1.5 pe-2">
           <button
             type="button"
             onClick={() => openConfigs(a)}
             title={s.configsAction}
-            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+            className="inline-flex h-11 items-center gap-1 whitespace-nowrap rounded-md border border-afro-line bg-afro-panel px-2.5 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:h-8 md:px-2"
           >
             <Link2 size={14} />
             {s.configsAction}
@@ -842,9 +856,10 @@ export function CustomersPage({
             type="button"
             onClick={() => openEdit(a)}
             title={s.editAction}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-afro-line bg-afro-panel text-afro-muted hover:border-afro-teal hover:text-afro-teal md:h-8 md:w-8"
           >
             <Pencil size={14} />
+            <span className="sr-only">{s.editAction}</span>
           </button>
         </div>
       ),
@@ -852,9 +867,8 @@ export function CustomersPage({
   ];
 
   // Hide optional columns that are empty for every visible row (auto-reappear when data shows up).
-  const optionalCols = new Set(['email', 'expiry', 'lastSeen', 'cost', 'tags', 'seller']);
+  const optionalCols = new Set(['expiry', 'lastSeen', 'cost', 'tags', 'seller']);
   const colHasData: Record<string, boolean> = {
-    email: filtered.some((a) => Boolean(a.loginEmail)),
     expiry: filtered.some((a) => Boolean(a.expiresAt)),
     lastSeen: filtered.some((a) => Boolean(a.lastConnectedAt)),
     cost: tierPrices.some((p) => p.price > 0),
@@ -1375,6 +1389,7 @@ export function CustomersPage({
               renderDetail={renderCustomerDetail}
               rowKey={(a) => a.id}
               rows={filtered}
+              stickyLastColumn
             />
           </div>
         )}

@@ -1085,7 +1085,7 @@ function AuthenticatedDashboard({
 
   return (
     <main
-      className={`grid min-h-screen grid-cols-1 overflow-x-hidden bg-afro-page text-afro-ink lg:h-screen lg:min-h-0 lg:overflow-hidden ${shellGridClass}`}
+      className={`grid min-h-screen grid-cols-1 overflow-x-clip bg-afro-page text-afro-ink ${shellGridClass}`}
       data-dashboard-kiosk={isKioskMode ? 'true' : 'false'}
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
@@ -1109,7 +1109,11 @@ function AuthenticatedDashboard({
         />
       )}
 
-      <section className="min-w-0 max-w-full overflow-x-hidden p-3 md:p-4 lg:h-screen lg:overflow-y-auto">
+      {/* Single page scroll: the window is the only vertical scroller (no nested
+          lg:overflow-y-auto pane, which produced a second scrollbar). overflow-x-clip
+          (not hidden) keeps this from becoming a scroll container so descendant
+          position:sticky elements still track the viewport. */}
+      <section className="min-w-0 max-w-full overflow-x-clip p-3 md:p-4">
         <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-0.5 text-[11px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
