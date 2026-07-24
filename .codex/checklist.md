@@ -409,6 +409,15 @@ Spec: `docs/superpowers/specs/2026-06-07-afrows-native-data-plane-design.md`. **
 - [x] **Phase 2 — live per-user provisioning.** xray API enabled (`127.0.0.1:10085`); `adu`/`rmu` verified live. Backend: `client_configs.entry_uuid` (0031), `XrayProvisioningService` reconciles active users → inbound (60s), tested. *(Runs once deployed.)*
 - [x] **Phase 3 — config delivery.** `/client/subscription` returns the native afrows-in Reality link first (from `entry_uuid` + env `AFROWS_INBOUND_*`); app login → auto config. *(Needs env set + deploy.)*
 - [ ] **Phase 4 — metering + quota.** Poll xray `StatsService` per-user up/down → `used_bytes` → enforce quota (rmu/limit when over); app shows GB decreasing.
+  - [x] **Quota accuracy fix (2026-07-24):** unit corrected to **decimal GB** (`BYTES_PER_GB=1_000_000_000`; was `1024**3` = +7.4%), so a "20 GB" plan enforces at 20e9 not 21.47e9. Metering poll tightened (Xray 60s→15s, WG 30s→15s) to bound overshoot; exact `>=` cutoff unchanged. New quota-math test. Follow-up `TODO(quota-cap)`: hard inline data-plane cap so cutoff isn't poll-bound. Open: DB backfill decision (grandfather live balances). *(Fixes operator report "20 GB plan let user use 26 GB".)*
+
+### Operator UX / routing / resilience fixes (2026-07-24) — parallel agent team
+
+- [x] **Mobile customer table:** Edit/Config were in an off-screen right column on ~390px. Extended shared `DataTable` with expandable detail rows; actions now open inline under each user's row. i18n (en+fa) added; dashboard typecheck clean. *(Human 390px eyeball pending — Chrome ext not connected.)*
+- [x] **Weather over VLESS:** `smart`-mode `geoip:ir → direct` + `IPIfNonMatch` + no DNS sent weather CDNs out the filtered uplink. Added trusted `dns` block in `afrows-egress-mode-sync.py` (idempotent, `py_compile` clean).
+- [x] **Outbound power-loss diagnosis:** physical (no UPS on village MikroTik/modems). `xray.service` restart-hardened in-repo. *(Real fix = UPS on the box — operator hardware action.)*
+- [x] **Local dev login-skip** (`VITE_DEV_SKIP_AUTH`) + `.claude/agents/` team specs added.
+- [ ] **Commit + version bump** for the above (pending operator approval).
 - [ ] **Phase 5 — smart routing (ties Phase 10).** Per-user/route-group best-outbound from route-quality history (1h/1d/1w/1mo) + hysteresis/cooldown + auto-failover; drop unreachable outbounds; register the ax3 mesh exits as outbounds.
 - [ ] **Multi-protocol sell:** let a user/seller choose VLESS-Reality / WireGuard / L2TP per account (VLESS-Reality first).
 - [ ] **Subscription-outbound import (operator 2026-06-09):** add a *subscription URL* (a sub you bought that contains many VLESS configs) to the Outbounds table → expand into **one outbound row per server** in the sub → **auto-refresh the sub** on an interval (re-fetch, update the VLESS configs as the provider rotates) → speed-test each → smart-pick the best server. Extends the outbounds engine; pairs with Phase 5 smart routing.

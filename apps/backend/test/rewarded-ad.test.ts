@@ -46,8 +46,8 @@ describe('assertRewardedAdSettingsLimits', () => {
 });
 
 describe('rewarded-ad constants', () => {
-  it('exposes the 10 GiB reward cap and default provider', () => {
-    assert.equal(MAX_REWARDED_AD_REWARD_BYTES, 10 * 1024 ** 3);
+  it('exposes the 10 GB reward cap and default provider', () => {
+    assert.equal(MAX_REWARDED_AD_REWARD_BYTES, 10 * 1_000_000_000);
     assert.equal(DEFAULT_REWARDED_AD_PROVIDER, 'mvp_rewarded_ad');
   });
 });

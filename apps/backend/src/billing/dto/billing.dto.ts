@@ -22,7 +22,7 @@ const MAX_PRICE = 1_000_000_000_000;
 const MAX_VOLUME_GB = 1_000_000;
 const MAX_DURATION_DAYS = 3650;
 const MAX_AMOUNT = Number.MAX_SAFE_INTEGER;
-const MAX_REWARDED_AD_REWARD_BYTES = 10 * 1024 ** 3;
+const MAX_REWARDED_AD_REWARD_BYTES = 10 * 1_000_000_000; // 10 GB decimal, matches quota-math BYTES_PER_GB
 const MAX_REWARDED_AD_DAILY_LIMIT = 1000;
 
 export class UpdateBillingSettingsDto {
