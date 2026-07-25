@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as http from 'node:http';
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http';
 import * as https from 'node:https';
+import * as net from 'node:net';
 import * as tls from 'node:tls';
 import { assertAllowedOutboundUrl } from './outbound-url-policy';
 
@@ -95,13 +96,146 @@ export class OutboundHttpService {
     }
 
     const proxy = new URL(proxyUrl);
-    if (proxy.protocol !== 'http:') {
-      throw new Error('AFROWS_OUTBOUND_PROXY_URL must point to an HTTP proxy');
+    if (proxy.protocol === 'http:') {
+      return target.protocol === 'https:'
+        ? this.httpsViaHttpProxy(target, proxy, request)
+        : this.httpViaHttpProxy(target, proxy, request);
     }
+    // SOCKS5 (e.g. the local egress relay at socks5://127.0.0.1:10808) lets the
+    // backend reach hosts the direct uplink filters (e.g. api.telegram.org).
+    if (proxy.protocol === 'socks5:' || proxy.protocol === 'socks:' || proxy.protocol === 'socks5h:') {
+      return this.viaSocks5(target, proxy, request);
+    }
+    throw new Error('AFROWS_OUTBOUND_PROXY_URL must be an http:// or socks5:// proxy');
+  }
 
-    return target.protocol === 'https:'
-      ? this.httpsViaHttpProxy(target, proxy, request)
-      : this.httpViaHttpProxy(target, proxy, request);
+  /**
+   * Tunnel the request through a SOCKS5 proxy (CONNECT to target host:port),
+   * then run HTTP — or TLS-then-HTTP for https — over the tunnelled socket.
+   * Supports optional username/password auth from the proxy URL userinfo.
+   */
+  private viaSocks5(target: URL, proxy: URL, request: NormalizedOutboundRequest): Promise<OutboundBinaryResponse> {
+    const startedAt = Date.now();
+    const proxyPort = Number(proxy.port) || 1080;
+    const targetPort = Number(target.port) || (target.protocol === 'https:' ? 443 : 80);
+    const username = proxy.username ? decodeURIComponent(proxy.username) : '';
+    const password = proxy.password ? decodeURIComponent(proxy.password) : '';
+
+    return new Promise((resolve, reject) => {
+      const socket = net.connect(proxyPort, proxy.hostname);
+      let settled = false;
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        reject(error);
+      };
+
+      socket.setTimeout(request.timeoutMs, () => fail(new Error('SOCKS proxy timed out')));
+      socket.once('error', fail);
+      socket.once('end', () => fail(new Error('SOCKS proxy closed the connection')));
+
+      const sendConnect = () => {
+        const host = Buffer.from(target.hostname, 'utf8');
+        const portBuf = Buffer.alloc(2);
+        portBuf.writeUInt16BE(targetPort, 0);
+        socket.write(Buffer.concat([Buffer.from([0x05, 0x01, 0x00, 0x03, host.length]), host, portBuf]));
+      };
+
+      let phase: 'greeting' | 'auth' | 'connect' = 'greeting';
+      let buffer = Buffer.alloc(0);
+
+      const onData = (chunk: Buffer) => {
+        buffer = Buffer.concat([buffer, chunk]);
+
+        if (phase === 'greeting') {
+          if (buffer.length < 2) return;
+          if (buffer[0] !== 0x05) return fail(new Error('SOCKS5: unexpected version'));
+          const method = buffer[1];
+          buffer = buffer.subarray(2);
+          if (method === 0x00) {
+            phase = 'connect';
+            sendConnect();
+          } else if (method === 0x02) {
+            if (!username) return fail(new Error('SOCKS5: proxy requires authentication'));
+            phase = 'auth';
+            const user = Buffer.from(username, 'utf8');
+            const pass = Buffer.from(password, 'utf8');
+            socket.write(
+              Buffer.concat([Buffer.from([0x01, user.length]), user, Buffer.from([pass.length]), pass]),
+            );
+          } else {
+            fail(new Error('SOCKS5: no acceptable auth method'));
+          }
+          return;
+        }
+
+        if (phase === 'auth') {
+          if (buffer.length < 2) return;
+          if (buffer[1] !== 0x00) return fail(new Error('SOCKS5: authentication failed'));
+          buffer = buffer.subarray(2);
+          phase = 'connect';
+          sendConnect();
+          return;
+        }
+
+        // phase === 'connect' — parse the CONNECT reply.
+        if (buffer.length < 4) return;
+        if (buffer[1] !== 0x00) return fail(new Error(`SOCKS5: connect failed (0x${buffer[1].toString(16)})`));
+        const atyp = buffer[3];
+        let needed = 4 + 2; // header + 2-byte bound port
+        if (atyp === 0x01) needed += 4;
+        else if (atyp === 0x04) needed += 16;
+        else if (atyp === 0x03) {
+          if (buffer.length < 5) return;
+          needed += 1 + buffer[4];
+        } else return fail(new Error('SOCKS5: unsupported address type in reply'));
+        if (buffer.length < needed) return;
+
+        // Tunnel established; hand the raw socket to the HTTP(S) request path.
+        socket.removeListener('data', onData);
+        socket.setTimeout(0);
+        settled = true;
+        this.requestOverSocket(target, targetPort, socket, request, startedAt, resolve, reject);
+      };
+
+      socket.on('data', onData);
+      socket.once('connect', () => {
+        // greeting: SOCKS5, offer no-auth (0x00) and username/password (0x02).
+        socket.write(Buffer.from([0x05, 0x02, 0x00, 0x02]));
+      });
+    });
+  }
+
+  /** Run one HTTP(S) request over an already-connected (tunnelled) socket. */
+  private requestOverSocket(
+    target: URL,
+    targetPort: number,
+    socket: net.Socket,
+    request: NormalizedOutboundRequest,
+    startedAt: number,
+    resolve: (value: OutboundBinaryResponse) => void,
+    reject: (reason?: unknown) => void,
+  ): void {
+    const isHttps = target.protocol === 'https:';
+    const client = isHttps ? https : http;
+    const outboundRequest = client.request(
+      {
+        hostname: target.hostname,
+        port: targetPort,
+        method: request.method,
+        path: this.targetPath(target),
+        headers: { ...request.headers, Host: target.host },
+        agent: false,
+        createConnection: () => (isHttps ? tls.connect({ socket, servername: target.hostname }) : socket),
+      },
+      (response) => this.collectResponse(response, startedAt, request.maxResponseBytes, resolve, reject),
+    );
+    outboundRequest.setTimeout(request.timeoutMs, () => {
+      outboundRequest.destroy(new Error('Outbound request over SOCKS timed out'));
+    });
+    outboundRequest.once('error', reject);
+    outboundRequest.end(request.body);
   }
 
   private normalizeRequest(options: OutboundHttpRequestOptions): NormalizedOutboundRequest {

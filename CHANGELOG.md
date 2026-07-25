@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.72 - 2026-07-25
+
+- **Backend outbound can tunnel through a SOCKS5 proxy — Telegram works from a filtered network.** `OutboundHttpService` previously only accepted an HTTP proxy; it now also supports `AFROWS_OUTBOUND_PROXY_URL=socks5://host:port` (SOCKS5 CONNECT with optional user/pass, TLS layered over the tunnel for HTTPS). On the Afrows VPS the direct uplink filters `api.telegram.org`, so the Telegram bot/alerts/receipt-proxy couldn't send; pointing outbound at the local egress relay (`socks5://127.0.0.1:10808`) routes that traffic out the clean path. The deploy now **seeds `AFROWS_OUTBOUND_PROXY_URL=socks5://127.0.0.1:10808`** into `/etc/afrows/afrows.env` when unset (idempotent; edit or blank it to change/disable).
+
 ## 0.114.71 - 2026-07-25
 
 - **Telegram Alert/Admin chat-ID fields clarified.** Added a placeholder explaining these take an **optional numeric Telegram id** (e.g. `123456789`, obtainable from `@userinfobot`) — **not** a `@username`. Entering a username made the save silently fail validation ("must be a numeric Telegram chat id"); the field now tells you the right format up front, and it's clearly optional (only used for admin alerts, not for the customer bot).
