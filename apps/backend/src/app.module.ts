@@ -57,6 +57,8 @@ import { SecretVaultService } from './security/secret-vault.service';
 import { TelegramBotController } from './telegram/telegram-bot.controller';
 import { TelegramBotConfigService } from './telegram/telegram-bot-config.service';
 import { TelegramBotService } from './telegram/telegram-bot.service';
+import { TelegramTopupAdminController } from './telegram/telegram-topup-admin.controller';
+import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.service';
 
 @Module({
   imports: [
@@ -81,6 +83,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     PayPalWebhookController,
     RewardedAdWebhookController,
     TelegramBotController,
+    TelegramTopupAdminController,
   ],
   providers: [
     AgentsService,
@@ -124,6 +127,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     TelegramAlertService,
     TelegramBotConfigService,
     TelegramBotService,
+    TelegramTopupAdminService,
     {
       provide: METRICS_REPOSITORY,
       useExisting: PostgresMetricsRepository,

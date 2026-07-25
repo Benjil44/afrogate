@@ -76,6 +76,10 @@ import type {
   AdminServerDetail,
   AdminTelegramBotSettingsResponse,
   AdminTelegramBotTestResponse,
+  AdminTelegramTopupRequest,
+  AdminTelegramTopupRequestResponse,
+  AdminTelegramTopupRequestsResponse,
+  TelegramTopupStatus,
   AdminTenantBrandSettingsResponse,
   AdminTunnelSummary,
   AdminTunnelsResponse,
@@ -1059,6 +1063,69 @@ export async function testAdminTelegramBotConnection(
   });
 
   return response.json() as Promise<AdminTelegramBotTestResponse>;
+}
+
+export async function fetchTelegramTopupRequests(
+  sessionToken: string,
+  status?: TelegramTopupStatus | 'all',
+): Promise<AdminTelegramTopupRequest[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/telegram/topups${query}`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+
+  const body = (await response.json()) as AdminTelegramTopupRequestsResponse;
+  return body.requests;
+}
+
+export async function approveTelegramTopupRequest(
+  sessionToken: string,
+  id: string,
+): Promise<AdminTelegramTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/telegram/topups/${encodeURIComponent(id)}/approve`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+
+  const body = (await response.json()) as AdminTelegramTopupRequestResponse;
+  return body.request;
+}
+
+export async function rejectTelegramTopupRequest(
+  sessionToken: string,
+  id: string,
+  reason: string,
+): Promise<AdminTelegramTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/telegram/topups/${encodeURIComponent(id)}/reject`,
+    {
+      body: JSON.stringify({ reason }),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+
+  const body = (await response.json()) as AdminTelegramTopupRequestResponse;
+  return body.request;
+}
+
+/**
+ * Fetch the proxied receipt image bytes (admin-authenticated). The bot token is
+ * never exposed; the backend streams the image. Returns a Blob the UI can
+ * objectURL into an <img>.
+ */
+export async function fetchTelegramTopupReceipt(sessionToken: string, id: string): Promise<Blob> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/telegram/topups/${encodeURIComponent(id)}/receipt`,
+    {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    },
+  );
+
+  return response.blob();
 }
 
 export async function fetchRouteQualityAnalytics(

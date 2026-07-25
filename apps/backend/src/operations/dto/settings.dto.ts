@@ -90,6 +90,17 @@ export class UpdateTelegramBotSettingsDto {
   @IsOptional()
   @IsBoolean()
   commandsEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  cardToCardInfo?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  trialQuotaBytes?: number | null;
 }
 
 export class CreateProtocolSetupDto {

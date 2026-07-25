@@ -478,6 +478,10 @@ export interface AdminTelegramBotSettingsSummary {
   lastTestedAt?: string | null;
   lastTestErrorCode?: string | null;
   lastTestDurationMs?: number | null;
+  /** Card-to-card destination shown to bot users in the charge flow. */
+  cardToCardInfo?: string | null;
+  /** Trial quota for new self-serve accounts in bytes (null -> default 1e9). */
+  trialQuotaBytes?: number | null;
   updatedBy?: string | null;
   updatedAt?: string | null;
 }
@@ -495,6 +499,41 @@ export interface UpdateTelegramBotSettingsRequest {
   allowedAdminChatIds?: string[];
   alertsEnabled?: boolean;
   commandsEnabled?: boolean;
+  cardToCardInfo?: string | null;
+  trialQuotaBytes?: number | null;
+}
+
+/** Lifecycle of a Telegram card-to-card top-up request. */
+export type TelegramTopupStatus = 'awaiting_receipt' | 'pending' | 'approved' | 'rejected';
+
+/** A Telegram self-service top-up request as shown in the admin approval queue. */
+export interface AdminTelegramTopupRequest {
+  id: string;
+  reference: string;
+  customerAccountId: string;
+  customerDisplayName?: string | null;
+  telegramId?: string | null;
+  telegramUsername?: string | null;
+  telegramChatId?: string | null;
+  volumePackageId?: string | null;
+  packageLabel?: string | null;
+  packageVolumeBytes?: number | null;
+  amountMinor?: number | null;
+  currency?: string | null;
+  status: TelegramTopupStatus;
+  hasReceipt: boolean;
+  createdAt: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+}
+
+export interface AdminTelegramTopupRequestsResponse {
+  requests: AdminTelegramTopupRequest[];
+}
+
+export interface AdminTelegramTopupRequestResponse {
+  request: AdminTelegramTopupRequest;
 }
 
 export interface AdminTenantBrandSettingsSummary {

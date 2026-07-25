@@ -32,6 +32,7 @@ export function Sidebar({
   sidebarAlertState,
   session,
   t,
+  topupPendingState = null,
 }: {
   activeView: ActiveView;
   advancedMode: boolean;
@@ -46,9 +47,16 @@ export function Sidebar({
   sidebarAlertState: SidebarAlertState | null;
   session: AdminSessionResponse;
   t: DashboardStrings;
+  /** Pending Telegram top-up count badge on the Top-ups nav item (null hides it). */
+  topupPendingState?: SidebarAlertState | null;
 }) {
   const mainItems = filterNavForSession(MAIN_NAV, session);
   const advancedItems = filterNavForSession(ADVANCED_NAV, session);
+  const badgeStateFor = (item: NavItemData): SidebarAlertState | null => {
+    if (item.id === 'alerts') return sidebarAlertState;
+    if (item.id === 'topups') return topupPendingState;
+    return null;
+  };
   const canUseAdvancedToggle = session.actor.role !== 'reseller';
   const showAdvanced = advancedMode && canUseAdvancedToggle && advancedItems.length > 0;
 
@@ -73,7 +81,7 @@ export function Sidebar({
         {mainItems.map((item) => (
           <NavItem
             item={item}
-            alertState={item.id === 'alerts' ? sidebarAlertState : null}
+            alertState={badgeStateFor(item)}
             isActive={activeView === item.id}
             isSidebarCollapsed={isCollapsed}
             key={item.id}
@@ -97,7 +105,7 @@ export function Sidebar({
               ? advancedItems.map((item) => (
                   <NavItem
                     item={item}
-                    alertState={item.id === 'alerts' ? sidebarAlertState : null}
+                    alertState={badgeStateFor(item)}
                     isActive={activeView === item.id}
                     isSidebarCollapsed={isCollapsed}
                     key={item.id}

@@ -166,6 +166,7 @@ import {
   fetchAdminTunnel,
   fetchAdminTunnels,
   fetchAdminUsers,
+  fetchTelegramTopupRequests,
   fetchIncidentTimeline,
   importAdminCurrentPanelConfigs,
   previewAdminCurrentPanelImport,
@@ -213,6 +214,7 @@ import { ExitsPage } from './pages/ExitsPage';
 import { NetworkPage } from './pages/NetworkPage';
 import { ResellersPage } from './pages/ResellersPage';
 import { CustomersPage } from './pages/CustomersPage';
+import { TopupRequestsPage } from './pages/TopupRequestsPage';
 import { InboundsPage } from './pages/InboundsPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -653,7 +655,7 @@ function loadInitialAdvancedMode() {
 
 const ROUTE_VIEWS: ActiveView[] = [
   'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
-  'backups', 'billing', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network', 'resellers',
+  'backups', 'billing', 'topups', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network', 'resellers',
 ];
 
 /** Derive the active view from the URL path (so refresh + the address bar work). */
@@ -748,6 +750,8 @@ function AuthenticatedDashboard({
   const [tunnelDataState, setTunnelDataState] = useState<DataState>('loading');
   const [backupStatus, setBackupStatus] = useState<AdminBackupStatusSummary | null>(null);
   const [backupDataState, setBackupDataState] = useState<DataState>('loading');
+  const [topupPendingCount, setTopupPendingCount] = useState(0);
+  const [topupRefreshTick, setTopupRefreshTick] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [isKioskMode, setIsKioskMode] = useState(loadInitialKioskMode);
@@ -953,6 +957,36 @@ function AuthenticatedDashboard({
     }
   }, [activeView, isResellerSession]);
 
+  // Pending Telegram top-up receipts: keep a light poll running so new
+  // card-to-card receipts surface as a sidebar badge even off the Top-ups page.
+  useEffect(() => {
+    if (isResellerSession) {
+      setTopupPendingCount(0);
+      return;
+    }
+
+    let isActive = true;
+    let timer: number | undefined;
+
+    const loadPendingTopups = async () => {
+      try {
+        const pending = await fetchTelegramTopupRequests(sessionToken, 'pending');
+        if (isActive) setTopupPendingCount(pending.length);
+      } catch {
+        /* keep last count */
+      } finally {
+        if (isActive) timer = window.setTimeout(() => void loadPendingTopups(), 30_000);
+      }
+    };
+
+    void loadPendingTopups();
+
+    return () => {
+      isActive = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [isResellerSession, sessionToken, topupRefreshTick]);
+
   useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, isSidebarCollapsed ? 'collapsed' : 'expanded');
   }, [isSidebarCollapsed]);
@@ -1076,6 +1110,10 @@ function AuthenticatedDashboard({
     [serverRows, timeRange, timeseries],
   );
   const sidebarAlertState = useMemo(() => createSidebarAlertState(alerts, format), [alerts, format]);
+  const topupPendingState = useMemo<SidebarAlertState | null>(
+    () => (topupPendingCount > 0 ? { tone: 'warning', countLabel: format.integer(topupPendingCount) } : null),
+    [format, topupPendingCount],
+  );
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t, session);
   const effectiveSidebarCollapsed = isSidebarCollapsed || isNarrowViewport;
@@ -1106,6 +1144,7 @@ function AuthenticatedDashboard({
           sidebarAlertState={sidebarAlertState}
           session={session}
           t={t}
+          topupPendingState={topupPendingState}
         />
       )}
 
@@ -1168,6 +1207,7 @@ function AuthenticatedDashboard({
           onServerUpdated={handleAdminServerUpdated}
           onRangeChange={setTimeRange}
           onNavigate={setActiveView}
+          onTopupPendingChanged={() => setTopupRefreshTick((tick) => tick + 1)}
           routeDataState={routeDataState}
           routeFailoverRows={failoverRows}
           routeOutbounds={routeOutbounds}
@@ -1204,6 +1244,7 @@ function ActivePage({
   onServerUpdated,
   onRangeChange,
   onNavigate,
+  onTopupPendingChanged,
   routeDataState,
   routeFailoverRows,
   routeOutbounds,
@@ -1232,6 +1273,7 @@ function ActivePage({
   onServerUpdated: (server: AdminServerDetail) => void;
   onRangeChange: (range: MetricsTimeRange) => void;
   onNavigate: (view: ActiveView) => void;
+  onTopupPendingChanged: () => void;
   routeDataState: DataState;
   routeFailoverRows: RouteFailoverRowData[];
   routeOutbounds: OutboundRowData[];
@@ -1282,6 +1324,8 @@ function ActivePage({
       return <BackupsPage format={format} initialBackupStatus={backupStatus} sessionToken={sessionToken} t={t} />;
     case 'billing':
       return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
+    case 'topups':
+      return <TopupRequestsPage format={format} onPendingChanged={onTopupPendingChanged} sessionToken={sessionToken} t={t} />;
     case 'reports':
       return <ReportsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'exits':

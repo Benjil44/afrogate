@@ -31,6 +31,8 @@ interface TelegramBotSettingsRow {
   lastTestedAt: Date | null;
   lastTestErrorCode: string | null;
   lastTestDurationMs: number | null;
+  cardToCardInfo: string | null;
+  trialQuotaBytes: string | number | null;
   updatedBy: string | null;
   updatedAt: Date | null;
 }
@@ -48,6 +50,10 @@ export interface TelegramBotRuntimeConfig {
   alertChatId?: string;
   alertsEnabled: boolean;
   commandsEnabled: boolean;
+  /** Card-to-card destination shown to users in the charge flow (null if unset). */
+  cardToCardInfo: string | null;
+  /** Trial quota for new self-serve accounts in bytes (null -> default 1 GB decimal). */
+  trialQuotaBytes: number | null;
 }
 
 interface TelegramGetMeResponse {
@@ -130,14 +136,24 @@ export class TelegramBotConfigService {
       if (dto.commandsEnabled !== undefined) changedFields.push('commandsEnabled');
       if (dto.alertChatId !== undefined) changedFields.push('alertChatId');
       if (allowedAdminChatIds !== undefined) changedFields.push('allowedAdminChatIds');
+      if (dto.cardToCardInfo !== undefined) changedFields.push('cardToCardInfo');
+      if (dto.trialQuotaBytes !== undefined) changedFields.push('trialQuotaBytes');
+
+      const nextCardToCardInfo =
+        dto.cardToCardInfo !== undefined ? this.normalizeCardToCardInfo(dto.cardToCardInfo) : current?.cardToCardInfo ?? null;
+      const nextTrialQuotaBytes =
+        dto.trialQuotaBytes !== undefined
+          ? this.normalizeTrialQuotaBytes(dto.trialQuotaBytes)
+          : this.bigintToNumber(current?.trialQuotaBytes);
 
       await executor.query(
         `
           INSERT INTO telegram_bot_settings (
             setting_key, bot_token_secret_ref, webhook_secret_ref, alert_chat_id,
-            allowed_admin_chat_ids, alerts_enabled, commands_enabled, updated_by
+            allowed_admin_chat_ids, alerts_enabled, commands_enabled,
+            card_to_card_info, trial_quota_bytes, updated_by
           )
-          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
           ON CONFLICT (setting_key)
           DO UPDATE SET
             bot_token_secret_ref = excluded.bot_token_secret_ref,
@@ -146,6 +162,8 @@ export class TelegramBotConfigService {
             allowed_admin_chat_ids = excluded.allowed_admin_chat_ids,
             alerts_enabled = excluded.alerts_enabled,
             commands_enabled = excluded.commands_enabled,
+            card_to_card_info = excluded.card_to_card_info,
+            trial_quota_bytes = excluded.trial_quota_bytes,
             updated_by = excluded.updated_by,
             updated_at = now()
         `,
@@ -157,6 +175,8 @@ export class TelegramBotConfigService {
           JSON.stringify(allowedAdminChatIds ?? this.chatIdsFromUnknown(current?.allowedAdminChatIds)),
           dto.alertsEnabled ?? current?.alertsEnabled ?? false,
           dto.commandsEnabled ?? current?.commandsEnabled ?? false,
+          nextCardToCardInfo,
+          nextTrialQuotaBytes,
           actorLabel,
         ],
       );
@@ -263,7 +283,24 @@ export class TelegramBotConfigService {
       alertChatId: row?.alertChatId?.trim() || this.nonEmptyConfig('AFROWS_TELEGRAM_ALERT_CHAT_ID'),
       alertsEnabled: row ? row.alertsEnabled : this.configFlag('AFROWS_TELEGRAM_ALERTS_ENABLED', false),
       commandsEnabled: row ? row.commandsEnabled : this.configFlag('AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED', false),
+      cardToCardInfo: row?.cardToCardInfo?.trim() || null,
+      trialQuotaBytes: this.bigintToNumber(row?.trialQuotaBytes),
     };
+  }
+
+  private bigintToNumber(value: string | number | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  /**
+   * Server-only Telegram API access for privileged flows (e.g. proxying receipt
+   * images). The bot token stays on the server and is NEVER returned to clients.
+   */
+  async getBotApiAccess(): Promise<{ botToken?: string; apiBaseUrl: string; timeoutMs: number }> {
+    const runtime = await this.getRuntimeConfig();
+    return { botToken: runtime.botToken, apiBaseUrl: this.apiBaseUrl(), timeoutMs: this.timeoutMs() };
   }
 
   private async recordTestResult(input: {
@@ -467,6 +504,8 @@ export class TelegramBotConfigService {
         last_tested_at AS "lastTestedAt",
         last_test_error_code AS "lastTestErrorCode",
         last_test_duration_ms AS "lastTestDurationMs",
+        card_to_card_info AS "cardToCardInfo",
+        trial_quota_bytes AS "trialQuotaBytes",
         updated_by AS "updatedBy",
         updated_at AS "updatedAt"
       FROM telegram_bot_settings
@@ -504,6 +543,8 @@ export class TelegramBotConfigService {
       lastTestedAt: row?.lastTestedAt?.toISOString() ?? null,
       lastTestErrorCode: row?.lastTestErrorCode ?? null,
       lastTestDurationMs: row?.lastTestDurationMs ?? null,
+      cardToCardInfo: row?.cardToCardInfo ?? null,
+      trialQuotaBytes: this.bigintToNumber(row?.trialQuotaBytes),
       updatedBy: row?.updatedBy ?? null,
       updatedAt: row?.updatedAt?.toISOString() ?? null,
     };
@@ -512,6 +553,21 @@ export class TelegramBotConfigService {
   private secretSource(secretRef: string | null | undefined, hasEnvValue: boolean): TelegramBotSettingsSecretSource {
     if (secretRef) return 'database';
     return hasEnvValue ? 'environment' : 'none';
+  }
+
+  private normalizeCardToCardInfo(value: string | null | undefined): string | null {
+    if (value === undefined || value === null) return null;
+    const normalized = value.trim();
+    if (normalized.length > 500) throw new BadRequestException('cardToCardInfo is too long');
+    return normalized || null;
+  }
+
+  private normalizeTrialQuotaBytes(value: number | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new BadRequestException('trialQuotaBytes must be a non-negative integer');
+    }
+    return value;
   }
 
   private normalizeOptionalSecret(value: string | undefined): string | null {

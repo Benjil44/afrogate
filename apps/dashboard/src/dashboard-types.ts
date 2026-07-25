@@ -13,7 +13,7 @@ import type {
 export type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 export type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 export type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'connections' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'reports' | 'routes' | 'outbounds' | 'microtiks' | 'alerts' | 'settings' | 'exits' | 'network' | 'resellers';
+export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'connections' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'topups' | 'reports' | 'routes' | 'outbounds' | 'microtiks' | 'alerts' | 'settings' | 'exits' | 'network' | 'resellers';
 export type AlertStatusFilter = 'open' | 'resolved';
 export type AlertSeverityFilter = 'all' | Tone;
 export type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
@@ -171,6 +171,10 @@ export interface TelegramBotSettingsForm {
   allowedAdminChatIds: string;
   alertsEnabled: boolean;
   commandsEnabled: boolean;
+  /** Card number + holder name shown to bot users in the /charge flow. */
+  cardToCardInfo: string;
+  /** Trial quota for new self-serve accounts, entered in decimal GB ('' = backend default 1 GB). */
+  trialQuotaGb: string;
 }
 
 export interface TenantBrandSettingsForm {

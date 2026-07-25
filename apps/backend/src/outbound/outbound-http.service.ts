@@ -13,6 +13,8 @@ export interface OutboundHttpRequestOptions {
   headers?: Record<string, string>;
   body?: string | Buffer;
   timeoutMs?: number;
+  /** Override the response body cap (bytes). Defaults to 256 KiB (text). */
+  maxResponseBytes?: number;
 }
 
 export interface OutboundHttpResponse {
@@ -23,17 +25,28 @@ export interface OutboundHttpResponse {
   durationMs: number;
 }
 
+export interface OutboundBinaryResponse {
+  statusCode: number;
+  ok: boolean;
+  headers: IncomingHttpHeaders;
+  body: Buffer;
+  durationMs: number;
+}
+
 interface NormalizedOutboundRequest {
   method: OutboundHttpMethod;
   headers: Record<string, string>;
   body?: string | Buffer;
   timeoutMs: number;
+  maxResponseBytes: number;
 }
 
 @Injectable()
 export class OutboundHttpService {
   private static readonly defaultTimeoutMs = 10000;
   private static readonly maxResponseBytes = 256 * 1024;
+  /** Larger cap for binary downloads (e.g. Telegram receipt photos). */
+  private static readonly maxBinaryResponseBytes = 12 * 1024 * 1024;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -55,6 +68,23 @@ export class OutboundHttpService {
   }
 
   async request(url: string, options: OutboundHttpRequestOptions = {}): Promise<OutboundHttpResponse> {
+    const raw = await this.requestRaw(url, options);
+    return { ...raw, body: raw.body.toString('utf8') };
+  }
+
+  /**
+   * Binary-safe outbound request (Buffer body, larger default cap). Same SSRF
+   * URL policy and proxy handling as `request`. Used to proxy Telegram receipt
+   * images server-side without corrupting bytes through a utf8 round-trip.
+   */
+  async requestBinary(url: string, options: OutboundHttpRequestOptions = {}): Promise<OutboundBinaryResponse> {
+    return this.requestRaw(url, {
+      maxResponseBytes: OutboundHttpService.maxBinaryResponseBytes,
+      ...options,
+    });
+  }
+
+  private async requestRaw(url: string, options: OutboundHttpRequestOptions = {}): Promise<OutboundBinaryResponse> {
     const target = assertAllowedOutboundUrl(url);
 
     const request = this.normalizeRequest(options);
@@ -86,10 +116,11 @@ export class OutboundHttpService {
       headers,
       body: options.body,
       timeoutMs: options.timeoutMs ?? OutboundHttpService.defaultTimeoutMs,
+      maxResponseBytes: options.maxResponseBytes ?? OutboundHttpService.maxResponseBytes,
     };
   }
 
-  private directRequest(target: URL, request: NormalizedOutboundRequest): Promise<OutboundHttpResponse> {
+  private directRequest(target: URL, request: NormalizedOutboundRequest): Promise<OutboundBinaryResponse> {
     const client = target.protocol === 'https:' ? https : http;
 
     return this.performRequest(
@@ -110,7 +141,7 @@ export class OutboundHttpService {
     target: URL,
     proxy: URL,
     request: NormalizedOutboundRequest,
-  ): Promise<OutboundHttpResponse> {
+  ): Promise<OutboundBinaryResponse> {
     return this.performRequest(
       http,
       {
@@ -133,7 +164,7 @@ export class OutboundHttpService {
     target: URL,
     proxy: URL,
     request: NormalizedOutboundRequest,
-  ): Promise<OutboundHttpResponse> {
+  ): Promise<OutboundBinaryResponse> {
     const startedAt = Date.now();
     const targetPort = target.port || '443';
 
@@ -174,7 +205,7 @@ export class OutboundHttpService {
                 servername: target.hostname,
               }),
           },
-          (response) => this.collectResponse(response, startedAt, resolve, reject),
+          (response) => this.collectResponse(response, startedAt, request.maxResponseBytes, resolve, reject),
         );
 
         proxiedRequest.setTimeout(request.timeoutMs, () => {
@@ -197,12 +228,12 @@ export class OutboundHttpService {
     client: typeof http | typeof https,
     options: http.RequestOptions | https.RequestOptions,
     request: NormalizedOutboundRequest,
-  ): Promise<OutboundHttpResponse> {
+  ): Promise<OutboundBinaryResponse> {
     const startedAt = Date.now();
 
     return new Promise((resolve, reject) => {
       const outboundRequest = client.request(options, (response) =>
-        this.collectResponse(response, startedAt, resolve, reject),
+        this.collectResponse(response, startedAt, request.maxResponseBytes, resolve, reject),
       );
 
       outboundRequest.setTimeout(request.timeoutMs, () => {
@@ -216,7 +247,8 @@ export class OutboundHttpService {
   private collectResponse(
     response: IncomingMessage,
     startedAt: number,
-    resolve: (value: OutboundHttpResponse) => void,
+    maxResponseBytes: number,
+    resolve: (value: OutboundBinaryResponse) => void,
     reject: (reason?: unknown) => void,
   ): void {
     const chunks: Buffer[] = [];
@@ -224,7 +256,7 @@ export class OutboundHttpService {
 
     response.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > OutboundHttpService.maxResponseBytes) {
+      if (size > maxResponseBytes) {
         response.destroy(new Error('Outbound HTTP response exceeded the maximum size'));
         return;
       }
@@ -232,7 +264,7 @@ export class OutboundHttpService {
       chunks.push(chunk);
     });
     response.once('end', () => {
-      const body = Buffer.concat(chunks).toString('utf8');
+      const body = Buffer.concat(chunks);
       const statusCode = response.statusCode ?? 0;
 
       resolve({

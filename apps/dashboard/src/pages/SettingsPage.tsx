@@ -65,6 +65,8 @@ export function SettingsPage({
     allowedAdminChatIds: '',
     alertsEnabled: false,
     commandsEnabled: false,
+    cardToCardInfo: '',
+    trialQuotaGb: '',
   });
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('protocols');
   const [privateKeyAccepted, setPrivateKeyAccepted] = useState(false);
@@ -127,6 +129,9 @@ export function SettingsPage({
       allowedAdminChatIds: settings.allowedAdminChatIds.join(', '),
       alertsEnabled: settings.alertsEnabled,
       commandsEnabled: settings.commandsEnabled,
+      cardToCardInfo: settings.cardToCardInfo ?? '',
+      // Stored in bytes; edited in decimal GB (1 GB = 1e9 bytes, matching quota math).
+      trialQuotaGb: settings.trialQuotaBytes != null ? String(Math.round((settings.trialQuotaBytes / 1e9) * 100) / 100) : '',
     }));
   };
 
@@ -316,6 +321,11 @@ export function SettingsPage({
       t.settings.outboundProxy,
       telegramBotSettings?.outboundProxyConfigured ? t.settings.configured : t.settings.pending,
       telegramBotSettings?.outboundProxyConfigured ? 'good' : 'neutral',
+    ],
+    [
+      t.settings.telegramCardToCardInfo,
+      telegramBotSettings?.cardToCardInfo ? t.settings.configured : t.settings.pending,
+      telegramBotSettings?.cardToCardInfo ? 'good' : 'warning',
     ],
   ];
   const tenantBrandingRows: Array<[string, string, Tone]> = [
@@ -623,6 +633,13 @@ export function SettingsPage({
     setIsTelegramBotSaving(true);
     if (showSuccessMessage) setTelegramBotMessage(null);
 
+    // Trial quota is edited in decimal GB; blank/invalid -> null so the
+    // backend applies its default (1 GB).
+    const trialGb = Number(telegramBotForm.trialQuotaGb.trim());
+    const trialQuotaBytes = telegramBotForm.trialQuotaGb.trim() !== '' && Number.isFinite(trialGb) && trialGb > 0
+      ? Math.round(trialGb * 1e9)
+      : null;
+
     try {
       const response = await updateAdminTelegramBotSettings(sessionToken, {
         botToken: telegramBotForm.botToken.trim() || undefined,
@@ -631,6 +648,8 @@ export function SettingsPage({
         allowedAdminChatIds: parseTelegramChatIds(telegramBotForm.allowedAdminChatIds),
         alertsEnabled: telegramBotForm.alertsEnabled,
         commandsEnabled: telegramBotForm.commandsEnabled,
+        cardToCardInfo: telegramBotForm.cardToCardInfo.trim() || null,
+        trialQuotaBytes,
       });
 
       applyTelegramBotSettings(response.telegramBot);
@@ -982,6 +1001,34 @@ export function SettingsPage({
                   onChange={(event) => updateTelegramBotForm('commandsEnabled', event.target.checked)}
                   type="checkbox"
                 />
+              </label>
+            </div>
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.4fr)]">
+              <label className="grid content-start gap-1.5">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramCardToCardInfo}</span>
+                <textarea
+                  className="min-h-20 w-full resize-y rounded-md border border-afro-line bg-white px-3 py-2 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                  disabled={!canManageTelegramBot}
+                  onChange={(event) => updateTelegramBotForm('cardToCardInfo', event.target.value)}
+                  placeholder={t.settings.telegramCardToCardHint}
+                  value={telegramBotForm.cardToCardInfo}
+                />
+                <span className="text-[12px] text-afro-muted">{t.settings.telegramCardToCardHint}</span>
+              </label>
+              <label className="grid content-start gap-1.5">
+                <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramTrialQuotaGb}</span>
+                <input
+                  className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                  dir="ltr"
+                  disabled={!canManageTelegramBot}
+                  inputMode="decimal"
+                  min="0"
+                  onChange={(event) => updateTelegramBotForm('trialQuotaGb', event.target.value)}
+                  step="0.5"
+                  type="number"
+                  value={telegramBotForm.trialQuotaGb}
+                />
+                <span className="text-[12px] text-afro-muted">{t.settings.telegramTrialQuotaHint}</span>
               </label>
             </div>
             <div className="grid gap-2">
