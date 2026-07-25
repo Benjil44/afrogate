@@ -1,8 +1,8 @@
 import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowDownUp, Bot, CheckCircle2, Clock, Gauge, Gem, LockKeyhole, Network, Palette, Plus, Route, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
-import type { AdminOutboundSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolSetupSummary, AdminRouteAssignmentSummary, AdminSessionResponse, AdminSettingsResponse, AdminTelegramBotSettingsSummary, AdminTenantBrandSettingsSummary, AdminWireGuardCandidate, LoadBalanceStrategy, ProtocolKind, ProtocolProfile, RouteSelectionMode } from '@afrows/shared';
-import { createAdminProtocolSetup, createAdminSettingsSecret, fetchAdminSettings, fetchAdminTelegramBotSettings, fetchAdminTenantBranding, fetchProtocolServerApplyEvent, fetchProtocolServerApplyEvents, fetchRouteAssignment, provisionAdminProtocolSetup, recordAdminProtocolServerApplyDryRun, requestAdminProtocolServerApply, testAdminTelegramBotConnection, updateAdminTelegramBotSettings, updateAdminTenantBranding } from '../api/admin';
+import type { AdminOutboundSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolSetupSummary, AdminRouteAssignmentSummary, AdminSessionResponse, AdminSettingsResponse, AdminTelegramBotProfile, AdminTelegramBotSettingsSummary, AdminTenantBrandSettingsSummary, AdminWireGuardCandidate, LoadBalanceStrategy, ProtocolKind, ProtocolProfile, RouteSelectionMode } from '@afrows/shared';
+import { createAdminProtocolSetup, createAdminSettingsSecret, fetchAdminSettings, fetchAdminTelegramBotSettings, fetchAdminTenantBranding, fetchProtocolServerApplyEvent, fetchProtocolServerApplyEvents, fetchRouteAssignment, fetchTelegramBotProfile, provisionAdminProtocolSetup, publishTelegramBotProfile, recordAdminProtocolServerApplyDryRun, requestAdminProtocolServerApply, testAdminTelegramBotConnection, updateAdminTelegramBotSettings, updateAdminTenantBranding } from '../api/admin';
 import { telegramGemEconomy, type UpdateTelegramBotSettingsWithGems } from '../api/gems';
 import type { DashboardTabItem, DataState, ProtocolSetupDraft, ServerRowData, SettingsTab, TelegramBotSettingsForm, TenantBrandSettingsForm, Tone, WireGuardHealthCandidate, WireGuardSetupDraft } from '../dashboard-types';
 import { normalizeNullableText, type DashboardFormatters } from '../formatters';
@@ -82,6 +82,14 @@ export function SettingsPage({
   const [provisionMessage, setProvisionMessage] = useState<string | null>(null);
   const [serverApplyMessage, setServerApplyMessage] = useState<string | null>(null);
   const [telegramBotMessage, setTelegramBotMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
+  const [telegramProfile, setTelegramProfile] = useState<AdminTelegramBotProfile | null>(null);
+  const [telegramProfileForm, setTelegramProfileForm] = useState<{ name: string; shortDescription: string; description: string }>({
+    name: '',
+    shortDescription: '',
+    description: '',
+  });
+  const [telegramProfileMessage, setTelegramProfileMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
+  const [isTelegramProfilePublishing, setIsTelegramProfilePublishing] = useState(false);
   const [settingsDataState, setSettingsDataState] = useState<DataState>('loading');
   const [persistedProtocolSetups, setPersistedProtocolSetups] = useState<AdminProtocolSetupSummary[]>([]);
   const [protocolApplyEvents, setProtocolApplyEvents] = useState<AdminProtocolServerApplyEventSummary[]>([]);
@@ -146,6 +154,15 @@ export function SettingsPage({
       gemMilestoneEvery: gems.gemMilestoneEvery != null ? String(gems.gemMilestoneEvery) : '',
       gemMilestoneBonus: gems.gemMilestoneBonus != null ? String(gems.gemMilestoneBonus) : '',
     }));
+  };
+
+  const applyTelegramProfile = (profile: AdminTelegramBotProfile) => {
+    setTelegramProfile(profile);
+    setTelegramProfileForm({
+      name: profile.name ?? '',
+      shortDescription: profile.shortDescription ?? '',
+      description: profile.description ?? '',
+    });
   };
 
   useEffect(() => {
@@ -230,6 +247,18 @@ export function SettingsPage({
           if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
 
           setTelegramBotSettings(null);
+        });
+
+      fetchTelegramBotProfile(sessionToken, controller.signal)
+        .then((profile) => {
+          if (!isActive) return;
+
+          applyTelegramProfile(profile);
+        })
+        .catch((error) => {
+          if (!isActive || error instanceof DOMException && error.name === 'AbortError') return;
+
+          setTelegramProfile(null);
         });
     }
 
@@ -712,6 +741,37 @@ export function SettingsPage({
     }
   };
 
+  const publishTelegramProfile = async () => {
+    if (!canManageTelegramBot) {
+      setTelegramProfileMessage({ text: t.settings.superadminRequired, tone: 'error' });
+      return;
+    }
+
+    setIsTelegramProfilePublishing(true);
+    setTelegramProfileMessage(null);
+
+    try {
+      // Send only the three profile fields; the backend forwards only the ones
+      // that are provided, non-empty and changed. The bot token stays server-side.
+      const profile = await publishTelegramBotProfile(sessionToken, {
+        name: telegramProfileForm.name.trim(),
+        shortDescription: telegramProfileForm.shortDescription.trim(),
+        description: telegramProfileForm.description.trim(),
+      });
+      applyTelegramProfile(profile);
+      setTelegramProfileMessage({ text: t.settings.telegramProfilePublished, tone: 'ok' });
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : '';
+      const detail = raw && !['invalid', 'unavailable', 'network'].includes(raw) ? raw : '';
+      setTelegramProfileMessage({
+        text: detail ? `${t.settings.telegramProfilePublishFailed} — ${detail}` : t.settings.telegramProfilePublishFailed,
+        tone: 'error',
+      });
+    } finally {
+      setIsTelegramProfilePublishing(false);
+    }
+  };
+
   // Turn the backend's test status/errorCode into a specific, actionable reason
   // (missing token vs. token rejected vs. can't reach Telegram) instead of "failed".
   const telegramTestFailureText = (status: string, errorCode: string | null | undefined): string => {
@@ -1128,6 +1188,82 @@ export function SettingsPage({
                     <span className="text-[12px] text-afro-muted">{hint}</span>
                   </label>
                 ))}
+              </div>
+            </div>
+            <div className="grid gap-2 rounded-md border border-afro-line bg-white p-3">
+              <div className="flex items-center gap-2">
+                <Bot aria-hidden className="shrink-0 text-afro-teal" size={15} />
+                <span className="text-[13px] font-bold text-afro-ink">{t.settings.telegramProfileSection}</span>
+              </div>
+              <p className="text-[12px] text-afro-muted">{t.settings.telegramProfileSectionHint}</p>
+              {telegramProfile && !telegramProfile.tokenConfigured ? (
+                <p className="rounded-md bg-[#fff4e5] px-2.5 py-1.5 text-[12px] font-bold text-[#8a5a00]">
+                  {t.settings.telegramProfileNoToken}
+                </p>
+              ) : null}
+              <label className="grid content-start gap-1.5">
+                <span className="flex items-center justify-between gap-2 text-[13px] font-bold text-afro-muted">
+                  <span>{t.settings.telegramProfileName}</span>
+                  <span className="text-[11px] font-normal text-afro-muted" dir="ltr">{telegramProfileForm.name.length}/64</span>
+                </span>
+                <input
+                  className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                  disabled={!canManageTelegramBot}
+                  maxLength={64}
+                  onChange={(event) => setTelegramProfileForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder={t.settings.telegramProfileNamePlaceholder}
+                  type="text"
+                  value={telegramProfileForm.name}
+                />
+                <span className="text-[12px] text-afro-muted">{t.settings.telegramProfileNameHint}</span>
+              </label>
+              <label className="grid content-start gap-1.5">
+                <span className="flex items-center justify-between gap-2 text-[13px] font-bold text-afro-muted">
+                  <span>{t.settings.telegramProfileShort}</span>
+                  <span className="text-[11px] font-normal text-afro-muted" dir="ltr">{telegramProfileForm.shortDescription.length}/120</span>
+                </span>
+                <input
+                  className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                  disabled={!canManageTelegramBot}
+                  maxLength={120}
+                  onChange={(event) => setTelegramProfileForm((current) => ({ ...current, shortDescription: event.target.value }))}
+                  placeholder={t.settings.telegramProfileShortPlaceholder}
+                  type="text"
+                  value={telegramProfileForm.shortDescription}
+                />
+                <span className="text-[12px] text-afro-muted">{t.settings.telegramProfileShortHint}</span>
+              </label>
+              <label className="grid content-start gap-1.5">
+                <span className="flex items-center justify-between gap-2 text-[13px] font-bold text-afro-muted">
+                  <span>{t.settings.telegramProfileDescription}</span>
+                  <span className="text-[11px] font-normal text-afro-muted" dir="ltr">{telegramProfileForm.description.length}/512</span>
+                </span>
+                <textarea
+                  className="min-h-20 w-full resize-y rounded-md border border-afro-line bg-white px-3 py-2 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                  disabled={!canManageTelegramBot}
+                  maxLength={512}
+                  onChange={(event) => setTelegramProfileForm((current) => ({ ...current, description: event.target.value }))}
+                  placeholder={t.settings.telegramProfileDescriptionPlaceholder}
+                  value={telegramProfileForm.description}
+                />
+                <span className="text-[12px] text-afro-muted">{t.settings.telegramProfileDescriptionHint}</span>
+              </label>
+              <p className="text-[12px] text-afro-muted">{t.settings.telegramProfilePhotoNote}</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-60"
+                  disabled={!canManageTelegramBot || isTelegramProfilePublishing}
+                  onClick={() => void publishTelegramProfile()}
+                  type="button"
+                >
+                  <CheckCircle2 size={16} />
+                  {isTelegramProfilePublishing ? t.settings.telegramProfilePublishing : t.settings.telegramProfilePublish}
+                </button>
+                {telegramProfileMessage ? (
+                  <p className={`text-[13px] font-bold ${telegramProfileMessage.tone === 'ok' ? 'text-afro-teal' : 'text-red-600'}`}>
+                    {telegramProfileMessage.text}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="grid gap-2">

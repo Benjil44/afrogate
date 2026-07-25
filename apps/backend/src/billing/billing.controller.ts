@@ -65,6 +65,7 @@ import {
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
+  MergeCustomerAccountDto,
   SetCustomerAccountPasswordDto,
   SetEgressTierPriceDto,
   UpdateClientConfigDto,
@@ -587,6 +588,21 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<{ restored: boolean }> {
     return this.billingService.restoreCustomerAccount(id, request.actor);
+  }
+
+  /**
+   * Merge the source account (:id) INTO the target real account, moving its
+   * remaining GB, gems, client_configs, telegram link + phone and referrals over,
+   * then archiving the source. Returns the updated TARGET detail.
+   */
+  @Post('customer-accounts/:id/merge')
+  @Roles('admin')
+  mergeCustomerAccount(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: MergeCustomerAccountDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminCustomerAccountDetail> {
+    return this.billingService.mergeCustomerAccount(id, payload.targetAccountId, request.actor);
   }
 
   @Post('customer-accounts/:id/gems')

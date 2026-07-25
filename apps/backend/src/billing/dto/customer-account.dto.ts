@@ -263,6 +263,12 @@ export class AdjustCustomerGemsDto {
   reason!: string;
 }
 
+export class MergeCustomerAccountDto {
+  /** The TARGET (real) account the source (:id) is merged into. Must differ from the source. */
+  @IsUUID('4')
+  targetAccountId!: string;
+}
+
 export class SetEgressTierPriceDto {
   @IsIn(['normal', 'gaming'])
   tier!: string;

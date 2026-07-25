@@ -534,6 +534,17 @@ export interface AdjustCustomerGemsRequest {
   reason: string;
 }
 
+/**
+ * Request body for merging a source (temporary/duplicate) customer account into a
+ * target real account. The source is the route `:id`; it is archived after its
+ * remaining GB, gems, client_configs, telegram link + phone and referrals move to
+ * the target. Returns the updated TARGET `AdminCustomerAccountDetail`.
+ */
+export interface MergeCustomerAccountRequest {
+  /** The target (real) account to merge into. Must differ from the source. */
+  targetAccountId: string;
+}
+
 /** v2: response of the admin manual gems adjustment (new balance). */
 export interface AdminAdjustCustomerGemsResponse {
   gemsBalance: number;
@@ -587,6 +598,35 @@ export interface AdminTelegramTopupRequestsResponse {
 
 export interface AdminTelegramTopupRequestResponse {
   request: AdminTelegramTopupRequest;
+}
+
+/**
+ * The afroWS bot's public Telegram profile (name / about / description), as
+ * resolved from Telegram with the server-stored bot token. Fields are null when
+ * unset on Telegram. `tokenConfigured` is false when no bot token is saved yet —
+ * the dashboard shows a "save a token first" prompt instead of empty inputs.
+ * The bot token itself is NEVER part of this shape (it stays server-side).
+ */
+export interface AdminTelegramBotProfile {
+  /** Bot display name — Telegram cap 64 chars. */
+  name: string | null;
+  /** About / short description shown on the bot's profile — Telegram cap 120 chars. */
+  shortDescription: string | null;
+  /** Description shown on the empty-chat screen — Telegram cap 512 chars. */
+  description: string | null;
+  /** False when no bot token is configured (GET returns null fields, no 500). */
+  tokenConfigured: boolean;
+}
+
+/**
+ * Publish request for the bot profile. Each field is optional; only provided,
+ * changed, non-empty fields are pushed to Telegram (empty/undefined are skipped —
+ * clearing a field is done in @BotFather).
+ */
+export interface UpdateTelegramBotProfileRequest {
+  name?: string;
+  shortDescription?: string;
+  description?: string;
 }
 
 export interface AdminTenantBrandSettingsSummary {

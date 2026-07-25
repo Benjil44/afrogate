@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchiveRestore, Copy, Gem, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, Copy, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
@@ -24,6 +24,7 @@ import {
   updateRouter,
 } from '../api/admin';
 import { adjustCustomerGems, customerGemFields } from '../api/gems';
+import { mergeCustomerAccount } from '../api/merge';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
@@ -128,6 +129,14 @@ export function CustomersPage({
   const [gemsReason, setGemsReason] = useState<Record<string, string>>({});
   const [gemsBusy, setGemsBusy] = useState<string | null>(null);
   const [gemsMsg, setGemsMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null);
+
+  // merge panel (duplicate -> real account): source being merged away, target
+  // search/selection, and the explicit confirm step before the single POST.
+  const [mergeFor, setMergeFor] = useState<AdminCustomerAccountSummary | null>(null);
+  const [mergeQuery, setMergeQuery] = useState('');
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeSuccess, setMergeSuccess] = useState<string | null>(null);
 
   // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
@@ -588,6 +597,7 @@ export function CustomersPage({
       await deleteAdminCustomerAccount(sessionToken, accountId);
       // Close any panel still pointing at the deleted account.
       if (configsFor?.id === accountId) setConfigsFor(null);
+      if (mergeFor?.id === accountId) closeMerge();
       if (editId === accountId) {
         setEditorOpen(false);
         setEditId(null);
@@ -595,6 +605,64 @@ export function CustomersPage({
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // Merge flow: pick a live target account, confirm, then one POST. The SOURCE
+  // (the row this was opened from — typically a bot-created duplicate) is merged
+  // away: its remaining GB, gems, and configs move to the TARGET, then the
+  // source is archived by the backend.
+  const openMerge = (a: AdminCustomerAccountSummary) => {
+    setEditorOpen(false);
+    setEditId(null);
+    setConfigsFor(null);
+    setMergeFor(a);
+    setMergeQuery('');
+    setMergeTargetId(null);
+    setMergeSuccess(null);
+    setError(null);
+  };
+
+  const closeMerge = () => {
+    setMergeFor(null);
+    setMergeTargetId(null);
+    setMergeQuery('');
+    setError(null);
+  };
+
+  // Live (non-archived) accounts other than the source, filtered by the same
+  // fields as the customer search plus bot-v2 phone/invite code.
+  const mergeCandidates = useMemo(() => {
+    if (!mergeFor) return [];
+    const pool = accounts.filter((a) => a.id !== mergeFor.id && !isArchived(a));
+    const q = mergeQuery.trim().toLowerCase();
+    if (!q) return pool;
+    return pool.filter((a) => {
+      const v2 = customerGemFields(a);
+      return [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, v2.phone, v2.referralCode]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+  }, [accounts, mergeFor, mergeQuery]);
+
+  const mergeTarget = useMemo(
+    () => (mergeTargetId ? accounts.find((a) => a.id === mergeTargetId) ?? null : null),
+    [accounts, mergeTargetId],
+  );
+
+  const onConfirmMerge = async () => {
+    if (!mergeFor || !mergeTarget || mergeBusy) return;
+    setMergeBusy(true);
+    setError(null);
+    try {
+      await mergeCustomerAccount(sessionToken, mergeFor.id, mergeTarget.id);
+      setMergeSuccess(s.mergeSuccess(nameOf(mergeFor), nameOf(mergeTarget)));
+      closeMerge();
+      await load();
+    } catch {
+      setError(s.mergeError);
+    } finally {
+      setMergeBusy(false);
     }
   };
 
@@ -731,6 +799,18 @@ export function CustomersPage({
             <Pencil size={15} />
             {s.editAction}
           </button>
+          {!isArchived(a) ? (
+            // Merge (duplicate -> real account): distinct from delete — the row's
+            // balance/configs survive by moving to the target before archiving.
+            <button
+              type="button"
+              onClick={() => openMerge(a)}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-white px-3 text-sm font-bold text-amber-700 hover:border-amber-500 hover:bg-amber-50 sm:flex-none"
+            >
+              <GitMerge size={15} />
+              {s.mergeAction}
+            </button>
+          ) : null}
         </div>
         <div className="grid gap-1.5 sm:grid-cols-2">
           <DetailRow label={s.colEmail}>{a.loginEmail || '—'}</DetailRow>
@@ -1506,6 +1586,104 @@ export function CustomersPage({
         </div>
       ) : null}
 
+      {mergeFor ? (
+        <div className="rounded-md border border-afro-line bg-afro-panel p-4">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h2 className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-afro-ink">
+              <GitMerge aria-hidden className="shrink-0 text-amber-600" size={15} />
+              <span className="truncate">{s.mergeTitle(nameOf(mergeFor))}</span>
+            </h2>
+            <button
+              type="button"
+              aria-label={s.cancel}
+              onClick={closeMerge}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-afro-muted hover:text-afro-ink md:h-8 md:w-8"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <p className="mb-3 text-[12px] text-afro-muted">{s.mergeIntro}</p>
+          <label className="mb-2 flex min-h-11 items-center gap-2 rounded-md border border-afro-line bg-white px-3 md:min-h-9">
+            <Search className="shrink-0 text-afro-muted" size={15} />
+            <input
+              aria-label={s.mergeSearchPlaceholder}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              onChange={(e) => setMergeQuery(e.target.value)}
+              placeholder={s.mergeSearchPlaceholder}
+              value={mergeQuery}
+            />
+          </label>
+          {mergeCandidates.length === 0 ? (
+            <EmptyState message={s.mergeNoMatches} />
+          ) : (
+            <div className="grid max-h-72 gap-1.5 overflow-y-auto">
+              {mergeCandidates.slice(0, 30).map((c) => {
+                const selected = c.id === mergeTargetId;
+                const v2 = customerGemFields(c);
+                const contact = v2.phone || (c.telegramUsername ? `@${c.telegramUsername}` : c.loginEmail || c.telegramId);
+                const hasQuota = c.quotaLimitBytes != null && c.quotaLimitBytes > 0;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setMergeTargetId(c.id)}
+                    className={`flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-0.5 rounded-md border bg-white px-3 py-1.5 text-start ${
+                      selected ? 'border-afro-teal ring-1 ring-afro-teal' : 'border-afro-line hover:border-afro-teal'
+                    }`}
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <strong className="truncate text-[13px] text-afro-ink">{nameOf(c)}</strong>
+                      <span className="truncate text-[11px] text-afro-muted" dir="ltr">
+                        {contact || '—'}
+                      </span>
+                    </span>
+                    <span className="whitespace-nowrap text-[12px] tabular-nums text-afro-muted">
+                      {hasQuota
+                        ? `${format.bytes(c.usedBytes)} / ${format.bytes(c.quotaLimitBytes ?? 0)}`
+                        : `${format.bytes(c.usedBytes)} · ∞`}
+                    </span>
+                  </button>
+                );
+              })}
+              {mergeCandidates.length > 30 ? (
+                <span className="px-1 text-[12px] text-afro-muted">
+                  {s.mergeMoreMatches(format.integer(mergeCandidates.length - 30))}
+                </span>
+              ) : null}
+            </div>
+          )}
+          {mergeTarget && mergeFor ? (
+            // Explicit confirm step: selecting a target never merges by itself.
+            <div className="mt-3 grid gap-2 rounded-md border border-red-300 bg-red-50 p-3">
+              <p className="text-[13px] font-bold text-red-700">
+                {s.mergeConfirmText(nameOf(mergeFor), nameOf(mergeTarget))}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={mergeBusy}
+                  onClick={() => void onConfirmMerge()}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60 md:min-h-10"
+                >
+                  <GitMerge size={15} />
+                  {mergeBusy ? t.dataStatus.loading : s.mergeConfirmButton}
+                </button>
+                <button
+                  type="button"
+                  disabled={mergeBusy}
+                  onClick={() => setMergeTargetId(null)}
+                  className="inline-flex min-h-11 items-center rounded-md border border-afro-line bg-white px-4 text-sm font-bold text-afro-muted md:min-h-10"
+                >
+                  {s.mergeBack}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {error ? <p className="mt-3 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
+        </div>
+      ) : null}
+
       {configsFor ? (
         <div className="rounded-md border border-afro-line bg-afro-panel p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -1645,9 +1823,17 @@ export function CustomersPage({
 
       <div className="rounded-md border border-afro-line bg-afro-panel p-4">
         <PanelHeading title={s.title} icon={Plus} meta={loading ? t.dataStatus.loading : undefined} />
-        {/* Row-action errors (status/egress toggle, delete) — the editor has its
-            own error line, so only show this one while the editor is closed. */}
-        {error && !editorOpen ? <p className="mt-2 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
+        {/* Row-action errors (status/egress toggle, delete) — the editor and the
+            merge panel have their own error lines, so only show this one while
+            both are closed. */}
+        {error && !editorOpen && !mergeFor ? <p className="mt-2 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
+        {/* One-shot merge outcome: shown after the panel closes and the source
+            row has left the (active) list. */}
+        {mergeSuccess ? (
+          <p className="mt-2 text-[13px] font-bold text-afro-teal" role="status">
+            {mergeSuccess}
+          </p>
+        ) : null}
         {filtered.length === 0 ? (
           <div className="mt-2">
             <EmptyState message={loading ? t.dataStatus.loading : s.empty} />

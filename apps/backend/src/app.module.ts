@@ -58,6 +58,7 @@ import { TelegramBotController } from './telegram/telegram-bot.controller';
 import { TelegramBotConfigService } from './telegram/telegram-bot-config.service';
 import { TelegramBotService } from './telegram/telegram-bot.service';
 import { TelegramPollingService } from './telegram/telegram-polling.service';
+import { TelegramProfileService } from './telegram/telegram-profile.service';
 import { TelegramTopupAdminController } from './telegram/telegram-topup-admin.controller';
 import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.service';
 
@@ -129,6 +130,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     TelegramBotConfigService,
     TelegramBotService,
     TelegramPollingService,
+    TelegramProfileService,
     TelegramTopupAdminService,
     {
       provide: METRICS_REPOSITORY,

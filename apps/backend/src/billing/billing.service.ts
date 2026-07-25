@@ -79,6 +79,7 @@ import {
   customerAccountArchivedWhereClause,
   restoreCustomerAccountInTransaction,
 } from './customer-account-deletion';
+import { mergeCustomerAccountInTransaction } from './customer-account-merge';
 import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableBytes, numberFromBigInt, remainingBytes, throwConflictIfUniqueViolation } from './billing-math';
 import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from './date-utils';
 import { asRecord, stringFromRecord } from './record-utils';
@@ -3143,6 +3144,33 @@ export class BillingService {
     );
     if (outcome.wgPeersRestored > 0) this.triggerWgReconcile(); // re-add the peers to wg0 now
     return { restored: true };
+  }
+
+  /**
+   * Merges a source (temporary/duplicate) customer account INTO a target real
+   * account, then archives the source. In ONE transaction (both rows locked) it
+   * moves the source's remaining GB, gems, client_configs, telegram link + phone
+   * and referral attributions to the target, then soft-archives the source
+   * (deleted_at + disabled). The FK-RESTRICT accounting history (payment_orders,
+   * quota_charge_events, rewarded_ad_grants) stays on the archived source for audit
+   * — nothing is hard-deleted. Returns the updated TARGET detail. See
+   * customer-account-merge.ts.
+   */
+  async mergeCustomerAccount(
+    sourceId: string,
+    targetAccountId: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCustomerAccountDetail> {
+    const outcome = await this.database.transaction((executor) =>
+      mergeCustomerAccountInTransaction(executor, sourceId, targetAccountId, (metadata) =>
+        this.audit.record(actor, 'customer_account.merge', 'customer_account', sourceId, metadata, executor),
+      ),
+    );
+    // The reassigned configs now belong to the (live) target: nudge provisioning so
+    // its VLESS clients settle, and reconcile wg0 if any WireGuard peer followed.
+    if (outcome.wgPeersMoved > 0) this.triggerWgReconcile();
+    void this.xrayProvisioning.reconcile();
+    return this.getCustomerAccount(targetAccountId);
   }
 
   // --- Gems wallet + referrals (afroWS bot v2) ------------------------------

@@ -77,6 +77,7 @@ import type {
   AdjustCustomerGemsRequest,
   AdminAdjustCustomerGemsResponse,
   AdminCustomerGemsLedgerResponse,
+  AdminTelegramBotProfile,
   AdminTelegramBotSettingsResponse,
   AdminTelegramBotTestResponse,
   AdminTelegramTopupRequest,
@@ -95,6 +96,7 @@ import type {
   CurrentPanelImportPreviewRequest,
   CurrentPanelUsageSyncRequest,
   CurrentPanelVolumeChargeRequest,
+  MergeCustomerAccountRequest,
   CreateProtocolSetupRequest,
   CreateSettingsSecretRequest,
   CreateAdminUserRequest,
@@ -111,6 +113,7 @@ import type {
   UpsertRouteSettingsRequest,
   UpdateRewardedAdSettingsRequest,
   UpdateTenantBrandSettingsRequest,
+  UpdateTelegramBotProfileRequest,
   UpdateTelegramBotSettingsRequest,
   UpdateCustomerAccountRequest,
   UpdateServerRequest,
@@ -941,6 +944,27 @@ export async function restoreAdminCustomerAccount(
   return response.json() as Promise<{ restored: boolean }>;
 }
 
+/**
+ * Merges a source (temporary/duplicate) customer account INTO a target real account:
+ * the source's remaining GB, gems, client_configs, telegram link + phone and referrals
+ * move to the target and the source is archived. Returns the updated TARGET detail.
+ */
+export async function mergeCustomerAccount(
+  sessionToken: string,
+  sourceAccountId: string,
+  targetAccountId: string,
+): Promise<AdminCustomerAccountDetail> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(sourceAccountId)}/merge`,
+    {
+      body: JSON.stringify({ targetAccountId } satisfies MergeCustomerAccountRequest),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
 /** Renders (provisioning if needed) a WireGuard config's .conf text. */
 export async function fetchAdminWireguardConfig(
   sessionToken: string,
@@ -1101,6 +1125,40 @@ export async function testAdminTelegramBotConnection(
   });
 
   return response.json() as Promise<AdminTelegramBotTestResponse>;
+}
+
+/**
+ * Resolve the bot's live Telegram profile (name / about / description) via the
+ * backend, which uses the server-stored bot token. The token never reaches the
+ * browser. `tokenConfigured` is false when no token is saved yet.
+ */
+export async function fetchTelegramBotProfile(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminTelegramBotProfile> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/telegram/bot-profile`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminTelegramBotProfile>;
+}
+
+/**
+ * Publish changed profile fields to Telegram (only provided, non-empty, changed
+ * fields are pushed server-side). Returns the refreshed profile.
+ */
+export async function publishTelegramBotProfile(
+  sessionToken: string,
+  payload: UpdateTelegramBotProfileRequest,
+): Promise<AdminTelegramBotProfile> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/telegram/bot-profile`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminTelegramBotProfile>;
 }
 
 export async function fetchTelegramTopupRequests(

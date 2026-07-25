@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type {
+  AdminTelegramBotProfile,
   AdminTelegramTopupRequestResponse,
   AdminTelegramTopupRequestsResponse,
 } from '@afrows/shared';
@@ -19,6 +20,8 @@ import { AdminTokenGuard } from '../security/admin-token.guard';
 import { Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { RejectTelegramTopupDto } from './dto/telegram-topup.dto';
+import { UpdateTelegramBotProfileDto } from './dto/telegram-bot-profile.dto';
+import { TelegramProfileService } from './telegram-profile.service';
 import {
   TelegramTopupAdminService,
   type TelegramTopupListStatus,
@@ -27,7 +30,34 @@ import {
 @Controller('admin/telegram')
 @UseGuards(AdminTokenGuard, RolesGuard)
 export class TelegramTopupAdminController {
-  constructor(private readonly topups: TelegramTopupAdminService) {}
+  constructor(
+    private readonly topups: TelegramTopupAdminService,
+    private readonly profiles: TelegramProfileService,
+  ) {}
+
+  /**
+   * Resolve the bot's live Telegram profile (name / about / description) using
+   * the server-stored token. Superadmin only. Returns `tokenConfigured: false`
+   * with null fields when no token is saved (never 500s on a missing token).
+   */
+  @Get('bot-profile')
+  @Roles('superadmin')
+  async getBotProfile(): Promise<AdminTelegramBotProfile> {
+    return this.profiles.getProfile();
+  }
+
+  /**
+   * Publish the provided, changed profile fields to Telegram and return the
+   * refreshed profile. Superadmin only; audited (field names only).
+   */
+  @Post('bot-profile')
+  @Roles('superadmin')
+  async publishBotProfile(
+    @Body() body: UpdateTelegramBotProfileDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminTelegramBotProfile> {
+    return this.profiles.updateProfile(body, request.actor);
+  }
 
   @Get('topups')
   @Roles('admin')
