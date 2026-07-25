@@ -125,6 +125,8 @@ export const en = {
       fldName: 'Display name',
       fldEmail: 'Login email / username',
       fldTelegram: 'Telegram username',
+      fldTelegramId: 'Telegram ID',
+      fldTelegramIdHint: 'Numeric id — links this account to the bot user (from @userinfobot)',
       fldQuotaGb: 'Account quota (GB)',
       fldPerClientGb: 'Per-client cap (GB)',
       fldScope: 'Quota scope',

@@ -91,6 +91,7 @@ export function CustomersPage({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [telegram, setTelegram] = useState('');
+  const [telegramId, setTelegramId] = useState('');
   const [quotaGb, setQuotaGb] = useState('50');
   const [perClientGb, setPerClientGb] = useState('');
   const [scope, setScope] = useState<Scope>('account_shared');
@@ -201,6 +202,7 @@ export function CustomersPage({
     setName('');
     setEmail('');
     setTelegram('');
+    setTelegramId('');
     setQuotaGb('50');
     setPerClientGb('');
     setScope('account_shared');
@@ -231,6 +233,7 @@ export function CustomersPage({
     setName(a.displayName ?? '');
     setEmail(a.loginEmail ?? '');
     setTelegram(a.telegramUsername ?? '');
+    setTelegramId(a.telegramId ?? '');
     setQuotaGb(a.quotaLimitBytes != null ? String(Math.round((a.quotaLimitBytes / BYTES_PER_GB) * 100) / 100) : '');
     setPerClientGb(a.perClientLimitBytes != null ? String(Math.round((a.perClientLimitBytes / BYTES_PER_GB) * 100) / 100) : '');
     setScope((a.quotaScope as Scope) || 'account_shared');
@@ -424,6 +427,7 @@ export function CustomersPage({
       displayName: name.trim(),
       loginEmail: email.trim() || null,
       telegramUsername: telegram.trim() || null,
+      telegramId: telegramId.trim() || null,
       quotaLimitBytes: gbToBytes(quotaGb),
       perClientLimitBytes: gbToBytes(perClientGb),
       quotaScope: scope,
@@ -1206,6 +1210,10 @@ export function CustomersPage({
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegram}</span>
               <input value={telegram} onChange={(e) => setTelegram(e.target.value)} dir="ltr" className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegramId}</span>
+              <input value={telegramId} onChange={(e) => setTelegramId(e.target.value)} dir="ltr" inputMode="numeric" placeholder={s.fldTelegramIdHint} className={inputClass} />
             </label>
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldQuotaGb}</span>

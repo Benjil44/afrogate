@@ -127,6 +127,8 @@ export const fa: DashboardStrings = {
       fldName: 'نام نمایشی',
       fldEmail: 'ایمیل / نام کاربری ورود',
       fldTelegram: 'نام کاربری تلگرام',
+      fldTelegramId: 'شناسه تلگرام',
+      fldTelegramIdHint: 'شناسه عددی — این حساب را به کاربر ربات وصل می‌کند (از @userinfobot)',
       fldQuotaGb: 'سهمیه حساب (گیگابایت)',
       fldPerClientGb: 'سقف هر کلاینت (گیگابایت)',
       fldScope: 'دامنه سهمیه',
