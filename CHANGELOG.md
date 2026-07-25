@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.70 - 2026-07-25
+
+- **Telegram "Test connection" now says *why* it failed.** Instead of a flat "connection failed", the result maps the backend's `status`/`errorCode` to a specific, actionable reason: **no token saved**, **Telegram rejected the token** (invalid/revoked — HTTP 401/403/404 or a bad `getMe`), or **couldn't reach Telegram** (`api.telegram.org` unreachable — an outbound proxy is likely required), with the HTTP code for other Telegram errors. This distinguishes a connectivity problem from a bad token at a glance.
+
 ## 0.114.69 - 2026-07-25
 
 - **Telegram settings — failures now show why (and in red).** The Telegram bot Settings status line rendered every message in teal, so a **failed** save/test looked like success. It's now **red on failure**, teal only on success. The generic "could not be saved" also **surfaces the backend's actual reason** (e.g. "alertChatId must be a numeric Telegram chat id") — the admin API client previously discarded the server's error message; it now carries it through (`AdminAuthError.detail`) so operators can self-diagnose instead of guessing.

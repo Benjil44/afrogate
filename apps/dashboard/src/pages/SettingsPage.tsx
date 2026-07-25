@@ -670,6 +670,20 @@ export function SettingsPage({
     }
   };
 
+  // Turn the backend's test status/errorCode into a specific, actionable reason
+  // (missing token vs. token rejected vs. can't reach Telegram) instead of "failed".
+  const telegramTestFailureText = (status: string, errorCode: string | null | undefined): string => {
+    if (status === 'missingToken' || errorCode === 'missing_bot_token') return t.settings.telegramTestNoToken;
+    if (errorCode === 'telegram_request_failed') return t.settings.telegramTestUnreachable;
+    if (errorCode === 'telegram_rejected_get_me') return t.settings.telegramTestBadToken;
+    if (errorCode && errorCode.startsWith('telegram_status_')) {
+      const code = Number(errorCode.slice('telegram_status_'.length));
+      if (code === 401 || code === 403 || code === 404) return t.settings.telegramTestBadToken;
+      return `${t.settings.telegramTestHttpError} (HTTP ${Number.isFinite(code) ? code : '?'})`;
+    }
+    return t.settings.telegramBotTestFailed;
+  };
+
   const testTelegramBotConnection = async () => {
     if (!canManageTelegramBot) {
       setTelegramBotMessage({ text: t.settings.superadminRequired, tone: 'error' });
@@ -688,7 +702,7 @@ export function SettingsPage({
       setTelegramBotMessage(
         response.ok
           ? { text: t.settings.telegramBotTestOk, tone: 'ok' }
-          : { text: t.settings.telegramBotTestFailed, tone: 'error' },
+          : { text: telegramTestFailureText(response.status, response.errorCode), tone: 'error' },
       );
     } catch (error) {
       setTelegramBotMessage({ text: t.settings.telegramBotTestFailed, tone: 'error' });
