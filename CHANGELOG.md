@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.73 - 2026-07-25
+
+- **Secret fields resist browser autofill.** The BotFather token + Webhook secret inputs now use `autocomplete="new-password"` so the browser/password manager stops dumping remembered values into the (intentionally empty on reload) fields — which could look like a wrong value under the reveal toggle and, if saved, overwrite the real stored secret. Stored secrets were never affected; this is a form-hygiene fix.
+
 ## 0.114.72 - 2026-07-25
 
 - **Backend outbound can tunnel through a SOCKS5 proxy — Telegram works from a filtered network.** `OutboundHttpService` previously only accepted an HTTP proxy; it now also supports `AFROWS_OUTBOUND_PROXY_URL=socks5://host:port` (SOCKS5 CONNECT with optional user/pass, TLS layered over the tunnel for HTTPS). On the Afrows VPS the direct uplink filters `api.telegram.org`, so the Telegram bot/alerts/receipt-proxy couldn't send; pointing outbound at the local egress relay (`socks5://127.0.0.1:10808`) routes that traffic out the clean path. The deploy now **seeds `AFROWS_OUTBOUND_PROXY_URL=socks5://127.0.0.1:10808`** into `/etc/afrows/afrows.env` when unset (idempotent; edit or blank it to change/disable).

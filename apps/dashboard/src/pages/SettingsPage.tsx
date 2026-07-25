@@ -973,7 +973,7 @@ export function SettingsPage({
           <div className="mt-3 grid gap-3">
             <div className="grid gap-2 md:grid-cols-2">
               <SettingsInput
-                autoComplete="off"
+                autoComplete="new-password"
                 disabled={!canManageTelegramBot}
                 label={t.settings.telegramBotToken}
                 onChange={(value) => updateTelegramBotForm('botToken', value)}
@@ -984,7 +984,7 @@ export function SettingsPage({
                 value={telegramBotForm.botToken}
               />
               <SettingsInput
-                autoComplete="off"
+                autoComplete="new-password"
                 disabled={!canManageTelegramBot}
                 label={t.settings.telegramWebhookSecret}
                 onChange={(value) => updateTelegramBotForm('webhookSecret', value)}
