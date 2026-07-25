@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.114.69 - 2026-07-25
+
+- **Telegram settings — failures now show why (and in red).** The Telegram bot Settings status line rendered every message in teal, so a **failed** save/test looked like success. It's now **red on failure**, teal only on success. The generic "could not be saved" also **surfaces the backend's actual reason** (e.g. "alertChatId must be a numeric Telegram chat id") — the admin API client previously discarded the server's error message; it now carries it through (`AdminAuthError.detail`) so operators can self-diagnose instead of guessing.
+- **Show/hide toggle on secret fields.** The **BotFather token** and **Webhook secret** inputs gained an eye toggle to reveal what you typed (reveals only the value currently in the box; stored secrets are still never echoed back to the browser).
+
 ## 0.114.68 - 2026-07-25
 
 - **afroWS Telegram bot — self-service accounts + top-up (bilingual, menu-driven).** New customers open `@Afrows_bot`, pick **Persian or English** (1 tap), and instantly get an account with a **1 GB trial** and a tap-to-copy **VLESS** config — no support/linking needed (idempotent per Telegram id, no duplicate accounts). The bot is fully **inline-keyboard menu-driven** (My Account / Buy Data / My Configs / Language / Help) with a typed 56-string EN+FA copy table (natural RTL Persian) and per-user language + conversation state; it now handles button taps (`callback_query`), receipt photos, and in-place message edits. **Top-up:** Buy Data → pick a volume package → bot shows the **card-to-card** destination + amount → user sends a **receipt photo** → a pending request is created; on approval the account's quota is credited (reusing the canonical `computeAllocatedQuotaLimitBytes` path — grants exactly the package volume, never forgives prior usage) and the bot notifies the user (✅/❌, localized). Extends the existing bot infra (encrypted BotFather token, secured webhook); no online payment gateway required.

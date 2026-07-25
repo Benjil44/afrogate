@@ -1740,6 +1740,8 @@ export const fa: DashboardStrings = {
       profileGaming: 'گیمینگ',
       superadminReady: 'سوپرادمین آماده',
       superadminOnly: 'فقط سوپرادمین',
+      revealSecret: 'نمایش',
+      hideSecret: 'پنهان',
       superadminRequired: 'فقط سوپرادمین می‌تواند این تنظیمات را تغییر دهد.',
       adminReady: 'ادمین آماده',
       adminOnly: 'فقط ادمین',

@@ -1738,6 +1738,8 @@ export const en = {
       profileGaming: 'Gaming',
       superadminReady: 'superadmin ready',
       superadminOnly: 'superadmin only',
+      revealSecret: 'Show',
+      hideSecret: 'Hide',
       superadminRequired: 'Only superadmin can change this setup.',
       adminReady: 'admin ready',
       adminOnly: 'admin only',

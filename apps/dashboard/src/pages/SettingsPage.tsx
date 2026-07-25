@@ -75,7 +75,7 @@ export function SettingsPage({
   const [protocolMessage, setProtocolMessage] = useState<string | null>(null);
   const [provisionMessage, setProvisionMessage] = useState<string | null>(null);
   const [serverApplyMessage, setServerApplyMessage] = useState<string | null>(null);
-  const [telegramBotMessage, setTelegramBotMessage] = useState<string | null>(null);
+  const [telegramBotMessage, setTelegramBotMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
   const [settingsDataState, setSettingsDataState] = useState<DataState>('loading');
   const [persistedProtocolSetups, setPersistedProtocolSetups] = useState<AdminProtocolSetupSummary[]>([]);
   const [protocolApplyEvents, setProtocolApplyEvents] = useState<AdminProtocolServerApplyEventSummary[]>([]);
@@ -626,7 +626,7 @@ export function SettingsPage({
 
   const saveTelegramBotSettings = async (showSuccessMessage = true): Promise<AdminTelegramBotSettingsSummary | null> => {
     if (!canManageTelegramBot) {
-      setTelegramBotMessage(t.settings.superadminRequired);
+      setTelegramBotMessage({ text: t.settings.superadminRequired, tone: 'error' });
       return null;
     }
 
@@ -653,10 +653,17 @@ export function SettingsPage({
       });
 
       applyTelegramBotSettings(response.telegramBot);
-      if (showSuccessMessage) setTelegramBotMessage(t.settings.telegramBotSaved);
+      if (showSuccessMessage) setTelegramBotMessage({ text: t.settings.telegramBotSaved, tone: 'ok' });
       return response.telegramBot;
     } catch (error) {
-      setTelegramBotMessage(t.settings.telegramBotSaveFailed);
+      // Surface the backend's real reason (e.g. "alertChatId must be numeric")
+      // instead of only the generic failure line.
+      const raw = error instanceof Error ? error.message : '';
+      const detail = raw && !['invalid', 'unavailable', 'network'].includes(raw) ? raw : '';
+      setTelegramBotMessage({
+        text: detail ? `${t.settings.telegramBotSaveFailed} — ${detail}` : t.settings.telegramBotSaveFailed,
+        tone: 'error',
+      });
       return null;
     } finally {
       setIsTelegramBotSaving(false);
@@ -665,7 +672,7 @@ export function SettingsPage({
 
   const testTelegramBotConnection = async () => {
     if (!canManageTelegramBot) {
-      setTelegramBotMessage(t.settings.superadminRequired);
+      setTelegramBotMessage({ text: t.settings.superadminRequired, tone: 'error' });
       return;
     }
 
@@ -678,9 +685,13 @@ export function SettingsPage({
 
       const response = await testAdminTelegramBotConnection(sessionToken);
       applyTelegramBotSettings(response.telegramBot);
-      setTelegramBotMessage(response.ok ? t.settings.telegramBotTestOk : t.settings.telegramBotTestFailed);
+      setTelegramBotMessage(
+        response.ok
+          ? { text: t.settings.telegramBotTestOk, tone: 'ok' }
+          : { text: t.settings.telegramBotTestFailed, tone: 'error' },
+      );
     } catch (error) {
-      setTelegramBotMessage(t.settings.telegramBotTestFailed);
+      setTelegramBotMessage({ text: t.settings.telegramBotTestFailed, tone: 'error' });
     } finally {
       setIsTelegramBotTesting(false);
     }
@@ -953,6 +964,8 @@ export function SettingsPage({
                 label={t.settings.telegramBotToken}
                 onChange={(value) => updateTelegramBotForm('botToken', value)}
                 placeholder={telegramBotSettings?.hasBotToken ? telegramSecretSourceLabel(telegramBotSettings.botTokenSource, t) : ''}
+                revealable
+                revealLabels={{ show: t.settings.revealSecret, hide: t.settings.hideSecret }}
                 type="password"
                 value={telegramBotForm.botToken}
               />
@@ -962,6 +975,8 @@ export function SettingsPage({
                 label={t.settings.telegramWebhookSecret}
                 onChange={(value) => updateTelegramBotForm('webhookSecret', value)}
                 placeholder={telegramBotSettings?.hasWebhookSecret ? telegramSecretSourceLabel(telegramBotSettings.webhookSecretSource, t) : ''}
+                revealable
+                revealLabels={{ show: t.settings.revealSecret, hide: t.settings.hideSecret }}
                 type="password"
                 value={telegramBotForm.webhookSecret}
               />
@@ -1073,7 +1088,11 @@ export function SettingsPage({
                 </button>
               </div>
             </div>
-            {telegramBotMessage ? <p className="text-[13px] font-bold text-afro-teal">{telegramBotMessage}</p> : null}
+            {telegramBotMessage ? (
+              <p className={`text-[13px] font-bold ${telegramBotMessage.tone === 'ok' ? 'text-afro-teal' : 'text-red-600'}`}>
+                {telegramBotMessage.text}
+              </p>
+            ) : null}
           </div>
         </section>
 

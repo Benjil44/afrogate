@@ -135,8 +135,12 @@ export interface AdminAuditLogFilters {
 }
 
 export class AdminAuthError extends Error {
-  constructor(readonly code: AdminAuthErrorCode) {
-    super(code);
+  constructor(
+    readonly code: AdminAuthErrorCode,
+    // Server-provided reason (e.g. a validation message), surfaced to the operator.
+    readonly detail?: string,
+  ) {
+    super(detail || code);
   }
 }
 
@@ -1480,7 +1484,22 @@ async function requestAdminAuth(url: string, init: RequestInit): Promise<Respons
   if (response.ok) return response;
 
   if (response.status === 503) throw new AdminAuthError('unavailable');
-  throw new AdminAuthError('invalid');
+  throw new AdminAuthError('invalid', await readErrorDetail(response));
+}
+
+/** Best-effort extraction of a NestJS error body's `message` (string or array). */
+async function readErrorDetail(response: Response): Promise<string | undefined> {
+  try {
+    const data = (await response.clone().json()) as { message?: unknown };
+    const message = data?.message;
+    if (Array.isArray(message)) {
+      const joined = message.filter((item): item is string => typeof item === 'string').join('; ');
+      return joined.trim() || undefined;
+    }
+    return typeof message === 'string' && message.trim() ? message.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function fetchRouters(sessionToken: string, signal?: AbortSignal): Promise<AdminRoutersResponse> {
