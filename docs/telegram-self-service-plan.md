@@ -50,6 +50,22 @@
 3. Frontend: admin Top-up Requests UI (list + receipt view + approve/reject); a Settings field for the card-to-card destination + trial quota.
 4. QA: bot flow simulation (webhook payloads), approval → credit, idempotent `/start`.
 
+## Operational note — reaching Telegram from the filtered VPS (2026-07-25)
+The Afrows VPS's direct uplink **filters `api.telegram.org`** (Iran), and the reserve
+relay socks (`127.0.0.1:10808/10809`, xray) could not reach it either. The working
+path is the **`wg-village-de` tunnel** (reaches Telegram, HTTP 302/401). Fix in place:
+Telegram's IP ranges are routed via that tunnel so the backend's **direct** outbound
+works (no proxy needed; `AFROWS_OUTBOUND_PROXY_URL` stays empty).
+- Ranges: `91.108.0.0/16 149.154.160.0/20 95.161.64.0/20 185.76.151.0/24 91.105.192.0/23`.
+- **Persistence:** `PostUp = ip route replace <cidr> dev %i` lines in
+  `/etc/wireguard/wg-village-de.conf` (survives reboot/flap); `update-afrows.sh`
+  re-applies them each deploy as a safety net.
+- `OutboundHttpService` also gained SOCKS5 support (v0.114.72) — unused here, but
+  available if a working local socks egress appears.
+- **Dependency:** this path needs the village tunnel up. During a village power
+  loss it drops (see the parked egress-failover issue — the same outage is why the
+  10808 reserve pool was dead).
+
 ## Inputs still needed from operator
 - **Trial quota size** for new self-serve accounts (default 2 GB — confirm or change; or "no trial, must charge first").
 - **Card-to-card destination** (entered in the dashboard setting, not here).
