@@ -101,6 +101,7 @@ export type TelegramCopyId =
   | 'reg.phoneNeedButton'
   | 'reg.phoneNotYours'
   | 'reg.phoneOk'
+  | 'reg.linkedExisting'
   | 'reg.finishFirst'
   // --- v2 Invite & Earn (docs §12 invite.*) ---
   | 'invite.card'
@@ -324,6 +325,10 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'reg.phoneOk': {
     en: 'Thanks, {name}! Setting up your account… ✅',
     fa: 'ممنون، {name}! در حال آماده‌سازی حساب شما… ✅',
+  },
+  'reg.linkedExisting': {
+    en: '✅ <b>Welcome back, {name}!</b>\nWe found your existing afroWS account and linked this Telegram to it — no new account was created. Here is where things stand:',
+    fa: '✅ <b>خوش برگشتید، {name}!</b>\nحساب afroWS قبلی شما را پیدا کردیم و همین تلگرام را به آن وصل کردیم — حساب جدیدی ساخته نشد. وضعیت حساب شما:',
   },
   'reg.finishFirst': { en: 'Please finish signup first 🙏', fa: 'لطفاً اول ثبت‌نام را تمام کنید 🙏' },
 

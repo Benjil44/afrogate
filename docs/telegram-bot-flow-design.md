@@ -692,10 +692,32 @@ it again — the user never sees a lingering reply keyboard afterwards.
 **Completion hand-off (reply → inline), exactly two messages:**
 1. `reg.phoneOk` (with `{name}`) sent with `reply_markup: { "remove_keyboard": true }` — this
    clears the reply keyboard. No buttons.
-2. Backend creates the account (**0 GB**, `display_name` = `regName`, phone stored in clear,
-   VLESS config issued with the **user-derived label**, referral attributed — §12), clears
-   `regStage`/`regName`/`referralCode`, then sends **S1v2** as a new message with a normal
-   inline keyboard.
+2. Backend resolves the account (see **phone-based linking** below), clears
+   `regStage`/`regName`/`referralCode`, then sends **S1v2** (new account) **or S1v2-link**
+   (linked existing account) as a new message with a normal inline keyboard.
+
+**Phone-based account linking (completion path, backend — `telegram-self-service.ts` +
+`billing.findCustomerAccountByPhone`).** Before minting a new account, the captured phone is
+looked up against **live** (`deleted_at IS NULL`) accounts, matching the stored clear `phone`
+(reduced to Iran national/country-code/bare digit forms) and/or `paid_number_hash`:
+  - **Exactly one match with no `telegram_id` (or the same one)** → **LINK**: set the account's
+    `telegram_id`/`telegram_username`, keep its existing `display_name`/`phone`/`referral_code`
+    (fill only when blank; the entered name is stored only if the account had none), ensure a
+    `referral_code`, and issue a named VLESS config **only if it has none**. No new account, no
+    referral crediting. Bot shows **S1v2-link** (`reg.linkedExisting`) then the usage/home card.
+  - **One match already bound to a different `telegram_id`** → do **not** hijack it; create a
+    fresh account and audit `telegram.register.phone_conflict`.
+  - **Multiple live matches** → ambiguous; create a fresh account and audit
+    `telegram.register.phone_ambiguous`.
+  - **No match** → create the new **0 GB** account exactly as before (`display_name` = `regName`,
+    phone in clear, named VLESS config, referral attributed — §12).
+This is the fallback to the existing **admin-set** telegram-id linking (matched at `/start` via
+`getTelegramBotAccountStatus`), which still wins when the id was pre-set on the account.
+
+**S1v2-link — linked-account welcome (new copy `reg.linkedExisting`, bilingual).** A **new
+message** confirming the link ("linked to your existing account — no new account was created"),
+followed by the real usage/home card (S3v2) so the user sees their current balance immediately —
+**not** the 0 GB new-account welcome. Keyboard = the account keyboard (refresh / buy / gems / menu).
 
 Config label rule (ASCII-only, per §7-3): keep `[A-Za-z0-9]` runs of the entered name, join
 with nothing, take ≤ 12 chars; append `-` + the phone's digits (E.164 without `+`, e.g.
@@ -896,6 +918,7 @@ Gems are «جم» in Persian (the register users know from games); the 💎 emoj
 | `reg.phoneNeedButton` | Please use the <b>Share my phone number</b> button below — a typed number can't be verified. 🙏 | لطفاً از دکمهٔ <b>اشتراک شمارهٔ من</b> در پایین استفاده کنید — شمارهٔ تایپ‌شده قابل تأیید نیست. 🙏 |
 | `reg.phoneNotYours` | That contact isn't your own Telegram number — please tap the share button so we get yours. 🙏 | این مخاطب، شمارهٔ تلگرام خود شما نیست — لطفاً روی دکمهٔ اشتراک بزنید تا شمارهٔ خودتان ثبت شود. 🙏 |
 | `reg.phoneOk` | Thanks, {name}! Setting up your account… ✅ | ممنون، {name}! در حال آماده‌سازی حساب شما… ✅ |
+| `reg.linkedExisting` | ✅ <b>Welcome back, {name}!</b>\nWe found your existing afroWS account and linked this Telegram to it — no new account was created. Here is where things stand: | ✅ <b>خوش برگشتید، {name}!</b>\nحساب afroWS قبلی شما را پیدا کردیم و همین تلگرام را به آن وصل کردیم — حساب جدیدی ساخته نشد. وضعیت حساب شما: |
 | `reg.finishFirst` | Please finish signup first 🙏 | لطفاً اول ثبت‌نام را تمام کنید 🙏 |
 
 ### `welcome.*` — v2 replacements

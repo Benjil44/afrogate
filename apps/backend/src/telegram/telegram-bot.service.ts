@@ -413,7 +413,29 @@ export class TelegramBotService {
 
     if (result.referral) await this.notifyInviterJoined(result.referral);
 
+    if (result.linked) return this.renderWelcomeLinked(ctx, language, name);
+
     return this.renderWelcomeRegistered(ctx, language, name, result);
+  }
+
+  /**
+   * S1v2-link — the phone matched an existing account: confirm the link (no new
+   * 0 GB account), then show the real usage/home card so the user sees their
+   * current balance immediately.
+   */
+  private async renderWelcomeLinked(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    name: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    const intro = renderTelegramCopy('reg.linkedExisting', language, { name });
+    // The account is now bound to this telegram id — re-read the full summary.
+    const account = await this.findAccount(ctx);
+    if (!account) {
+      return this.sendNew(ctx, language, intro, this.mainMenuKeyboard(language));
+    }
+    const card = await this.accountCardText(account, language);
+    return this.sendNew(ctx, language, `${intro}\n\n${card}`, this.accountKeyboard(language));
   }
 
   private async renderWelcomeRegistered(
@@ -1014,6 +1036,34 @@ export class TelegramBotService {
     const economy = await this.gemEconomy();
     const provisioner = new TelegramSelfServiceProvisioner({
       findAccountByTelegramId: (telegramId) => this.findAccountByTelegramId(telegramId),
+      findLiveAccountsByPhone: async (phone) => {
+        const matches = await this.billing.findCustomerAccountByPhone(phone);
+        return matches.map((match) => ({
+          id: match.id,
+          displayName: match.displayName,
+          status: match.status,
+          quotaLimitBytes: match.quotaLimitBytes,
+          telegramId: match.telegramId,
+        }));
+      },
+      linkAccountByPhone: async (linkInput) => {
+        const detail = await this.billing.linkTelegramAccountByPhone({
+          accountId: linkInput.accountId,
+          telegramId: linkInput.telegramId,
+          telegramUsername: linkInput.telegramUsername,
+          phone: linkInput.phone,
+          displayName: linkInput.displayName,
+        });
+        return {
+          id: detail.id,
+          displayName: detail.displayName,
+          status: detail.status,
+          quotaLimitBytes: detail.quotaLimitBytes,
+          telegramId: detail.telegramId,
+        };
+      },
+      recordPhoneRegistrationEvent: (event, details) =>
+        this.billing.recordTelegramRegistrationEvent(event, details),
       generateReferralCode: () => this.billing.generateUniqueReferralCode(),
       createAccount: (createInput) => this.createSelfServeAccount(createInput),
       createNamedVlessConfig: async (accountId, label) => {

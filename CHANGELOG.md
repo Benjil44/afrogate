@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.77 - 2026-07-25
+
+- **Bot registration links to an existing account by phone — no duplicates.** When a user shares their phone during bot registration, the backend now looks it up against live accounts (matching the stored clear `phone` — reduced to digits and compared to Iran national / country-code / bare variants — or the `paid_number_hash`) and, on a single unclaimed match, **links the Telegram id onto that existing account** instead of minting a duplicate (keeps the operator-set display name/phone, ensures a referral code, and issues a named VLESS config only if the account had none). A match already owned by a different Telegram id is never hijacked (new account + audit `phone_conflict`); multiple matches → new account + audit `phone_ambiguous`; no match → the normal new 0-GB account. Combined with the admin-set **Telegram ID** field (0.114.76), an existing customer connects to their real account whether or not the id was pre-set. New bilingual `reg.linkedExisting` welcome; new `phone-identity.ts` normalizer + tests.
+
 ## 0.114.76 - 2026-07-25
 
 - **Link a bot user to an existing account via Telegram ID.** The Customers create/edit form gained a **Telegram ID** (numeric) field (the backend already accepted `telegramId`; only the UI was missing). When a superadmin sets a customer's Telegram id, that customer opening `@Afrows_bot` and `/start`ing is **matched to their existing account** (the bot already looks up by Telegram id right after language pick and shows the account instead of registering) — no duplicate account. Editing the field also lets the operator move/clear a Telegram id between accounts (e.g. free it from an auto-created `Customer-XXXX` and assign it to the real account). Bilingual label + hint pointing to `@userinfobot` for the numeric id.

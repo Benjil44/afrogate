@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   TelegramSelfServiceProvisioner,
+  type LinkAccountByPhoneInput,
+  type PhoneMatchAccount,
+  type PhoneRegistrationEvent,
   type ReferralAttribution,
   type SelfServiceAccount,
   type TelegramSelfServiceDeps,
@@ -14,6 +17,9 @@ interface Captured {
   lastCreateInput: Parameters<TelegramSelfServiceDeps['createAccount']>[0] | null;
   lastConfigLabel: string | null;
   attributeCalls: number;
+  linkCalls: number;
+  lastLinkInput: LinkAccountByPhoneInput | null;
+  phoneEvents: Array<{ event: PhoneRegistrationEvent; matchedAccountIds: string[] }>;
 }
 
 function makeDeps(overrides: Partial<TelegramSelfServiceDeps> = {}): {
@@ -26,9 +32,27 @@ function makeDeps(overrides: Partial<TelegramSelfServiceDeps> = {}): {
     lastCreateInput: null,
     lastConfigLabel: null,
     attributeCalls: 0,
+    linkCalls: 0,
+    lastLinkInput: null,
+    phoneEvents: [],
   };
   const deps: TelegramSelfServiceDeps = {
     findAccountByTelegramId: async () => null,
+    findLiveAccountsByPhone: async () => [],
+    linkAccountByPhone: async (input) => {
+      captured.linkCalls += 1;
+      captured.lastLinkInput = input;
+      return {
+        id: input.accountId,
+        displayName: 'Existing Name',
+        status: 'active',
+        quotaLimitBytes: 20_000_000_000,
+        telegramId: input.telegramId,
+      };
+    },
+    recordPhoneRegistrationEvent: async (event, input) => {
+      captured.phoneEvents.push({ event, matchedAccountIds: input.matchedAccountIds });
+    },
     generateReferralCode: async () => 'REFCODE1',
     createAccount: async (input) => {
       captured.createAccount += 1;
@@ -142,5 +166,138 @@ describe('TelegramSelfServiceProvisioner.register (v2, 0 GB + named config)', ()
     assert.equal(result.created, false);
     assert.equal(result.account.id, 'acct-win');
     assert.equal(captured.createNamedVlessConfig, 0, 'the loser does not create a config');
+  });
+});
+
+describe('TelegramSelfServiceProvisioner.register (v2, phone-based account linking)', () => {
+  const phoneMatch = (over: Partial<PhoneMatchAccount> = {}): PhoneMatchAccount => ({
+    id: 'acct-existing',
+    displayName: 'Existing Name',
+    status: 'active',
+    quotaLimitBytes: 20_000_000_000,
+    telegramId: null,
+    ...over,
+  });
+
+  it('links to a lone unclaimed phone match: sets telegram id, no new account, no config when it already has one', async () => {
+    const { deps, captured } = makeDeps({
+      findLiveAccountsByPhone: async () => [phoneMatch()],
+      findPrimaryVlessConfigId: async () => 'cfg-existing', // account already has a config
+    });
+    const provisioner = new TelegramSelfServiceProvisioner(deps);
+
+    const result = await provisioner.register({
+      telegramId: '600',
+      telegramUsername: 'hani',
+      displayName: 'Typed Name',
+      phone: '989121234567',
+    });
+
+    assert.equal(result.created, false, 'no new account minted');
+    assert.equal(result.linked, true, 'flagged as a link to the existing account');
+    assert.equal(result.account.id, 'acct-existing');
+    assert.equal(captured.createAccount, 0, 'no createAccount on a link');
+    assert.equal(captured.linkCalls, 1);
+    assert.equal(captured.lastLinkInput?.telegramId, '600');
+    assert.equal(captured.lastLinkInput?.displayName, 'Typed Name');
+    assert.equal(captured.createNamedVlessConfig, 0, 'existing config is not duplicated');
+    assert.equal(result.entryLink, 'vless://link');
+    assert.equal(captured.attributeCalls, 0, 'linking never runs referral crediting');
+  });
+
+  it('issues a named config on link only when the matched account has none', async () => {
+    const { deps, captured } = makeDeps({
+      findLiveAccountsByPhone: async () => [phoneMatch()],
+      findPrimaryVlessConfigId: async () => null, // no existing config
+    });
+    const provisioner = new TelegramSelfServiceProvisioner(deps);
+
+    const result = await provisioner.register({
+      telegramId: '601',
+      displayName: 'Typed Name',
+      phone: '989121234567',
+    });
+
+    assert.equal(result.linked, true);
+    assert.equal(captured.createNamedVlessConfig, 1, 'a config is issued when missing');
+    // Label derives from the kept (existing) display name + phone.
+    assert.equal(captured.lastConfigLabel, 'ExistingName-09121234567');
+    assert.equal(result.configLabel, 'ExistingName-09121234567');
+  });
+
+  it('links when the lone match already carries the SAME telegram id (idempotent)', async () => {
+    const { deps, captured } = makeDeps({
+      findLiveAccountsByPhone: async () => [phoneMatch({ telegramId: '602' })],
+      findPrimaryVlessConfigId: async () => 'cfg-existing',
+    });
+    const provisioner = new TelegramSelfServiceProvisioner(deps);
+
+    const result = await provisioner.register({ telegramId: '602', displayName: 'X', phone: '989121234567' });
+
+    assert.equal(result.linked, true);
+    assert.equal(captured.linkCalls, 1);
+    assert.equal(captured.createAccount, 0);
+    assert.equal(captured.phoneEvents.length, 0);
+  });
+
+  it('does NOT hijack a phone match owned by a different telegram id: new account + conflict audit', async () => {
+    const { deps, captured } = makeDeps({
+      findLiveAccountsByPhone: async () => [phoneMatch({ id: 'acct-someone-else', telegramId: '999' })],
+    });
+    const provisioner = new TelegramSelfServiceProvisioner(deps);
+
+    const result = await provisioner.register({
+      telegramId: '700',
+      displayName: 'Hani',
+      phone: '989121234567',
+    });
+
+    assert.equal(result.created, true, 'a fresh account is created instead of hijacking');
+    assert.equal(result.linked, false);
+    assert.equal(result.account.id, 'acct-new');
+    assert.equal(captured.linkCalls, 0, 'no link onto someone else’s account');
+    assert.equal(captured.phoneEvents.length, 1);
+    assert.equal(captured.phoneEvents[0].event, 'phone_conflict');
+    assert.deepEqual(captured.phoneEvents[0].matchedAccountIds, ['acct-someone-else']);
+  });
+
+  it('handles multiple phone matches as ambiguous: new account + ambiguous audit, no link', async () => {
+    const { deps, captured } = makeDeps({
+      findLiveAccountsByPhone: async () => [
+        phoneMatch({ id: 'acct-a' }),
+        phoneMatch({ id: 'acct-b' }),
+      ],
+    });
+    const provisioner = new TelegramSelfServiceProvisioner(deps);
+
+    const result = await provisioner.register({
+      telegramId: '800',
+      displayName: 'Hani',
+      phone: '989121234567',
+    });
+
+    assert.equal(result.created, true);
+    assert.equal(result.linked, false);
+    assert.equal(captured.linkCalls, 0);
+    assert.equal(captured.phoneEvents.length, 1);
+    assert.equal(captured.phoneEvents[0].event, 'phone_ambiguous');
+    assert.deepEqual(captured.phoneEvents[0].matchedAccountIds, ['acct-a', 'acct-b']);
+  });
+
+  it('no phone match → creates the 0 GB account exactly as before (unchanged)', async () => {
+    const { deps, captured } = makeDeps({ findLiveAccountsByPhone: async () => [] });
+    const provisioner = new TelegramSelfServiceProvisioner(deps);
+
+    const result = await provisioner.register({
+      telegramId: '900',
+      displayName: 'Hani',
+      phone: '989121234567',
+    });
+
+    assert.equal(result.created, true);
+    assert.equal(result.linked, false);
+    assert.equal(result.account.quotaLimitBytes, 0);
+    assert.equal(captured.linkCalls, 0);
+    assert.equal(captured.phoneEvents.length, 0);
   });
 });

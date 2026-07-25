@@ -108,6 +108,7 @@ import {
   type ReferralRewardConfig,
 } from './gems';
 import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
+import { phoneClearVariants, phoneDigitVariants } from './phone-identity';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { hashPassword, verifyScryptPassword } from '../security/password';
@@ -238,6 +239,18 @@ interface CustomerAccountRow {
   clientCount: number;
   activeClientCount: number;
   protocols: Array<{ protocol: string; usedBytes: number | string }> | null;
+}
+
+/** A live customer account matched by phone (bot registration linking). */
+export interface CustomerAccountPhoneMatch {
+  id: string;
+  displayName: string | null;
+  telegramId: string | null;
+  telegramUsername: string | null;
+  phone: string | null;
+  referralCode: string | null;
+  status: string;
+  quotaLimitBytes: number | null;
 }
 
 interface WireguardPeerRecord {
@@ -3228,6 +3241,146 @@ export class BillingService {
       [accountId],
     );
     return after.rows[0]?.referralCode ?? code;
+  }
+
+  /**
+   * Live (deleted_at IS NULL) accounts whose identity matches this phone — used by
+   * bot registration to link a returning user to their existing account instead of
+   * minting a duplicate. Matches the stored clear `phone` (reduced to digits, in
+   * Iran national/country-code/bare forms) OR the `paid_number_hash`. Ordered
+   * oldest-first so a lone/deterministic winner is picked when only one exists.
+   */
+  async findCustomerAccountByPhone(phone: string): Promise<CustomerAccountPhoneMatch[]> {
+    const digitVariants = phoneDigitVariants(phone);
+    if (!digitVariants.length) return [];
+    const hashVariants = this.paidNumberHashVariants(phone);
+
+    const result = await this.database.query<{
+      id: string;
+      displayName: string | null;
+      telegramId: string | null;
+      telegramUsername: string | null;
+      phone: string | null;
+      referralCode: string | null;
+      status: string;
+      quotaLimitBytes: string | number | null;
+    }>(
+      `
+        SELECT
+          ca.id,
+          ca.display_name AS "displayName",
+          ca.telegram_id AS "telegramId",
+          ca.telegram_username AS "telegramUsername",
+          ca.phone,
+          ca.referral_code AS "referralCode",
+          ca.status,
+          ca.quota_limit_bytes AS "quotaLimitBytes"
+        FROM customer_accounts ca
+        WHERE ca.deleted_at IS NULL
+          AND (
+            regexp_replace(COALESCE(ca.phone, ''), '\\D', '', 'g') = ANY($1::text[])
+            OR (cardinality($2::text[]) > 0 AND ca.paid_number_hash = ANY($2::text[]))
+          )
+        ORDER BY ca.created_at ASC, ca.id ASC
+      `,
+      [digitVariants, hashVariants],
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      displayName: row.displayName,
+      telegramId: row.telegramId,
+      telegramUsername: row.telegramUsername,
+      phone: row.phone,
+      referralCode: row.referralCode,
+      status: row.status,
+      quotaLimitBytes: numberFromBigInt(row.quotaLimitBytes),
+    }));
+  }
+
+  /** HMAC the phone's clear-form variants with the identity key (empty if unset). */
+  private paidNumberHashVariants(phone: string): string[] {
+    const key = process.env.AFROWS_IDENTITY_HASH_KEY?.trim() || process.env.AFROWS_SECRETS_KEY?.trim();
+    if (!key) return [];
+    const hashes = new Set<string>();
+    for (const clear of phoneClearVariants(phone)) {
+      const normalized = normalizePaidNumber(clear);
+      if (!normalized) continue;
+      hashes.add(`hmac-sha256:${createHmac('sha256', key).update(normalized, 'utf8').digest('hex')}`);
+    }
+    return [...hashes];
+  }
+
+  /**
+   * Link a Telegram identity onto a pre-existing account matched by phone (bot
+   * registration). Sets telegram_id/username; keeps an existing display_name,
+   * phone, and referral_code (only fills a blank one) so nothing an operator set is
+   * clobbered. One transaction, guarded so it only claims a still-live account that
+   * is unclaimed or already this same telegram id (idempotent on a double submit).
+   */
+  async linkTelegramAccountByPhone(
+    input: {
+      accountId: string;
+      telegramId: string;
+      telegramUsername?: string | null;
+      phone: string;
+      displayName: string;
+    },
+    actor?: AuthActor | undefined,
+  ): Promise<AdminCustomerAccountDetail> {
+    const telegramId = normalizeNullableString(input.telegramId);
+    if (!telegramId) throw new BadRequestException('telegramId is required to link an account');
+    const telegramUsername = normalizeTelegramUsername(input.telegramUsername);
+    const phone = normalizeNullableString(input.phone);
+    const displayName = normalizeNullableString(input.displayName);
+    const referralCode = await generateUniqueReferralCode(this.database);
+
+    await this.database.transaction(async (executor) => {
+      const updated = await executor.query<{ id: string }>(
+        `
+          UPDATE customer_accounts SET
+            telegram_id = $2,
+            telegram_username = COALESCE($3, telegram_username),
+            phone = COALESCE(NULLIF(phone, ''), $4),
+            display_name = COALESCE(NULLIF(display_name, ''), $5),
+            referral_code = COALESCE(NULLIF(referral_code, ''), $6),
+            updated_at = now()
+          WHERE id = $1
+            AND deleted_at IS NULL
+            AND (telegram_id IS NULL OR telegram_id = '' OR telegram_id = $2)
+          RETURNING id
+        `,
+        [input.accountId, telegramId, telegramUsername, phone, displayName, referralCode],
+      );
+      if (!updated.rows[0]) {
+        throw new ConflictException('Account is no longer available to link');
+      }
+
+      await this.audit.record(
+        actor,
+        'telegram.register.phone_link',
+        'customer_account',
+        input.accountId,
+        { telegramId, hasTelegramUsername: Boolean(telegramUsername) },
+        executor,
+      );
+    });
+
+    return this.getCustomerAccount(input.accountId);
+  }
+
+  /** Best-effort audit of a phone conflict / ambiguity during bot registration. */
+  async recordTelegramRegistrationEvent(
+    event: 'phone_conflict' | 'phone_ambiguous',
+    input: { telegramId: string; matchedAccountIds: string[] },
+  ): Promise<void> {
+    await this.audit.recordBestEffort(
+      undefined,
+      `telegram.register.${event}`,
+      'customer_account',
+      input.matchedAccountIds[0] ?? null,
+      { telegramId: input.telegramId, matchedAccountIds: input.matchedAccountIds },
+    );
   }
 
   /** Total gems this account has earned from referrals (signup + commission + milestone). */
