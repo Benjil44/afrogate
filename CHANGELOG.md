@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.71 - 2026-07-25
+
+- **Telegram Alert/Admin chat-ID fields clarified.** Added a placeholder explaining these take an **optional numeric Telegram id** (e.g. `123456789`, obtainable from `@userinfobot`) — **not** a `@username`. Entering a username made the save silently fail validation ("must be a numeric Telegram chat id"); the field now tells you the right format up front, and it's clearly optional (only used for admin alerts, not for the customer bot).
+
 ## 0.114.70 - 2026-07-25
 
 - **Telegram "Test connection" now says *why* it failed.** Instead of a flat "connection failed", the result maps the backend's `status`/`errorCode` to a specific, actionable reason: **no token saved**, **Telegram rejected the token** (invalid/revoked — HTTP 401/403/404 or a bad `getMe`), or **couldn't reach Telegram** (`api.telegram.org` unreachable — an outbound proxy is likely required), with the HTTP code for other Telegram errors. This distinguishes a connectivity problem from a bad token at a glance.
