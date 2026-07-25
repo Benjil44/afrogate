@@ -97,6 +97,16 @@ import {
   walletCanCoverDebit,
 } from './reseller-wallet-math';
 import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, gbToBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
+import {
+  attributeReferral,
+  creditReferralSignup,
+  earnGems,
+  generateUniqueReferralCode,
+  readGemsBalance,
+  redeemGemsForGb,
+  type RedeemGemsResult,
+  type ReferralRewardConfig,
+} from './gems';
 import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
@@ -205,6 +215,10 @@ interface CustomerAccountRow {
   telegramId: string | null;
   telegramUsername: string | null;
   paidNumberHash: string | null;
+  phone: string | null;
+  gemsBalance: string | number | null;
+  referralCode: string | null;
+  referralCount: number | string | null;
   status: string;
   quotaScope: string;
   quotaLimitBytes: string | number | null;
@@ -2970,11 +2984,12 @@ export class BillingService {
           `
             INSERT INTO customer_accounts (
               reseller_account_id, display_name, telegram_id, telegram_username, paid_number_hash,
+              phone, referral_code,
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
               used_bytes, notes, login_email, password_hash, password_set_at,
               egress_tier, gaming_entitled, expires_at, tags
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             RETURNING id
           `,
           [
@@ -2983,6 +2998,8 @@ export class BillingService {
             normalizeNullableString(dto.telegramId),
             normalizeTelegramUsername(dto.telegramUsername),
             paidNumberHash,
+            normalizeNullableString(dto.phone),
+            normalizeNullableString(dto.referralCode),
             dto.status ?? 'active',
             dto.quotaScope ?? 'account_shared',
             dto.quotaLimitBytes ?? null,
@@ -3113,6 +3130,171 @@ export class BillingService {
     );
     if (outcome.wgPeersRestored > 0) this.triggerWgReconcile(); // re-add the peers to wg0 now
     return { restored: true };
+  }
+
+  // --- Gems wallet + referrals (afroWS bot v2) ------------------------------
+
+  /**
+   * Admin manual gems adjustment (audited, writes the ledger). A negative delta
+   * cannot drive the balance below zero (the DB CHECK forbids it; we pre-validate
+   * for a clean 400). Reason text is stored on the ledger row's `ref`.
+   */
+  async adjustCustomerGems(
+    id: string,
+    delta: number,
+    reason: string,
+    actor: AuthActor | undefined,
+  ): Promise<{ gemsBalance: number }> {
+    if (!Number.isSafeInteger(delta) || delta === 0) {
+      throw new BadRequestException('delta must be a non-zero integer');
+    }
+    const note = reason.trim().slice(0, 200);
+    const result = await this.database.transaction(async (executor) => {
+      await this.ensureCustomerAccountExists(executor, id);
+      const balance = await readGemsBalance(executor, id);
+      if (balance + delta < 0) {
+        throw new BadRequestException('Adjustment would make the gems balance negative');
+      }
+      return earnGems(executor, id, delta, 'admin_adjust', note || null);
+    });
+
+    await this.audit.record(actor, 'customer_account.gems.adjust', 'customer_account', id, {
+      delta,
+      reason: note,
+      gemsBalanceAfter: result.gemsBalance,
+    });
+
+    return { gemsBalance: result.gemsBalance };
+  }
+
+  /** Redeem an account's gems for GB of quota (bot self-service). One transaction. */
+  async redeemCustomerGemsForGb(
+    accountId: string,
+    gemsToSpend: number,
+    ratePerGb: number,
+  ): Promise<RedeemGemsResult> {
+    return this.database.transaction((executor) => redeemGemsForGb(executor, accountId, gemsToSpend, ratePerGb));
+  }
+
+  /** Recent gems-ledger entries for an account (bot wallet history + admin view). */
+  async getCustomerGemsLedger(
+    accountId: string,
+    limit = 5,
+  ): Promise<Array<{ id: string; delta: number; reason: string; ref: string | null; createdAt: Date }>> {
+    const capped = Math.max(1, Math.min(50, Math.trunc(limit)));
+    const result = await this.database.query<{
+      id: string;
+      delta: string | number;
+      reason: string;
+      ref: string | null;
+      createdAt: Date;
+    }>(
+      `SELECT id, delta, reason, ref, created_at AS "createdAt"
+         FROM gems_ledger
+        WHERE customer_account_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [accountId, capped],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      delta: numberFromBigInt(row.delta) ?? 0,
+      reason: row.reason,
+      ref: row.ref,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /** Generate a referral code not already used by any account (bot registration). */
+  async generateUniqueReferralCode(): Promise<string> {
+    return generateUniqueReferralCode(this.database);
+  }
+
+  /** Return the account's referral code, lazily generating + persisting one if absent (S10). */
+  async ensureAccountReferralCode(accountId: string): Promise<string> {
+    const existing = await this.database.query<{ referralCode: string | null }>(
+      `SELECT referral_code AS "referralCode" FROM customer_accounts WHERE id = $1`,
+      [accountId],
+    );
+    const current = existing.rows[0]?.referralCode;
+    if (current) return current;
+    const code = await generateUniqueReferralCode(this.database);
+    await this.database.query(
+      `UPDATE customer_accounts SET referral_code = $1, updated_at = now() WHERE id = $2 AND referral_code IS NULL`,
+      [code, accountId],
+    );
+    const after = await this.database.query<{ referralCode: string | null }>(
+      `SELECT referral_code AS "referralCode" FROM customer_accounts WHERE id = $1`,
+      [accountId],
+    );
+    return after.rows[0]?.referralCode ?? code;
+  }
+
+  /** Total gems this account has earned from referrals (signup + commission + milestone). */
+  async getReferralGemsEarned(accountId: string): Promise<number> {
+    const result = await this.database.query<{ sum: string | number | null }>(
+      `SELECT COALESCE(SUM(delta), 0) AS sum
+         FROM gems_ledger
+        WHERE customer_account_id = $1
+          AND delta > 0
+          AND reason IN ('referral_signup', 'referral_commission', 'referral_milestone')`,
+      [accountId],
+    );
+    return numberFromBigInt(result.rows[0]?.sum) ?? 0;
+  }
+
+  /**
+   * Attribute a newly-registered account to its inviter (write-once) and credit
+   * the inviter's signup bonus + milestone, atomically. Returns the inviter's
+   * contact + credited amounts (for the N3/N5 pushes), or null when the code is
+   * bad / self / already-attributed (onboarding proceeds either way).
+   */
+  async attributeAndCreditReferral(input: {
+    newAccountId: string;
+    code: string;
+    config: ReferralRewardConfig;
+  }): Promise<{
+    inviterAccountId: string;
+    inviterTelegramId: string | null;
+    inviterTelegramChatId: string | null;
+    signupGems: number;
+    inviterGemsBalance: number;
+    milestone: { count: number; bonusGems: number; inviterGemsBalance: number } | null;
+  } | null> {
+    return this.database.transaction(async (executor) => {
+      const attribution = await attributeReferral(executor, input.newAccountId, input.code);
+      if (!attribution) return null;
+
+      const credit = await creditReferralSignup(
+        executor,
+        input.newAccountId,
+        attribution.inviterAccountId,
+        input.config,
+      );
+
+      const inviterInfo = await executor.query<{ telegramId: string | null; telegramChatId: string | null }>(
+        `
+          SELECT ca.telegram_id AS "telegramId", tu.chat_id AS "telegramChatId"
+          FROM customer_accounts ca
+          LEFT JOIN telegram_users tu ON tu.telegram_id = ca.telegram_id
+          WHERE ca.id = $1
+        `,
+        [attribution.inviterAccountId],
+      );
+
+      const gemsBalance = credit
+        ? credit.inviterGemsBalance
+        : await readGemsBalance(executor, attribution.inviterAccountId);
+
+      return {
+        inviterAccountId: attribution.inviterAccountId,
+        inviterTelegramId: inviterInfo.rows[0]?.telegramId ?? null,
+        inviterTelegramChatId: inviterInfo.rows[0]?.telegramChatId ?? null,
+        signupGems: credit?.signupGems ?? 0,
+        inviterGemsBalance: gemsBalance,
+        milestone: credit?.milestone ?? null,
+      };
+    });
   }
 
   /** Next collision-free config label for an account, e.g. "vless-1", "vless-2".
@@ -6553,6 +6735,14 @@ export class BillingService {
         ca.telegram_id AS "telegramId",
         ca.telegram_username AS "telegramUsername",
         ca.paid_number_hash AS "paidNumberHash",
+        ca.phone,
+        ca.gems_balance AS "gemsBalance",
+        ca.referral_code AS "referralCode",
+        (
+          SELECT COUNT(*)::int
+          FROM customer_accounts r
+          WHERE r.referred_by = ca.id AND r.deleted_at IS NULL
+        ) AS "referralCount",
         ca.status,
         ca.quota_scope AS "quotaScope",
         ca.quota_limit_bytes AS "quotaLimitBytes",
@@ -7934,6 +8124,7 @@ export class BillingService {
     }
     if (dto.paidNumber !== undefined) add('paidNumberHash', 'paid_number_hash', this.hashPaidNumberIfPresent(dto.paidNumber));
     if (dto.clearPaidNumber) add('paidNumberHash', 'paid_number_hash', null);
+    if (dto.phone !== undefined) add('phone', 'phone', normalizeNullableString(dto.phone));
     if (dto.status !== undefined) add('status', 'status', dto.status);
     if (dto.quotaScope !== undefined) add('quotaScope', 'quota_scope', dto.quotaScope);
     if (dto.quotaLimitBytes !== undefined) add('quotaLimitBytes', 'quota_limit_bytes', dto.quotaLimitBytes);
@@ -8022,6 +8213,10 @@ export class BillingService {
       telegramId: row.telegramId,
       telegramUsername: row.telegramUsername,
       hasPaidNumberHash: Boolean(row.paidNumberHash),
+      phone: row.phone,
+      gemsBalance: numberFromBigInt(row.gemsBalance) ?? 0,
+      referralCode: row.referralCode,
+      referralCount: Number(row.referralCount ?? 0),
       status: row.status,
       quotaScope: row.quotaScope,
       quotaLimitBytes,
@@ -8063,6 +8258,10 @@ export class BillingService {
       remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
+      phone: row.phone,
+      gemsBalance: numberFromBigInt(row.gemsBalance) ?? 0,
+      referralCode: row.referralCode,
+      referralCount: Number(row.referralCount ?? 0),
     };
   }
 

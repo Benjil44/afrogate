@@ -441,6 +441,14 @@ export interface TelegramBotAccountSummary {
   remainingBytes?: number | null;
   clientCount: number;
   activeClientCount: number;
+  /** v2: gems wallet balance (for the bot account/gems screens). */
+  gemsBalance?: number;
+  /** v2: the account's own referral/invite code. */
+  referralCode?: string | null;
+  /** v2: number of accounts this account referred. */
+  referralCount?: number;
+  /** v2: phone captured at registration (clear). */
+  phone?: string | null;
 }
 
 export type TelegramBotAccountLookup =
@@ -482,6 +490,17 @@ export interface AdminTelegramBotSettingsSummary {
   cardToCardInfo?: string | null;
   /** Trial quota for new self-serve accounts in bytes (null -> default 1e9). */
   trialQuotaBytes?: number | null;
+  // --- v2 gem economy (admin-configurable; defaults per telegram-bot-v2-plan.md) ---
+  /** Gems required to redeem 1 GB (default 100). */
+  gemRedeemPerGb?: number;
+  /** Gems credited to the inviter when a referred user completes registration (default 50). */
+  gemReferralSignup?: number;
+  /** Percent of a referred purchase's GB paid to the inviter in gems (default 20). */
+  gemReferralPurchasePct?: number;
+  /** Completed-referral count between milestone bonuses (default 10). */
+  gemMilestoneEvery?: number;
+  /** Milestone bonus gems (default 300). */
+  gemMilestoneBonus?: number;
   updatedBy?: string | null;
   updatedAt?: string | null;
 }
@@ -501,6 +520,40 @@ export interface UpdateTelegramBotSettingsRequest {
   commandsEnabled?: boolean;
   cardToCardInfo?: string | null;
   trialQuotaBytes?: number | null;
+  gemRedeemPerGb?: number;
+  gemReferralSignup?: number;
+  gemReferralPurchasePct?: number;
+  gemMilestoneEvery?: number;
+  gemMilestoneBonus?: number;
+}
+
+/** v2: request body for the admin manual gems adjustment. */
+export interface AdjustCustomerGemsRequest {
+  /** Signed gem delta: positive credits, negative debits. Non-zero. */
+  delta: number;
+  reason: string;
+}
+
+/** v2: response of the admin manual gems adjustment (new balance). */
+export interface AdminAdjustCustomerGemsResponse {
+  gemsBalance: number;
+}
+
+/** v2: one append-only gems-ledger movement. */
+export interface AdminGemsLedgerEntry {
+  id: string;
+  /** Signed amount: positive = credited, negative = spent. */
+  delta: number;
+  /** Machine reason tag: referral_signup | referral_commission | referral_milestone | redeem | admin_adjust. */
+  reason: string;
+  /** Optional correlation (referred account id, topup id, milestone marker, admin note). */
+  ref?: string | null;
+  createdAt: string;
+}
+
+export interface AdminCustomerGemsLedgerResponse {
+  customerAccountId: string;
+  entries: AdminGemsLedgerEntry[];
 }
 
 /** Lifecycle of a Telegram card-to-card top-up request. */
@@ -826,6 +879,14 @@ export interface AdminCustomerAccountSummary {
   telegramId?: string | null;
   telegramUsername?: string | null;
   hasPaidNumberHash: boolean;
+  /** v2: phone captured at bot registration, stored in clear (admin-visible). */
+  phone?: string | null;
+  /** v2: current gems wallet balance. */
+  gemsBalance?: number;
+  /** v2: the account's own unique referral/invite code. */
+  referralCode?: string | null;
+  /** v2: how many accounts this account has referred (completed registration). */
+  referralCount?: number;
   status: CustomerAccountStatus | string;
   quotaScope: CustomerQuotaScope | string;
   quotaLimitBytes?: number | null;

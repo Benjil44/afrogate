@@ -1,5 +1,5 @@
 import type { DatabaseQueryExecutor } from '../database/database.service';
-import { normalizeTelegramLanguage, type TelegramLanguage } from './telegram-i18n';
+import { isTelegramLanguage, type TelegramLanguage } from './telegram-i18n';
 
 /**
  * Per-Telegram-user persistence (language + in-progress flow state), independent
@@ -19,19 +19,27 @@ export interface TelegramUserState {
   pendingCurrency?: string;
   /** ISO timestamp when the charge was started (for the 24h AWAITING_RECEIPT_TTL). */
   pendingStartedAt?: string;
+  // --- v2 registration (docs §13) — registration and a pending charge never coexist ---
+  /** Registration progress; absent = not registering. */
+  regStage?: 'awaiting_name' | 'awaiting_phone';
+  /** The name captured at R1, held until account creation. */
+  regName?: string;
+  /** Invite code captured from the /start deep-link payload, held until account creation. */
+  referralCode?: string;
 }
 
 export interface TelegramUserRecord {
   telegramId: string;
   chatId: string | null;
-  language: TelegramLanguage;
+  /** null → the user has not picked a language yet (show S0 on next contact). */
+  language: TelegramLanguage | null;
   state: TelegramUserState | null;
 }
 
 interface TelegramUserRow {
   telegramId: string;
   chatId: string | null;
-  language: string;
+  language: string | null;
   state: TelegramUserState | null;
 }
 
@@ -40,7 +48,7 @@ function mapRow(row: TelegramUserRow | undefined): TelegramUserRecord | null {
   return {
     telegramId: row.telegramId,
     chatId: row.chatId,
-    language: normalizeTelegramLanguage(row.language),
+    language: isTelegramLanguage(row.language) ? row.language : null,
     state: row.state ?? null,
   };
 }

@@ -175,6 +175,12 @@ export interface TelegramBotSettingsForm {
   cardToCardInfo: string;
   /** Trial quota for new self-serve accounts, entered in decimal GB ('' = backend default 1 GB). */
   trialQuotaGb: string;
+  /** Gem economy (bot v2) — whole non-negative numbers as text; '' = keep backend default. */
+  gemRedeemPerGb: string;
+  gemReferralSignup: string;
+  gemReferralPurchasePct: string;
+  gemMilestoneEvery: string;
+  gemMilestoneBonus: string;
 }
 
 export interface TenantBrandSettingsForm {

@@ -12,7 +12,7 @@ import {
 } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService } from './telegram-bot-config.service';
 import { normalizeTelegramLanguage, renderTelegramCopy, type TelegramLanguage } from './telegram-i18n';
-import { applyRtlGuard, formatDataSize } from './telegram-format';
+import { applyRtlGuard, formatCount, formatDataSize } from './telegram-format';
 import { approveTopupInTransaction, rejectTopupInTransaction, topupReference } from './telegram-topup';
 
 export type TelegramTopupListStatus = TelegramTopupStatus | 'all';
@@ -96,12 +96,18 @@ export class TelegramTopupAdminService {
 
   async approve(id: string, actor: AuthActor | undefined): Promise<AdminTelegramTopupRequest> {
     const reviewer = actor?.username ?? actor?.id ?? null;
+    const runtime = await this.telegramConfig.getRuntimeConfig();
     const outcome = await this.database.transaction((executor) =>
       // Reuse the exact quota-credit math used by allocatePaymentOrder and
-      // reseller package sales — no bespoke crediting mechanism.
+      // reseller package sales — no bespoke crediting mechanism. The referral
+      // commission (if the buyer was invited) is credited in the same tx.
       approveTopupInTransaction(executor, id, {
         reviewer,
         computeQuotaAfter: computeAllocatedQuotaLimitBytes,
+        gemEconomy: {
+          referralPurchasePct: runtime.gemEconomy.gemReferralPurchasePct,
+          gemRedeemPerGb: runtime.gemEconomy.gemRedeemPerGb,
+        },
       }),
     );
 
@@ -111,9 +117,13 @@ export class TelegramTopupAdminService {
       quotaLimitBeforeBytes: outcome.quotaLimitBeforeBytes,
       quotaLimitAfterBytes: outcome.quotaLimitAfterBytes,
       packageName: outcome.packageName,
+      referralCommissionGems: outcome.commission?.gems ?? 0,
+      referralInviterAccountId: outcome.commission?.inviterAccountId ?? null,
     });
 
-    // N1 — approved notification, in the user's stored language (docs §2-N1).
+    const detail = await this.getRequest(id);
+
+    // N1 — approved notification to the buyer, in their stored language (docs §2-N1).
     if (outcome.telegramChatId) {
       const language = await this.resolveLanguage(outcome.telegramId);
       const text = renderTelegramCopy(
@@ -125,7 +135,25 @@ export class TelegramTopupAdminService {
       await this.pushToUser(outcome.telegramChatId, text, language, this.approvedKeyboard(language));
     }
 
-    return this.getRequest(id);
+    // N4 — commission landed, pushed to the INVITER in the inviter's language (docs §11-N4).
+    const commission = outcome.commission;
+    if (commission?.inviterTelegramChatId) {
+      const language = await this.resolveLanguage(commission.inviterTelegramId);
+      const text = renderTelegramCopy(
+        'notify.refPurchase',
+        language,
+        { friendName: detail.customerDisplayName ?? '' },
+        {
+          packageSize: formatDataSize(outcome.volumeBytes, language),
+          gems: formatCount(commission.gems, language),
+          gemsBalance: formatCount(commission.inviterGemsBalance, language),
+          pct: formatCount(commission.pct, language),
+        },
+      );
+      await this.pushToUser(commission.inviterTelegramChatId, text, language, this.gemsKeyboard(language));
+    }
+
+    return detail;
   }
 
   async reject(id: string, reason: string | null, actor: AuthActor | undefined): Promise<AdminTelegramTopupRequest> {
@@ -211,6 +239,15 @@ export class TelegramTopupAdminService {
     return {
       inline_keyboard: [
         [{ text: renderTelegramCopy('menu.btn.account', language), callback_data: 'afws:acct' }],
+        [{ text: renderTelegramCopy('common.btn.menu', language), callback_data: 'afws:menu' }],
+      ],
+    };
+  }
+
+  private gemsKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [{ text: renderTelegramCopy('menu.btn.gems', language), callback_data: 'afws:gems' }],
         [{ text: renderTelegramCopy('common.btn.menu', language), callback_data: 'afws:menu' }],
       ],
     };

@@ -29,7 +29,7 @@ export function normalizeTelegramLanguage(value: unknown, fallback: TelegramLang
   return isTelegramLanguage(value) ? value : fallback;
 }
 
-/** The complete set of copy string-ids (docs §6.2) — 56 keys. */
+/** The complete set of copy string-ids (docs §6.2 + §14.3 v2 additions). */
 export type TelegramCopyId =
   | 'lang.prompt'
   | 'lang.btn.fa'
@@ -37,19 +37,23 @@ export type TelegramCopyId =
   | 'lang.settings'
   | 'lang.updated'
   | 'lang.toast'
-  | 'welcome.new'
-  | 'welcome.newNoConfig'
+  | 'welcome.registered'
+  | 'welcome.registeredNoConfig'
   | 'welcome.back'
   | 'menu.title'
   | 'menu.btn.account'
   | 'menu.btn.buy'
   | 'menu.btn.configs'
+  | 'menu.btn.invite'
+  | 'menu.btn.gems'
   | 'menu.btn.lang'
   | 'menu.btn.help'
-  | 'acct.card'
-  | 'acct.quotaLine'
-  | 'acct.quotaUnlimited'
+  | 'acct.cardV2'
+  | 'acct.gemsLine'
   | 'acct.expiryLine'
+  | 'usage.line'
+  | 'usage.zeroData'
+  | 'usage.unlimited'
   | 'status.active'
   | 'status.suspended'
   | 'status.expired'
@@ -79,6 +83,7 @@ export type TelegramCopyId =
   | 'common.btn.menu'
   | 'common.btn.refresh'
   | 'common.btn.retry'
+  | 'common.btn.back'
   | 'common.toast.refreshed'
   | 'error.noPackages'
   | 'error.cardUnset'
@@ -86,7 +91,44 @@ export type TelegramCopyId =
   | 'error.accountProblem'
   | 'error.generic'
   | 'error.unknownCommand'
-  | 'error.staleButton';
+  | 'error.staleButton'
+  // --- v2 registration (docs §12 reg.*) ---
+  | 'reg.askName'
+  | 'reg.viaInvite'
+  | 'reg.nameInvalid'
+  | 'reg.askPhone'
+  | 'reg.btn.sharePhone'
+  | 'reg.phoneNeedButton'
+  | 'reg.phoneNotYours'
+  | 'reg.phoneOk'
+  | 'reg.finishFirst'
+  // --- v2 Invite & Earn (docs §12 invite.*) ---
+  | 'invite.card'
+  | 'invite.btn.share'
+  | 'invite.shareText'
+  // --- v2 Gems wallet + redeem (docs §12 gems.*) ---
+  | 'gems.card'
+  | 'gems.historyTitle'
+  | 'gems.historyItem'
+  | 'gems.historyEmpty'
+  | 'gems.reason.signup'
+  | 'gems.reason.commission'
+  | 'gems.reason.milestone'
+  | 'gems.reason.redeem'
+  | 'gems.reason.adjust'
+  | 'gems.btn.redeem'
+  | 'gems.redeemPick'
+  | 'gems.redeemBtn'
+  | 'gems.redeemBtnMax'
+  | 'gems.redeemConfirm'
+  | 'gems.btn.confirm'
+  | 'gems.redeemed'
+  | 'gems.redeemTooFew'
+  | 'gems.toast.insufficient'
+  // --- v2 referral notifications (docs §12 notify.ref*) ---
+  | 'notify.refJoined'
+  | 'notify.refPurchase'
+  | 'notify.refMilestone';
 
 type CopyEntry = { en: string; fa: string };
 
@@ -107,13 +149,13 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: 'زبان به فارسی تغییر کرد. ✅',
   },
   'lang.toast': { en: 'Language updated ✅', fa: 'زبان تغییر کرد ✅' },
-  'welcome.new': {
-    en: "🎉 You're in!\nYour afroWS account is ready, with a free <b>{trialQuota}</b> trial already loaded.\n\nHere's your VLESS config — tap it once to copy:\n<code>{configLink}</code>\n\nImport it into your VPN app (e.g. v2rayNG or Streisand) and connect.\nWhen you need more data, tap <b>Buy Data</b> below.",
-    fa: '🎉 خوش آمدید!\nحساب afroWS شما ساخته شد و <b>{trialQuota}</b> حجم هدیه هم برایتان فعال است.\n\nاین کانفیگ VLESS شماست — یک بار رویش بزنید تا کپی شود:\n<code>{configLink}</code>\n\nآن را در اپ VPN خود (مثل v2rayNG یا Streisand) وارد کنید و وصل شوید.\nهر وقت حجم بیشتری خواستید، از دکمهٔ «خرید حجم» استفاده کنید.',
+  'welcome.registered': {
+    en: '🎉 <b>Welcome, {name}!</b>\nYour afroWS account is ready, and your config <b>{configLabel}</b> is set up — tap it once to copy:\n<code>{configLink}</code>\n\nYour balance is <b>0 GB</b> for now — the config comes alive the moment you add data:\n🛒 <b>Buy Data</b> — packages start small.\n🎁 <b>Invite & Earn</b> — friends join, you earn gems, gems become GB.',
+    fa: '🎉 <b>خوش آمدید، {name}!</b>\nحساب afroWS شما آماده است و کانفیگ <b>{configLabel}</b> هم برایتان ساخته شد — یک بار رویش بزنید تا کپی شود:\n<code>{configLink}</code>\n\nموجودی شما فعلاً <b>۰ گیگابایت</b> است — به‌محض اضافه‌کردن حجم، کانفیگ فعال می‌شود:\n🛒 <b>خرید حجم</b> — بسته‌ها از حجم کم شروع می‌شوند.\n🎁 <b>دعوت و هدیه</b> — دوستانتان بیایند، شما جم می‌گیرید و جم‌ها گیگابایت می‌شوند.',
   },
-  'welcome.newNoConfig': {
-    en: "🎉 You're in! Your afroWS account is ready with a free <b>{trialQuota}</b> trial.\nYour config is being prepared — tap <b>My Configs</b> in a moment to grab it.",
-    fa: '🎉 خوش آمدید! حساب afroWS شما با <b>{trialQuota}</b> حجم هدیه ساخته شد.\nکانفیگ شما در حال آماده‌سازی است — کمی بعد از «کانفیگ‌های من» آن را بردارید.',
+  'welcome.registeredNoConfig': {
+    en: '🎉 <b>Welcome, {name}!</b> Your afroWS account is ready.\nYour config is being prepared — tap <b>My Configs</b> in a moment to grab it.\nYour balance is <b>0 GB</b> for now — add data with <b>Buy Data</b> or earn it via <b>Invite & Earn</b>.',
+    fa: '🎉 <b>خوش آمدید، {name}!</b> حساب afroWS شما آماده است.\nکانفیگ شما در حال آماده‌سازی است — کمی بعد از «کانفیگ‌های من» آن را بردارید.\nموجودی شما فعلاً <b>۰ گیگابایت</b> است — با «خرید حجم» حجم بگیرید یا با «دعوت و هدیه» جم جمع کنید.',
   },
   'welcome.back': {
     en: 'Welcome back! 👋 What would you like to do?',
@@ -126,18 +168,31 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'menu.btn.account': { en: '👤 My Account', fa: '👤 حساب من' },
   'menu.btn.buy': { en: '🛒 Buy Data', fa: '🛒 خرید حجم' },
   'menu.btn.configs': { en: '🔗 My Configs', fa: '🔗 کانفیگ‌های من' },
+  'menu.btn.invite': { en: '🎁 Invite & Earn', fa: '🎁 دعوت و هدیه' },
+  'menu.btn.gems': { en: '💎 Gems', fa: '💎 جم‌ها' },
   'menu.btn.lang': { en: '🌐 Language', fa: '🌐 زبان' },
   'menu.btn.help': { en: '❓ Help', fa: '❓ راهنما' },
-  'acct.card': {
-    en: '👤 <b>Your account</b>\nStatus: {status}\n{quotaLine}\nUsed: {used}\nActive configs: {activeClients}/{clientCount}',
-    fa: '👤 <b>حساب شما</b>\nوضعیت: {status}\n{quotaLine}\nمصرف‌شده: {used}\nکانفیگ‌های فعال: {activeClients} از {clientCount}',
+  'acct.cardV2': {
+    en: '👤 <b>{name}</b>\nStatus: {status}\n\n{usageBlock}\n\n{gemsLine}\n🔗 Active configs: {activeClients}/{clientCount}',
+    fa: '👤 <b>{name}</b>\nوضعیت: {status}\n\n{usageBlock}\n\n{gemsLine}\n🔗 کانفیگ‌های فعال: {activeClients} از {clientCount}',
   },
-  'acct.quotaLine': {
-    en: 'Data left: <b>{remaining}</b> of {total}',
-    fa: 'حجم باقی‌مانده: <b>{remaining}</b> از {total}',
+  'acct.gemsLine': {
+    en: '💎 Gems: <b>{gems}</b> (≈ {gemsGb} GB)',
+    fa: '💎 جم: <b>{gems}</b> (حدود {gemsGb} گیگابایت)',
   },
-  'acct.quotaUnlimited': { en: 'Data: Unlimited', fa: 'حجم: نامحدود' },
   'acct.expiryLine': { en: 'Expires: {expiresAt}', fa: 'تاریخ انقضا: {expiresAt}' },
+  'usage.line': {
+    en: '📊 <code>{bar}</code> <b>{percent}%</b> used\n{used} of {total} — <b>{remaining}</b> left',
+    fa: '📊 <code>{bar}</code> <b>{percent}٪</b> مصرف شده\n{used} از {total} — <b>{remaining}</b> باقی‌مانده',
+  },
+  'usage.zeroData': {
+    en: '📊 You have <b>0 GB</b> right now.\nBuy a package or invite friends to get connected.',
+    fa: '📊 موجودی شما فعلاً <b>۰ گیگابایت</b> است.\nبرای اتصال، یک بسته بخرید یا دوستانتان را دعوت کنید.',
+  },
+  'usage.unlimited': {
+    en: '📊 Data: Unlimited — used so far: {used}',
+    fa: '📊 حجم: نامحدود — مصرف تاکنون: {used}',
+  },
   'status.active': { en: 'Active ✅', fa: 'فعال ✅' },
   'status.suspended': { en: 'Suspended ⏸', fa: 'معلق ⏸' },
   'status.expired': { en: 'Expired ⌛', fa: 'منقضی ⌛' },
@@ -209,6 +264,7 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'common.btn.menu': { en: '🏠 Main menu', fa: '🏠 منوی اصلی' },
   'common.btn.refresh': { en: '🔄 Refresh', fa: '🔄 به‌روزرسانی' },
   'common.btn.retry': { en: '🔁 Try again', fa: '🔁 تلاش دوباره' },
+  'common.btn.back': { en: '◀️ Back', fa: '◀️ بازگشت' },
   'common.toast.refreshed': { en: 'Updated ✅', fa: 'به‌روز شد ✅' },
   'error.noPackages': {
     en: 'No data packages are available right now. 🙏\nPlease check back a little later.',
@@ -237,6 +293,101 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'error.staleButton': {
     en: 'This menu is outdated — sending a fresh one.',
     fa: 'این منو قدیمی شده — منوی تازه فرستادیم.',
+  },
+
+  // === v2 (docs §12) — registration ===
+  'reg.askName': {
+    en: '📝 <b>Step 1/2 — your name</b>\nWhat should we call you? Type your name below.\nIt also names your config, so keep it short and sweet.',
+    fa: '📝 <b>مرحلهٔ ۱ از ۲ — نام شما</b>\nشما را چه صدا کنیم؟ نامتان را همین‌جا بنویسید.\nنام کانفیگ شما هم از روی آن ساخته می‌شود، پس کوتاه و خودمانی بنویسید.',
+  },
+  'reg.viaInvite': {
+    en: "🎁 You're here on a friend's invite — once you sign up, they get a thank-you bonus!",
+    fa: '🎁 شما با دعوت یکی از دوستانتان آمده‌اید — بعد از ثبت‌نام، هدیهٔ تشکر به دوستتان می‌رسد!',
+  },
+  'reg.nameInvalid': {
+    en: "Hmm, that doesn't look like a name — please send 2 to 40 characters of plain text. 🙏",
+    fa: 'این مورد شبیه نام نیست — لطفاً بین ۲ تا ۴۰ حرف، فقط متن ساده بفرستید. 🙏',
+  },
+  'reg.askPhone': {
+    en: '📱 <b>Step 2/2 — your phone number</b>\nTap the button below to share your number — one tap, no typing.\nWe use it to name your config and keep your account recoverable.',
+    fa: '📱 <b>مرحلهٔ ۲ از ۲ — شمارهٔ موبایل</b>\nروی دکمهٔ پایین بزنید تا شماره‌تان ثبت شود — فقط یک لمس، بدون تایپ.\nاز شماره برای نام‌گذاری کانفیگ و بازیابی حسابتان استفاده می‌کنیم.',
+  },
+  'reg.btn.sharePhone': { en: '📱 Share my phone number', fa: '📱 اشتراک شمارهٔ من' },
+  'reg.phoneNeedButton': {
+    en: "Please use the <b>Share my phone number</b> button below — a typed number can't be verified. 🙏",
+    fa: 'لطفاً از دکمهٔ <b>اشتراک شمارهٔ من</b> در پایین استفاده کنید — شمارهٔ تایپ‌شده قابل تأیید نیست. 🙏',
+  },
+  'reg.phoneNotYours': {
+    en: "That contact isn't your own Telegram number — please tap the share button so we get yours. 🙏",
+    fa: 'این مخاطب، شمارهٔ تلگرام خود شما نیست — لطفاً روی دکمهٔ اشتراک بزنید تا شمارهٔ خودتان ثبت شود. 🙏',
+  },
+  'reg.phoneOk': {
+    en: 'Thanks, {name}! Setting up your account… ✅',
+    fa: 'ممنون، {name}! در حال آماده‌سازی حساب شما… ✅',
+  },
+  'reg.finishFirst': { en: 'Please finish signup first 🙏', fa: 'لطفاً اول ثبت‌نام را تمام کنید 🙏' },
+
+  // === v2 — Invite & Earn ===
+  'invite.card': {
+    en: '🎁 <b>Invite & Earn</b>\nIntroduce afroWS to your friends and earn gems:\n• <b>+{signupBonus} gems</b> for every friend who joins\n• <b>{pct}%</b> of every purchase they make, paid in gems\n• <b>+{milestoneBonus} gems</b> bonus for every {milestoneCount} friends\n\nYour invite code: <code>{inviteCode}</code>\nYour link — tap once to copy:\n<code>{inviteLink}</code>\n\n👥 Friends joined: <b>{referralCount}</b>\n💎 Gems earned from invites: <b>{gemsEarned}</b>',
+    fa: '🎁 <b>دعوت و هدیه</b>\nafroWS را به دوستانتان معرفی کنید و جم بگیرید:\n• <b>{signupBonus} جم</b> برای هر دوستی که عضو شود\n• <b>{pct}٪</b> از هر خریدش، به‌صورت جم\n• <b>{milestoneBonus} جم</b> جایزه برای هر {milestoneCount} دوست\n\nکد دعوت شما: <code>{inviteCode}</code>\nلینک شما — یک بار بزنید تا کپی شود:\n<code>{inviteLink}</code>\n\n👥 دوستان عضوشده: <b>{referralCount}</b>\n💎 جم به‌دست‌آمده از دعوت‌ها: <b>{gemsEarned}</b>',
+  },
+  'invite.btn.share': { en: '📤 Share with friends', fa: '📤 فرستادن برای دوستان' },
+  'invite.shareText': {
+    en: 'I use afroWS for fast, reliable internet — join with my link and we both win 🎁',
+    fa: 'من از afroWS برای اینترنت پرسرعت و مطمئن استفاده می‌کنم — با لینک من بیا تا هر دو هدیه بگیریم 🎁',
+  },
+
+  // === v2 — Gems wallet & redeem ===
+  'gems.card': {
+    en: '💎 <b>Your gems</b>\nBalance: <b>{gems}</b> gems (≈ <b>{gemsGb}</b> GB)\nRate: {rateGems} gems = 1 GB\n\n{history}',
+    fa: '💎 <b>جم‌های شما</b>\nموجودی: <b>{gems}</b> جم (حدود <b>{gemsGb}</b> گیگابایت)\nنرخ تبدیل: هر {rateGems} جم = ۱ گیگابایت\n\n{history}',
+  },
+  'gems.historyTitle': { en: 'Recent activity:', fa: 'تراکنش‌های اخیر:' },
+  'gems.historyItem': { en: '• {date} — {delta} · {reason}', fa: '• {date} — {delta} · {reason}' },
+  'gems.historyEmpty': {
+    en: 'No gems activity yet — invite friends to start earning! 🎁',
+    fa: 'هنوز تراکنشی ندارید — با دعوت دوستان جم جمع کنید! 🎁',
+  },
+  'gems.reason.signup': { en: 'friend joined', fa: 'پیوستن دوست' },
+  'gems.reason.commission': { en: "friend's purchase bonus", fa: 'پاداش خرید دوست' },
+  'gems.reason.milestone': { en: 'milestone bonus', fa: 'پاداش ویژهٔ دعوت' },
+  'gems.reason.redeem': { en: 'redeemed to data', fa: 'تبدیل به حجم' },
+  'gems.reason.adjust': { en: 'support adjustment', fa: 'اصلاح توسط پشتیبانی' },
+  'gems.btn.redeem': { en: '💱 Redeem gems → GB', fa: '💱 تبدیل جم به گیگ' },
+  'gems.redeemPick': {
+    en: '💱 <b>Redeem gems for data</b>\nBalance: <b>{gems}</b> gems · rate: {rateGems} gems = 1 GB\nPick how much data to add:',
+    fa: '💱 <b>تبدیل جم به حجم</b>\nموجودی: <b>{gems}</b> جم · نرخ: هر {rateGems} جم = ۱ گیگابایت\nچقدر حجم اضافه کنیم؟',
+  },
+  'gems.redeemBtn': { en: '{gb} GB — {gems} gems', fa: '{gb} گیگابایت — {gems} جم' },
+  'gems.redeemBtnMax': { en: 'Max: {gb} GB — {gems} gems', fa: 'حداکثر: {gb} گیگابایت — {gems} جم' },
+  'gems.redeemConfirm': {
+    en: "You're redeeming <b>{gems}</b> gems for <b>{gb} GB</b>.\nYou'll have {gemsAfter} gems left. Confirm?",
+    fa: 'در حال تبدیل <b>{gems}</b> جم به <b>{gb} گیگابایت</b> هستید.\nبعد از آن {gemsAfter} جم برایتان می‌ماند. تأیید می‌کنید؟',
+  },
+  'gems.btn.confirm': { en: '✅ Confirm', fa: '✅ تأیید' },
+  'gems.redeemed': {
+    en: '✅ Done! <b>{gb} GB</b> added to your account.\n💎 Gems left: <b>{gemsAfter}</b>\n📊 Data balance now: <b>{remaining}</b>',
+    fa: '✅ انجام شد! <b>{gb} گیگابایت</b> به حساب شما اضافه شد.\n💎 جم باقی‌مانده: <b>{gemsAfter}</b>\n📊 موجودی حجم: <b>{remaining}</b>',
+  },
+  'gems.redeemTooFew': {
+    en: 'You need at least <b>{rateGems}</b> gems to redeem 1 GB — you have {gems}. 💎\nInvite friends to earn more!',
+    fa: 'برای تبدیل به ۱ گیگابایت دست‌کم <b>{rateGems}</b> جم لازم است — شما {gems} جم دارید. 💎\nبا دعوت دوستان جم بیشتری جمع کنید!',
+  },
+  'gems.toast.insufficient': { en: 'Not enough gems', fa: 'جم کافی نیست' },
+
+  // === v2 — referral notifications (pushed to the inviter) ===
+  'notify.refJoined': {
+    en: '🎉 <b>{friendName}</b> joined afroWS with your invite!\n💎 <b>{gems}</b> gems added — your balance: <b>{gemsBalance}</b>.',
+    fa: '🎉 <b>{friendName}</b> با دعوت شما به afroWS پیوست!\n💎 <b>{gems}</b> جم به حسابتان اضافه شد — موجودی: <b>{gemsBalance}</b>.',
+  },
+  'notify.refPurchase': {
+    en: '💎 <b>{friendName}</b> just bought <b>{packageSize}</b> — you earned <b>{gems}</b> gems ({pct}% commission).\nYour balance: <b>{gemsBalance}</b> gems.',
+    fa: '💎 <b>{friendName}</b> همین حالا <b>{packageSize}</b> خرید — <b>{gems}</b> جم پاداش گرفتید ({pct}٪ کمیسیون).\nموجودی شما: <b>{gemsBalance}</b> جم.',
+  },
+  'notify.refMilestone': {
+    en: '🏆 Amazing — <b>{count}</b> friends have joined with your invites!\nMilestone bonus: <b>{gems}</b> gems. Your balance: <b>{gemsBalance}</b>.',
+    fa: '🏆 فوق‌العاده — <b>{count}</b> دوست با دعوت شما عضو شده‌اند!\nپاداش ویژه: <b>{gems}</b> جم. موجودی شما: <b>{gemsBalance}</b>.',
   },
 };
 

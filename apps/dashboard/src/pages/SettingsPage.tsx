@@ -1,8 +1,9 @@
 import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowDownUp, Bot, CheckCircle2, Clock, Gauge, LockKeyhole, Network, Palette, Plus, Route, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, Bot, CheckCircle2, Clock, Gauge, Gem, LockKeyhole, Network, Palette, Plus, Route, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
 import type { AdminOutboundSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolSetupSummary, AdminRouteAssignmentSummary, AdminSessionResponse, AdminSettingsResponse, AdminTelegramBotSettingsSummary, AdminTenantBrandSettingsSummary, AdminWireGuardCandidate, LoadBalanceStrategy, ProtocolKind, ProtocolProfile, RouteSelectionMode } from '@afrows/shared';
 import { createAdminProtocolSetup, createAdminSettingsSecret, fetchAdminSettings, fetchAdminTelegramBotSettings, fetchAdminTenantBranding, fetchProtocolServerApplyEvent, fetchProtocolServerApplyEvents, fetchRouteAssignment, provisionAdminProtocolSetup, recordAdminProtocolServerApplyDryRun, requestAdminProtocolServerApply, testAdminTelegramBotConnection, updateAdminTelegramBotSettings, updateAdminTenantBranding } from '../api/admin';
+import { telegramGemEconomy, type UpdateTelegramBotSettingsWithGems } from '../api/gems';
 import type { DashboardTabItem, DataState, ProtocolSetupDraft, ServerRowData, SettingsTab, TelegramBotSettingsForm, TenantBrandSettingsForm, Tone, WireGuardHealthCandidate, WireGuardSetupDraft } from '../dashboard-types';
 import { normalizeNullableText, type DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
@@ -67,6 +68,11 @@ export function SettingsPage({
     commandsEnabled: false,
     cardToCardInfo: '',
     trialQuotaGb: '',
+    gemRedeemPerGb: '',
+    gemReferralSignup: '',
+    gemReferralPurchasePct: '',
+    gemMilestoneEvery: '',
+    gemMilestoneBonus: '',
   });
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('protocols');
   const [privateKeyAccepted, setPrivateKeyAccepted] = useState(false);
@@ -121,6 +127,7 @@ export function SettingsPage({
   };
   const applyTelegramBotSettings = (settings: AdminTelegramBotSettingsSummary) => {
     setTelegramBotSettings(settings);
+    const gems = telegramGemEconomy(settings);
     setTelegramBotForm((current) => ({
       ...current,
       botToken: '',
@@ -132,6 +139,12 @@ export function SettingsPage({
       cardToCardInfo: settings.cardToCardInfo ?? '',
       // Stored in bytes; edited in decimal GB (1 GB = 1e9 bytes, matching quota math).
       trialQuotaGb: settings.trialQuotaBytes != null ? String(Math.round((settings.trialQuotaBytes / 1e9) * 100) / 100) : '',
+      // Gem economy (bot v2): blank means "backend default" until a value is saved.
+      gemRedeemPerGb: gems.gemRedeemPerGb != null ? String(gems.gemRedeemPerGb) : '',
+      gemReferralSignup: gems.gemReferralSignup != null ? String(gems.gemReferralSignup) : '',
+      gemReferralPurchasePct: gems.gemReferralPurchasePct != null ? String(gems.gemReferralPurchasePct) : '',
+      gemMilestoneEvery: gems.gemMilestoneEvery != null ? String(gems.gemMilestoneEvery) : '',
+      gemMilestoneBonus: gems.gemMilestoneBonus != null ? String(gems.gemMilestoneBonus) : '',
     }));
   };
 
@@ -291,6 +304,19 @@ export function SettingsPage({
     [t.settings.settingsStorage, settingsDataState === 'live' ? t.settings.configured : t.settings.pending, settingsDataState === 'live' ? 'good' : 'warning'],
     [t.settings.secretStorage, hasSavedPrivateKey ? t.settings.encryptedStorageReady : t.settings.encryptedStoragePending, hasSavedPrivateKey ? 'good' : 'neutral'],
   ];
+  // Gem-economy inputs (bot v2): label + helper text per admin-tunable knob.
+  const gemEconomyInputs: Array<{
+    field: 'gemRedeemPerGb' | 'gemReferralSignup' | 'gemReferralPurchasePct' | 'gemMilestoneEvery' | 'gemMilestoneBonus';
+    label: string;
+    hint: string;
+  }> = [
+    { field: 'gemRedeemPerGb', label: t.settings.telegramGemRedeemPerGb, hint: t.settings.telegramGemRedeemPerGbHint },
+    { field: 'gemReferralSignup', label: t.settings.telegramGemReferralSignup, hint: t.settings.telegramGemReferralSignupHint },
+    { field: 'gemReferralPurchasePct', label: t.settings.telegramGemReferralPurchasePct, hint: t.settings.telegramGemReferralPurchasePctHint },
+    { field: 'gemMilestoneEvery', label: t.settings.telegramGemMilestoneEvery, hint: t.settings.telegramGemMilestoneEveryHint },
+    { field: 'gemMilestoneBonus', label: t.settings.telegramGemMilestoneBonus, hint: t.settings.telegramGemMilestoneBonusHint },
+  ];
+
   const telegramBotReadinessRows: Array<[string, string, Tone]> = [
     [
       t.settings.telegramBotToken,
@@ -630,6 +656,20 @@ export function SettingsPage({
       return null;
     }
 
+    // Gem economy (bot v2): each field is either blank (keep the backend
+    // default) or a non-negative whole number; reject anything else up front.
+    const gemFieldNames = ['gemRedeemPerGb', 'gemReferralSignup', 'gemReferralPurchasePct', 'gemMilestoneEvery', 'gemMilestoneBonus'] as const;
+    const gemPayload: Partial<Record<(typeof gemFieldNames)[number], number>> = {};
+    for (const field of gemFieldNames) {
+      const raw = telegramBotForm[field].trim();
+      if (raw === '') continue;
+      if (!/^\d+$/.test(raw)) {
+        setTelegramBotMessage({ text: t.settings.telegramGemInvalid, tone: 'error' });
+        return null;
+      }
+      gemPayload[field] = Number(raw);
+    }
+
     setIsTelegramBotSaving(true);
     if (showSuccessMessage) setTelegramBotMessage(null);
 
@@ -641,7 +681,7 @@ export function SettingsPage({
       : null;
 
     try {
-      const response = await updateAdminTelegramBotSettings(sessionToken, {
+      const payload: UpdateTelegramBotSettingsWithGems = {
         botToken: telegramBotForm.botToken.trim() || undefined,
         webhookSecret: telegramBotForm.webhookSecret.trim() || undefined,
         alertChatId: telegramBotForm.alertChatId.trim() || null,
@@ -650,7 +690,9 @@ export function SettingsPage({
         commandsEnabled: telegramBotForm.commandsEnabled,
         cardToCardInfo: telegramBotForm.cardToCardInfo.trim() || null,
         trialQuotaBytes,
-      });
+        ...gemPayload,
+      };
+      const response = await updateAdminTelegramBotSettings(sessionToken, payload);
 
       applyTelegramBotSettings(response.telegramBot);
       if (showSuccessMessage) setTelegramBotMessage({ text: t.settings.telegramBotSaved, tone: 'ok' });
@@ -1061,6 +1103,32 @@ export function SettingsPage({
                 />
                 <span className="text-[12px] text-afro-muted">{t.settings.telegramTrialQuotaHint}</span>
               </label>
+            </div>
+            <div className="grid gap-2 rounded-md border border-afro-line bg-white p-3">
+              <div className="flex items-center gap-2">
+                <Gem aria-hidden className="shrink-0 text-afro-teal" size={15} />
+                <span className="text-[13px] font-bold text-afro-ink">{t.settings.telegramGemSection}</span>
+              </div>
+              <p className="text-[12px] text-afro-muted">{t.settings.telegramGemSectionHint}</p>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {gemEconomyInputs.map(({ field, hint, label }) => (
+                  <label className="grid content-start gap-1.5" key={field}>
+                    <span className="text-[13px] font-bold text-afro-muted">{label}</span>
+                    <input
+                      className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+                      dir="ltr"
+                      disabled={!canManageTelegramBot}
+                      inputMode="numeric"
+                      min="0"
+                      onChange={(event) => updateTelegramBotForm(field, event.target.value)}
+                      step="1"
+                      type="number"
+                      value={telegramBotForm[field]}
+                    />
+                    <span className="text-[12px] text-afro-muted">{hint}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="grid gap-2">
               {telegramBotReadinessRows.map(([label, value, tone]) => (

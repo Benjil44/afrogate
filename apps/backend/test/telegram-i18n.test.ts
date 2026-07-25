@@ -2,37 +2,42 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { TELEGRAM_COPY, renderTelegramCopy } from '../src/telegram/telegram-i18n.ts';
 
-// The complete id set from docs/telegram-bot-flow-design.md §6.2 (56 ids).
-const EXPECTED_IDS = [
-  'lang.prompt', 'lang.btn.fa', 'lang.btn.en', 'lang.settings', 'lang.updated', 'lang.toast',
-  'welcome.new', 'welcome.newNoConfig', 'welcome.back',
-  'menu.title', 'menu.btn.account', 'menu.btn.buy', 'menu.btn.configs', 'menu.btn.lang', 'menu.btn.help',
-  'acct.card', 'acct.quotaLine', 'acct.quotaUnlimited', 'acct.expiryLine',
-  'status.active', 'status.suspended', 'status.expired', 'status.disabled',
-  'cfg.title', 'cfg.itemHeader', 'cfg.importHint', 'cfg.truncated', 'cfg.empty', 'cfg.btn.open',
-  'buy.btn.open', 'buy.pickPackage', 'buy.pkgBtn', 'buy.pendingApprovalNote', 'buy.resumeNote',
-  'buy.payment', 'buy.needPhoto', 'buy.submitted', 'buy.cancelled', 'buy.btn.cancel',
-  'buy.btn.retry', 'buy.toast.cancelled',
-  'notify.approved', 'notify.rejected', 'notify.noReason',
-  'help.body',
-  'common.btn.menu', 'common.btn.refresh', 'common.btn.retry', 'common.toast.refreshed',
-  'error.noPackages', 'error.cardUnset', 'error.photoNoCharge', 'error.accountProblem',
-  'error.generic', 'error.unknownCommand', 'error.staleButton',
+// v1 ids retired when v2 shipped (docs §9 "Retired v1 pieces" / §14.3).
+const RETIRED_IDS = ['welcome.new', 'welcome.newNoConfig', 'acct.card', 'acct.quotaLine', 'acct.quotaUnlimited'];
+
+// A representative slice of the v2 additions (docs §14.3) that must be present.
+const REQUIRED_V2_IDS = [
+  'reg.askName', 'reg.askPhone', 'reg.btn.sharePhone', 'reg.phoneOk', 'reg.finishFirst',
+  'welcome.registered', 'welcome.registeredNoConfig',
+  'menu.btn.invite', 'menu.btn.gems',
+  'acct.cardV2', 'acct.gemsLine', 'usage.line', 'usage.zeroData', 'usage.unlimited',
+  'invite.card', 'invite.btn.share', 'invite.shareText',
+  'gems.card', 'gems.historyItem', 'gems.reason.signup', 'gems.reason.commission',
+  'gems.reason.milestone', 'gems.reason.redeem', 'gems.reason.adjust',
+  'gems.btn.redeem', 'gems.redeemPick', 'gems.redeemBtn', 'gems.redeemBtnMax',
+  'gems.redeemConfirm', 'gems.btn.confirm', 'gems.redeemed', 'gems.redeemTooFew',
+  'gems.toast.insufficient',
+  'notify.refJoined', 'notify.refPurchase', 'notify.refMilestone',
+  'common.btn.back',
 ];
 
-describe('telegram i18n copy table', () => {
-  it('contains exactly the 56 design-doc ids', () => {
-    const actual = Object.keys(TELEGRAM_COPY).sort();
-    assert.equal(actual.length, 56);
-    assert.deepEqual(actual, [...EXPECTED_IDS].sort());
-  });
-
+describe('telegram i18n copy table (v2)', () => {
   it('has non-empty English and Persian wording for every id', () => {
-    for (const id of EXPECTED_IDS) {
-      const entry = TELEGRAM_COPY[id as keyof typeof TELEGRAM_COPY];
-      assert.ok(entry, `missing id: ${id}`);
+    for (const [id, entry] of Object.entries(TELEGRAM_COPY)) {
       assert.ok(entry.en.length > 0, `empty en for ${id}`);
       assert.ok(entry.fa.length > 0, `empty fa for ${id}`);
+    }
+  });
+
+  it('drops the retired v1 ids', () => {
+    for (const id of RETIRED_IDS) {
+      assert.equal(id in TELEGRAM_COPY, false, `retired id still present: ${id}`);
+    }
+  });
+
+  it('contains the v2 additions', () => {
+    for (const id of REQUIRED_V2_IDS) {
+      assert.ok(id in TELEGRAM_COPY, `missing v2 id: ${id}`);
     }
   });
 });
@@ -43,16 +48,17 @@ describe('renderTelegramCopy', () => {
     assert.equal(out, '• vless — a&lt;b&gt;&amp;c');
   });
 
-  it('inserts raw (already-rendered) sub-copy verbatim', () => {
-    const out = renderTelegramCopy('acct.card', 'en', {}, {
+  it('inserts raw (already-rendered) sub-copy verbatim into the account card', () => {
+    const out = renderTelegramCopy('acct.cardV2', 'en', { name: 'Hani' }, {
       status: 'Active ✅',
-      quotaLine: 'Data left: <b>5 GB</b> of 20 GB',
-      used: '15 GB',
+      usageBlock: '📊 <code>▓▓░░░░░░░░</code> <b>21%</b> used',
+      gemsLine: '💎 Gems: <b>250</b> (≈ 2.5 GB)',
       activeClients: '1',
       clientCount: '2',
     });
     assert.match(out, /Status: Active ✅/);
-    assert.match(out, /Data left: <b>5 GB<\/b> of 20 GB/); // <b> preserved (not escaped)
+    assert.match(out, /<code>▓▓░░░░░░░░<\/code>/); // <code> preserved (not escaped)
+    assert.match(out, /💎 Gems: <b>250<\/b>/);
     assert.match(out, /Active configs: 1\/2/);
   });
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchiveRestore, Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, Copy, Gem, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
@@ -23,6 +23,7 @@ import {
   updateAdminCustomerAccount,
   updateRouter,
 } from '../api/admin';
+import { adjustCustomerGems, customerGemFields } from '../api/gems';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
@@ -120,6 +121,12 @@ export function CustomersPage({
   const [shownPassword, setShownPassword] = useState<string | null>(null);
   const [pwCopied, setPwCopied] = useState(false);
   const [customPw, setCustomPw] = useState(''); // operator-typed password (blank = auto-generate)
+
+  // gems wallet (bot v2): per-row "adjust gems" control state, keyed by account id
+  const [gemsDelta, setGemsDelta] = useState<Record<string, string>>({});
+  const [gemsReason, setGemsReason] = useState<Record<string, string>>({});
+  const [gemsBusy, setGemsBusy] = useState<string | null>(null);
+  const [gemsMsg, setGemsMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null);
 
   // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
@@ -281,6 +288,17 @@ export function CustomersPage({
   const editProtocols = useMemo(
     () => accounts.find((a) => a.id === editId)?.protocols ?? [],
     [accounts, editId],
+  );
+
+  // Bot-v2 profile (phone / gems / referrals) of the customer being edited.
+  const editAccount = useMemo(() => accounts.find((a) => a.id === editId) ?? null, [accounts, editId]);
+  const editGemInfo = editAccount ? customerGemFields(editAccount) : null;
+  const editHasGemInfo = Boolean(
+    editGemInfo &&
+      (editGemInfo.phone !== undefined ||
+        editGemInfo.gemsBalance !== undefined ||
+        editGemInfo.referralCode !== undefined ||
+        editGemInfo.referralCount !== undefined),
   );
 
   // Activate/deactivate a customer straight from the table (active <-> disabled).
@@ -588,6 +606,35 @@ export function CustomersPage({
     }
   };
 
+  // Credit/debit a customer's gems wallet (bot v2). Confirm first, one POST,
+  // then refresh the balance from the server; the reason is audited server-side.
+  const onAdjustGems = async (a: AdminCustomerAccountSummary) => {
+    const deltaText = (gemsDelta[a.id] ?? '').trim();
+    const reason = (gemsReason[a.id] ?? '').trim();
+    const delta = Number(deltaText);
+    if (!deltaText || !Number.isInteger(delta) || delta === 0 || !reason) {
+      setGemsMsg({ id: a.id, text: s.gemsAdjustInvalid, ok: false });
+      return;
+    }
+    const deltaLabel = delta > 0 ? `+${format.integer(delta)}` : format.integer(delta);
+    if (!window.confirm(s.gemsAdjustConfirm(nameOf(a), deltaLabel))) return;
+    setGemsBusy(a.id);
+    setGemsMsg(null);
+    try {
+      const { gemsBalance } = await adjustCustomerGems(sessionToken, a.id, delta, reason);
+      // Optimistic local balance so the row updates instantly; load() reconciles.
+      setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, gemsBalance } : row)));
+      setGemsDelta((cur) => ({ ...cur, [a.id]: '' }));
+      setGemsReason((cur) => ({ ...cur, [a.id]: '' }));
+      setGemsMsg({ id: a.id, text: s.gemsAdjusted(format.integer(gemsBalance)), ok: true });
+      await load();
+    } catch {
+      setGemsMsg({ id: a.id, text: s.gemsAdjustError, ok: false });
+    } finally {
+      setGemsBusy(null);
+    }
+  };
+
   const onCreateConfig = async () => {
     if (!configsFor) return;
     setConfigBusy(true);
@@ -657,6 +704,9 @@ export function CustomersPage({
     const price = priceFor(tier);
     const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
     const hasQuota = a.quotaLimitBytes != null && a.quotaLimitBytes > 0;
+    // Bot-v2 fields (phone/gems/referrals) — rows only appear once the backend
+    // serves them, so pre-migration accounts don't render four empty rows.
+    const v2 = customerGemFields(a);
 
     return (
       <div className="grid gap-2.5">
@@ -691,11 +741,70 @@ export function CustomersPage({
           <DetailRow label={s.colExpiry}>{a.expiresAt ? format.time(new Date(a.expiresAt), false) : '—'}</DetailRow>
           <DetailRow label={s.colLastConnected}>{a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : '—'}</DetailRow>
           <DetailRow label={s.colSeller}>{a.resellerDisplayName || s.direct}</DetailRow>
+          {v2.phone !== undefined ? (
+            <DetailRow label={s.colPhone}>{v2.phone ? <span dir="ltr">{v2.phone}</span> : '—'}</DetailRow>
+          ) : null}
+          {v2.gemsBalance !== undefined ? (
+            <DetailRow label={s.colGems}>
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <Gem aria-hidden className="text-afro-teal" size={13} />
+                {format.integer(v2.gemsBalance)}
+              </span>
+            </DetailRow>
+          ) : null}
+          {v2.referralCode !== undefined ? (
+            <DetailRow label={s.colReferralCode}>
+              {v2.referralCode ? <span className="font-mono" dir="ltr">{v2.referralCode}</span> : '—'}
+            </DetailRow>
+          ) : null}
+          {v2.referralCount !== undefined ? (
+            <DetailRow label={s.colReferrals}>{format.integer(v2.referralCount)}</DetailRow>
+          ) : null}
           {a.tags && a.tags.length > 0 ? <DetailRow label={s.colTags}>{a.tags.join(', ')}</DetailRow> : null}
           {price > 0 ? (
             <DetailRow label={s.colCost}>{`${Math.round((a.usedBytes / BYTES_PER_GB) * price).toLocaleString()} ${currency}`}</DetailRow>
           ) : null}
         </div>
+        {v2.gemsBalance !== undefined ? (
+          // Manual wallet adjustment: delta + audited reason -> confirm -> one POST.
+          <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+            <span className="flex items-center gap-1.5 text-[12px] font-bold text-afro-muted">
+              <Gem aria-hidden size={13} />
+              {s.gemsAdjustTitle}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                aria-label={s.gemsAdjustTitle}
+                className="min-h-11 w-40 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
+                dir="ltr"
+                inputMode="numeric"
+                onChange={(e2) => setGemsDelta((cur) => ({ ...cur, [a.id]: e2.target.value }))}
+                placeholder={s.gemsDeltaPlaceholder}
+                value={gemsDelta[a.id] ?? ''}
+              />
+              <input
+                aria-label={s.gemsReasonPlaceholder}
+                className="min-h-11 min-w-[180px] flex-1 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
+                onChange={(e2) => setGemsReason((cur) => ({ ...cur, [a.id]: e2.target.value }))}
+                placeholder={s.gemsReasonPlaceholder}
+                value={gemsReason[a.id] ?? ''}
+              />
+              <button
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-afro-teal px-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 md:min-h-9"
+                disabled={gemsBusy === a.id}
+                onClick={() => void onAdjustGems(a)}
+                type="button"
+              >
+                {s.gemsApply}
+              </button>
+            </div>
+            {gemsMsg && gemsMsg.id === a.id ? (
+              <span className={`text-[12px] font-bold ${gemsMsg.ok ? 'text-afro-teal' : 'text-red-600'}`} role="status">
+                {gemsMsg.text}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -1149,6 +1258,26 @@ export function CustomersPage({
               <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} />
             </label>
+            {editId && editGemInfo && editHasGemInfo ? (
+              // Read-only bot-v2 profile: the bot fills these at signup; gems are
+              // adjusted from the row's detail panel (single audited entry point).
+              <div className="grid gap-1.5 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.botProfileSection}</span>
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  <DetailRow label={s.colPhone}>{editGemInfo.phone ? <span dir="ltr">{editGemInfo.phone}</span> : '—'}</DetailRow>
+                  <DetailRow label={s.colGems}>
+                    {editGemInfo.gemsBalance != null ? format.integer(editGemInfo.gemsBalance) : '—'}
+                  </DetailRow>
+                  <DetailRow label={s.colReferralCode}>
+                    {editGemInfo.referralCode ? <span className="font-mono" dir="ltr">{editGemInfo.referralCode}</span> : '—'}
+                  </DetailRow>
+                  <DetailRow label={s.colReferrals}>
+                    {editGemInfo.referralCount != null ? format.integer(editGemInfo.referralCount) : '—'}
+                  </DetailRow>
+                </div>
+                <span className="text-[11px] text-afro-muted">{s.botProfileNote}</span>
+              </div>
+            ) : null}
             {!editId && email.trim() ? (
               <label className="grid gap-1.5 md:col-span-2">
                 <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>

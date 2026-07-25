@@ -29,6 +29,8 @@ import type {
   AdminCustomerAccountDetail,
   AdminCustomerDevicesResponse,
   AdminAllocatePaymentOrderResponse,
+  AdminAdjustCustomerGemsResponse,
+  AdminCustomerGemsLedgerResponse,
   AdminIssueClientAccessTokenResponse,
   AdminCustomerAccountsResponse,
   AdminPayPalPaymentOrderResponse,
@@ -55,6 +57,7 @@ import { Permissions, Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
 import { BillingService } from './billing.service';
 import {
+  AdjustCustomerGemsDto,
   CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
   CurrentPanelUsageSyncDto,
@@ -584,6 +587,34 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<{ restored: boolean }> {
     return this.billingService.restoreCustomerAccount(id, request.actor);
+  }
+
+  @Post('customer-accounts/:id/gems')
+  @Roles('admin')
+  async adjustCustomerGems(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: AdjustCustomerGemsDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminAdjustCustomerGemsResponse> {
+    return this.billingService.adjustCustomerGems(id, payload.delta, payload.reason, request.actor);
+  }
+
+  @Get('customer-accounts/:id/gems/ledger')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async getCustomerGemsLedger(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminCustomerGemsLedgerResponse> {
+    const entries = await this.billingService.getCustomerGemsLedger(id, 50);
+    return {
+      customerAccountId: id,
+      entries: entries.map((entry) => ({
+        id: entry.id,
+        delta: entry.delta,
+        reason: entry.reason,
+        ref: entry.ref,
+        createdAt: entry.createdAt.toISOString(),
+      })),
+    };
   }
 
   @Post('customer-accounts/:id/client-configs')

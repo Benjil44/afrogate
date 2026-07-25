@@ -110,6 +110,75 @@ export function parseCardToCard(info: string): { cardNumber: string; cardHolder:
   return { cardNumber: formatCardNumber(numberPart), cardHolder: holderPart };
 }
 
+/** Strip a phone string to its bare digits (E.164 without the leading '+'). */
+export function normalizePhoneDigits(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
+/** National form for display/labels: Iran E.164 (98…) → 0…; otherwise the raw digits. */
+export function phoneNationalDigits(digits: string): string {
+  if (digits.startsWith('98') && digits.length > 10) return `0${digits.slice(2)}`;
+  return digits;
+}
+
+/**
+ * Build the ASCII, auto-pattern-safe VLESS config label from the registered name
+ * + phone (docs §11 R2): keep the [A-Za-z0-9] runs of the name (≤12 chars), then
+ * `-` + the phone's national digits. A fully non-Latin name contributes nothing,
+ * so the label is the digits alone. Examples: `Hani-09121234567`, `09121234567`.
+ */
+export function buildConfigLabel(displayName: string, phone: string): string {
+  const namePart = (displayName.match(/[A-Za-z0-9]+/g) ?? []).join('').slice(0, 12);
+  const phonePart = phoneNationalDigits(normalizePhoneDigits(phone));
+  if (!phonePart) return namePart || 'afroWS';
+  return namePart ? `${namePart}-${phonePart}` : phonePart;
+}
+
+/** Whole-number usage percentage (used / quota), capped at 100; 0 when no quota. */
+export function usagePercent(usedBytes: number, quotaLimitBytes: number | null | undefined): number {
+  if (!quotaLimitBytes || quotaLimitBytes <= 0) return 0;
+  const pct = Math.round((usedBytes / quotaLimitBytes) * 100);
+  return Math.max(0, Math.min(100, pct));
+}
+
+/**
+ * 10-cell text progress bar (docs §11 S3v2): filled `▓`, empty `░`,
+ * `filled = clamp(round(percent/10), 0, 10)`, but `filled ≥ 1` whenever any data
+ * has been used. Sits inside `<code>` so it renders LTR/monospace in both languages.
+ */
+export function usageProgressBar(percent: number, usedBytes: number): string {
+  let filled = Math.max(0, Math.min(10, Math.round(percent / 10)));
+  if (usedBytes > 0 && filled < 1) filled = 1;
+  return '▓'.repeat(filled) + '░'.repeat(10 - filled);
+}
+
+/** Localized GB equivalent of a gems balance at the redeem rate (for "≈ N GB" lines). */
+export function formatGemsGb(gems: number, ratePerGb: number, language: TelegramLanguage): string {
+  const gb = ratePerGb > 0 ? gems / ratePerGb : 0;
+  const text = trimZeros(gb);
+  return language === 'fa' ? toPersianDigits(text) : text;
+}
+
+/** Signed gems delta for ledger lines: `+50` / `−100` (U+2212 minus), Persian digits in fa. */
+export function formatSignedGems(delta: number, language: TelegramLanguage): string {
+  const sign = delta < 0 ? '−' : '+';
+  const magnitude = String(Math.abs(delta));
+  const body = language === 'fa' ? toPersianDigits(magnitude) : magnitude;
+  return `${sign}${body}`;
+}
+
+/** Short localized date for ledger lines: EN `Jul 25`, FA Jalali «۳ مرداد». */
+export function formatShortDate(value: Date, language: TelegramLanguage): string {
+  try {
+    if (language === 'fa') {
+      return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { day: 'numeric', month: 'long' }).format(value);
+    }
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(value);
+  } catch {
+    return value.toISOString().slice(0, 10);
+  }
+}
+
 /**
  * Per-line RTL guard for Persian: prefix any line that begins with an emoji,
  * Latin letter, digit, or markup tag with U+200F so Telegram lays it out RTL.

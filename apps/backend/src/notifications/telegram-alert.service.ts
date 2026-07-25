@@ -22,8 +22,11 @@ interface TelegramApiResponse {
 interface TelegramSendMessageOptions {
   disableWebPagePreview?: boolean;
   botToken?: string;
-  /** Optional Telegram reply_markup (e.g. an inline_keyboard) for menu-driven flows. */
-  replyMarkup?: TelegramInlineKeyboardMarkup;
+  /**
+   * Optional Telegram reply_markup: an inline_keyboard for menu-driven flows, a
+   * reply keyboard (the R2 request_contact step), or a remove-keyboard directive.
+   */
+  replyMarkup?: TelegramReplyMarkup;
   /** Telegram parse mode; the bot uses 'HTML' for its menu copy. */
   parseMode?: 'HTML' | 'MarkdownV2';
 }
@@ -43,6 +46,27 @@ export interface TelegramInlineKeyboardButton {
 export interface TelegramInlineKeyboardMarkup {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 }
+
+/** Reply-keyboard button (the R2 phone step uses `request_contact`). */
+export interface TelegramReplyKeyboardButton {
+  text: string;
+  request_contact?: boolean;
+}
+
+export interface TelegramReplyKeyboardMarkup {
+  keyboard: TelegramReplyKeyboardButton[][];
+  resize_keyboard?: boolean;
+  one_time_keyboard?: boolean;
+}
+
+export interface TelegramReplyKeyboardRemove {
+  remove_keyboard: true;
+}
+
+export type TelegramReplyMarkup =
+  | TelegramInlineKeyboardMarkup
+  | TelegramReplyKeyboardMarkup
+  | TelegramReplyKeyboardRemove;
 
 @Injectable()
 export class TelegramAlertService {

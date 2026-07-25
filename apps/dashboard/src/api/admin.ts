@@ -74,6 +74,9 @@ import type {
   AdminSecretRefSummary,
   AdminSettingsResponse,
   AdminServerDetail,
+  AdjustCustomerGemsRequest,
+  AdminAdjustCustomerGemsResponse,
+  AdminCustomerGemsLedgerResponse,
   AdminTelegramBotSettingsResponse,
   AdminTelegramBotTestResponse,
   AdminTelegramTopupRequest,
@@ -751,6 +754,37 @@ export async function updateAdminCustomerAccount(
   });
 
   return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+/** v2: admin manual gems adjustment (positive credits, negative debits). Returns the new balance. */
+export async function adjustCustomerGems(
+  sessionToken: string,
+  customerAccountId: string,
+  delta: number,
+  reason: string,
+): Promise<AdminAdjustCustomerGemsResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}/gems`,
+    {
+      body: JSON.stringify({ delta, reason } satisfies AdjustCustomerGemsRequest),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminAdjustCustomerGemsResponse>;
+}
+
+/** v2: the append-only gems ledger for one customer account (newest first). */
+export async function fetchAdminCustomerGemsLedger(
+  sessionToken: string,
+  customerAccountId: string,
+  signal?: AbortSignal,
+): Promise<AdminCustomerGemsLedgerResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}/gems/ledger`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminCustomerGemsLedgerResponse>;
 }
 
 export async function fetchEgressTierPrices(sessionToken: string, signal?: AbortSignal): Promise<EgressTierPrice[]> {
