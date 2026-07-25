@@ -1001,12 +1001,14 @@ export function SettingsPage({
                 inputMode="numeric"
                 label={t.settings.telegramAlertChatId}
                 onChange={(value) => updateTelegramBotForm('alertChatId', value)}
+                placeholder={t.settings.telegramChatIdPlaceholder}
                 value={telegramBotForm.alertChatId}
               />
               <SettingsInput
                 disabled={!canManageTelegramBot}
                 label={t.settings.telegramAllowedAdminChatIds}
                 onChange={(value) => updateTelegramBotForm('allowedAdminChatIds', value)}
+                placeholder={t.settings.telegramChatIdPlaceholder}
                 value={telegramBotForm.allowedAdminChatIds}
               />
             </div>

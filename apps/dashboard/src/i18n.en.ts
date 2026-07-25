@@ -1768,6 +1768,7 @@ export const en = {
       telegramWebhookSecret: 'Webhook secret',
       telegramAlertChatId: 'Alert chat ID',
       telegramAllowedAdminChatIds: 'Allowed admin chat IDs',
+      telegramChatIdPlaceholder: 'Optional — numeric id like 123456789 (from @userinfobot), not a @username',
       telegramAllowedChatCount: (count: string) => `${count} allowed`,
       telegramAlertsEnabled: 'Telegram alerts',
       telegramCommandsEnabled: 'Telegram commands',

@@ -1770,6 +1770,7 @@ export const fa: DashboardStrings = {
       telegramWebhookSecret: 'سکرت وبهوک',
       telegramAlertChatId: 'شناسه چت هشدار',
       telegramAllowedAdminChatIds: 'شناسه چت ادمین‌های مجاز',
+      telegramChatIdPlaceholder: 'اختیاری — شناسه عددی مثل ۱۲۳۴۵۶۷۸۹ (از @userinfobot)، نه نام کاربری @',
       telegramAllowedChatCount: (count: string) => `${count} مجاز`,
       telegramAlertsEnabled: 'هشدارهای تلگرام',
       telegramCommandsEnabled: 'دستورهای تلگرام',
