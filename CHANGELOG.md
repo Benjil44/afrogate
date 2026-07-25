@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.74 - 2026-07-25
+
+- **afroWS bot switches to long-polling (works on an internationally-unreachable VPS).** The Afrows VPS is reachable domestically but not from the public internet, so Telegram webhooks time out (`getWebhookInfo` → "Connection timed out") and `/start` never arrives. Outbound to Telegram works (via the village route), so a new `TelegramPollingService` **pulls** updates with `getUpdates` and feeds each into the existing `handleUpdate` — no public exposure, no reverse proxy. On start it clears any stale webhook (dropping the backlog) so getUpdates can run. Follows the same `commandsEnabled` + token switch; disable with `AFROWS_TELEGRAM_POLLING_DISABLED=true` on a publicly-reachable deployment that prefers the webhook.
+
 ## 0.114.73 - 2026-07-25
 
 - **Secret fields resist browser autofill.** The BotFather token + Webhook secret inputs now use `autocomplete="new-password"` so the browser/password manager stops dumping remembered values into the (intentionally empty on reload) fields — which could look like a wrong value under the reveal toggle and, if saved, overwrite the real stored secret. Stored secrets were never affected; this is a form-hygiene fix.
