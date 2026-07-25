@@ -10,7 +10,7 @@
 **Operator prerequisites (cannot be automated — creating the bot + handling its token):**
 1. @BotFather → `/newbot` → name **afroWS**, username `@afroWS_bot` (or similar). Copy the token.
 2. Dashboard → Settings → Telegram → paste token → **Test** → enable **commands**. Add `@haniezamani75` (numeric id) to allowed-admin chat ids.
-3. Set the webhook to `https://<afrows>/telegram/webhook` with the stored secret (one-time; document the exact `setWebhook` call).
+3. Set the webhook to `https://<afrows>/api/telegram/webhook` (NOTE the `/api` prefix — the backend uses `setGlobalPrefix('api')`; `/telegram/webhook` returns 405) with the stored secret. Exact call: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://app.afrows.com/api/telegram/webhook&secret_token=<WEBHOOK_SECRET>` — the `secret_token` must equal the saved "Webhook secret".
 4. Fill the new **card-to-card destination** setting (card number + holder name) — shown to users in the charge flow. Entered in the dashboard, never in code.
 
 ---
