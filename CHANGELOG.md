@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.79 - 2026-07-26
+
+- **Consistent branding.** The `web` app's favicon was a purple "A" — replaced with the **Afrows shield** so all web apps (dashboard, client, web) and the Flutter native app share one icon.
+
 ## 0.114.78 - 2026-07-25
 
 - **Merge accounts.** New admin action to merge a duplicate/temporary account (e.g. a bot-created `Customer-XXXX`) INTO a real account: `POST /admin/customer-accounts/:id/merge` moves the source's **remaining GB** (limit − used, decimal, overflow-guarded), **gems** (with signed ledger rows), and **client configs** (WireGuard peers follow; VLESS re-settles) to the target, adopts the source's Telegram id/username/phone only where the target lacks them (source nulled first so the unique index never duplicates), re-points referrals, and **archives the source** — payment/quota history stays on the source (never hard-deleted). Audited `customer_account.merge`. Dashboard: a **"Merge into another account"** action in the customer detail panel with a searchable target picker + an explicit red confirm.
