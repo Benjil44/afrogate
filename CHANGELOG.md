@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.81 - 2026-07-26
+
+- **Reserve relay-pool reconciler fixes (village power-loss failover).** `afrows-uplink-pool-sync.py` (which renders the operator's bought Exit-page VLESS exits into the uplink xray at `socks 10808 → proxy`, the village-independent reserve) had three bugs that kept the reserve dead: (1) it gated relay admission on `latest_down_mbps ≥ 3`, but that column is never populated (on-demand speed tests can't render **httpupgrade** transport), so **0 relays qualified every run** and the hard-safety rule pinned the pool to a single stale/dead relay; (2) `build_outbound()` didn't render `httpupgrade` at all; (3) the `.timer` had no wall-clock anchor (`OnUnitActiveSec` only) so it **stopped firing on 2026-06-18** and froze the pool. Fixed: render httpupgrade; fall back to fresh `health_status='healthy'` relays (letting the pool's observatory/leastPing balancer pick live ones) when none are speed-eligible; timer now uses `OnCalendar=*:0/10 + Persistent`. **Note:** these unblock the mechanism, but a working reserve still requires a bought VLESS exit whose entry is **reachable from the VPS's own (filtered) uplink** — the current subscription's exits are all blocked from the datacenter, so the operator must add a VPS-reachable exit for the failover to carry traffic. `afrows-egress-mode-sync.py` failover logic is correct as-is.
+
 ## 0.114.80 - 2026-07-26
 
 - **Bot: "Connect / sync my account".** A new main-menu item (🔁, `/connect`) lets an already-registered user share their verified phone; on a single unclaimed match it **merges their bot account into the existing (admin-created) account** — bringing over GB/gems/configs, moving the Telegram link, archiving the bot account — and shows the real account. Already-synced → just updates info; a match owned by someone else or multiple matches → refused (contact support); no match → saves the phone. Reuses the merge engine; verified-phone (`request_contact`) makes it safe.

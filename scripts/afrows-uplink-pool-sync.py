@@ -47,17 +47,23 @@ def db_url():
 
 
 def fetch_candidates(url):
-    """All enabled VLESS relays with current down + test timestamp (epoch)."""
+    """All enabled VLESS relays with current down + test timestamp (epoch), plus
+    the health-checker's verdict. `dn`/`ts` drive the speed-based scoring; `health`
+    /`checked_fresh` drive the fallback when no speed data exists (speed tests are
+    on-demand, so `latest_down_mbps` is usually NULL and the speed gate would
+    otherwise admit 0 relays and strand the pool on a stale/dead member)."""
     q = (
         "select coalesce(json_agg(t),'[]') from ("
         "  select config as cfg,"
         "         coalesce(latest_down_mbps,0)::float as dn,"
         "         coalesce(extract(epoch from last_speed_test_at),0)::bigint as ts,"
-        "         (last_speed_test_at > now() - interval '%s minutes') as fresh"
+        "         (last_speed_test_at > now() - interval '%s minutes') as fresh,"
+        "         coalesce(health_status,'unknown') as health,"
+        "         (last_checked_at > now() - interval '%s minutes') as checked_fresh"
         "  from outbounds"
-        "  where coalesce(enabled,true)"
+        "  where coalesce(enabled,true) and coalesce(maintenance_mode,false) = false"
         "    and config ? 'uuid' and config ? 'address' and config ? 'port'"
-        ") t" % (MAX_AGE_MIN,)
+        ") t" % (MAX_AGE_MIN, MAX_AGE_MIN)
     )
     out = subprocess.run(["psql", url, "-t", "-A", "-c", q],
                          capture_output=True, text=True, timeout=30)
@@ -113,6 +119,14 @@ def build_outbound(tag, c):
         if c.get("host"):
             ws["headers"] = {"Host": c["host"]}
         ss["wsSettings"] = ws
+    elif net == "httpupgrade":
+        # The bought subscriptions front their exits behind a CDN (Cloudflare) via
+        # HTTPUpgrade; without httpupgradeSettings the relay dials the edge with no
+        # Host/path and the CDN never upgrades the connection -> a silent dead relay.
+        hu = {"path": c.get("path", "/")}
+        if c.get("host"):
+            hu["host"] = c["host"]
+        ss["httpupgradeSettings"] = hu
     elif net == "xhttp":
         xh = {"path": c.get("path", "/")}
         if c.get("host"):
@@ -148,7 +162,7 @@ def main():
     cands = fetch_candidates(db_url())
     st = load_state()
     seen = set()
-    scored = []  # (score, key, cfg, success, eligible)
+    scored = []  # (score, key, cfg, success, speed_eligible, health_ok)
     for r in cands:
         cfg = r["cfg"]
         k = key_of(cfg)
@@ -167,25 +181,35 @@ def main():
         # stale relays (not tested within MAX_AGE) are never selected
         if not r["fresh"]:
             eligible = False
-        scored.append((score, k, cfg, success, eligible))
+        health_ok = (r.get("health") == "healthy") and bool(r.get("checked_fresh"))
+        scored.append((score, k, cfg, success, eligible, health_ok))
     # prune state for relays no longer in the DB
     for k in list(st.keys()):
         if k not in seen:
             del st[k]
     save_state(st)
 
-    eligible = [s for s in scored if s[4]]
-    eligible.sort(key=lambda s: s[0], reverse=True)
-    chosen = eligible[:MAX_RELAYS]
+    # Primary: speed-scored relays (stable down>=MIN_MBPS). But `latest_down_mbps`
+    # is populated only by ON-DEMAND speed tests, so in normal operation it is NULL
+    # for every relay and the speed gate admits 0 -> the pool would stay pinned to a
+    # stale/dead member forever (the "reserve has no internet" bug). When no relay is
+    # speed-eligible, fall back to the health-checker's fresh 'healthy' relays and let
+    # the pool xray's observatory + leastPing balancer do the real live selection.
+    speed_eligible = sorted([s for s in scored if s[4]], key=lambda s: s[0], reverse=True)
+    if speed_eligible:
+        chosen, basis = speed_eligible[:MAX_RELAYS], "speed"
+    else:
+        health_cands = sorted([s for s in scored if s[5]], key=lambda s: s[1])
+        chosen, basis = health_cands[:MAX_RELAYS], "health-fallback"
 
     if not chosen:
-        log("SAFETY: 0 eligible relays (stable down>=%s, last %d healthy) -> leaving pool unchanged" % (MIN_MBPS, HYSTERESIS_K))
+        log("SAFETY: 0 eligible relays (no speed down>=%s and none fresh-healthy) -> leaving pool unchanged" % MIN_MBPS)
         return 0
     if len(chosen) < MIN_HEALTHY:
-        log("WARNING: only %d stable relay(s) (< %d) — egress redundancy is thin, add/own more relays" % (len(chosen), MIN_HEALTHY))
+        log("WARNING: only %d relay(s) via %s (< %d) — egress redundancy is thin, add reachable exits" % (len(chosen), basis, MIN_HEALTHY))
 
     relays = []
-    for i, (score, k, cfg, success, _e) in enumerate(chosen, 1):
+    for i, (score, k, cfg, success, _e, _h) in enumerate(chosen, 1):
         try:
             relays.append(build_outbound("relay-%d" % i, cfg))
         except Exception as e:
@@ -212,7 +236,7 @@ def main():
     os.replace(CFG, CFG + ".bak-" + time.strftime("%Y%m%d-%H%M%S"))
     os.replace(tmp, CFG)
     subprocess.run(["systemctl", "restart", "xray"], timeout=30)
-    log("pool updated -> %d relays: %s" % (len(relays), ", ".join(identity(o) for o in relays)))
+    log("pool updated (basis=%s) -> %d relays: %s" % (basis, len(relays), ", ".join(identity(o) for o in relays)))
     return 0
 
 
