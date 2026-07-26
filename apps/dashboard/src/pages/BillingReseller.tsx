@@ -1,11 +1,11 @@
 import { createResellerSalesStats, createResellerSalesTrendOption, createResellerUsageMixOption, isCompletedResellerSaleOrder, resellerCustomerName, type ResellerSalesStats } from '../reseller-charts';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Activity, Bot, CreditCard, Gauge, Gift, Inbox, Plus, ShieldCheck, Upload, UserRound, WifiOff, X } from 'lucide-react';
-import type { AdminBillingSettingsSummary, AdminClientConfigsExportResponse, AdminCurrentPanelImportConfigsResponse, AdminCurrentPanelImportPreviewResponse, AdminCurrentPanelUsageSyncResponse, AdminCurrentPanelVolumeChargeResponse, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CurrentPanelKind, CustomerAccountStatus, CustomerQuotaScope } from '@afrows/shared';
-import { chargeAdminCurrentPanelVolume, createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, importAdminCurrentPanelConfigs, previewAdminCurrentPanelImport, syncAdminCurrentPanelUsage, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings } from '../api/admin';
+import type { AdminBillingSettingsSummary, AdminClientConfigsExportResponse, AdminCurrentPanelImportConfigsResponse, AdminCurrentPanelImportPreviewResponse, AdminCurrentPanelUsageSyncResponse, AdminCurrentPanelVolumeChargeResponse, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CurrentPanelKind, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
+import { chargeAdminCurrentPanelVolume, createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, importAdminCurrentPanelConfigs, previewAdminCurrentPanelImport, syncAdminCurrentPanelUsage, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { DashboardTabs, DataStateNotice, DataTable, EmptyState, MetricCard, MetricPill, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
-import { SettingsInput } from '../components/settings-form';
+import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import type { BillingTab, DashboardTabItem, DataState, DataTableColumn, MetricCardData, Tone } from '../dashboard-types';
 import { normalizeNullableText, sumNullable, type DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
@@ -56,6 +56,26 @@ function createEmptyResellerPackageSaleForm(): ResellerPackageSaleFormState {
     notes: '',
     telegramUsername: '',
     volumePackageId: '',
+  };
+}
+
+type VolumePackageFormState = {
+  currency: string;
+  durationDays: string;
+  name: string;
+  status: VolumePackageStatus;
+  totalPrice: string;
+  volumeGb: string;
+};
+
+function createEmptyVolumePackageForm(defaultCurrency: string): VolumePackageFormState {
+  return {
+    currency: defaultCurrency,
+    durationDays: '',
+    name: '',
+    status: 'active',
+    totalPrice: '',
+    volumeGb: '',
   };
 }
 
@@ -880,6 +900,14 @@ export function BillingPage({
     }
   };
 
+  const handleVolumePackageSaved = (pkg: AdminVolumePackageSummary) => {
+    setPackages((current) => (
+      current.some((item) => item.id === pkg.id)
+        ? current.map((item) => (item.id === pkg.id ? pkg : item))
+        : [pkg, ...current]
+    ));
+  };
+
   const handleStartNewCustomerAccount = () => {
     setSelectedCustomerAccountId(null);
     setCustomerForm(createEmptyCustomerAccountForm());
@@ -1290,6 +1318,22 @@ export function BillingPage({
         />
       </section>
 
+      {!isResellerSession ? (
+        // min-w-0: classless grid items keep min-width:auto, letting the table's
+        // min-width blow the whole column past narrow viewports.
+        <div className={activeBillingTab === 'catalog' ? 'min-w-0' : 'hidden'}>
+          <VolumePackageManagerPanel
+            canManageBilling={canManageBilling}
+            defaultCurrency={settings?.currency ?? ''}
+            format={format}
+            onPackageSaved={handleVolumePackageSaved}
+            packages={packages}
+            sessionToken={sessionToken}
+            t={t}
+          />
+        </div>
+      ) : null}
+
       <section className={`grid gap-3 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)] ${!isResellerSession && activeBillingTab !== 'customers' ? 'hidden' : ''}`}>
         <CustomerAccountEditorPanel
           accounts={accounts}
@@ -1310,7 +1354,7 @@ export function BillingPage({
       </section>
       {!isResellerSession ? (
         <>
-          <div className={activeBillingTab === 'panelImport' ? '' : 'hidden'}>
+          <div className={activeBillingTab === 'panelImport' ? 'min-w-0' : 'hidden'}>
             <CurrentPanelImportPreviewPanel
               accounts={accounts}
               canManageBilling={canManageBilling}
@@ -1333,7 +1377,7 @@ export function BillingPage({
               t={t}
             />
           </div>
-          <div className={activeBillingTab === 'telegram' ? '' : 'hidden'}>
+          <div className={activeBillingTab === 'telegram' ? 'min-w-0' : 'hidden'}>
             <TelegramBotOperationsPanel
               accounts={accounts}
               canViewTelegramOperations={canViewTelegramOperations}
@@ -1345,7 +1389,7 @@ export function BillingPage({
           </div>
         </>
       ) : null}
-      <div className={isResellerSession || activeBillingTab === 'orders' ? '' : 'hidden'}>
+      <div className={isResellerSession || activeBillingTab === 'orders' ? 'min-w-0' : 'hidden'}>
         <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
       </div>
     </section>
@@ -2181,6 +2225,235 @@ function BillingCatalogPanel({
             />
           </div>
         ) : null}
+      </div>
+    </section>
+  );
+}
+
+const packageActionButtonClass = 'inline-flex min-h-9 items-center justify-center gap-1 rounded-md border border-afro-line bg-white px-2.5 text-[13px] font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45';
+
+/**
+ * Admin CRUD for the GB bundles the Telegram bot sells (Buy Data). The backend
+ * accepts whole GB (`volumeGb`) and converts to bytes itself with the decimal
+ * convention (1 GB = 1,000,000,000 bytes, quota-math BYTES_PER_GB). Archiving a
+ * package removes it from the bot without deleting sale history.
+ */
+function VolumePackageManagerPanel({
+  canManageBilling,
+  defaultCurrency,
+  format,
+  onPackageSaved,
+  packages,
+  sessionToken,
+  t,
+}: {
+  canManageBilling: boolean;
+  defaultCurrency: string;
+  format: DashboardFormatters;
+  onPackageSaved: (pkg: AdminVolumePackageSummary) => void;
+  packages: AdminVolumePackageSummary[];
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const [form, setForm] = useState<VolumePackageFormState>(() => createEmptyVolumePackageForm(defaultCurrency));
+  const [message, setMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [togglingPackageId, setTogglingPackageId] = useState<string | null>(null);
+  const selectedPackage = selectedPackageId ? packages.find((item) => item.id === selectedPackageId) ?? null : null;
+
+  // Billing settings load after mount; prefill the currency once they arrive
+  // (only while the field is still empty, so an operator edit is never clobbered).
+  useEffect(() => {
+    if (!defaultCurrency) return;
+    setForm((current) => (current.currency === '' ? { ...current, currency: defaultCurrency } : current));
+  }, [defaultCurrency]);
+
+  const updateForm = (patch: Partial<VolumePackageFormState>) => setForm((current) => ({ ...current, ...patch }));
+
+  const mapPackageToForm = (pkg: AdminVolumePackageSummary): VolumePackageFormState => ({
+    currency: pkg.currency,
+    durationDays: pkg.durationDays ? String(pkg.durationDays) : '',
+    name: pkg.name,
+    status: pkg.status === 'archived' ? 'archived' : 'active',
+    totalPrice: String(pkg.totalPrice),
+    volumeGb: String(Math.round(pkg.volumeGb)),
+  });
+
+  const handleStartNewPackage = () => {
+    setSelectedPackageId(null);
+    setForm(createEmptyVolumePackageForm(defaultCurrency));
+    setMessage(null);
+  };
+
+  const handleEditPackage = (pkg: AdminVolumePackageSummary) => {
+    setSelectedPackageId(pkg.id);
+    setForm(mapPackageToForm(pkg));
+    setMessage(null);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canManageBilling || isSaving) return;
+
+    const name = form.name.trim();
+    const currency = form.currency.trim();
+    const volumeGb = Number(form.volumeGb);
+    const totalPrice = Number(form.totalPrice);
+    const durationDaysText = form.durationDays.trim();
+    const durationDays = durationDaysText === '' ? null : Number(durationDaysText);
+    const invalid = !name
+      || !Number.isInteger(volumeGb) || volumeGb <= 0
+      || !Number.isInteger(totalPrice) || totalPrice < 0
+      || (durationDays !== null && (!Number.isInteger(durationDays) || durationDays <= 0));
+    if (invalid) {
+      setMessage(t.billing.packageValidationFailed);
+      return;
+    }
+
+    setIsSaving(true);
+    setMessage(null);
+
+    try {
+      // Blank currency: omit so the backend falls back to the billing settings currency.
+      const payload: UpdateVolumePackageRequest = {
+        currency: currency || undefined,
+        durationDays,
+        name,
+        status: form.status,
+        totalPrice,
+        volumeGb,
+      };
+      const saved = selectedPackageId
+        ? await updateAdminVolumePackage(sessionToken, selectedPackageId, payload)
+        : await createAdminVolumePackage(sessionToken, { ...payload, name, volumeGb });
+      onPackageSaved(saved);
+      setSelectedPackageId(saved.id);
+      setForm(mapPackageToForm(saved));
+      setMessage(t.billing.packageSaved);
+    } catch {
+      setMessage(t.billing.packageSaveFailed);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleStatus = async (pkg: AdminVolumePackageSummary) => {
+    if (!canManageBilling || togglingPackageId) return;
+
+    setTogglingPackageId(pkg.id);
+    setMessage(null);
+
+    try {
+      const nextStatus: VolumePackageStatus = pkg.status === 'archived' ? 'active' : 'archived';
+      const saved = await updateAdminVolumePackage(sessionToken, pkg.id, { status: nextStatus });
+      onPackageSaved(saved);
+      if (selectedPackageId === pkg.id) setForm(mapPackageToForm(saved));
+      setMessage(t.billing.packageSaved);
+    } catch {
+      setMessage(t.billing.packageSaveFailed);
+    } finally {
+      setTogglingPackageId(null);
+    }
+  };
+
+  const packageStatusLabel = (status: string) =>
+    status === 'archived' ? t.billing.packageStatusArchived : t.billing.packageStatusActive;
+  const columns: Array<DataTableColumn<AdminVolumePackageSummary>> = [
+    {
+      key: 'package',
+      header: t.billing.packageName,
+      render: (item) => (
+        <>
+          <strong className="block text-afro-ink">{item.name}</strong>
+          <span className="text-[12px] text-afro-muted">{item.slug}</span>
+        </>
+      ),
+    },
+    { key: 'volume', header: t.billing.volume, render: (item) => format.bytes(item.volumeBytes) },
+    { key: 'price', header: t.billing.price, render: (item) => `${format.integer(item.totalPrice)} ${format.label(item.currency)}` },
+    {
+      key: 'status',
+      header: t.billing.status,
+      render: (item) => <StatusBadge tone={billingStatusTone(item.status)}>{packageStatusLabel(item.status)}</StatusBadge>,
+    },
+    {
+      key: 'actions',
+      header: t.billing.packageActions,
+      render: (item) => (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            className={packageActionButtonClass}
+            disabled={!canManageBilling}
+            onClick={() => handleEditPackage(item)}
+            type="button"
+          >
+            {t.billing.editPackage}
+          </button>
+          <button
+            className={packageActionButtonClass}
+            disabled={!canManageBilling || togglingPackageId === item.id}
+            onClick={() => void handleToggleStatus(item)}
+            type="button"
+          >
+            {item.status === 'archived' ? t.billing.activatePackage : t.billing.archivePackage}
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <section className={panelClass}>
+      <PanelHeading title={t.billing.volumePackagesManager} icon={Inbox} meta={t.billing.packagesLoaded(format.integer(packages.length))} />
+      <p className={`mt-1 ${mutedTextClass}`}>{t.billing.volumePackagesHint}</p>
+      <form className="mt-2 grid gap-2" onSubmit={handleSubmit}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[13px] font-bold text-afro-ink">
+            {selectedPackage ? t.billing.editingPackage(selectedPackage.name) : t.billing.newPackage}
+          </span>
+          {selectedPackage ? (
+            <button
+              className={packageActionButtonClass}
+              onClick={handleStartNewPackage}
+              type="button"
+            >
+              <Plus size={15} />
+              {t.billing.newPackage}
+            </button>
+          ) : null}
+        </div>
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <SettingsInput disabled={!canManageBilling} label={t.billing.packageNameField} onChange={(name) => updateForm({ name })} required value={form.name} />
+          <SettingsInput disabled={!canManageBilling} inputMode="numeric" label={t.billing.packageVolumeGbField} onChange={(volumeGb) => updateForm({ volumeGb })} required value={form.volumeGb} />
+          <SettingsInput disabled={!canManageBilling} inputMode="numeric" label={t.billing.packageTotalPriceField} onChange={(totalPrice) => updateForm({ totalPrice })} required value={form.totalPrice} />
+          <SettingsInput disabled={!canManageBilling} label={t.billing.packageCurrencyField} onChange={(currency) => updateForm({ currency })} value={form.currency} />
+          <SettingsInput disabled={!canManageBilling} inputMode="numeric" label={t.billing.packageDurationDaysField} onChange={(durationDays) => updateForm({ durationDays })} value={form.durationDays} />
+          <SettingsSelect
+            disabled={!canManageBilling}
+            label={t.billing.packageStatusField}
+            onChange={(status) => updateForm({ status: status === 'archived' ? 'archived' : 'active' })}
+            options={[
+              { label: t.billing.packageStatusActive, value: 'active' },
+              { label: t.billing.packageStatusArchived, value: 'archived' },
+            ]}
+            value={form.status}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={primaryButtonClass} disabled={!canManageBilling || isSaving} type="submit">
+            {isSaving ? t.billing.saving : selectedPackageId ? t.billing.updatePackage : t.billing.createPackage}
+          </button>
+          {message ? <span className={mutedTextClass} role="status">{message}</span> : null}
+          {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
+        </div>
+      </form>
+      <div className="mt-2">
+        {packages.length === 0 ? (
+          <EmptyState message={t.billing.noPackages} />
+        ) : (
+          <DataTable columns={columns} minWidth="680px" rowKey={(item) => item.id} rows={packages} stickyLastColumn />
+        )}
       </div>
     </section>
   );

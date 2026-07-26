@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.114.80 - 2026-07-26
+
+- **Bot: "Connect / sync my account".** A new main-menu item (🔁, `/connect`) lets an already-registered user share their verified phone; on a single unclaimed match it **merges their bot account into the existing (admin-created) account** — bringing over GB/gems/configs, moving the Telegram link, archiving the bot account — and shows the real account. Already-synced → just updates info; a match owned by someone else or multiple matches → refused (contact support); no match → saves the phone. Reuses the merge engine; verified-phone (`request_contact`) makes it safe.
+- **Bot menu button (☰).** The poller now auto-registers the bot's command list (English + Persian) and sets the chat menu button to "commands", so the ☰ menu appears next to the attachment icon (Start · Menu · My account · Buy data · Invite · Gems · Connect · Help) — command names aligned to the handlers so taps work.
+- **Volume packages management.** Billing page → **Catalog** tab: admins can **create/edit/archive** the GB bundles the bot sells (name, GB, price, currency, optional duration, active/archived) — the missing UI that left the bot's Buy Data showing "no packages". Enter GB (decimal 1 GB = 1e9); archived packages hide from the bot. Also fixed a latent narrow-viewport clipping bug on several Billing tabs.
+
 ## 0.114.79 - 2026-07-26
 
 - **Consistent branding.** The `web` app's favicon was a purple "A" — replaced with the **Afrows shield** so all web apps (dashboard, client, web) and the Flutter native app share one icon.

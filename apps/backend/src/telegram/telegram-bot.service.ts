@@ -41,6 +41,7 @@ import {
   type RegisterResult,
   type SelfServiceAccount,
 } from './telegram-self-service';
+import { TelegramConnectResolver, type ConnectOutcome } from './telegram-connect';
 import { createPendingTopupInTransaction } from './telegram-topup';
 import {
   getTelegramUser,
@@ -198,6 +199,15 @@ export class TelegramBotService {
       return this.beginRegistration(ctx, language, refreshed);
     }
 
+    // Connect is awaiting the shared contact. Plain text → nudge to the share
+    // button; a slash command escapes the flow (connect is optional/abandonable).
+    if (user.state?.connectStage) {
+      if (command === null) {
+        return this.sendReply(ctx, language, renderTelegramCopy('reg.phoneNeedButton', language), this.sharePhoneKeyboard(language));
+      }
+      await this.mergeState(ctx, user, { connectStage: undefined });
+    }
+
     switch (command) {
       case 'start':
         return this.screenHome(ctx, language, account);
@@ -211,6 +221,8 @@ export class TelegramBotService {
         return this.screenInvite(ctx, language);
       case 'gems':
         return this.screenGems(ctx, language);
+      case 'connect':
+        return this.screenConnect(ctx, language, user, account);
       case 'help':
         return this.screenHelp(ctx, language);
       case 'language':
@@ -270,6 +282,8 @@ export class TelegramBotService {
         return this.screenInvite(ctx, language);
       case 'afws:invite:refresh':
         return this.screenInvite(ctx, language, renderTelegramCopy('common.toast.refreshed', language));
+      case 'afws:connect':
+        return this.screenConnect(ctx, language, user);
       case 'afws:lang':
         return this.screenLanguageSettings(ctx, language);
       case 'afws:help':
@@ -390,25 +404,33 @@ export class TelegramBotService {
     if (!user || user.language === null) return this.renderLanguagePicker(ctx);
     const language = user.language;
 
-    if (user.state?.regStage !== 'awaiting_phone') {
+    const isRegister = user.state?.regStage === 'awaiting_phone';
+    const isConnect = Boolean(user.state?.connectStage);
+
+    if (!isRegister && !isConnect) {
       // Unexpected contact — route by account state.
       const account = await this.findAccount(ctx);
       if (account) return this.screenMenu(ctx, language, 'menu.title');
       return this.beginRegistration(ctx, language, user);
     }
 
-    // Ownership guard: accept only the user's own shared contact.
+    // Ownership guard: accept only the user's own self-verified shared contact.
     if (!contact.userId || String(contact.userId) !== ctx.fromId) {
       return this.sendReply(ctx, language, renderTelegramCopy('reg.phoneNotYours', language), this.sharePhoneKeyboard(language));
     }
 
     const phone = normalizePhoneDigits(contact.phoneNumber);
-    const name = user.state.regName ?? 'friend';
+
+    // Connect/sync: merge the current bot account into the matched real account.
+    if (isConnect) return this.handleConnectContact(ctx, language, user, phone);
+
+    // First-time registration (unchanged).
+    const name = user.state?.regName ?? 'friend';
 
     // Reply → inline hand-off: remove the reply keyboard, create the account, welcome.
     await this.sendRemoveKeyboard(ctx, language, renderTelegramCopy('reg.phoneOk', language, { name }));
 
-    const result = await this.registerAccount(ctx, { displayName: name, phone, referralCode: user.state.referralCode ?? null });
+    const result = await this.registerAccount(ctx, { displayName: name, phone, referralCode: user.state?.referralCode ?? null });
     await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
 
     if (result.referral) await this.notifyInviterJoined(result.referral);
@@ -416,6 +438,110 @@ export class TelegramBotService {
     if (result.linked) return this.renderWelcomeLinked(ctx, language, name);
 
     return this.renderWelcomeRegistered(ctx, language, name, result);
+  }
+
+  // --- Connect / sync my account (docs §15) ---------------------------------
+
+  /**
+   * afws:connect (and /connect): begin the connect flow for a user who already has
+   * an account. Tags connectStage and hands off to the R2 share-phone reply keyboard
+   * so the next self-verified contact drives the merge branch (not registration).
+   */
+  private async screenConnect(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    user: TelegramUserRecord,
+    account?: TelegramBotAccountSummary,
+  ): Promise<TelegramBotWebhookResponse> {
+    const resolved = account ?? (await this.findAccount(ctx));
+    if (!resolved) {
+      // Connect is only offered to registered users; if the account is gone, surface
+      // the account-problem screen rather than starting a merge with no source.
+      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+    }
+    await this.mergeState(ctx, user, { connectStage: true });
+    return this.sendReply(ctx, language, renderTelegramCopy('connect.intro', language), this.sharePhoneKeyboard(language));
+  }
+
+  /**
+   * A self-verified contact arrived while connectStage is set. Resolve the phone
+   * against live accounts and act per the connect rules (merge / already-synced /
+   * owned-by-other / ambiguous / no-match), then clear connectStage and remove the
+   * reply keyboard, returning to inline menus.
+   */
+  private async handleConnectContact(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    user: TelegramUserRecord,
+    phone: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    const account = await this.findAccount(ctx);
+    if (!account) {
+      // Lost the account mid-flow — abandon connect and route to registration.
+      await this.mergeState(ctx, user, { connectStage: undefined });
+      return this.beginRegistration(ctx, language, user);
+    }
+
+    const displayName = account.displayName ?? user.state?.regName ?? 'friend';
+    const outcome = await this.connectAccount(ctx, account.id, phone, displayName);
+
+    // Completion: clear connectStage (keep any other state) and drop the reply keyboard.
+    await this.mergeState(ctx, user, { connectStage: undefined });
+
+    switch (outcome.kind) {
+      case 'merged': {
+        await this.sendRemoveKeyboard(ctx, language, renderTelegramCopy('connect.merged', language, { name: displayName }));
+        // The telegram id now points at the real (target) account — re-read + show its home.
+        const merged = await this.findAccount(ctx);
+        if (!merged) {
+          return this.sendNew(ctx, language, renderTelegramCopy('connect.merged', language, { name: displayName }), this.mainMenuKeyboard(language));
+        }
+        return this.sendNew(ctx, language, await this.accountCardText(merged, language), this.accountKeyboard(language));
+      }
+      case 'alreadySynced':
+      case 'noMatch': {
+        const copyId: TelegramCopyId = outcome.kind === 'alreadySynced' ? 'connect.alreadySynced' : 'connect.noMatch';
+        await this.sendRemoveKeyboard(ctx, language, renderTelegramCopy(copyId, language));
+        return this.sendNew(ctx, language, await this.accountCardText(account, language), this.accountKeyboard(language));
+      }
+      case 'ownedByOther':
+      case 'ambiguous': {
+        const copyId: TelegramCopyId = outcome.kind === 'ownedByOther' ? 'connect.ownedByOther' : 'connect.ambiguous';
+        await this.sendRemoveKeyboard(ctx, language, renderTelegramCopy(copyId, language));
+        return this.sendNew(ctx, language, renderTelegramCopy('menu.title', language), this.mainMenuKeyboard(language));
+      }
+    }
+  }
+
+  /** Wire the connect resolver to billing (phone lookup / merge / phone sync + audit). */
+  private async connectAccount(
+    ctx: Ctx,
+    currentAccountId: string,
+    phone: string,
+    displayName: string,
+  ): Promise<ConnectOutcome> {
+    const telegramId = ctx.fromId ?? '';
+    const resolver = new TelegramConnectResolver({
+      findLiveAccountsByPhone: async (lookup) => {
+        const matches = await this.billing.findCustomerAccountByPhone(lookup);
+        return matches.map((match) => ({
+          id: match.id,
+          displayName: match.displayName,
+          status: match.status,
+          quotaLimitBytes: match.quotaLimitBytes,
+          telegramId: match.telegramId,
+        }));
+      },
+      mergeIntoAccount: async (sourceId, targetId) => {
+        // Merge the current bot account INTO the real account (reuses the merge
+        // rules: GB/gems/configs move, telegram link moves, source archived).
+        await this.billing.mergeCustomerAccount(sourceId, targetId, undefined);
+        await this.billing.recordTelegramConnectMerge({ telegramId, sourceId, targetId });
+      },
+      syncAccountContact: (accountId, contactPhone, contactName) =>
+        this.billing.syncTelegramAccountContact({ accountId, telegramId, phone: contactPhone, displayName: contactName }),
+    });
+    return resolver.connect({ currentAccountId, telegramId, phone, displayName });
   }
 
   /**
@@ -988,7 +1114,7 @@ export class TelegramBotService {
 
     // A file (document) while registering → re-prompt the phone step; while awaiting
     // a receipt → ask for a photo; keep the state either way.
-    if (user.state?.regStage === 'awaiting_phone') {
+    if (user.state?.regStage === 'awaiting_phone' || user.state?.connectStage) {
       return this.sendReply(ctx, user.language, renderTelegramCopy('reg.phoneNeedButton', user.language), this.sharePhoneKeyboard(user.language));
     }
     if (user.state?.regStage === 'awaiting_name') {
@@ -1234,6 +1360,7 @@ export class TelegramBotService {
         [this.btn('menu.btn.account', language, 'afws:acct'), this.btn('menu.btn.buy', language, 'afws:buy')],
         [this.btn('menu.btn.configs', language, 'afws:cfg')],
         [this.btn('menu.btn.invite', language, 'afws:invite'), this.btn('menu.btn.gems', language, 'afws:gems')],
+        [this.btn('menu.btn.connect', language, 'afws:connect')],
         [this.btn('menu.btn.lang', language, 'afws:lang'), this.btn('menu.btn.help', language, 'afws:help')],
       ],
     };
@@ -1442,7 +1569,7 @@ export class TelegramBotService {
   // --- Parsing --------------------------------------------------------------
 
   private parseCommand(text: string): {
-    command: 'start' | 'menu' | 'status' | 'charge' | 'invite' | 'gems' | 'help' | 'language' | 'unknown' | null;
+    command: 'start' | 'menu' | 'status' | 'charge' | 'invite' | 'gems' | 'connect' | 'help' | 'language' | 'unknown' | null;
     payload: string | null;
   } {
     if (!text.startsWith('/')) return { command: null, payload: null };
@@ -1464,6 +1591,8 @@ export class TelegramBotService {
         return { command: 'invite', payload };
       case 'gems':
         return { command: 'gems', payload };
+      case 'connect':
+        return { command: 'connect', payload };
       case 'help':
         return { command: 'help', payload };
       case 'language':

@@ -46,6 +46,7 @@ export type TelegramCopyId =
   | 'menu.btn.configs'
   | 'menu.btn.invite'
   | 'menu.btn.gems'
+  | 'menu.btn.connect'
   | 'menu.btn.lang'
   | 'menu.btn.help'
   | 'acct.cardV2'
@@ -103,6 +104,13 @@ export type TelegramCopyId =
   | 'reg.phoneOk'
   | 'reg.linkedExisting'
   | 'reg.finishFirst'
+  // --- Connect / sync my account (docs §15 connect.*) ---
+  | 'connect.intro'
+  | 'connect.merged'
+  | 'connect.alreadySynced'
+  | 'connect.ownedByOther'
+  | 'connect.ambiguous'
+  | 'connect.noMatch'
   // --- v2 Invite & Earn (docs §12 invite.*) ---
   | 'invite.card'
   | 'invite.btn.share'
@@ -171,6 +179,7 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'menu.btn.configs': { en: '🔗 My Configs', fa: '🔗 کانفیگ‌های من' },
   'menu.btn.invite': { en: '🎁 Invite & Earn', fa: '🎁 دعوت و هدیه' },
   'menu.btn.gems': { en: '💎 Gems', fa: '💎 جم‌ها' },
+  'menu.btn.connect': { en: '🔁 Connect my account', fa: '🔁 اتصال حساب من' },
   'menu.btn.lang': { en: '🌐 Language', fa: '🌐 زبان' },
   'menu.btn.help': { en: '❓ Help', fa: '❓ راهنما' },
   'acct.cardV2': {
@@ -259,8 +268,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   },
   'notify.noReason': { en: 'Not specified', fa: 'ذکر نشده' },
   'help.body': {
-    en: '❓ <b>How afroWS works</b>\n• <b>My Account</b> — your status and remaining data.\n• <b>Buy Data</b> — pick a package, pay card-to-card, send the receipt photo; an admin approves it and your data is added.\n• <b>My Configs</b> — your connection links, tap to copy.\n\nSupport: {supportContact}',
-    fa: '❓ <b>afroWS چطور کار می‌کند؟</b>\n• <b>حساب من</b> — وضعیت و حجم باقی‌ماندهٔ شما.\n• <b>خرید حجم</b> — یک بسته انتخاب کنید، کارت‌به‌کارت پرداخت کنید و عکس رسید را بفرستید؛ بعد از تأیید مدیر، حجم اضافه می‌شود.\n• <b>کانفیگ‌های من</b> — لینک‌های اتصال شما؛ با یک لمس کپی می‌شوند.\n\nپشتیبانی: {supportContact}',
+    en: '❓ <b>How afroWS works</b>\n• <b>My Account</b> — your status and remaining data.\n• <b>Buy Data</b> — pick a package, pay card-to-card, send the receipt photo; an admin approves it and your data is added.\n• <b>My Configs</b> — your connection links, tap to copy.\n• <b>Connect my account</b> — already have an account we set up for you? Share your phone to merge this bot account into it.\n\nSupport: {supportContact}',
+    fa: '❓ <b>afroWS چطور کار می‌کند؟</b>\n• <b>حساب من</b> — وضعیت و حجم باقی‌ماندهٔ شما.\n• <b>خرید حجم</b> — یک بسته انتخاب کنید، کارت‌به‌کارت پرداخت کنید و عکس رسید را بفرستید؛ بعد از تأیید مدیر، حجم اضافه می‌شود.\n• <b>کانفیگ‌های من</b> — لینک‌های اتصال شما؛ با یک لمس کپی می‌شوند.\n• <b>اتصال حساب من</b> — قبلاً برایتان حسابی ساخته‌ایم؟ شماره‌تان را به اشتراک بگذارید تا این حساب ربات در آن ادغام شود.\n\nپشتیبانی: {supportContact}',
   },
   'common.btn.menu': { en: '🏠 Main menu', fa: '🏠 منوی اصلی' },
   'common.btn.refresh': { en: '🔄 Refresh', fa: '🔄 به‌روزرسانی' },
@@ -331,6 +340,32 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: '✅ <b>خوش برگشتید، {name}!</b>\nحساب afroWS قبلی شما را پیدا کردیم و همین تلگرام را به آن وصل کردیم — حساب جدیدی ساخته نشد. وضعیت حساب شما:',
   },
   'reg.finishFirst': { en: 'Please finish signup first 🙏', fa: 'لطفاً اول ثبت‌نام را تمام کنید 🙏' },
+
+  // === Connect / sync my account (docs §15) ===
+  'connect.intro': {
+    en: '🔁 <b>Connect / sync my account</b>\nAlready have an afroWS account we set up for you? Share your phone number and, if it matches, we\'ll move your current data, gems and configs onto that account.\nTap the button below to share your number — one tap, no typing.',
+    fa: '🔁 <b>اتصال / همگام‌سازی حساب من</b>\nقبلاً برایتان یک حساب afroWS ساخته‌ایم؟ شماره‌تان را به اشتراک بگذارید؛ اگر مطابقت داشت، حجم، جم‌ها و کانفیگ‌های فعلی‌تان را به همان حساب منتقل می‌کنیم.\nبرای اشتراک شماره روی دکمهٔ پایین بزنید — فقط یک لمس، بدون تایپ.',
+  },
+  'connect.merged': {
+    en: '✅ <b>All synced, {name}!</b>\nWe found your existing account and moved your data, gems and configs onto it — your bot account was merged in. Here is where things stand:',
+    fa: '✅ <b>همه‌چیز همگام شد، {name}!</b>\nحساب قبلی شما را پیدا کردیم و حجم، جم‌ها و کانفیگ‌هایتان را به آن منتقل کردیم — حساب رباتتان در آن ادغام شد. وضعیت حساب شما:',
+  },
+  'connect.alreadySynced': {
+    en: "✅ You're already on this account — nothing to merge. Your details are saved and up to date. 👍",
+    fa: '✅ شما همین حالا روی همین حساب هستید — چیزی برای ادغام نیست. اطلاعاتتان ذخیره و به‌روز است. 👍',
+  },
+  'connect.ownedByOther': {
+    en: "🔒 This phone number is already linked to another afroWS account. For your security we won't merge it automatically.\nPlease contact support and we'll sort it out for you.",
+    fa: '🔒 این شماره از قبل به حساب دیگری در afroWS متصل است. برای امنیت شما، آن را به‌صورت خودکار ادغام نمی‌کنیم.\nلطفاً با پشتیبانی در تماس باشید تا برایتان بررسی کنیم.',
+  },
+  'connect.ambiguous': {
+    en: "🤔 We found more than one account with this phone number, so we can't merge automatically.\nPlease contact support and we'll connect the right one for you.",
+    fa: '🤔 بیش از یک حساب با این شماره پیدا کردیم، بنابراین نمی‌توانیم به‌صورت خودکار ادغام کنیم.\nلطفاً با پشتیبانی در تماس باشید تا حساب درست را برایتان وصل کنیم.',
+  },
+  'connect.noMatch': {
+    en: "📇 Thanks — we saved your number to this account.\nWe didn't find another account to merge, so you're all set here. Add data with <b>Buy Data</b> or earn it via <b>Invite & Earn</b>.",
+    fa: '📇 ممنون — شماره‌تان را روی همین حساب ذخیره کردیم.\nحساب دیگری برای ادغام پیدا نکردیم، پس همین حساب فعال است. با «خرید حجم» حجم بگیرید یا با «دعوت و هدیه» جم جمع کنید.',
+  },
 
   // === v2 — Invite & Earn ===
   'invite.card': {

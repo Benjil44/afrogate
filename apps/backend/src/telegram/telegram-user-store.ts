@@ -26,6 +26,15 @@ export interface TelegramUserState {
   regName?: string;
   /** Invite code captured from the /start deep-link payload, held until account creation. */
   referralCode?: string;
+  // --- Connect / sync my account (docs §15) — set while awaiting the shared contact ---
+  /**
+   * True while an already-registered user is going through "Connect / sync my
+   * account": the next self-verified contact triggers the connect/merge branch
+   * (not first-time registration). Cleared on completion or when a slash command
+   * escapes the flow. Mutually exclusive with regStage (a connect user already has
+   * an account, so is never mid-registration).
+   */
+  connectStage?: boolean;
 }
 
 export interface TelegramUserRecord {

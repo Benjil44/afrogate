@@ -49,12 +49,14 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
     if (this.started) return;
     this.started = true;
     let webhookCleared = false;
+    let menuPublished = false;
 
     while (!this.stopped) {
       try {
         const runtime = await this.telegramConfig.getRuntimeConfig();
         if (!runtime.commandsEnabled || !runtime.botToken) {
           webhookCleared = false;
+          menuPublished = false;
           await this.sleep(5000);
           continue;
         }
@@ -65,6 +67,13 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
           await this.telegramApi(runtime.botToken, 'deleteWebhook', { drop_pending_updates: true });
           webhookCleared = true;
           this.logger.log('Telegram webhook cleared; long-polling active');
+        }
+
+        // Register the command list + the ☰ menu button (shown next to the input)
+        // once, so users can tap commands instead of typing them.
+        if (!menuPublished) {
+          await this.publishBotMenu(runtime.botToken);
+          menuPublished = true;
         }
 
         const updates = await this.getUpdates(runtime.botToken);
@@ -83,6 +92,44 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`Telegram poll cycle failed: ${(error as Error)?.message ?? String(error)}`);
         await this.sleep(3000);
       }
+    }
+  }
+
+  /**
+   * Register the bot's command list (default + Persian) and set the chat menu
+   * button to "commands", so Telegram shows the ☰ menu next to the attachment
+   * icon listing the bot's actions. Best-effort — logs and moves on if it fails.
+   */
+  private async publishBotMenu(botToken: string): Promise<void> {
+    // command names MUST match what telegram-bot.service parseCommand handles
+    // (status, charge — not account/buy) or the tap shows "unknown command".
+    const commandsEn = [
+      { command: 'start', description: 'Start / register' },
+      { command: 'menu', description: 'Main menu' },
+      { command: 'status', description: 'My account & usage' },
+      { command: 'charge', description: 'Buy data' },
+      { command: 'invite', description: 'Invite & earn' },
+      { command: 'gems', description: 'Gems wallet' },
+      { command: 'connect', description: 'Connect my account' },
+      { command: 'help', description: 'Help' },
+    ];
+    const commandsFa = [
+      { command: 'start', description: 'شروع / ثبت‌نام' },
+      { command: 'menu', description: 'منوی اصلی' },
+      { command: 'status', description: 'حساب و مصرف من' },
+      { command: 'charge', description: 'خرید حجم' },
+      { command: 'invite', description: 'دعوت و جایزه' },
+      { command: 'gems', description: 'کیف جم' },
+      { command: 'connect', description: 'اتصال حساب من' },
+      { command: 'help', description: 'راهنما' },
+    ];
+    try {
+      await this.telegramApi(botToken, 'setMyCommands', { commands: commandsEn });
+      await this.telegramApi(botToken, 'setMyCommands', { commands: commandsFa, language_code: 'fa' });
+      await this.telegramApi(botToken, 'setChatMenuButton', { menu_button: { type: 'commands' } });
+      this.logger.log('Telegram bot commands + menu button published');
+    } catch (error) {
+      this.logger.warn(`publishBotMenu failed: ${(error as Error)?.message ?? String(error)}`);
     }
   }
 

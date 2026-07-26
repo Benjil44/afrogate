@@ -3411,6 +3411,53 @@ export class BillingService {
     );
   }
 
+  /**
+   * Save a verified phone (and fill a blank display name) onto an account already
+   * bound to this telegram id — the bot "Connect / sync my account" no-merge
+   * branches (same account / no other match). Guarded to the still-live row owned by
+   * this same telegram id, so it can never touch anyone else's account; the freshly
+   * verified phone wins, but a non-empty display name an operator set is never
+   * clobbered. Best-effort audit, no return.
+   */
+  async syncTelegramAccountContact(input: {
+    accountId: string;
+    telegramId: string;
+    phone: string;
+    displayName: string;
+  }): Promise<void> {
+    const telegramId = normalizeNullableString(input.telegramId);
+    if (!telegramId) return;
+    const phone = normalizeNullableString(input.phone);
+    const displayName = normalizeNullableString(input.displayName);
+    const updated = await this.database.query<{ id: string }>(
+      `
+        UPDATE customer_accounts SET
+          phone = COALESCE($3, phone),
+          display_name = COALESCE(NULLIF(display_name, ''), $4),
+          updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL AND telegram_id = $2
+        RETURNING id
+      `,
+      [input.accountId, telegramId, phone, displayName],
+    );
+    if (updated.rows[0]) {
+      await this.audit.recordBestEffort(undefined, 'telegram.connect.sync', 'customer_account', input.accountId, {
+        telegramId,
+        phoneChanged: Boolean(phone),
+      });
+    }
+  }
+
+  /** Best-effort bot-context note that a Connect/sync merged a bot account into a real one. */
+  async recordTelegramConnectMerge(input: { telegramId: string; sourceId: string; targetId: string }): Promise<void> {
+    await this.audit.recordBestEffort(undefined, 'telegram.connect.merge', 'customer_account', input.targetId, {
+      telegramId: input.telegramId,
+      sourceId: input.sourceId,
+      targetId: input.targetId,
+      via: 'bot_self_service',
+    });
+  }
+
   /** Total gems this account has earned from referrals (signup + commission + milestone). */
   async getReferralGemsEarned(accountId: string): Promise<number> {
     const result = await this.database.query<{ sum: string | number | null }>(

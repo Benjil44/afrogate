@@ -52,6 +52,10 @@ import type {
   AdminOutboundsAutoTestState,
   AdminPaymentOrdersResponse,
   AdminPermissionsResponse,
+  AdminVolumePackageSummary,
+  AdminVolumePackagesResponse,
+  CreateVolumePackageRequest,
+  UpdateVolumePackageRequest,
   AdminRewardedAdSettingsResponse,
   AdminResellerPackageSaleResponse,
   AdminResellerWorkspaceResponse,
@@ -657,6 +661,54 @@ export async function fetchAdminBillingCatalog(
   });
 
   return response.json() as Promise<AdminBillingCatalogResponse>;
+}
+
+/**
+ * Lists volume packages (the GB bundles the Telegram bot sells). Pass
+ * status='active' to mirror what the bot shows; omit for all packages.
+ */
+export async function fetchAdminVolumePackages(
+  sessionToken: string,
+  signal?: AbortSignal,
+  status?: 'active' | 'archived',
+): Promise<AdminVolumePackagesResponse> {
+  const params = new URLSearchParams({ limit: '100' });
+  if (status) params.set('status', status);
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/volume-packages?${params.toString()}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminVolumePackagesResponse>;
+}
+
+export async function createAdminVolumePackage(
+  sessionToken: string,
+  payload: CreateVolumePackageRequest,
+): Promise<AdminVolumePackageSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/volume-packages`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminVolumePackageSummary>;
+}
+
+// Also used to archive/re-activate a package: PATCH { status: 'archived' | 'active' }.
+// Archived packages disappear from the Telegram bot's Buy Data list.
+export async function updateAdminVolumePackage(
+  sessionToken: string,
+  packageId: string,
+  payload: UpdateVolumePackageRequest,
+): Promise<AdminVolumePackageSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/volume-packages/${encodeURIComponent(packageId)}`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminVolumePackageSummary>;
 }
 
 /**

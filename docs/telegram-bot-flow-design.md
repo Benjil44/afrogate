@@ -1160,3 +1160,59 @@ appear in `{friendName}`, any inviter-facing push (N3/N4/N5), or any log line.
    note).
 3. Milestone naming in fa («پاداش ویژهٔ دعوت») — confirm with the operator it reads right in
    the dashboard too, so bot and dashboard use one term.
+
+---
+
+# 15. Connect / sync my account (backend addition)
+
+**Extends §§1–14.** Added by the backend to cover the "I registered on the bot first, but I
+already have a real account (an admin filled it on the website)" case. An **already-registered**
+bot user shares their **self-verified** phone; if it matches a real account, the bot **merges the
+user's current bot account INTO that real account** — moving its remaining GB, gems and configs
+over, moving the Telegram link onto the real account, and archiving the bot account (reuses the
+merge rules in `apps/backend/src/billing/customer-account-merge.ts`). Nothing here changes the
+first-time registration phone flow (§11 R2) — the two branch only on a per-user `connectStage` flag.
+
+New main-menu button **`menu.btn.connect`** (fa «🔁 اتصال حساب من» / en "🔁 Connect my account"),
+added to S2v2 as its own row between Invite/Gems and Language/Help. New `callback_data`
+**`afws:connect`** and slash shortcut **`/connect`** (both only meaningful for a user who already
+has an account). Help (`help.body`) gains a Connect bullet.
+
+### Flow
+
+1. `afws:connect` / `/connect` → set `state.connectStage = true`, send **`connect.intro`** with the
+   R2 **share-phone reply keyboard** (`reg.btn.sharePhone`, `request_contact`). This is the same
+   machinery as R2; only the state tag differs.
+2. On the shared contact, the ownership guard is identical to R2 (`contact.user_id === from.id`;
+   otherwise `reg.phoneNotYours`, re-prompt). A verified phone drives the **connect branch**
+   (`billing.findCustomerAccountByPhone`, live accounts only). The current bot account is excluded
+   from the match set first (it carries the same phone it registered with):
+   - **One unclaimed OTHER match** (its `telegram_id` is null/empty or already this user's) →
+     `mergeCustomerAccount(source = current bot account, target = matched real account)`, then
+     remove the reply keyboard with **`connect.merged`** and show the real account's home/usage card
+     (the Telegram id now points at the target). Best-effort audit `telegram.connect.merge`.
+   - **The only match is the current account** → no merge; sync phone/name, reply
+     **`connect.alreadySynced`** + the account card.
+   - **Lone OTHER match owned by a different `telegram_id`** → never hijack; reply
+     **`connect.ownedByOther`** (contact support), no change.
+   - **Multiple OTHER matches** → **`connect.ambiguous`** (contact support), no change.
+   - **No match at all** → sync the current account's phone (best-effort audit
+     `telegram.connect.sync`), reply **`connect.noMatch`** + the account card.
+3. `connectStage` is cleared on completion (reply keyboard removed, back to inline menus). A slash
+   command escapes the flow; plain text / documents re-prompt to use the share button. Unlike
+   registration (§11), connect is optional/abandonable — it never traps other buttons.
+
+### New copy ids (bilingual fa/en, in `telegram-i18n.ts`)
+
+`menu.btn.connect`, `connect.intro`, `connect.merged`, `connect.alreadySynced`,
+`connect.ownedByOther`, `connect.ambiguous`, `connect.noMatch`.
+
+### Backend pieces
+
+- `apps/backend/src/telegram/telegram-connect.ts` — pure `resolveConnectDecision` + the
+  `TelegramConnectResolver` executor (delegates phone lookup / merge / phone-sync to injected
+  deps; unit-tested in `test/telegram-connect.test.ts`).
+- `billing.syncTelegramAccountContact` (no-merge branches) and `billing.recordTelegramConnectMerge`
+  (bot-context audit) alongside the existing `mergeCustomerAccount` / `findCustomerAccountByPhone`.
+- Per-user state gains `connectStage?: boolean` (`telegram-user-store.ts`), mutually exclusive with
+  `regStage` (a connect user already has an account).

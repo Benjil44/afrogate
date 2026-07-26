@@ -68,11 +68,13 @@ export function SettingsInput({
 }
 
 export function SettingsSelect({
+  disabled = false,
   label,
   onChange,
   options,
   value,
 }: {
+  disabled?: boolean;
   label: string;
   onChange: (value: string) => void;
   options: Array<{ label: string; value: string }>;
@@ -82,7 +84,8 @@ export function SettingsSelect({
     <label className="grid gap-1.5">
       <span className="text-[13px] font-bold text-afro-muted">{label}</span>
       <select
-        className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
+        className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
