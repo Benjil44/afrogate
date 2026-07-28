@@ -44,6 +44,7 @@ import { AdminReportsService } from './reports/admin-reports.service';
 import { RoutersController } from './routers/routers.controller';
 import { RoutersService } from './routers/routers.service';
 import { RouterUsageSamplerService } from './routers/router-usage-sampler.service';
+import { VillageFailoverService } from './routers/village-failover.service';
 import { GatewayBillingService } from './routers/gateway-billing.service';
 import { GatewayBillingRunnerService } from './routers/gateway-billing.runner';
 import { MikroTikClientService } from './routers/mikrotik-client.service';
@@ -120,6 +121,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     AdminReportsService,
     RoutersService,
     RouterUsageSamplerService,
+    VillageFailoverService,
     GatewayBillingService,
     GatewayBillingRunnerService,
     MikroTikClientService,
