@@ -1621,7 +1621,7 @@ export class OperationsService {
         WHERE enabled = true
           AND (last_fetched_at IS NULL
                OR last_fetched_at < now()
-                  - (LEAST(COALESCE(update_interval_hours, 12) * 60, $1)::text || ' minutes')::interval)
+                  - (LEAST((COALESCE(update_interval_hours, 12) * 60)::int, $1::int)::text || ' minutes')::interval)
       `,
       [cap],
     );
