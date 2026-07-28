@@ -3,9 +3,14 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { OperationsService } from './operations.service';
 
 /**
- * Periodically refreshes outbound subscriptions whose update interval has
- * elapsed (default 12h, or the provider's `profile-update-interval`). Re-fetches
- * the subscription URL and re-syncs its child outbounds. No-ops in dev (no DB).
+ * Periodically re-fetches outbound subscriptions and re-syncs their child
+ * outbounds so the village-independent **reserve** always has the provider's
+ * CURRENT (rotated) exits. Providers rotate their exit IPs; the reserve is only
+ * used when the village is down, so its cached exits would otherwise go stale and
+ * be dead exactly when failover needs them (the operator had to hit "Sync" by
+ * hand mid-blackout). We therefore refresh on a short cadence (default 20 min,
+ * `AFROWS_SUBSCRIPTION_REFRESH_MINUTES`) rather than only every 12h, capped by the
+ * provider's own interval only when that is *shorter*. No-ops in dev (no DB).
  */
 @Injectable()
 export class OutboundSubscriptionRefreshService implements OnModuleInit, OnModuleDestroy {
@@ -13,8 +18,13 @@ export class OutboundSubscriptionRefreshService implements OnModuleInit, OnModul
   private timer: NodeJS.Timeout | undefined;
   private running = false;
 
-  // Check hourly which subscriptions are due (the 12h cadence is enforced per-row).
-  private static readonly CHECK_INTERVAL_MS = 60 * 60 * 1000;
+  private static readonly CHECK_INTERVAL_MS = 5 * 60 * 1000; // evaluate due-ness every 5 min
+
+  /** Max staleness before a subscription is re-fetched (keeps the reserve warm). */
+  static freshnessMinutes(): number {
+    const raw = Number(process.env.AFROWS_SUBSCRIPTION_REFRESH_MINUTES);
+    return Number.isFinite(raw) && raw >= 2 ? Math.floor(raw) : 20;
+  }
 
   constructor(private readonly operations: OperationsService) {}
 
@@ -34,7 +44,9 @@ export class OutboundSubscriptionRefreshService implements OnModuleInit, OnModul
     if (this.running) return;
     this.running = true;
     try {
-      const dueIds = await this.operations.listDueOutboundSubscriptionIds();
+      const dueIds = await this.operations.listDueOutboundSubscriptionIds(
+        OutboundSubscriptionRefreshService.freshnessMinutes(),
+      );
       for (const id of dueIds) {
         try {
           await this.operations.refreshOutboundSubscription(id, undefined);

@@ -1606,15 +1606,24 @@ export class OperationsService {
     });
   }
 
-  /** Subscription ids whose update interval has elapsed (for the background refresher). */
-  async listDueOutboundSubscriptionIds(): Promise<string[]> {
+  /**
+   * Subscription ids that are due for a re-fetch (for the background refresher).
+   * Due = staler than the shorter of the provider's interval and the reserve
+   * freshness window (default 20 min) — so the village-independent reserve always
+   * has the provider's current rotated exits ready for a power-loss failover,
+   * instead of only refreshing every 12h.
+   */
+  async listDueOutboundSubscriptionIds(freshnessMinutes = 20): Promise<string[]> {
+    const cap = Number.isFinite(freshnessMinutes) && freshnessMinutes >= 2 ? Math.floor(freshnessMinutes) : 20;
     const result = await this.database.query<{ id: string }>(
       `
         SELECT id FROM outbound_subscriptions
         WHERE enabled = true
           AND (last_fetched_at IS NULL
-               OR last_fetched_at + (COALESCE(update_interval_hours, 12) || ' hours')::interval < now())
+               OR last_fetched_at < now()
+                  - (LEAST(COALESCE(update_interval_hours, 12) * 60, $1)::text || ' minutes')::interval)
       `,
+      [cap],
     );
     return result.rows.map((r) => r.id);
   }
