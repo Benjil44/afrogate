@@ -39,6 +39,14 @@ export class UpdateBillingSettingsDto {
   pricePerGb?: number;
 }
 
+export class UpdateGbPriceDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_PRICE)
+  gbPrice!: number;
+}
+
 export class UpdateRewardedAdSettingsDto {
   @IsOptional()
   @IsBoolean()

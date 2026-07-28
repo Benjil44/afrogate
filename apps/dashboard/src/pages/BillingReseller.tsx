@@ -1,9 +1,11 @@
 import { createResellerSalesStats, createResellerSalesTrendOption, createResellerUsageMixOption, isCompletedResellerSaleOrder, resellerCustomerName, type ResellerSalesStats } from '../reseller-charts';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Activity, Bot, CreditCard, Gauge, Gift, Inbox, Plus, ShieldCheck, Upload, UserRound, WifiOff, X } from 'lucide-react';
-import type { AdminBillingSettingsSummary, AdminClientConfigsExportResponse, AdminCurrentPanelImportConfigsResponse, AdminCurrentPanelImportPreviewResponse, AdminCurrentPanelUsageSyncResponse, AdminCurrentPanelVolumeChargeResponse, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CurrentPanelKind, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
+import type { AdminBillingSettingsSummary, AdminClientConfigsExportResponse, AdminCurrentPanelImportConfigsResponse, AdminCurrentPanelImportPreviewResponse, AdminCurrentPanelUsageSyncResponse, AdminCurrentPanelVolumeChargeResponse, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CurrentPanelKind, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
 import { chargeAdminCurrentPanelVolume, createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, importAdminCurrentPanelConfigs, previewAdminCurrentPanelImport, syncAdminCurrentPanelUsage, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
+import { GbPricePanel } from './GbPricePanel';
+import { ResellerGbHero, ResellerGbSellPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
 import { DashboardTabs, DataStateNotice, DataTable, EmptyState, MetricCard, MetricPill, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
 import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import type { BillingTab, DashboardTabItem, DataState, DataTableColumn, MetricCardData, Tone } from '../dashboard-types';
@@ -103,6 +105,8 @@ type ResellerWorkspaceViewState = {
   accounts: AdminCustomerAccountSummary[];
   dataState: DataState;
   error: boolean;
+  /** Current platform price per GB (the reseller's cost), from the workspace. */
+  gbPrice: number | null;
   ledgerEntries: AdminResellerWalletLedgerEntry[];
   packages: AdminVolumePackageSummary[];
   paymentOrders: AdminPaymentOrderSummary[];
@@ -110,6 +114,7 @@ type ResellerWorkspaceViewState = {
 };
 
 type ResellerWorkspaceController = ResellerWorkspaceViewState & {
+  applyGbChargeResult: (result: AdminResellerGbChargeResponse) => void;
   applyPackageSaleResult: (result: AdminResellerPackageSaleResponse) => void;
 };
 
@@ -119,6 +124,7 @@ function useResellerWorkspace(sessionToken: string): ResellerWorkspaceController
     accounts: [],
     dataState: 'loading',
     error: false,
+    gbPrice: null,
     ledgerEntries: [],
     packages: [],
     paymentOrders: [],
@@ -135,6 +141,7 @@ function useResellerWorkspace(sessionToken: string): ResellerWorkspaceController
           accounts: response.workspace.accounts,
           dataState: 'live',
           error: false,
+          gbPrice: response.workspace.gbPrice ?? null,
           ledgerEntries: response.workspace.ledgerEntries,
           packages: response.workspace.packages,
           paymentOrders: response.workspace.paymentOrders,
@@ -171,7 +178,25 @@ function useResellerWorkspace(sessionToken: string): ResellerWorkspaceController
     }));
   };
 
-  return { ...state, applyPackageSaleResult };
+  /** Fold a per-GB charge (wallet debit + customer + ledger entry) into the view. */
+  const applyGbChargeResult = (result: AdminResellerGbChargeResponse) => {
+    setState((current) => ({
+      ...current,
+      accounts: [
+        result.customerAccount,
+        ...current.accounts.filter((account) => account.id !== result.customerAccount.id),
+      ],
+      dataState: 'live',
+      error: false,
+      ledgerEntries: [
+        result.ledgerEntry,
+        ...current.ledgerEntries.filter((entry) => entry.id !== result.ledgerEntry.id),
+      ].slice(0, 50),
+      reseller: result.reseller,
+    }));
+  };
+
+  return { ...state, applyGbChargeResult, applyPackageSaleResult };
 }
 
 export function ResellerDashboardPage({
@@ -212,14 +237,42 @@ export function ResellerDashboardPage({
     },
   ];
 
+  const gbPriceSummary = workspace.gbPrice !== null && workspace.reseller
+    ? { amount: workspace.gbPrice, currency: workspace.reseller.currency }
+    : null;
+
   return (
     <section className="mt-2 grid gap-3">
       {workspace.error ? <PanelState detail={t.billing.errors.load} kind="error" title={t.panelStates.errorTitle} /> : null}
       {workspace.dataState === 'loading' ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
       {workspace.dataState !== 'live' && workspace.dataState !== 'loading' ? <DataStateNotice state={workspace.dataState} t={t} /> : null}
 
+      <ResellerGbHero
+        format={format}
+        price={gbPriceSummary}
+        priceUnavailable={workspace.dataState !== 'loading' && gbPriceSummary === null}
+        reseller={workspace.reseller}
+        t={t}
+      />
+
       <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label={t.reseller.dashboardSummary}>
         {summaryCards.map((item) => <MetricCard item={item} key={item.label} />)}
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-2">
+        <ResellerGbSellPanel
+          accounts={workspace.accounts}
+          format={format}
+          onSold={workspace.applyGbChargeResult}
+          sessionToken={sessionToken}
+          t={t}
+        />
+        <ResellerWalletTopupPanel
+          currency={workspace.reseller?.currency ?? null}
+          format={format}
+          sessionToken={sessionToken}
+          t={t}
+        />
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
@@ -1260,6 +1313,17 @@ export function BillingPage({
           onChange={setActiveBillingTab}
           tabs={billingTabs}
         />
+      ) : null}
+
+      {!isResellerSession ? (
+        <div className={activeBillingTab === 'catalog' ? 'min-w-0' : 'hidden'}>
+          <GbPricePanel
+            canEdit={session.actor.role === 'superadmin' || session.actor.isSuperAdmin === true}
+            format={format}
+            sessionToken={sessionToken}
+            t={t}
+          />
+        </div>
       ) : null}
 
       <section className={`grid gap-3 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)] ${!isResellerSession && activeBillingTab !== 'catalog' ? 'hidden' : ''}`}>

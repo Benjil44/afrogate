@@ -1082,9 +1082,16 @@ export interface AdminResellerPackageQuote {
   volumePackageId: string;
   packageName: string;
   currency: string;
+  /** The platform COST for this package (what the reseller wallet is debited). */
   customerPriceAmount: number;
+  /** Alias of customerPriceAmount for the cost-based model (= walletDebitAmount). */
+  costAmount: number;
   sellerMarginBps: number;
+  /** The markup the reseller KEEPS (cost × marginBps), never debited. */
   sellerMarginAmount: number;
+  /** What the reseller charges their own customer (cost + kept markup). */
+  resellerSellPrice: number;
+  /** The amount debited from the reseller wallet (= cost). */
   walletDebitAmount: number;
   balanceBeforeAmount: number;
   balanceAfterAmount: number;
@@ -1093,14 +1100,99 @@ export interface AdminResellerPackageQuote {
   blockedReason?: string | null;
 }
 
+/**
+ * Quote for a per-GB reseller sale at the current GB price. Margin = markup on COST:
+ * the wallet is debited `costAmount` (= GB × gbPrice) and the reseller keeps
+ * `marginAmount` (= cost × marginBps) as cash by charging `resellerSellPrice`.
+ */
+export interface AdminResellerGbQuote {
+  resellerAccountId: string;
+  currency: string;
+  /** Current per-GB price (the platform's cost per decimal GB). */
+  gbPrice: number;
+  /** Requested GB (decimal, 1 GB = 1e9 bytes). */
+  gb: number;
+  /** Platform cost = round(gb × gbPrice) = walletDebitAmount. */
+  costAmount: number;
+  /** Amount debited from the reseller wallet (= costAmount). */
+  walletDebitAmount: number;
+  sellerMarginBps: number;
+  /** Markup the reseller keeps (cost × marginBps), NOT debited. */
+  marginAmount: number;
+  /** What the reseller charges their customer (cost + margin). */
+  resellerSellPrice: number;
+  balanceBeforeAmount: number;
+  balanceAfterAmount: number;
+  creditLimitAmount: number;
+  canDebit: boolean;
+  blockedReason?: string | null;
+}
+
+export interface AdminResellerGbQuoteResponse {
+  quote: AdminResellerGbQuote;
+}
+
+export interface CreateResellerGbChargeRequest {
+  /** GB to grant the customer (decimal). Wallet is debited gb × current gbPrice. */
+  gb: number;
+  /** Charge an existing customer of this reseller… */
+  customerAccountId?: string | null;
+  /** …or create a new customer for this sale. Exactly one of the two is required. */
+  customerAccount?: CreateCustomerAccountRequest | null;
+  idempotencyKey?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AdminResellerGbChargeResponse {
+  reseller: AdminResellerAccountSummary;
+  customerAccount: AdminCustomerAccountDetail;
+  ledgerEntry: AdminResellerWalletLedgerEntry;
+  quote: AdminResellerGbQuote;
+  duplicate: boolean;
+}
+
 export interface AdminResellerWorkspaceSummary {
   reseller: AdminResellerAccountSummary;
   settings: AdminBillingSettingsSummary;
+  /** The current per-GB price (= settings.pricePerGb), surfaced for the reseller panel. */
+  gbPrice: number;
   packages: AdminVolumePackageSummary[];
   accounts: AdminCustomerAccountSummary[];
   paymentOrders: AdminPaymentOrderSummary[];
   ledgerEntries: AdminResellerWalletLedgerEntry[];
+  /** The reseller's own recent wallet top-up requests (newest first). */
+  topupRequests: AdminResellerTopupRequest[];
   generatedAt: string;
+}
+
+/** Lifecycle of a reseller card-to-card wallet top-up request. */
+export type ResellerTopupRequestStatus = 'pending' | 'approved' | 'rejected';
+
+/** A reseller wallet top-up request as shown in the reseller panel + admin queue. */
+export interface AdminResellerTopupRequest {
+  id: string;
+  reference: string;
+  resellerAccountId: string;
+  resellerDisplayName?: string | null;
+  amount: number;
+  currency: string;
+  status: ResellerTopupRequestStatus;
+  hasReceipt: boolean;
+  note?: string | null;
+  createdAt: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  /** The reseller_wallet_ledger topup entry written on approval, if approved. */
+  walletLedgerId?: string | null;
+}
+
+export interface AdminResellerTopupRequestsResponse {
+  requests: AdminResellerTopupRequest[];
+}
+
+export interface AdminResellerTopupRequestResponse {
+  request: AdminResellerTopupRequest;
 }
 
 export interface CreateResellerAccountRequest {
@@ -1469,6 +1561,18 @@ export interface AdminBillingSettingsSummary {
   updatedBy?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The current per-GB price (the platform's cost per decimal GB). Superadmin-settable. */
+export interface AdminGbPriceResponse {
+  gbPrice: number;
+  currency: string;
+  updatedBy?: string | null;
+  updatedAt: string;
+}
+
+export interface UpdateGbPriceRequest {
+  gbPrice: number;
 }
 
 export interface AdminRewardedAdSettingsSummary {
@@ -3919,6 +4023,17 @@ export interface AdminResellerPackageSaleResponse {
 
 export interface AdminResellerWorkspaceResponse {
   workspace: AdminResellerWorkspaceSummary;
+}
+
+/**
+ * Result of a superadmin "Sign in as seller" impersonation. `session` is a valid,
+ * reseller-scoped login session (sessionToken + actor) for the seller's login user —
+ * the frontend swaps to it while keeping the admin session to return. `reseller`
+ * identifies which seller is being impersonated.
+ */
+export interface AdminResellerImpersonationResponse {
+  session: AdminLoginResponse;
+  reseller: AdminResellerAccountSummary;
 }
 
 export interface AdminClientRoutePreferenceResponse {

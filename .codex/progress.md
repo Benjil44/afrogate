@@ -1,5 +1,19 @@
 # Afrows Progress
 
+## 2026-07-28
+
+### Reseller per-GB pricing + wallet-topup approval + seller oversight (backend)
+
+- Flipped the reseller sale model to **margin = markup on COST** in `reseller-wallet-math.ts`:
+  `computeResellerSaleAmounts(cost, bps)` now returns `walletDebit = cost`, `sellerMargin = round(cost×bps)` (kept, not debited), `resellerSellPrice = cost + margin`. Added `computeResellerGbCost(gb, gbPrice)`.
+- Per-GB price: reuses existing `billing_settings.price_per_gb`. New superadmin `GET/PATCH /admin/billing/gb-price` (audited `billing.gb_price.update`); exposed in the reseller workspace (`gbPrice`).
+- Per-GB reseller sale: `GET /admin/reseller/gb-quote?gb=`, `POST /admin/reseller/gb-charges` (debits `N×gbPrice`, grants N GB, records `reseller_wallet.gb_charge`).
+- Reseller card-to-card wallet top-ups: migration `0054_reseller_wallet_topups.sql` (`reseller_wallet_topup_requests`, receipt stored server-side as bytea). Reseller `POST/GET /admin/reseller/wallet/topup-requests` (+ own receipt); admin `GET /admin/reseller-topups`, `POST …/:id/approve|reject`, `GET …/:id/receipt`. Approve credits the wallet via a `topup` ledger entry (pure `reseller-topup.ts`, links `wallet_ledger_id`).
+- Seller oversight: `GET /admin/resellers/:id/customers` (reuses `listCustomerAccounts({ resellerAccountId })`).
+- Impersonation: `POST /admin/resellers/:id/impersonate` (superadmin only, audited `reseller.impersonate`) mints a reseller-scoped session via `AuthService`; pure guard in `auth/impersonation.ts`.
+- Shared types + `apps/dashboard/src/api/admin.ts` client fns added for every endpoint.
+- Verified: backend `tsc --noEmit` clean; node --test — 29 new/updated cases pass (margin-on-cost math, topup approve→credit, impersonation reseller-target-only). No version bump/commit per task scope.
+
 ## 2026-05-23
 
 ### Completed

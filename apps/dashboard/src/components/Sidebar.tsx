@@ -30,6 +30,7 @@ export function Sidebar({
   onToggleAdvancedMode,
   onToggleCollapse,
   onViewChange,
+  resellerTopupPendingState = null,
   sidebarAlertState,
   session,
   t,
@@ -45,6 +46,8 @@ export function Sidebar({
   onToggleAdvancedMode: () => void;
   onToggleCollapse: () => void;
   onViewChange: (view: ActiveView) => void;
+  /** Pending seller wallet top-up count badge on the Seller top-ups nav item (null hides it). */
+  resellerTopupPendingState?: SidebarAlertState | null;
   sidebarAlertState: SidebarAlertState | null;
   session: AdminSessionResponse;
   t: DashboardStrings;
@@ -56,6 +59,7 @@ export function Sidebar({
   const badgeStateFor = (item: NavItemData): SidebarAlertState | null => {
     if (item.id === 'alerts') return sidebarAlertState;
     if (item.id === 'topups') return topupPendingState;
+    if (item.id === 'reseller-topups') return resellerTopupPendingState;
     return null;
   };
   const canUseAdvancedToggle = session.actor.role !== 'reseller';

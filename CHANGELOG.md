@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.85 - 2026-07-27
+
+- **Reseller/seller channel: per-GB pricing, wallet top-up approval, seller oversight.** Superadmin sets a single **price per GB** (`GET/PATCH /admin/billing/gb-price`, changeable anytime). A reseller sells **N GB** to their own customer → their prepaid wallet is debited the **cost** (`GB × gbPrice`); the **margin is a markup on cost the reseller keeps as cash** (flipped from the old "discount off list" model — `computeResellerSaleAmounts` now returns `walletDebit = cost`, `marginAmount = cost × bps` kept, `resellerSellPrice = cost + margin`). Resellers **top up their wallet by card-to-card → superadmin approves** (new `reseller_wallet_topup_requests`, migration `0054`, receipt stored server-side, mirror of the Telegram deposit-approval flow) — new **"Seller top-ups"** admin page (receipt + approve/reject + pending badge). The **Sellers** page lets the superadmin drill into a seller to see their customers + usage and **"Sign in as seller"** (audited superadmin impersonation — mints a reseller-scoped session, reversible via a "Return to admin" banner). The reseller panel shows **today's GB price**, their **available credit**, their **margin/markup**, a **per-GB sell form** (quote → charge), and a **wallet top-up request** (amount + receipt upload).
+
 ## 0.114.84 - 2026-07-27
 
 - **Persian temporarily disabled (English-only).** The dashboard and the web landing page are pinned to English and their language toggles hidden, behind a single flag each (`LANGUAGE_TOGGLE_ENABLED` in dashboard `i18n.ts`, `WEB_LANGUAGE_TOGGLE_ENABLED` in web `i18n/index.ts`) — flip to `true` to restore Farsi + the toggle everywhere. The Persian translations are untouched, just not selectable.

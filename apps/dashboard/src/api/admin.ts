@@ -59,6 +59,16 @@ import type {
   AdminRewardedAdSettingsResponse,
   AdminResellerPackageSaleResponse,
   AdminResellerWorkspaceResponse,
+  AdminGbPriceResponse,
+  UpdateGbPriceRequest,
+  AdminResellerGbQuoteResponse,
+  AdminResellerGbChargeResponse,
+  CreateResellerGbChargeRequest,
+  AdminResellerTopupRequest,
+  AdminResellerTopupRequestResponse,
+  AdminResellerTopupRequestsResponse,
+  ResellerTopupRequestStatus,
+  AdminResellerImpersonationResponse,
   AdminReportsSummaryResponse,
   AdminIncidentTimelineResponse,
   AdminServerInterfacesResponse,
@@ -469,6 +479,164 @@ export async function topUpResellerWallet(sessionToken: string, id: string, payl
     body: JSON.stringify(payload),
   });
   return response.json() as Promise<AdminResellerWalletActionResponse>;
+}
+
+// --- Per-GB price (superadmin-settable; the platform's cost per decimal GB) ---
+
+export async function fetchGbPrice(sessionToken: string, signal?: AbortSignal): Promise<AdminGbPriceResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/billing/gb-price`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminGbPriceResponse>;
+}
+
+export async function updateGbPrice(sessionToken: string, payload: UpdateGbPriceRequest): Promise<AdminGbPriceResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/billing/gb-price`, {
+    method: 'PATCH',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminGbPriceResponse>;
+}
+
+// --- Seller oversight: a superadmin drill-down into a seller's customers + usage ---
+
+export async function fetchResellerCustomers(
+  sessionToken: string,
+  resellerId: string,
+  signal?: AbortSignal,
+): Promise<AdminCustomerAccountsResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(resellerId)}/customers`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminCustomerAccountsResponse>;
+}
+
+/** Superadmin "Sign in as seller": returns a reseller-scoped session + the seller. */
+export async function impersonateReseller(
+  sessionToken: string,
+  resellerId: string,
+): Promise<AdminResellerImpersonationResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(resellerId)}/impersonate`,
+    { method: 'POST', headers: createSessionHeaders(sessionToken) },
+  );
+  return response.json() as Promise<AdminResellerImpersonationResponse>;
+}
+
+// --- Reseller wallet card-to-card top-up requests (admin approval queue) ---
+
+export async function fetchAdminResellerTopups(
+  sessionToken: string,
+  status?: ResellerTopupRequestStatus,
+): Promise<AdminResellerTopupRequest[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller-topups${query}`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+  const body = (await response.json()) as AdminResellerTopupRequestsResponse;
+  return body.requests;
+}
+
+export async function approveResellerTopup(sessionToken: string, id: string): Promise<AdminResellerTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller-topups/${encodeURIComponent(id)}/approve`,
+    { method: 'POST', headers: createSessionHeaders(sessionToken) },
+  );
+  const body = (await response.json()) as AdminResellerTopupRequestResponse;
+  return body.request;
+}
+
+export async function rejectResellerTopup(
+  sessionToken: string,
+  id: string,
+  reason: string,
+): Promise<AdminResellerTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller-topups/${encodeURIComponent(id)}/reject`,
+    { method: 'POST', headers: createSessionHeaders(sessionToken), body: JSON.stringify({ reason }) },
+  );
+  const body = (await response.json()) as AdminResellerTopupRequestResponse;
+  return body.request;
+}
+
+/** Fetch a reseller top-up receipt image bytes (admin-authenticated), as a Blob. */
+export async function fetchResellerTopupReceipt(sessionToken: string, id: string): Promise<Blob> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller-topups/${encodeURIComponent(id)}/receipt`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } },
+  );
+  return response.blob();
+}
+
+// --- Reseller-side: per-GB sale + wallet top-up request (reseller panel) ---
+
+export async function fetchResellerGbQuote(
+  sessionToken: string,
+  gb: number,
+  signal?: AbortSignal,
+): Promise<AdminResellerGbQuoteResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller/gb-quote?gb=${encodeURIComponent(String(gb))}`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminResellerGbQuoteResponse>;
+}
+
+export async function createResellerGbCharge(
+  sessionToken: string,
+  payload: CreateResellerGbChargeRequest,
+): Promise<AdminResellerGbChargeResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/gb-charges`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerGbChargeResponse>;
+}
+
+/** Reseller requests a card-to-card wallet top-up: amount + a receipt image upload. */
+export async function createResellerTopupRequest(
+  sessionToken: string,
+  amount: number,
+  receipt: Blob,
+  note?: string,
+): Promise<AdminResellerTopupRequest> {
+  const form = new FormData();
+  form.append('amount', String(amount));
+  if (note) form.append('note', note);
+  form.append('receipt', receipt);
+  // FormData sets its own multipart Content-Type/boundary; only send Authorization.
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/wallet/topup-requests`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${sessionToken}` },
+    body: form,
+  });
+  const body = (await response.json()) as AdminResellerTopupRequestResponse;
+  return body.request;
+}
+
+export async function fetchResellerTopupRequests(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminResellerTopupRequest[]> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/wallet/topup-requests`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  const body = (await response.json()) as AdminResellerTopupRequestsResponse;
+  return body.requests;
+}
+
+/** The current reseller's own receipt image bytes (owner-scoped), as a Blob. */
+export async function fetchOwnResellerTopupReceipt(sessionToken: string, id: string): Promise<Blob> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller/wallet/topup-requests/${encodeURIComponent(id)}/receipt`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } },
+  );
+  return response.blob();
 }
 
 export async function fetchAdminNetworkOverview(sessionToken: string, signal?: AbortSignal): Promise<AdminNetworkOverviewResponse> {

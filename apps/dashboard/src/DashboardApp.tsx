@@ -200,6 +200,7 @@ import {
   applyRouteDecisionPreview,
 } from './api/admin';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
+import { fetchResellerTopups, type ImpersonateResellerResult } from './api/reseller-pricing';
 import { ReportsPage } from './pages/ReportsPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { BackupsPage } from './pages/BackupsPage';
@@ -215,6 +216,7 @@ import { NetworkPage } from './pages/NetworkPage';
 import { ResellersPage } from './pages/ResellersPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { TopupRequestsPage } from './pages/TopupRequestsPage';
+import { ResellerTopupRequestsPage } from './pages/ResellerTopupRequestsPage';
 import { InboundsPage } from './pages/InboundsPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -655,7 +657,7 @@ function loadInitialAdvancedMode() {
 
 const ROUTE_VIEWS: ActiveView[] = [
   'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
-  'backups', 'billing', 'topups', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network', 'resellers',
+  'backups', 'billing', 'topups', 'reseller-topups', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network', 'resellers',
 ];
 
 /** Derive the active view from the URL path (so refresh + the address bar work). */
@@ -668,8 +670,12 @@ export function DashboardApp() {
   const { isRtl, language, nextLanguage, setLanguage, strings: t } = useDashboardLanguage();
   const format = useMemo(() => createDashboardFormatters(language), [language]);
   const adminSession = useAdminSession();
+  // "Sign in as seller": a reseller-scoped session layered over the (kept)
+  // admin session. Server-side audited; cleared by the banner's Return button.
+  const [impersonation, setImpersonation] = useState<ImpersonateResellerResult | null>(null);
 
   if (adminSession.status !== 'signedIn' || !adminSession.session || !adminSession.sessionToken) {
+    if (impersonation) setImpersonation(null);
     return (
       <AdminLoginPage
         auth={adminSession}
@@ -683,18 +689,64 @@ export function DashboardApp() {
     );
   }
 
+  const activeSession = impersonation?.session ?? adminSession.session;
+  const activeSessionToken = impersonation?.sessionToken ?? adminSession.sessionToken;
+
   return (
-    <AuthenticatedDashboard
-      format={format}
-      isRtl={isRtl}
-      language={language}
-      nextLanguage={nextLanguage}
-      onLanguageChange={setLanguage}
-      onSignOut={adminSession.signOut}
-      session={adminSession.session}
-      sessionToken={adminSession.sessionToken}
-      t={t}
-    />
+    <div dir={isRtl ? 'rtl' : 'ltr'}>
+      {impersonation ? (
+        <ImpersonationBanner
+          resellerName={impersonation.reseller.displayName}
+          onReturn={() => setImpersonation(null)}
+          t={t}
+        />
+      ) : null}
+      <AuthenticatedDashboard
+        format={format}
+        isRtl={isRtl}
+        key={activeSessionToken}
+        language={language}
+        nextLanguage={nextLanguage}
+        onImpersonate={setImpersonation}
+        onLanguageChange={setLanguage}
+        onSignOut={adminSession.signOut}
+        session={activeSession}
+        sessionToken={activeSessionToken}
+        t={t}
+      />
+    </div>
+  );
+}
+
+/** Sticky "Viewing as <seller> — Return to admin" strip shown while impersonating. */
+function ImpersonationBanner({
+  onReturn,
+  resellerName,
+  t,
+}: {
+  onReturn: () => void;
+  resellerName: string;
+  t: DashboardStrings;
+}) {
+  return (
+    <div
+      className="sticky top-0 z-40 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-[#e6cf9c] bg-[#fff7e6] px-3 py-2 text-[13px] font-bold text-[#9a5b00] md:px-4"
+      data-impersonation-banner="true"
+      role="status"
+    >
+      <span className="inline-flex min-w-0 items-center gap-2">
+        <Eye className="shrink-0" size={16} />
+        <span className="min-w-0 truncate">{t.impersonation.viewingAs(resellerName)}</span>
+      </span>
+      <button
+        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-[#e6cf9c] bg-white px-3 text-[13px] font-bold text-[#9a5b00] hover:border-afro-teal hover:text-afro-teal"
+        onClick={onReturn}
+        type="button"
+      >
+        <LogOut className="shrink-0" size={15} />
+        {t.impersonation.returnToAdmin}
+      </button>
+    </div>
   );
 }
 
@@ -703,6 +755,7 @@ function AuthenticatedDashboard({
   isRtl,
   language,
   nextLanguage,
+  onImpersonate,
   onLanguageChange,
   onSignOut,
   session,
@@ -713,6 +766,8 @@ function AuthenticatedDashboard({
   isRtl: boolean;
   language: DashboardLanguage;
   nextLanguage: DashboardLanguage;
+  /** "Sign in as seller" from the Sellers page: swaps in a reseller-scoped session. */
+  onImpersonate?: (result: ImpersonateResellerResult) => void;
   onLanguageChange: (language: DashboardLanguage) => void;
   onSignOut: () => void;
   session: AdminSessionResponse;
@@ -752,6 +807,8 @@ function AuthenticatedDashboard({
   const [backupDataState, setBackupDataState] = useState<DataState>('loading');
   const [topupPendingCount, setTopupPendingCount] = useState(0);
   const [topupRefreshTick, setTopupRefreshTick] = useState(0);
+  const [resellerTopupPendingCount, setResellerTopupPendingCount] = useState(0);
+  const [resellerTopupRefreshTick, setResellerTopupRefreshTick] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [isKioskMode, setIsKioskMode] = useState(loadInitialKioskMode);
@@ -987,6 +1044,36 @@ function AuthenticatedDashboard({
     };
   }, [isResellerSession, sessionToken, topupRefreshTick]);
 
+  // Pending seller wallet top-ups: same light poll so new card-to-card
+  // receipts from sellers surface as a sidebar badge off the approval page.
+  useEffect(() => {
+    if (isResellerSession) {
+      setResellerTopupPendingCount(0);
+      return;
+    }
+
+    let isActive = true;
+    let timer: number | undefined;
+
+    const loadPendingResellerTopups = async () => {
+      try {
+        const pending = await fetchResellerTopups(sessionToken, 'pending');
+        if (isActive) setResellerTopupPendingCount(pending.length);
+      } catch {
+        /* keep last count */
+      } finally {
+        if (isActive) timer = window.setTimeout(() => void loadPendingResellerTopups(), 30_000);
+      }
+    };
+
+    void loadPendingResellerTopups();
+
+    return () => {
+      isActive = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [isResellerSession, sessionToken, resellerTopupRefreshTick]);
+
   useEffect(() => {
     window.localStorage.setItem(sidebarStorageKey, isSidebarCollapsed ? 'collapsed' : 'expanded');
   }, [isSidebarCollapsed]);
@@ -1114,6 +1201,10 @@ function AuthenticatedDashboard({
     () => (topupPendingCount > 0 ? { tone: 'warning', countLabel: format.integer(topupPendingCount) } : null),
     [format, topupPendingCount],
   );
+  const resellerTopupPendingState = useMemo<SidebarAlertState | null>(
+    () => (resellerTopupPendingCount > 0 ? { tone: 'warning', countLabel: format.integer(resellerTopupPendingCount) } : null),
+    [format, resellerTopupPendingCount],
+  );
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t, session);
   const effectiveSidebarCollapsed = isSidebarCollapsed || isNarrowViewport;
@@ -1141,6 +1232,7 @@ function AuthenticatedDashboard({
           onToggleAdvancedMode={() => setAdvancedMode((current) => !current)}
           onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
           onViewChange={setActiveView}
+          resellerTopupPendingState={resellerTopupPendingState}
           sidebarAlertState={sidebarAlertState}
           session={session}
           t={t}
@@ -1206,7 +1298,9 @@ function AuthenticatedDashboard({
           format={format}
           onServerUpdated={handleAdminServerUpdated}
           onRangeChange={setTimeRange}
+          onImpersonate={onImpersonate}
           onNavigate={setActiveView}
+          onResellerTopupPendingChanged={() => setResellerTopupRefreshTick((tick) => tick + 1)}
           onTopupPendingChanged={() => setTopupRefreshTick((tick) => tick + 1)}
           routeDataState={routeDataState}
           routeFailoverRows={failoverRows}
@@ -1243,7 +1337,9 @@ function ActivePage({
   format,
   onServerUpdated,
   onRangeChange,
+  onImpersonate,
   onNavigate,
+  onResellerTopupPendingChanged,
   onTopupPendingChanged,
   routeDataState,
   routeFailoverRows,
@@ -1272,7 +1368,9 @@ function ActivePage({
   format: DashboardFormatters;
   onServerUpdated: (server: AdminServerDetail) => void;
   onRangeChange: (range: MetricsTimeRange) => void;
+  onImpersonate?: (result: ImpersonateResellerResult) => void;
   onNavigate: (view: ActiveView) => void;
+  onResellerTopupPendingChanged: () => void;
   onTopupPendingChanged: () => void;
   routeDataState: DataState;
   routeFailoverRows: RouteFailoverRowData[];
@@ -1326,6 +1424,8 @@ function ActivePage({
       return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
     case 'topups':
       return <TopupRequestsPage format={format} onPendingChanged={onTopupPendingChanged} sessionToken={sessionToken} t={t} />;
+    case 'reseller-topups':
+      return <ResellerTopupRequestsPage format={format} onPendingChanged={onResellerTopupPendingChanged} sessionToken={sessionToken} t={t} />;
     case 'reports':
       return <ReportsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'exits':
@@ -1367,7 +1467,7 @@ function ActivePage({
     case 'network':
       return <NetworkPage format={format} sessionToken={sessionToken} onOpenExits={() => onNavigate('exits')} t={t} />;
     case 'resellers':
-      return <ResellersPage format={format} sessionToken={sessionToken} t={t} />;
+      return <ResellersPage format={format} onImpersonate={onImpersonate} sessionToken={sessionToken} t={t} />;
     case 'inbounds':
       return <InboundsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'connections':

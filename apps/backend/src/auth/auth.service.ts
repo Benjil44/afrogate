@@ -31,6 +31,7 @@ import { dirname, resolve } from 'node:path';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import type { AuthActor } from '../security/auth-request';
+import { assertCanImpersonateReseller } from './impersonation';
 import { secureTokenEquals } from '../security/bearer-token';
 import { hashPassword, verifyScryptPassword } from '../security/password';
 import {
@@ -169,6 +170,42 @@ export class AuthService {
       mfaRequired: false,
       issuedAt: issuedAt.toISOString(),
       expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * Superadmin "Sign in as seller": mint a valid, reseller-scoped session for the
+   * seller's login user so the superadmin can open that seller's panel as them. The
+   * same signing path as `login` (no password is exposed, no bypass). Guarded so
+   * only a superadmin can call it and only a `reseller`-role, active target can be
+   * impersonated; the action is audited as `reseller.impersonate`. The caller keeps
+   * their own admin session to return.
+   */
+  async createResellerImpersonationSession(
+    actor: AuthActor | undefined,
+    targetUserId: string,
+    context: { resellerAccountId?: string } = {},
+  ): Promise<AdminLoginResponse> {
+    const accounts = actor && actor.type === 'admin' && actor.role === 'superadmin' && actor.isSuperAdmin === true
+      ? await this.loadAdminAccounts()
+      : [];
+    const target = accounts.find((candidate) => candidate.id === targetUserId);
+    assertCanImpersonateReseller(actor, target);
+
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + this.getSessionTtlSeconds() * 1000);
+    const targetActor = accountToActor(target);
+    const sessionToken = this.signSessionToken(targetActor, issuedAt, expiresAt);
+
+    await this.audit.record(actor, 'reseller.impersonate', 'admin_user', target.id, {
+      resellerAccountId: context.resellerAccountId ?? null,
+      targetUsername: target.username,
+      targetRole: target.role,
+    });
+
+    return {
+      ...this.createSessionResponse(targetActor, issuedAt, expiresAt),
+      sessionToken,
     };
   }
 

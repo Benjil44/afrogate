@@ -41,6 +41,11 @@
 
 ### 5. Bilingual (fa/en) throughout; audited; keep the existing reseller/admin flows working.
 
+## Superadmin oversight of sellers (added 2026-07-27)
+- **"Sellers" sidebar item** — the existing admin Resellers page (label it "Sellers"). Lists all sellers.
+- **Drill into a seller → see their customers + usages.** Selecting a seller shows each of that seller's customer accounts with usage (used/quota GB, status) — as expandable sub-rows or a filtered Customers view (`listCustomerAccounts({ resellerAccountId })` already supports the filter; surface it). So the superadmin can audit what each seller has sold and how much each end-user uses.
+- **Superadmin "Sign in as seller" (impersonation).** An admin-only, **audited** action that opens the seller's own panel as them (issue a reseller-scoped session for that seller's login user, or a view-as mode) so the superadmin can see/manage exactly what the seller sees. Must be clearly reversible (a "return to admin" affordance) and logged (`reseller.impersonate`).
+
 ## Phasing
 1. Backend: GB-price setting + per-GB sale (margin-on-cost) + reseller-topup requests (table/endpoints/approval/credit) + workspace exposes gbPrice/credit + shared types + admin.ts.
 2. Frontend: superadmin GB-price control + reseller-topups approval page; reseller panel (gb price + credit + per-GB sell + wallet top-up request).

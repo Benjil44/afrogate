@@ -1,11 +1,12 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { CreateCustomerAccountDto } from './customer-account.dto';
 
 export const RESELLER_ACCOUNT_STATUSES = ['active', 'suspended', 'disabled'] as const;
 
 const MAX_AMOUNT = Number.MAX_SAFE_INTEGER;
 const MAX_MARGIN_BPS = 8000;
+const MAX_SALE_GB = 1_000_000;
 
 export class CreateResellerAccountDto {
   @IsString()
@@ -157,6 +158,57 @@ export class DebitResellerWalletForPackageDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown> | null;
+}
+
+export class CreateResellerGbChargeDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  @Max(MAX_SALE_GB)
+  gb!: number;
+
+  @IsOptional()
+  @IsUUID('4')
+  customerAccountId?: string | null;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateCustomerAccountDto)
+  customerAccount?: CreateCustomerAccountDto | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  idempotencyKey?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+}
+
+export class CreateResellerTopupRequestDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_AMOUNT)
+  amount!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string | null;
+}
+
+export class RejectResellerTopupDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string | null;
 }
 
 export class CreateResellerPackageSaleDto {

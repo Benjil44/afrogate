@@ -47,9 +47,13 @@ import type {
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
   AdminRecordClientUsageResponse,
+  AdminGbPriceResponse,
   AdminResellerAccountSummary,
+  AdminResellerGbChargeResponse,
+  AdminResellerGbQuote,
   AdminResellerPackageQuote,
   AdminResellerPackageSaleResponse,
+  AdminResellerTopupRequest,
   AdminResellerWalletActionResponse,
   AdminResellerWalletLedgerEntry,
   AdminResellerWorkspaceSummary,
@@ -93,10 +97,16 @@ import { normalizeClientUsageDirection, normalizeClientUsageSource, normalizeCur
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afrowsShareBps,
+  computeResellerGbCost,
   computeResellerSaleAmounts,
   normalizeResellerMarginBps,
   walletCanCoverDebit,
 } from './reseller-wallet-math';
+import {
+  approveResellerTopupInTransaction,
+  rejectResellerTopupInTransaction,
+  resellerTopupReference,
+} from './reseller-topup';
 import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, gbToBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
 import {
   attributeReferral,
@@ -152,6 +162,7 @@ import {
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
   UpdateBillingSettingsDto,
+  UpdateGbPriceDto,
   UpdateRewardedAdSettingsDto,
   UpdatePaymentMethodDto,
   UpdatePaymentOrderStatusDto,
@@ -159,7 +170,9 @@ import {
 } from './dto/billing.dto';
 import {
   CreateResellerAccountDto,
+  CreateResellerGbChargeDto,
   CreateResellerPackageSaleDto,
+  CreateResellerTopupRequestDto,
   DebitResellerWalletForPackageDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
@@ -547,6 +560,21 @@ interface ResellerAccountRow {
   customerAccountCount: number;
   activeCustomerAccountCount: number;
   ledgerEntryCount: number;
+}
+
+interface ResellerTopupRequestRow {
+  id: string;
+  resellerAccountId: string;
+  resellerDisplayName: string | null;
+  amount: string | number;
+  currency: string;
+  status: string;
+  hasReceipt: boolean;
+  note: string | null;
+  createdAt: Date;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  walletLedgerId: string | null;
 }
 
 interface ResellerWalletLedgerRow {
@@ -2139,22 +2167,449 @@ export class BillingService {
 
   async getResellerWorkspace(actor: AuthActor | undefined): Promise<AdminResellerWorkspaceSummary> {
     const reseller = await this.getResellerAccountRowForActor(actor);
-    const [settings, packages, accounts, paymentOrders, ledgerEntries] = await Promise.all([
+    const [settings, packages, accounts, paymentOrders, ledgerEntries, topupRequests] = await Promise.all([
       this.getBillingSettings(),
       this.listVolumePackages({ status: 'active', limit: 100 }),
       this.listCustomerAccounts({ resellerAccountId: reseller.id, limit: 100 }),
       this.listPaymentOrders({ resellerAccountId: reseller.id, limit: 100 }),
       this.listResellerWalletLedger(reseller.id, 50),
+      this.listResellerTopupRequestsForReseller(reseller.id, 50),
     ]);
 
     return {
       reseller: this.mapResellerAccount(reseller),
       settings,
+      gbPrice: settings.pricePerGb,
       packages,
       accounts,
       paymentOrders,
       ledgerEntries,
+      topupRequests,
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-GB price control (superadmin-settable; the platform's cost per decimal GB).
+  // Backed by the existing billing_settings.price_per_gb column so the reseller
+  // per-GB sale + every reseller-facing display use one current value.
+  // ---------------------------------------------------------------------------
+
+  async getGbPrice(): Promise<AdminGbPriceResponse> {
+    const settings = await this.getBillingSettings();
+    return {
+      gbPrice: settings.pricePerGb,
+      currency: settings.currency,
+      updatedBy: settings.updatedBy ?? null,
+      updatedAt: settings.updatedAt,
+    };
+  }
+
+  async updateGbPrice(dto: UpdateGbPriceDto, actor: AuthActor | undefined): Promise<AdminGbPriceResponse> {
+    const gbPrice = normalizeMoneyAmount(dto.gbPrice, 'gbPrice');
+    const settings = await this.database.transaction(async (executor) => {
+      const current = await this.getBillingSettingsRow(executor, true);
+      const previousGbPrice = numberFromBigInt(current.pricePerGb) ?? 0;
+      const result = await executor.query<BillingSettingsRow>(
+        `
+          UPDATE billing_settings
+          SET price_per_gb = $1,
+              updated_by = $2,
+              updated_at = now()
+          WHERE setting_key = 'default'
+          RETURNING
+            setting_key AS "settingKey",
+            currency,
+            price_per_gb AS "pricePerGb",
+            updated_by AS "updatedBy",
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+        `,
+        [gbPrice, actor?.id ?? null],
+      );
+
+      await this.audit.record(
+        actor,
+        'billing.gb_price.update',
+        'billing_settings',
+        'default',
+        { previousGbPrice, gbPrice, currency: current.currency },
+        executor,
+      );
+
+      return result.rows[0];
+    });
+
+    return {
+      gbPrice: numberFromBigInt(settings.pricePerGb) ?? 0,
+      currency: settings.currency,
+      updatedBy: settings.updatedBy ?? null,
+      updatedAt: settings.updatedAt.toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-GB reseller sale (margin = markup on cost). The reseller grants a customer
+  // N GB; the wallet is debited N × currentGbPrice (the cost). The reseller keeps
+  // cost × marginBps as cash by charging cost × (1 + margin) — never debited.
+  // ---------------------------------------------------------------------------
+
+  async quoteResellerGbCharge(actor: AuthActor | undefined, gb: number): Promise<AdminResellerGbQuote> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    const settings = await this.getBillingSettings();
+    return this.calculateResellerGbQuote(reseller, gb, settings.pricePerGb, settings.currency);
+  }
+
+  async createResellerGbCharge(
+    dto: CreateResellerGbChargeDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerGbChargeResponse> {
+    const currentReseller = await this.getResellerAccountRowForActor(actor);
+    const requestedCustomerAccountId = normalizeNullableString(dto.customerAccountId);
+    const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
+    if (requestedCustomerAccountId && dto.customerAccount) {
+      throw new BadRequestException('Provide either an existing customer account id or a new customer, not both');
+    }
+    if (!requestedCustomerAccountId && !dto.customerAccount) {
+      throw new BadRequestException('A customer account id or a new customer is required for a GB charge');
+    }
+
+    try {
+      const saleState = await this.database.transaction(async (executor) => {
+        if (idempotencyKey) {
+          const existing = await this.getResellerWalletLedgerByIdempotencyForUpdate(executor, idempotencyKey);
+          if (existing) {
+            if (
+              existing.resellerAccountId !== currentReseller.id ||
+              existing.entryType !== 'sale_debit' ||
+              existing.source !== 'client_sale' ||
+              !existing.customerAccountId ||
+              (requestedCustomerAccountId && existing.customerAccountId !== requestedCustomerAccountId)
+            ) {
+              throw new ConflictException('Reseller GB charge idempotency key already belongs to another request');
+            }
+            const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+            const settings = await this.getBillingSettingsRow(executor);
+            return {
+              customerAccountId: existing.customerAccountId,
+              duplicate: true,
+              ledgerEntry: existing,
+              quote: this.calculateResellerGbQuote(
+                reseller,
+                dto.gb,
+                numberFromBigInt(settings.pricePerGb) ?? 0,
+                settings.currency,
+              ),
+            };
+          }
+        }
+
+        const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+        if (reseller.status !== 'active') throw new BadRequestException('Reseller account is not active');
+        const settings = await this.getBillingSettingsRow(executor);
+        const gbPrice = numberFromBigInt(settings.pricePerGb) ?? 0;
+        if (reseller.currency !== settings.currency) {
+          throw new BadRequestException('Reseller wallet currency does not match the billing currency');
+        }
+
+        const quote = this.calculateResellerGbQuote(reseller, dto.gb, gbPrice, settings.currency);
+        if (!quote.canDebit) {
+          throw new BadRequestException(quote.blockedReason ?? 'Reseller wallet balance is not enough for this GB charge');
+        }
+        if (quote.walletDebitAmount <= 0) throw new BadRequestException('GB charge wallet debit amount must be positive');
+
+        const customerAccountId = requestedCustomerAccountId
+          ? await this.prepareExistingResellerSaleCustomer(executor, requestedCustomerAccountId, reseller.id)
+          : await this.createResellerSaleCustomer(executor, dto.customerAccount, reseller.id, actor);
+        const account = await this.getCustomerAccountRowForUpdate(executor, customerAccountId);
+        const volumeBytes = gbToBytes(dto.gb);
+        if (volumeBytes <= 0) throw new BadRequestException('GB charge volume must be positive');
+        const quotaLimitBeforeBytes = numberFromBigInt(account.quotaLimitBytes);
+        const usedBytes = numberFromBigInt(account.usedBytes) ?? 0;
+        const quotaLimitAfterBytes = addPositiveBytes(
+          quotaLimitBeforeBytes ?? usedBytes,
+          volumeBytes,
+          'Reseller GB charge quota would exceed the safe byte limit',
+        );
+
+        await executor.query(
+          `
+            UPDATE customer_accounts
+            SET quota_limit_bytes = $1,
+                updated_at = now()
+            WHERE id = $2
+          `,
+          [quotaLimitAfterBytes, customerAccountId],
+        );
+
+        const ledgerEntry = await this.insertResellerWalletLedgerEntry(executor, reseller, {
+          amount: -quote.walletDebitAmount,
+          actor,
+          clientConfigId: null,
+          customerAccountId,
+          entryType: 'sale_debit',
+          idempotencyKey,
+          metadata: {
+            ...(dto.metadata ?? {}),
+            resellerGbCharge: true,
+            gb: dto.gb,
+            gbPrice,
+            costAmount: quote.costAmount,
+            marginAmount: quote.marginAmount,
+            resellerSellPrice: quote.resellerSellPrice,
+            quotaLimitBeforeBytes,
+            quotaLimitAfterBytes,
+          },
+          notes: normalizeNullableString(dto.notes),
+          source: 'client_sale',
+          sourceId: null,
+          volumePackageId: null,
+        });
+
+        await this.audit.record(
+          actor,
+          'reseller_wallet.gb_charge',
+          'reseller_account',
+          reseller.id,
+          {
+            customerAccountId,
+            ledgerEntryId: ledgerEntry.id,
+            gb: dto.gb,
+            gbPrice,
+            costAmount: quote.costAmount,
+            marginAmount: quote.marginAmount,
+            resellerSellPrice: quote.resellerSellPrice,
+            walletDebitAmount: quote.walletDebitAmount,
+            quotaLimitBeforeBytes,
+            quotaLimitAfterBytes,
+            volumeBytes,
+          },
+          executor,
+        );
+
+        return { customerAccountId, duplicate: false, ledgerEntry, quote };
+      });
+
+      return {
+        reseller: await this.getResellerAccount(currentReseller.id),
+        customerAccount: await this.getCustomerAccount(saleState.customerAccountId),
+        ledgerEntry: this.mapResellerWalletLedger(saleState.ledgerEntry),
+        quote: saleState.quote,
+        duplicate: saleState.duplicate,
+      };
+    } catch (error) {
+      throwConflictIfUniqueViolation(error, 'Reseller GB charge already exists');
+      throw error;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Seller oversight: an admin drill-down into a given seller's customers + usage.
+  // ---------------------------------------------------------------------------
+
+  async listResellerCustomerAccountsForAdmin(resellerAccountId: string): Promise<AdminCustomerAccountSummary[]> {
+    await this.ensureResellerAccountExists(this.database, resellerAccountId);
+    return this.listCustomerAccounts({ resellerAccountId, archived: 'all', limit: 500 });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reseller card-to-card wallet top-up requests (reseller requests -> admin approves,
+  // crediting the wallet). Mirrors the Telegram deposit-slip -> Top-ups approval flow.
+  // ---------------------------------------------------------------------------
+
+  async createResellerTopupRequest(
+    dto: CreateResellerTopupRequestDto,
+    receipt: { buffer: Buffer; contentType: string } | null,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerTopupRequest> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    const amount = normalizeMoneyAmount(dto.amount, 'amount');
+    if (amount <= 0) throw new BadRequestException('Reseller top-up amount must be positive');
+    if (!receipt || !receipt.buffer?.length) {
+      throw new BadRequestException('A card-to-card receipt image is required');
+    }
+
+    const id = await this.database.transaction(async (executor) => {
+      const inserted = await executor.query<{ id: string }>(
+        `
+          INSERT INTO reseller_wallet_topup_requests (
+            reseller_account_id, amount, currency, receipt_bytes, receipt_content_type, note, status
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+          RETURNING id
+        `,
+        [reseller.id, amount, reseller.currency, receipt.buffer, receipt.contentType, normalizeNullableString(dto.note)],
+      );
+      const requestId = inserted.rows[0].id;
+      await this.audit.record(
+        actor,
+        'reseller_wallet.topup_request.create',
+        'reseller_wallet_topup_request',
+        requestId,
+        { resellerAccountId: reseller.id, amount, currency: reseller.currency },
+        executor,
+      );
+      return requestId;
+    });
+
+    return this.getResellerTopupRequest(id);
+  }
+
+  async listResellerTopupRequestsForReseller(
+    resellerAccountId: string,
+    limit: number,
+  ): Promise<AdminResellerTopupRequest[]> {
+    const result = await this.database.query<ResellerTopupRequestRow>(
+      `${this.resellerTopupRequestSelectSql()}
+       WHERE t.reseller_account_id = $1
+       ORDER BY t.created_at DESC
+       LIMIT $2`,
+      [resellerAccountId, limit],
+    );
+    return result.rows.map((row) => this.mapResellerTopupRequest(row));
+  }
+
+  async listResellerTopupRequestsForActor(actor: AuthActor | undefined): Promise<AdminResellerTopupRequest[]> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    return this.listResellerTopupRequestsForReseller(reseller.id, 100);
+  }
+
+  async listAdminResellerTopupRequests(status: string | undefined): Promise<AdminResellerTopupRequest[]> {
+    const normalizedStatus = status === 'pending' || status === 'approved' || status === 'rejected' ? status : null;
+    const result = await this.database.query<ResellerTopupRequestRow>(
+      `${this.resellerTopupRequestSelectSql()}
+       WHERE ($1::text IS NULL OR t.status = $1)
+       ORDER BY t.created_at DESC
+       LIMIT 200`,
+      [normalizedStatus],
+    );
+    return result.rows.map((row) => this.mapResellerTopupRequest(row));
+  }
+
+  async getResellerTopupRequest(id: string): Promise<AdminResellerTopupRequest> {
+    const result = await this.database.query<ResellerTopupRequestRow>(
+      `${this.resellerTopupRequestSelectSql()} WHERE t.id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Reseller top-up request not found');
+    return this.mapResellerTopupRequest(row);
+  }
+
+  async approveResellerTopupRequest(id: string, actor: AuthActor | undefined): Promise<AdminResellerTopupRequest> {
+    const reviewer = actor?.id ?? null;
+    const outcome = await this.database.transaction((executor) =>
+      approveResellerTopupInTransaction(executor, id, { reviewer }),
+    );
+    await this.audit.record(actor, 'reseller_wallet.topup_request.approve', 'reseller_wallet_topup_request', id, {
+      resellerAccountId: outcome.resellerAccountId,
+      amount: outcome.amount,
+      walletLedgerId: outcome.walletLedgerId,
+      balanceBeforeAmount: outcome.balanceBeforeAmount,
+      balanceAfterAmount: outcome.balanceAfterAmount,
+    });
+    return this.getResellerTopupRequest(id);
+  }
+
+  async rejectResellerTopupRequest(
+    id: string,
+    reason: string | null,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerTopupRequest> {
+    const reviewer = actor?.id ?? null;
+    const normalizedReason = reason?.trim() || null;
+    const outcome = await this.database.transaction((executor) =>
+      rejectResellerTopupInTransaction(executor, id, { reviewer, reason: normalizedReason }),
+    );
+    await this.audit.record(actor, 'reseller_wallet.topup_request.reject', 'reseller_wallet_topup_request', id, {
+      resellerAccountId: outcome.resellerAccountId,
+      reason: normalizedReason,
+    });
+    return this.getResellerTopupRequest(id);
+  }
+
+  /** Receipt bytes for an admin viewer (any request). Streamed via an authed endpoint. */
+  async getResellerTopupReceipt(id: string): Promise<{ buffer: Buffer; contentType: string }> {
+    return this.readResellerTopupReceipt(id, null);
+  }
+
+  /** Receipt bytes for the owning reseller only (IDOR-guarded to the actor's account). */
+  async getResellerTopupReceiptForActor(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    return this.readResellerTopupReceipt(id, reseller.id);
+  }
+
+  private async readResellerTopupReceipt(
+    id: string,
+    resellerAccountId: string | null,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const result = await this.database.query<{
+      receiptBytes: Buffer | null;
+      receiptContentType: string | null;
+      resellerAccountId: string;
+    }>(
+      `
+        SELECT receipt_bytes AS "receiptBytes",
+               receipt_content_type AS "receiptContentType",
+               reseller_account_id AS "resellerAccountId"
+        FROM reseller_wallet_topup_requests
+        WHERE id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Reseller top-up request not found');
+    if (resellerAccountId && row.resellerAccountId !== resellerAccountId) {
+      throw new ForbiddenException('This top-up request does not belong to your account');
+    }
+    if (!row.receiptBytes || !row.receiptBytes.length) {
+      throw new NotFoundException('This request has no receipt');
+    }
+    return {
+      buffer: Buffer.isBuffer(row.receiptBytes) ? row.receiptBytes : Buffer.from(row.receiptBytes),
+      contentType: row.receiptContentType || 'application/octet-stream',
+    };
+  }
+
+  private resellerTopupRequestSelectSql(): string {
+    return `
+      SELECT
+        t.id,
+        t.reseller_account_id AS "resellerAccountId",
+        ra.display_name AS "resellerDisplayName",
+        t.amount,
+        t.currency,
+        t.status,
+        (t.receipt_bytes IS NOT NULL) AS "hasReceipt",
+        t.note,
+        t.created_at AS "createdAt",
+        t.reviewed_by AS "reviewedBy",
+        t.reviewed_at AS "reviewedAt",
+        t.wallet_ledger_id AS "walletLedgerId"
+      FROM reseller_wallet_topup_requests t
+      LEFT JOIN reseller_accounts ra ON ra.id = t.reseller_account_id
+    `;
+  }
+
+  private mapResellerTopupRequest(row: ResellerTopupRequestRow): AdminResellerTopupRequest {
+    const status = row.status === 'approved' || row.status === 'rejected' ? row.status : 'pending';
+    return {
+      id: row.id,
+      reference: resellerTopupReference(row.id),
+      resellerAccountId: row.resellerAccountId,
+      resellerDisplayName: row.resellerDisplayName ?? null,
+      amount: numberFromBigInt(row.amount) ?? 0,
+      currency: row.currency,
+      status,
+      hasReceipt: Boolean(row.hasReceipt),
+      note: row.note ?? null,
+      createdAt: row.createdAt.toISOString(),
+      reviewedBy: row.reviewedBy ?? null,
+      reviewedAt: row.reviewedAt?.toISOString() ?? null,
+      walletLedgerId: row.walletLedgerId ?? null,
     };
   }
 
@@ -8794,9 +9249,12 @@ export class BillingService {
     reseller: ResellerAccountRow,
     volumePackage: VolumePackageRow,
   ): AdminResellerPackageQuote {
-    const customerPriceAmount = numberFromBigInt(volumePackage.totalPrice) ?? 0;
+    // Cost-based model (locked 2026-07-27): the package total_price IS the platform
+    // COST the reseller pays; the reseller keeps the margin as markup on top of it.
+    const costAmount = numberFromBigInt(volumePackage.totalPrice) ?? 0;
     const sellerMarginBps = normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
-    const { sellerMarginAmount, walletDebitAmount } = computeResellerSaleAmounts(customerPriceAmount, sellerMarginBps);
+    const amounts = computeResellerSaleAmounts(costAmount, sellerMarginBps);
+    const walletDebitAmount = amounts.walletDebitAmount;
     const balanceBeforeAmount = numberFromBigInt(reseller.balanceAmount) ?? 0;
     const creditLimitAmount = numberFromBigInt(reseller.creditLimitAmount) ?? 0;
     const balanceAfterAmount = balanceBeforeAmount - walletDebitAmount;
@@ -8818,10 +9276,58 @@ export class BillingService {
       volumePackageId: volumePackage.id,
       packageName: volumePackage.name,
       currency: volumePackage.currency,
-      customerPriceAmount,
+      customerPriceAmount: amounts.costAmount,
+      costAmount: amounts.costAmount,
       sellerMarginBps,
-      sellerMarginAmount,
+      sellerMarginAmount: amounts.sellerMarginAmount,
+      resellerSellPrice: amounts.resellerSellPrice,
       walletDebitAmount,
+      balanceBeforeAmount,
+      balanceAfterAmount,
+      creditLimitAmount,
+      canDebit,
+      blockedReason,
+    };
+  }
+
+  /**
+   * Quote for a per-GB reseller sale at the current GB price. Margin = markup on
+   * COST: the wallet is debited `costAmount` (= GB × gbPrice) and the reseller keeps
+   * `marginAmount` (= cost × marginBps). Pure computation over the reseller row.
+   */
+  private calculateResellerGbQuote(
+    reseller: ResellerAccountRow,
+    gb: number,
+    gbPrice: number,
+    settingsCurrency: string,
+  ): AdminResellerGbQuote {
+    const sellerMarginBps = normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
+    const costAmount = computeResellerGbCost(gb, gbPrice);
+    const amounts = computeResellerSaleAmounts(costAmount, sellerMarginBps);
+    const balanceBeforeAmount = numberFromBigInt(reseller.balanceAmount) ?? 0;
+    const creditLimitAmount = numberFromBigInt(reseller.creditLimitAmount) ?? 0;
+    const balanceAfterAmount = balanceBeforeAmount - amounts.walletDebitAmount;
+    const currencyMatches = reseller.currency === settingsCurrency;
+    const canDebit = currencyMatches && reseller.status === 'active'
+      && walletCanCoverDebit(balanceAfterAmount, creditLimitAmount);
+    const blockedReason = canDebit
+      ? null
+      : !currencyMatches
+        ? 'currency_mismatch'
+        : reseller.status !== 'active'
+          ? 'reseller_inactive'
+          : 'insufficient_reseller_wallet_balance';
+
+    return {
+      resellerAccountId: reseller.id,
+      currency: reseller.currency,
+      gbPrice,
+      gb,
+      costAmount: amounts.costAmount,
+      walletDebitAmount: amounts.walletDebitAmount,
+      sellerMarginBps,
+      marginAmount: amounts.sellerMarginAmount,
+      resellerSellPrice: amounts.resellerSellPrice,
       balanceBeforeAmount,
       balanceAfterAmount,
       creditLimitAmount,
