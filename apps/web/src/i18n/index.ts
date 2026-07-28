@@ -28,8 +28,12 @@ function readInitialLang(): Lang {
   return stored === 'en' || stored === 'fa' ? stored : 'en';
 }
 
+// Persian temporarily disabled: flip to true to restore the fa toggle.
+export const WEB_LANGUAGE_TOGGLE_ENABLED = false;
+
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState<Lang>(readInitialLang);
+  const [stored, setLang] = useState<Lang>(readInitialLang);
+  const lang: Lang = WEB_LANGUAGE_TOGGLE_ENABLED ? stored : 'en';
   const dir: 'rtl' | 'ltr' = lang === 'fa' ? 'rtl' : 'ltr';
 
   useEffect(() => {

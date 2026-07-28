@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.84 - 2026-07-27
+
+- **Persian temporarily disabled (English-only).** The dashboard and the web landing page are pinned to English and their language toggles hidden, behind a single flag each (`LANGUAGE_TOGGLE_ENABLED` in dashboard `i18n.ts`, `WEB_LANGUAGE_TOGGLE_ENABLED` in web `i18n/index.ts`) — flip to `true` to restore Farsi + the toggle everywhere. The Persian translations are untouched, just not selectable.
+
 ## 0.114.83 - 2026-07-27
 
 - **Event-driven failover: sync the reserve the moment the village MikroTik goes dark.** New `VillageFailoverService` checks the village router's **live reachability** (`RoutersService.getStatus().online`, a real MikroTik probe) every ~10 min (`AFROWS_VILLAGE_CHECK_MINUTES`); when it sees the router offline (power cut) it **immediately force-re-syncs the reserve subscriptions** — the automatic version of the operator's manual "Sync" — so the bought-VLESS reserve has the provider's current exits to fail over to instead of stale/dead ones. Throttled (≤ every 8 min), non-fatal, `AFROWS_VILLAGE_FAILOVER=false` to disable, `AFROWS_VILLAGE_ROUTER_LABEL` to pin which router is the village. Complements the 20-min baseline refresh (0.114.82). **Needs live verification against a real village-down (the router-identification heuristic + detection) — to be confirmed during the daily 12–14 window.**

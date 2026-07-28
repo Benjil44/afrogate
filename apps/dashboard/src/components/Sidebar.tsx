@@ -3,6 +3,7 @@ import type { AdminSessionResponse } from '@afrows/shared';
 import { appVersion, resellerNavViews } from '../app-config';
 import type { ActiveView, NavItemData, SidebarAlertState } from '../dashboard-types';
 import { dashboardLanguageLabel } from '../formatters';
+import { LANGUAGE_TOGGLE_ENABLED } from '../i18n';
 import type { DashboardLanguage, DashboardStrings } from '../i18n';
 import { ADVANCED_NAV, MAIN_NAV } from '../nav-config';
 import { canViewAdminUsers, canViewAuditLogs, canViewBackupStatus, canViewReports } from '../session-access';
@@ -286,6 +287,7 @@ export function LanguageButton({
   variant?: 'dark' | 'light';
   t: DashboardStrings;
 }) {
+  if (!LANGUAGE_TOGGLE_ENABLED) return null; // Persian temporarily disabled
   const className = variant === 'light'
     ? 'inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-afro-line px-2 text-afro-ink hover:border-afro-teal hover:text-afro-teal'
     : 'inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-[#334852] px-2 text-[#c8d7d5] hover:border-[#5c7782] hover:text-white';
