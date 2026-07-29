@@ -112,6 +112,32 @@ export function ResellerGbHero({
   );
 }
 
+/**
+ * Human explanation for a blocked quote. `canDebit=false` next to a healthy
+ * balance (currency_mismatch / reseller_inactive) otherwise looks like a broken
+ * button — name the actual reason and who can fix it.
+ */
+function gbSaleBlockedMessage(
+  quote: ResellerGbSaleQuote,
+  format: DashboardFormatters,
+  t: DashboardStrings,
+): { text: string; tone: Tone } {
+  const s = t.reseller;
+  switch (quote.blockedReason) {
+    case 'currency_mismatch':
+      return { text: s.sellBlockedCurrencyMismatch, tone: 'critical' };
+    case 'reseller_inactive':
+      return { text: s.sellBlockedInactive, tone: 'critical' };
+    default:
+      // insufficient_reseller_wallet_balance (and any unknown reason): show the
+      // available balance so the fix (top up) is obvious.
+      return {
+        text: s.sellBlockedInsufficientBalance(formatMoneyAmount(quote.balanceBeforeAmount, quote.currency, format)),
+        tone: 'warning',
+      };
+  }
+}
+
 type GbSaleFormState = {
   customerAccountId: string;
   displayName: string;
@@ -287,9 +313,14 @@ export function ResellerGbSellPanel({
             {isSelling ? t.billing.saving : s.sellNow}
           </button>
           {quote && !quote.canDebit ? (
-            <StatusBadge tone="warning">
-              {`${t.billing.resellerAvailableBalance}: ${formatMoneyAmount(quote.balanceBeforeAmount, quote.currency, format)}`}
-            </StatusBadge>
+            (() => {
+              const blocked = gbSaleBlockedMessage(quote, format, t);
+              return (
+                <span data-reseller-gb-blocked={quote.blockedReason ?? 'unknown'} role="status">
+                  <StatusBadge tone={blocked.tone}>{blocked.text}</StatusBadge>
+                </span>
+              );
+            })()
           ) : null}
           {message ? <span className={mutedTextClass}>{message}</span> : null}
         </div>

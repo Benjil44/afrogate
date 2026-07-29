@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -428,7 +429,19 @@ export class BillingController {
   @Post('reseller/wallet/topup-requests')
   @Roles('reseller')
   @Permissions('resellerWallet:read')
-  @UseInterceptors(FileInterceptor('receipt', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(
+    FileInterceptor('receipt', {
+      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+      // Receipts are card-to-card photos; only accept images (reject PDFs, HTML, etc.).
+      fileFilter: (_req: unknown, file: { mimetype: string }, cb: (error: Error | null, accept: boolean) => void) => {
+        if (/^image\//i.test(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Receipt must be an image file'), false);
+        }
+      },
+    }),
+  )
   async createResellerTopupRequest(
     @UploadedFile() file: UploadedReceiptFile | undefined,
     @Body() payload: CreateResellerTopupRequestDto,
@@ -457,7 +470,10 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<StreamableFile> {
     const { buffer, contentType } = await this.billingService.getResellerTopupReceiptForActor(id, request.actor);
-    return new StreamableFile(buffer, { type: contentType });
+    return new StreamableFile(buffer, {
+      type: contentType,
+      disposition: `inline; filename="receipt-${id}"`,
+    });
   }
 
   @Patch('reseller/customer-accounts/:id')
@@ -619,13 +635,18 @@ export class BillingController {
     return { request: await this.billingService.rejectResellerTopupRequest(id, body.reason ?? null, request.actor) };
   }
 
+  // Receipt IMAGES contain card/PII; restrict the view to admin, matching the
+  // approve/reject gating. The list endpoint above stays admin/supervisor/support.
   @Get('reseller-topups/:id/receipt')
-  @Roles('admin', 'supervisor', 'support')
+  @Roles('admin')
   async getResellerTopupReceipt(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<StreamableFile> {
     const { buffer, contentType } = await this.billingService.getResellerTopupReceipt(id);
-    return new StreamableFile(buffer, { type: contentType });
+    return new StreamableFile(buffer, {
+      type: contentType,
+      disposition: `inline; filename="receipt-${id}"`,
+    });
   }
 
   @Get('customer-accounts')

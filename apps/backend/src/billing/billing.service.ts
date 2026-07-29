@@ -2279,12 +2279,16 @@ export class BillingService {
         if (idempotencyKey) {
           const existing = await this.getResellerWalletLedgerByIdempotencyForUpdate(executor, idempotencyKey);
           if (existing) {
+            // The original charge stored the requested GB in metadata; a replay with a
+            // different gb (or customer) is a real conflict, not a re-run of the same request.
+            const existingGb = typeof existing.metadata?.gb === 'number' ? existing.metadata.gb : null;
             if (
               existing.resellerAccountId !== currentReseller.id ||
               existing.entryType !== 'sale_debit' ||
               existing.source !== 'client_sale' ||
               !existing.customerAccountId ||
-              (requestedCustomerAccountId && existing.customerAccountId !== requestedCustomerAccountId)
+              (requestedCustomerAccountId && existing.customerAccountId !== requestedCustomerAccountId) ||
+              existingGb !== dto.gb
             ) {
               throw new ConflictException('Reseller GB charge idempotency key already belongs to another request');
             }
@@ -2308,7 +2312,8 @@ export class BillingService {
         if (reseller.status !== 'active') throw new BadRequestException('Reseller account is not active');
         const settings = await this.getBillingSettingsRow(executor);
         const gbPrice = numberFromBigInt(settings.pricePerGb) ?? 0;
-        if (reseller.currency !== settings.currency) {
+        // Case-insensitive: identical currencies (e.g. 'IRT' vs normalized 'irt') must pass.
+        if (normalizeCurrency(reseller.currency) !== normalizeCurrency(settings.currency)) {
           throw new BadRequestException('Reseller wallet currency does not match the billing currency');
         }
 
@@ -6017,7 +6022,7 @@ export class BillingService {
     await executor.query(
       `
         INSERT INTO billing_settings (setting_key, currency, price_per_gb)
-        VALUES ('default', 'toman', 0)
+        VALUES ('default', 'IRT', 0)
         ON CONFLICT (setting_key) DO NOTHING
       `,
     );
@@ -9307,7 +9312,9 @@ export class BillingService {
     const balanceBeforeAmount = numberFromBigInt(reseller.balanceAmount) ?? 0;
     const creditLimitAmount = numberFromBigInt(reseller.creditLimitAmount) ?? 0;
     const balanceAfterAmount = balanceBeforeAmount - amounts.walletDebitAmount;
-    const currencyMatches = reseller.currency === settingsCurrency;
+    // Case-insensitive: settings currency may be seeded 'IRT' while the reseller row
+    // stores the normalized (lowercased) 'irt'. Only a genuine currency difference blocks.
+    const currencyMatches = normalizeCurrency(reseller.currency) === normalizeCurrency(settingsCurrency);
     const canDebit = currencyMatches && reseller.status === 'active'
       && walletCanCoverDebit(balanceAfterAmount, creditLimitAmount);
     const blockedReason = canDebit

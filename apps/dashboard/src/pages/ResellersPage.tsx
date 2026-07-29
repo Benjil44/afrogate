@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Loader2, LogIn, Store, Users } from 'lucide-react';
 import type { AdminCustomerAccountSummary, AdminResellerAccountSummary, AdminResellerWalletLedgerEntry, AdminUserSummary } from '@afrows/shared';
 import { createAdminReseller, fetchAdminResellers, fetchAdminUsers, fetchResellerWalletLedger, topUpResellerWallet, updateAdminReseller } from '../api/admin';
-import { fetchResellerCustomers, impersonateReseller, type ImpersonateResellerResult } from '../api/reseller-pricing';
+import { fetchGbPrice, fetchResellerCustomers, impersonateReseller, type ImpersonateResellerResult } from '../api/reseller-pricing';
 import { DataTable, EmptyState, PanelHeading, StatusBadge } from '../components/primitives';
 import { billingStatusTone, customerAccountStatusLabel } from '../labels';
 import type { DataTableColumn } from '../dashboard-types';
@@ -34,6 +34,10 @@ export function ResellersPage({
   const [displayName, setDisplayName] = useState('');
   const [marginPct, setMarginPct] = useState('20');
   const [currency, setCurrency] = useState('IRT');
+  // Platform billing currency (from the GB-price settings). A reseller whose
+  // wallet currency differs is silently blocked (currency_mismatch) on every
+  // per-GB sale, so the create form prefills + locks the currency to it.
+  const [platformCurrency, setPlatformCurrency] = useState<string | null>(null);
   const [creditLimit, setCreditLimit] = useState('0');
   const [busy, setBusy] = useState(false);
   const [topUpFor, setTopUpFor] = useState<string | null>(null);
@@ -62,6 +66,17 @@ export function ResellersPage({
     void load();
   }, [sessionToken]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchGbPrice(sessionToken, controller.signal)
+      .then((price) => {
+        setPlatformCurrency(price.currency);
+        setCurrency(price.currency);
+      })
+      .catch(() => undefined); // settings unavailable -> currency stays editable
+    return () => controller.abort();
+  }, [sessionToken]);
+
   // reseller-role users not yet linked to a reseller account
   const availableLogins = useMemo(() => {
     const linked = new Set(rows.map((r) => r.adminUserId));
@@ -77,7 +92,7 @@ export function ResellersPage({
         adminUserId,
         displayName: displayName.trim(),
         sellerMarginBps: Math.round((Number(marginPct) || 0) * 100),
-        currency: currency.trim() || 'IRT',
+        currency: platformCurrency ?? (currency.trim() || 'IRT'),
         creditLimitAmount: Math.round(Number(creditLimit) || 0),
       });
       setShowAdd(false);
@@ -273,7 +288,17 @@ export function ResellersPage({
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.marginPercent}</span>
             <input className={inputClass} inputMode="numeric" value={marginPct} onChange={(e) => setMarginPct(e.target.value)} /></label>
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.currency}</span>
-            <input className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value)} /></label>
+            <input
+              className={inputClass}
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              readOnly={platformCurrency !== null}
+              aria-describedby={platformCurrency !== null ? 'reseller-currency-hint' : undefined}
+              data-reseller-currency-input="true"
+            />
+            {platformCurrency !== null ? (
+              <span id="reseller-currency-hint" className="text-[12px] text-afro-muted">{s.currencyLocked}</span>
+            ) : null}</label>
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.creditLimit}</span>
             <input className={inputClass} inputMode="numeric" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} /></label>
           <div className="md:col-span-2">

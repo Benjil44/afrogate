@@ -40,9 +40,11 @@ export class UpdateBillingSettingsDto {
 }
 
 export class UpdateGbPriceDto {
+  // Must be positive: a 0 price is accepted by validation but then bricks every per-GB
+  // sale (createResellerGbCharge rejects a zero wallet debit). Pause a reseller instead.
   @Type(() => Number)
   @IsInt()
-  @Min(0)
+  @Min(1)
   @Max(MAX_PRICE)
   gbPrice!: number;
 }
