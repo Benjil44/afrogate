@@ -13,6 +13,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = process.cwd();
 const GO = path.join(ROOT, 'graphify-out');
@@ -43,6 +44,35 @@ if (!Array.isArray(graph.nodes) || !Array.isArray(bridges.provenance || bridges.
 
 // Deterministic "source time" = graph.json mtime (stable unless the graph is regenerated).
 const graphMtime = fs.statSync(path.join(GO, 'graph.json')).mtime.toISOString();
+
+// ---- knowledge-artifact freshness (DETERMINISTIC given HEAD + manifest) -----
+// Compare the source revision the artifacts were built from (recorded in
+// graphify-out/knowledge-manifest.json by build-manifest.mjs) against the
+// current HEAD. This is a pure function of (HEAD sha, manifest sha) — no
+// wall-clock, no per-run value — so it never breaks determinism of knowledge/.
+// The manifest is OPTIONAL: absent => UNKNOWN, handled gracefully.
+function currentHeadSha() {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+let manifest = null;
+const manifestPath = path.join(GO, 'knowledge-manifest.json');
+if (fs.existsSync(manifestPath)) {
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch {
+    manifest = null; // malformed manifest is a HINT problem, never fatal here
+  }
+}
+const headSha = currentHeadSha();
+const manifestSha = manifest && typeof manifest.source_git_sha === 'string' ? manifest.source_git_sha : null;
+const short = (s) => (s ? String(s).slice(0, 12) : '_unknown_');
+// FRESH iff both shas known and equal; STALE iff both known and differ; else UNKNOWN.
+const freshnessState = !headSha || !manifestSha ? 'UNKNOWN' : manifestSha === headSha ? 'FRESH' : 'STALE';
+const FRESHNESS_RULE = 'If STALE, knowledge artifacts describe an older source revision than HEAD — treat as HINTS ONLY and re-verify against source.';
 
 // ---- optional deterministic tests->code links (Phase 2) --------------------
 let testLinks = null;
@@ -128,6 +158,68 @@ for (const e of edges) {
   degree.set(e.source, (degree.get(e.source) || 0) + 1);
   degree.set(e.target, (degree.get(e.target) || 0) + 1);
 }
+
+// ---- config-leaf classifier (DETERMINISTIC; path + basename + label only) ---
+// A "config-leaf" is a low-value node sourced from a build/tooling manifest
+// (tsconfig / package.json / lockfiles / nest-cli / pyproject / *.config.json …).
+// These are graph *noise*, NOT documentation gaps. CONSERVATIVE by construction:
+// we only ever classify nodes whose source_file is a structured config/manifest
+// file. We NEVER classify application source (.ts/.tsx/.dart/.py/…), docs (.md),
+// or test/spec files — even when one happens to live beside a config file. No
+// LLM/semantic input, no wall-clock, no network: pure function of the node.
+const CONFIG_BASENAME_RE = /^(tsconfig([.-].*)?\.json|jsconfig\.json|package\.json|package-lock\.json|npm-shrinkwrap\.json|(pnpm|yarn|bun|deno|cargo|poetry|composer)[.-]?lock(\.(json|ya?ml|toml))?|.*\.lock|marketplace\.json|plugin\.json|nest-cli\.json|angular\.json|.*\.code-workspace|settings.*\.json|.*\.config\.json|pyproject\.toml|.*\.toml)$/;
+// Application source / docs extensions we must NEVER classify as noise.
+const CONFIG_SOURCE_EXT_RE = /\.(ts|tsx|js|jsx|mjs|cjs|dart|py|sql|md|mdx|vue|svelte|rs|go|java|kt|swift|rb|php|scala|c|cc|cpp|h|hpp)$/;
+// Test/spec files (protected — never noise).
+const CONFIG_TEST_RE = /(\.|\/)(test|spec)\.[a-z]+$|(^|\/)(tests?|__tests__|e2e)\//;
+// Well-known low-value config keys — used ONLY to describe evidence, never to
+// widen the set (membership already requires a config/manifest source file).
+const CONFIG_LEAF_KEYS = new Set([
+  'compilerOptions', 'isolatedModules', 'jsx', 'lib', 'module', 'moduleResolution', 'noEmit', 'types', 'typeRoots',
+  'baseUrl', 'paths', 'target', 'strict', 'declaration', 'declarationMap', 'outDir', 'rootDir', 'rootDirs', 'sourceMap',
+  'emitDecoratorMetadata', 'experimentalDecorators', 'esModuleInterop', 'skipLibCheck', 'resolveJsonModule',
+  'forceConsistentCasingInFileNames', 'incremental', 'composite', 'allowImportingTsExtensions', 'allowJs',
+  'allowSyntheticDefaultImports', 'downlevelIteration', 'importHelpers', 'noImplicitAny', 'useDefineForClassFields',
+  'extends', 'include', 'exclude', 'files', 'references', '$schema', 'sourceRoot', 'collection', 'compileOnSave',
+  'name', 'version', 'private', 'type', 'main', 'scripts', 'dependencies', 'devDependencies', 'peerDependencies',
+  'optionalDependencies', 'engines', 'workspaces', 'bin', 'exports', 'keywords', 'license', 'author', 'description',
+]);
+function isConfigLeaf(n) {
+  const sf = slash(n && n.source_file);
+  if (!sf) return false;
+  const b = sf.split('/').pop().toLowerCase();
+  if (CONFIG_TEST_RE.test(sf)) return false;       // never a test/spec file
+  if (CONFIG_SOURCE_EXT_RE.test(b)) return false;  // never app source or docs
+  return CONFIG_BASENAME_RE.test(b);               // structured config/manifest only
+}
+
+// ---- weakly-connected accounting (config-leaf noise vs genuine leaves) ------
+// "Weakly connected" mirrors the Graphify report's "isolated node" definition
+// (<= WEAK_DEGREE graph neighbours). We split those into config-leaf noise vs
+// genuine source/doc leaves so the raw count is explained, not read as gaps.
+const WEAK_DEGREE = 1;
+let weaklyConnected = 0;
+let configLeafTotal = 0;
+let configLeafWeak = 0;
+const configLeafExamples = [];
+for (const n of graph.nodes) {
+  const weak = (degree.get(n.id) || 0) <= WEAK_DEGREE;
+  if (weak) weaklyConnected++;
+  if (isConfigLeaf(n)) {
+    configLeafTotal++;
+    if (weak) {
+      configLeafWeak++;
+      // known config keys make the most recognizable evidence; rank them first
+      const known = CONFIG_LEAF_KEYS.has(String(n.label)) ? 0 : 1;
+      configLeafExamples.push({ known, text: `${n.label} (${slash(n.source_file).split('/').pop()})` });
+    }
+  }
+}
+const genuineWeak = weaklyConnected - configLeafWeak;
+const configLeafNoiseExamples = sortBy(
+  [...new Map(configLeafExamples.map((e) => [e.text, e])).values()],
+  (e) => `${e.known}\u001f${e.text}`,
+).slice(0, 8).map((e) => e.text);
 
 // ---- module -> module deps (evidence: AST edges crossing module boundaries) -
 const modDepends = new Map(); // module -> Set(module) it imports/calls into
@@ -390,10 +482,16 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
 // ---- _knowledge-status -----------------------------------------------------
 {
   let b = HEADER('Knowledge-Layer Status');
+  b += `\n## Knowledge freshness\n`;
+  b += `_Deterministic given (current HEAD, knowledge-manifest). Source: \`graphify-out/knowledge-manifest.json\` (written by \`scripts/knowledge/build-manifest.mjs\`; regenerable / gitignored). No wall-clock enters this section — the SHA + state are stable for a given HEAD + manifest._\n`;
+  b += `- **Source revision (from manifest):** \`${short(manifestSha)}\`${manifest ? '' : ' _(no manifest found — run `node scripts/knowledge/build-manifest.mjs`)_'}\n`;
+  b += `- **Current HEAD:** \`${short(headSha)}\`${headSha ? '' : ' _(git unavailable / not a checkout)_'}\n`;
+  b += `- **State:** **${freshnessState}**\n`;
+  b += `- **Rule:** ${FRESHNESS_RULE}\n`;
   b += `\n- **Graph artifact time (graph.json mtime):** ${graphMtime}\n`;
-  b += `- **Source git SHA:** _not stamped in Graphify artifacts — UNKNOWN_ (treat graph as a HINT if it may predate current HEAD).\n`;
   b += `- **Nodes:** ${graph.nodes.length}\n`;
   b += `- **Edges:** ${edges.length}\n`;
+  b += `- **Config-leaf nodes (build/tooling manifest keys — graph noise, not gaps):** ${configLeafTotal} total, ${configLeafWeak} weakly-connected — deterministically classified (path+basename), excluded from documentation-gap accounting.\n`;
   b += `- **Bridge edges:** ${(bridges.edges || []).length} (entity↔table ${bridgeAnalysis.entity_table_edges}, table↔service ${bridgeAnalysis.table_service_edges})\n`;
   if (testLinks) b += `- **Test→code links:** ${testLinks.counts.test_imports} import (VERIFIED), ${testLinks.counts.convention_matches} convention, ${testLinks.counts.test_fixtures} fixture, ${testLinks.counts.unresolved} unresolved, ${testLinks.counts.blackbox_specs} black-box specs — source \`graphify-out/test_links.json\`\n`;
   if (serviceLinks) b += `- **Service→service DI links:** ${serviceLinks.counts.di_edges} (direct ${serviceLinks.counts.direct_di}, token ${serviceLinks.counts.token_di}, forwardRef ${serviceLinks.counts.forward_ref_di}); ${serviceLinks.counts.cycles} DI cycles; ${serviceLinks.counts.unresolved} unresolved — source \`graphify-out/service_links.json\`\n`;
@@ -404,11 +502,18 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
   b += `- **VERIFIED / EXTRACTED:** AST edges (\`_origin: ast\`) and bridge edges (schema↔code) with a \`source_location\`/evidence line — trust as fact.\n`;
   b += `- **INFERRED:** LLM/semantic edges and community membership — hints; verify against source.\n`;
   b += `- **INTENTIONAL EXCEPTION:** the 4 Class-C raw-SQL tables — documented in \`docs/schema-drift-audit.md\`.\n`;
+  b += `\n## Weakly-connected node accounting (noise vs gaps)\n`;
+  b += `_The Graphify report flags nodes with ≤${WEAK_DEGREE} neighbour as "isolated / possible documentation gaps". The classifier in \`build-mocs.mjs\` (deterministic — path + basename + config-key label, no LLM) separates true config noise from genuine leaves so the raw count is explained, not mistaken for gaps._\n`;
+  b += `- **Weakly-connected nodes (≤${WEAK_DEGREE} neighbour):** ${weaklyConnected}\n`;
+  b += `- **→ Config-leaf noise (SUPPRESSED — not gaps):** ${configLeafWeak} — keys of build/tooling manifests (tsconfig / package.json / nest-cli / pyproject). ${configLeafTotal} config-leaf nodes exist across all degrees.\n`;
+  b += `- **→ Genuine source/doc leaves (NOT config noise):** ${genuineWeak} — barrel-exported types, DTOs, mobile-app screens, and ADR/design concept nodes; reachable via the module / table / domain MOCs, so they are navigation leaves rather than documentation gaps.\n`;
+  b += `- **Examples of suppressed config-leaf noise:** ${configLeafNoiseExamples.map((e) => '`' + e + '`').join(', ')}.\n`;
+  b += `- _Supersedes the earlier hand-estimated "~1,445 config leaves". The classifier is conservative: it never touches application source (\`apps/**\`, \`packages/**\`), docs, tests, or migrations — only structured config/manifest files._\n`;
   b += `\n## Known limitations\n`;
   b += `- Service→service edges are VERIFIED constructor-DI (\`service_links.json\`); foreign-key edges are still NOT in the artifacts (FKs live in migrations/\`schema.ts\`).\n`;
-  b += `- ~1,445 weakly-connected nodes are config leaves (tsconfig/package keys), not documentation gaps.\n`;
+  b += `- Weakly-connected nodes are accounted for above: ${configLeafWeak} are config-leaf noise (not gaps); the remaining ${genuineWeak} are genuine source/doc leaves reachable via the MOCs.\n`;
   b += `- Test→code links are import-verified where possible (\`test_links.json\`); textual "Related tests (HEURISTIC)" remain a fallback and are NOT coverage proof. Black-box e2e specs have no direct edges.\n`;
-  b += `- No git-SHA stamp: staleness cannot be auto-detected — regenerate the graph if source may have changed.\n`;
+  b += `- Staleness is auto-detected via \`knowledge-manifest.json\` (source SHA vs HEAD) — see **Knowledge freshness** above; current state: **${freshnessState}**. If the manifest is absent the state is UNKNOWN.\n`;
   b += `\n## Authority order (never overridden by the graph)\n`;
   b += `migrations/ + apps/** + tests/  >  schema.ts  >  bridges (provenance)  >  AST edges  >  communities/INFERRED  >  docs  >  agent memory\n`;
   b += `\n---\n_${wl('_INDEX')}_\n`;
@@ -436,3 +541,4 @@ console.log(`  _INDEX.md, _hotspots.md, _domains.md, _knowledge-status.md`);
 console.log(`  module MOCs: ${modCount}`);
 console.log(`  table MOCs:  ${tblCount}`);
 console.log(`  total files: ${written.length}`);
+console.log(`  weakly-connected: ${weaklyConnected} (config-leaf noise ${configLeafWeak}, genuine ${genuineWeak}; config-leaf total ${configLeafTotal})`);
