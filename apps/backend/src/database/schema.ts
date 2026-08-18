@@ -1382,6 +1382,24 @@ export const mikrotikGatewayUsageCursor = pgTable(
 export type MikrotikGatewayUsageCursorRow = typeof mikrotikGatewayUsageCursor.$inferSelect;
 export type MikrotikGatewayUsageCursorInsert = typeof mikrotikGatewayUsageCursor.$inferInsert;
 
+// Per-Telegram-user session/preference store (migration 0052; 0053 relaxed
+// `language` to nullable with NO default). Natural text PK: telegram_id — a row
+// exists per Telegram id BEFORE any customer account. NO foreign key: the
+// telegram_id <-> customer_accounts.telegram_id join is an intentional soft/ad-hoc
+// lookup, not referential — hence no .references() and no relations(). `state`
+// stays plain jsonb here; its typed shape (TelegramUserState) lives in
+// telegram-user-store.ts. CHECK (language IN ('en','fa')) stays DB-enforced.
+export const telegramUsers = pgTable('telegram_users', {
+  telegramId: text('telegram_id').primaryKey(),
+  chatId: text('chat_id'),
+  language: text('language'),
+  state: jsonb('state'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TelegramUserSelect = typeof telegramUsers.$inferSelect;
+export type TelegramUserInsert = typeof telegramUsers.$inferInsert;
+
 export const serversRelations = relations(servers, ({ many }) => ({
   metrics: many(serverMetrics),
   agentTokens: many(agentTokens),

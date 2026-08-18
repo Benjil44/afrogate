@@ -118,3 +118,34 @@ The ORM is silently wrong about two of the busiest tables, including a self-refe
 **Phase 0.6 (done):** modeled the final column — `tags text[] NOT NULL DEFAULT '{}'` (migration 0044) as `text('tags').array().notNull().default([])` (Postgres `text[]` array, NOT jsonb — distinct from `servers.tags` which is jsonb). No index/constraint/CHECK on it. The original audit's parity regex had missed it (didn't handle the `text[]` array type).
 
 **Current `customer_accounts` parity: 26 of 26 migration columns modeled — FULL migration-authoritative parity.** No column reverse drift (no ORM field absent from migrations). `outbounds` remains 28/28. Both previously-drifted mapped entities are now fully aligned.
+
+## Phase 1 — migration-only table modeling (COMPLETE)
+
+The 13 migration-only tables were resolved as follows. All modeled entities use
+migration-authoritative columns/types/nullability/defaults/PK/indexes/FKs; DB-level
+CHECK constraints are intentionally left DB-enforced (file convention); raw-SQL
+runtime is unchanged; and query-shaped / domain / partial manual row types are
+**retained** (never force-replaced by `$inferSelect`).
+
+**Modeled as Drizzle entities (9):**
+- **Phase 1A** (financial/audit): `telegram_topup_requests`, `gems_ledger`, `reseller_wallet_topup_requests`.
+- **Phase 1B.1**: `outbound_subscriptions` (+ completed the deferred `outbounds.subscription_id` → `outbound_subscriptions.id` ON DELETE CASCADE FK), `wireguard_peers`, `client_device_sightings`.
+- **Phase 1B.2A**: `mikrotik_routers` (FK `customer_account_id` → `customer_accounts` ON DELETE SET NULL).
+- **Phase 1B.2B**: `mikrotik_gateway_usage_cursor` (composite PK; FK `router_id` → `mikrotik_routers` ON DELETE CASCADE).
+- **Final Telegram batch**: `telegram_users`.
+
+**`telegram_users` — intentional modeling decisions:**
+- **Modeled intentionally** — a real per-user session/preference entity (not a raw-SQL idiom).
+- **Natural text PK (`telegram_id`) is intentional** — a row exists per Telegram id *before* any customer account (language chosen at first `/start`).
+- **No FK to `customer_accounts` is intentional** — the `telegram_id` ↔ `customer_accounts.telegram_id` join is a soft/ad-hoc lookup, **not** referential; hence **no `.references()` and no `relations()`**.
+- **`TelegramUserRow` (query-shaped projection), `TelegramUserRecord` (domain object), and `TelegramUserState` (typed JSONB state) are retained** as distinct abstractions. `state` is modeled as **plain `jsonb`**; its typed shape stays in `telegram-user-store.ts`.
+
+**Intentionally raw-SQL-only — Class C (4 tables; NOT unresolved drift):**
+- `mikrotik_wg_samples` — append-only telemetry (bigserial PK, no FK, high-frequency inserts).
+- `mikrotik_wg_rates` — composite-key rate config, UPSERT (no FK).
+- `outbound_test_settings` — boolean **singleton** settings row.
+- `egress_tier_prices` — text-PK 2-row lookup/reference data.
+
+These are idiomatic raw-SQL patterns where ORM modeling adds ceremony without type-safety or FK-visibility benefit. They are **intentional architectural exceptions, not drift**, and should remain raw-SQL-only unless the architecture changes.
+
+**Program status: COMPLETE.** Every migration table is now either a Drizzle entity (**47 of 51** modeled) or one of the **4** documented intentional Class-C raw-SQL exceptions. Mapped-entity drift (`customer_accounts` 26/26, `outbounds` 28/28) is closed. There is no remaining unresolved schema drift.
