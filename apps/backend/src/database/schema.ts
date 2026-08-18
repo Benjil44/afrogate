@@ -11,6 +11,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -1359,6 +1360,27 @@ export const mikrotikRouters = pgTable(
 );
 export type MikrotikRouterRow = typeof mikrotikRouters.$inferSelect;
 export type MikrotikRouterInsert = typeof mikrotikRouters.$inferInsert;
+
+// Phase 1B.2B: per-(router, peer) billing cursor — last absolute WG counters
+// already billed, so each cycle only adds the new delta (migration 0045).
+// Composite PK (router_id, peer_key) is the cursor identity + UPSERT conflict target.
+export const mikrotikGatewayUsageCursor = pgTable(
+  'mikrotik_gateway_usage_cursor',
+  {
+    routerId: text('router_id')
+      .notNull()
+      .references(() => mikrotikRouters.id, { onDelete: 'cascade' }),
+    peerKey: text('peer_key').notNull(),
+    lastRx: bigint('last_rx', { mode: 'number' }).notNull().default(0),
+    lastTx: bigint('last_tx', { mode: 'number' }).notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.routerId, table.peerKey] }),
+  }),
+);
+export type MikrotikGatewayUsageCursorRow = typeof mikrotikGatewayUsageCursor.$inferSelect;
+export type MikrotikGatewayUsageCursorInsert = typeof mikrotikGatewayUsageCursor.$inferInsert;
 
 export const serversRelations = relations(servers, ({ many }) => ({
   metrics: many(serverMetrics),
