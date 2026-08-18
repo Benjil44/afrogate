@@ -1323,6 +1323,43 @@ export const clientDeviceSightings = pgTable(
 export type ClientDeviceSightingSelect = typeof clientDeviceSightings.$inferSelect;
 export type ClientDeviceSightingInsert = typeof clientDeviceSightings.$inferInsert;
 
+// ===========================================================================
+// Phase 1B.2A: operator-managed MikroTik routers (migrations 0038 base, 0041
+// tunnel keys, 0042 egress_enabled, 0045 role + customer link). 18 columns.
+// text (caller-supplied) PK, not uuid. Raw-SQL runtime; DB-level CHECKs (kind,
+// rest_port range, role) stay DB-enforced, not mirrored, per file convention.
+// NOTE (future dependency, NOT modeled here): mikrotik_gateway_usage_cursor
+//   .router_id -> mikrotik_routers(id) ON DELETE CASCADE — deferred to Phase 1B.2B.
+// ===========================================================================
+export const mikrotikRouters = pgTable(
+  'mikrotik_routers',
+  {
+    id: text('id').primaryKey(),
+    label: text('label').notNull(),
+    kind: text('kind').notNull().default('other'),
+    host: text('host').notNull(),
+    restPort: integer('rest_port').notNull().default(80),
+    restUser: text('rest_user').notNull().default('claude'),
+    restPasswordEnc: text('rest_password_enc'),
+    webfigUrl: text('webfig_url'),
+    gamingSourceIp: text('gaming_source_ip'),
+    gamingEnabled: boolean('gaming_enabled').notNull().default(false),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    tunnelPublicKey: text('tunnel_public_key'),
+    tunnelPrivateKeyEnc: text('tunnel_private_key_enc'),
+    egressEnabled: boolean('egress_enabled').notNull().default(false),
+    role: text('role').notNull().default('gateway'),
+    customerAccountId: uuid('customer_account_id').references(() => customerAccounts.id, { onDelete: 'set null' }),
+  },
+  (table) => ({
+    customerIdx: index('mikrotik_routers_customer_idx').on(table.customerAccountId),
+  }),
+);
+export type MikrotikRouterRow = typeof mikrotikRouters.$inferSelect;
+export type MikrotikRouterInsert = typeof mikrotikRouters.$inferInsert;
+
 export const serversRelations = relations(servers, ({ many }) => ({
   metrics: many(serverMetrics),
   agentTokens: many(agentTokens),
