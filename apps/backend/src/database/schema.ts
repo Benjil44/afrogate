@@ -429,10 +429,11 @@ export const outbounds = pgTable(
     latestUpMbps: doublePrecision('latest_up_mbps'),
     lastSpeedTestAt: timestamp('last_speed_test_at', { withTimezone: true }),
     speedTestRequestedAt: timestamp('speed_test_requested_at', { withTimezone: true }),
-    // Subscription linkage added by migration 0032. DB FK:
-    //   subscription_id -> outbound_subscriptions(id) ON DELETE CASCADE.
-    // outbound_subscriptions is not yet a Drizzle entity (Phase 2); add .references() then.
-    subscriptionId: uuid('subscription_id'),
+    // Subscription linkage added by migration 0032. FK modeled in Phase 1B.1 now
+    // that outbound_subscriptions is an entity: subscription_id -> outbound_subscriptions(id) CASCADE.
+    subscriptionId: uuid('subscription_id').references((): AnyPgColumn => outboundSubscriptions.id, {
+      onDelete: 'cascade',
+    }),
     subscriptionKey: text('subscription_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1238,6 +1239,89 @@ export const resellerWalletTopupRequests = pgTable(
 );
 export type ResellerWalletTopupRequestRow = typeof resellerWalletTopupRequests.$inferSelect;
 export type ResellerWalletTopupRequestInsert = typeof resellerWalletTopupRequests.$inferInsert;
+
+// ===========================================================================
+// Phase 1B.1: outbound-subscription + WireGuard / device-sighting tables
+// (migration-authoritative). Raw-SQL runtime; entities are schema-of-record +
+// derived types only. DB-level CHECK constraints (desired_state enum, rx/tx >= 0)
+// stay DB-enforced and are NOT mirrored, per this file's convention. FKs (incl.
+// ON DELETE) ARE modeled at the column level.
+// ===========================================================================
+
+// One subscription URL expands into many child `outbounds` rows (migration 0032).
+export const outboundSubscriptions = pgTable('outbound_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  routeGroup: text('route_group').notNull().default('default'),
+  profileTitle: text('profile_title'),
+  updateIntervalHours: integer('update_interval_hours'),
+  userinfo: jsonb('userinfo').notNull().default(sql`'{}'::jsonb`),
+  enabled: boolean('enabled').notNull().default(true),
+  configCount: integer('config_count').notNull().default(0),
+  lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
+  lastStatus: text('last_status').notNull().default('unknown'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type OutboundSubscriptionSelect = typeof outboundSubscriptions.$inferSelect;
+export type OutboundSubscriptionInsert = typeof outboundSubscriptions.$inferInsert;
+
+// WireGuard peers — one row per client_config delivered over kernel WireGuard
+// (migrations 0033 base, 0034 metered counters, 0047 endpoint_ip). 16 columns.
+export const wireguardPeers = pgTable(
+  'wireguard_peers',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    interface: text('interface').notNull().default('wg0'),
+    clientPublicKey: text('client_public_key').notNull(),
+    encryptedPrivateKey: text('encrypted_private_key').notNull(),
+    clientAddress: text('client_address').notNull(),
+    presharedKey: text('preshared_key'),
+    rxBytes: bigint('rx_bytes', { mode: 'number' }).notNull().default(0),
+    txBytes: bigint('tx_bytes', { mode: 'number' }).notNull().default(0),
+    lastHandshakeAt: timestamp('last_handshake_at', { withTimezone: true }),
+    desiredState: text('desired_state').notNull().default('present'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    meteredRxBytes: bigint('metered_rx_bytes', { mode: 'number' }).notNull().default(0),
+    meteredTxBytes: bigint('metered_tx_bytes', { mode: 'number' }).notNull().default(0),
+    endpointIp: text('endpoint_ip'),
+  },
+  (table) => ({
+    clientConfigUnique: uniqueIndex('wireguard_peers_client_config_unique').on(table.clientConfigId),
+    pubkeyUnique: uniqueIndex('wireguard_peers_pubkey_unique').on(table.interface, table.clientPublicKey),
+    addressUnique: uniqueIndex('wireguard_peers_address_unique').on(table.interface, table.clientAddress),
+    desiredStateIdx: index('wireguard_peers_desired_state_idx').on(table.interface, table.desiredState),
+  }),
+);
+export type WireguardPeerRow = typeof wireguardPeers.$inferSelect;
+export type WireguardPeerInsert = typeof wireguardPeers.$inferInsert;
+
+// Per-(config, source IP) device sightings for device/IP visibility (migration 0047).
+export const clientDeviceSightings = pgTable(
+  'client_device_sightings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    sourceIp: text('source_ip').notNull(),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    hits: bigint('hits', { mode: 'number' }).notNull().default(1),
+  },
+  (table) => ({
+    uniq: uniqueIndex('client_device_sightings_uniq').on(table.clientConfigId, table.sourceIp),
+    lastSeenIdx: index('client_device_sightings_last_seen_idx').on(table.lastSeenAt),
+  }),
+);
+export type ClientDeviceSightingSelect = typeof clientDeviceSightings.$inferSelect;
+export type ClientDeviceSightingInsert = typeof clientDeviceSightings.$inferInsert;
 
 export const serversRelations = relations(servers, ({ many }) => ({
   metrics: many(serverMetrics),
