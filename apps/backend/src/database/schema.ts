@@ -1,9 +1,11 @@
 import { relations, sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import {
   bigserial,
   bigint,
   boolean,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -421,6 +423,16 @@ export const outbounds = pgTable(
     maxUsers: integer('max_users'),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     lastHealthyAt: timestamp('last_healthy_at', { withTimezone: true }),
+    // Speed-test columns added by migration 0029 (double precision, nullable).
+    latestDownMbps: doublePrecision('latest_down_mbps'),
+    latestUpMbps: doublePrecision('latest_up_mbps'),
+    lastSpeedTestAt: timestamp('last_speed_test_at', { withTimezone: true }),
+    speedTestRequestedAt: timestamp('speed_test_requested_at', { withTimezone: true }),
+    // Subscription linkage added by migration 0032. DB FK:
+    //   subscription_id -> outbound_subscriptions(id) ON DELETE CASCADE.
+    // outbound_subscriptions is not yet a Drizzle entity (Phase 2); add .references() then.
+    subscriptionId: uuid('subscription_id'),
+    subscriptionKey: text('subscription_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -429,6 +441,10 @@ export const outbounds = pgTable(
     routePriorityIdx: index('outbounds_route_priority_idx').on(table.routeGroup, table.priority),
     enabledIdx: index('outbounds_enabled_idx').on(table.enabled),
     healthStatusIdx: index('outbounds_health_status_idx').on(table.healthStatus),
+    subscriptionIdx: index('outbounds_subscription_idx').on(table.subscriptionId),
+    subscriptionKeyIdx: uniqueIndex('outbounds_subscription_key_uidx')
+      .on(table.subscriptionId, table.subscriptionKey)
+      .where(sql`subscription_id IS NOT NULL`),
   }),
 );
 
@@ -568,6 +584,25 @@ export const customerAccounts = pgTable(
     perClientLimitBytes: bigint('per_client_limit_bytes', { mode: 'number' }),
     usedBytes: bigint('used_bytes', { mode: 'number' }).notNull().default(0),
     notes: text('notes'),
+    // Registration/wallet/referral columns added by migration 0053; egress tier by 0036.
+    phone: text('phone'),
+    gemsBalance: bigint('gems_balance', { mode: 'number' }).notNull().default(0),
+    referralCode: text('referral_code'),
+    referredBy: uuid('referred_by').references((): AnyPgColumn => customerAccounts.id),
+    egressTier: text('egress_tier').notNull().default('normal'),
+    // Auth credentials for mobile-app account login (migration 0030). password_hash is a
+    // hash, never plaintext; login_email is unique case-insensitively (see loginEmailIdx).
+    loginEmail: text('login_email'),
+    passwordHash: text('password_hash'),
+    passwordSetAt: timestamp('password_set_at', { withTimezone: true }),
+    // Admin entitlement to the gaming egress tier (migration 0043); the ACTIVE on/off is egressTier.
+    gamingEntitled: boolean('gaming_entitled').notNull().default(false),
+    // Subscription lifecycle. expiresAt: NULL = never expires, past = cannot log in (migration 0044).
+    // deletedAt: NULL = live, non-NULL = archived/soft-deleted (migration 0051).
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    // Operator labels for filtering/segmentation (migration 0044); Postgres text[] array (NOT jsonb).
+    tags: text('tags').array().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -581,6 +616,20 @@ export const customerAccounts = pgTable(
     statusIdx: index('customer_accounts_status_idx').on(table.status),
     quotaScopeIdx: index('customer_accounts_quota_scope_idx').on(table.quotaScope),
     resellerAccountIdx: index('customer_accounts_reseller_account_idx').on(table.resellerAccountId, table.createdAt),
+    referralCodeIdx: uniqueIndex('customer_accounts_referral_code_key')
+      .on(table.referralCode)
+      .where(sql`referral_code IS NOT NULL`),
+    referredByIdx: index('customer_accounts_referred_by_idx')
+      .on(table.referredBy)
+      .where(sql`referred_by IS NOT NULL`),
+    // Case-insensitive unique login (functional index on lower(login_email)), migration 0030.
+    loginEmailIdx: uniqueIndex('customer_accounts_login_email_key')
+      .on(sql`lower(${table.loginEmail})`)
+      .where(sql`login_email IS NOT NULL`),
+    // Partial index over live (non-archived) rows for the Customers listing, migration 0051.
+    activeCreatedIdx: index('customer_accounts_active_created_idx')
+      .on(table.createdAt.desc())
+      .where(sql`deleted_at IS NULL`),
   }),
 );
 
