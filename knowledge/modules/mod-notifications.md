@@ -39,6 +39,12 @@ _none_
 - [[mod-billing]]
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[AlertNotificationService]]** — injects: [[AuditService]], [[OperationsService]], [[TelegramAlertService]]
+  - injected by: _none_
+- **[[TelegramAlertService]]** — injects: [[OutboundHttpService]], [[TelegramBotConfigService]]
+  - injected by: [[AlertNotificationService]], [[BillingService]], [[TelegramBotService]], [[TelegramTopupAdminService]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 _none — no test imports a file in this module directly_
 

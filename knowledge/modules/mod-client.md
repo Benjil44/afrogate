@@ -62,6 +62,26 @@
 - [[mod-billing]]
 - [[mod-operations]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[ClientAuthController]]** — injects: [[BillingService]]
+  - injected by: _none_
+- **[[ClientController]]** — injects: [[BillingService]]
+  - injected by: _none_
+- **[[ConnectionsService]]** — injects: [[DatabaseService]]
+  - injected by: [[OperationsController]]
+- **[[InboundsService]]** — injects: _none_
+  - injected by: [[OperationsController]]
+- **[[OperationsOverviewService]]** — injects: [[DatabaseService]]
+  - injected by: [[OperationsController]]
+- **[[WireguardMeteringService]]** — injects: [[DatabaseService]]
+  - injected by: _none_
+- **[[XrayAccessLogService]]** — injects: [[DatabaseService]]
+  - injected by: _none_
+- **[[XrayProvisioningService]]** — injects: [[DatabaseService]]
+  - injected by: [[BillingService]]
+- **[[XrayUsageMeteringService]]** — injects: [[DatabaseService]]
+  - injected by: [[BillingService]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/access-log-parse.test.ts`
 - `apps/backend/test/afrows-entry-link.test.ts`

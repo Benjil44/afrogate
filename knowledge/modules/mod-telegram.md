@@ -114,6 +114,22 @@
 - [[mod-notifications]]
 - [[mod-operations]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[TelegramBotConfigService]]** — injects: [[AuditService]], [[DatabaseService]], [[OutboundHttpService]], [[SecretVaultService]]
+  - injected by: [[BillingService]], [[OperationsController]], [[TelegramAlertService]], [[TelegramBotService]], [[TelegramPollingService]], [[TelegramProfileService]], [[TelegramTopupAdminService]]
+- **[[TelegramBotController]]** — injects: [[TelegramBotService]]
+  - injected by: _none_
+- **[[TelegramBotService]]** — injects: [[BillingService]], [[DatabaseService]], [[TelegramAlertService]], [[TelegramBotConfigService]]
+  - injected by: [[TelegramBotController]], [[TelegramPollingService]]
+- **[[TelegramPollingService]]** — injects: [[OutboundHttpService]], [[TelegramBotConfigService]], [[TelegramBotService]]
+  - injected by: _none_
+- **[[TelegramProfileService]]** — injects: [[AuditService]], [[OutboundHttpService]], [[TelegramBotConfigService]]
+  - injected by: [[TelegramTopupAdminController]]
+- **[[TelegramTopupAdminController]]** — injects: [[TelegramProfileService]], [[TelegramTopupAdminService]]
+  - injected by: _none_
+- **[[TelegramTopupAdminService]]** — injects: [[AuditService]], [[DatabaseService]], [[OutboundHttpService]], [[TelegramAlertService]], [[TelegramBotConfigService]]
+  - injected by: [[TelegramTopupAdminController]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/telegram-connect.test.ts`
 - `apps/backend/test/telegram-format.test.ts`

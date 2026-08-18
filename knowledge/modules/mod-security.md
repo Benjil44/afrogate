@@ -60,6 +60,20 @@
 - [[mod-routers]]
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[AdminTokenGuard]]** — injects: [[AuthService]]
+  - injected by: _none_
+- **[[AgentTokenGuard]]** — injects: [[DatabaseService]]
+  - injected by: _none_
+- **[[ClientTokenGuard]]** — injects: [[BillingService]]
+  - injected by: _none_
+- **[[RateLimitGuard]]** — injects: [[RateLimitService]]
+  - injected by: _none_
+- **[[RateLimitService]]** — injects: _none_
+  - injected by: [[RateLimitGuard]]
+- **[[SecretVaultService]]** — injects: _none_
+  - injected by: [[BillingService]], [[OperationsService]], [[RoutersService]], [[TelegramBotConfigService]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/agent-token.test.ts`
 - `apps/backend/test/bearer-token.test.ts`

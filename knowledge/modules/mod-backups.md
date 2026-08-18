@@ -25,6 +25,10 @@ _none_
 - [[mod-operations]]
 - [[mod-reports]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[BackupStatusService]]** — injects: _none_
+  - injected by: [[AdminReportsService]], [[OperationsController]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 _none — no test imports a file in this module directly_
 

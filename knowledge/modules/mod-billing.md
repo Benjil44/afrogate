@@ -199,6 +199,20 @@
 - [[mod-security]]
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[BillingController]]** — injects: [[AuthService]], [[BillingService]]
+  - injected by: _none_
+- **[[BillingService]]** — injects: [[AuditService]], [[DatabaseService]], [[PayPalPaymentService]], [[RewardedAdWebhookService]], [[SecretVaultService]], [[TelegramAlertService]], [[TelegramBotConfigService]], [[XrayProvisioningService]], [[XrayUsageMeteringService]]
+  - injected by: [[BillingController]], [[ClientAuthController]], [[ClientController]], [[ClientTokenGuard]], [[PayPalWebhookController]], [[RewardedAdWebhookController]], [[TelegramBotService]]
+- **[[PayPalPaymentService]]** — injects: [[OutboundHttpService]]
+  - injected by: [[BillingService]]
+- **[[PayPalWebhookController]]** — injects: [[BillingService]]
+  - injected by: _none_
+- **[[RewardedAdWebhookController]]** — injects: [[BillingService]]
+  - injected by: _none_
+- **[[RewardedAdWebhookService]]** — injects: _none_
+  - injected by: [[BillingService]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/allocation-idempotency.test.ts`
 - `apps/backend/test/billing-math.test.ts`

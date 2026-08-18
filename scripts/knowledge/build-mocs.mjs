@@ -80,6 +80,33 @@ function importTestsForFiles(files) {
   return s;
 }
 
+// ---- optional deterministic service->service DI links (Phase 3) ------------
+let serviceLinks = null;
+const slPath = path.join(GO, 'service_links.json');
+if (fs.existsSync(slPath)) {
+  try {
+    serviceLinks = JSON.parse(fs.readFileSync(slPath, 'utf8'));
+  } catch (e) {
+    console.error(`FATAL: service_links.json malformed: ${e.message}`);
+    process.exit(1);
+  }
+}
+const svcFile = new Map(); // service -> file
+const depsBy = new Map(); // consumer -> [edge]
+const dependentsBy = new Map(); // provider -> [edge]
+if (serviceLinks) {
+  for (const e of serviceLinks.edges || []) {
+    svcFile.set(e.consumer, e.consumer_file);
+    svcFile.set(e.provider, e.provider_file);
+    if (!depsBy.has(e.consumer)) depsBy.set(e.consumer, []);
+    depsBy.get(e.consumer).push(e);
+    if (!dependentsBy.has(e.provider)) dependentsBy.set(e.provider, []);
+    dependentsBy.get(e.provider).push(e);
+  }
+}
+const svcModule = (s) => backendModule(svcFile.get(s) || '');
+const diTag = (t) => (t === 'SERVICE_TOKEN_DI' ? ' _(token DI)_' : t === 'SERVICE_FORWARD_REF_DI' ? ' _(forwardRef)_' : '');
+
 const edges = graph.edges || graph.links || [];
 const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
 const slash = (s) => String(s || '').replace(/\\/g, '/');
@@ -259,6 +286,17 @@ for (const [mod, info] of sortBy([...modules.entries()], (e) => e[0])) {
   b += deps.length ? deps.map((m) => `- ${wl('mod-' + m)}`).join('\n') + '\n' : '_none_\n';
   b += `\n## Depended on by — modules (VERIFIED: AST import/call edges)\n`;
   b += depBy.length ? depBy.map((m) => `- ${wl('mod-' + m)}`).join('\n') + '\n' : '_none_\n';
+  // service-level NestJS constructor DI within this module
+  const modSvcs = sortBy([...new Set([...depsBy.keys(), ...dependentsBy.keys()].filter((s) => svcModule(s) === mod))], (x) => x);
+  const fmtDI = (arr) => (arr.length ? arr.map(([nm, t]) => wl(nm) + diTag(t)).join(', ') : '_none_');
+  b += `\n## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)\n`;
+  if (!modSvcs.length) b += '_No injectable services with DI edges in this module._\n';
+  else
+    for (const s of modSvcs) {
+      const deps = sortBy([...new Map((depsBy.get(s) || []).map((e) => [e.provider, e.type])).entries()], (x) => x[0]);
+      const dents = sortBy([...new Map((dependentsBy.get(s) || []).map((e) => [e.consumer, e.type])).entries()], (x) => x[0]);
+      b += `- **${wl(s)}** — injects: ${fmtDI(deps)}\n  - injected by: ${fmtDI(dents)}\n`;
+    }
   const impTests = sortBy([...(importsByModule.get(mod) || [])], (x) => x);
   const convTests = sortBy([...(convByModule.get(mod) || [])], (x) => x).filter((t) => !impTests.includes(t));
   b += `\n## Tests importing this module (VERIFIED / EXTRACTED)\n`;
@@ -295,6 +333,15 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
     b += `- **Module:** ${mod ? wl('mod-' + mod) : '_n/a_'} · source \`${slash(n.source_file)}:${n.source_location || '?'}\`\n`;
     if (svcTbls.length) b += `- **Tables (via this class):** ${svcTbls.map((t) => wl('tbl-' + t)).join(', ')}\n`;
     if (tbls.length) b += `- **Tables (via module):** ${tbls.map((t) => wl('tbl-' + t)).join(', ')}\n`;
+    // VERIFIED NestJS DI fan-in / fan-out for this hub
+    const nl = String(n.label);
+    if (depsBy.has(nl) || dependentsBy.has(nl)) {
+      const deps = sortBy([...new Map((depsBy.get(nl) || []).map((e) => [e.provider, e.type])).entries()], (x) => x[0]);
+      const dents = sortBy([...new Map((dependentsBy.get(nl) || []).map((e) => [e.consumer, e.type])).entries()], (x) => x[0]);
+      const fmt = (arr) => (arr.length ? arr.map(([nm, t]) => wl(nm) + (t === 'SERVICE_TOKEN_DI' ? ' _(token)_' : t === 'SERVICE_FORWARD_REF_DI' ? ' _(forwardRef)_' : '')).join(', ') : '_none_');
+      b += `- **DI fan-out (${deps.length}) — depends on (VERIFIED):** ${fmt(deps)}\n`;
+      b += `- **DI fan-in (${dents.length}) — depended on by (VERIFIED):** ${fmt(dents)}\n`;
+    }
     // VERIFIED recommended tests: import this class's file, or its module, or a bridge-consumer file of its tables
     const verTests = new Set(importTestsForFiles([slash(n.source_file)]));
     if (mod) for (const t of importsByModule.get(mod) || []) verTests.add(t);
@@ -349,6 +396,7 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
   b += `- **Edges:** ${edges.length}\n`;
   b += `- **Bridge edges:** ${(bridges.edges || []).length} (entity↔table ${bridgeAnalysis.entity_table_edges}, table↔service ${bridgeAnalysis.table_service_edges})\n`;
   if (testLinks) b += `- **Test→code links:** ${testLinks.counts.test_imports} import (VERIFIED), ${testLinks.counts.convention_matches} convention, ${testLinks.counts.test_fixtures} fixture, ${testLinks.counts.unresolved} unresolved, ${testLinks.counts.blackbox_specs} black-box specs — source \`graphify-out/test_links.json\`\n`;
+  if (serviceLinks) b += `- **Service→service DI links:** ${serviceLinks.counts.di_edges} (direct ${serviceLinks.counts.direct_di}, token ${serviceLinks.counts.token_di}, forwardRef ${serviceLinks.counts.forward_ref_di}); ${serviceLinks.counts.cycles} DI cycles; ${serviceLinks.counts.unresolved} unresolved — source \`graphify-out/service_links.json\`\n`;
   b += `- **Migration-backed tables:** ${allTables.size}\n`;
   b += `- **Modeled Drizzle entities:** ${schemaMap.length}\n`;
   b += `- **Intentional raw-SQL exceptions:** ${rawExceptions.size} — ${sortBy([...rawExceptions], (x) => x).map((t) => wl('tbl-' + t)).join(', ')}\n`;
@@ -357,7 +405,7 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
   b += `- **INFERRED:** LLM/semantic edges and community membership — hints; verify against source.\n`;
   b += `- **INTENTIONAL EXCEPTION:** the 4 Class-C raw-SQL tables — documented in \`docs/schema-drift-audit.md\`.\n`;
   b += `\n## Known limitations\n`;
-  b += `- Foreign-key and service→service edges are NOT in the current artifacts; FKs live in migrations/\`schema.ts\`.\n`;
+  b += `- Service→service edges are VERIFIED constructor-DI (\`service_links.json\`); foreign-key edges are still NOT in the artifacts (FKs live in migrations/\`schema.ts\`).\n`;
   b += `- ~1,445 weakly-connected nodes are config leaves (tsconfig/package keys), not documentation gaps.\n`;
   b += `- Test→code links are import-verified where possible (\`test_links.json\`); textual "Related tests (HEURISTIC)" remain a fallback and are NOT coverage proof. Black-box e2e specs have no direct edges.\n`;
   b += `- No git-SHA stamp: staleness cannot be auto-detected — regenerate the graph if source may have changed.\n`;

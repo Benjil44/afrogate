@@ -129,6 +129,16 @@
 - [[mod-routers]]
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[OperationsController]]** — injects: [[AdminReportsService]], [[AuditService]], [[AuthService]], [[BackupStatusService]], [[ConnectionsService]], [[InboundsService]], [[OperationsOverviewService]], [[OperationsService]], [[TelegramBotConfigService]]
+  - injected by: _none_
+- **[[OperationsService]]** — injects: [[AuditService]], [[DatabaseService]], [[RouteQualityAggregationService]], [[SecretVaultService]]
+  - injected by: [[AdminReportsService]], [[AlertNotificationService]], [[OperationsController]], [[OutboundSubscriptionRefreshService]], [[VillageFailoverService]]
+- **[[OutboundSubscriptionRefreshService]]** — injects: [[OperationsService]]
+  - injected by: _none_
+- **[[RouteQualityAggregationService]]** — injects: [[DatabaseService]]
+  - injected by: [[OperationsService]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/command-safety.test.ts`
 - `apps/backend/test/outbound-scoring.test.ts`

@@ -49,6 +49,14 @@
 - [[mod-notifications]]
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[OutboundHealthService]]** — injects: [[DatabaseService]], [[OutboundHttpService]]
+  - injected by: _none_
+- **[[OutboundHttpService]]** — injects: _none_
+  - injected by: [[OutboundHealthService]], [[PayPalPaymentService]], [[TelegramAlertService]], [[TelegramBotConfigService]], [[TelegramPollingService]], [[TelegramProfileService]], [[TelegramTopupAdminService]]
+- **[[OutboundSpeedTestService]]** — injects: [[DatabaseService]]
+  - injected by: _none_
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/outbound-url-policy.test.ts`
 - `apps/backend/test/outbound-xray-config.test.ts`

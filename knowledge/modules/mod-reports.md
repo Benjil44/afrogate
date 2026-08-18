@@ -24,6 +24,10 @@ _none_
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 - [[mod-operations]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[AdminReportsService]]** — injects: [[BackupStatusService]], [[OperationsService]]
+  - injected by: [[OperationsController]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 _none — no test imports a file in this module directly_
 

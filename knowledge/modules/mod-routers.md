@@ -62,6 +62,22 @@
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[GatewayBillingRunnerService]]** — injects: [[GatewayBillingService]]
+  - injected by: _none_
+- **[[GatewayBillingService]]** — injects: [[DatabaseService]], [[RoutersService]]
+  - injected by: [[GatewayBillingRunnerService]]
+- **[[MikroTikClientService]]** — injects: _none_
+  - injected by: [[RoutersService]]
+- **[[RouterUsageSamplerService]]** — injects: [[RoutersService]]
+  - injected by: _none_
+- **[[RoutersController]]** — injects: [[RoutersService]]
+  - injected by: _none_
+- **[[RoutersService]]** — injects: [[DatabaseService]], [[MikroTikClientService]], [[SecretVaultService]]
+  - injected by: [[GatewayBillingService]], [[RouterUsageSamplerService]], [[RoutersController]], [[VillageFailoverService]]
+- **[[VillageFailoverService]]** — injects: [[OperationsService]], [[RoutersService]]
+  - injected by: _none_
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/gateway-billing.test.ts`
 - `apps/backend/test/router-customer-invariants.test.ts`

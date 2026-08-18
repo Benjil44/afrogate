@@ -28,6 +28,12 @@ _none_
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 _none_
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[AdminTenantBrandingController]]** — injects: [[AdminTenantBrandingService]]
+  - injected by: _none_
+- **[[AdminTenantBrandingService]]** — injects: [[AuditService]], [[DatabaseService]]
+  - injected by: [[AdminTenantBrandingController]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 _none — no test imports a file in this module directly_
 

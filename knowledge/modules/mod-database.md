@@ -56,6 +56,10 @@ _none_
 - [[mod-security]]
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[DatabaseService]]** — injects: _none_
+  - injected by: [[AdminTenantBrandingService]], [[AgentTokenGuard]], [[AgentsService]], [[AlertEngineService]], [[AuditService]], [[AuthService]], [[BillingService]], [[ConnectionsService]], [[GatewayBillingService]], [[OperationsOverviewService]], [[OperationsService]], [[OutboundHealthService]], [[OutboundSpeedTestService]], [[PostgresMetricsRepository]], [[RouteQualityAggregationService]], [[RoutersService]], [[TelegramBotConfigService]], [[TelegramBotService]], [[TelegramTopupAdminService]], [[WireguardMeteringService]], [[XrayAccessLogService]], [[XrayProvisioningService]], [[XrayUsageMeteringService]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/reseller-ownership.test.ts`
 

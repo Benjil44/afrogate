@@ -39,6 +39,14 @@
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 _none_
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[AgentHeartbeatController]]** — injects: [[AgentsService]]
+  - injected by: _none_
+- **[[AgentsController]]** — injects: [[AgentsService]]
+  - injected by: _none_
+- **[[AgentsService]]** — injects: [[AuditService]], [[DatabaseService]]
+  - injected by: [[AgentHeartbeatController]], [[AgentsController]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 _none — no test imports a file in this module directly_
 

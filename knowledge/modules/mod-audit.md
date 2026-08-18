@@ -32,6 +32,10 @@ _none_
 - [[mod-operations]]
 - [[mod-telegram]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[AuditService]]** — injects: [[DatabaseService]]
+  - injected by: [[AdminTenantBrandingService]], [[AgentsService]], [[AlertNotificationService]], [[AuthService]], [[BillingService]], [[OperationsController]], [[OperationsService]], [[TelegramBotConfigService]], [[TelegramProfileService]], [[TelegramTopupAdminService]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 _none — no test imports a file in this module directly_
 

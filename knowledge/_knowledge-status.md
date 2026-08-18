@@ -10,6 +10,7 @@
 - **Edges:** 14442
 - **Bridge edges:** 249 (entity↔table 47, table↔service 202)
 - **Test→code links:** 68 import (VERIFIED), 1 convention, 7 fixture, 0 unresolved, 10 black-box specs — source `graphify-out/test_links.json`
+- **Service→service DI links:** 98 (direct 97, token 1, forwardRef 0); 0 DI cycles; 0 unresolved — source `graphify-out/service_links.json`
 - **Migration-backed tables:** 51
 - **Modeled Drizzle entities:** 47
 - **Intentional raw-SQL exceptions:** 4 — [[tbl-egress_tier_prices]], [[tbl-mikrotik_wg_rates]], [[tbl-mikrotik_wg_samples]], [[tbl-outbound_test_settings]]
@@ -20,7 +21,7 @@
 - **INTENTIONAL EXCEPTION:** the 4 Class-C raw-SQL tables — documented in `docs/schema-drift-audit.md`.
 
 ## Known limitations
-- Foreign-key and service→service edges are NOT in the current artifacts; FKs live in migrations/`schema.ts`.
+- Service→service edges are VERIFIED constructor-DI (`service_links.json`); foreign-key edges are still NOT in the artifacts (FKs live in migrations/`schema.ts`).
 - ~1,445 weakly-connected nodes are config leaves (tsconfig/package keys), not documentation gaps.
 - Test→code links are import-verified where possible (`test_links.json`); textual "Related tests (HEURISTIC)" remain a fallback and are NOT coverage proof. Black-box e2e specs have no direct edges.
 - No git-SHA stamp: staleness cannot be auto-detected — regenerate the graph if source may have changed.

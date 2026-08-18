@@ -38,6 +38,12 @@ _none_
 - [[mod-operations]]
 - [[mod-security]]
 
+## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
+- **[[AuthController]]** — injects: [[AuthService]]
+  - injected by: _none_
+- **[[AuthService]]** — injects: [[AuditService]], [[DatabaseService]]
+  - injected by: [[AdminTokenGuard]], [[AuthController]], [[BillingController]], [[OperationsController]]
+
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/reseller-impersonation.test.ts`
 
