@@ -4,6 +4,7 @@ import {
   bigserial,
   bigint,
   boolean,
+  customType,
   date,
   doublePrecision,
   index,
@@ -1131,6 +1132,112 @@ export const routeDecisionEvents = pgTable(
     toOutboundIdx: index('route_decision_events_to_outbound_idx').on(table.toOutboundId),
   }),
 );
+
+// ===========================================================================
+// Phase 1A: financial / audit tables (migration-authoritative).
+// These are accessed exclusively via raw SQL (never the Drizzle query builder),
+// so the entities are a schema-of-record + a source for derived row types. As
+// with every other entity in this file, DB-level CHECK constraints (status
+// enums, amount positivity) are NOT mirrored here — they stay enforced by the
+// migrations. No relations() are added: the raw-SQL codebase does not use the
+// Drizzle relational query API, so they would be decorative. FKs (incl. ON
+// DELETE) ARE modeled at the column level, which is the authoritative structure.
+// ===========================================================================
+
+// Postgres bytea — drizzle-orm has no builtin. Buffer-backed; type metadata only
+// (the receipt blob is read/written via raw SQL through an authenticated endpoint).
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+// Telegram self-service card-to-card top-up requests (migration 0052).
+// State machine: awaiting_receipt -> pending -> approved | rejected (CHECK in DB).
+export const telegramTopupRequests = pgTable(
+  'telegram_topup_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    telegramId: text('telegram_id'),
+    telegramChatId: text('telegram_chat_id'),
+    volumePackageId: uuid('volume_package_id').references(() => volumePackages.id),
+    amountMinor: bigint('amount_minor', { mode: 'number' }),
+    currency: text('currency'),
+    receiptFileId: text('receipt_file_id'),
+    status: text('status').notNull().default('awaiting_receipt'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewNote: text('review_note'),
+  },
+  (table) => ({
+    statusCreatedIdx: index('telegram_topup_requests_status_created_idx').on(table.status, table.createdAt.desc()),
+    telegramStatusIdx: index('telegram_topup_requests_telegram_status_idx').on(
+      table.telegramId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+  }),
+);
+export type TelegramTopupRequestRow = typeof telegramTopupRequests.$inferSelect;
+export type TelegramTopupRequestInsert = typeof telegramTopupRequests.$inferInsert;
+
+// Append-only gems ledger — source-of-truth audit trail behind the cached
+// customer_accounts.gems_balance (migration 0053). Signed delta (+ earn / - spend).
+export const gemsLedger = pgTable(
+  'gems_ledger',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    delta: bigint('delta', { mode: 'number' }).notNull(),
+    reason: text('reason').notNull(),
+    ref: text('ref'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountCreatedIdx: index('gems_ledger_account_created_idx').on(table.customerAccountId, table.createdAt.desc()),
+    reasonRefIdx: index('gems_ledger_reason_ref_idx').on(table.reason, table.ref),
+  }),
+);
+export type GemsLedgerRow = typeof gemsLedger.$inferSelect;
+export type GemsLedgerInsert = typeof gemsLedger.$inferInsert;
+
+// Reseller card-to-card wallet top-up requests (migration 0054). On approval the
+// backend writes reseller_wallet_ledger and links it via wallet_ledger_id.
+// State machine: pending -> approved | rejected (CHECK in DB); amount > 0 (CHECK).
+export const resellerWalletTopupRequests = pgTable(
+  'reseller_wallet_topup_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    resellerAccountId: uuid('reseller_account_id')
+      .notNull()
+      .references(() => resellerAccounts.id, { onDelete: 'cascade' }),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
+    currency: text('currency').notNull(),
+    receiptBytes: bytea('receipt_bytes'),
+    receiptContentType: text('receipt_content_type'),
+    status: text('status').notNull().default('pending'),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    walletLedgerId: uuid('wallet_ledger_id').references(() => resellerWalletLedger.id, { onDelete: 'set null' }),
+  },
+  (table) => ({
+    statusCreatedIdx: index('reseller_wallet_topup_requests_status_created_idx').on(table.status, table.createdAt.desc()),
+    resellerCreatedIdx: index('reseller_wallet_topup_requests_reseller_created_idx').on(
+      table.resellerAccountId,
+      table.createdAt.desc(),
+    ),
+  }),
+);
+export type ResellerWalletTopupRequestRow = typeof resellerWalletTopupRequests.$inferSelect;
+export type ResellerWalletTopupRequestInsert = typeof resellerWalletTopupRequests.$inferInsert;
 
 export const serversRelations = relations(servers, ({ many }) => ({
   metrics: many(serverMetrics),
