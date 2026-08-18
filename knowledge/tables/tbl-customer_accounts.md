@@ -46,7 +46,19 @@
 ## Foreign keys / referencing tables
 _Not represented in the current graph/bridge artifacts (bridges cover entity↔table and table↔service only)._ Authoritative source: [[0013_customer_accounts.sql]] and [[customerAccounts]].
 
-## Related tests (by reference)
+## Tests (deterministic — import → bridge, VERIFIED)
+- `apps/backend/test/customer-account-deletion.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/customer-account-merge.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/fake-db-harness.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/gems.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/phone-identity.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/reseller-ownership.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/telegram-connect.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/telegram-self-service.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/telegram-topup-commission.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+- `apps/backend/test/telegram-topup.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+
+## Related tests (HEURISTIC — textual name reference, not import-verified)
 - `apps/backend/test/customer-account-deletion.test.ts`
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`

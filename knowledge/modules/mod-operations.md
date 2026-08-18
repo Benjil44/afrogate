@@ -129,7 +129,21 @@
 - [[mod-routers]]
 - [[mod-telegram]]
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+- `apps/backend/test/command-safety.test.ts`
+- `apps/backend/test/outbound-scoring.test.ts`
+- `apps/backend/test/outbound-vless-parser.test.ts`
+- `apps/backend/test/request-normalizers.test.ts`
+- `apps/backend/test/route-bufferbloat.test.ts`
+- `apps/backend/test/route-metrics.test.ts`
+- `apps/backend/test/route-quality.test.ts`
+- `apps/backend/test/route-scoring.test.ts`
+- `apps/backend/test/timeline-severity.test.ts`
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/outbound-xray-config.test.ts`
 - `apps/backend/test/rbac.test.ts`
 - `apps/backend/test/timeline-severity.test.ts`

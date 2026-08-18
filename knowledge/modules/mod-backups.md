@@ -25,7 +25,13 @@ _none_
 - [[mod-operations]]
 - [[mod-reports]]
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+_none — no test imports a file in this module directly_
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 _none by name reference_
 
 ---

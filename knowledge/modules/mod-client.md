@@ -62,7 +62,16 @@
 - [[mod-billing]]
 - [[mod-operations]]
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+- `apps/backend/test/access-log-parse.test.ts`
+- `apps/backend/test/afrows-entry-link.test.ts`
+- `apps/backend/test/xray-provisioning.test.ts`
+- `apps/backend/test/xray-usage.test.ts`
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/customer-account-deletion.test.ts`
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`

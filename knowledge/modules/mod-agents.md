@@ -39,7 +39,13 @@
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 _none_
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+_none — no test imports a file in this module directly_
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/rbac.test.ts`
 - `tests/e2e/dashboard-visual.spec.ts`
 

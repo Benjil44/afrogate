@@ -114,7 +114,20 @@
 - [[mod-notifications]]
 - [[mod-operations]]
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+- `apps/backend/test/telegram-connect.test.ts`
+- `apps/backend/test/telegram-format.test.ts`
+- `apps/backend/test/telegram-i18n.test.ts`
+- `apps/backend/test/telegram-profile.test.ts`
+- `apps/backend/test/telegram-self-service.test.ts`
+- `apps/backend/test/telegram-topup-commission.test.ts`
+- `apps/backend/test/telegram-topup.test.ts`
+- `apps/backend/test/telegram-webhook-secret.test.ts`
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/customer-account-deletion.test.ts`
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`

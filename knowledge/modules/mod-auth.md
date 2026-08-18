@@ -38,7 +38,13 @@ _none_
 - [[mod-operations]]
 - [[mod-security]]
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+- `apps/backend/test/reseller-impersonation.test.ts`
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/reseller-impersonation.test.ts`
 
 ---

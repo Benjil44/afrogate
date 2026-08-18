@@ -18,7 +18,10 @@
 ## Foreign keys / referencing tables
 _Not represented in the current graph/bridge artifacts (bridges cover entity↔table and table↔service only)._ Authoritative source: [[0019_payment_order_allocations.sql]] and [[paymentOrderAllocations]].
 
-## Related tests (by reference)
+## Tests (deterministic — import → bridge, VERIFIED)
+_No test imports a production file that this table's bridge marks as a consumer._
+
+## Related tests (HEURISTIC — textual name reference, not import-verified)
 - `apps/backend/test/fake-db-harness.test.ts`
 
 ---

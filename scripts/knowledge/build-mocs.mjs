@@ -44,6 +44,42 @@ if (!Array.isArray(graph.nodes) || !Array.isArray(bridges.provenance || bridges.
 // Deterministic "source time" = graph.json mtime (stable unless the graph is regenerated).
 const graphMtime = fs.statSync(path.join(GO, 'graph.json')).mtime.toISOString();
 
+// ---- optional deterministic tests->code links (Phase 2) --------------------
+let testLinks = null;
+const tlPath = path.join(GO, 'test_links.json');
+if (fs.existsSync(tlPath)) {
+  try {
+    testLinks = JSON.parse(fs.readFileSync(tlPath, 'utf8'));
+  } catch (e) {
+    console.error(`FATAL: test_links.json malformed: ${e.message}`);
+    process.exit(1);
+  }
+}
+const importsByModule = new Map(); // module -> Set(test)
+const importsByFile = new Map(); // target_file -> Set(test)
+const convByModule = new Map(); // module -> Set(test)
+if (testLinks) {
+  for (const e of testLinks.edges || []) {
+    if (e.module) {
+      if (!importsByModule.has(e.module)) importsByModule.set(e.module, new Set());
+      importsByModule.get(e.module).add(e.test);
+    }
+    if (!importsByFile.has(e.target_file)) importsByFile.set(e.target_file, new Set());
+    importsByFile.get(e.target_file).add(e.test);
+  }
+  for (const e of testLinks.convention || []) {
+    if (e.module) {
+      if (!convByModule.has(e.module)) convByModule.set(e.module, new Set());
+      convByModule.get(e.module).add(e.test);
+    }
+  }
+}
+function importTestsForFiles(files) {
+  const s = new Set();
+  for (const f of files) for (const t of importsByFile.get(f) || []) s.add(t);
+  return s;
+}
+
 const edges = graph.edges || graph.links || [];
 const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
 const slash = (s) => String(s || '').replace(/\\/g, '/');
@@ -181,7 +217,12 @@ for (const table of sortBy([...allTables], (x) => x)) {
   else for (const c of consumers.slice(0, 20)) b += `- \`${c.evidence}\`  _(confidence ${c.confidence})_\n`;
   b += `\n## Foreign keys / referencing tables\n`;
   b += `_Not represented in the current graph/bridge artifacts (bridges cover entity↔table and table↔service only)._ Authoritative source: ${migration ? wl(migration) : 'migrations'}${entity ? ` and ${wl(entity)}` : ''}.\n`;
-  b += `\n## Related tests (by reference)\n`;
+  const detTests = sortBy([...importTestsForFiles(uniqFiles)], (x) => x);
+  b += `\n## Tests (deterministic — import → bridge, VERIFIED)\n`;
+  b += detTests.length
+    ? detTests.map((t) => `- \`${t}\` _(imports a production file the bridge marks as a consumer of this table)_`).join('\n') + '\n'
+    : `_No test imports a production file that this table's bridge marks as a consumer._\n`;
+  b += `\n## Related tests (HEURISTIC — textual name reference, not import-verified)\n`;
   b += tests.length ? tests.map((t) => `- \`${t}\``).join('\n') + '\n' : `_No test file references this table by name._\n`;
   b += `\n---\n_Back to ${wl('_INDEX')} · ${wl('_hotspots')} · ${wl('_domains')}_\n`;
   write(`tables/tbl-${table}.md`, b);
@@ -218,7 +259,13 @@ for (const [mod, info] of sortBy([...modules.entries()], (e) => e[0])) {
   b += deps.length ? deps.map((m) => `- ${wl('mod-' + m)}`).join('\n') + '\n' : '_none_\n';
   b += `\n## Depended on by — modules (VERIFIED: AST import/call edges)\n`;
   b += depBy.length ? depBy.map((m) => `- ${wl('mod-' + m)}`).join('\n') + '\n' : '_none_\n';
-  b += `\n## Related tests (by reference)\n`;
+  const impTests = sortBy([...(importsByModule.get(mod) || [])], (x) => x);
+  const convTests = sortBy([...(convByModule.get(mod) || [])], (x) => x).filter((t) => !impTests.includes(t));
+  b += `\n## Tests importing this module (VERIFIED / EXTRACTED)\n`;
+  b += impTests.length ? impTests.map((t) => `- \`${t}\``).join('\n') + '\n' : '_none — no test imports a file in this module directly_\n';
+  b += `\n## Tests by filename convention (CONVENTION — not verified coverage)\n`;
+  b += convTests.length ? convTests.map((t) => `- \`${t}\``).join('\n') + '\n' : '_none_\n';
+  b += `\n## Related tests (HEURISTIC — textual name reference)\n`;
   b += tests.length ? tests.map((t) => `- \`${t}\``).join('\n') + '\n' : '_none by name reference_\n';
   b += `\n---\n_Back to ${wl('_INDEX')} · ${wl('_hotspots')} · ${wl('_domains')}_\n`;
   write(`modules/mod-${mod}.md`, b);
@@ -248,7 +295,13 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
     b += `- **Module:** ${mod ? wl('mod-' + mod) : '_n/a_'} · source \`${slash(n.source_file)}:${n.source_location || '?'}\`\n`;
     if (svcTbls.length) b += `- **Tables (via this class):** ${svcTbls.map((t) => wl('tbl-' + t)).join(', ')}\n`;
     if (tbls.length) b += `- **Tables (via module):** ${tbls.map((t) => wl('tbl-' + t)).join(', ')}\n`;
-    if (tests.length) b += `- **Recommended tests (by reference):** ${tests.map((t) => '`' + t + '`').join(', ')}\n`;
+    // VERIFIED recommended tests: import this class's file, or its module, or a bridge-consumer file of its tables
+    const verTests = new Set(importTestsForFiles([slash(n.source_file)]));
+    if (mod) for (const t of importsByModule.get(mod) || []) verTests.add(t);
+    for (const tb of svcTbls) for (const c of consumersByTable.get(tb) || []) for (const t of importsByFile.get(c.file) || []) verTests.add(t);
+    const verList = sortBy([...verTests], (x) => x);
+    if (verList.length) b += `- **Recommended tests (VERIFIED / EXTRACTED):** ${verList.map((t) => '`' + t + '`').join(', ')}\n`;
+    if (tests.length) b += `- **Also referenced (HEURISTIC — not import-verified):** ${tests.map((t) => '`' + t + '`').join(', ')}\n`;
   }
   b += `\n## Data hotspots (heavily-coupled tables)\n`;
   for (const t of HOTSPOT_TABLES) {
@@ -295,6 +348,7 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
   b += `- **Nodes:** ${graph.nodes.length}\n`;
   b += `- **Edges:** ${edges.length}\n`;
   b += `- **Bridge edges:** ${(bridges.edges || []).length} (entity↔table ${bridgeAnalysis.entity_table_edges}, table↔service ${bridgeAnalysis.table_service_edges})\n`;
+  if (testLinks) b += `- **Test→code links:** ${testLinks.counts.test_imports} import (VERIFIED), ${testLinks.counts.convention_matches} convention, ${testLinks.counts.test_fixtures} fixture, ${testLinks.counts.unresolved} unresolved, ${testLinks.counts.blackbox_specs} black-box specs — source \`graphify-out/test_links.json\`\n`;
   b += `- **Migration-backed tables:** ${allTables.size}\n`;
   b += `- **Modeled Drizzle entities:** ${schemaMap.length}\n`;
   b += `- **Intentional raw-SQL exceptions:** ${rawExceptions.size} — ${sortBy([...rawExceptions], (x) => x).map((t) => wl('tbl-' + t)).join(', ')}\n`;
@@ -305,7 +359,7 @@ const HOTSPOT_TABLES = ['customer_accounts', 'outbounds', 'gems_ledger', 'resell
   b += `\n## Known limitations\n`;
   b += `- Foreign-key and service→service edges are NOT in the current artifacts; FKs live in migrations/\`schema.ts\`.\n`;
   b += `- ~1,445 weakly-connected nodes are config leaves (tsconfig/package keys), not documentation gaps.\n`;
-  b += `- "Related tests" are textual-reference matches, not import-verified.\n`;
+  b += `- Test→code links are import-verified where possible (\`test_links.json\`); textual "Related tests (HEURISTIC)" remain a fallback and are NOT coverage proof. Black-box e2e specs have no direct edges.\n`;
   b += `- No git-SHA stamp: staleness cannot be auto-detected — regenerate the graph if source may have changed.\n`;
   b += `\n## Authority order (never overridden by the graph)\n`;
   b += `migrations/ + apps/** + tests/  >  schema.ts  >  bridges (provenance)  >  AST edges  >  communities/INFERRED  >  docs  >  agent memory\n`;

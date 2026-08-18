@@ -20,7 +20,10 @@
 ## Foreign keys / referencing tables
 _Not represented in the current graph/bridge artifacts (bridges cover entity↔table and table↔service only)._ Authoritative source: [[0025_quota_charge_events.sql]] and [[quotaChargeEvents]].
 
-## Related tests (by reference)
+## Tests (deterministic — import → bridge, VERIFIED)
+- `apps/backend/test/customer-account-merge.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+
+## Related tests (HEURISTIC — textual name reference, not import-verified)
 _No test file references this table by name._
 
 ---

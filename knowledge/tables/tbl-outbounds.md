@@ -32,7 +32,10 @@
 ## Foreign keys / referencing tables
 _Not represented in the current graph/bridge artifacts (bridges cover entity↔table and table↔service only)._ Authoritative source: [[0002_server_access_outbounds.sql]] and [[outbounds]].
 
-## Related tests (by reference)
+## Tests (deterministic — import → bridge, VERIFIED)
+- `apps/backend/test/subscription-sanitizers.test.ts` _(imports a production file the bridge marks as a consumer of this table)_
+
+## Related tests (HEURISTIC — textual name reference, not import-verified)
 - `apps/backend/test/outbound-xray-config.test.ts`
 - `tests/e2e/client-smoke.spec.ts`
 - `tests/e2e/dashboard-visual.spec.ts`

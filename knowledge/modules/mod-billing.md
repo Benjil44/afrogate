@@ -199,7 +199,35 @@
 - [[mod-security]]
 - [[mod-telegram]]
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+- `apps/backend/test/allocation-idempotency.test.ts`
+- `apps/backend/test/billing-math.test.ts`
+- `apps/backend/test/billing-normalizers.test.ts`
+- `apps/backend/test/client-route-mapping.test.ts`
+- `apps/backend/test/customer-account-deletion.test.ts`
+- `apps/backend/test/customer-account-merge.test.ts`
+- `apps/backend/test/date-utils.test.ts`
+- `apps/backend/test/device-sharing.test.ts`
+- `apps/backend/test/fake-db-harness.test.ts`
+- `apps/backend/test/gems.test.ts`
+- `apps/backend/test/payment-validators.test.ts`
+- `apps/backend/test/paypal-webhook-verify.test.ts`
+- `apps/backend/test/paypal-webhook.test.ts`
+- `apps/backend/test/phone-identity.test.ts`
+- `apps/backend/test/quota-math.test.ts`
+- `apps/backend/test/record-utils.test.ts`
+- `apps/backend/test/reseller-ownership.test.ts`
+- `apps/backend/test/reseller-topup.test.ts`
+- `apps/backend/test/reseller-wallet-math.test.ts`
+- `apps/backend/test/rewarded-ad-webhook.crypto.test.ts`
+- `apps/backend/test/rewarded-ad.test.ts`
+- `apps/backend/test/subscription-sanitizers.test.ts`
+- `apps/backend/test/usage-normalizers.test.ts`
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/customer-account-deletion.test.ts`
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`

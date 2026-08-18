@@ -60,7 +60,20 @@
 - [[mod-routers]]
 - [[mod-telegram]]
 
-## Related tests (by reference)
+## Tests importing this module (VERIFIED / EXTRACTED)
+- `apps/backend/test/agent-token.test.ts`
+- `apps/backend/test/bearer-token.test.ts`
+- `apps/backend/test/client-token.test.ts`
+- `apps/backend/test/generate-password.test.ts`
+- `apps/backend/test/password.test.ts`
+- `apps/backend/test/rate-limit-window.test.ts`
+- `apps/backend/test/reseller-impersonation.test.ts`
+- `apps/backend/test/session-token.test.ts`
+
+## Tests by filename convention (CONVENTION — not verified coverage)
+_none_
+
+## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/client-token.test.ts`
 - `apps/backend/test/rate-limit-window.test.ts`
 - `apps/backend/test/rbac.test.ts`
