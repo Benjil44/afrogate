@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON } from './helpers/persian';
 
 // Volume packages management panel on the Billing page (the GB bundles the
 // Telegram bot sells in Buy Data): mocked-API captures + behavior assertions.
@@ -199,6 +200,7 @@ test.describe('volume packages management panel', () => {
       { name: '1280', size: { width: 1280, height: 800 } },
     ]) {
       test(`${language} ${viewport.name}px list and create form render`, async ({ page }) => {
+        test.skip(language === 'fa' && !PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON);
         const state: VolumePackageMockState = { createCalls: [], patchCalls: [], packages: createPackages() };
         await openBillingPage(page, viewport.size, language, state);
 

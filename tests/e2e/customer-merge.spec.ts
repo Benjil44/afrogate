@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON } from './helpers/persian';
 
 // Customers page "Merge into another account" flow (duplicate bot-created
 // account -> real account): mocked-API captures + behavior assertions.
@@ -204,6 +205,7 @@ test.describe('customer merge flow visual captures', () => {
       { name: '1280', size: { width: 1280, height: 800 } },
     ]) {
       test(`${language} ${viewport.name}px merge action, target picker, confirm`, async ({ page }) => {
+        test.skip(language === 'fa' && !PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON);
         const state: MergeMockState = { accounts: createAccounts(), mergeCalls: [] };
         await openCustomersPage(page, viewport.size, language, state);
         if (language === 'fa') {

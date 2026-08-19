@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON } from './helpers/persian';
 
 // Admin Top-up Requests approval page (afroWS Telegram bot card-to-card
 // receipts): mocked-API captures + behavior assertions.
@@ -233,6 +234,7 @@ test.describe('top-up requests approval page visual captures', () => {
       { name: '1280', size: { width: 1280, height: 800 } },
     ]) {
       test(`${language} ${viewport.name}px pending queue with receipt thumbnails`, async ({ page }) => {
+        test.skip(language === 'fa' && !PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON);
         const state: TopupMockState = { approveCalls: [], rejectCalls: [], requests: createTopupRequests() };
         await openTopupsPage(page, viewport.size, language, state);
 
@@ -368,6 +370,7 @@ test('settings telegram panel exposes card-to-card destination and trial quota f
 });
 
 test('fa settings telegram panel capture', async ({ page }) => {
+  test.skip(!PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON);
   const state: TopupMockState = { approveCalls: [], rejectCalls: [], requests: createTopupRequests() };
   await openTopupsPage(page, { width: 1280, height: 800 }, 'fa', state);
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON } from './helpers/persian';
 
 // afroWS bot v2 admin surfaces (mocked API):
 // - Customers detail row + edit panel show phone / gems / referral code / referral count.
@@ -211,6 +212,7 @@ test.describe('customers detail row shows bot v2 fields (phone / gems / referral
   for (const language of ['en', 'fa'] as const) {
     for (const viewport of viewports) {
       test(`${language} ${viewport.name}px expanded customer detail`, async ({ page }) => {
+        test.skip(language === 'fa' && !PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON);
         const state = createState();
         await openPage(page, '/customers', viewport.size, language, state);
 
@@ -276,6 +278,7 @@ test.describe('settings telegram gem-economy panel', () => {
   for (const language of ['en', 'fa'] as const) {
     for (const viewport of viewports) {
       test(`${language} ${viewport.name}px gem economy inputs prefilled`, async ({ page }) => {
+        test.skip(language === 'fa' && !PERSIAN_ENABLED, PERSIAN_DISABLED_SKIP_REASON);
         const state = createState();
         await openPage(page, '/settings', viewport.size, language, state);
 
