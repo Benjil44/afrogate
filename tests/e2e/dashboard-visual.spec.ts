@@ -1,4 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+// Authoritative Advanced-mode contract (same module the app persists from), so
+// the specs never hardcode a second copy of the storage key/value.
+import { advancedModeStorageKey, serializeAdvancedMode } from '../../apps/dashboard/src/nav-views';
 
 const visualSessionToken = 'visual-session-token';
 const fixedNow = '2026-05-28T08:00:00.000Z';
@@ -19,6 +22,13 @@ const snapshots = [
 type VisualSessionRole = 'superadmin' | 'reseller';
 
 interface VisualDashboardOptions {
+  /**
+   * Turn on the sidebar's Advanced group (network / servers / audit / backups /
+   * reports). Those views are intentionally hidden by default (see
+   * apps/dashboard/src/nav-views.ts), so any spec that navigates to one via the
+   * sidebar must opt in — exactly as an operator does with "Show advanced".
+   */
+  advancedMode?: boolean;
   sessionRole?: VisualSessionRole;
 }
 
@@ -62,10 +72,17 @@ test.describe('dashboard all-page horizontal overflow audit', () => {
     { name: 'desktop', size: { width: 1440, height: 900 } },
   ]) {
     test(`${viewport.name} pages keep document width stable`, async ({ page }) => {
-      await loadSignedInDashboard(page, viewport.size);
+      // servers/audit/backups/reports live in the Advanced sidebar group.
+      await loadSignedInDashboard(page, viewport.size, { advancedMode: true });
 
       const auditView = async (view: string, heading: string) => {
         await page.locator(`[data-view="${view}"]`).click();
+        await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+        await expectNoDocumentHorizontalOverflow(page);
+      };
+      // `routes` has no sidebar entry by design — reach it through its URL.
+      const auditViewByUrl = async (view: string, heading: string) => {
+        await gotoView(page, view);
         await expect(page.getByRole('heading', { name: heading })).toBeVisible();
         await expectNoDocumentHorizontalOverflow(page);
       };
@@ -83,12 +100,14 @@ test.describe('dashboard all-page horizontal overflow audit', () => {
       await auditTab(/Backup readiness/);
       await auditTab(/Restore runbook/);
       await auditView('billing', 'Usage and billing');
-      await auditTab(/Customers/);
-      await auditTab(/Panel import/);
+      // Billing's admin tabs are Catalog / Telegram / Orders. Customer management
+      // moved to its own Customers page and the panel-import section was retired
+      // from billing (see BillingReseller.tsx billingTabs).
       await auditTab(/Telegram/);
       await auditTab(/Orders/);
+      await auditView('customers', 'Customers');
       await auditView('reports', 'Reports and analysis');
-      await auditView('routes', 'Routes and failover');
+      await auditViewByUrl('routes', 'Routes and failover');
       await auditTab(/Policy/);
       await auditTab(/Canary/);
       await auditTab(/History/);
@@ -127,9 +146,13 @@ test('dashboard starts on NOC view with backend outbounds and client-side switch
   await expect(page.getByRole('heading', { name: 'Network operations display' })).toBeVisible();
   await expect(page.getByText('Frankfurt WG gaming').first()).toBeVisible();
 
+  // The address bar tracks the active view (DashboardApp keeps the path in sync
+  // so a refresh restores the page), and Dashboard is served from the root path.
+  expect(initialPath).toBe('/');
+
   await page.locator('[data-view="alerts"]').click();
   await expect(page.getByRole('heading', { name: 'Alerts and delivery' })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe(initialPath);
+  expect(new URL(page.url()).pathname).toBe('/alerts');
 
   await page.locator('[data-view="dashboard"]').click();
   await expect(page.getByRole('heading', { name: 'Network operations display' })).toBeVisible();
@@ -163,7 +186,9 @@ test('alerts page filters open and resolved history rows', async ({ page }) => {
 
 test('routes page shows route health score history', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
-  await page.locator('[data-view="routes"]').click();
+  // Routes is intentionally not a sidebar item; it stays reachable by URL.
+  await gotoView(page, 'routes');
+  await expect(page.getByRole('heading', { name: 'Routes and failover' })).toBeVisible();
   await page.getByRole('tab', { name: /History/ }).click();
 
   const historyPanel = page.locator('section').filter({
@@ -190,7 +215,12 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
 
   await expect(page.getByRole('heading', { name: 'Usage and billing' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Reward Settings' })).toBeVisible();
-  await expect(page.getByText('starter-25gb')).toBeVisible();
+  // The slug also appears in the Payment Orders panel, so assert it inside the
+  // Billing Catalog section that this test is actually about.
+  const catalogPanel = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Billing Catalog' }),
+  }).last();
+  await expect(catalogPanel.getByText('starter-25gb')).toBeVisible();
   await expect(page.getByText('Payment provider adapters')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Card' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Bank transfer' })).toBeVisible();
@@ -204,60 +234,14 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByText('Usage link')).toBeVisible();
   await expect(page.getByText('Delivery candidates')).toBeVisible();
 
-  await page.getByRole('tab', { name: /Customers/ }).click();
-  await expect(page.getByRole('heading', { name: 'Customer limit manager' })).toBeVisible();
-  await page.getByLabel('Display name').fill('VIP gamer');
-  await page.getByLabel('Telegram username').fill('vip_gamer');
-  await page.getByLabel('Account quota GB').fill('80');
-  await page.getByLabel('Per-client cap GB').fill('20');
-  await page.getByLabel('Quota scope', { exact: true }).selectOption('per_client');
-  await page.getByRole('button', { name: 'Create customer' }).click();
-  await expect(page.getByText('Customer account saved.')).toBeVisible();
-  await expect(page.getByRole('cell', { name: /VIP gamer/ })).toBeVisible();
-
-  await page.getByRole('tab', { name: /Panel import/ }).click();
-  await expect(page.getByRole('heading', { name: 'Current panel import' })).toBeVisible();
-  await page.getByLabel('Current panel payload JSON').fill(JSON.stringify({
-    users: [
-      {
-        data_limit: '25GB',
-        expire: 1893456000,
-        status: 'active',
-        used_traffic: '6GB',
-        username: 'vip_gamer',
-      },
-    ],
-  }));
-  await page.getByRole('button', { name: 'Preview import' }).click();
-  await expect(page.getByText('1 candidates ready.')).toBeVisible();
-  await expect(page.getByRole('cell', { name: /vip_gamer/ })).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'Marzban' })).toBeVisible();
-
-  await page.getByLabel('Import to customer').selectOption('account-created');
-  await page.getByRole('button', { name: 'Import configs' }).click();
-  await expect(page.getByText('1 configs imported, 0 skipped.')).toBeVisible();
-
-  await page.getByLabel('Current panel payload JSON').fill(JSON.stringify({
-    users: [
-      {
-        data_limit: '25GB',
-        expire: 1893456000,
-        status: 'active',
-        used_traffic: '7GB',
-        username: 'vip_gamer',
-      },
-    ],
-  }));
-  await page.getByRole('button', { name: 'Sync usage' }).click();
-  await expect(page.getByText('1 usage updates synced, 0 skipped.')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Export configs' }).click();
-  await expect(page.getByText('1 configs exported.')).toBeVisible();
-  await expect(page.getByLabel('Exported config JSON')).toHaveValue(/afrows_client_configs_export_v1/);
-
-  await page.getByLabel('Charge GB').fill('5');
-  await page.getByRole('button', { name: 'Charge volume' }).click();
-  await expect(page.getByText('5 GB charged locally; external panel write not executed.')).toBeVisible();
+  // NOTE: this page no longer hosts customer management or the panel-import
+  // section for admin sessions. The Customers tab is rendered only for reseller
+  // sessions (admins use the dedicated Customers page) and the panel-import
+  // section was deliberately removed from the billing tabs — see the billingTabs
+  // comments in apps/dashboard/src/pages/BillingReseller.tsx. The coverage those
+  // steps used to provide belongs with the Customers page / reseller specs.
+  await page.getByRole('tab', { name: /Orders/ }).click();
+  await expect(page.getByRole('heading', { name: 'Payment Orders' })).toBeVisible();
 });
 
 test('reseller session shows scoped seller dashboard, users, and billing', async ({ page }) => {
@@ -326,7 +310,7 @@ test('reseller session shows scoped seller dashboard, users, and billing', async
 });
 
 test('audit logs page shows sanitized audit events', async ({ page }) => {
-  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await loadSignedInDashboard(page, { width: 1440, height: 900 }, { advancedMode: true });
   await page.locator('[data-view="audit"]').click();
 
   await expect(page.getByRole('heading', { name: 'Audit logs' })).toBeVisible();
@@ -336,7 +320,7 @@ test('audit logs page shows sanitized audit events', async ({ page }) => {
 });
 
 test('backups page shows monitored backup readiness', async ({ page }) => {
-  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await loadSignedInDashboard(page, { width: 1440, height: 900 }, { advancedMode: true });
   await page.locator('[data-view="backups"]').click();
 
   await expect(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
@@ -354,7 +338,7 @@ test('backups page shows monitored backup readiness', async ({ page }) => {
 });
 
 test('reports page shows operational analysis summary', async ({ page }) => {
-  await loadSignedInDashboard(page, { width: 1440, height: 900 });
+  await loadSignedInDashboard(page, { width: 1440, height: 900 }, { advancedMode: true });
   await page.locator('[data-view="reports"]').click();
 
   await expect(page.getByRole('heading', { name: 'Reports and analysis' })).toBeVisible();
@@ -412,12 +396,25 @@ async function loadSignedInDashboard(
 ): Promise<void> {
   await mockDashboardApi(page, options);
   await page.setViewportSize(size);
-  await page.addInitScript((sessionToken) => {
-    window.localStorage.setItem('afrows.dashboard.language', 'en');
-    window.sessionStorage.setItem('afrows.dashboard.adminSessionToken', sessionToken);
-  }, visualSessionToken);
+  await page.addInitScript(
+    (init) => {
+      window.localStorage.setItem('afrows.dashboard.language', 'en');
+      window.sessionStorage.setItem('afrows.dashboard.adminSessionToken', init.sessionToken);
+      window.localStorage.setItem(init.advancedKey, init.advancedValue);
+    },
+    {
+      advancedKey: advancedModeStorageKey,
+      advancedValue: serializeAdvancedMode(options.advancedMode ?? false),
+      sessionToken: visualSessionToken,
+    },
+  );
 
   await page.goto('/');
+  await disableAnimations(page);
+}
+
+/** Freeze animations/transitions so layout measurements are stable. */
+async function disableAnimations(page: Page): Promise<void> {
   await page.addStyleTag({
     content: `
       *, *::before, *::after {
@@ -426,6 +423,16 @@ async function loadSignedInDashboard(
       }
     `,
   });
+}
+
+/**
+ * Open a view by URL. Required for `routes`, which is deliberately NOT a sidebar
+ * item (asserted by apps/dashboard/src/nav-views.test.ts) but is still a real
+ * routed view — the app derives the active view from the path (viewFromUrl).
+ */
+async function gotoView(page: Page, view: string): Promise<void> {
+  await page.goto(`/${view}`);
+  await disableAnimations(page);
 }
 
 async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}): Promise<void> {
