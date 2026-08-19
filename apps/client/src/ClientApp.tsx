@@ -578,7 +578,7 @@ export function ClientApp() {
               <label className="mb-2 block text-sm font-semibold" htmlFor="detected-country">
                 {messages.detectedCountry}
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <input
                   id="detected-country"
                   value={detectedCountryCode}
