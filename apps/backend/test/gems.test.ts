@@ -8,6 +8,9 @@ import {
   earnGems,
   generateReferralCode,
   redeemGemsForGb,
+  referralCharFromByte,
+  REFERRAL_ALPHABET,
+  REFERRAL_CODE_LENGTH,
 } from '../src/billing/gems.ts';
 import { createFakeExecutor } from './helpers/fake-db.ts';
 
@@ -85,10 +88,50 @@ describe('computeReferralCommissionGems', () => {
   });
 });
 
-describe('generateReferralCode', () => {
-  it('maps random bytes onto the lookalike-free alphabet', () => {
-    const code = generateReferralCode(() => Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
+describe('generateReferralCode (unbiased, rejection-sampled)', () => {
+  it('maps byte slots onto the lookalike-free alphabet at the documented length', () => {
+    // Each accepted byte selects alphabet[floor(byte / 8)] — slot width 8 = floor(256/31).
+    const code = generateReferralCode(() => Buffer.from([0, 8, 16, 24, 32, 40, 48, 56]));
     assert.equal(code, 'ABCDEFGH');
+    assert.equal(code.length, REFERRAL_CODE_LENGTH);
+  });
+
+  it('selects every character with exactly equal weight and rejects the biased tail (no modulo bias)', () => {
+    // Deterministic uniformity proof across the whole byte range — not a flaky sample.
+    const counts = new Map([...REFERRAL_ALPHABET].map((c) => [c, 0]));
+    let rejected = 0;
+    for (let b = 0; b < 256; b++) {
+      const ch = referralCharFromByte(b);
+      if (ch === null) {
+        rejected++;
+        continue;
+      }
+      counts.set(ch, (counts.get(ch) ?? 0) + 1);
+    }
+    // 31 chars × 8 bytes each = 248 accepted; the remaining 8 tail bytes are rejected.
+    assert.equal(REFERRAL_ALPHABET.length, 31);
+    assert.equal(rejected, 8);
+    for (const c of REFERRAL_ALPHABET) assert.equal(counts.get(c), 8);
+  });
+
+  it('rejects tail bytes >= 248 and redraws to keep the code full and uniform', () => {
+    // Queue: three rejected tail bytes, then eight accepted slot bytes.
+    const queue = [250, 255, 248, 0, 8, 16, 24, 32, 40, 48, 56];
+    let idx = 0;
+    const code = generateReferralCode((size) => {
+      const out = Buffer.alloc(size);
+      for (let i = 0; i < size; i++) out[i] = queue[idx++] ?? 0;
+      return out;
+    });
+    assert.equal(code, 'ABCDEFGH');
+  });
+
+  it('always returns a full-length code drawn only from the alphabet (real crypto source)', () => {
+    const shape = new RegExp(`^[${REFERRAL_ALPHABET}]{${REFERRAL_CODE_LENGTH}}$`);
+    for (let i = 0; i < 256; i++) {
+      const code = generateReferralCode(); // real crypto randomBytes, no injection
+      assert.match(code, shape);
+    }
   });
 });
 

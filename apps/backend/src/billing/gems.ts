@@ -58,9 +58,20 @@ export type GemsReason =
  * (docs §13). 30 symbols × 8 chars ≈ 6.6e11 space, so random collisions are
  * vanishingly rare and are caught anyway by the DB unique index on retry.
  */
-const REFERRAL_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const REFERRAL_CODE_LENGTH = 8;
+export const REFERRAL_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const REFERRAL_CODE_LENGTH = 8;
 const REFERRAL_CODE_MAX_ATTEMPTS = 12;
+
+/**
+ * Rejection-sampling bounds for UNBIASED uniform selection over the alphabet.
+ * 256 is not a whole multiple of the 31-character alphabet, so mapping a raw
+ * byte straight onto it (e.g. `byte % 31`) would over-represent the first few
+ * characters. We instead cut the byte range into equal-width slots of
+ * REFERRAL_BYTES_PER_SLOT and reject the short tail that cannot fill a whole
+ * slot — every character then has exactly equal odds, with no modulo.
+ */
+const REFERRAL_BYTES_PER_SLOT = Math.floor(256 / REFERRAL_ALPHABET.length); // 8
+const REFERRAL_UNBIASED_LIMIT = REFERRAL_BYTES_PER_SLOT * REFERRAL_ALPHABET.length; // 248
 
 /** Coerce a bigint-as-string/number column to a finite number, else null. */
 function toFiniteNumber(value: string | number | null | undefined): number | null {
@@ -195,12 +206,29 @@ export function computeReferralCommissionGems(
   return Math.floor((gb * pct * ratePerGb) / 100);
 }
 
+/**
+ * Map one random byte to a referral-alphabet character, or `null` when the byte
+ * falls in the rejected biased tail (>= REFERRAL_UNBIASED_LIMIT) and the caller
+ * should draw another. Integer-division into equal slots — deliberately NO
+ * modulo — keeps every character equally likely (rejection sampling).
+ */
+export function referralCharFromByte(byte: number): string | null {
+  if (byte >= REFERRAL_UNBIASED_LIMIT) return null;
+  return REFERRAL_ALPHABET[Math.floor(byte / REFERRAL_BYTES_PER_SLOT)];
+}
+
 /** Generate one random referral code (no uniqueness check). `random` injectable for tests. */
 export function generateReferralCode(random: (size: number) => Buffer = randomBytes): string {
-  const bytes = random(REFERRAL_CODE_LENGTH);
   let code = '';
-  for (let i = 0; i < REFERRAL_CODE_LENGTH; i++) {
-    code += REFERRAL_ALPHABET[bytes[i] % REFERRAL_ALPHABET.length];
+  // Rejection sampling: draw the bytes still needed, keep those in the unbiased
+  // range, and redraw for any rejected tail byte. Rejection odds are 8/256
+  // (~3%), so this converges immediately and never spins pathologically.
+  while (code.length < REFERRAL_CODE_LENGTH) {
+    const bytes = random(REFERRAL_CODE_LENGTH - code.length);
+    for (let i = 0; i < bytes.length && code.length < REFERRAL_CODE_LENGTH; i++) {
+      const char = referralCharFromByte(bytes[i]);
+      if (char !== null) code += char;
+    }
   }
   return code;
 }
