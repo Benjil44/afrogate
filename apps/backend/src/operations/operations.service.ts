@@ -82,6 +82,8 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { parseVlessUrl } from './outbound-vless-parser';
 import { parseSubscription, type ParsedSubscription } from './outbound-subscription-parser';
+import { OutboundHttpService, type OutboundHttpResponse } from '../outbound/outbound-http.service';
+import type { IncomingHttpHeaders } from 'node:http';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
 import { calculateMtuProbeScore, calculateProtocolProbeScore, calculateSingleProbeScore, clamp, roundMetric, thresholdPenalty } from './route-scoring';
 import { averageMetric, calculateHandshakePenalty, calculateWireGuardScore, calculateWireGuardTelemetryScore, clientConfigIdFromRouteAssignmentKey, createUniformRouteScores, defaultSpeedProfileForProtocol, extractEndpoint, extractLoadPercent, getRouteProbes, isProtocolSpecificScoreProfile, isRecord, isRouteProbeMetric, mapWireGuardTelemetryStatus, maximumMetric, minimumMetric, normalizeAssignmentKey, normalizeRouteDecisionCountryCode, normalizeRouteGroup, numberFromConfig, protocolsForScoreProfile, roundRouteScore, roundRouteScores, summarizeRouteProbes } from './route-metrics';
@@ -628,6 +630,7 @@ export class OperationsService {
     private readonly audit: AuditService,
     private readonly secretVault: SecretVaultService,
     private readonly routeQualityAggregation: RouteQualityAggregationService,
+    private readonly outboundHttp: OutboundHttpService,
   ) {}
 
   async listServers(): Promise<AdminServerSummary[]> {
@@ -1635,25 +1638,42 @@ export class OperationsService {
   }
 
   private async fetchAndParseSubscription(url: string): Promise<ParsedSubscription> {
-    let res: Response;
+    // SSRF hardening (CodeQL js/request-forgery): route the admin-set subscription
+    // URL through OutboundHttpService, which enforces assertAllowedOutboundUrl
+    // (scheme allowlist + cloud-metadata block) as its sanitizer boundary, routes
+    // through the configured egress proxy, and does NOT follow redirects — so a 302
+    // to 169.254.169.254 can no longer defeat a pre-check. A 2 MiB response cap
+    // (override of the 256 KiB text default) accommodates large base64 VLESS
+    // subscription bodies carrying many configs.
+    let res: OutboundHttpResponse;
     try {
-      res = await fetch(url, {
+      res = await this.outboundHttp.request(url, {
         headers: { 'User-Agent': 'v2rayNG/1.8.0', Accept: '*/*' },
-        signal: AbortSignal.timeout(20000),
-        redirect: 'follow',
+        timeoutMs: 20000,
+        maxResponseBytes: 2 * 1024 * 1024,
       });
     } catch (error) {
       throw new Error(`fetch failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.text();
-    const headers: Record<string, string | undefined> = {};
-    res.headers.forEach((v, k) => {
-      headers[k] = v;
-    });
-    const parsed = parseSubscription(headers, body);
+    if (!res.ok) throw new Error(`HTTP ${res.statusCode}`);
+    const headers = this.flattenResponseHeaders(res.headers);
+    const parsed = parseSubscription(headers, res.body);
     if (parsed.configs.length === 0) throw new Error('No VLESS configs found in subscription');
     return parsed;
+  }
+
+  /**
+   * Flatten node's IncomingHttpHeaders (string | string[] | undefined) into the
+   * Record<string, string | undefined> parseSubscription expects. Subscription
+   * meta headers (profile-title, profile-update-interval, subscription-userinfo)
+   * are single-valued, so array-valued headers take the first value.
+   */
+  private flattenResponseHeaders(headers: IncomingHttpHeaders): Record<string, string | undefined> {
+    const flat: Record<string, string | undefined> = {};
+    for (const [key, value] of Object.entries(headers)) {
+      flat[key] = Array.isArray(value) ? value[0] : value;
+    }
+    return flat;
   }
 
   private async syncSubscriptionChildren(
