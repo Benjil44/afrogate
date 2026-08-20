@@ -523,7 +523,7 @@ POST https://desec.io/api/v1/domains/afrows.com/rrsets/
 
 ## Task 16: Deploy + verify + docs
 
-**Files:** ops scripts (`update-afrows.sh`/`sync.ps1` gitignored), `.codex/checklist.md`, `.codex/progress.md`.
+**Files:** ops scripts (`update-afrows.sh`/`sync.ps1` gitignored), `.claude/checklist.md`, `.claude/progress.md`.
 
 - [ ] **Step 1:** Ensure `apps/web` is built by the deploy. Root `build` already runs `--workspaces`, so the box `update-afrows.sh` build step covers it. Confirm `apps/web/dist` lands in `/opt/afrows/apps/web/dist` (extend the rsync/extract list if it filters paths).
 - [ ] **Step 2: Deploy** via the normal sync loop (warm cache for the new deps first: `gsap`, `framer-motion`, `react-router-dom`, `clsx`, `tailwind-merge`, `class-variance-authority` — add to the PC-warmed Linux cache, then `npm ci --offline` on box).
@@ -532,7 +532,7 @@ POST https://desec.io/api/v1/domains/afrows.com/rrsets/
   - `https://app.afrows.com/api/health` → ok; `https://app.afrows.com/` → panel; login works.
   - `http://afrows.com` and `http://app.afrows.com` → 301 https.
   - Security headers present on both; `verify-install.sh BASE_URL=https://app.afrows.com HOST_LOCAL=1` passes.
-- [ ] **Step 4:** Mark Phase 8 items done in `.codex/checklist.md`; add a `progress.md` entry. Commit docs (secret-scan first).
+- [ ] **Step 4:** Mark Phase 8 items done in `.claude/checklist.md`; add a `progress.md` entry. Commit docs (secret-scan first).
 
 ---
 

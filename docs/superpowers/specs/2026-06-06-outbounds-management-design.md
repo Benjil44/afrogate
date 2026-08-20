@@ -137,8 +137,8 @@ parse error if the link is malformed.
 
 ## Docs / housekeeping (per operator request)
 
-- Add this feature to `.codex/checklist.md` (new "Phase 9: Outbounds management").
-- Record progress in `.codex/progress.md`.
+- Add this feature to `.claude/checklist.md` (new "Phase 9: Outbounds management").
+- Record progress in `.claude/progress.md`.
 - Note the **agent** gains a speed-test capability (update agent docs/changelog).
 
 ## Rollout phases (for the plan)

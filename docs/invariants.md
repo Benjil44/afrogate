@@ -31,7 +31,7 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 ## 4. Data semantics
 
 - **INV-11** Money and byte-quota columns use **`bigint({ mode: 'number' })`** where established (wallet/ledger amounts, `*_bytes` counters, gems, reward bytes). New such columns follow suit. → ADR 0004; `schema.ts`.
-  - Related unit rule (owned by `.codex/memory.md`, kept consistent here): **quota unit = decimal GB = 1e9 bytes**, single source `quota-math.ts BYTES_PER_GB`; foreign-panel import (`current-panel-import.adapters.ts`) intentionally keeps binary 1024³.
+  - Related unit rule (owned by `.claude/memory.md`, kept consistent here): **quota unit = decimal GB = 1e9 bytes**, single source `quota-math.ts BYTES_PER_GB`; foreign-panel import (`current-panel-import.adapters.ts`) intentionally keeps binary 1024³.
 - **INV-12** `telegram_users.telegram_id` is an **intentional natural text PK** and is **NOT** a foreign key to `customer_accounts`. The `telegram_id ↔ customer_accounts.telegram_id` join is a soft/ad-hoc lookup: no `.references()`, no `relations()`. Tools MUST NOT infer this FK from the name collision. → ADR 0005.
 
 ## 5. Knowledge vault hygiene

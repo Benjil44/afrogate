@@ -213,7 +213,7 @@ const impact = await agent(
 STAGE: DISCOVERY + IMPACT_ANALYSIS (read-only - change nothing).
 
 Do this in order:
-1. Read AGENTS.md (whole file) and .codex/memory.md.
+1. Read AGENTS.md (whole file) and .claude/memory.md.
 2. Work out which files this task most likely touches. Read them and their imports.
 3. Run the deterministic impact analyzer and use its output as your evidence base:
      node scripts/orchestration/impact-report.mjs <file> [<file>...]

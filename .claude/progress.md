@@ -1,5 +1,17 @@
 # Afrows Progress
 
+## 2026-08-18 → 2026-08-20
+
+### Knowledge layer B-track + PR #49 merged green + multi-agent orchestration workflow (all pushed, CI green at `6feb645`)
+
+- **Knowledge-layer B-track shipped** (`9c18c3b`/`a26e63e`/`9589967`): ADR-0001…0006 + `docs/invariants.md` (INV-1…14); AGENTS.md "Engineering Knowledge Layer — Operating Contract" (source-of-truth hierarchy, fact types, context-loading, staleness, conflict recovery); config-leaf noise classifier in `build-mocs.mjs` (honest weakly-connected accounting, supersedes the "~1,445" hand estimate); `build-manifest.mjs` staleness manifest — `source_git_sha` from `graph.json.built_at_commit` (NOT gen-time HEAD, which could never detect staleness) → FRESH/STALE/UNKNOWN in `_knowledge-status.md`.
+- **PR #49 CI turned genuinely green, then merged** (merge commit `53bff68`, 50 commits): fixed the 2 standing `command-safety` failures — test *expectations* were corrupted by the `0ad9ab1` iran→Ireland find-replace (capital `I` impossible under the `[a-z0-9_-]` contract; implementation was correct). Referral-code bias: `byte % 31` → rejection sampling → **`crypto.randomInt`** (CodeQL flags any manual byte arithmetic; randomInt cleared `js/biased-cryptographic-random` for real). `npm audit fix` (no `--force`): 13 vulns → 0, lockfile-only, no semver-major, extraneous `sharp` pruned — proven in an isolated worktree first. Persian E2E: 15 `fa` cases now `test.skip` off the app's own `LANGUAGE_TOGGLE_ENABLED` (via `tests/e2e/helpers/persian.ts`; re-enabling Persian auto-reactivates them). `dashboard-visual.spec.ts` realigned to current UI (Advanced-nav group via `advancedModeStorageKey`, `routes` reached by URL — deliberately not a sidebar item, billing Customers/Panel-import tabs retired for admins, `starter-25gb` scoped to the Catalog panel). Client `detected-country` row: `flex` → `flex flex-wrap` fixes the 5px min-content blowout that only Linux font metrics exposed (CI-only failure; root-caused via glyph-widening probes, not tolerance-raising). Final: backend 552/552, E2E 54 pass/15 skip/0 fail, audit 0 vulns, CodeQL green — Audit + E2E steps ran in CI for the first time (previously always cascade-masked by the backend-test failure).
+- **Graph rebuilt at merged main** (`graphify update`, AST-only, no LLM): 5,642→6,407 nodes, hyperedges preserved, `built_at_commit=53bff68`; MOCs regenerated → **FRESH** (`ab48dc9`). Side effects: graph.html switched to aggregated community view (>5000 nodes) and community labels reverted to hub filenames — `graphify label` (LLM, ~582k tokens last time) deliberately NOT run, operator's call.
+- **Branch cleanup:** 10 fully-merged branches deleted local+remote (safe `-d` only; `fix/egress-failover-reserve-pool` needed remote-first deletion — its local tip `1e3546c` was ahead of upstream but proven inside main). All 10 tips verified ancestors of main; repo now single-branch (`main`).
+- **Multi-agent engineering orchestration built, dry-run, piloted, shipped** (`ae62573`): `scripts/orchestration/impact-report.mjs` (deterministic read-only impact + targeted-test selection; VERIFIED/DERIVED/INFERRED/AMBIGUOUS tagging; STALE ⇒ HINTS ONLY); `.claude/workflows/engineering-task.js` (Discovery→Decompose→parallel worktree-isolated writers→harvest barrier→adversarial cto-architect review→validation; never commits/pushes — human-gated); `docs/orchestration-contract.md` (stages, agent-by-files+risk map, escalation rules, approval boundaries). **Dry run caught a real analyzer defect**: DI-only dependents blind to plain-function modules (`command-safety.ts`: 0 DI edges, 16 real call sites) — fixed with a source-level import scan (outranks graph, staleness-immune). Barrier harvest gap (writers edit worktrees, reviewer saw empty main-tree diff) fixed with `git apply --check` conflict-gated patch harvest. **Pilot** (6 agents, 15.3 min, 310k tokens, 0 collisions): `8e77aae` pins `routeMarkHex` golden values (0xed08/0xb42f/0xe7a9 — a hash change would silently re-key live `ip rule fwmark` on production routers and previously passed the suite); `6feb645` fixes the gems referral-alphabet comment (30→31 symbols, 31⁸ keyspace). Barrier even fact-checked the task brief itself (no literal `===31` assertion existed).
+- **Verification:** every push a plain fast-forward; remote CI confirmed green at step level after each (never claimed before observed). `scripts/mikrotik/village-wan-failover-recursive.rsc` untouched/untracked throughout.
+- **Remaining:** knowledge manifest again trails HEAD (`53bff68` vs `6feb645` — post-merge commits are docs/test/orchestration only); `graphify label` decision; version bump + CHANGELOG for the session's sections (not done — commits were scoped without bumps and `version:check` stayed green); D-track village failover verification (12–14 blackout window) still open.
+
 ## 2026-07-28
 
 ### Reseller per-GB pricing + wallet-topup approval + seller oversight (backend)
@@ -24,7 +36,7 @@
 - Added roadmap and backlog in arabic.
 - Added root `README.md`.
 - Added root `AGENTS.md` so future coding agents know what to read first.
-- Added `.codex/` control folder with agent, skills, checklist, progress, and memory files.
+- Added `.claude/` control folder with agent, skills, checklist, progress, and memory files.
 - Added `.gitignore`.
 - Initialized local git repository on branch `main`.
 - Linked README to agent instructions and Codex memory.
@@ -213,7 +225,7 @@ Repository remote is ready:
 
 ### Completed
 
-- Synced `.codex` control notes after the superadmin/users implementation.
+- Synced `.claude` control notes after the superadmin/users implementation.
 - Updated memory and agent rules to include the `supervisor` role, protected `superadmin` invariant, and hashed admin-user runtime storage expectations.
 - Updated checklist state so the admin-user role foundation is marked done while production fine-grained RBAC remains pending.
 - Simplified the dashboard Users page so it focuses on the admin-user table instead of showing the global server/resource strip.
@@ -1322,7 +1334,7 @@ Repository remote is ready:
 - It shows billing summary cards, volume packages, payment methods, recent payment orders, allocation state, customer quota usage, and rewarded-ad reward/cap policy.
 - Admin/owner/superadmin sessions can update non-secret rewarded-ad enabled state, reward MB, daily limit, provider key, and verification mode from the dashboard.
 - Added typed English/arabic labels for the billing page and a Playwright flow that opens Billing, verifies catalog data, edits reward MB, and confirms the saved state.
-- Marked admin dashboard usage and billing page complete in `.codex/checklist.md` and marked Usage and billing complete in the dashboard sidebar checklist.
+- Marked admin dashboard usage and billing page complete in `.claude/checklist.md` and marked Usage and billing complete in the dashboard sidebar checklist.
 - Bumped Afrows to `0.78.0` for the admin Usage/Billing dashboard workflow.
 - Checklist completion after this slice is `204 / 227` items, or `89.9%` complete with `10.1%` remaining.
 - Verified the migration stack with `npm --workspace @afrows/backend run db:migrate`.
@@ -1381,7 +1393,7 @@ Repository remote is ready:
 - Added `docs/security-threat-model.md` covering assets, trust boundaries, attacker-controlled inputs, existing mitigations, attacker stories, and severity calibration.
 - Added `docs/privacy-threat-model.md` covering data categories, no-traffic-inspection invariants, client/admin/provider boundaries, privacy failure stories, and required controls.
 - Linked the threat models from `SECURITY.md`, `docs/security-performance-policy.md`, and `docs/repository-structure.md`.
-- Marked privacy and security threat models complete in `.codex/checklist.md`.
+- Marked privacy and security threat models complete in `.claude/checklist.md`.
 - Bumped Afrows to `0.81.1` for the threat-model documentation slice.
 - Checklist completion after this slice is `209 / 228` items, or `91.7%` complete with `8.3%` remaining.
 - Verified version alignment with `npm run version:check`.
@@ -1411,7 +1423,7 @@ Repository remote is ready:
 - Added a dashboard Settings Telegram Bot Setup panel with bilingual labels, write-only token inputs, alert/admin chat ID controls, alerts/commands toggles, and API test action.
 - Added `docs/telegram-bot-setup.md` for BotFather setup and token rotation.
 - Recorded native client per-app VPN split tunneling as a future client requirement: selected apps can use Afrows while other apps stay on normal internet without exposing installed-app inventories or traffic destinations.
-- Marked Telegram bot setup and onboarding/rotation guide complete in `.codex/checklist.md`; checklist completion is now `217 / 236` items, or `91.9%` complete with `8.1%` remaining.
+- Marked Telegram bot setup and onboarding/rotation guide complete in `.claude/checklist.md`; checklist completion is now `217 / 236` items, or `91.9%` complete with `8.1%` remaining.
 - Bumped Afrows to `0.87.0` and updated `CHANGELOG.md`.
 
 ### Verification
@@ -1439,7 +1451,7 @@ Repository remote is ready:
 - Rotation revokes all active tokens for the target server, issues one new plaintext token once, stores only its SHA-256 hash, and records an `agent.token.rotate` audit event.
 - Added shared rotation contracts, a DTO, and an active-token lookup index migration `0024_agent_token_rotation_index.sql`.
 - Updated security, repository, local-development, threat-model, env-sample, roadmap, checklist, and memory docs for the rotation workflow.
-- Marked per-agent token rotation complete in `.codex/checklist.md`; checklist completion is now `218 / 236` items, or `92.4%` complete with `7.6%` remaining.
+- Marked per-agent token rotation complete in `.claude/checklist.md`; checklist completion is now `218 / 236` items, or `92.4%` complete with `7.6%` remaining.
 - Bumped Afrows to `0.88.0` and updated `CHANGELOG.md`.
 
 ### Verification
@@ -1468,7 +1480,7 @@ Repository remote is ready:
 - Updated the local PostgreSQL setup script to create `afrows_owner`, `afrows_migrator`, and `afrows_app`, apply least-privilege grants before/after migrations, and write separate runtime/migration URLs when requested.
 - Added production SQL templates for applying and verifying the PostgreSQL owner/migrator/runtime role boundary.
 - Updated local, Ubuntu, PostgreSQL, architecture, repository, security, env-sample, checklist, and memory docs for the least-privilege database workflow.
-- Marked database least-privilege roles complete in `.codex/checklist.md`; checklist completion is now `219 / 236` items, or `92.8%` complete with `7.2%` remaining.
+- Marked database least-privilege roles complete in `.claude/checklist.md`; checklist completion is now `219 / 236` items, or `92.8%` complete with `7.2%` remaining.
 - Bumped Afrows to `0.89.0` and updated `CHANGELOG.md`.
 
 ### Verification
@@ -1500,7 +1512,7 @@ Repository remote is ready:
 - Allowed `owner` and `superadmin` sessions to manage local managed admin users; normal admins can inspect but not mutate, and support/supervisor/auditor sessions do not see the Users page.
 - Added the bilingual Role Permissions matrix to the Users page and Playwright coverage for it.
 - Added `docs/admin-rbac.md` and updated security, repository, roadmap, dashboard checklist, checklist, and memory docs.
-- Marked fine-grained production RBAC policy and permission UI complete in `.codex/checklist.md`; checklist completion is now `220 / 236` items, or `93.2%` complete with `6.8%` remaining.
+- Marked fine-grained production RBAC policy and permission UI complete in `.claude/checklist.md`; checklist completion is now `220 / 236` items, or `93.2%` complete with `6.8%` remaining.
 - Bumped Afrows to `0.90.0` and updated `CHANGELOG.md`.
 
 ### Verification
@@ -2096,8 +2108,8 @@ Repository remote is ready:
 - Updated the auth service so managed admin users default to PostgreSQL when `DATABASE_URL` is configured, while preserving the local JSON file as an explicit fallback and optional one-time legacy import source.
 - Kept bootstrap/env accounts protected and made database-backed managed users editable by `owner`/protected `superadmin` sessions through the existing Users page actions.
 - Updated shared/dashboard source typing and bilingual labels for the new `database` admin-user source.
-- Updated deployment samples, RBAC/security docs, `.codex` memory/agent notes, and the Users-page Playwright mock for database-backed admin-user management.
-- Marked the last dashboard/sidebar checklist item complete; `.codex/checklist.md` and `docs/dashboard-sidebar-pages-checklist.md` now have `0` unchecked items.
+- Updated deployment samples, RBAC/security docs, `.claude` memory/agent notes, and the Users-page Playwright mock for database-backed admin-user management.
+- Marked the last dashboard/sidebar checklist item complete; `.claude/checklist.md` and `docs/dashboard-sidebar-pages-checklist.md` now have `0` unchecked items.
 - Bumped Afrows to `0.108.0` and updated `CHANGELOG.md`.
 
 ### Verification
@@ -2361,7 +2373,7 @@ Repository remote is ready:
 
 ### Completed
 
-- Created `.codex/uiuxchecklist.md` as the dedicated UI/UX implementation checklist for the screenshot-driven refactor.
+- Created `.claude/uiuxchecklist.md` as the dedicated UI/UX implementation checklist for the screenshot-driven refactor.
 - Added a reusable dashboard tab primitive for long admin surfaces and a reusable dashboard table primitive for dense operational tables.
 - Added ECharts pie/donut support and a Dashboard operational-mix panel with donut charts for server health, alert severity, and outbound route quality.
 - Converted Users into Admin users and Permissions tabs while keeping Add user at the table level.
@@ -2395,7 +2407,7 @@ Repository remote is ready:
 - Extended the shared dashboard table primitive with center alignment and selectable-row styling for dense operational surfaces.
 - Migrated the remaining raw dashboard page tables to the shared primitive: permission matrix, Audit Logs, Alerts, tunnel list, Billing catalog/adapters, current-panel import preview, reseller sold-users, and reseller wallet ledger.
 - Confirmed raw `<table>` markup now exists only in the shared `DataTable` primitive.
-- Updated `.codex/uiuxchecklist.md` to `34 / 40` complete, or `85.0%` complete with `6` remaining UI/UX refinement items.
+- Updated `.claude/uiuxchecklist.md` to `34 / 40` complete, or `85.0%` complete with `6` remaining UI/UX refinement items.
 - Updated the focused UI/UX refactor track to `10 / 11` complete, or `90.9%` complete with the full browser audit remaining.
 - Bumped Afrows to `0.113.4` and updated `CHANGELOG.md`.
 
@@ -2422,7 +2434,7 @@ Repository remote is ready:
 - Converted the Backups page into Monitor, Readiness, and Restore runbook tabs so backup status, evidence checks, issues, restore readiness, and restore steps are grouped by workflow instead of one long scroll.
 - Added compact Reports donut chart cards for server health, outbound health, alert severity, and backup issues while keeping the existing risk/recommendation panels.
 - Updated the Backups Playwright test to exercise the new tabbed workflow instead of expecting all restore/readiness content on the first view.
-- Updated `.codex/uiuxchecklist.md` to `36 / 40` complete, or `90.0%` complete with `4` remaining UI/UX refinement items.
+- Updated `.claude/uiuxchecklist.md` to `36 / 40` complete, or `90.0%` complete with `4` remaining UI/UX refinement items.
 - Bumped Afrows to `0.113.5` and updated `CHANGELOG.md`.
 
 ### Verification
@@ -2450,7 +2462,7 @@ Repository remote is ready:
 - Tightened shared `StatusBadge` and `MetricPill` behavior plus Settings route-decision/load-balancing grids so long labels truncate inside their cells instead of overlapping neighboring badges/cards.
 - Added `overflow-x-hidden` to the dashboard content shell while preserving table/tab-local horizontal scrolling where it is intentional.
 - Added a Playwright all-page horizontal-overflow audit that visits every dashboard sidebar page plus major workflow tabs at mobile and desktop widths.
-- Updated `.codex/uiuxchecklist.md` to `40 / 40` complete, or `100.0%` complete with `0` remaining UI/UX refinement items.
+- Updated `.claude/uiuxchecklist.md` to `40 / 40` complete, or `100.0%` complete with `0` remaining UI/UX refinement items.
 - Updated the focused UI/UX refactor track to `11 / 11` complete, or `100.0%` complete.
 - Bumped Afrows to `0.113.6` and updated `CHANGELOG.md`.
 
@@ -2508,7 +2520,7 @@ Repository remote is ready:
 - **Local hot reload** wired: root `npm run dev` (`scripts/dev-all.mjs`, dependency-free orchestrator) builds `@afrows/shared` once then runs its `tsc --watch` plus the backend/dashboard/client dev servers together (Vite HMR on frontends, Nest watch on backend); added a `dev` watch script to `@afrows/shared`.
 - **Honest dashboard data** (was showing 150 fake users / phantom "connected" servers on a fresh DB). Gated the demo `fallbackServers`/`tunnels`/`outbounds`, sample failover rows, and chart fallback behind `import.meta.env.DEV` so production renders real API data and true empty states; replaced the hardcoded `150` with a real `countActiveUsers()` derived from connected WireGuard peer counts (`0` when nothing reports). Shipped as `0.114.26`.
 - **Auto-reload on deploy** (`0.114.27`): backend `/api/health` now reports the running monorepo `version` (resolved by walking up to the root `afrows` package.json at module load). New `VersionWatcher` dashboard component polls `/api/health` every 30s and, when the deployed version differs from the bundle it was built with, shows a bottom banner (EN/FA) and auto-reloads after 4s, guarded by a `sessionStorage` key to avoid reload loops. Wired into the `DashboardApp` main shell.
-- Updated `.codex/checklist.md`: marked the live VPS deployment item **done**, recorded the sync loop / hot reload / honest data / auto-reload sub-items, and added a new **Phase 7: Post-Deployment Operations** track. Seeded the previously-empty Claude memory store (`memory/`) with VPS deployment, sync-loop, filtered-network, secrets, and user-profile notes.
+- Updated `.claude/checklist.md`: marked the live VPS deployment item **done**, recorded the sync loop / hot reload / honest data / auto-reload sub-items, and added a new **Phase 7: Post-Deployment Operations** track. Seeded the previously-empty Claude memory store (`memory/`) with VPS deployment, sync-loop, filtered-network, secrets, and user-profile notes.
 
 ### Verification
 
@@ -2609,7 +2621,7 @@ Repository remote is ready:
 - Operator clarified issue ①: they added backup VLESS exits in the Exit/Outbounds page and expect failover to them on a full village power loss. Investigation verdict: those exits ARE village-independent (VPS-side), so failover *should* work — but it was a wiring/activation gap + a latent silent-abort bug, layered on the 2026-06-19 "owned-only, pool retired" decision. Operator chose to **re-activate the pool as the reserve** and implement both safe fixes.
 - **Fixes in `scripts/afrows-egress-mode-sync.py`:** (1) `apply_target` now GUARANTEES the `proxy` outbound (socks→10808) exists alongside via-village/via-germany, so a failover selecting `proxy` can never fail `xray -test` and silently abort (the "all VPN gone" pin to a dead primary). (2) `choose_gaming` gains a `pool_ok` param → gaming failover chain is now via-village → via-germany → **proxy reserve** → via-village(last), so gaming users survive a full village outage instead of stranding on dead via-village. `decide_gaming` probes the pool only when both village paths are down. Updated `scripts/test_egress_mode_sync.py` (new proxy-reserve case); all egress unit tests pass; `py_compile` clean.
 - **Deploy re-activation:** `update-afrows.sh` changed `systemctl disable --now afrows-uplink-pool-sync.timer` → `enable --now`, so pool-sync renders the operator's added exits into the uplink xray as the reserve. Primary egress stays `AFROWS_FOREIGN_EGRESS=germany`. NOTE: `update-afrows.sh` is gitignored (scp'd by sync.ps1), so this change is on-disk/deployed but not committed.
-- **Docs:** reversed the "pool retired" note in `docs/village-servers-structure.md`; `.codex/memory.md` records the pool-as-reserve decision; roadmap ① updated.
+- **Docs:** reversed the "pool retired" note in `docs/village-servers-structure.md`; `.claude/memory.md` records the pool-as-reserve decision; roadmap ① updated.
 - **Operator to-do after deploy:** Test each added Exit-page exit so pool-sync admits it (needs ≥3 Mbps within ~90 min); confirm on the box `systemctl is-enabled afrows-uplink-pool-sync.timer`, `grep relay- /usr/local/etc/xray/config.json`, and `grep '"proxy"' /usr/local/etc/afrows-xray/config.json`. UPS on the MikroTik + primary LTE modem still recommended for the primary path's own resilience.
 
 ### 2026-07-24 Reserve-pool admission fix — bought subscriptions auto-tested (PR #48 follow-on)

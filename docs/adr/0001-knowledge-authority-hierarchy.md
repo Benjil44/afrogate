@@ -7,7 +7,7 @@
 Afrows carries several overlapping descriptions of the same system: hand-written SQL
 migrations, runtime code, tests, a hand-maintained Drizzle `schema.ts`, the Graphify
 knowledge graph (bridges, AST edges, communities), the generated `knowledge/` vault,
-`docs/`, and `.codex/memory.md`. These can disagree — the schema-drift audit
+`docs/`, and `.claude/memory.md`. These can disagree — the schema-drift audit
 (`docs/schema-drift-audit.md`) documented `schema.ts` drifting from migrations, and the
 graph carries a mix of VERIFIED and INFERRED edges with no git-SHA stamp. Agents and
 humans need one fixed rule for which source wins when two disagree.
@@ -42,7 +42,7 @@ Refined by concern:
 - `apps/backend/src/database/schema.ts`
 - `apps/**`, `tests/**`
 - `graphify-out/**`, `knowledge/**` (derived, lower authority)
-- `docs/**`, `.codex/memory.md`
+- `docs/**`, `.claude/memory.md`
 
 ## Source evidence
 

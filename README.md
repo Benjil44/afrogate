@@ -22,7 +22,7 @@ The first milestone is an MVP monitoring dashboard that helps operate Ireland/Ge
 - [Enterprise deployment guide](docs/enterprise-deployment-guide.md)
 - [Security policy](SECURITY.md)
 - [Agent instructions](AGENTS.md)
-- [Codex project memory](.codex/memory.md)
+- [Codex project memory](.claude/memory.md)
 
 ## App Structure
 
@@ -78,4 +78,4 @@ Restricted servers can route Afrows Telegram/API calls through a local egress pr
 
 ## Continuing Work
 
-Before each implementation session, read `AGENTS.md` and the `.codex/` folder so progress, memory, and checklist stay synchronized.
+Before each implementation session, read `AGENTS.md` and the `.claude/` folder so progress, memory, and checklist stay synchronized.

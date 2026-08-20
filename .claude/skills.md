@@ -6,7 +6,7 @@
 
 - Convert operational notes into clear requirements.
 - Keep MVP scope separate from enterprise roadmap.
-- Re-check `.codex/memory.md` before changing assumptions.
+- Re-check `.claude/memory.md` before changing assumptions.
 
 ### Infrastructure Monitoring
 

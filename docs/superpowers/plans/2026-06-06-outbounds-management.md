@@ -307,11 +307,11 @@ setOutboundTestSettings(@Body() body: { enabled: boolean }): Promise<AdminOutbou
 
 ## Task 12: Deploy + verify + docs
 
-**Files:** ops (`sync.ps1` — `-WithDeps` not needed unless deps changed), `.codex/checklist.md`, `.codex/progress.md`.
+**Files:** ops (`sync.ps1` — `-WithDeps` not needed unless deps changed), `.claude/checklist.md`, `.claude/progress.md`.
 
 - [ ] **Step 1: Deploy** `./sync.ps1` (runs migrations + builds all workspaces; ship the agent too — confirm the agent is included in the deploy or shipped to the server running the VLESS). 
 - [ ] **Step 2: Verify on the box:** Outbounds page lists outbounds; add the real VLESS by pasting its link → row appears; Status/Ping/Jitter populate from the agent; click **Test** → Download/Upload fill; **Sync now** refreshes; **Auto** on → re-tests in ≤10 min; Edit/Disable/Delete work. Backend `GET /api/outbounds` shows metrics.
-- [ ] **Step 3:** Tick Phase 9 in `.codex/checklist.md`; add a `progress.md` entry. Commit (secret-scan first).
+- [ ] **Step 3:** Tick Phase 9 in `.claude/checklist.md`; add a `progress.md` entry. Commit (secret-scan first).
 
 ---
 

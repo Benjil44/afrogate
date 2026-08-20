@@ -85,4 +85,4 @@ Add a chevron/tap-to-expand affordance; ensure tap targets ≥44px; keep copy in
 | ④ weather DNS/routing | network-infra-engineer | — | ✅ |
 | ① power UPS | operator (hardware) + network-infra-engineer (C1/C2) | UPS purchase | ✅ (in-repo C1/C2 anytime) |
 
-②③④ code fixes are independent → run in parallel, each verified by `qa-tester`, reviewed by `cto-architect`, then scrum-master bumps version + `CHANGELOG.md` + `.codex/progress.md`.
+②③④ code fixes are independent → run in parallel, each verified by `qa-tester`, reviewed by `cto-architect`, then scrum-master bumps version + `CHANGELOG.md` + `.claude/progress.md`.

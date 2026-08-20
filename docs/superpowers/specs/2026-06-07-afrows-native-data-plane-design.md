@@ -62,7 +62,7 @@ The inbound host must be reachable from users' networks. This is the same proble
 - **Host:** Germany VPS for global reach (+ optionally the Ireland box for domestic users later).
 
 ## Security
-- Reality private key + user UUIDs are secrets — stored via the existing secret path, never in git/.codex.
+- Reality private key + user UUIDs are secrets — stored via the existing secret path, never in git/.claude.
 - xray gRPC API bound to localhost only.
 - Quota enforcement must be authoritative (over-quota = removed/limited).
 

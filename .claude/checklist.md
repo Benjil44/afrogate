@@ -434,3 +434,21 @@ Sidebar is a flat list of 11 items; operator finds it confusing. Regroup by the 
 - [ ] **Sell:** Customers (Users) · **Plans/Inbounds (new)** · Billing · Resellers — with the Seller/Shop column (done).
 - [ ] **Operations:** Alerts · Reports · Audit logs · Backups · Settings.
 - [ ] Add short helper text per section so "inbound vs outbound vs route" is self-evident in the UI.
+
+### Session 2026-08-18 → 2026-08-20 — knowledge layer, PR #49 green+merged, orchestration workflow
+
+- [x] **Knowledge B-track:** ADR-0001…0006 + `docs/invariants.md`; AGENTS.md knowledge operating contract; config-leaf noise classifier; staleness manifest (`build-manifest.mjs`, SHA from `graph.json.built_at_commit`).
+- [x] **A3/C4 — the 2 standing `command-safety` failures fixed:** test expectations were corrupted by the iran→Ireland find-replace (`0ad9ab1`); implementation was correct all along.
+- [x] **CodeQL green:** referral-code selection moved to `crypto.randomInt` (unbiased AND analyzer-clean).
+- [x] **npm audit:** 13 vulns → 0 via `npm audit fix` (lockfile-only, no majors, worktree-proven first).
+- [x] **Persian E2E gated** on the app's own `LANGUAGE_TOGGLE_ENABLED` (`tests/e2e/helpers/persian.ts`) — 15 fa cases skip while disabled, auto-reactivate when re-enabled.
+- [x] **Dashboard E2E realigned to current UI** (Advanced nav group, `routes` by URL, billing tab set, catalog scoping); **client detected-country flex-wrap** fixes the Linux-only 5px overflow (root-caused, tolerance untouched).
+- [x] **PR #49 MERGED** (merge commit `53bff68`, 50 commits) with all CI steps genuinely green — Audit + E2E ran for the first time (previously cascade-masked).
+- [x] **Graph rebuilt at merged main** (no LLM; 6,407 nodes) + MOCs regenerated → FRESH (`ab48dc9`).
+- [x] **Branch cleanup:** 10 fully-merged branches deleted local+remote, all tips proven ancestors of main.
+- [x] **Multi-agent orchestration workflow** (`ae62573`): `scripts/orchestration/impact-report.mjs` (deterministic impact + targeted tests), `.claude/workflows/engineering-task.js` (parallel worktree writers → harvest barrier → adversarial review → validation; human-gated commits), `docs/orchestration-contract.md`. Dry-run caught + fixed a DI-only dependents blind spot; pilot shipped `8e77aae` (routeMarkHex golden fwmark values) + `6feb645` (gems 31-symbol comment) — 552/552, CI green.
+- [x] **`.codex/` → `.claude/` migration:** control files moved, ~70 references updated repo-wide (`.codex-plugin/` plugin-manifest dirname intentionally kept).
+- [ ] `graphify label` (LLM community naming, ~582k tokens) — operator decision pending.
+- [ ] Regenerate knowledge manifest at current HEAD when convenient (trails by docs/test-only commits).
+- [ ] Version bump + CHANGELOG entries for this session's sections (ritual not yet run).
+- [ ] D-track: live 12–14 blackout failover verification + UPS on village MikroTik/modem.

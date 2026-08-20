@@ -11,7 +11,7 @@ Read for context:
 - `docs/server-access-and-outbound-management.md`, `docs/control-plane-egress.md`, `docs/germany-exit-structure.md`
 - `docs/village-cpe-modems.md`, `docs/village-servers-structure.md`, `docs/village-implementation.md`
 - `xray-config.json`, `xray.service`, and any generated Xray config templates in `apps/backend`/`scripts`
-- `.codex/memory.md`, `docs/technical-architecture-fa.md`
+- `.claude/memory.md`, `docs/technical-architecture-fa.md`
 
 ## Responsibilities
 - Diagnose routing/DNS issues where a specific class of sites fails through VLESS (domainStrategy, geosite/geoip rules, DNS outbound, MTU/fragmentation breaking TLS).

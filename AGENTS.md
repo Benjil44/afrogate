@@ -2,10 +2,10 @@
 
 Before changing code or architecture in this repository, read these files first:
 
-1. `.codex/memory.md`
-2. `.codex/progress.md`
-3. `.codex/checklist.md`
-4. `.codex/agent.md`
+1. `.claude/memory.md`
+2. `.claude/progress.md`
+3. `.claude/checklist.md`
+4. `.claude/agent.md`
 5. `docs/mvp-monitoring-prd-fa.md`
 6. `docs/technical-architecture-fa.md`
 7. `docs/roadmap-fa.md`
@@ -22,9 +22,9 @@ Before changing code or architecture in this repository, read these files first:
 
 After each meaningful implementation session:
 
-- Update `.codex/progress.md` with what changed, what was verified, and what remains.
-- Update `.codex/memory.md` when a stable product or technical decision is made.
-- Update `.codex/checklist.md` when tasks move from pending to done.
+- Update `.claude/progress.md` with what changed, what was verified, and what remains.
+- Update `.claude/memory.md` when a stable product or technical decision is made.
+- Update `.claude/checklist.md` when tasks move from pending to done.
 - Bump the Afrows version, update `CHANGELOG.md`, and run `npm run version:check` for each meaningful implementation section.
 - Keep dashboard user-facing labels in the typed multilingual layer instead of hardcoding English-only UI copy.
 - Keep privacy, safety, and human-rights requirements visible in every design decision.
@@ -46,7 +46,7 @@ The `knowledge/` MOCs and `graphify-out/` graph are a *derived map* of the codeb
 4. **AST edges** in `graphify-out/graph.json` — extracted structure.
 5. **Communities / INFERRED relationships** — semantic clustering, hints only.
 6. **`docs/**`** — intent and narrative, may lag code.
-7. **Agent memory** (`.codex/memory.md`, `~/.claude/.../MEMORY.md`) — lowest; context, not ground truth.
+7. **Agent memory** (`.claude/memory.md`, `~/.claude/.../MEMORY.md`) — lowest; context, not ground truth.
 
 ### 2. Graph authority rule
 

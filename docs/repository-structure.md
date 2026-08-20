@@ -16,7 +16,7 @@ infra/
   postgres/      SQL migrations and database notes
   docker/        Optional Docker Compose deployment samples
 docs/            Product, architecture, roadmap, threat model, deployment, and implementation docs
-.codex/          Persistent project memory, checklist, and progress
+.claude/          Persistent project memory, checklist, and progress
 tests/e2e/       Playwright browser smoke and dense dashboard visual-capture tests
 ```
 

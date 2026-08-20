@@ -1,7 +1,7 @@
 # Git and local metadata
 .git
 .github
-.codex
+.claude
 
 # Environment and secrets
 .env

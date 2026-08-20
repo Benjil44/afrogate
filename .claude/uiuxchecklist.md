@@ -6,7 +6,7 @@ Progress: 40 / 40 complete (100.0%), 0 remaining.
 
 - [x] Review current screenshots for Dashboard, Servers, Users, Audit Logs, Backups, Billing, Reports, Routes, Alerts, and Settings.
 - [x] Choose default heavy-page pattern: tabs.
-- [x] Choose checklist location: `.codex/uiuxchecklist.md`.
+- [x] Choose checklist location: `.claude/uiuxchecklist.md`.
 - [x] Run browser review after each slice at desktop and mobile widths.
 - [x] Keep English/arabic labels in the typed dashboard translation layer.
 - [x] Keep every operational page free of horizontal overflow.

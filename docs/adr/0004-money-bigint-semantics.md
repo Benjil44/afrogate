@@ -13,7 +13,7 @@ range and must not lose precision to floating point. The established pattern in
 
 - Money and byte-quota columns use **`bigint({ mode: 'number' })`** where this pattern is already established (wallet/ledger amounts, `*_bytes` quota/usage counters, gems balances, reward bytes).
 - New money/byte columns follow the same pattern; do not introduce `numeric`/`float`/`integer` for these roles.
-- This is a modeling/typing decision. The **quota UNIT** (decimal GB = 1e9 bytes, single source `quota-math.ts BYTES_PER_GB`) is a separate rule owned by `docs/invariants.md` and `.codex/memory.md`; the two must stay consistent.
+- This is a modeling/typing decision. The **quota UNIT** (decimal GB = 1e9 bytes, single source `quota-math.ts BYTES_PER_GB`) is a separate rule owned by `docs/invariants.md` and `.claude/memory.md`; the two must stay consistent.
 
 ## Consequences
 
@@ -28,4 +28,4 @@ range and must not lose precision to floating point. The established pattern in
 ## Source evidence
 
 - `schema.ts:503-504,586-592` etc. — `bigint('…', { mode: 'number' })` for balances and `*_bytes` columns.
-- `.codex/memory.md` — "Quota unit = DECIMAL GB (1 GB = 1,000,000,000 bytes) … `quota-math.ts BYTES_PER_GB` is the single source of truth."
+- `.claude/memory.md` — "Quota unit = DECIMAL GB (1 GB = 1,000,000,000 bytes) … `quota-math.ts BYTES_PER_GB` is the single source of truth."

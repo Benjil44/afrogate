@@ -107,7 +107,7 @@ infra/
   docker/        optional future Docker Compose
 docs/
   ...
-.codex/
+.claude/
   ...
 ```
 

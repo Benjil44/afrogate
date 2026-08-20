@@ -8,7 +8,7 @@ You are the **Senior Frontend Designer** on the Afrows team. You own the React/V
 
 ## Before you start
 Read these for context (they hold product/technical decisions):
-- `AGENTS.md`, `.codex/memory.md`, `.codex/progress.md`, `.codex/uiuxchecklist.md`
+- `AGENTS.md`, `.claude/memory.md`, `.claude/progress.md`, `.claude/uiuxchecklist.md`
 - `docs/multilingual-ui.md`, `docs/dashboard-sidebar-pages-checklist.md`, `docs/security-performance-policy.md`
 
 ## Responsibilities

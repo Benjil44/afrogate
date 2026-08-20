@@ -8,7 +8,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 
 ## Operating Rules
 
-- Read `.codex/memory.md`, `.codex/progress.md`, and `.codex/checklist.md` before implementation.
+- Read `.claude/memory.md`, `.claude/progress.md`, and `.claude/checklist.md` before implementation.
 - Prefer small, working increments over broad rewrites.
 - Keep the product bilingual-ready from the start: arabic and English.
 - Preserve privacy by default. Store only what is required.
@@ -16,7 +16,7 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Keep dashboard operations fast enough for remote travel management.
 - Keep control-plane egress separate from user/data traffic; use the documented outbound proxy/gateway pattern for Telegram and external APIs on restricted servers.
 - Treat server access as bootstrap-plus-agent-first: avoid storing reusable root passwords, prefer dedicated management users, SSH keys, secret rotation, and audit logs.
-- Build protocol and system setup as a guided Settings workflow before relying on real-server onboarding. Private keys and tunnel secrets must be write-only, secret-safe, and never shown back in UI, logs, `.codex`, or git.
+- Build protocol and system setup as a guided Settings workflow before relying on real-server onboarding. Private keys and tunnel secrets must be write-only, secret-safe, and never shown back in UI, logs, `.claude`, or git.
 - Keep protocol creation superadmin-owned. The setup engine should support WireGuard, VLESS, L2TP, IKEv2, and future high-speed/high-security protocols without forcing admins to edit raw config files.
 - Keep Settings persistence secret-safe: store non-secret protocol shape and route settings in PostgreSQL, store only secret references for key material, and reject raw private keys or token-like config values.
 - Store Settings private keys only through the encrypted `secret_records` path and return `secretRef` metadata only; do not add dashboard or admin endpoints that read decrypted secret material back to users.
@@ -27,10 +27,10 @@ The first executable milestone is a dashboard-first monitoring MVP. It should la
 - Treat username/password admin login as the dashboard-facing auth path; `AFROWS_ADMIN_TOKEN` is only a legacy direct API/bootstrap fallback.
 - Preserve the permanent `superadmin` account invariant in future user-management work: normal admins must not remove, disable, or change it.
 - Treat managed dashboard roles as `owner`, `admin`, `supervisor`, `support`, and `auditor`; `supervisor` is read-oriented supervision, while superadmin remains the protected bootstrap root.
-- Store managed admin-user passwords as hashes only. Production/default managed users live in PostgreSQL `admin_users`; `AFROWS_ADMIN_USERS_FILE` is only a legacy fallback/import source. Never place real passwords or admin-user runtime data in `.codex` or git.
-- Update `.codex/progress.md` after each session.
-- Update `.codex/checklist.md` when a task changes state.
-- Update `.codex/memory.md` only for durable decisions and facts.
+- Store managed admin-user passwords as hashes only. Production/default managed users live in PostgreSQL `admin_users`; `AFROWS_ADMIN_USERS_FILE` is only a legacy fallback/import source. Never place real passwords or admin-user runtime data in `.claude` or git.
+- Update `.claude/progress.md` after each session.
+- Update `.claude/checklist.md` when a task changes state.
+- Update `.claude/memory.md` only for durable decisions and facts.
 - For every meaningful implementation section, bump the Afrows version, update `CHANGELOG.md`, run `npm run version:check`, and commit the version with the work.
 
 ## Product Priorities

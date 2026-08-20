@@ -42,7 +42,7 @@ Let a **seller create a customer with an email/username + password**, and let th
 - Passwords: scrypt (`hashPassword`), never logged, never returned except the one-time generate/reset.
 - `/client/login`: rate-limited, generic failure message, requires `status='active'`.
 - Tokens issued on login are the existing `client_access_tokens` (revocable; `client:read` scope).
-- No credentials in git/.codex.
+- No credentials in git/.claude.
 
 ## Testing
 - Unit: password generate/verify; login identifier normalization; "issue token on login" returns a token that `authenticateClientAccessToken` accepts (round-trip).
