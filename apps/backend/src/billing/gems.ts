@@ -55,8 +55,9 @@ export type GemsReason =
 
 /**
  * Referral-code alphabet: uppercase + digits minus the lookalikes 0/O and 1/I/L
- * (docs §13). 30 symbols × 8 chars ≈ 6.6e11 space, so random collisions are
- * vanishingly rare and are caught anyway by the DB unique index on retry.
+ * (docs §13). 31 symbols × 8 chars = 31^8 = 852,891,037,441 ≈ 8.5e11 codes, so
+ * random collisions are vanishingly rare and are caught anyway by the DB unique
+ * index on retry.
  */
 export const REFERRAL_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const REFERRAL_CODE_LENGTH = 8;
