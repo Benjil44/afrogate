@@ -976,7 +976,11 @@ function createRewardClaimKey(): string {
     return `client-ad:${crypto.randomUUID()}`;
   }
 
-  return `client-ad:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  // Non-secure-context fallback (randomUUID unavailable): build a 128-bit
+  // CSPRNG hex suffix so the claim key stays unpredictable per click.
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const suffix = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `client-ad:${suffix}`;
 }
 
 function readSplitTunnelState(clientConfigId: string): { mode: ClientSplitTunnelMode; selectedAppIds: string[] } {
