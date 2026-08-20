@@ -1,11 +1,11 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T13:32:55.646Z
+> Graph artifact time: 2026-08-20T16:27:17.978Z
 
 # Module: `outbound`
 
 - **Source path:** `apps/backend/src/outbound/`
-- **Dominant graph community (hint, not authoritative):** OutboundHttpService
+- **Dominant graph community (hint, not authoritative):** outbound-health.service.ts
 - **High-risk dependencies (DERIVED):** [[tbl-outbounds]]
 
 ## Services / classes (VERIFIED)

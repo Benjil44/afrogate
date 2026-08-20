@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T13:32:55.646Z
+> Graph artifact time: 2026-08-20T16:27:17.978Z
 
 # Module: `billing`
 
@@ -87,10 +87,10 @@
 - [[PreparePaymentProviderCheckoutInput]] — `apps/backend/src/billing/payment-provider-adapters.ts:L30`
 - [[PreparedPaymentProviderCheckout]] — `apps/backend/src/billing/payment-provider-adapters.ts:L38`
 - [[RatedOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L491`
-- [[RedeemGemsResult]] — `apps/backend/src/billing/gems.ts:L104`
-- [[ReferralMilestoneCredit]] — `apps/backend/src/billing/gems.ts:L283`
-- [[ReferralRewardConfig]] — `apps/backend/src/billing/gems.ts:L297`
-- [[ReferralSignupCredit]] — `apps/backend/src/billing/gems.ts:L289`
+- [[RedeemGemsResult]] — `apps/backend/src/billing/gems.ts:L105`
+- [[ReferralMilestoneCredit]] — `apps/backend/src/billing/gems.ts:L284`
+- [[ReferralRewardConfig]] — `apps/backend/src/billing/gems.ts:L298`
+- [[ReferralSignupCredit]] — `apps/backend/src/billing/gems.ts:L290`
 - [[RejectResellerTopupDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L207`
 - [[RejectResellerTopupOutcome]] — `apps/backend/src/billing/reseller-topup.ts:L173`
 - [[ResellerAccountFilters]] — `apps/backend/src/billing/billing.service.ts:L706`
