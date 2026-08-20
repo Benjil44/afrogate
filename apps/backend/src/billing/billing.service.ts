@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHmac, randomBytes, randomUUID } from 'crypto';
+import { createHmac, randomBytes, randomInt, randomUUID } from 'crypto';
 import { execFile } from 'node:child_process';
 import * as QRCode from 'qrcode';
 import type {
@@ -3427,12 +3427,19 @@ export class BillingService {
 
   /** A friendly, unambiguous random display name for customers the operator
    *  created without filling one in (e.g. "Customer-K7M3PQ"). The alphabet omits
-   *  easily-confused characters (0/O, 1/I/L). */
+   *  easily-confused characters (0/O, 1/I/L).
+   *
+   *  Uses Node's `crypto.randomInt(max)`, which draws a cryptographically-secure,
+   *  UNIFORM integer in [0, max) (it rejection-samples internally) — so every
+   *  alphabet character is equally likely. Reducing a raw random byte with
+   *  `% alphabet.length` would be biased: 256 = 8*31 + 8, so the first 8
+   *  characters (A–H) each draw from 9 byte values instead of 8 — a ~9%
+   *  relative over-representation. Same pattern as `generateReferralCode`
+   *  in ./gems.ts. */
   private generateCustomerDisplayName(): string {
     const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    const bytes = randomBytes(6);
     let code = '';
-    for (let i = 0; i < 6; i++) code += alphabet[bytes[i] % alphabet.length];
+    for (let i = 0; i < 6; i++) code += alphabet[randomInt(alphabet.length)];
     return `Customer-${code}`;
   }
 
