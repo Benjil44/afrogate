@@ -1,5 +1,6 @@
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createRewardClaimKey } from './reward-claim-key';
 import type {
   ClientRewardedAdStatus,
   ClientPortalProfileResponse,
@@ -969,18 +970,6 @@ function detectLocaleCountry(): string | null {
   }
 
   return null;
-}
-
-function createRewardClaimKey(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return `client-ad:${crypto.randomUUID()}`;
-  }
-
-  // Non-secure-context fallback (randomUUID unavailable): build a 128-bit
-  // CSPRNG hex suffix so the claim key stays unpredictable per click.
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  const suffix = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `client-ad:${suffix}`;
 }
 
 function readSplitTunnelState(clientConfigId: string): { mode: ClientSplitTunnelMode; selectedAppIds: string[] } {

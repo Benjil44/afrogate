@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHmac, randomBytes, randomInt, randomUUID } from 'crypto';
+import { createHmac, randomBytes, randomUUID } from 'crypto';
 import { execFile } from 'node:child_process';
 import * as QRCode from 'qrcode';
 import type {
@@ -118,6 +118,7 @@ import {
   type RedeemGemsResult,
   type ReferralRewardConfig,
 } from './gems';
+import { generateCustomerDisplayName } from './display-name';
 import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
 import { phoneClearVariants, phoneDigitVariants } from './phone-identity';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
@@ -3425,22 +3426,11 @@ export class BillingService {
     return { link: buildAfrowsEntryUri(inbound, row.entryUuid, name) };
   }
 
-  /** A friendly, unambiguous random display name for customers the operator
-   *  created without filling one in (e.g. "Customer-K7M3PQ"). The alphabet omits
-   *  easily-confused characters (0/O, 1/I/L).
-   *
-   *  Uses Node's `crypto.randomInt(max)`, which draws a cryptographically-secure,
-   *  UNIFORM integer in [0, max) (it rejection-samples internally) — so every
-   *  alphabet character is equally likely. Reducing a raw random byte with
-   *  `% alphabet.length` would be biased: 256 = 8*31 + 8, so the first 8
-   *  characters (A–H) each draw from 9 byte values instead of 8 — a ~9%
-   *  relative over-representation. Same pattern as `generateReferralCode`
-   *  in ./gems.ts. */
+  /** Random "Customer-XXXXXX" display name. Implementation lives in the pure
+   *  ./display-name module (node --test loadable) so its unbiased-selection
+   *  contract is pinned by apps/backend/test/display-name.test.ts. */
   private generateCustomerDisplayName(): string {
-    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) code += alphabet[randomInt(alphabet.length)];
-    return `Customer-${code}`;
+    return generateCustomerDisplayName();
   }
 
   async createCustomerAccount(
