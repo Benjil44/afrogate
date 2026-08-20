@@ -41,6 +41,13 @@ describe('routeMarkHex', () => {
     assert.equal(routeMarkHex('balanced'), routeMarkHex('balanced'));
     assert.match(routeMarkHex('balanced'), /^0x[a-f0-9]+$/);
   });
+
+  it('pins the exact hex mark for known route groups (regression guard: a hash-algorithm ' +
+    'change here would silently re-key live `ip rule fwmark` values on production routers)', () => {
+    assert.equal(routeMarkHex('balanced'), '0xed08');
+    assert.equal(routeMarkHex('gaming'), '0xb42f');
+    assert.equal(routeMarkHex('stability'), '0xe7a9');
+  });
 });
 
 describe('shellToken', () => {
