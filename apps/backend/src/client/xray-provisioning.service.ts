@@ -89,6 +89,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
           JOIN customer_accounts ca ON ca.id = cc.customer_account_id
           WHERE cc.status <> 'disabled'
             AND ca.status = 'active'
+            AND ca.deleted_at IS NULL
         `,
       );
       let added = 0;

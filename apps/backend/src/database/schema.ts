@@ -1,13 +1,17 @@
 import { relations, sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import {
   bigserial,
   bigint,
   boolean,
+  customType,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -421,6 +425,17 @@ export const outbounds = pgTable(
     maxUsers: integer('max_users'),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     lastHealthyAt: timestamp('last_healthy_at', { withTimezone: true }),
+    // Speed-test columns added by migration 0029 (double precision, nullable).
+    latestDownMbps: doublePrecision('latest_down_mbps'),
+    latestUpMbps: doublePrecision('latest_up_mbps'),
+    lastSpeedTestAt: timestamp('last_speed_test_at', { withTimezone: true }),
+    speedTestRequestedAt: timestamp('speed_test_requested_at', { withTimezone: true }),
+    // Subscription linkage added by migration 0032. FK modeled in Phase 1B.1 now
+    // that outbound_subscriptions is an entity: subscription_id -> outbound_subscriptions(id) CASCADE.
+    subscriptionId: uuid('subscription_id').references((): AnyPgColumn => outboundSubscriptions.id, {
+      onDelete: 'cascade',
+    }),
+    subscriptionKey: text('subscription_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -429,6 +444,10 @@ export const outbounds = pgTable(
     routePriorityIdx: index('outbounds_route_priority_idx').on(table.routeGroup, table.priority),
     enabledIdx: index('outbounds_enabled_idx').on(table.enabled),
     healthStatusIdx: index('outbounds_health_status_idx').on(table.healthStatus),
+    subscriptionIdx: index('outbounds_subscription_idx').on(table.subscriptionId),
+    subscriptionKeyIdx: uniqueIndex('outbounds_subscription_key_uidx')
+      .on(table.subscriptionId, table.subscriptionKey)
+      .where(sql`subscription_id IS NOT NULL`),
   }),
 );
 
@@ -568,6 +587,25 @@ export const customerAccounts = pgTable(
     perClientLimitBytes: bigint('per_client_limit_bytes', { mode: 'number' }),
     usedBytes: bigint('used_bytes', { mode: 'number' }).notNull().default(0),
     notes: text('notes'),
+    // Registration/wallet/referral columns added by migration 0053; egress tier by 0036.
+    phone: text('phone'),
+    gemsBalance: bigint('gems_balance', { mode: 'number' }).notNull().default(0),
+    referralCode: text('referral_code'),
+    referredBy: uuid('referred_by').references((): AnyPgColumn => customerAccounts.id),
+    egressTier: text('egress_tier').notNull().default('normal'),
+    // Auth credentials for mobile-app account login (migration 0030). password_hash is a
+    // hash, never plaintext; login_email is unique case-insensitively (see loginEmailIdx).
+    loginEmail: text('login_email'),
+    passwordHash: text('password_hash'),
+    passwordSetAt: timestamp('password_set_at', { withTimezone: true }),
+    // Admin entitlement to the gaming egress tier (migration 0043); the ACTIVE on/off is egressTier.
+    gamingEntitled: boolean('gaming_entitled').notNull().default(false),
+    // Subscription lifecycle. expiresAt: NULL = never expires, past = cannot log in (migration 0044).
+    // deletedAt: NULL = live, non-NULL = archived/soft-deleted (migration 0051).
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    // Operator labels for filtering/segmentation (migration 0044); Postgres text[] array (NOT jsonb).
+    tags: text('tags').array().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -581,6 +619,20 @@ export const customerAccounts = pgTable(
     statusIdx: index('customer_accounts_status_idx').on(table.status),
     quotaScopeIdx: index('customer_accounts_quota_scope_idx').on(table.quotaScope),
     resellerAccountIdx: index('customer_accounts_reseller_account_idx').on(table.resellerAccountId, table.createdAt),
+    referralCodeIdx: uniqueIndex('customer_accounts_referral_code_key')
+      .on(table.referralCode)
+      .where(sql`referral_code IS NOT NULL`),
+    referredByIdx: index('customer_accounts_referred_by_idx')
+      .on(table.referredBy)
+      .where(sql`referred_by IS NOT NULL`),
+    // Case-insensitive unique login (functional index on lower(login_email)), migration 0030.
+    loginEmailIdx: uniqueIndex('customer_accounts_login_email_key')
+      .on(sql`lower(${table.loginEmail})`)
+      .where(sql`login_email IS NOT NULL`),
+    // Partial index over live (non-archived) rows for the Customers listing, migration 0051.
+    activeCreatedIdx: index('customer_accounts_active_created_idx')
+      .on(table.createdAt.desc())
+      .where(sql`deleted_at IS NULL`),
   }),
 );
 
@@ -1082,6 +1134,271 @@ export const routeDecisionEvents = pgTable(
     toOutboundIdx: index('route_decision_events_to_outbound_idx').on(table.toOutboundId),
   }),
 );
+
+// ===========================================================================
+// Phase 1A: financial / audit tables (migration-authoritative).
+// These are accessed exclusively via raw SQL (never the Drizzle query builder),
+// so the entities are a schema-of-record + a source for derived row types. As
+// with every other entity in this file, DB-level CHECK constraints (status
+// enums, amount positivity) are NOT mirrored here — they stay enforced by the
+// migrations. No relations() are added: the raw-SQL codebase does not use the
+// Drizzle relational query API, so they would be decorative. FKs (incl. ON
+// DELETE) ARE modeled at the column level, which is the authoritative structure.
+// ===========================================================================
+
+// Postgres bytea — drizzle-orm has no builtin. Buffer-backed; type metadata only
+// (the receipt blob is read/written via raw SQL through an authenticated endpoint).
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+// Telegram self-service card-to-card top-up requests (migration 0052).
+// State machine: awaiting_receipt -> pending -> approved | rejected (CHECK in DB).
+export const telegramTopupRequests = pgTable(
+  'telegram_topup_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    telegramId: text('telegram_id'),
+    telegramChatId: text('telegram_chat_id'),
+    volumePackageId: uuid('volume_package_id').references(() => volumePackages.id),
+    amountMinor: bigint('amount_minor', { mode: 'number' }),
+    currency: text('currency'),
+    receiptFileId: text('receipt_file_id'),
+    status: text('status').notNull().default('awaiting_receipt'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewNote: text('review_note'),
+  },
+  (table) => ({
+    statusCreatedIdx: index('telegram_topup_requests_status_created_idx').on(table.status, table.createdAt.desc()),
+    telegramStatusIdx: index('telegram_topup_requests_telegram_status_idx').on(
+      table.telegramId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+  }),
+);
+export type TelegramTopupRequestRow = typeof telegramTopupRequests.$inferSelect;
+export type TelegramTopupRequestInsert = typeof telegramTopupRequests.$inferInsert;
+
+// Append-only gems ledger — source-of-truth audit trail behind the cached
+// customer_accounts.gems_balance (migration 0053). Signed delta (+ earn / - spend).
+export const gemsLedger = pgTable(
+  'gems_ledger',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    delta: bigint('delta', { mode: 'number' }).notNull(),
+    reason: text('reason').notNull(),
+    ref: text('ref'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountCreatedIdx: index('gems_ledger_account_created_idx').on(table.customerAccountId, table.createdAt.desc()),
+    reasonRefIdx: index('gems_ledger_reason_ref_idx').on(table.reason, table.ref),
+  }),
+);
+export type GemsLedgerRow = typeof gemsLedger.$inferSelect;
+export type GemsLedgerInsert = typeof gemsLedger.$inferInsert;
+
+// Reseller card-to-card wallet top-up requests (migration 0054). On approval the
+// backend writes reseller_wallet_ledger and links it via wallet_ledger_id.
+// State machine: pending -> approved | rejected (CHECK in DB); amount > 0 (CHECK).
+export const resellerWalletTopupRequests = pgTable(
+  'reseller_wallet_topup_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    resellerAccountId: uuid('reseller_account_id')
+      .notNull()
+      .references(() => resellerAccounts.id, { onDelete: 'cascade' }),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
+    currency: text('currency').notNull(),
+    receiptBytes: bytea('receipt_bytes'),
+    receiptContentType: text('receipt_content_type'),
+    status: text('status').notNull().default('pending'),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    walletLedgerId: uuid('wallet_ledger_id').references(() => resellerWalletLedger.id, { onDelete: 'set null' }),
+  },
+  (table) => ({
+    statusCreatedIdx: index('reseller_wallet_topup_requests_status_created_idx').on(table.status, table.createdAt.desc()),
+    resellerCreatedIdx: index('reseller_wallet_topup_requests_reseller_created_idx').on(
+      table.resellerAccountId,
+      table.createdAt.desc(),
+    ),
+  }),
+);
+export type ResellerWalletTopupRequestRow = typeof resellerWalletTopupRequests.$inferSelect;
+export type ResellerWalletTopupRequestInsert = typeof resellerWalletTopupRequests.$inferInsert;
+
+// ===========================================================================
+// Phase 1B.1: outbound-subscription + WireGuard / device-sighting tables
+// (migration-authoritative). Raw-SQL runtime; entities are schema-of-record +
+// derived types only. DB-level CHECK constraints (desired_state enum, rx/tx >= 0)
+// stay DB-enforced and are NOT mirrored, per this file's convention. FKs (incl.
+// ON DELETE) ARE modeled at the column level.
+// ===========================================================================
+
+// One subscription URL expands into many child `outbounds` rows (migration 0032).
+export const outboundSubscriptions = pgTable('outbound_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  routeGroup: text('route_group').notNull().default('default'),
+  profileTitle: text('profile_title'),
+  updateIntervalHours: integer('update_interval_hours'),
+  userinfo: jsonb('userinfo').notNull().default(sql`'{}'::jsonb`),
+  enabled: boolean('enabled').notNull().default(true),
+  configCount: integer('config_count').notNull().default(0),
+  lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
+  lastStatus: text('last_status').notNull().default('unknown'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type OutboundSubscriptionSelect = typeof outboundSubscriptions.$inferSelect;
+export type OutboundSubscriptionInsert = typeof outboundSubscriptions.$inferInsert;
+
+// WireGuard peers — one row per client_config delivered over kernel WireGuard
+// (migrations 0033 base, 0034 metered counters, 0047 endpoint_ip). 16 columns.
+export const wireguardPeers = pgTable(
+  'wireguard_peers',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    interface: text('interface').notNull().default('wg0'),
+    clientPublicKey: text('client_public_key').notNull(),
+    encryptedPrivateKey: text('encrypted_private_key').notNull(),
+    clientAddress: text('client_address').notNull(),
+    presharedKey: text('preshared_key'),
+    rxBytes: bigint('rx_bytes', { mode: 'number' }).notNull().default(0),
+    txBytes: bigint('tx_bytes', { mode: 'number' }).notNull().default(0),
+    lastHandshakeAt: timestamp('last_handshake_at', { withTimezone: true }),
+    desiredState: text('desired_state').notNull().default('present'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    meteredRxBytes: bigint('metered_rx_bytes', { mode: 'number' }).notNull().default(0),
+    meteredTxBytes: bigint('metered_tx_bytes', { mode: 'number' }).notNull().default(0),
+    endpointIp: text('endpoint_ip'),
+  },
+  (table) => ({
+    clientConfigUnique: uniqueIndex('wireguard_peers_client_config_unique').on(table.clientConfigId),
+    pubkeyUnique: uniqueIndex('wireguard_peers_pubkey_unique').on(table.interface, table.clientPublicKey),
+    addressUnique: uniqueIndex('wireguard_peers_address_unique').on(table.interface, table.clientAddress),
+    desiredStateIdx: index('wireguard_peers_desired_state_idx').on(table.interface, table.desiredState),
+  }),
+);
+export type WireguardPeerRow = typeof wireguardPeers.$inferSelect;
+export type WireguardPeerInsert = typeof wireguardPeers.$inferInsert;
+
+// Per-(config, source IP) device sightings for device/IP visibility (migration 0047).
+export const clientDeviceSightings = pgTable(
+  'client_device_sightings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientConfigId: uuid('client_config_id')
+      .notNull()
+      .references(() => clientConfigs.id, { onDelete: 'cascade' }),
+    sourceIp: text('source_ip').notNull(),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    hits: bigint('hits', { mode: 'number' }).notNull().default(1),
+  },
+  (table) => ({
+    uniq: uniqueIndex('client_device_sightings_uniq').on(table.clientConfigId, table.sourceIp),
+    lastSeenIdx: index('client_device_sightings_last_seen_idx').on(table.lastSeenAt),
+  }),
+);
+export type ClientDeviceSightingSelect = typeof clientDeviceSightings.$inferSelect;
+export type ClientDeviceSightingInsert = typeof clientDeviceSightings.$inferInsert;
+
+// ===========================================================================
+// Phase 1B.2A: operator-managed MikroTik routers (migrations 0038 base, 0041
+// tunnel keys, 0042 egress_enabled, 0045 role + customer link). 18 columns.
+// text (caller-supplied) PK, not uuid. Raw-SQL runtime; DB-level CHECKs (kind,
+// rest_port range, role) stay DB-enforced, not mirrored, per file convention.
+// NOTE (future dependency, NOT modeled here): mikrotik_gateway_usage_cursor
+//   .router_id -> mikrotik_routers(id) ON DELETE CASCADE — deferred to Phase 1B.2B.
+// ===========================================================================
+export const mikrotikRouters = pgTable(
+  'mikrotik_routers',
+  {
+    id: text('id').primaryKey(),
+    label: text('label').notNull(),
+    kind: text('kind').notNull().default('other'),
+    host: text('host').notNull(),
+    restPort: integer('rest_port').notNull().default(80),
+    restUser: text('rest_user').notNull().default('claude'),
+    restPasswordEnc: text('rest_password_enc'),
+    webfigUrl: text('webfig_url'),
+    gamingSourceIp: text('gaming_source_ip'),
+    gamingEnabled: boolean('gaming_enabled').notNull().default(false),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    tunnelPublicKey: text('tunnel_public_key'),
+    tunnelPrivateKeyEnc: text('tunnel_private_key_enc'),
+    egressEnabled: boolean('egress_enabled').notNull().default(false),
+    role: text('role').notNull().default('gateway'),
+    customerAccountId: uuid('customer_account_id').references(() => customerAccounts.id, { onDelete: 'set null' }),
+  },
+  (table) => ({
+    customerIdx: index('mikrotik_routers_customer_idx').on(table.customerAccountId),
+  }),
+);
+export type MikrotikRouterRow = typeof mikrotikRouters.$inferSelect;
+export type MikrotikRouterInsert = typeof mikrotikRouters.$inferInsert;
+
+// Phase 1B.2B: per-(router, peer) billing cursor — last absolute WG counters
+// already billed, so each cycle only adds the new delta (migration 0045).
+// Composite PK (router_id, peer_key) is the cursor identity + UPSERT conflict target.
+export const mikrotikGatewayUsageCursor = pgTable(
+  'mikrotik_gateway_usage_cursor',
+  {
+    routerId: text('router_id')
+      .notNull()
+      .references(() => mikrotikRouters.id, { onDelete: 'cascade' }),
+    peerKey: text('peer_key').notNull(),
+    lastRx: bigint('last_rx', { mode: 'number' }).notNull().default(0),
+    lastTx: bigint('last_tx', { mode: 'number' }).notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.routerId, table.peerKey] }),
+  }),
+);
+export type MikrotikGatewayUsageCursorRow = typeof mikrotikGatewayUsageCursor.$inferSelect;
+export type MikrotikGatewayUsageCursorInsert = typeof mikrotikGatewayUsageCursor.$inferInsert;
+
+// Per-Telegram-user session/preference store (migration 0052; 0053 relaxed
+// `language` to nullable with NO default). Natural text PK: telegram_id — a row
+// exists per Telegram id BEFORE any customer account. NO foreign key: the
+// telegram_id <-> customer_accounts.telegram_id join is an intentional soft/ad-hoc
+// lookup, not referential — hence no .references() and no relations(). `state`
+// stays plain jsonb here; its typed shape (TelegramUserState) lives in
+// telegram-user-store.ts. CHECK (language IN ('en','fa')) stays DB-enforced.
+export const telegramUsers = pgTable('telegram_users', {
+  telegramId: text('telegram_id').primaryKey(),
+  chatId: text('chat_id'),
+  language: text('language'),
+  state: jsonb('state'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TelegramUserSelect = typeof telegramUsers.$inferSelect;
+export type TelegramUserInsert = typeof telegramUsers.$inferInsert;
 
 export const serversRelations = relations(servers, ({ many }) => ({
   metrics: many(serverMetrics),

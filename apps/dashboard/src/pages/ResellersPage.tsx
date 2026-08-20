@@ -1,15 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Store } from 'lucide-react';
-import type { AdminResellerAccountSummary, AdminResellerWalletLedgerEntry, AdminUserSummary } from '@afrows/shared';
+import { Loader2, LogIn, Store, Users } from 'lucide-react';
+import type { AdminCustomerAccountSummary, AdminResellerAccountSummary, AdminResellerWalletLedgerEntry, AdminUserSummary } from '@afrows/shared';
 import { createAdminReseller, fetchAdminResellers, fetchAdminUsers, fetchResellerWalletLedger, topUpResellerWallet, updateAdminReseller } from '../api/admin';
-import { DataTable, EmptyState, PanelHeading } from '../components/primitives';
+import { fetchGbPrice, fetchResellerCustomers, impersonateReseller, type ImpersonateResellerResult } from '../api/reseller-pricing';
+import { DataTable, EmptyState, PanelHeading, StatusBadge } from '../components/primitives';
+import { billingStatusTone, customerAccountStatusLabel } from '../labels';
 import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 
 const inputClass = 'min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal';
 
-export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters; sessionToken: string; t: DashboardStrings }) {
+type SellerCustomersState = 'loading' | 'live' | 'error';
+
+export function ResellersPage({
+  format,
+  onImpersonate,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  /** "Sign in as seller": hands the reseller-scoped session up to the app shell. */
+  onImpersonate?: (result: ImpersonateResellerResult) => void;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
   const s = t.resellersPage;
   const [rows, setRows] = useState<AdminResellerAccountSummary[]>([]);
   const [resellerUsers, setResellerUsers] = useState<AdminUserSummary[]>([]);
@@ -19,12 +34,21 @@ export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters
   const [displayName, setDisplayName] = useState('');
   const [marginPct, setMarginPct] = useState('20');
   const [currency, setCurrency] = useState('IRT');
+  // Platform billing currency (from the GB-price settings). A reseller whose
+  // wallet currency differs is silently blocked (currency_mismatch) on every
+  // per-GB sale, so the create form prefills + locks the currency to it.
+  const [platformCurrency, setPlatformCurrency] = useState<string | null>(null);
   const [creditLimit, setCreditLimit] = useState('0');
   const [busy, setBusy] = useState(false);
   const [topUpFor, setTopUpFor] = useState<string | null>(null);
   const [topUpAmount, setTopUpAmount] = useState('');
   const [ledgerFor, setLedgerFor] = useState<string | null>(null);
   const [ledger, setLedger] = useState<AdminResellerWalletLedgerEntry[]>([]);
+  // Drill-down: which seller's customers are expanded + their usage rows.
+  const [customersFor, setCustomersFor] = useState<string | null>(null);
+  const [customers, setCustomers] = useState<AdminCustomerAccountSummary[]>([]);
+  const [customersState, setCustomersState] = useState<SellerCustomersState>('loading');
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -42,6 +66,17 @@ export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters
     void load();
   }, [sessionToken]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchGbPrice(sessionToken, controller.signal)
+      .then((price) => {
+        setPlatformCurrency(price.currency);
+        setCurrency(price.currency);
+      })
+      .catch(() => undefined); // settings unavailable -> currency stays editable
+    return () => controller.abort();
+  }, [sessionToken]);
+
   // reseller-role users not yet linked to a reseller account
   const availableLogins = useMemo(() => {
     const linked = new Set(rows.map((r) => r.adminUserId));
@@ -57,7 +92,7 @@ export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters
         adminUserId,
         displayName: displayName.trim(),
         sellerMarginBps: Math.round((Number(marginPct) || 0) * 100),
-        currency: currency.trim() || 'IRT',
+        currency: platformCurrency ?? (currency.trim() || 'IRT'),
         creditLimitAmount: Math.round(Number(creditLimit) || 0),
       });
       setShowAdd(false);
@@ -114,6 +149,38 @@ export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters
     }
   };
 
+  /** Drill into a seller: list their customer accounts + used/quota usage. */
+  const openCustomers = async (id: string) => {
+    if (customersFor === id) {
+      setCustomersFor(null);
+      return;
+    }
+    setCustomersFor(id);
+    setCustomers([]);
+    setCustomersState('loading');
+    try {
+      const accounts = await fetchResellerCustomers(sessionToken, id);
+      setCustomers(accounts);
+      setCustomersState('live');
+    } catch {
+      setCustomersState('error');
+    }
+  };
+
+  /** Audited superadmin impersonation: opens the seller's own panel as them. */
+  const onSignInAs = async (r: AdminResellerAccountSummary) => {
+    setImpersonatingId(r.id);
+    setError(null);
+    try {
+      const result = await impersonateReseller(sessionToken, r.id);
+      onImpersonate?.(result);
+    } catch {
+      setError(s.signInAsFailed);
+    } finally {
+      setImpersonatingId(null);
+    }
+  };
+
   const money = (n: number, cur: string) => `${n.toLocaleString()} ${cur}`;
 
   const columns: Array<DataTableColumn<AdminResellerAccountSummary>> = [
@@ -166,9 +233,30 @@ export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters
       header: s.colActions,
       alignRight: true,
       render: (r) => (
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           <button type="button" onClick={() => { setTopUpFor(r.id); setTopUpAmount(''); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.topUp}</button>
           <button type="button" onClick={() => void openLedger(r.id)} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.ledger}</button>
+          <button
+            aria-expanded={customersFor === r.id}
+            data-seller-customers-toggle={r.id}
+            type="button"
+            onClick={() => void openCustomers(r.id)}
+            className={`inline-flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal ${customersFor === r.id ? 'border-afro-teal text-afro-teal' : 'border-afro-line'}`}
+          >
+            <Users size={13} />
+            {s.customers}
+          </button>
+          <button
+            data-seller-impersonate={r.id}
+            type="button"
+            disabled={impersonatingId !== null}
+            onClick={() => void onSignInAs(r)}
+            title={s.signInAs}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-blue hover:text-afro-blue disabled:cursor-wait disabled:opacity-60"
+          >
+            {impersonatingId === r.id ? <Loader2 className="animate-spin" size={13} /> : <LogIn size={13} />}
+            {impersonatingId === r.id ? s.signingInAs : s.signInAs}
+          </button>
         </div>
       ),
     },
@@ -200,7 +288,17 @@ export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.marginPercent}</span>
             <input className={inputClass} inputMode="numeric" value={marginPct} onChange={(e) => setMarginPct(e.target.value)} /></label>
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.currency}</span>
-            <input className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value)} /></label>
+            <input
+              className={inputClass}
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              readOnly={platformCurrency !== null}
+              aria-describedby={platformCurrency !== null ? 'reseller-currency-hint' : undefined}
+              data-reseller-currency-input="true"
+            />
+            {platformCurrency !== null ? (
+              <span id="reseller-currency-hint" className="text-[12px] text-afro-muted">{s.currencyLocked}</span>
+            ) : null}</label>
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.creditLimit}</span>
             <input className={inputClass} inputMode="numeric" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} /></label>
           <div className="md:col-span-2">
@@ -239,7 +337,39 @@ export function ResellersPage({ sessionToken, t }: { format: DashboardFormatters
         </div>
       ) : null}
 
-      {rows.length === 0 ? <EmptyState message={s.empty} /> : <DataTable rows={rows} columns={columns} rowKey={(r) => r.id} minWidth="820px" />}
+      {customersFor ? (
+        <div className="grid gap-1.5 rounded-lg border border-afro-line bg-white p-3" data-seller-customers="true">
+          <div className="flex items-center justify-between gap-2">
+            <strong className="min-w-0 truncate text-[13px]">
+              {s.customersTitle(rows.find((r) => r.id === customersFor)?.displayName ?? '')}
+            </strong>
+            <button type="button" onClick={() => setCustomersFor(null)} className="inline-flex min-h-9 items-center px-1 text-[12px] font-bold text-afro-muted hover:text-afro-ink">{s.cancel}</button>
+          </div>
+          {customersState === 'loading' ? (
+            <span className="inline-flex items-center gap-2 text-[12px] text-afro-muted"><Loader2 className="animate-spin" size={14} />{t.panelStates.loadingTitle}</span>
+          ) : customersState === 'error' ? (
+            <span className="text-[12px] text-afro-muted">{s.customersLoadFailed}</span>
+          ) : customers.length === 0 ? (
+            <span className="text-[12px] text-afro-muted">{s.customersEmpty}</span>
+          ) : (
+            customers.map((account) => (
+              <div key={account.id} className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-afro-line/60 py-1.5 last:border-b-0">
+                <span className="min-w-0">
+                  <strong className="block truncate text-[13px] text-afro-ink">
+                    {account.displayName ?? account.telegramUsername ?? account.id.slice(0, 8)}
+                  </strong>
+                  <span className="block truncate text-[12px] text-afro-muted" dir="ltr">
+                    {s.colUsedQuota}: {format.bytes(account.usedBytes)} / {account.quotaLimitBytes === null || account.quotaLimitBytes === undefined ? t.billing.unlimited : format.bytes(account.quotaLimitBytes)}
+                  </span>
+                </span>
+                <StatusBadge tone={billingStatusTone(account.status)}>{customerAccountStatusLabel(account.status, t)}</StatusBadge>
+              </div>
+            ))
+          )}
+        </div>
+      ) : null}
+
+      {rows.length === 0 ? <EmptyState message={s.empty} /> : <DataTable rows={rows} columns={columns} rowKey={(r) => r.id} minWidth="980px" />}
     </section>
   );
 }

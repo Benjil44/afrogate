@@ -60,30 +60,38 @@ assert sorted([str(x) for x in r]) == sorted([str(x) for x in r2]), "fixed rules
 assert mod.desired_rules("smart", ["t1"], [], [], "proxy") == mod.desired_rules("smart", ["t1"], [], [], "proxy", [])
 print("OK: desired_rules fixed-path rules (D2)")
 
-# --- gaming-tier failover (choose_gaming): Starlink down -> via-germany, fail back ---
+# --- gaming-tier failover (choose_gaming): Starlink -> Germany -> proxy reserve -> back ---
 cg = mod.choose_gaming
 
-# Starlink (village) up -> gaming stays on via-village.
-applied, st = cg(True, True, {})
+# Starlink (village) up -> gaming stays on via-village (pool state irrelevant).
+applied, st = cg(True, True, False, {})
 assert applied == "via-village", applied
 
 # Starlink down + Germany up: 2-strike hysteresis before flipping to via-germany.
-applied, st = cg(False, True, {"applied": "via-village"})
+applied, st = cg(False, True, False, {"applied": "via-village"})
 assert applied == "via-village", ("no flip on 1st strike", applied)
-applied, st = cg(False, True, st)
+applied, st = cg(False, True, False, st)
 assert applied == "via-germany", ("failover to Germany on 2nd strike", applied)
 
 # Recovery: Starlink back -> fail back to via-village after 2 strikes.
-applied, st = cg(True, True, {"applied": "via-germany"})
+applied, st = cg(True, True, False, {"applied": "via-germany"})
 assert applied == "via-germany", applied
-applied, st = cg(True, True, st)
+applied, st = cg(True, True, False, st)
 assert applied == "via-village", ("failback to Starlink", applied)
 
-# Both down -> stay/return to via-village (recovers with the village; no good reserve).
-applied, st = cg(False, False, {"applied": "via-village"})
+# Both village paths down but the relay pool is up -> gaming fails over to the
+# village-INDEPENDENT proxy reserve (the operator's added exits), 2-strike hysteresis,
+# instead of stranding gaming users on a dead tunnel.
+applied, st = cg(False, False, True, {"applied": "via-germany"})
+assert applied == "via-germany", ("no flip on 1st strike", applied)
+applied, st = cg(False, False, True, st)
+assert applied == "proxy", ("failover to proxy reserve on 2nd strike", applied)
+
+# Everything down (no pool either) -> stay on via-village (recovers with the village).
+applied, st = cg(False, False, False, {"applied": "via-village"})
 assert applied == "via-village", applied
 
-print("OK: choose_gaming failover via-village <-> via-germany with hysteresis")
+print("OK: choose_gaming failover via-village -> via-germany -> proxy reserve with hysteresis")
 
 # gaming rules honor the resolved gaming_outbound (so a Starlink outage routes
 # gaming users to Germany instead of a dead Starlink tunnel).

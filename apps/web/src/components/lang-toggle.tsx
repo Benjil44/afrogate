@@ -1,9 +1,10 @@
 import { Languages } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useLang } from '@/i18n';
+import { useLang, WEB_LANGUAGE_TOGGLE_ENABLED } from '@/i18n';
 
 export function LangToggle({ className }: { className?: string }) {
   const { toggle, lang } = useLang();
+  if (!WEB_LANGUAGE_TOGGLE_ENABLED) return null; // Persian temporarily disabled
   return (
     <button
       type="button"

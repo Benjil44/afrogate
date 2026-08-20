@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { BadRequestException } from '@nestjs/common';
 import {
   afrowsShareBps,
+  computeResellerGbCost,
   computeResellerSaleAmounts,
   normalizeResellerMarginBps,
   walletCanCoverDebit,
@@ -42,27 +43,78 @@ describe('afrowsShareBps', () => {
   });
 });
 
-describe('computeResellerSaleAmounts', () => {
-  it('splits price into seller margin and wallet debit (Afrows share)', () => {
-    assert.deepEqual(computeResellerSaleAmounts(10000, 2500), { sellerMarginAmount: 2500, walletDebitAmount: 7500 });
+describe('computeResellerSaleAmounts (margin = markup on COST)', () => {
+  it('debits the full cost and keeps the margin as markup on top (NOT debited)', () => {
+    // Cost 200,000 @ 20% → debit the cost, keep 40,000 markup, sell at 240,000.
+    assert.deepEqual(computeResellerSaleAmounts(200_000, 2000), {
+      costAmount: 200_000,
+      sellerMarginAmount: 40_000,
+      resellerSellPrice: 240_000,
+      walletDebitAmount: 200_000,
+    });
   });
 
-  it('rounds the seller margin to the nearest integer (no fractional currency)', () => {
-    // 999 * 2500 / 10000 = 249.75 -> 250; debit = 999 - 250 = 749
-    assert.deepEqual(computeResellerSaleAmounts(999, 2500), { sellerMarginAmount: 250, walletDebitAmount: 749 });
+  it('debits the whole cost even at 25% margin (the platform only takes the cost)', () => {
+    assert.deepEqual(computeResellerSaleAmounts(10_000, 2500), {
+      costAmount: 10_000,
+      sellerMarginAmount: 2_500,
+      resellerSellPrice: 12_500,
+      walletDebitAmount: 10_000,
+    });
   });
 
-  it('debits nothing when the seller keeps the full price (100% margin)', () => {
-    assert.deepEqual(computeResellerSaleAmounts(5000, 10000), { sellerMarginAmount: 5000, walletDebitAmount: 0 });
+  it('rounds the kept markup to the nearest integer (no fractional currency)', () => {
+    // 999 * 2500 / 10000 = 249.75 -> 250; debit stays the full cost 999.
+    assert.deepEqual(computeResellerSaleAmounts(999, 2500), {
+      costAmount: 999,
+      sellerMarginAmount: 250,
+      resellerSellPrice: 1_249,
+      walletDebitAmount: 999,
+    });
   });
 
-  it('debits the full price when there is no seller margin', () => {
-    assert.deepEqual(computeResellerSaleAmounts(5000, 0), { sellerMarginAmount: 0, walletDebitAmount: 5000 });
+  it('keeps a zero markup when there is no seller margin (debit = cost, sell = cost)', () => {
+    assert.deepEqual(computeResellerSaleAmounts(5000, 0), {
+      costAmount: 5000,
+      sellerMarginAmount: 0,
+      resellerSellPrice: 5000,
+      walletDebitAmount: 5000,
+    });
   });
 
-  it('never produces a negative wallet debit', () => {
-    const { walletDebitAmount } = computeResellerSaleAmounts(0, 2500);
-    assert.equal(walletDebitAmount, 0);
+  it('clamps a negative/zero cost to a non-negative debit', () => {
+    assert.deepEqual(computeResellerSaleAmounts(0, 2500), {
+      costAmount: 0,
+      sellerMarginAmount: 0,
+      resellerSellPrice: 0,
+      walletDebitAmount: 0,
+    });
+    assert.equal(computeResellerSaleAmounts(-100, 2500).walletDebitAmount, 0);
+  });
+});
+
+describe('computeResellerGbCost (per-GB cost = GB × gbPrice)', () => {
+  it('is the platform cost the wallet is debited for a per-GB sale', () => {
+    // 20 GB × 200,000/GB = 4,000,000 (the worked example).
+    assert.equal(computeResellerGbCost(20, 200_000), 4_000_000);
+  });
+
+  it('rounds to a whole currency unit', () => {
+    assert.equal(computeResellerGbCost(2.5, 199_999), Math.round(2.5 * 199_999));
+  });
+
+  it('feeds the cost-based split: debit = cost, kept markup = cost × bps', () => {
+    const cost = computeResellerGbCost(20, 200_000);
+    const amounts = computeResellerSaleAmounts(cost, 2000);
+    assert.equal(amounts.walletDebitAmount, 4_000_000); // debit = cost
+    assert.equal(amounts.sellerMarginAmount, 800_000); // 20% markup, kept (not debited)
+    assert.equal(amounts.resellerSellPrice, 4_800_000); // what the reseller charges
+  });
+
+  it('rejects a non-positive GB amount or a negative price', () => {
+    assert.throws(() => computeResellerGbCost(0, 200_000), BadRequestException);
+    assert.throws(() => computeResellerGbCost(-1, 200_000), BadRequestException);
+    assert.throws(() => computeResellerGbCost(20, -1), BadRequestException);
   });
 });
 

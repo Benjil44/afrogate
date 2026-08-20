@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, Copy, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
@@ -11,16 +11,20 @@ import {
   fetchAdminNetworkOverview,
   fetchAdminOutbounds,
   deleteAdminClientConfig,
+  deleteAdminCustomerAccount,
   fetchAdminCustomerAccounts,
   fetchAdminWireguardConfig,
   fetchEgressTierPrices,
   fetchRouters,
   setEgressTierPrice,
   resetCustomerAccountPassword,
+  restoreAdminCustomerAccount,
   updateAdminClientRoutePreference,
   updateAdminCustomerAccount,
   updateRouter,
 } from '../api/admin';
+import { adjustCustomerGems, customerGemFields } from '../api/gems';
+import { mergeCustomerAccount } from '../api/merge';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
@@ -51,6 +55,10 @@ export function CustomersPage({
   const [overview, setOverview] = useState<AdminNetworkOverviewResponse | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  // Off by default: the list fetch only returns active accounts. When on, the
+  // archived filter widens to 'all' so soft-deleted accounts show up (greyed,
+  // with a Restore action) alongside active ones.
+  const [showArchived, setShowArchived] = useState(false);
 
   // editor
   const [editorOpen, setEditorOpen] = useState(false);
@@ -84,6 +92,7 @@ export function CustomersPage({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [telegram, setTelegram] = useState('');
+  const [telegramId, setTelegramId] = useState('');
   const [quotaGb, setQuotaGb] = useState('50');
   const [perClientGb, setPerClientGb] = useState('');
   const [scope, setScope] = useState<Scope>('account_shared');
@@ -115,6 +124,20 @@ export function CustomersPage({
   const [pwCopied, setPwCopied] = useState(false);
   const [customPw, setCustomPw] = useState(''); // operator-typed password (blank = auto-generate)
 
+  // gems wallet (bot v2): per-row "adjust gems" control state, keyed by account id
+  const [gemsDelta, setGemsDelta] = useState<Record<string, string>>({});
+  const [gemsReason, setGemsReason] = useState<Record<string, string>>({});
+  const [gemsBusy, setGemsBusy] = useState<string | null>(null);
+  const [gemsMsg, setGemsMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null);
+
+  // merge panel (duplicate -> real account): source being merged away, target
+  // search/selection, and the explicit confirm step before the single POST.
+  const [mergeFor, setMergeFor] = useState<AdminCustomerAccountSummary | null>(null);
+  const [mergeQuery, setMergeQuery] = useState('');
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeSuccess, setMergeSuccess] = useState<string | null>(null);
+
   // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
   const [configList, setConfigList] = useState<AdminClientConfigSummary[]>([]);
@@ -128,7 +151,7 @@ export function CustomersPage({
 
   const load = async () => {
     try {
-      const res = await fetchAdminCustomerAccounts(sessionToken);
+      const res = await fetchAdminCustomerAccounts(sessionToken, undefined, showArchived ? 'all' : 'active');
       setAccounts(res.accounts);
     } catch {
       /* keep last */
@@ -157,10 +180,15 @@ export function CustomersPage({
       if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionToken]);
+  }, [sessionToken, showArchived]);
 
   const nameOf = (a: AdminCustomerAccountSummary) =>
     a.displayName || a.telegramUsername || a.loginEmail || a.telegramId || a.id.slice(0, 8);
+
+  // Soft-deleted (archived) flag — the contract carries both the `deletedAt`
+  // timestamp and the derived `isArchived` convenience boolean.
+  const isArchived = (a: AdminCustomerAccountSummary): boolean =>
+    a.isArchived === true || Boolean(a.deletedAt);
 
   // Per-customer current egress: gaming tier follows the gaming outbound (Starlink,
   // or Germany while Starlink is failed over); everyone else follows the catch-all.
@@ -183,6 +211,7 @@ export function CustomersPage({
     setName('');
     setEmail('');
     setTelegram('');
+    setTelegramId('');
     setQuotaGb('50');
     setPerClientGb('');
     setScope('account_shared');
@@ -213,6 +242,7 @@ export function CustomersPage({
     setName(a.displayName ?? '');
     setEmail(a.loginEmail ?? '');
     setTelegram(a.telegramUsername ?? '');
+    setTelegramId(a.telegramId ?? '');
     setQuotaGb(a.quotaLimitBytes != null ? String(Math.round((a.quotaLimitBytes / BYTES_PER_GB) * 100) / 100) : '');
     setPerClientGb(a.perClientLimitBytes != null ? String(Math.round((a.perClientLimitBytes / BYTES_PER_GB) * 100) / 100) : '');
     setScope((a.quotaScope as Scope) || 'account_shared');
@@ -270,6 +300,17 @@ export function CustomersPage({
   const editProtocols = useMemo(
     () => accounts.find((a) => a.id === editId)?.protocols ?? [],
     [accounts, editId],
+  );
+
+  // Bot-v2 profile (phone / gems / referrals) of the customer being edited.
+  const editAccount = useMemo(() => accounts.find((a) => a.id === editId) ?? null, [accounts, editId]);
+  const editGemInfo = editAccount ? customerGemFields(editAccount) : null;
+  const editHasGemInfo = Boolean(
+    editGemInfo &&
+      (editGemInfo.phone !== undefined ||
+        editGemInfo.gemsBalance !== undefined ||
+        editGemInfo.referralCode !== undefined ||
+        editGemInfo.referralCount !== undefined),
   );
 
   // Activate/deactivate a customer straight from the table (active <-> disabled).
@@ -395,6 +436,7 @@ export function CustomersPage({
       displayName: name.trim(),
       loginEmail: email.trim() || null,
       telegramUsername: telegram.trim() || null,
+      telegramId: telegramId.trim() || null,
       quotaLimitBytes: gbToBytes(quotaGb),
       perClientLimitBytes: gbToBytes(perClientGb),
       quotaScope: scope,
@@ -542,6 +584,129 @@ export function CustomersPage({
     }
   };
 
+  // Delete (soft-archive) a customer account — the backend hides it from the
+  // list and cuts off its VPN access, but keeps payment history and an admin
+  // can restore it. Type-to-confirm: the operator must retype the displayed
+  // name exactly; cancel or a mismatch aborts without any API call.
+  const onDeleteAccount = async (accountId: string, displayName: string) => {
+    const typed = window.prompt(s.deleteAccountConfirm(displayName));
+    if (typed === null) return; // cancelled
+    if (typed.trim() !== displayName) return; // name mismatch — do nothing
+    setError(null);
+    try {
+      await deleteAdminCustomerAccount(sessionToken, accountId);
+      // Close any panel still pointing at the deleted account.
+      if (configsFor?.id === accountId) setConfigsFor(null);
+      if (mergeFor?.id === accountId) closeMerge();
+      if (editId === accountId) {
+        setEditorOpen(false);
+        setEditId(null);
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // Merge flow: pick a live target account, confirm, then one POST. The SOURCE
+  // (the row this was opened from — typically a bot-created duplicate) is merged
+  // away: its remaining GB, gems, and configs move to the TARGET, then the
+  // source is archived by the backend.
+  const openMerge = (a: AdminCustomerAccountSummary) => {
+    setEditorOpen(false);
+    setEditId(null);
+    setConfigsFor(null);
+    setMergeFor(a);
+    setMergeQuery('');
+    setMergeTargetId(null);
+    setMergeSuccess(null);
+    setError(null);
+  };
+
+  const closeMerge = () => {
+    setMergeFor(null);
+    setMergeTargetId(null);
+    setMergeQuery('');
+    setError(null);
+  };
+
+  // Live (non-archived) accounts other than the source, filtered by the same
+  // fields as the customer search plus bot-v2 phone/invite code.
+  const mergeCandidates = useMemo(() => {
+    if (!mergeFor) return [];
+    const pool = accounts.filter((a) => a.id !== mergeFor.id && !isArchived(a));
+    const q = mergeQuery.trim().toLowerCase();
+    if (!q) return pool;
+    return pool.filter((a) => {
+      const v2 = customerGemFields(a);
+      return [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, v2.phone, v2.referralCode]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+  }, [accounts, mergeFor, mergeQuery]);
+
+  const mergeTarget = useMemo(
+    () => (mergeTargetId ? accounts.find((a) => a.id === mergeTargetId) ?? null : null),
+    [accounts, mergeTargetId],
+  );
+
+  const onConfirmMerge = async () => {
+    if (!mergeFor || !mergeTarget || mergeBusy) return;
+    setMergeBusy(true);
+    setError(null);
+    try {
+      await mergeCustomerAccount(sessionToken, mergeFor.id, mergeTarget.id);
+      setMergeSuccess(s.mergeSuccess(nameOf(mergeFor), nameOf(mergeTarget)));
+      closeMerge();
+      await load();
+    } catch {
+      setError(s.mergeError);
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
+  // Restore (unarchive) a soft-deleted account: re-enables it and its VPN access.
+  const onRestoreAccount = async (accountId: string, displayName: string) => {
+    if (!window.confirm(s.restoreAccountConfirm(displayName))) return;
+    setError(null);
+    try {
+      await restoreAdminCustomerAccount(sessionToken, accountId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // Credit/debit a customer's gems wallet (bot v2). Confirm first, one POST,
+  // then refresh the balance from the server; the reason is audited server-side.
+  const onAdjustGems = async (a: AdminCustomerAccountSummary) => {
+    const deltaText = (gemsDelta[a.id] ?? '').trim();
+    const reason = (gemsReason[a.id] ?? '').trim();
+    const delta = Number(deltaText);
+    if (!deltaText || !Number.isInteger(delta) || delta === 0 || !reason) {
+      setGemsMsg({ id: a.id, text: s.gemsAdjustInvalid, ok: false });
+      return;
+    }
+    const deltaLabel = delta > 0 ? `+${format.integer(delta)}` : format.integer(delta);
+    if (!window.confirm(s.gemsAdjustConfirm(nameOf(a), deltaLabel))) return;
+    setGemsBusy(a.id);
+    setGemsMsg(null);
+    try {
+      const { gemsBalance } = await adjustCustomerGems(sessionToken, a.id, delta, reason);
+      // Optimistic local balance so the row updates instantly; load() reconciles.
+      setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, gemsBalance } : row)));
+      setGemsDelta((cur) => ({ ...cur, [a.id]: '' }));
+      setGemsReason((cur) => ({ ...cur, [a.id]: '' }));
+      setGemsMsg({ id: a.id, text: s.gemsAdjusted(format.integer(gemsBalance)), ok: true });
+      await load();
+    } catch {
+      setGemsMsg({ id: a.id, text: s.gemsAdjustError, ok: false });
+    } finally {
+      setGemsBusy(null);
+    }
+  };
+
   const onCreateConfig = async () => {
     if (!configsFor) return;
     setConfigBusy(true);
@@ -611,6 +776,9 @@ export function CustomersPage({
     const price = priceFor(tier);
     const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
     const hasQuota = a.quotaLimitBytes != null && a.quotaLimitBytes > 0;
+    // Bot-v2 fields (phone/gems/referrals) — rows only appear once the backend
+    // serves them, so pre-migration accounts don't render four empty rows.
+    const v2 = customerGemFields(a);
 
     return (
       <div className="grid gap-2.5">
@@ -631,6 +799,18 @@ export function CustomersPage({
             <Pencil size={15} />
             {s.editAction}
           </button>
+          {!isArchived(a) ? (
+            // Merge (duplicate -> real account): distinct from delete — the row's
+            // balance/configs survive by moving to the target before archiving.
+            <button
+              type="button"
+              onClick={() => openMerge(a)}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-white px-3 text-sm font-bold text-amber-700 hover:border-amber-500 hover:bg-amber-50 sm:flex-none"
+            >
+              <GitMerge size={15} />
+              {s.mergeAction}
+            </button>
+          ) : null}
         </div>
         <div className="grid gap-1.5 sm:grid-cols-2">
           <DetailRow label={s.colEmail}>{a.loginEmail || '—'}</DetailRow>
@@ -645,22 +825,117 @@ export function CustomersPage({
           <DetailRow label={s.colExpiry}>{a.expiresAt ? format.time(new Date(a.expiresAt), false) : '—'}</DetailRow>
           <DetailRow label={s.colLastConnected}>{a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : '—'}</DetailRow>
           <DetailRow label={s.colSeller}>{a.resellerDisplayName || s.direct}</DetailRow>
+          {v2.phone !== undefined ? (
+            <DetailRow label={s.colPhone}>{v2.phone ? <span dir="ltr">{v2.phone}</span> : '—'}</DetailRow>
+          ) : null}
+          {v2.gemsBalance !== undefined ? (
+            <DetailRow label={s.colGems}>
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <Gem aria-hidden className="text-afro-teal" size={13} />
+                {format.integer(v2.gemsBalance)}
+              </span>
+            </DetailRow>
+          ) : null}
+          {v2.referralCode !== undefined ? (
+            <DetailRow label={s.colReferralCode}>
+              {v2.referralCode ? <span className="font-mono" dir="ltr">{v2.referralCode}</span> : '—'}
+            </DetailRow>
+          ) : null}
+          {v2.referralCount !== undefined ? (
+            <DetailRow label={s.colReferrals}>{format.integer(v2.referralCount)}</DetailRow>
+          ) : null}
           {a.tags && a.tags.length > 0 ? <DetailRow label={s.colTags}>{a.tags.join(', ')}</DetailRow> : null}
           {price > 0 ? (
             <DetailRow label={s.colCost}>{`${Math.round((a.usedBytes / BYTES_PER_GB) * price).toLocaleString()} ${currency}`}</DetailRow>
           ) : null}
         </div>
+        {v2.gemsBalance !== undefined ? (
+          // Manual wallet adjustment: delta + audited reason -> confirm -> one POST.
+          <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+            <span className="flex items-center gap-1.5 text-[12px] font-bold text-afro-muted">
+              <Gem aria-hidden size={13} />
+              {s.gemsAdjustTitle}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                aria-label={s.gemsAdjustTitle}
+                className="min-h-11 w-40 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
+                dir="ltr"
+                inputMode="numeric"
+                onChange={(e2) => setGemsDelta((cur) => ({ ...cur, [a.id]: e2.target.value }))}
+                placeholder={s.gemsDeltaPlaceholder}
+                value={gemsDelta[a.id] ?? ''}
+              />
+              <input
+                aria-label={s.gemsReasonPlaceholder}
+                className="min-h-11 min-w-[180px] flex-1 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
+                onChange={(e2) => setGemsReason((cur) => ({ ...cur, [a.id]: e2.target.value }))}
+                placeholder={s.gemsReasonPlaceholder}
+                value={gemsReason[a.id] ?? ''}
+              />
+              <button
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-afro-teal px-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 md:min-h-9"
+                disabled={gemsBusy === a.id}
+                onClick={() => void onAdjustGems(a)}
+                type="button"
+              >
+                {s.gemsApply}
+              </button>
+            </div>
+            {gemsMsg && gemsMsg.id === a.id ? (
+              <span className={`text-[12px] font-bold ${gemsMsg.ok ? 'text-afro-teal' : 'text-red-600'}`} role="status">
+                {gemsMsg.text}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     );
   };
+
+  // Protocol pills render in fixed slots (VLESS first, then WIREGUARD) so the
+  // column reads as aligned sub-columns across rows: each slot has a fixed min
+  // width and the pill fills it with the amount right-justified, so usage
+  // numbers line up. Slots only exist for protocols present in the current
+  // list, so an all-VLESS list doesn't reserve an empty WIREGUARD lane.
+  const protoSlotWidths: Record<string, string> = { vless: 'minmax(7.5rem,auto)', wireguard: 'minmax(9.25rem,auto)' };
+  const protoSlots = ['vless', 'wireguard'].filter((name) =>
+    filtered.some((a) => a.protocols?.some((p) => p.protocol === name)),
+  );
+  const protoGridTemplate = protoSlots.map((name) => protoSlotWidths[name]).join(' ');
+  const protoPill = (p: { protocol: string; usedBytes: number }) => (
+    <span
+      key={p.protocol}
+      title={`${p.protocol}: ${format.bytes(p.usedBytes)}`}
+      className="flex w-full min-w-0 items-center justify-between gap-1 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
+    >
+      {p.protocol}
+      <span className="font-normal normal-case tabular-nums text-afro-muted">{format.bytes(p.usedBytes)}</span>
+    </span>
+  );
+
+  // `w-px` on a header cell is the standard auto-table-layout trick: the column
+  // shrinks to its content's minimum width (content is nowrap, so that's one
+  // tidy line) and ALL leftover width flows into the one flexible column — the
+  // customer name. That turns the old edge-to-edge stretch with big gaps
+  // between every column into a dense grid packed after the name column.
+  const fitCol = 'w-px whitespace-nowrap';
 
   const columns: Array<DataTableColumn<AdminCustomerAccountSummary>> = [
     {
       key: 'customer',
       header: s.colCustomer,
+      className: 'min-w-[160px]',
       render: (a) => (
         <>
-          <strong className="block text-afro-ink">{nameOf(a)}</strong>
+          <strong className="block text-afro-ink">
+            {nameOf(a)}
+            {isArchived(a) ? (
+              <span className="ms-1.5 inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-afro-muted">
+                {s.archivedBadge}
+              </span>
+            ) : null}
+          </strong>
           <span className="text-[12px] text-afro-muted">{format.time(new Date(a.updatedAt), false)}</span>
           {a.gatewayRouter && (
             <span className="mt-0.5 flex items-center gap-1 text-[11px] text-afro-muted">
@@ -670,10 +945,12 @@ export function CustomersPage({
         </>
       ),
     },
-    { key: 'email', header: s.colEmail, render: (a) => a.loginEmail || '—' },
+    // Login email intentionally has no column: it lives in the expandable detail row
+    // (and stays searchable), reclaiming width for the columns operators scan.
     {
       key: 'status',
       header: s.colStatus,
+      className: fitCol,
       render: (a) => {
         const over = a.quotaLimitBytes != null && a.usedBytes >= a.quotaLimitBytes;
         const isActive = a.status === 'active';
@@ -692,7 +969,7 @@ export function CustomersPage({
             </button>
             <span className="text-[12px] text-afro-muted">{String(a.status)}</span>
             {over ? (
-              <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+              <span className="inline-flex whitespace-nowrap rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
                 {s.overQuota}
               </span>
             ) : null}
@@ -704,19 +981,22 @@ export function CustomersPage({
       key: 'usage',
       header: s.colUsed,
       alignRight: true,
+      className: fitCol,
       render: (a) => {
         const q = a.quotaLimitBytes ?? null;
         const used = a.usedBytes;
         if (q == null || q <= 0) {
-          return <span className="text-afro-ink">{format.bytes(used)} · ∞</span>;
+          return <span className="whitespace-nowrap text-afro-ink tabular-nums">{format.bytes(used)} · ∞</span>;
         }
         const pct = Math.min(100, Math.round((used / q) * 100));
         const over = used >= q;
         const near = pct >= 80;
         const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-afro-teal';
         return (
-          <div className="ml-auto flex w-28 flex-col items-end gap-1">
-            <span className={over ? 'font-bold text-red-500' : 'text-afro-ink'}>
+          // w-fit + min-w: the label defines the width (Farsi byte strings run long),
+          // so the nowrap text can never overflow into the neighbouring cell.
+          <div className="ms-auto flex w-fit min-w-28 flex-col items-end gap-1">
+            <span className={`whitespace-nowrap tabular-nums ${over ? 'font-bold text-red-500' : 'text-afro-ink'}`}>
               {format.bytes(used)} / {format.bytes(q)}
             </span>
             <span className="h-1.5 w-full overflow-hidden rounded-full bg-afro-line">
@@ -726,10 +1006,19 @@ export function CustomersPage({
         );
       },
     },
-    { key: 'clients', header: s.colClients, render: (a) => `${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}` },
+    {
+      key: 'clients',
+      header: s.colClients,
+      alignRight: true,
+      className: fitCol,
+      render: (a) => (
+        <span className="whitespace-nowrap tabular-nums">{`${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}`}</span>
+      ),
+    },
     {
       key: 'internet',
       header: s.colInternet,
+      className: fitCol,
       render: (a) => {
         const e = egressFor(a);
         const gaming = a.egressTier === 'gaming';
@@ -747,7 +1036,7 @@ export function CustomersPage({
               <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
             </button>
             <span className="text-[11px] font-bold text-afro-muted">{gaming ? s.egModeGame : s.egModeNormal}</span>
-            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+            <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
               {e.failover ? '⚠ ' : ''}{e.label}
             </span>
           </span>
@@ -757,32 +1046,32 @@ export function CustomersPage({
     {
       key: 'protocols',
       header: s.colProtocols,
-      render: (a) =>
-        a.protocols && a.protocols.length > 0 ? (
-          <span className="flex flex-wrap gap-1">
-            {a.protocols.map((p) => (
-              <span
-                key={p.protocol}
-                title={`${p.protocol}: ${format.bytes(p.usedBytes)}`}
-                className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
-              >
-                {p.protocol}
-                <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
-              </span>
-            ))}
+      className: fitCol,
+      render: (a) => {
+        const protos = a.protocols ?? [];
+        if (protos.length === 0) return <span className="text-afro-muted">—</span>;
+        const extras = protos.filter((p) => !protoSlots.includes(p.protocol));
+        return (
+          <span className="grid w-max items-center gap-1" style={{ gridTemplateColumns: protoGridTemplate || undefined }}>
+            {protoSlots.map((name) => {
+              const p = protos.find((row) => row.protocol === name);
+              // Empty placeholder keeps the slot (and every later slot) aligned.
+              return p ? protoPill(p) : <span aria-hidden key={`${name}-empty`} />;
+            })}
+            {extras.map(protoPill)}
           </span>
-        ) : (
-          <span className="text-afro-muted">—</span>
-        ),
+        );
+      },
     },
     {
       key: 'expiry',
       header: s.colExpiry,
+      className: fitCol,
       render: (a) => {
         if (!a.expiresAt) return <span className="text-afro-muted">—</span>;
         const expired = new Date(a.expiresAt).getTime() <= Date.now();
         return (
-          <span className={expired ? 'font-bold text-red-500' : 'text-afro-ink'}>
+          <span className={`whitespace-nowrap ${expired ? 'font-bold text-red-500' : 'text-afro-ink'}`}>
             {format.time(new Date(a.expiresAt), false)}
             {expired ? ` (${s.expired})` : ''}
           </span>
@@ -792,28 +1081,37 @@ export function CustomersPage({
     {
       key: 'lastSeen',
       header: s.colLastConnected,
-      render: (a) => (a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : <span className="text-afro-muted">—</span>),
+      className: fitCol,
+      render: (a) =>
+        a.lastConnectedAt ? (
+          <span className="whitespace-nowrap">{format.time(new Date(a.lastConnectedAt), false)}</span>
+        ) : (
+          <span className="text-afro-muted">—</span>
+        ),
     },
     {
       key: 'cost',
       header: s.colCost,
+      alignRight: true,
+      className: fitCol,
       render: (a) => {
         const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
         const price = priceFor(tier);
         if (!price) return <span className="text-afro-muted">—</span>;
         const cost = Math.round((a.usedBytes / BYTES_PER_GB) * price);
         const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
-        return <span className="text-afro-ink">{`${cost.toLocaleString()} ${currency}`}</span>;
+        return <span className="whitespace-nowrap text-afro-ink tabular-nums">{`${cost.toLocaleString()} ${currency}`}</span>;
       },
     },
     {
       key: 'tags',
       header: s.colTags,
+      className: fitCol,
       render: (a) =>
         a.tags && a.tags.length > 0 ? (
           <span className="flex flex-wrap gap-1">
             {a.tags.map((t) => (
-              <span key={t} className="inline-flex rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-ink">
+              <span key={t} className="inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-ink">
                 {t}
               </span>
             ))}
@@ -822,18 +1120,26 @@ export function CustomersPage({
           <span className="text-afro-muted">—</span>
         ),
     },
-    { key: 'seller', header: s.colSeller, render: (a) => a.resellerDisplayName || s.direct },
+    {
+      key: 'seller',
+      header: s.colSeller,
+      className: fitCol,
+      render: (a) => <span className="whitespace-nowrap">{a.resellerDisplayName || s.direct}</span>,
+    },
     {
       key: 'actions',
       header: '',
       alignRight: true,
+      className: 'w-px',
       render: (a) => (
-        <div className="flex items-center justify-end gap-1.5">
+        // pe-2 keeps the pinned buttons off the scroller edge (the cell's own end
+        // padding is zeroed by last:pr-0).
+        <div className="flex items-center justify-end gap-1.5 pe-2">
           <button
             type="button"
             onClick={() => openConfigs(a)}
             title={s.configsAction}
-            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+            className="inline-flex h-11 items-center gap-1 whitespace-nowrap rounded-md border border-afro-line bg-afro-panel px-2.5 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:h-8 md:px-2"
           >
             <Link2 size={14} />
             {s.configsAction}
@@ -842,19 +1148,42 @@ export function CustomersPage({
             type="button"
             onClick={() => openEdit(a)}
             title={s.editAction}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-afro-line bg-afro-panel text-afro-muted hover:border-afro-teal hover:text-afro-teal md:h-8 md:w-8"
           >
             <Pencil size={14} />
+            <span className="sr-only">{s.editAction}</span>
           </button>
+          {isArchived(a) ? (
+            // Archived rows swap the delete for a green Restore (unarchive).
+            <button
+              type="button"
+              onClick={() => void onRestoreAccount(a.id, nameOf(a))}
+              title={s.restoreAccount}
+              aria-label={s.restoreAccount}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-emerald-200 bg-afro-panel text-emerald-600 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700 md:h-8 md:w-8"
+            >
+              <ArchiveRestore size={14} />
+            </button>
+          ) : (
+            // Destructive: last on purpose so it's never the easy accidental tap.
+            <button
+              type="button"
+              onClick={() => void onDeleteAccount(a.id, nameOf(a))}
+              title={s.deleteAccount}
+              aria-label={s.deleteAccount}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-red-200 bg-afro-panel text-red-600 hover:border-red-500 hover:bg-red-50 hover:text-red-700 md:h-8 md:w-8"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   ];
 
   // Hide optional columns that are empty for every visible row (auto-reappear when data shows up).
-  const optionalCols = new Set(['email', 'expiry', 'lastSeen', 'cost', 'tags', 'seller']);
+  const optionalCols = new Set(['expiry', 'lastSeen', 'cost', 'tags', 'seller']);
   const colHasData: Record<string, boolean> = {
-    email: filtered.some((a) => Boolean(a.loginEmail)),
     expiry: filtered.some((a) => Boolean(a.expiresAt)),
     lastSeen: filtered.some((a) => Boolean(a.lastConnectedAt)),
     cost: tierPrices.some((p) => p.price > 0),
@@ -908,15 +1237,26 @@ export function CustomersPage({
         ))}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
-          <Search size={15} className="text-afro-muted" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={s.searchPlaceholder}
-            className="min-w-[180px] bg-transparent text-sm outline-none"
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
+            <Search size={15} className="text-afro-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={s.searchPlaceholder}
+              className="min-w-[180px] bg-transparent text-sm outline-none"
+            />
+          </label>
+          <label className="inline-flex min-h-11 items-center gap-2 text-[13px] font-bold text-afro-muted md:min-h-9">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="h-4 w-4 accent-afro-teal"
+            />
+            {s.showArchived}
+          </label>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-bold text-afro-muted">{s.total.replace('{n}', format.integer(filtered.length))}</span>
           <button
@@ -950,6 +1290,10 @@ export function CustomersPage({
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegram}</span>
               <input value={telegram} onChange={(e) => setTelegram(e.target.value)} dir="ltr" className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegramId}</span>
+              <input value={telegramId} onChange={(e) => setTelegramId(e.target.value)} dir="ltr" inputMode="numeric" placeholder={s.fldTelegramIdHint} className={inputClass} />
             </label>
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldQuotaGb}</span>
@@ -1002,6 +1346,26 @@ export function CustomersPage({
               <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} />
             </label>
+            {editId && editGemInfo && editHasGemInfo ? (
+              // Read-only bot-v2 profile: the bot fills these at signup; gems are
+              // adjusted from the row's detail panel (single audited entry point).
+              <div className="grid gap-1.5 md:col-span-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.botProfileSection}</span>
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  <DetailRow label={s.colPhone}>{editGemInfo.phone ? <span dir="ltr">{editGemInfo.phone}</span> : '—'}</DetailRow>
+                  <DetailRow label={s.colGems}>
+                    {editGemInfo.gemsBalance != null ? format.integer(editGemInfo.gemsBalance) : '—'}
+                  </DetailRow>
+                  <DetailRow label={s.colReferralCode}>
+                    {editGemInfo.referralCode ? <span className="font-mono" dir="ltr">{editGemInfo.referralCode}</span> : '—'}
+                  </DetailRow>
+                  <DetailRow label={s.colReferrals}>
+                    {editGemInfo.referralCount != null ? format.integer(editGemInfo.referralCount) : '—'}
+                  </DetailRow>
+                </div>
+                <span className="text-[11px] text-afro-muted">{s.botProfileNote}</span>
+              </div>
+            ) : null}
             {!editId && email.trim() ? (
               <label className="grid gap-1.5 md:col-span-2">
                 <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
@@ -1222,6 +1586,104 @@ export function CustomersPage({
         </div>
       ) : null}
 
+      {mergeFor ? (
+        <div className="rounded-md border border-afro-line bg-afro-panel p-4">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h2 className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-afro-ink">
+              <GitMerge aria-hidden className="shrink-0 text-amber-600" size={15} />
+              <span className="truncate">{s.mergeTitle(nameOf(mergeFor))}</span>
+            </h2>
+            <button
+              type="button"
+              aria-label={s.cancel}
+              onClick={closeMerge}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-afro-muted hover:text-afro-ink md:h-8 md:w-8"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <p className="mb-3 text-[12px] text-afro-muted">{s.mergeIntro}</p>
+          <label className="mb-2 flex min-h-11 items-center gap-2 rounded-md border border-afro-line bg-white px-3 md:min-h-9">
+            <Search className="shrink-0 text-afro-muted" size={15} />
+            <input
+              aria-label={s.mergeSearchPlaceholder}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              onChange={(e) => setMergeQuery(e.target.value)}
+              placeholder={s.mergeSearchPlaceholder}
+              value={mergeQuery}
+            />
+          </label>
+          {mergeCandidates.length === 0 ? (
+            <EmptyState message={s.mergeNoMatches} />
+          ) : (
+            <div className="grid max-h-72 gap-1.5 overflow-y-auto">
+              {mergeCandidates.slice(0, 30).map((c) => {
+                const selected = c.id === mergeTargetId;
+                const v2 = customerGemFields(c);
+                const contact = v2.phone || (c.telegramUsername ? `@${c.telegramUsername}` : c.loginEmail || c.telegramId);
+                const hasQuota = c.quotaLimitBytes != null && c.quotaLimitBytes > 0;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setMergeTargetId(c.id)}
+                    className={`flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-0.5 rounded-md border bg-white px-3 py-1.5 text-start ${
+                      selected ? 'border-afro-teal ring-1 ring-afro-teal' : 'border-afro-line hover:border-afro-teal'
+                    }`}
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <strong className="truncate text-[13px] text-afro-ink">{nameOf(c)}</strong>
+                      <span className="truncate text-[11px] text-afro-muted" dir="ltr">
+                        {contact || '—'}
+                      </span>
+                    </span>
+                    <span className="whitespace-nowrap text-[12px] tabular-nums text-afro-muted">
+                      {hasQuota
+                        ? `${format.bytes(c.usedBytes)} / ${format.bytes(c.quotaLimitBytes ?? 0)}`
+                        : `${format.bytes(c.usedBytes)} · ∞`}
+                    </span>
+                  </button>
+                );
+              })}
+              {mergeCandidates.length > 30 ? (
+                <span className="px-1 text-[12px] text-afro-muted">
+                  {s.mergeMoreMatches(format.integer(mergeCandidates.length - 30))}
+                </span>
+              ) : null}
+            </div>
+          )}
+          {mergeTarget && mergeFor ? (
+            // Explicit confirm step: selecting a target never merges by itself.
+            <div className="mt-3 grid gap-2 rounded-md border border-red-300 bg-red-50 p-3">
+              <p className="text-[13px] font-bold text-red-700">
+                {s.mergeConfirmText(nameOf(mergeFor), nameOf(mergeTarget))}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={mergeBusy}
+                  onClick={() => void onConfirmMerge()}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60 md:min-h-10"
+                >
+                  <GitMerge size={15} />
+                  {mergeBusy ? t.dataStatus.loading : s.mergeConfirmButton}
+                </button>
+                <button
+                  type="button"
+                  disabled={mergeBusy}
+                  onClick={() => setMergeTargetId(null)}
+                  className="inline-flex min-h-11 items-center rounded-md border border-afro-line bg-white px-4 text-sm font-bold text-afro-muted md:min-h-10"
+                >
+                  {s.mergeBack}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {error ? <p className="mt-3 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
+        </div>
+      ) : null}
+
       {configsFor ? (
         <div className="rounded-md border border-afro-line bg-afro-panel p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -1361,6 +1823,17 @@ export function CustomersPage({
 
       <div className="rounded-md border border-afro-line bg-afro-panel p-4">
         <PanelHeading title={s.title} icon={Plus} meta={loading ? t.dataStatus.loading : undefined} />
+        {/* Row-action errors (status/egress toggle, delete) — the editor and the
+            merge panel have their own error lines, so only show this one while
+            both are closed. */}
+        {error && !editorOpen && !mergeFor ? <p className="mt-2 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
+        {/* One-shot merge outcome: shown after the panel closes and the source
+            row has left the (active) list. */}
+        {mergeSuccess ? (
+          <p className="mt-2 text-[13px] font-bold text-afro-teal" role="status">
+            {mergeSuccess}
+          </p>
+        ) : null}
         {filtered.length === 0 ? (
           <div className="mt-2">
             <EmptyState message={loading ? t.dataStatus.loading : s.empty} />
@@ -1373,8 +1846,12 @@ export function CustomersPage({
               detailExpandLabel={s.detailExpand}
               minWidth="900px"
               renderDetail={renderCustomerDetail}
+              // opacity groups the row before compositing, so the pinned actions
+              // cell still fully occludes cells scrolling beneath it.
+              rowClassName={(a) => (isArchived(a) ? 'opacity-60' : undefined)}
               rowKey={(a) => a.id}
               rows={filtered}
+              stickyLastColumn
             />
           </div>
         )}

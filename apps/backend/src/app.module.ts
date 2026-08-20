@@ -44,6 +44,7 @@ import { AdminReportsService } from './reports/admin-reports.service';
 import { RoutersController } from './routers/routers.controller';
 import { RoutersService } from './routers/routers.service';
 import { RouterUsageSamplerService } from './routers/router-usage-sampler.service';
+import { VillageFailoverService } from './routers/village-failover.service';
 import { GatewayBillingService } from './routers/gateway-billing.service';
 import { GatewayBillingRunnerService } from './routers/gateway-billing.runner';
 import { MikroTikClientService } from './routers/mikrotik-client.service';
@@ -57,6 +58,10 @@ import { SecretVaultService } from './security/secret-vault.service';
 import { TelegramBotController } from './telegram/telegram-bot.controller';
 import { TelegramBotConfigService } from './telegram/telegram-bot-config.service';
 import { TelegramBotService } from './telegram/telegram-bot.service';
+import { TelegramPollingService } from './telegram/telegram-polling.service';
+import { TelegramProfileService } from './telegram/telegram-profile.service';
+import { TelegramTopupAdminController } from './telegram/telegram-topup-admin.controller';
+import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.service';
 
 @Module({
   imports: [
@@ -81,6 +86,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     PayPalWebhookController,
     RewardedAdWebhookController,
     TelegramBotController,
+    TelegramTopupAdminController,
   ],
   providers: [
     AgentsService,
@@ -115,6 +121,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     AdminReportsService,
     RoutersService,
     RouterUsageSamplerService,
+    VillageFailoverService,
     GatewayBillingService,
     GatewayBillingRunnerService,
     MikroTikClientService,
@@ -124,6 +131,9 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
     TelegramAlertService,
     TelegramBotConfigService,
     TelegramBotService,
+    TelegramPollingService,
+    TelegramProfileService,
+    TelegramTopupAdminService,
     {
       provide: METRICS_REPOSITORY,
       useExisting: PostgresMetricsRepository,

@@ -90,6 +90,53 @@ export class UpdateTelegramBotSettingsDto {
   @IsOptional()
   @IsBoolean()
   commandsEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  cardToCardInfo?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  trialQuotaBytes?: number | null;
+
+  // --- v2 gem economy (admin-configurable; defaults 100/50/20/10/300) ---
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  gemRedeemPerGb?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  gemReferralSignup?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  gemReferralPurchasePct?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100_000)
+  gemMilestoneEvery?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  gemMilestoneBonus?: number;
 }
 
 export class CreateProtocolSetupDto {

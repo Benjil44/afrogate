@@ -441,6 +441,14 @@ export interface TelegramBotAccountSummary {
   remainingBytes?: number | null;
   clientCount: number;
   activeClientCount: number;
+  /** v2: gems wallet balance (for the bot account/gems screens). */
+  gemsBalance?: number;
+  /** v2: the account's own referral/invite code. */
+  referralCode?: string | null;
+  /** v2: number of accounts this account referred. */
+  referralCount?: number;
+  /** v2: phone captured at registration (clear). */
+  phone?: string | null;
 }
 
 export type TelegramBotAccountLookup =
@@ -478,6 +486,21 @@ export interface AdminTelegramBotSettingsSummary {
   lastTestedAt?: string | null;
   lastTestErrorCode?: string | null;
   lastTestDurationMs?: number | null;
+  /** Card-to-card destination shown to bot users in the charge flow. */
+  cardToCardInfo?: string | null;
+  /** Trial quota for new self-serve accounts in bytes (null -> default 1e9). */
+  trialQuotaBytes?: number | null;
+  // --- v2 gem economy (admin-configurable; defaults per telegram-bot-v2-plan.md) ---
+  /** Gems required to redeem 1 GB (default 100). */
+  gemRedeemPerGb?: number;
+  /** Gems credited to the inviter when a referred user completes registration (default 50). */
+  gemReferralSignup?: number;
+  /** Percent of a referred purchase's GB paid to the inviter in gems (default 20). */
+  gemReferralPurchasePct?: number;
+  /** Completed-referral count between milestone bonuses (default 10). */
+  gemMilestoneEvery?: number;
+  /** Milestone bonus gems (default 300). */
+  gemMilestoneBonus?: number;
   updatedBy?: string | null;
   updatedAt?: string | null;
 }
@@ -495,6 +518,115 @@ export interface UpdateTelegramBotSettingsRequest {
   allowedAdminChatIds?: string[];
   alertsEnabled?: boolean;
   commandsEnabled?: boolean;
+  cardToCardInfo?: string | null;
+  trialQuotaBytes?: number | null;
+  gemRedeemPerGb?: number;
+  gemReferralSignup?: number;
+  gemReferralPurchasePct?: number;
+  gemMilestoneEvery?: number;
+  gemMilestoneBonus?: number;
+}
+
+/** v2: request body for the admin manual gems adjustment. */
+export interface AdjustCustomerGemsRequest {
+  /** Signed gem delta: positive credits, negative debits. Non-zero. */
+  delta: number;
+  reason: string;
+}
+
+/**
+ * Request body for merging a source (temporary/duplicate) customer account into a
+ * target real account. The source is the route `:id`; it is archived after its
+ * remaining GB, gems, client_configs, telegram link + phone and referrals move to
+ * the target. Returns the updated TARGET `AdminCustomerAccountDetail`.
+ */
+export interface MergeCustomerAccountRequest {
+  /** The target (real) account to merge into. Must differ from the source. */
+  targetAccountId: string;
+}
+
+/** v2: response of the admin manual gems adjustment (new balance). */
+export interface AdminAdjustCustomerGemsResponse {
+  gemsBalance: number;
+}
+
+/** v2: one append-only gems-ledger movement. */
+export interface AdminGemsLedgerEntry {
+  id: string;
+  /** Signed amount: positive = credited, negative = spent. */
+  delta: number;
+  /** Machine reason tag: referral_signup | referral_commission | referral_milestone | redeem | admin_adjust. */
+  reason: string;
+  /** Optional correlation (referred account id, topup id, milestone marker, admin note). */
+  ref?: string | null;
+  createdAt: string;
+}
+
+export interface AdminCustomerGemsLedgerResponse {
+  customerAccountId: string;
+  entries: AdminGemsLedgerEntry[];
+}
+
+/** Lifecycle of a Telegram card-to-card top-up request. */
+export type TelegramTopupStatus = 'awaiting_receipt' | 'pending' | 'approved' | 'rejected';
+
+/** A Telegram self-service top-up request as shown in the admin approval queue. */
+export interface AdminTelegramTopupRequest {
+  id: string;
+  reference: string;
+  customerAccountId: string;
+  customerDisplayName?: string | null;
+  telegramId?: string | null;
+  telegramUsername?: string | null;
+  telegramChatId?: string | null;
+  volumePackageId?: string | null;
+  packageLabel?: string | null;
+  packageVolumeBytes?: number | null;
+  amountMinor?: number | null;
+  currency?: string | null;
+  status: TelegramTopupStatus;
+  hasReceipt: boolean;
+  createdAt: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+}
+
+export interface AdminTelegramTopupRequestsResponse {
+  requests: AdminTelegramTopupRequest[];
+}
+
+export interface AdminTelegramTopupRequestResponse {
+  request: AdminTelegramTopupRequest;
+}
+
+/**
+ * The afroWS bot's public Telegram profile (name / about / description), as
+ * resolved from Telegram with the server-stored bot token. Fields are null when
+ * unset on Telegram. `tokenConfigured` is false when no bot token is saved yet —
+ * the dashboard shows a "save a token first" prompt instead of empty inputs.
+ * The bot token itself is NEVER part of this shape (it stays server-side).
+ */
+export interface AdminTelegramBotProfile {
+  /** Bot display name — Telegram cap 64 chars. */
+  name: string | null;
+  /** About / short description shown on the bot's profile — Telegram cap 120 chars. */
+  shortDescription: string | null;
+  /** Description shown on the empty-chat screen — Telegram cap 512 chars. */
+  description: string | null;
+  /** False when no bot token is configured (GET returns null fields, no 500). */
+  tokenConfigured: boolean;
+}
+
+/**
+ * Publish request for the bot profile. Each field is optional; only provided,
+ * changed, non-empty fields are pushed to Telegram (empty/undefined are skipped —
+ * clearing a field is done in @BotFather).
+ */
+export interface UpdateTelegramBotProfileRequest {
+  name?: string;
+  shortDescription?: string;
+  description?: string;
 }
 
 export interface AdminTenantBrandSettingsSummary {
@@ -787,6 +919,14 @@ export interface AdminCustomerAccountSummary {
   telegramId?: string | null;
   telegramUsername?: string | null;
   hasPaidNumberHash: boolean;
+  /** v2: phone captured at bot registration, stored in clear (admin-visible). */
+  phone?: string | null;
+  /** v2: current gems wallet balance. */
+  gemsBalance?: number;
+  /** v2: the account's own unique referral/invite code. */
+  referralCode?: string | null;
+  /** v2: how many accounts this account has referred (completed registration). */
+  referralCount?: number;
   status: CustomerAccountStatus | string;
   quotaScope: CustomerQuotaScope | string;
   quotaLimitBytes?: number | null;
@@ -807,9 +947,21 @@ export interface AdminCustomerAccountSummary {
   lastConnectedAt?: string | null;
   /** The MikroTik gateway router this customer owns, if any (for the Customers view). */
   gatewayRouter?: { id: string; label: string; online: boolean } | null;
+  /** When the account was archived (soft-deleted), or null if it is live/active. */
+  deletedAt?: string | null;
+  /** Convenience flag derived from deletedAt, for styling archived rows in the UI. */
+  isArchived?: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Archived-account visibility for the admin customer-accounts listing.
+ * - `active` (default): only live accounts (deleted_at IS NULL).
+ * - `only`: only archived accounts (deleted_at IS NOT NULL).
+ * - `all`: both live and archived.
+ */
+export type CustomerAccountArchivedFilter = 'active' | 'only' | 'all';
 
 export interface AdminCustomerAccountDetail extends AdminCustomerAccountSummary {
   clientConfigs: AdminClientConfigSummary[];
@@ -930,9 +1082,16 @@ export interface AdminResellerPackageQuote {
   volumePackageId: string;
   packageName: string;
   currency: string;
+  /** The platform COST for this package (what the reseller wallet is debited). */
   customerPriceAmount: number;
+  /** Alias of customerPriceAmount for the cost-based model (= walletDebitAmount). */
+  costAmount: number;
   sellerMarginBps: number;
+  /** The markup the reseller KEEPS (cost × marginBps), never debited. */
   sellerMarginAmount: number;
+  /** What the reseller charges their own customer (cost + kept markup). */
+  resellerSellPrice: number;
+  /** The amount debited from the reseller wallet (= cost). */
   walletDebitAmount: number;
   balanceBeforeAmount: number;
   balanceAfterAmount: number;
@@ -941,14 +1100,99 @@ export interface AdminResellerPackageQuote {
   blockedReason?: string | null;
 }
 
+/**
+ * Quote for a per-GB reseller sale at the current GB price. Margin = markup on COST:
+ * the wallet is debited `costAmount` (= GB × gbPrice) and the reseller keeps
+ * `marginAmount` (= cost × marginBps) as cash by charging `resellerSellPrice`.
+ */
+export interface AdminResellerGbQuote {
+  resellerAccountId: string;
+  currency: string;
+  /** Current per-GB price (the platform's cost per decimal GB). */
+  gbPrice: number;
+  /** Requested GB (decimal, 1 GB = 1e9 bytes). */
+  gb: number;
+  /** Platform cost = round(gb × gbPrice) = walletDebitAmount. */
+  costAmount: number;
+  /** Amount debited from the reseller wallet (= costAmount). */
+  walletDebitAmount: number;
+  sellerMarginBps: number;
+  /** Markup the reseller keeps (cost × marginBps), NOT debited. */
+  marginAmount: number;
+  /** What the reseller charges their customer (cost + margin). */
+  resellerSellPrice: number;
+  balanceBeforeAmount: number;
+  balanceAfterAmount: number;
+  creditLimitAmount: number;
+  canDebit: boolean;
+  blockedReason?: string | null;
+}
+
+export interface AdminResellerGbQuoteResponse {
+  quote: AdminResellerGbQuote;
+}
+
+export interface CreateResellerGbChargeRequest {
+  /** GB to grant the customer (decimal). Wallet is debited gb × current gbPrice. */
+  gb: number;
+  /** Charge an existing customer of this reseller… */
+  customerAccountId?: string | null;
+  /** …or create a new customer for this sale. Exactly one of the two is required. */
+  customerAccount?: CreateCustomerAccountRequest | null;
+  idempotencyKey?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AdminResellerGbChargeResponse {
+  reseller: AdminResellerAccountSummary;
+  customerAccount: AdminCustomerAccountDetail;
+  ledgerEntry: AdminResellerWalletLedgerEntry;
+  quote: AdminResellerGbQuote;
+  duplicate: boolean;
+}
+
 export interface AdminResellerWorkspaceSummary {
   reseller: AdminResellerAccountSummary;
   settings: AdminBillingSettingsSummary;
+  /** The current per-GB price (= settings.pricePerGb), surfaced for the reseller panel. */
+  gbPrice: number;
   packages: AdminVolumePackageSummary[];
   accounts: AdminCustomerAccountSummary[];
   paymentOrders: AdminPaymentOrderSummary[];
   ledgerEntries: AdminResellerWalletLedgerEntry[];
+  /** The reseller's own recent wallet top-up requests (newest first). */
+  topupRequests: AdminResellerTopupRequest[];
   generatedAt: string;
+}
+
+/** Lifecycle of a reseller card-to-card wallet top-up request. */
+export type ResellerTopupRequestStatus = 'pending' | 'approved' | 'rejected';
+
+/** A reseller wallet top-up request as shown in the reseller panel + admin queue. */
+export interface AdminResellerTopupRequest {
+  id: string;
+  reference: string;
+  resellerAccountId: string;
+  resellerDisplayName?: string | null;
+  amount: number;
+  currency: string;
+  status: ResellerTopupRequestStatus;
+  hasReceipt: boolean;
+  note?: string | null;
+  createdAt: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  /** The reseller_wallet_ledger topup entry written on approval, if approved. */
+  walletLedgerId?: string | null;
+}
+
+export interface AdminResellerTopupRequestsResponse {
+  requests: AdminResellerTopupRequest[];
+}
+
+export interface AdminResellerTopupRequestResponse {
+  request: AdminResellerTopupRequest;
 }
 
 export interface CreateResellerAccountRequest {
@@ -1317,6 +1561,18 @@ export interface AdminBillingSettingsSummary {
   updatedBy?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The current per-GB price (the platform's cost per decimal GB). Superadmin-settable. */
+export interface AdminGbPriceResponse {
+  gbPrice: number;
+  currency: string;
+  updatedBy?: string | null;
+  updatedAt: string;
+}
+
+export interface UpdateGbPriceRequest {
+  gbPrice: number;
 }
 
 export interface AdminRewardedAdSettingsSummary {
@@ -3767,6 +4023,17 @@ export interface AdminResellerPackageSaleResponse {
 
 export interface AdminResellerWorkspaceResponse {
   workspace: AdminResellerWorkspaceSummary;
+}
+
+/**
+ * Result of a superadmin "Sign in as seller" impersonation. `session` is a valid,
+ * reseller-scoped login session (sessionToken + actor) for the seller's login user —
+ * the frontend swaps to it while keeping the admin session to return. `reseller`
+ * identifies which seller is being impersonated.
+ */
+export interface AdminResellerImpersonationResponse {
+  session: AdminLoginResponse;
+  reseller: AdminResellerAccountSummary;
 }
 
 export interface AdminClientRoutePreferenceResponse {

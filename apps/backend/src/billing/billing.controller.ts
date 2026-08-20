@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,11 +10,21 @@ import {
   Post,
   Query,
   Req,
+  StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type {
   AdminBillingCatalogResponse,
   AdminBillingSettingsResponse,
+  AdminGbPriceResponse,
+  AdminResellerGbChargeResponse,
+  AdminResellerGbQuoteResponse,
+  AdminResellerImpersonationResponse,
+  AdminResellerTopupRequestResponse,
+  AdminResellerTopupRequestsResponse,
   AdminCurrentPanelImportConfigsResponse,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelUsageSyncResponse,
@@ -29,6 +40,8 @@ import type {
   AdminCustomerAccountDetail,
   AdminCustomerDevicesResponse,
   AdminAllocatePaymentOrderResponse,
+  AdminAdjustCustomerGemsResponse,
+  AdminCustomerGemsLedgerResponse,
   AdminIssueClientAccessTokenResponse,
   AdminCustomerAccountsResponse,
   AdminPayPalPaymentOrderResponse,
@@ -53,8 +66,10 @@ import type { RequestWithAuth } from '../security/auth-request';
 import { AdminTokenGuard } from '../security/admin-token.guard';
 import { Permissions, Roles } from '../security/roles.decorator';
 import { RolesGuard } from '../security/roles.guard';
+import { AuthService } from '../auth/auth.service';
 import { BillingService } from './billing.service';
 import {
+  AdjustCustomerGemsDto,
   CurrentPanelImportConfigsDto,
   CurrentPanelImportPreviewDto,
   CurrentPanelUsageSyncDto,
@@ -62,6 +77,7 @@ import {
   CreateClientUsageEventDto,
   CreateClientConfigDto,
   CreateCustomerAccountDto,
+  MergeCustomerAccountDto,
   SetCustomerAccountPasswordDto,
   SetEgressTierPriceDto,
   UpdateClientConfigDto,
@@ -79,6 +95,7 @@ import {
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
   UpdateBillingSettingsDto,
+  UpdateGbPriceDto,
   UpdateRewardedAdSettingsDto,
   UpdatePaymentMethodDto,
   UpdatePaymentOrderStatusDto,
@@ -86,16 +103,30 @@ import {
 } from './dto/billing.dto';
 import {
   CreateResellerAccountDto,
+  CreateResellerGbChargeDto,
   CreateResellerPackageSaleDto,
+  CreateResellerTopupRequestDto,
+  RejectResellerTopupDto,
   DebitResellerWalletForPackageDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
 } from './dto/reseller.dto';
 
+/** Multer-populated upload; typed locally to avoid a @types/multer dependency. */
+interface UploadedReceiptFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+  originalname: string;
+}
+
 @Controller('admin')
 @UseGuards(AdminTokenGuard, RolesGuard)
 export class BillingController {
-  constructor(private readonly billingService: BillingService) {}
+  constructor(
+    private readonly billingService: BillingService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get('billing/catalog')
   @Roles('admin', 'supervisor', 'support', 'auditor')
@@ -120,6 +151,26 @@ export class BillingController {
     return {
       settings: await this.billingService.updateBillingSettings(payload, request.actor),
     };
+  }
+
+  /**
+   * The current per-GB price (the platform's cost per decimal GB). Readable by any
+   * admin role for display; the reseller per-GB sale + reseller panel use it.
+   */
+  @Get('billing/gb-price')
+  @Roles('superadmin', 'admin', 'supervisor', 'support', 'auditor')
+  getGbPrice(): Promise<AdminGbPriceResponse> {
+    return this.billingService.getGbPrice();
+  }
+
+  /** Set the current per-GB price. Superadmin only; audited (`billing.gb_price.update`). */
+  @Patch('billing/gb-price')
+  @Roles('superadmin')
+  updateGbPrice(
+    @Body() payload: UpdateGbPriceDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminGbPriceResponse> {
+    return this.billingService.updateGbPrice(payload, request.actor);
   }
 
   @Get('rewarded-ads/settings')
@@ -349,6 +400,82 @@ export class BillingController {
     return this.billingService.createResellerPackageSale(payload, request.actor);
   }
 
+  /** Preview a per-GB sale for the current reseller: cost debited + kept markup. */
+  @Get('reseller/gb-quote')
+  @Roles('reseller')
+  @Permissions('billing:read', 'resellerWallet:read')
+  async quoteResellerGbCharge(
+    @Query('gb') gb: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerGbQuoteResponse> {
+    return { quote: await this.billingService.quoteResellerGbCharge(request.actor, Number(gb)) };
+  }
+
+  /**
+   * Grant a customer N GB. Debits the reseller wallet N × currentGbPrice (the cost);
+   * the reseller keeps cost × marginBps as markup (informational, not debited).
+   */
+  @Post('reseller/gb-charges')
+  @Roles('reseller')
+  @Permissions('customers:write', 'resellerWallet:read')
+  createResellerGbCharge(
+    @Body() payload: CreateResellerGbChargeDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerGbChargeResponse> {
+    return this.billingService.createResellerGbCharge(payload, request.actor);
+  }
+
+  /** Reseller requests a card-to-card wallet top-up (amount + receipt image upload). */
+  @Post('reseller/wallet/topup-requests')
+  @Roles('reseller')
+  @Permissions('resellerWallet:read')
+  @UseInterceptors(
+    FileInterceptor('receipt', {
+      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+      // Receipts are card-to-card photos; only accept images (reject PDFs, HTML, etc.).
+      fileFilter: (_req: unknown, file: { mimetype: string }, cb: (error: Error | null, accept: boolean) => void) => {
+        if (/^image\//i.test(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Receipt must be an image file'), false);
+        }
+      },
+    }),
+  )
+  async createResellerTopupRequest(
+    @UploadedFile() file: UploadedReceiptFile | undefined,
+    @Body() payload: CreateResellerTopupRequestDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerTopupRequestResponse> {
+    const receipt = file ? { buffer: file.buffer, contentType: file.mimetype } : null;
+    return { request: await this.billingService.createResellerTopupRequest(payload, receipt, request.actor) };
+  }
+
+  /** The current reseller's own wallet top-up requests (newest first). */
+  @Get('reseller/wallet/topup-requests')
+  @Roles('reseller')
+  @Permissions('resellerWallet:read')
+  async listResellerTopupRequests(
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerTopupRequestsResponse> {
+    return { requests: await this.billingService.listResellerTopupRequestsForActor(request.actor) };
+  }
+
+  /** The current reseller's own receipt image (IDOR-guarded to the actor's account). */
+  @Get('reseller/wallet/topup-requests/:id/receipt')
+  @Roles('reseller')
+  @Permissions('resellerWallet:read')
+  async getOwnResellerTopupReceipt(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<StreamableFile> {
+    const { buffer, contentType } = await this.billingService.getResellerTopupReceiptForActor(id, request.actor);
+    return new StreamableFile(buffer, {
+      type: contentType,
+      disposition: `inline; filename="receipt-${id}"`,
+    });
+  }
+
   @Patch('reseller/customer-accounts/:id')
   @Roles('reseller')
   @Permissions('customers:write')
@@ -448,17 +575,93 @@ export class BillingController {
     return this.billingService.debitResellerWalletForPackage(id, payload, request.actor);
   }
 
+  /**
+   * Seller oversight: list a given seller's customers + usage (used/quota, status).
+   * Reuses the reseller-scoped customer-account filter for the superadmin drill-down.
+   */
+  @Get('resellers/:id/customers')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async listResellerCustomers(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminCustomerAccountsResponse> {
+    return { accounts: await this.billingService.listResellerCustomerAccountsForAdmin(id) };
+  }
+
+  /**
+   * Superadmin "Sign in as seller": mint a reseller-scoped session for the seller's
+   * login user so the superadmin can open that seller's panel. Audited
+   * (`reseller.impersonate`); the caller keeps their own admin session to return.
+   */
+  @Post('resellers/:id/impersonate')
+  @Roles('superadmin')
+  async impersonateReseller(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerImpersonationResponse> {
+    const reseller = await this.billingService.getResellerAccount(id);
+    const session = await this.authService.createResellerImpersonationSession(
+      request.actor,
+      reseller.adminUserId,
+      { resellerAccountId: reseller.id },
+    );
+    return { session, reseller };
+  }
+
+  // Reseller card-to-card wallet top-up approval queue (mirrors the Telegram Top-ups).
+  @Get('reseller-topups')
+  @Roles('admin', 'supervisor', 'support')
+  async listResellerTopupRequestsAdmin(
+    @Query('status') status?: string,
+  ): Promise<AdminResellerTopupRequestsResponse> {
+    return { requests: await this.billingService.listAdminResellerTopupRequests(status) };
+  }
+
+  @Post('reseller-topups/:id/approve')
+  @Roles('admin')
+  async approveResellerTopup(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerTopupRequestResponse> {
+    return { request: await this.billingService.approveResellerTopupRequest(id, request.actor) };
+  }
+
+  @Post('reseller-topups/:id/reject')
+  @Roles('admin')
+  async rejectResellerTopup(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: RejectResellerTopupDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerTopupRequestResponse> {
+    return { request: await this.billingService.rejectResellerTopupRequest(id, body.reason ?? null, request.actor) };
+  }
+
+  // Receipt IMAGES contain card/PII; restrict the view to admin, matching the
+  // approve/reject gating. The list endpoint above stays admin/supervisor/support.
+  @Get('reseller-topups/:id/receipt')
+  @Roles('admin')
+  async getResellerTopupReceipt(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<StreamableFile> {
+    const { buffer, contentType } = await this.billingService.getResellerTopupReceipt(id);
+    return new StreamableFile(buffer, {
+      type: contentType,
+      disposition: `inline; filename="receipt-${id}"`,
+    });
+  }
+
   @Get('customer-accounts')
   @Roles('admin', 'supervisor', 'support', 'auditor')
   async listCustomerAccounts(
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
+    @Query('archived') archived?: string,
   ): Promise<AdminCustomerAccountsResponse> {
     return {
       accounts: await this.billingService.listCustomerAccounts({
         status,
         search,
+        archived: archived === 'only' || archived === 'all' ? archived : 'active',
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
     };
@@ -564,6 +767,67 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminCustomerAccountDetail> {
     return this.billingService.updateCustomerAccount(id, payload, request.actor);
+  }
+
+  @Delete('customer-accounts/:id')
+  @Roles('admin')
+  deleteCustomerAccount(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ deleted: boolean }> {
+    return this.billingService.deleteCustomerAccount(id, request.actor);
+  }
+
+  @Post('customer-accounts/:id/restore')
+  @Roles('admin')
+  restoreCustomerAccount(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ restored: boolean }> {
+    return this.billingService.restoreCustomerAccount(id, request.actor);
+  }
+
+  /**
+   * Merge the source account (:id) INTO the target real account, moving its
+   * remaining GB, gems, client_configs, telegram link + phone and referrals over,
+   * then archiving the source. Returns the updated TARGET detail.
+   */
+  @Post('customer-accounts/:id/merge')
+  @Roles('admin')
+  mergeCustomerAccount(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: MergeCustomerAccountDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminCustomerAccountDetail> {
+    return this.billingService.mergeCustomerAccount(id, payload.targetAccountId, request.actor);
+  }
+
+  @Post('customer-accounts/:id/gems')
+  @Roles('admin')
+  async adjustCustomerGems(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: AdjustCustomerGemsDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminAdjustCustomerGemsResponse> {
+    return this.billingService.adjustCustomerGems(id, payload.delta, payload.reason, request.actor);
+  }
+
+  @Get('customer-accounts/:id/gems/ledger')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  async getCustomerGemsLedger(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminCustomerGemsLedgerResponse> {
+    const entries = await this.billingService.getCustomerGemsLedger(id, 50);
+    return {
+      customerAccountId: id,
+      entries: entries.map((entry) => ({
+        id: entry.id,
+        delta: entry.delta,
+        reason: entry.reason,
+        ref: entry.ref,
+        createdAt: entry.createdAt.toISOString(),
+      })),
+    };
   }
 
   @Post('customer-accounts/:id/client-configs')

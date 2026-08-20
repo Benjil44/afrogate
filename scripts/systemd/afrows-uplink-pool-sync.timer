@@ -2,8 +2,12 @@
 Description=Run the Afrows uplink relay-pool reconciler periodically
 
 [Timer]
+# Wall-clock anchor so the timer always computes a NEXT — OnUnitActiveSec alone
+# stops scheduling if the activation chain breaks across a reboot (it did:
+# NEXT went dead 2026-06-18 and froze the reserve pool). OnCalendar + Persistent
+# guarantees it keeps firing.
 OnBootSec=2min
-OnUnitActiveSec=10min
+OnCalendar=*:0/10
 RandomizedDelaySec=30
 Persistent=true
 

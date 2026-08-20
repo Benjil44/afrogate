@@ -1606,15 +1606,24 @@ export class OperationsService {
     });
   }
 
-  /** Subscription ids whose update interval has elapsed (for the background refresher). */
-  async listDueOutboundSubscriptionIds(): Promise<string[]> {
+  /**
+   * Subscription ids that are due for a re-fetch (for the background refresher).
+   * Due = staler than the shorter of the provider's interval and the reserve
+   * freshness window (default 20 min) — so the village-independent reserve always
+   * has the provider's current rotated exits ready for a power-loss failover,
+   * instead of only refreshing every 12h.
+   */
+  async listDueOutboundSubscriptionIds(freshnessMinutes = 20): Promise<string[]> {
+    const cap = Number.isFinite(freshnessMinutes) && freshnessMinutes >= 2 ? Math.floor(freshnessMinutes) : 20;
     const result = await this.database.query<{ id: string }>(
       `
         SELECT id FROM outbound_subscriptions
         WHERE enabled = true
           AND (last_fetched_at IS NULL
-               OR last_fetched_at + (COALESCE(update_interval_hours, 12) || ' hours')::interval < now())
+               OR last_fetched_at < now()
+                  - (LEAST((COALESCE(update_interval_hours, 12) * 60)::int, $1::int)::text || ' minutes')::interval)
       `,
+      [cap],
     );
     return result.rows.map((r) => r.id);
   }
@@ -1664,13 +1673,22 @@ export class OperationsService {
     );
     // Upsert each config by its stable key. enabled is set only on insert so a
     // user's later enable/disable choice survives refreshes.
+    // speed_test_requested_at = now() on insert (and on a config change, i.e. the
+    // provider rotated the server) so the exit is speed-tested promptly: the uplink
+    // relay pool (afrows-uplink-pool-sync) only admits an exit with a speed test in
+    // the last ~90 min, so without this stamp a freshly imported subscription server
+    // never joins the village-independent egress reserve.
     for (const c of parsed.configs) {
       await executor.query(
         `
-          INSERT INTO outbounds (name, type, route_group, enabled, config, subscription_id, subscription_key, health_status)
-          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'unknown')
+          INSERT INTO outbounds (name, type, route_group, enabled, config, subscription_id, subscription_key, health_status, speed_test_requested_at)
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'unknown', now())
           ON CONFLICT (subscription_id, subscription_key) WHERE subscription_id IS NOT NULL
-          DO UPDATE SET name = EXCLUDED.name, config = EXCLUDED.config, route_group = EXCLUDED.route_group, updated_at = now()
+          DO UPDATE SET name = EXCLUDED.name, config = EXCLUDED.config, route_group = EXCLUDED.route_group, updated_at = now(),
+            speed_test_requested_at = CASE
+              WHEN outbounds.config IS DISTINCT FROM EXCLUDED.config THEN now()
+              ELSE outbounds.speed_test_requested_at
+            END
         `,
         [c.name, c.type, routeGroup, enabledForNew, JSON.stringify(c.config), subscriptionId, c.key],
       );
@@ -4982,7 +5000,7 @@ export class OperationsService {
       `SELECT auto_enabled, interval_seconds FROM outbound_test_settings WHERE id = true`,
     );
     const row = result.rows[0];
-    return { enabled: row?.auto_enabled ?? false, intervalSeconds: row?.interval_seconds ?? 600 };
+    return { enabled: row?.auto_enabled ?? true, intervalSeconds: row?.interval_seconds ?? 600 };
   }
 
   async setOutboundTestSettings(enabled: boolean): Promise<AdminOutboundsAutoTestState> {

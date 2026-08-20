@@ -47,9 +47,13 @@ import type {
   AdminPaymentMethodSummary,
   AdminPaymentOrderSummary,
   AdminRecordClientUsageResponse,
+  AdminGbPriceResponse,
   AdminResellerAccountSummary,
+  AdminResellerGbChargeResponse,
+  AdminResellerGbQuote,
   AdminResellerPackageQuote,
   AdminResellerPackageSaleResponse,
+  AdminResellerTopupRequest,
   AdminResellerWalletActionResponse,
   AdminResellerWalletLedgerEntry,
   AdminResellerWorkspaceSummary,
@@ -59,6 +63,7 @@ import type {
   CurrentPanelImportPreviewRequest,
   CurrentPanelImportSkippedCandidate,
   CurrentPanelUsageSyncRequest,
+  CustomerAccountArchivedFilter,
   CurrentPanelVolumeChargeScope,
   ClientRewardedAdClaimResponse,
   ClientRewardedAdGrantSummary,
@@ -73,6 +78,12 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
 import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './allocation-idempotency';
+import {
+  archiveCustomerAccountInTransaction,
+  customerAccountArchivedWhereClause,
+  restoreCustomerAccountInTransaction,
+} from './customer-account-deletion';
+import { mergeCustomerAccountInTransaction } from './customer-account-merge';
 import { calculateTotalPrice, defaultCheckoutMode, isErrorWithCode, minNullableBytes, numberFromBigInt, remainingBytes, throwConflictIfUniqueViolation } from './billing-math';
 import { currentUtcDay, formatGrantDay, nextUtcResetAt, parseOptionalDate } from './date-utils';
 import { asRecord, stringFromRecord } from './record-utils';
@@ -86,12 +97,29 @@ import { normalizeClientUsageDirection, normalizeClientUsageSource, normalizeCur
 import {
   DEFAULT_RESELLER_MARGIN_BPS,
   afrowsShareBps,
+  computeResellerGbCost,
   computeResellerSaleAmounts,
   normalizeResellerMarginBps,
   walletCanCoverDebit,
 } from './reseller-wallet-math';
+import {
+  approveResellerTopupInTransaction,
+  rejectResellerTopupInTransaction,
+  resellerTopupReference,
+} from './reseller-topup';
 import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, gbToBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
+import {
+  attributeReferral,
+  creditReferralSignup,
+  earnGems,
+  generateUniqueReferralCode,
+  readGemsBalance,
+  redeemGemsForGb,
+  type RedeemGemsResult,
+  type ReferralRewardConfig,
+} from './gems';
 import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
+import { phoneClearVariants, phoneDigitVariants } from './phone-identity';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { hashPassword, verifyScryptPassword } from '../security/password';
@@ -134,6 +162,7 @@ import {
   CreatePaymentOrderDto,
   CreateVolumePackageDto,
   UpdateBillingSettingsDto,
+  UpdateGbPriceDto,
   UpdateRewardedAdSettingsDto,
   UpdatePaymentMethodDto,
   UpdatePaymentOrderStatusDto,
@@ -141,7 +170,9 @@ import {
 } from './dto/billing.dto';
 import {
   CreateResellerAccountDto,
+  CreateResellerGbChargeDto,
   CreateResellerPackageSaleDto,
+  CreateResellerTopupRequestDto,
   DebitResellerWalletForPackageDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
@@ -199,6 +230,10 @@ interface CustomerAccountRow {
   telegramId: string | null;
   telegramUsername: string | null;
   paidNumberHash: string | null;
+  phone: string | null;
+  gemsBalance: string | number | null;
+  referralCode: string | null;
+  referralCount: number | string | null;
   status: string;
   quotaScope: string;
   quotaLimitBytes: string | number | null;
@@ -212,11 +247,24 @@ interface CustomerAccountRow {
   expiresAt: Date | null;
   tags: string[] | null;
   lastConnectedAt: Date | null;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   clientCount: number;
   activeClientCount: number;
   protocols: Array<{ protocol: string; usedBytes: number | string }> | null;
+}
+
+/** A live customer account matched by phone (bot registration linking). */
+export interface CustomerAccountPhoneMatch {
+  id: string;
+  displayName: string | null;
+  telegramId: string | null;
+  telegramUsername: string | null;
+  phone: string | null;
+  referralCode: string | null;
+  status: string;
+  quotaLimitBytes: number | null;
 }
 
 interface WireguardPeerRecord {
@@ -514,6 +562,21 @@ interface ResellerAccountRow {
   ledgerEntryCount: number;
 }
 
+interface ResellerTopupRequestRow {
+  id: string;
+  resellerAccountId: string;
+  resellerDisplayName: string | null;
+  amount: string | number;
+  currency: string;
+  status: string;
+  hasReceipt: boolean;
+  note: string | null;
+  createdAt: Date;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  walletLedgerId: string | null;
+}
+
 interface ResellerWalletLedgerRow {
   id: string;
   resellerAccountId: string;
@@ -635,6 +698,8 @@ interface CustomerAccountFilters {
   status?: string;
   search?: string;
   resellerAccountId?: string;
+  /** Archived visibility: 'active' (default, live only), 'only' (archived), 'all'. */
+  archived?: CustomerAccountArchivedFilter;
   limit: number;
 }
 
@@ -2102,22 +2167,454 @@ export class BillingService {
 
   async getResellerWorkspace(actor: AuthActor | undefined): Promise<AdminResellerWorkspaceSummary> {
     const reseller = await this.getResellerAccountRowForActor(actor);
-    const [settings, packages, accounts, paymentOrders, ledgerEntries] = await Promise.all([
+    const [settings, packages, accounts, paymentOrders, ledgerEntries, topupRequests] = await Promise.all([
       this.getBillingSettings(),
       this.listVolumePackages({ status: 'active', limit: 100 }),
       this.listCustomerAccounts({ resellerAccountId: reseller.id, limit: 100 }),
       this.listPaymentOrders({ resellerAccountId: reseller.id, limit: 100 }),
       this.listResellerWalletLedger(reseller.id, 50),
+      this.listResellerTopupRequestsForReseller(reseller.id, 50),
     ]);
 
     return {
       reseller: this.mapResellerAccount(reseller),
       settings,
+      gbPrice: settings.pricePerGb,
       packages,
       accounts,
       paymentOrders,
       ledgerEntries,
+      topupRequests,
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-GB price control (superadmin-settable; the platform's cost per decimal GB).
+  // Backed by the existing billing_settings.price_per_gb column so the reseller
+  // per-GB sale + every reseller-facing display use one current value.
+  // ---------------------------------------------------------------------------
+
+  async getGbPrice(): Promise<AdminGbPriceResponse> {
+    const settings = await this.getBillingSettings();
+    return {
+      gbPrice: settings.pricePerGb,
+      currency: settings.currency,
+      updatedBy: settings.updatedBy ?? null,
+      updatedAt: settings.updatedAt,
+    };
+  }
+
+  async updateGbPrice(dto: UpdateGbPriceDto, actor: AuthActor | undefined): Promise<AdminGbPriceResponse> {
+    const gbPrice = normalizeMoneyAmount(dto.gbPrice, 'gbPrice');
+    const settings = await this.database.transaction(async (executor) => {
+      const current = await this.getBillingSettingsRow(executor, true);
+      const previousGbPrice = numberFromBigInt(current.pricePerGb) ?? 0;
+      const result = await executor.query<BillingSettingsRow>(
+        `
+          UPDATE billing_settings
+          SET price_per_gb = $1,
+              updated_by = $2,
+              updated_at = now()
+          WHERE setting_key = 'default'
+          RETURNING
+            setting_key AS "settingKey",
+            currency,
+            price_per_gb AS "pricePerGb",
+            updated_by AS "updatedBy",
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+        `,
+        [gbPrice, actor?.id ?? null],
+      );
+
+      await this.audit.record(
+        actor,
+        'billing.gb_price.update',
+        'billing_settings',
+        'default',
+        { previousGbPrice, gbPrice, currency: current.currency },
+        executor,
+      );
+
+      return result.rows[0];
+    });
+
+    return {
+      gbPrice: numberFromBigInt(settings.pricePerGb) ?? 0,
+      currency: settings.currency,
+      updatedBy: settings.updatedBy ?? null,
+      updatedAt: settings.updatedAt.toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-GB reseller sale (margin = markup on cost). The reseller grants a customer
+  // N GB; the wallet is debited N × currentGbPrice (the cost). The reseller keeps
+  // cost × marginBps as cash by charging cost × (1 + margin) — never debited.
+  // ---------------------------------------------------------------------------
+
+  async quoteResellerGbCharge(actor: AuthActor | undefined, gb: number): Promise<AdminResellerGbQuote> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    const settings = await this.getBillingSettings();
+    return this.calculateResellerGbQuote(reseller, gb, settings.pricePerGb, settings.currency);
+  }
+
+  async createResellerGbCharge(
+    dto: CreateResellerGbChargeDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerGbChargeResponse> {
+    const currentReseller = await this.getResellerAccountRowForActor(actor);
+    const requestedCustomerAccountId = normalizeNullableString(dto.customerAccountId);
+    const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
+    if (requestedCustomerAccountId && dto.customerAccount) {
+      throw new BadRequestException('Provide either an existing customer account id or a new customer, not both');
+    }
+    if (!requestedCustomerAccountId && !dto.customerAccount) {
+      throw new BadRequestException('A customer account id or a new customer is required for a GB charge');
+    }
+
+    try {
+      const saleState = await this.database.transaction(async (executor) => {
+        if (idempotencyKey) {
+          const existing = await this.getResellerWalletLedgerByIdempotencyForUpdate(executor, idempotencyKey);
+          if (existing) {
+            // The original charge stored the requested GB in metadata; a replay with a
+            // different gb (or customer) is a real conflict, not a re-run of the same request.
+            const existingGb = typeof existing.metadata?.gb === 'number' ? existing.metadata.gb : null;
+            if (
+              existing.resellerAccountId !== currentReseller.id ||
+              existing.entryType !== 'sale_debit' ||
+              existing.source !== 'client_sale' ||
+              !existing.customerAccountId ||
+              (requestedCustomerAccountId && existing.customerAccountId !== requestedCustomerAccountId) ||
+              existingGb !== dto.gb
+            ) {
+              throw new ConflictException('Reseller GB charge idempotency key already belongs to another request');
+            }
+            const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+            const settings = await this.getBillingSettingsRow(executor);
+            return {
+              customerAccountId: existing.customerAccountId,
+              duplicate: true,
+              ledgerEntry: existing,
+              quote: this.calculateResellerGbQuote(
+                reseller,
+                dto.gb,
+                numberFromBigInt(settings.pricePerGb) ?? 0,
+                settings.currency,
+              ),
+            };
+          }
+        }
+
+        const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+        if (reseller.status !== 'active') throw new BadRequestException('Reseller account is not active');
+        const settings = await this.getBillingSettingsRow(executor);
+        const gbPrice = numberFromBigInt(settings.pricePerGb) ?? 0;
+        // Case-insensitive: identical currencies (e.g. 'IRT' vs normalized 'irt') must pass.
+        if (normalizeCurrency(reseller.currency) !== normalizeCurrency(settings.currency)) {
+          throw new BadRequestException('Reseller wallet currency does not match the billing currency');
+        }
+
+        const quote = this.calculateResellerGbQuote(reseller, dto.gb, gbPrice, settings.currency);
+        if (!quote.canDebit) {
+          throw new BadRequestException(quote.blockedReason ?? 'Reseller wallet balance is not enough for this GB charge');
+        }
+        if (quote.walletDebitAmount <= 0) throw new BadRequestException('GB charge wallet debit amount must be positive');
+
+        const customerAccountId = requestedCustomerAccountId
+          ? await this.prepareExistingResellerSaleCustomer(executor, requestedCustomerAccountId, reseller.id)
+          : await this.createResellerSaleCustomer(executor, dto.customerAccount, reseller.id, actor);
+        const account = await this.getCustomerAccountRowForUpdate(executor, customerAccountId);
+        const volumeBytes = gbToBytes(dto.gb);
+        if (volumeBytes <= 0) throw new BadRequestException('GB charge volume must be positive');
+        const quotaLimitBeforeBytes = numberFromBigInt(account.quotaLimitBytes);
+        const usedBytes = numberFromBigInt(account.usedBytes) ?? 0;
+        const quotaLimitAfterBytes = addPositiveBytes(
+          quotaLimitBeforeBytes ?? usedBytes,
+          volumeBytes,
+          'Reseller GB charge quota would exceed the safe byte limit',
+        );
+
+        await executor.query(
+          `
+            UPDATE customer_accounts
+            SET quota_limit_bytes = $1,
+                updated_at = now()
+            WHERE id = $2
+          `,
+          [quotaLimitAfterBytes, customerAccountId],
+        );
+
+        const ledgerEntry = await this.insertResellerWalletLedgerEntry(executor, reseller, {
+          amount: -quote.walletDebitAmount,
+          actor,
+          clientConfigId: null,
+          customerAccountId,
+          entryType: 'sale_debit',
+          idempotencyKey,
+          metadata: {
+            ...(dto.metadata ?? {}),
+            resellerGbCharge: true,
+            gb: dto.gb,
+            gbPrice,
+            costAmount: quote.costAmount,
+            marginAmount: quote.marginAmount,
+            resellerSellPrice: quote.resellerSellPrice,
+            quotaLimitBeforeBytes,
+            quotaLimitAfterBytes,
+          },
+          notes: normalizeNullableString(dto.notes),
+          source: 'client_sale',
+          sourceId: null,
+          volumePackageId: null,
+        });
+
+        await this.audit.record(
+          actor,
+          'reseller_wallet.gb_charge',
+          'reseller_account',
+          reseller.id,
+          {
+            customerAccountId,
+            ledgerEntryId: ledgerEntry.id,
+            gb: dto.gb,
+            gbPrice,
+            costAmount: quote.costAmount,
+            marginAmount: quote.marginAmount,
+            resellerSellPrice: quote.resellerSellPrice,
+            walletDebitAmount: quote.walletDebitAmount,
+            quotaLimitBeforeBytes,
+            quotaLimitAfterBytes,
+            volumeBytes,
+          },
+          executor,
+        );
+
+        return { customerAccountId, duplicate: false, ledgerEntry, quote };
+      });
+
+      return {
+        reseller: await this.getResellerAccount(currentReseller.id),
+        customerAccount: await this.getCustomerAccount(saleState.customerAccountId),
+        ledgerEntry: this.mapResellerWalletLedger(saleState.ledgerEntry),
+        quote: saleState.quote,
+        duplicate: saleState.duplicate,
+      };
+    } catch (error) {
+      throwConflictIfUniqueViolation(error, 'Reseller GB charge already exists');
+      throw error;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Seller oversight: an admin drill-down into a given seller's customers + usage.
+  // ---------------------------------------------------------------------------
+
+  async listResellerCustomerAccountsForAdmin(resellerAccountId: string): Promise<AdminCustomerAccountSummary[]> {
+    await this.ensureResellerAccountExists(this.database, resellerAccountId);
+    return this.listCustomerAccounts({ resellerAccountId, archived: 'all', limit: 500 });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reseller card-to-card wallet top-up requests (reseller requests -> admin approves,
+  // crediting the wallet). Mirrors the Telegram deposit-slip -> Top-ups approval flow.
+  // ---------------------------------------------------------------------------
+
+  async createResellerTopupRequest(
+    dto: CreateResellerTopupRequestDto,
+    receipt: { buffer: Buffer; contentType: string } | null,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerTopupRequest> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    const amount = normalizeMoneyAmount(dto.amount, 'amount');
+    if (amount <= 0) throw new BadRequestException('Reseller top-up amount must be positive');
+    if (!receipt || !receipt.buffer?.length) {
+      throw new BadRequestException('A card-to-card receipt image is required');
+    }
+
+    const id = await this.database.transaction(async (executor) => {
+      const inserted = await executor.query<{ id: string }>(
+        `
+          INSERT INTO reseller_wallet_topup_requests (
+            reseller_account_id, amount, currency, receipt_bytes, receipt_content_type, note, status
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+          RETURNING id
+        `,
+        [reseller.id, amount, reseller.currency, receipt.buffer, receipt.contentType, normalizeNullableString(dto.note)],
+      );
+      const requestId = inserted.rows[0].id;
+      await this.audit.record(
+        actor,
+        'reseller_wallet.topup_request.create',
+        'reseller_wallet_topup_request',
+        requestId,
+        { resellerAccountId: reseller.id, amount, currency: reseller.currency },
+        executor,
+      );
+      return requestId;
+    });
+
+    return this.getResellerTopupRequest(id);
+  }
+
+  async listResellerTopupRequestsForReseller(
+    resellerAccountId: string,
+    limit: number,
+  ): Promise<AdminResellerTopupRequest[]> {
+    const result = await this.database.query<ResellerTopupRequestRow>(
+      `${this.resellerTopupRequestSelectSql()}
+       WHERE t.reseller_account_id = $1
+       ORDER BY t.created_at DESC
+       LIMIT $2`,
+      [resellerAccountId, limit],
+    );
+    return result.rows.map((row) => this.mapResellerTopupRequest(row));
+  }
+
+  async listResellerTopupRequestsForActor(actor: AuthActor | undefined): Promise<AdminResellerTopupRequest[]> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    return this.listResellerTopupRequestsForReseller(reseller.id, 100);
+  }
+
+  async listAdminResellerTopupRequests(status: string | undefined): Promise<AdminResellerTopupRequest[]> {
+    const normalizedStatus = status === 'pending' || status === 'approved' || status === 'rejected' ? status : null;
+    const result = await this.database.query<ResellerTopupRequestRow>(
+      `${this.resellerTopupRequestSelectSql()}
+       WHERE ($1::text IS NULL OR t.status = $1)
+       ORDER BY t.created_at DESC
+       LIMIT 200`,
+      [normalizedStatus],
+    );
+    return result.rows.map((row) => this.mapResellerTopupRequest(row));
+  }
+
+  async getResellerTopupRequest(id: string): Promise<AdminResellerTopupRequest> {
+    const result = await this.database.query<ResellerTopupRequestRow>(
+      `${this.resellerTopupRequestSelectSql()} WHERE t.id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Reseller top-up request not found');
+    return this.mapResellerTopupRequest(row);
+  }
+
+  async approveResellerTopupRequest(id: string, actor: AuthActor | undefined): Promise<AdminResellerTopupRequest> {
+    const reviewer = actor?.id ?? null;
+    const outcome = await this.database.transaction((executor) =>
+      approveResellerTopupInTransaction(executor, id, { reviewer }),
+    );
+    await this.audit.record(actor, 'reseller_wallet.topup_request.approve', 'reseller_wallet_topup_request', id, {
+      resellerAccountId: outcome.resellerAccountId,
+      amount: outcome.amount,
+      walletLedgerId: outcome.walletLedgerId,
+      balanceBeforeAmount: outcome.balanceBeforeAmount,
+      balanceAfterAmount: outcome.balanceAfterAmount,
+    });
+    return this.getResellerTopupRequest(id);
+  }
+
+  async rejectResellerTopupRequest(
+    id: string,
+    reason: string | null,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerTopupRequest> {
+    const reviewer = actor?.id ?? null;
+    const normalizedReason = reason?.trim() || null;
+    const outcome = await this.database.transaction((executor) =>
+      rejectResellerTopupInTransaction(executor, id, { reviewer, reason: normalizedReason }),
+    );
+    await this.audit.record(actor, 'reseller_wallet.topup_request.reject', 'reseller_wallet_topup_request', id, {
+      resellerAccountId: outcome.resellerAccountId,
+      reason: normalizedReason,
+    });
+    return this.getResellerTopupRequest(id);
+  }
+
+  /** Receipt bytes for an admin viewer (any request). Streamed via an authed endpoint. */
+  async getResellerTopupReceipt(id: string): Promise<{ buffer: Buffer; contentType: string }> {
+    return this.readResellerTopupReceipt(id, null);
+  }
+
+  /** Receipt bytes for the owning reseller only (IDOR-guarded to the actor's account). */
+  async getResellerTopupReceiptForActor(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    return this.readResellerTopupReceipt(id, reseller.id);
+  }
+
+  private async readResellerTopupReceipt(
+    id: string,
+    resellerAccountId: string | null,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const result = await this.database.query<{
+      receiptBytes: Buffer | null;
+      receiptContentType: string | null;
+      resellerAccountId: string;
+    }>(
+      `
+        SELECT receipt_bytes AS "receiptBytes",
+               receipt_content_type AS "receiptContentType",
+               reseller_account_id AS "resellerAccountId"
+        FROM reseller_wallet_topup_requests
+        WHERE id = $1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Reseller top-up request not found');
+    if (resellerAccountId && row.resellerAccountId !== resellerAccountId) {
+      throw new ForbiddenException('This top-up request does not belong to your account');
+    }
+    if (!row.receiptBytes || !row.receiptBytes.length) {
+      throw new NotFoundException('This request has no receipt');
+    }
+    return {
+      buffer: Buffer.isBuffer(row.receiptBytes) ? row.receiptBytes : Buffer.from(row.receiptBytes),
+      contentType: row.receiptContentType || 'application/octet-stream',
+    };
+  }
+
+  private resellerTopupRequestSelectSql(): string {
+    return `
+      SELECT
+        t.id,
+        t.reseller_account_id AS "resellerAccountId",
+        ra.display_name AS "resellerDisplayName",
+        t.amount,
+        t.currency,
+        t.status,
+        (t.receipt_bytes IS NOT NULL) AS "hasReceipt",
+        t.note,
+        t.created_at AS "createdAt",
+        t.reviewed_by AS "reviewedBy",
+        t.reviewed_at AS "reviewedAt",
+        t.wallet_ledger_id AS "walletLedgerId"
+      FROM reseller_wallet_topup_requests t
+      LEFT JOIN reseller_accounts ra ON ra.id = t.reseller_account_id
+    `;
+  }
+
+  private mapResellerTopupRequest(row: ResellerTopupRequestRow): AdminResellerTopupRequest {
+    const status = row.status === 'approved' || row.status === 'rejected' ? row.status : 'pending';
+    return {
+      id: row.id,
+      reference: resellerTopupReference(row.id),
+      resellerAccountId: row.resellerAccountId,
+      resellerDisplayName: row.resellerDisplayName ?? null,
+      amount: numberFromBigInt(row.amount) ?? 0,
+      currency: row.currency,
+      status,
+      hasReceipt: Boolean(row.hasReceipt),
+      note: row.note ?? null,
+      createdAt: row.createdAt.toISOString(),
+      reviewedBy: row.reviewedBy ?? null,
+      reviewedAt: row.reviewedAt?.toISOString() ?? null,
+      walletLedgerId: row.walletLedgerId ?? null,
     };
   }
 
@@ -2323,6 +2820,13 @@ export class BillingService {
   async listCustomerAccounts(filters: CustomerAccountFilters): Promise<AdminCustomerAccountSummary[]> {
     const values: unknown[] = [];
     const where: string[] = [];
+
+    // Archived-account visibility. Default 'active' keeps the historical behavior:
+    // archived (soft-deleted) accounts stay hidden from the Customers listing.
+    // 'only' surfaces just archived accounts (so the UI can offer Restore); 'all'
+    // shows both. Reseller-scoped listing keeps its own default (active only).
+    const archivedClause = customerAccountArchivedWhereClause(filters.archived);
+    if (archivedClause) where.push(archivedClause);
 
     if (filters.status?.trim()) {
       values.push(filters.status.trim());
@@ -2954,11 +3458,12 @@ export class BillingService {
           `
             INSERT INTO customer_accounts (
               reseller_account_id, display_name, telegram_id, telegram_username, paid_number_hash,
+              phone, referral_code,
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
               used_bytes, notes, login_email, password_hash, password_set_at,
               egress_tier, gaming_entitled, expires_at, tags
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             RETURNING id
           `,
           [
@@ -2967,6 +3472,8 @@ export class BillingService {
             normalizeNullableString(dto.telegramId),
             normalizeTelegramUsername(dto.telegramUsername),
             paidNumberHash,
+            normalizeNullableString(dto.phone),
+            normalizeNullableString(dto.referralCode),
             dto.status ?? 'active',
             dto.quotaScope ?? 'account_shared',
             dto.quotaLimitBytes ?? null,
@@ -3061,6 +3568,421 @@ export class BillingService {
       throwConflictIfUniqueViolation(error, 'Customer account identity already exists');
       throw error;
     }
+  }
+
+  /**
+   * Soft-deletes (archives) a customer account. The account is stamped with
+   * `deleted_at`, forced to a disabled status so enforcement (which gates on
+   * `customer_accounts.status = 'active'`) stops serving it, and its WireGuard
+   * peers are marked absent so the reconciler removes them from wg0. Nothing is
+   * hard-deleted: client_configs and all payment/accounting history are RETAINED
+   * so the archive stays recoverable. Idempotent for an already-archived account.
+   * Runs in a single transaction; see customer-account-deletion.ts.
+   */
+  async deleteCustomerAccount(id: string, actor: AuthActor | undefined): Promise<{ deleted: boolean }> {
+    const outcome = await this.database.transaction((executor) =>
+      archiveCustomerAccountInTransaction(executor, id, (metadata) =>
+        this.audit.record(actor, 'customer_account.archive', 'customer_account', id, metadata, executor),
+      ),
+    );
+    if (outcome.wgPeersMarkedAbsent > 0) this.triggerWgReconcile(); // remove the peers from wg0 now
+    return { deleted: true };
+  }
+
+  /**
+   * Restores (un-archives) a soft-deleted customer account: clears `deleted_at`,
+   * re-enables it to 'active' so enforcement re-provisions VLESS, and re-arms its
+   * WireGuard peers (non-disabled configs, under quota) so the reconciler re-adds
+   * them to wg0. Idempotent for an already-active account. One transaction; see
+   * customer-account-deletion.ts.
+   */
+  async restoreCustomerAccount(id: string, actor: AuthActor | undefined): Promise<{ restored: boolean }> {
+    const outcome = await this.database.transaction((executor) =>
+      restoreCustomerAccountInTransaction(executor, id, (metadata) =>
+        this.audit.record(actor, 'customer_account.restore', 'customer_account', id, metadata, executor),
+      ),
+    );
+    if (outcome.wgPeersRestored > 0) this.triggerWgReconcile(); // re-add the peers to wg0 now
+    return { restored: true };
+  }
+
+  /**
+   * Merges a source (temporary/duplicate) customer account INTO a target real
+   * account, then archives the source. In ONE transaction (both rows locked) it
+   * moves the source's remaining GB, gems, client_configs, telegram link + phone
+   * and referral attributions to the target, then soft-archives the source
+   * (deleted_at + disabled). The FK-RESTRICT accounting history (payment_orders,
+   * quota_charge_events, rewarded_ad_grants) stays on the archived source for audit
+   * — nothing is hard-deleted. Returns the updated TARGET detail. See
+   * customer-account-merge.ts.
+   */
+  async mergeCustomerAccount(
+    sourceId: string,
+    targetAccountId: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminCustomerAccountDetail> {
+    const outcome = await this.database.transaction((executor) =>
+      mergeCustomerAccountInTransaction(executor, sourceId, targetAccountId, (metadata) =>
+        this.audit.record(actor, 'customer_account.merge', 'customer_account', sourceId, metadata, executor),
+      ),
+    );
+    // The reassigned configs now belong to the (live) target: nudge provisioning so
+    // its VLESS clients settle, and reconcile wg0 if any WireGuard peer followed.
+    if (outcome.wgPeersMoved > 0) this.triggerWgReconcile();
+    void this.xrayProvisioning.reconcile();
+    return this.getCustomerAccount(targetAccountId);
+  }
+
+  // --- Gems wallet + referrals (afroWS bot v2) ------------------------------
+
+  /**
+   * Admin manual gems adjustment (audited, writes the ledger). A negative delta
+   * cannot drive the balance below zero (the DB CHECK forbids it; we pre-validate
+   * for a clean 400). Reason text is stored on the ledger row's `ref`.
+   */
+  async adjustCustomerGems(
+    id: string,
+    delta: number,
+    reason: string,
+    actor: AuthActor | undefined,
+  ): Promise<{ gemsBalance: number }> {
+    if (!Number.isSafeInteger(delta) || delta === 0) {
+      throw new BadRequestException('delta must be a non-zero integer');
+    }
+    const note = reason.trim().slice(0, 200);
+    const result = await this.database.transaction(async (executor) => {
+      await this.ensureCustomerAccountExists(executor, id);
+      const balance = await readGemsBalance(executor, id);
+      if (balance + delta < 0) {
+        throw new BadRequestException('Adjustment would make the gems balance negative');
+      }
+      return earnGems(executor, id, delta, 'admin_adjust', note || null);
+    });
+
+    await this.audit.record(actor, 'customer_account.gems.adjust', 'customer_account', id, {
+      delta,
+      reason: note,
+      gemsBalanceAfter: result.gemsBalance,
+    });
+
+    return { gemsBalance: result.gemsBalance };
+  }
+
+  /** Redeem an account's gems for GB of quota (bot self-service). One transaction. */
+  async redeemCustomerGemsForGb(
+    accountId: string,
+    gemsToSpend: number,
+    ratePerGb: number,
+  ): Promise<RedeemGemsResult> {
+    return this.database.transaction((executor) => redeemGemsForGb(executor, accountId, gemsToSpend, ratePerGb));
+  }
+
+  /** Recent gems-ledger entries for an account (bot wallet history + admin view). */
+  async getCustomerGemsLedger(
+    accountId: string,
+    limit = 5,
+  ): Promise<Array<{ id: string; delta: number; reason: string; ref: string | null; createdAt: Date }>> {
+    const capped = Math.max(1, Math.min(50, Math.trunc(limit)));
+    const result = await this.database.query<{
+      id: string;
+      delta: string | number;
+      reason: string;
+      ref: string | null;
+      createdAt: Date;
+    }>(
+      `SELECT id, delta, reason, ref, created_at AS "createdAt"
+         FROM gems_ledger
+        WHERE customer_account_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [accountId, capped],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      delta: numberFromBigInt(row.delta) ?? 0,
+      reason: row.reason,
+      ref: row.ref,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /** Generate a referral code not already used by any account (bot registration). */
+  async generateUniqueReferralCode(): Promise<string> {
+    return generateUniqueReferralCode(this.database);
+  }
+
+  /** Return the account's referral code, lazily generating + persisting one if absent (S10). */
+  async ensureAccountReferralCode(accountId: string): Promise<string> {
+    const existing = await this.database.query<{ referralCode: string | null }>(
+      `SELECT referral_code AS "referralCode" FROM customer_accounts WHERE id = $1`,
+      [accountId],
+    );
+    const current = existing.rows[0]?.referralCode;
+    if (current) return current;
+    const code = await generateUniqueReferralCode(this.database);
+    await this.database.query(
+      `UPDATE customer_accounts SET referral_code = $1, updated_at = now() WHERE id = $2 AND referral_code IS NULL`,
+      [code, accountId],
+    );
+    const after = await this.database.query<{ referralCode: string | null }>(
+      `SELECT referral_code AS "referralCode" FROM customer_accounts WHERE id = $1`,
+      [accountId],
+    );
+    return after.rows[0]?.referralCode ?? code;
+  }
+
+  /**
+   * Live (deleted_at IS NULL) accounts whose identity matches this phone — used by
+   * bot registration to link a returning user to their existing account instead of
+   * minting a duplicate. Matches the stored clear `phone` (reduced to digits, in
+   * Iran national/country-code/bare forms) OR the `paid_number_hash`. Ordered
+   * oldest-first so a lone/deterministic winner is picked when only one exists.
+   */
+  async findCustomerAccountByPhone(phone: string): Promise<CustomerAccountPhoneMatch[]> {
+    const digitVariants = phoneDigitVariants(phone);
+    if (!digitVariants.length) return [];
+    const hashVariants = this.paidNumberHashVariants(phone);
+
+    const result = await this.database.query<{
+      id: string;
+      displayName: string | null;
+      telegramId: string | null;
+      telegramUsername: string | null;
+      phone: string | null;
+      referralCode: string | null;
+      status: string;
+      quotaLimitBytes: string | number | null;
+    }>(
+      `
+        SELECT
+          ca.id,
+          ca.display_name AS "displayName",
+          ca.telegram_id AS "telegramId",
+          ca.telegram_username AS "telegramUsername",
+          ca.phone,
+          ca.referral_code AS "referralCode",
+          ca.status,
+          ca.quota_limit_bytes AS "quotaLimitBytes"
+        FROM customer_accounts ca
+        WHERE ca.deleted_at IS NULL
+          AND (
+            regexp_replace(COALESCE(ca.phone, ''), '\\D', '', 'g') = ANY($1::text[])
+            OR (cardinality($2::text[]) > 0 AND ca.paid_number_hash = ANY($2::text[]))
+          )
+        ORDER BY ca.created_at ASC, ca.id ASC
+      `,
+      [digitVariants, hashVariants],
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      displayName: row.displayName,
+      telegramId: row.telegramId,
+      telegramUsername: row.telegramUsername,
+      phone: row.phone,
+      referralCode: row.referralCode,
+      status: row.status,
+      quotaLimitBytes: numberFromBigInt(row.quotaLimitBytes),
+    }));
+  }
+
+  /** HMAC the phone's clear-form variants with the identity key (empty if unset). */
+  private paidNumberHashVariants(phone: string): string[] {
+    const key = process.env.AFROWS_IDENTITY_HASH_KEY?.trim() || process.env.AFROWS_SECRETS_KEY?.trim();
+    if (!key) return [];
+    const hashes = new Set<string>();
+    for (const clear of phoneClearVariants(phone)) {
+      const normalized = normalizePaidNumber(clear);
+      if (!normalized) continue;
+      hashes.add(`hmac-sha256:${createHmac('sha256', key).update(normalized, 'utf8').digest('hex')}`);
+    }
+    return [...hashes];
+  }
+
+  /**
+   * Link a Telegram identity onto a pre-existing account matched by phone (bot
+   * registration). Sets telegram_id/username; keeps an existing display_name,
+   * phone, and referral_code (only fills a blank one) so nothing an operator set is
+   * clobbered. One transaction, guarded so it only claims a still-live account that
+   * is unclaimed or already this same telegram id (idempotent on a double submit).
+   */
+  async linkTelegramAccountByPhone(
+    input: {
+      accountId: string;
+      telegramId: string;
+      telegramUsername?: string | null;
+      phone: string;
+      displayName: string;
+    },
+    actor?: AuthActor | undefined,
+  ): Promise<AdminCustomerAccountDetail> {
+    const telegramId = normalizeNullableString(input.telegramId);
+    if (!telegramId) throw new BadRequestException('telegramId is required to link an account');
+    const telegramUsername = normalizeTelegramUsername(input.telegramUsername);
+    const phone = normalizeNullableString(input.phone);
+    const displayName = normalizeNullableString(input.displayName);
+    const referralCode = await generateUniqueReferralCode(this.database);
+
+    await this.database.transaction(async (executor) => {
+      const updated = await executor.query<{ id: string }>(
+        `
+          UPDATE customer_accounts SET
+            telegram_id = $2,
+            telegram_username = COALESCE($3, telegram_username),
+            phone = COALESCE(NULLIF(phone, ''), $4),
+            display_name = COALESCE(NULLIF(display_name, ''), $5),
+            referral_code = COALESCE(NULLIF(referral_code, ''), $6),
+            updated_at = now()
+          WHERE id = $1
+            AND deleted_at IS NULL
+            AND (telegram_id IS NULL OR telegram_id = '' OR telegram_id = $2)
+          RETURNING id
+        `,
+        [input.accountId, telegramId, telegramUsername, phone, displayName, referralCode],
+      );
+      if (!updated.rows[0]) {
+        throw new ConflictException('Account is no longer available to link');
+      }
+
+      await this.audit.record(
+        actor,
+        'telegram.register.phone_link',
+        'customer_account',
+        input.accountId,
+        { telegramId, hasTelegramUsername: Boolean(telegramUsername) },
+        executor,
+      );
+    });
+
+    return this.getCustomerAccount(input.accountId);
+  }
+
+  /** Best-effort audit of a phone conflict / ambiguity during bot registration. */
+  async recordTelegramRegistrationEvent(
+    event: 'phone_conflict' | 'phone_ambiguous',
+    input: { telegramId: string; matchedAccountIds: string[] },
+  ): Promise<void> {
+    await this.audit.recordBestEffort(
+      undefined,
+      `telegram.register.${event}`,
+      'customer_account',
+      input.matchedAccountIds[0] ?? null,
+      { telegramId: input.telegramId, matchedAccountIds: input.matchedAccountIds },
+    );
+  }
+
+  /**
+   * Save a verified phone (and fill a blank display name) onto an account already
+   * bound to this telegram id — the bot "Connect / sync my account" no-merge
+   * branches (same account / no other match). Guarded to the still-live row owned by
+   * this same telegram id, so it can never touch anyone else's account; the freshly
+   * verified phone wins, but a non-empty display name an operator set is never
+   * clobbered. Best-effort audit, no return.
+   */
+  async syncTelegramAccountContact(input: {
+    accountId: string;
+    telegramId: string;
+    phone: string;
+    displayName: string;
+  }): Promise<void> {
+    const telegramId = normalizeNullableString(input.telegramId);
+    if (!telegramId) return;
+    const phone = normalizeNullableString(input.phone);
+    const displayName = normalizeNullableString(input.displayName);
+    const updated = await this.database.query<{ id: string }>(
+      `
+        UPDATE customer_accounts SET
+          phone = COALESCE($3, phone),
+          display_name = COALESCE(NULLIF(display_name, ''), $4),
+          updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL AND telegram_id = $2
+        RETURNING id
+      `,
+      [input.accountId, telegramId, phone, displayName],
+    );
+    if (updated.rows[0]) {
+      await this.audit.recordBestEffort(undefined, 'telegram.connect.sync', 'customer_account', input.accountId, {
+        telegramId,
+        phoneChanged: Boolean(phone),
+      });
+    }
+  }
+
+  /** Best-effort bot-context note that a Connect/sync merged a bot account into a real one. */
+  async recordTelegramConnectMerge(input: { telegramId: string; sourceId: string; targetId: string }): Promise<void> {
+    await this.audit.recordBestEffort(undefined, 'telegram.connect.merge', 'customer_account', input.targetId, {
+      telegramId: input.telegramId,
+      sourceId: input.sourceId,
+      targetId: input.targetId,
+      via: 'bot_self_service',
+    });
+  }
+
+  /** Total gems this account has earned from referrals (signup + commission + milestone). */
+  async getReferralGemsEarned(accountId: string): Promise<number> {
+    const result = await this.database.query<{ sum: string | number | null }>(
+      `SELECT COALESCE(SUM(delta), 0) AS sum
+         FROM gems_ledger
+        WHERE customer_account_id = $1
+          AND delta > 0
+          AND reason IN ('referral_signup', 'referral_commission', 'referral_milestone')`,
+      [accountId],
+    );
+    return numberFromBigInt(result.rows[0]?.sum) ?? 0;
+  }
+
+  /**
+   * Attribute a newly-registered account to its inviter (write-once) and credit
+   * the inviter's signup bonus + milestone, atomically. Returns the inviter's
+   * contact + credited amounts (for the N3/N5 pushes), or null when the code is
+   * bad / self / already-attributed (onboarding proceeds either way).
+   */
+  async attributeAndCreditReferral(input: {
+    newAccountId: string;
+    code: string;
+    config: ReferralRewardConfig;
+  }): Promise<{
+    inviterAccountId: string;
+    inviterTelegramId: string | null;
+    inviterTelegramChatId: string | null;
+    signupGems: number;
+    inviterGemsBalance: number;
+    milestone: { count: number; bonusGems: number; inviterGemsBalance: number } | null;
+  } | null> {
+    return this.database.transaction(async (executor) => {
+      const attribution = await attributeReferral(executor, input.newAccountId, input.code);
+      if (!attribution) return null;
+
+      const credit = await creditReferralSignup(
+        executor,
+        input.newAccountId,
+        attribution.inviterAccountId,
+        input.config,
+      );
+
+      const inviterInfo = await executor.query<{ telegramId: string | null; telegramChatId: string | null }>(
+        `
+          SELECT ca.telegram_id AS "telegramId", tu.chat_id AS "telegramChatId"
+          FROM customer_accounts ca
+          LEFT JOIN telegram_users tu ON tu.telegram_id = ca.telegram_id
+          WHERE ca.id = $1
+        `,
+        [attribution.inviterAccountId],
+      );
+
+      const gemsBalance = credit
+        ? credit.inviterGemsBalance
+        : await readGemsBalance(executor, attribution.inviterAccountId);
+
+      return {
+        inviterAccountId: attribution.inviterAccountId,
+        inviterTelegramId: inviterInfo.rows[0]?.telegramId ?? null,
+        inviterTelegramChatId: inviterInfo.rows[0]?.telegramChatId ?? null,
+        signupGems: credit?.signupGems ?? 0,
+        inviterGemsBalance: gemsBalance,
+        milestone: credit?.milestone ?? null,
+      };
+    });
   }
 
   /** Next collision-free config label for an account, e.g. "vless-1", "vless-2".
@@ -3745,7 +4667,7 @@ export class BillingService {
                quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes",
                expires_at AS "expiresAt"
         FROM customer_accounts
-        WHERE lower(login_email) = $1 AND status = 'active'
+        WHERE lower(login_email) = $1 AND status = 'active' AND deleted_at IS NULL
         LIMIT 1
       `,
       [identifier],
@@ -3872,7 +4794,7 @@ export class BillingService {
       const result = await this.database.query<CustomerAccountRow>(
         `
           ${this.customerAccountSelectSql()}
-          WHERE ca.telegram_id = $1
+          WHERE ca.telegram_id = $1 AND ca.deleted_at IS NULL
           GROUP BY ca.id, ra.id
           ORDER BY ca.created_at DESC
           LIMIT 1
@@ -3890,7 +4812,7 @@ export class BillingService {
     const result = await this.database.query<CustomerAccountRow>(
       `
         ${this.customerAccountSelectSql()}
-        WHERE lower(ca.telegram_username) = lower($1)
+        WHERE lower(ca.telegram_username) = lower($1) AND ca.deleted_at IS NULL
         GROUP BY ca.id, ra.id
         ORDER BY ca.created_at DESC
         LIMIT 2
@@ -5100,7 +6022,7 @@ export class BillingService {
     await executor.query(
       `
         INSERT INTO billing_settings (setting_key, currency, price_per_gb)
-        VALUES ('default', 'toman', 0)
+        VALUES ('default', 'IRT', 0)
         ON CONFLICT (setting_key) DO NOTHING
       `,
     );
@@ -6501,6 +7423,14 @@ export class BillingService {
         ca.telegram_id AS "telegramId",
         ca.telegram_username AS "telegramUsername",
         ca.paid_number_hash AS "paidNumberHash",
+        ca.phone,
+        ca.gems_balance AS "gemsBalance",
+        ca.referral_code AS "referralCode",
+        (
+          SELECT COUNT(*)::int
+          FROM customer_accounts r
+          WHERE r.referred_by = ca.id AND r.deleted_at IS NULL
+        ) AS "referralCount",
         ca.status,
         ca.quota_scope AS "quotaScope",
         ca.quota_limit_bytes AS "quotaLimitBytes",
@@ -6518,6 +7448,7 @@ export class BillingService {
           FROM client_configs cc2
           WHERE cc2.customer_account_id = ca.id
         ) AS "lastConnectedAt",
+        ca.deleted_at AS "deletedAt",
         ca.created_at AS "createdAt",
         ca.updated_at AS "updatedAt",
         COUNT(cc.id)::int AS "clientCount",
@@ -7881,6 +8812,7 @@ export class BillingService {
     }
     if (dto.paidNumber !== undefined) add('paidNumberHash', 'paid_number_hash', this.hashPaidNumberIfPresent(dto.paidNumber));
     if (dto.clearPaidNumber) add('paidNumberHash', 'paid_number_hash', null);
+    if (dto.phone !== undefined) add('phone', 'phone', normalizeNullableString(dto.phone));
     if (dto.status !== undefined) add('status', 'status', dto.status);
     if (dto.quotaScope !== undefined) add('quotaScope', 'quota_scope', dto.quotaScope);
     if (dto.quotaLimitBytes !== undefined) add('quotaLimitBytes', 'quota_limit_bytes', dto.quotaLimitBytes);
@@ -7969,6 +8901,10 @@ export class BillingService {
       telegramId: row.telegramId,
       telegramUsername: row.telegramUsername,
       hasPaidNumberHash: Boolean(row.paidNumberHash),
+      phone: row.phone,
+      gemsBalance: numberFromBigInt(row.gemsBalance) ?? 0,
+      referralCode: row.referralCode,
+      referralCount: Number(row.referralCount ?? 0),
       status: row.status,
       quotaScope: row.quotaScope,
       quotaLimitBytes,
@@ -7989,6 +8925,8 @@ export class BillingService {
       expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
       tags: row.tags ?? [],
       lastConnectedAt: row.lastConnectedAt ? row.lastConnectedAt.toISOString() : null,
+      deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
+      isArchived: row.deletedAt != null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -8008,6 +8946,10 @@ export class BillingService {
       remainingBytes: remainingBytes(quotaLimitBytes, usedBytes),
       clientCount: Number(row.clientCount ?? 0),
       activeClientCount: Number(row.activeClientCount ?? 0),
+      phone: row.phone,
+      gemsBalance: numberFromBigInt(row.gemsBalance) ?? 0,
+      referralCode: row.referralCode,
+      referralCount: Number(row.referralCount ?? 0),
     };
   }
 
@@ -8312,9 +9254,12 @@ export class BillingService {
     reseller: ResellerAccountRow,
     volumePackage: VolumePackageRow,
   ): AdminResellerPackageQuote {
-    const customerPriceAmount = numberFromBigInt(volumePackage.totalPrice) ?? 0;
+    // Cost-based model (locked 2026-07-27): the package total_price IS the platform
+    // COST the reseller pays; the reseller keeps the margin as markup on top of it.
+    const costAmount = numberFromBigInt(volumePackage.totalPrice) ?? 0;
     const sellerMarginBps = normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
-    const { sellerMarginAmount, walletDebitAmount } = computeResellerSaleAmounts(customerPriceAmount, sellerMarginBps);
+    const amounts = computeResellerSaleAmounts(costAmount, sellerMarginBps);
+    const walletDebitAmount = amounts.walletDebitAmount;
     const balanceBeforeAmount = numberFromBigInt(reseller.balanceAmount) ?? 0;
     const creditLimitAmount = numberFromBigInt(reseller.creditLimitAmount) ?? 0;
     const balanceAfterAmount = balanceBeforeAmount - walletDebitAmount;
@@ -8336,10 +9281,60 @@ export class BillingService {
       volumePackageId: volumePackage.id,
       packageName: volumePackage.name,
       currency: volumePackage.currency,
-      customerPriceAmount,
+      customerPriceAmount: amounts.costAmount,
+      costAmount: amounts.costAmount,
       sellerMarginBps,
-      sellerMarginAmount,
+      sellerMarginAmount: amounts.sellerMarginAmount,
+      resellerSellPrice: amounts.resellerSellPrice,
       walletDebitAmount,
+      balanceBeforeAmount,
+      balanceAfterAmount,
+      creditLimitAmount,
+      canDebit,
+      blockedReason,
+    };
+  }
+
+  /**
+   * Quote for a per-GB reseller sale at the current GB price. Margin = markup on
+   * COST: the wallet is debited `costAmount` (= GB × gbPrice) and the reseller keeps
+   * `marginAmount` (= cost × marginBps). Pure computation over the reseller row.
+   */
+  private calculateResellerGbQuote(
+    reseller: ResellerAccountRow,
+    gb: number,
+    gbPrice: number,
+    settingsCurrency: string,
+  ): AdminResellerGbQuote {
+    const sellerMarginBps = normalizeResellerMarginBps(reseller.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS);
+    const costAmount = computeResellerGbCost(gb, gbPrice);
+    const amounts = computeResellerSaleAmounts(costAmount, sellerMarginBps);
+    const balanceBeforeAmount = numberFromBigInt(reseller.balanceAmount) ?? 0;
+    const creditLimitAmount = numberFromBigInt(reseller.creditLimitAmount) ?? 0;
+    const balanceAfterAmount = balanceBeforeAmount - amounts.walletDebitAmount;
+    // Case-insensitive: settings currency may be seeded 'IRT' while the reseller row
+    // stores the normalized (lowercased) 'irt'. Only a genuine currency difference blocks.
+    const currencyMatches = normalizeCurrency(reseller.currency) === normalizeCurrency(settingsCurrency);
+    const canDebit = currencyMatches && reseller.status === 'active'
+      && walletCanCoverDebit(balanceAfterAmount, creditLimitAmount);
+    const blockedReason = canDebit
+      ? null
+      : !currencyMatches
+        ? 'currency_mismatch'
+        : reseller.status !== 'active'
+          ? 'reseller_inactive'
+          : 'insufficient_reseller_wallet_balance';
+
+    return {
+      resellerAccountId: reseller.id,
+      currency: reseller.currency,
+      gbPrice,
+      gb,
+      costAmount: amounts.costAmount,
+      walletDebitAmount: amounts.walletDebitAmount,
+      sellerMarginBps,
+      marginAmount: amounts.sellerMarginAmount,
+      resellerSellPrice: amounts.resellerSellPrice,
       balanceBeforeAmount,
       balanceAfterAmount,
       creditLimitAmount,

@@ -1,5 +1,19 @@
 # Afrows Progress
 
+## 2026-07-28
+
+### Reseller per-GB pricing + wallet-topup approval + seller oversight (backend)
+
+- Flipped the reseller sale model to **margin = markup on COST** in `reseller-wallet-math.ts`:
+  `computeResellerSaleAmounts(cost, bps)` now returns `walletDebit = cost`, `sellerMargin = round(cost×bps)` (kept, not debited), `resellerSellPrice = cost + margin`. Added `computeResellerGbCost(gb, gbPrice)`.
+- Per-GB price: reuses existing `billing_settings.price_per_gb`. New superadmin `GET/PATCH /admin/billing/gb-price` (audited `billing.gb_price.update`); exposed in the reseller workspace (`gbPrice`).
+- Per-GB reseller sale: `GET /admin/reseller/gb-quote?gb=`, `POST /admin/reseller/gb-charges` (debits `N×gbPrice`, grants N GB, records `reseller_wallet.gb_charge`).
+- Reseller card-to-card wallet top-ups: migration `0054_reseller_wallet_topups.sql` (`reseller_wallet_topup_requests`, receipt stored server-side as bytea). Reseller `POST/GET /admin/reseller/wallet/topup-requests` (+ own receipt); admin `GET /admin/reseller-topups`, `POST …/:id/approve|reject`, `GET …/:id/receipt`. Approve credits the wallet via a `topup` ledger entry (pure `reseller-topup.ts`, links `wallet_ledger_id`).
+- Seller oversight: `GET /admin/resellers/:id/customers` (reuses `listCustomerAccounts({ resellerAccountId })`).
+- Impersonation: `POST /admin/resellers/:id/impersonate` (superadmin only, audited `reseller.impersonate`) mints a reseller-scoped session via `AuthService`; pure guard in `auth/impersonation.ts`.
+- Shared types + `apps/dashboard/src/api/admin.ts` client fns added for every endpoint.
+- Verified: backend `tsc --noEmit` clean; node --test — 29 new/updated cases pass (margin-on-cost math, topup approve→credit, impersonation reseller-target-only). No version bump/commit per task scope.
+
 ## 2026-05-23
 
 ### Completed
@@ -2588,3 +2602,21 @@ Repository remote is ready:
 - **Local dev login-skip.** `apps/dashboard/src/auth.ts` gained a DEV-only bypass gated on `import.meta.env.DEV && VITE_DEV_SKIP_AUTH==='true'` (synthetic superadmin session, no backend). Enabled via gitignored `apps/dashboard/.env.local`; stripped from production builds. Lets UI work proceed without backend+Postgres. `.env.local` also keeps the live-VPS profile commented for easy switch-back.
 - **Open decisions for operator:** (a) quota DB backfill — recommend backfill `volume_packages.volume_bytes` to decimal but GRANDFATHER live `customer_accounts/client_configs.quota_limit_bytes` (shrinking paid balances is a customer-relations risk); do NOT touch `used_bytes` or immutable payment/audit snapshots. (b) `current-panel-import.adapters.ts` still uses binary 1024³ for foreign-panel imports (3x-ui/marzban convention) — flip to decimal only if imports should match native semantics. (c) version bump + commit — pending approval.
 - **Verification pending:** human eyeball of the mobile table at 390px (Chrome extension not connected here); dev server live at http://127.0.0.1:4000 (demo data, login skipped).
+- **v0.114.62 merged** (PR #47) to main.
+
+### 2026-07-24 Egress power-loss failover to added exits (built + verified, PR follow-up)
+
+- Operator clarified issue ①: they added backup VLESS exits in the Exit/Outbounds page and expect failover to them on a full village power loss. Investigation verdict: those exits ARE village-independent (VPS-side), so failover *should* work — but it was a wiring/activation gap + a latent silent-abort bug, layered on the 2026-06-19 "owned-only, pool retired" decision. Operator chose to **re-activate the pool as the reserve** and implement both safe fixes.
+- **Fixes in `scripts/afrows-egress-mode-sync.py`:** (1) `apply_target` now GUARANTEES the `proxy` outbound (socks→10808) exists alongside via-village/via-germany, so a failover selecting `proxy` can never fail `xray -test` and silently abort (the "all VPN gone" pin to a dead primary). (2) `choose_gaming` gains a `pool_ok` param → gaming failover chain is now via-village → via-germany → **proxy reserve** → via-village(last), so gaming users survive a full village outage instead of stranding on dead via-village. `decide_gaming` probes the pool only when both village paths are down. Updated `scripts/test_egress_mode_sync.py` (new proxy-reserve case); all egress unit tests pass; `py_compile` clean.
+- **Deploy re-activation:** `update-afrows.sh` changed `systemctl disable --now afrows-uplink-pool-sync.timer` → `enable --now`, so pool-sync renders the operator's added exits into the uplink xray as the reserve. Primary egress stays `AFROWS_FOREIGN_EGRESS=germany`. NOTE: `update-afrows.sh` is gitignored (scp'd by sync.ps1), so this change is on-disk/deployed but not committed.
+- **Docs:** reversed the "pool retired" note in `docs/village-servers-structure.md`; `.codex/memory.md` records the pool-as-reserve decision; roadmap ① updated.
+- **Operator to-do after deploy:** Test each added Exit-page exit so pool-sync admits it (needs ≥3 Mbps within ~90 min); confirm on the box `systemctl is-enabled afrows-uplink-pool-sync.timer`, `grep relay- /usr/local/etc/xray/config.json`, and `grep '"proxy"' /usr/local/etc/afrows-xray/config.json`. UPS on the MikroTik + primary LTE modem still recommended for the primary path's own resilience.
+
+### 2026-07-24 Reserve-pool admission fix — bought subscriptions auto-tested (PR #48 follow-on)
+
+- Operator confirmed the backup exits are **bought foreign VLESS subscriptions**. Investigation found the linchpin: subscriptions import into `outbounds` and pass every pool-sync structural filter, but admission needs a fresh speed test (≤90 min, ≥3 Mbps) and the auto speed-tester was OFF by default → reserve stayed empty → failover-to-reserve was inert. This — not just "no UPS" — is why "all VPN gone" on power loss.
+- **Fixes (added to branch `fix/egress-failover-reserve-pool` / PR #48):** (1) `operations.service.ts syncSubscriptionChildren` stamps `speed_test_requested_at=now()` on import and on server-config rotation (immediate test → prompt admission). (2) Migration `0050` sets `outbound_test_settings.auto_enabled` default → true + flips the singleton row; read-back default now `true`. So the reserve is populated on import and kept fresh automatically. Backend typecheck clean.
+- **Health-check review (B):** village-path probes (dual 204 endpoints, socks/interface-bound, 2-strike hysteresis, reserve probed only when primary down) are solid. Noted weakness: dashboard `OutboundHealthService` "healthy" is a bare TCP connect (false-positive for dead-but-listening exits) — display only, doesn't gate routing. Not fixed yet.
+- **Modem transport (C) — read from docs:** ether1=Mobinnet(192.168.8.1,dist2), ether2=Irelandcell-228(192.168.9.1,dist1 PRIMARY+netwatch), ether5=Irelandcell-227(192.168.12.1,dist3), ether4=Starlink. Uplink is **failover-only** (single `/32` distance-ordered route, one modem active), NOT load-balanced.
+- **3-modem aggregation (D):** NOT implemented anywhere (only `docs/superpowers/plans/2026-06-18-village-3modem-aggregation.md`, all boxes unchecked). Would need 3 modem-pinned wg tunnels + PCC (download) / ECMP (upload) + per-modem netwatch; gives ~3× *parallel* throughput but cannot speed a single stream (no bonding across independent CGNAT LTE ISPs). Pending operator go-ahead + live testing.
+- **Still needs live SSH access** (operator's PC can't reach primary IP 94.74.145.199): verify all 3 modems up on their ether ports, run the health check, measure MikroTik↔Afrows throughput.

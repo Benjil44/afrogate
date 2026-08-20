@@ -13,8 +13,12 @@ export const dashboardTranslations = {
 
 export type DashboardStrings = typeof en;
 
+// Persian temporarily disabled: flip to true to restore the fa toggle everywhere.
+export const LANGUAGE_TOGGLE_ENABLED = false;
+
 export function useDashboardLanguage() {
-  const [language, setLanguage] = useState<DashboardLanguage>(loadInitialLanguage);
+  const [stored, setLanguage] = useState<DashboardLanguage>(loadInitialLanguage);
+  const language: DashboardLanguage = LANGUAGE_TOGGLE_ENABLED ? stored : 'en';
 
   useEffect(() => {
     window.localStorage.setItem(languageStorageKey, language);
@@ -23,7 +27,7 @@ export function useDashboardLanguage() {
   }, [language]);
 
   return useMemo(() => {
-    const nextLanguage: DashboardLanguage = language === 'fa' ? 'en' : 'fa';
+    const nextLanguage: DashboardLanguage = !LANGUAGE_TOGGLE_ENABLED ? 'en' : language === 'fa' ? 'en' : 'fa';
 
     return {
       language,
@@ -31,6 +35,7 @@ export function useDashboardLanguage() {
       nextLanguage,
       setLanguage,
       strings: dashboardTranslations[language],
+      languageToggleEnabled: LANGUAGE_TOGGLE_ENABLED,
     };
   }, [language]);
 }

@@ -54,6 +54,17 @@ VIA_GERMANY_OUT = {"protocol": "freedom", "tag": "via-germany",
 # traffic, send the normal foreign catch-all to via-village (owned Germany/Starlink)
 # instead of the dead pool, and flip back when the pool recovers.
 POOL_SOCKS = os.environ.get("AFROWS_POOL_SOCKS", "127.0.0.1:10808")
+# The 'proxy' reserve outbound: a socks client into the uplink xray, where
+# afrows-uplink-pool-sync renders the operator's added Exit-page VLESS exits as
+# relay-* members. Guaranteed to exist (see apply_target) so a failover that
+# selects 'proxy' can never fail `xray -test` and silently abort, pinning the
+# engine to a dead primary path. It is only SELECTED when pool_alive() confirms
+# it carries traffic, so guaranteeing the outbound is safe even when the uplink
+# pool is empty/down (xray -test validates syntax, not connectivity).
+_PROXY_HOST, _, _PROXY_PORT = POOL_SOCKS.partition(":")
+PROXY_OUT = {"protocol": "socks", "tag": "proxy",
+             "settings": {"servers": [{"address": _PROXY_HOST or "127.0.0.1",
+                                        "port": int(_PROXY_PORT or "10808")}]}}
 POOL_PROBE_URLS = ["https://www.gstatic.com/generate_204", "http://cp.cloudflare.com/generate_204"]
 STATE_FILE = "/var/lib/afrows/egress-pool.state"
 GAMING_STATE_FILE = "/var/lib/afrows/egress-gaming.state"
@@ -228,16 +239,19 @@ def write_health(starlink_up, germany_up, catch_all, gaming_out, mode):
         pass
 
 
-def choose_gaming(village_ok, germany_ok, state):
+def choose_gaming(village_ok, germany_ok, pool_ok, state):
     """Pure failover for the GAMING tier (normally pinned to via-village/Starlink)
-    with 2-strike hysteresis. When Starlink is down, gaming falls over to the owned
-    Germany path (via-village-de) so gaming users are not stranded; it fails back to
-    via-village when Starlink recovers. If both are down there is no good reserve, so
-    it stays on via-village (which recovers with the village). Returns (tag, state)."""
+    with 2-strike hysteresis. Priority: via-village (Starlink, low ping) -> via-germany
+    (owned Germany via the village) -> proxy (the village-INDEPENDENT relay pool = the
+    operator's added Exit-page VLESS reserve) -> via-village (last resort; recovers with
+    the village). The proxy reserve means gaming users survive a full village power loss
+    instead of being stranded on a dead tunnel. Returns (tag, state)."""
     if village_ok:
         want = "via-village"
     elif germany_ok:
         want = "via-germany"
+    elif pool_ok:
+        want = "proxy"
     else:
         want = "via-village"
     applied = state.get("applied", want)
@@ -250,22 +264,26 @@ def choose_gaming(village_ok, germany_ok, state):
 
 
 def decide_gaming():
-    """Resolve the GAMING-tier outbound, failing Starlink over to Germany when the
-    village Starlink tunnel (wg-village) is down. Persists hysteresis state."""
+    """Resolve the GAMING-tier outbound, failing Starlink over to Germany, then to the
+    village-independent relay pool (the operator's added Exit-page exits) so gaming users
+    survive even a full village power loss. Persists hysteresis state."""
     village = iface_alive("wg-village")
     germany = True if village else iface_alive("wg-village-de")  # only probe reserve when needed
+    pool = False if (village or germany) else pool_alive()       # last reserve: probe only when both down
     try:
         st = json.load(open(GAMING_STATE_FILE))
     except Exception:
         st = {}
-    applied, st = choose_gaming(village, germany, st)
+    applied, st = choose_gaming(village, germany, pool, st)
     try:
         os.makedirs(os.path.dirname(GAMING_STATE_FILE), exist_ok=True)
         json.dump(st, open(GAMING_STATE_FILE, "w"))
     except Exception:
         pass
-    log("gaming-failover: starlink=%s germany=%s -> gaming-out=%s (pending=%s count=%d)" % (
-        "up" if village else "DOWN", ("n/a" if village else ("up" if germany else "DOWN")),
+    log("gaming-failover: starlink=%s germany=%s pool=%s -> gaming-out=%s (pending=%s count=%d)" % (
+        "up" if village else "DOWN",
+        ("n/a" if village else ("up" if germany else "DOWN")),
+        ("n/a" if (village or germany) else ("up" if pool else "DOWN")),
         applied, st.get("pending"), st.get("count", 0)))
     return applied
 
@@ -343,8 +361,12 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
         return False
 
     changed_out = False
-    outs = cfg.setdefault("outbounds", [])  # ensure the via-village + via-germany outbounds exist
-    for spec in (VIA_VILLAGE_OUT, VIA_GERMANY_OUT):
+    # Ensure via-village + via-germany + the 'proxy' reserve outbounds all exist, so a
+    # health-driven failover to any of them can never fail xray -test and abort (which
+    # would leave the engine pinned to a dead primary path — the "all VPN gone on power
+    # loss" symptom). Only ADD when missing; never overwrite an existing outbound.
+    outs = cfg.setdefault("outbounds", [])
+    for spec in (VIA_VILLAGE_OUT, VIA_GERMANY_OUT, PROXY_OUT):
         if not any(o.get("tag") == spec["tag"] for o in outs):
             outs.append(dict(spec))
             changed_out = True

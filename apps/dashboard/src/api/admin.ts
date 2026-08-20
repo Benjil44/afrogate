@@ -24,6 +24,7 @@ import type {
   AdminCurrentPanelVolumeChargeResponse,
   AdminCustomerAccountDetail,
   AdminCustomerAccountsResponse,
+  CustomerAccountArchivedFilter,
   EgressTierPrice,
   AdminRoutersResponse,
   AdminRouterStatusResponse,
@@ -51,9 +52,23 @@ import type {
   AdminOutboundsAutoTestState,
   AdminPaymentOrdersResponse,
   AdminPermissionsResponse,
+  AdminVolumePackageSummary,
+  AdminVolumePackagesResponse,
+  CreateVolumePackageRequest,
+  UpdateVolumePackageRequest,
   AdminRewardedAdSettingsResponse,
   AdminResellerPackageSaleResponse,
   AdminResellerWorkspaceResponse,
+  AdminGbPriceResponse,
+  UpdateGbPriceRequest,
+  AdminResellerGbQuoteResponse,
+  AdminResellerGbChargeResponse,
+  CreateResellerGbChargeRequest,
+  AdminResellerTopupRequest,
+  AdminResellerTopupRequestResponse,
+  AdminResellerTopupRequestsResponse,
+  ResellerTopupRequestStatus,
+  AdminResellerImpersonationResponse,
   AdminReportsSummaryResponse,
   AdminIncidentTimelineResponse,
   AdminServerInterfacesResponse,
@@ -73,8 +88,16 @@ import type {
   AdminSecretRefSummary,
   AdminSettingsResponse,
   AdminServerDetail,
+  AdjustCustomerGemsRequest,
+  AdminAdjustCustomerGemsResponse,
+  AdminCustomerGemsLedgerResponse,
+  AdminTelegramBotProfile,
   AdminTelegramBotSettingsResponse,
   AdminTelegramBotTestResponse,
+  AdminTelegramTopupRequest,
+  AdminTelegramTopupRequestResponse,
+  AdminTelegramTopupRequestsResponse,
+  TelegramTopupStatus,
   AdminTenantBrandSettingsResponse,
   AdminTunnelSummary,
   AdminTunnelsResponse,
@@ -87,6 +110,7 @@ import type {
   CurrentPanelImportPreviewRequest,
   CurrentPanelUsageSyncRequest,
   CurrentPanelVolumeChargeRequest,
+  MergeCustomerAccountRequest,
   CreateProtocolSetupRequest,
   CreateSettingsSecretRequest,
   CreateAdminUserRequest,
@@ -103,6 +127,7 @@ import type {
   UpsertRouteSettingsRequest,
   UpdateRewardedAdSettingsRequest,
   UpdateTenantBrandSettingsRequest,
+  UpdateTelegramBotProfileRequest,
   UpdateTelegramBotSettingsRequest,
   UpdateCustomerAccountRequest,
   UpdateServerRequest,
@@ -130,8 +155,12 @@ export interface AdminAuditLogFilters {
 }
 
 export class AdminAuthError extends Error {
-  constructor(readonly code: AdminAuthErrorCode) {
-    super(code);
+  constructor(
+    readonly code: AdminAuthErrorCode,
+    // Server-provided reason (e.g. a validation message), surfaced to the operator.
+    readonly detail?: string,
+  ) {
+    super(detail || code);
   }
 }
 
@@ -452,6 +481,164 @@ export async function topUpResellerWallet(sessionToken: string, id: string, payl
   return response.json() as Promise<AdminResellerWalletActionResponse>;
 }
 
+// --- Per-GB price (superadmin-settable; the platform's cost per decimal GB) ---
+
+export async function fetchGbPrice(sessionToken: string, signal?: AbortSignal): Promise<AdminGbPriceResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/billing/gb-price`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminGbPriceResponse>;
+}
+
+export async function updateGbPrice(sessionToken: string, payload: UpdateGbPriceRequest): Promise<AdminGbPriceResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/billing/gb-price`, {
+    method: 'PATCH',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminGbPriceResponse>;
+}
+
+// --- Seller oversight: a superadmin drill-down into a seller's customers + usage ---
+
+export async function fetchResellerCustomers(
+  sessionToken: string,
+  resellerId: string,
+  signal?: AbortSignal,
+): Promise<AdminCustomerAccountsResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(resellerId)}/customers`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminCustomerAccountsResponse>;
+}
+
+/** Superadmin "Sign in as seller": returns a reseller-scoped session + the seller. */
+export async function impersonateReseller(
+  sessionToken: string,
+  resellerId: string,
+): Promise<AdminResellerImpersonationResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(resellerId)}/impersonate`,
+    { method: 'POST', headers: createSessionHeaders(sessionToken) },
+  );
+  return response.json() as Promise<AdminResellerImpersonationResponse>;
+}
+
+// --- Reseller wallet card-to-card top-up requests (admin approval queue) ---
+
+export async function fetchAdminResellerTopups(
+  sessionToken: string,
+  status?: ResellerTopupRequestStatus,
+): Promise<AdminResellerTopupRequest[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller-topups${query}`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+  const body = (await response.json()) as AdminResellerTopupRequestsResponse;
+  return body.requests;
+}
+
+export async function approveResellerTopup(sessionToken: string, id: string): Promise<AdminResellerTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller-topups/${encodeURIComponent(id)}/approve`,
+    { method: 'POST', headers: createSessionHeaders(sessionToken) },
+  );
+  const body = (await response.json()) as AdminResellerTopupRequestResponse;
+  return body.request;
+}
+
+export async function rejectResellerTopup(
+  sessionToken: string,
+  id: string,
+  reason: string,
+): Promise<AdminResellerTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller-topups/${encodeURIComponent(id)}/reject`,
+    { method: 'POST', headers: createSessionHeaders(sessionToken), body: JSON.stringify({ reason }) },
+  );
+  const body = (await response.json()) as AdminResellerTopupRequestResponse;
+  return body.request;
+}
+
+/** Fetch a reseller top-up receipt image bytes (admin-authenticated), as a Blob. */
+export async function fetchResellerTopupReceipt(sessionToken: string, id: string): Promise<Blob> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller-topups/${encodeURIComponent(id)}/receipt`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } },
+  );
+  return response.blob();
+}
+
+// --- Reseller-side: per-GB sale + wallet top-up request (reseller panel) ---
+
+export async function fetchResellerGbQuote(
+  sessionToken: string,
+  gb: number,
+  signal?: AbortSignal,
+): Promise<AdminResellerGbQuoteResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller/gb-quote?gb=${encodeURIComponent(String(gb))}`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminResellerGbQuoteResponse>;
+}
+
+export async function createResellerGbCharge(
+  sessionToken: string,
+  payload: CreateResellerGbChargeRequest,
+): Promise<AdminResellerGbChargeResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/gb-charges`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerGbChargeResponse>;
+}
+
+/** Reseller requests a card-to-card wallet top-up: amount + a receipt image upload. */
+export async function createResellerTopupRequest(
+  sessionToken: string,
+  amount: number,
+  receipt: Blob,
+  note?: string,
+): Promise<AdminResellerTopupRequest> {
+  const form = new FormData();
+  form.append('amount', String(amount));
+  if (note) form.append('note', note);
+  form.append('receipt', receipt);
+  // FormData sets its own multipart Content-Type/boundary; only send Authorization.
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/wallet/topup-requests`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${sessionToken}` },
+    body: form,
+  });
+  const body = (await response.json()) as AdminResellerTopupRequestResponse;
+  return body.request;
+}
+
+export async function fetchResellerTopupRequests(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminResellerTopupRequest[]> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/wallet/topup-requests`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  const body = (await response.json()) as AdminResellerTopupRequestsResponse;
+  return body.requests;
+}
+
+/** The current reseller's own receipt image bytes (owner-scoped), as a Blob. */
+export async function fetchOwnResellerTopupReceipt(sessionToken: string, id: string): Promise<Blob> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller/wallet/topup-requests/${encodeURIComponent(id)}/receipt`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } },
+  );
+  return response.blob();
+}
+
 export async function fetchAdminNetworkOverview(sessionToken: string, signal?: AbortSignal): Promise<AdminNetworkOverviewResponse> {
   const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/network-overview`, {
     headers: createSessionHeaders(sessionToken),
@@ -644,11 +831,68 @@ export async function fetchAdminBillingCatalog(
   return response.json() as Promise<AdminBillingCatalogResponse>;
 }
 
+/**
+ * Lists volume packages (the GB bundles the Telegram bot sells). Pass
+ * status='active' to mirror what the bot shows; omit for all packages.
+ */
+export async function fetchAdminVolumePackages(
+  sessionToken: string,
+  signal?: AbortSignal,
+  status?: 'active' | 'archived',
+): Promise<AdminVolumePackagesResponse> {
+  const params = new URLSearchParams({ limit: '100' });
+  if (status) params.set('status', status);
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/volume-packages?${params.toString()}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminVolumePackagesResponse>;
+}
+
+export async function createAdminVolumePackage(
+  sessionToken: string,
+  payload: CreateVolumePackageRequest,
+): Promise<AdminVolumePackageSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/volume-packages`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminVolumePackageSummary>;
+}
+
+// Also used to archive/re-activate a package: PATCH { status: 'archived' | 'active' }.
+// Archived packages disappear from the Telegram bot's Buy Data list.
+export async function updateAdminVolumePackage(
+  sessionToken: string,
+  packageId: string,
+  payload: UpdateVolumePackageRequest,
+): Promise<AdminVolumePackageSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/volume-packages/${encodeURIComponent(packageId)}`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'PATCH',
+  });
+
+  return response.json() as Promise<AdminVolumePackageSummary>;
+}
+
+/**
+ * Lists customer accounts. `archived` controls visibility of soft-deleted
+ * accounts: omitted/'active' = live only (default), 'only' = archived only,
+ * 'all' = both. Archived rows carry `deletedAt`/`isArchived` so the UI can style
+ * them and offer Restore.
+ */
 export async function fetchAdminCustomerAccounts(
   sessionToken: string,
   signal?: AbortSignal,
+  archived?: CustomerAccountArchivedFilter,
 ): Promise<AdminCustomerAccountsResponse> {
-  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts?limit=100`, {
+  const params = new URLSearchParams({ limit: '100' });
+  if (archived === 'only' || archived === 'all') params.set('archived', archived);
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/customer-accounts?${params.toString()}`, {
     headers: createSessionHeaders(sessionToken),
     signal,
   });
@@ -733,6 +977,37 @@ export async function updateAdminCustomerAccount(
   });
 
   return response.json() as Promise<AdminCustomerAccountDetail>;
+}
+
+/** v2: admin manual gems adjustment (positive credits, negative debits). Returns the new balance. */
+export async function adjustCustomerGems(
+  sessionToken: string,
+  customerAccountId: string,
+  delta: number,
+  reason: string,
+): Promise<AdminAdjustCustomerGemsResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}/gems`,
+    {
+      body: JSON.stringify({ delta, reason } satisfies AdjustCustomerGemsRequest),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminAdjustCustomerGemsResponse>;
+}
+
+/** v2: the append-only gems ledger for one customer account (newest first). */
+export async function fetchAdminCustomerGemsLedger(
+  sessionToken: string,
+  customerAccountId: string,
+  signal?: AbortSignal,
+): Promise<AdminCustomerGemsLedgerResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}/gems/ledger`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminCustomerGemsLedgerResponse>;
 }
 
 export async function fetchEgressTierPrices(sessionToken: string, signal?: AbortSignal): Promise<EgressTierPrice[]> {
@@ -855,6 +1130,59 @@ export async function deleteAdminClientConfig(
     { headers: createSessionHeaders(sessionToken), method: 'DELETE' },
   );
   return response.json() as Promise<{ deleted: boolean }>;
+}
+
+/**
+ * Archives (soft-deletes) a customer account: it is disabled, hidden from the
+ * Customers listing, and its WireGuard peers are removed from wg0 by the
+ * reconciler. Client configs and all payment/accounting history are retained so
+ * the archive stays recoverable.
+ */
+export async function deleteAdminCustomerAccount(
+  sessionToken: string,
+  customerAccountId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}`,
+    { headers: createSessionHeaders(sessionToken), method: 'DELETE' },
+  );
+  return response.json() as Promise<{ deleted: boolean }>;
+}
+
+/**
+ * Restores (un-archives) a previously archived customer account: it is re-enabled
+ * and its WireGuard peers are re-added to wg0 by the reconciler. Idempotent.
+ */
+export async function restoreAdminCustomerAccount(
+  sessionToken: string,
+  customerAccountId: string,
+): Promise<{ restored: boolean }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(customerAccountId)}/restore`,
+    { headers: createSessionHeaders(sessionToken), method: 'POST' },
+  );
+  return response.json() as Promise<{ restored: boolean }>;
+}
+
+/**
+ * Merges a source (temporary/duplicate) customer account INTO a target real account:
+ * the source's remaining GB, gems, client_configs, telegram link + phone and referrals
+ * move to the target and the source is archived. Returns the updated TARGET detail.
+ */
+export async function mergeCustomerAccount(
+  sessionToken: string,
+  sourceAccountId: string,
+  targetAccountId: string,
+): Promise<AdminCustomerAccountDetail> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(sourceAccountId)}/merge`,
+    {
+      body: JSON.stringify({ targetAccountId } satisfies MergeCustomerAccountRequest),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<AdminCustomerAccountDetail>;
 }
 
 /** Renders (provisioning if needed) a WireGuard config's .conf text. */
@@ -1017,6 +1345,103 @@ export async function testAdminTelegramBotConnection(
   });
 
   return response.json() as Promise<AdminTelegramBotTestResponse>;
+}
+
+/**
+ * Resolve the bot's live Telegram profile (name / about / description) via the
+ * backend, which uses the server-stored bot token. The token never reaches the
+ * browser. `tokenConfigured` is false when no token is saved yet.
+ */
+export async function fetchTelegramBotProfile(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminTelegramBotProfile> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/telegram/bot-profile`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+
+  return response.json() as Promise<AdminTelegramBotProfile>;
+}
+
+/**
+ * Publish changed profile fields to Telegram (only provided, non-empty, changed
+ * fields are pushed server-side). Returns the refreshed profile.
+ */
+export async function publishTelegramBotProfile(
+  sessionToken: string,
+  payload: UpdateTelegramBotProfileRequest,
+): Promise<AdminTelegramBotProfile> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/telegram/bot-profile`, {
+    body: JSON.stringify(payload),
+    headers: createSessionHeaders(sessionToken),
+    method: 'POST',
+  });
+
+  return response.json() as Promise<AdminTelegramBotProfile>;
+}
+
+export async function fetchTelegramTopupRequests(
+  sessionToken: string,
+  status?: TelegramTopupStatus | 'all',
+): Promise<AdminTelegramTopupRequest[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/telegram/topups${query}`, {
+    headers: createSessionHeaders(sessionToken),
+  });
+
+  const body = (await response.json()) as AdminTelegramTopupRequestsResponse;
+  return body.requests;
+}
+
+export async function approveTelegramTopupRequest(
+  sessionToken: string,
+  id: string,
+): Promise<AdminTelegramTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/telegram/topups/${encodeURIComponent(id)}/approve`,
+    {
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+
+  const body = (await response.json()) as AdminTelegramTopupRequestResponse;
+  return body.request;
+}
+
+export async function rejectTelegramTopupRequest(
+  sessionToken: string,
+  id: string,
+  reason: string,
+): Promise<AdminTelegramTopupRequest> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/telegram/topups/${encodeURIComponent(id)}/reject`,
+    {
+      body: JSON.stringify({ reason }),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+
+  const body = (await response.json()) as AdminTelegramTopupRequestResponse;
+  return body.request;
+}
+
+/**
+ * Fetch the proxied receipt image bytes (admin-authenticated). The bot token is
+ * never exposed; the backend streams the image. Returns a Blob the UI can
+ * objectURL into an <img>.
+ */
+export async function fetchTelegramTopupReceipt(sessionToken: string, id: string): Promise<Blob> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/telegram/topups/${encodeURIComponent(id)}/receipt`,
+    {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    },
+  );
+
+  return response.blob();
 }
 
 export async function fetchRouteQualityAnalytics(
@@ -1371,7 +1796,22 @@ async function requestAdminAuth(url: string, init: RequestInit): Promise<Respons
   if (response.ok) return response;
 
   if (response.status === 503) throw new AdminAuthError('unavailable');
-  throw new AdminAuthError('invalid');
+  throw new AdminAuthError('invalid', await readErrorDetail(response));
+}
+
+/** Best-effort extraction of a NestJS error body's `message` (string or array). */
+async function readErrorDetail(response: Response): Promise<string | undefined> {
+  try {
+    const data = (await response.clone().json()) as { message?: unknown };
+    const message = data?.message;
+    if (Array.isArray(message)) {
+      const joined = message.filter((item): item is string => typeof item === 'string').join('; ');
+      return joined.trim() || undefined;
+    }
+    return typeof message === 'string' && message.trim() ? message.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function fetchRouters(sessionToken: string, signal?: AbortSignal): Promise<AdminRoutersResponse> {
