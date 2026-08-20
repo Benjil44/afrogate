@@ -1,11 +1,11 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-18T21:12:01.002Z
+> Graph artifact time: 2026-08-20T13:32:55.646Z
 
 # Module: `notifications`
 
 - **Source path:** `apps/backend/src/notifications/`
-- **Dominant graph community (hint, not authoritative):** Notifications - AlertNotificationService
+- **Dominant graph community (hint, not authoritative):** TelegramAlertService
 - **High-risk dependencies (DERIVED):** _none among heavily-coupled tables_
 
 ## Services / classes (VERIFIED)

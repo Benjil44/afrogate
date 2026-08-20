@@ -1,11 +1,11 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-18T21:12:01.002Z
+> Graph artifact time: 2026-08-20T13:32:55.646Z
 
 # Module: `billing`
 
 - **Source path:** `apps/backend/src/billing/`
-- **Dominant graph community (hint, not authoritative):** Billing & Payments - customer-account-deletion
+- **Dominant graph community (hint, not authoritative):** customer-account-deletion.ts
 - **High-risk dependencies (DERIVED):** [[tbl-client_configs]], [[tbl-customer_accounts]], [[tbl-outbounds]], [[tbl-servers]], [[tbl-wireguard_peers]]
 
 ## Services / classes (VERIFIED)
@@ -88,9 +88,9 @@
 - [[PreparedPaymentProviderCheckout]] — `apps/backend/src/billing/payment-provider-adapters.ts:L38`
 - [[RatedOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L491`
 - [[RedeemGemsResult]] — `apps/backend/src/billing/gems.ts:L104`
-- [[ReferralMilestoneCredit]] — `apps/backend/src/billing/gems.ts:L274`
-- [[ReferralRewardConfig]] — `apps/backend/src/billing/gems.ts:L288`
-- [[ReferralSignupCredit]] — `apps/backend/src/billing/gems.ts:L280`
+- [[ReferralMilestoneCredit]] — `apps/backend/src/billing/gems.ts:L283`
+- [[ReferralRewardConfig]] — `apps/backend/src/billing/gems.ts:L297`
+- [[ReferralSignupCredit]] — `apps/backend/src/billing/gems.ts:L289`
 - [[RejectResellerTopupDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L207`
 - [[RejectResellerTopupOutcome]] — `apps/backend/src/billing/reseller-topup.ts:L173`
 - [[ResellerAccountFilters]] — `apps/backend/src/billing/billing.service.ts:L706`

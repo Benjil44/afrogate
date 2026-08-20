@@ -1,11 +1,11 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-18T21:12:01.002Z
+> Graph artifact time: 2026-08-20T13:32:55.646Z
 
 # Module: `routers`
 
 - **Source path:** `apps/backend/src/routers/`
-- **Dominant graph community (hint, not authoritative):** MikroTik Routers - .query()
+- **Dominant graph community (hint, not authoritative):** GatewayBillingService
 - **High-risk dependencies (DERIVED):** [[tbl-customer_accounts]]
 
 ## Services / classes (VERIFIED)

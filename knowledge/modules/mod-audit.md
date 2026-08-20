@@ -1,11 +1,11 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-18T21:12:01.002Z
+> Graph artifact time: 2026-08-20T13:32:55.646Z
 
 # Module: `audit`
 
 - **Source path:** `apps/backend/src/audit/`
-- **Dominant graph community (hint, not authoritative):** Audit
+- **Dominant graph community (hint, not authoritative):** DatabaseService
 - **High-risk dependencies (DERIVED):** _none among heavily-coupled tables_
 
 ## Services / classes (VERIFIED)
