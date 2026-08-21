@@ -83,3 +83,6 @@ cutover-afrows.ps1
 # graphify knowledge-graph output (may contain code/doc snippets)
 graphify-out/
 afrows-bot-icon.png
+
+# Operator-local deploy paths (SSH destinations); template is deploy.env.example
+scripts/deploy/deploy.env
