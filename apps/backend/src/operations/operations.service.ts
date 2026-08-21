@@ -82,6 +82,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { parseVlessUrl } from './outbound-vless-parser';
 import { parseSubscription, type ParsedSubscription } from './outbound-subscription-parser';
+import { assertRefreshSafe } from './subscription-refresh-safety';
 import { OutboundHttpService, type OutboundHttpResponse } from '../outbound/outbound-http.service';
 import type { IncomingHttpHeaders } from 'node:http';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
@@ -1684,6 +1685,15 @@ export class OperationsService {
     parsed: ParsedSubscription,
   ): Promise<void> {
     const keys = parsed.configs.map((c) => c.key);
+    // Egress P0 — candidate/active safety gate. Read the CURRENT child set inside
+    // this transaction and reject a suspicious refresh (partial truncation, shrink
+    // below the redundancy floor, or one that drops every proven-healthy node)
+    // BEFORE the destructive DELETE. Throwing here rolls the transaction back, so
+    // the live children are preserved and the caller's catch records
+    // last_status='error' with this reason — never an empty/pruned reserve. A
+    // zero-config body is already rejected pre-transaction; a first import (no
+    // current children) bootstraps normally.
+    await assertRefreshSafe(executor, subscriptionId, keys);
     // Remove children that disappeared from the subscription.
     await executor.query(
       `DELETE FROM outbounds
