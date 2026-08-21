@@ -3,9 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { DatabaseService } from '../database/database.service';
+import { createSecureTempFile } from '../common/secure-temp-file';
 import { buildAddUserConfig, provisioningEmail } from './xray-provisioning';
 
 const execFileAsync = promisify(execFile);
@@ -50,15 +49,16 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     let ok = false;
     for (const t of this.inboundTargets()) {
       const cfg = buildAddUserConfig({ inboundTag: t.tag, port: t.port, uuid, email, flow });
-      const file = path.join(os.tmpdir(), `afrows-adu-${t.tag}-${email.replace(/[^a-z0-9_-]/gi, '')}.json`);
+      const tmp = await createSecureTempFile(`afrows-adu-${t.tag}-${email.replace(/[^a-z0-9_-]/gi, '')}.json`);
+      const file = tmp.path;
       try {
-        await fs.writeFile(file, JSON.stringify(cfg), 'utf8');
+        await fs.writeFile(file, JSON.stringify(cfg), { encoding: 'utf8', mode: 0o600 });
         await this.xray(['api', 'adu', `--server=${this.apiServer()}`, file]);
         ok = true;
       } catch (error) {
         this.logger.warn(`adu ${email} on ${t.tag} failed: ${error instanceof Error ? error.message : error}`);
       } finally {
-        await fs.rm(file, { force: true }).catch(() => undefined);
+        await tmp.cleanup();
       }
     }
     return ok;

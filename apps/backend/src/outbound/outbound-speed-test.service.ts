@@ -5,9 +5,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as net from 'node:net';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { DatabaseService } from '../database/database.service';
+import { createSecureTempFile } from '../common/secure-temp-file';
 import { buildXraySpeedTestConfig } from './outbound-xray-config';
 
 const execFileAsync = promisify(execFile);
@@ -233,8 +232,9 @@ export class OutboundSpeedTestService implements OnModuleInit, OnModuleDestroy {
     const xrayBin = this.config.get<string>('AFROWS_OUTBOUND_XRAY_BIN')?.trim() || 'xray';
     const socksPort = await this.freePort();
     const xrayConfig = buildXraySpeedTestConfig(config, socksPort);
-    const tmpFile = path.join(os.tmpdir(), `afrows-xray-${socksPort}.json`);
-    await fs.writeFile(tmpFile, JSON.stringify(xrayConfig), 'utf8');
+    const tmp = await createSecureTempFile(`afrows-xray-${socksPort}.json`);
+    const tmpFile = tmp.path;
+    await fs.writeFile(tmpFile, JSON.stringify(xrayConfig), { encoding: 'utf8', mode: 0o600 });
 
     const child = spawn(xrayBin, ['run', '-config', tmpFile], { stdio: 'ignore' });
     let spawnError: Error | null = null;
@@ -255,7 +255,7 @@ export class OutboundSpeedTestService implements OnModuleInit, OnModuleDestroy {
       return { downMbps, upMbps, message: parts.length ? parts.join('; ') : 'ok' };
     } finally {
       child.kill('SIGKILL');
-      await fs.rm(tmpFile, { force: true }).catch(() => undefined);
+      await tmp.cleanup();
     }
   }
 
@@ -277,9 +277,10 @@ export class OutboundSpeedTestService implements OnModuleInit, OnModuleDestroy {
     if (kind === 'download') {
       args = [...baseArgs, '-w', '%{speed_download}', downUrl];
     } else {
-      const upFile = path.join(os.tmpdir(), `afrows-up-${socksPort}.bin`);
-      await fs.writeFile(upFile, Buffer.alloc(upBytes));
-      cleanup = () => fs.rm(upFile, { force: true }).catch(() => undefined);
+      const tmp = await createSecureTempFile(`afrows-up-${socksPort}.bin`);
+      const upFile = tmp.path;
+      await fs.writeFile(upFile, Buffer.alloc(upBytes), { mode: 0o600 });
+      cleanup = tmp.cleanup;
       args = [...baseArgs, '-X', 'POST', '--data-binary', `@${upFile}`, '-w', '%{speed_upload}', upUrl];
     }
 
