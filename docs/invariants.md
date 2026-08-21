@@ -39,6 +39,10 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 - **INV-13** `knowledge/**` and `graphify-out/**` are **GENERATED — MUST NOT be hand-edited**. Change the generator (`scripts/knowledge/build-mocs.mjs`) and regenerate. → ADR 0006.
 - **INV-14** Human-reviewed decisions live in **`docs/adr/**` + `docs/invariants.md`** (this Tier-C layer), never in the regenerable vault. Do not treat generated graph facts as invariants. → ADR 0006.
 
+## 6. Security exceptions
+
+- **INV-15** `outbounds.subscription_key` (in `outbound-subscription-parser.ts`) is a **non-security identity / de-dup hash** — SHA-1, truncated to 16 hex. CodeQL `js/weak-cryptographic-algorithm` (**#8**) is **risk-accepted, not a defect**: the value is never a token/secret, never client-exposed, and nothing authenticates off it, so collision resistance is not a boundary here. It MUST NOT be swapped to another algorithm **in place** — the sync path deletes children whose key is not in the new set, so a naive swap churns every row (resets `enabled`, gaps the village-reserve pool). Any hardening MUST be a human-approved SHA-256 migration with recompute+backfill and atomic cutover. → ADR 0007; `docs/decisions.json` INV-15.
+
 ---
 
 ## ADR index
@@ -49,6 +53,7 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 - [ADR 0004](adr/0004-money-bigint-semantics.md) — Money/byte columns use bigint semantics
 - [ADR 0005](adr/0005-telegram-users-natural-key-no-fk.md) — `telegram_users.telegram_id` natural key, no FK
 - [ADR 0006](adr/0006-knowledge-vault-generated-decisions-in-adrs.md) — Vault is generated; decisions live in ADRs/invariants
+- [ADR 0007](adr/0007-subscription-key-non-security-hashing-exception.md) — `subscription_key` SHA-1 is non-security hashing (CodeQL #8 risk-accepted)
 
 ## See also
 

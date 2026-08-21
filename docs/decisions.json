@@ -98,6 +98,18 @@
       "affected_tables": [],
       "forbidden_changes": ["hand-editing any file under knowledge/ or graphify-out/"],
       "required_tests": []
+    },
+    {
+      "id": "INV-15",
+      "status": "active",
+      "source_adr": "docs/adr/0007-subscription-key-non-security-hashing-exception.md",
+      "kind": "risk-acceptance",
+      "decision": "outbounds.subscription_key is a non-security identity/de-dup hash (SHA-1, truncated); the CodeQL js/weak-cryptographic-algorithm finding (#8) is risk-accepted, not fixed. Any future change to SHA-256 MUST be a human-approved migration with recompute+backfill and atomic cutover (never a naive algorithm swap, which churns every child row).",
+      "affected_paths": ["apps/backend/src/operations/outbound-subscription-parser.ts"],
+      "affected_services": ["OperationsService"],
+      "affected_tables": ["outbounds"],
+      "forbidden_changes": ["swapping the subscription_key hash algorithm in place without a recompute+backfill migration", "treating subscription_key as a security token / exposing it to clients / authorizing off it"],
+      "required_tests": []
     }
   ]
 }
