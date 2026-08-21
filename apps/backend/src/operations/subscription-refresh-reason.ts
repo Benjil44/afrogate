@@ -55,6 +55,15 @@ export function classifyRefreshError(message: string): SubscriptionRefreshReason
   return 'SUBSCRIPTION_COMMIT_FAILED';
 }
 
+/**
+ * SUBSCRIPTION_REFRESH_STALE predicate: true when the last successful refresh is at
+ * least `thresholdSeconds` old. A null age (never succeeded) is NOT stale here — the
+ * consecutive-failure alert owns the never-succeeded case.
+ */
+export function isRefreshStale(ageSeconds: number | null, thresholdSeconds: number): boolean {
+  return ageSeconds !== null && ageSeconds >= thresholdSeconds;
+}
+
 export type SubscriptionAlertLevel = 'none' | 'warning' | 'critical';
 
 /**

@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import {
   classifyRefreshError,
   subscriptionRefreshAlertLevel,
+  isRefreshStale,
   SUBSCRIPTION_REFRESH_REASONS,
 } from '../src/operations/subscription-refresh-reason.ts';
 
@@ -79,5 +80,22 @@ describe('subscriptionRefreshAlertLevel — consecutive-failure thresholds', () 
   it('is monotonic across the boundary (no flapping between adjacent counts)', () => {
     const levels = [0, 1, 2, 3, 4, 5, 6, 7].map((n) => subscriptionRefreshAlertLevel(n, warnAt, critAt));
     assert.deepEqual(levels, ['none', 'none', 'none', 'warning', 'warning', 'warning', 'critical', 'critical']);
+  });
+});
+
+describe('isRefreshStale — no-success-in-N staleness', () => {
+  const threshold = 120 * 60; // 2h in seconds
+
+  it('null age (never succeeded) is not stale — the failure alert owns that case', () => {
+    assert.equal(isRefreshStale(null, threshold), false);
+  });
+
+  it('fresh success is not stale', () => {
+    assert.equal(isRefreshStale(60, threshold), false);
+  });
+
+  it('at/over the threshold is stale', () => {
+    assert.equal(isRefreshStale(threshold, threshold), true);
+    assert.equal(isRefreshStale(threshold + 1, threshold), true);
   });
 });

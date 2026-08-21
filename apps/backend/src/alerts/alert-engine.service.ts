@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
-import { subscriptionRefreshAlertLevel } from '../operations/subscription-refresh-reason';
+import { subscriptionRefreshAlertLevel, isRefreshStale } from '../operations/subscription-refresh-reason';
 
 type AlertSeverity = 'warning' | 'critical';
 
@@ -38,6 +38,7 @@ interface SubscriptionAlertSignalRow {
   lastStatus: string;
   consecutiveFailures: number;
   lastFailureReason: string | null;
+  lastSuccessAt: Date | null;
 }
 
 interface AlertCondition {
@@ -97,6 +98,7 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
       const subscriptionSignals = await this.listSubscriptionSignals();
       for (const signal of subscriptionSignals) {
         await this.syncAlert(this.subscriptionRefreshCondition(signal));
+        await this.syncAlert(this.subscriptionStaleCondition(signal));
       }
     } catch (error) {
       this.logger.warn(error instanceof Error ? error.message : 'Alert engine evaluation failed');
@@ -166,7 +168,8 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
         SELECT id, name, enabled,
                last_status AS "lastStatus",
                consecutive_failures AS "consecutiveFailures",
-               last_failure_reason AS "lastFailureReason"
+               last_failure_reason AS "lastFailureReason",
+               last_success_at AS "lastSuccessAt"
         FROM outbound_subscriptions
         WHERE enabled = true
         ORDER BY updated_at DESC
@@ -199,6 +202,32 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
       active: level !== 'none',
       severity: level === 'critical' ? 'critical' : 'warning',
       message: `Subscription ${signal.name} has ${failures} consecutive refresh failures (last: ${reason}); reserve is frozen on its last-known-good set.`,
+    };
+  }
+
+  /**
+   * SUBSCRIPTION_REFRESH_STALE — no *successful* refresh in
+   * `AFROWS_SUBSCRIPTION_STALE_MINUTES` (default 120). Distinct from the
+   * consecutive-failure alert: this also fires if the refresher stopped attempting
+   * (no success and no climbing failure count). Only meaningful once a subscription
+   * has succeeded at least once (import stamps last_success_at), so a NULL is left
+   * to the consecutive-failure alert.
+   */
+  private subscriptionStaleCondition(signal: SubscriptionAlertSignalRow): AlertCondition {
+    const staleSeconds = this.configInteger('AFROWS_SUBSCRIPTION_STALE_MINUTES', 120, 5, 100000) * 60;
+    const ageSeconds = signal.lastSuccessAt
+      ? Math.floor((Date.now() - signal.lastSuccessAt.getTime()) / 1000)
+      : null;
+    return {
+      sourceType: 'subscription',
+      sourceId: signal.id,
+      title: 'Subscription refresh stale',
+      // null age (never succeeded) -> not stale here (isRefreshStale returns false);
+      // that case is owned by the consecutive-failure alert. So when this opens,
+      // ageSeconds is always a number.
+      active: isRefreshStale(ageSeconds, staleSeconds),
+      severity: 'warning',
+      message: `Subscription ${signal.name} last refreshed successfully ${Math.floor((ageSeconds ?? 0) / 60)} min ago (threshold ${staleSeconds / 60} min).`,
     };
   }
 
