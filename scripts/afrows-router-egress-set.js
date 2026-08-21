@@ -5,11 +5,18 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const ENV = '/etc/afrows/afrows.env';
 const ID = process.argv[2];
 const WANT = (process.argv[3] || '').toLowerCase() === 'on';
+// Router ids are simple identifiers; reject anything else so a CLI arg cannot
+// smuggle shell/SQL metacharacters into psql1 (defense-in-depth alongside the
+// no-shell execFileSync below).
+if (!/^[a-zA-Z0-9_-]+$/.test(ID || '')) {
+  console.error(`invalid router id: ${JSON.stringify(ID)} (allowed: [a-zA-Z0-9_-])`);
+  process.exit(2);
+}
 if (!ID) { console.error('usage: <routerId> <on|off>'); process.exit(2); }
 
 function fileEnv(k) {
@@ -29,7 +36,9 @@ function decrypt(payload, context, key) {
   d.setAuthTag(fromB64u(tag));
   return JSON.parse(Buffer.concat([d.update(fromB64u(ct)), d.final()]).toString('utf8'));
 }
-function psql1(q) { return execSync(`sudo -u postgres psql afrows -tAc ${JSON.stringify(q)}`, { encoding: 'utf8' }).trim(); }
+// No shell: argv array so shell metacharacters in the query are never
+// interpreted (CodeQL js/indirect-command-line-injection).
+function psql1(q) { return execFileSync('sudo', ['-u', 'postgres', 'psql', 'afrows', '-tAc', q], { encoding: 'utf8' }).trim(); }
 function rest(host, user, pw, method, path, body) {
   return new Promise((res) => {
     const data = body ? JSON.stringify(body) : null;
