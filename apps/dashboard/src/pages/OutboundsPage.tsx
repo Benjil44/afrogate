@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Plus, RefreshCw, Trash2, Zap, Power, X, Pencil, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Zap, Power, X, Pencil, ChevronDown, ChevronRight, AlertTriangle, Clock } from 'lucide-react';
 import type { AdminOutboundSummary, AdminOutboundSubscriptionSummary } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
 import {
@@ -19,6 +19,19 @@ import {
 } from '../api/admin';
 
 type Protocol = 'vless' | 'wireguard' | 'l2tp' | 'subscription';
+
+// Egress P1 observability helpers (surface the subscription refresh-health the backend
+// now records: consecutive_failures, typed last_failure_reason, seconds_since_success).
+const fmtAge = (sec?: number | null): string => {
+  if (sec == null) return '—';
+  if (sec < 90) return `${sec}s`;
+  if (sec < 5400) return `${Math.round(sec / 60)}m`;
+  if (sec < 172800) return `${Math.round(sec / 3600)}h`;
+  return `${Math.round(sec / 86400)}d`;
+};
+// SUBSCRIPTION_SHRINK_REJECTED -> "shrink rejected"
+const humanizeReason = (code?: string | null): string =>
+  (code ?? '').replace(/^SUBSCRIPTION_/, '').replace(/_/g, ' ').toLowerCase() || 'unknown';
 type SortKey = 'name' | 'status' | 'ping' | 'jitter' | 'down' | 'up';
 
 const POLL_MS = 20000;
@@ -735,6 +748,28 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
                               {sub.lastStatus === 'error' ? ` · ⚠ ${sub.lastError ?? ''}` : ''}
                             </span>
                           </button>
+                          {/* Egress P1 — refresh health: frozen/failing reserve is visible with a
+                              typed reason + failure count + staleness, so "why is my reserve
+                              frozen on last-known-good" is answerable at a glance. */}
+                          {(sub.consecutiveFailures ?? 0) > 0 ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-6 text-[11px]">
+                              <span className="inline-flex items-center gap-1 rounded bg-[#fdecec] px-1.5 py-0.5 font-semibold text-[#b91c1c]">
+                                <AlertTriangle size={11} /> {sub.consecutiveFailures}× failed
+                              </span>
+                              {sub.lastFailureReason ? (
+                                <span className="rounded bg-[#f6efe3] px-1.5 py-0.5 font-mono text-[10px] text-[#8a6d1f]">
+                                  {humanizeReason(sub.lastFailureReason)}
+                                </span>
+                              ) : null}
+                              <span className="inline-flex items-center gap-1 text-afro-muted">
+                                <Clock size={10} /> last ok {fmtAge(sub.secondsSinceSuccess)} ago
+                              </span>
+                            </div>
+                          ) : sub.secondsSinceSuccess != null ? (
+                            <div className="mt-1 inline-flex items-center gap-1 pl-6 text-[11px] text-afro-muted">
+                              <Clock size={10} /> refreshed {fmtAge(sub.secondsSinceSuccess)} ago
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1.5">
