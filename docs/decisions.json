@@ -1,0 +1,103 @@
+{
+  "schema": "afrows-decisions/v1",
+  "note": "Machine-referenceable layer over docs/adr/** + docs/invariants.md. HUMAN-AUTHORED, hand-maintained (NOT generated). Each entry references an ADR/invariant and lists the enforceable fields a router/context bundle needs; it never restates the ADR prose. Source hierarchy unchanged: source/migrations/tests/config outrank this, this outranks generated knowledge. Update this file when an ADR/invariant changes.",
+  "source_of_truth": "docs/invariants.md",
+  "decisions": [
+    {
+      "id": "INV-1",
+      "status": "active",
+      "source_adr": "docs/adr/0001-knowledge-authority-hierarchy.md",
+      "kind": "authority",
+      "decision": "Conflict resolution order: migrations+apps+tests > schema.ts > bridges(provenance) > AST > communities/INFERRED > docs > memory.",
+      "affected_paths": [],
+      "affected_services": [],
+      "affected_tables": [],
+      "forbidden_changes": ["treating generated graph facts as authoritative over source/migrations/tests"],
+      "required_tests": []
+    },
+    {
+      "id": "INV-4",
+      "status": "active",
+      "source_adr": "docs/adr/0001-knowledge-authority-hierarchy.md",
+      "kind": "authority",
+      "decision": "Tests (node --test) are authoritative for correctness.",
+      "affected_paths": ["apps/backend/test/**", "tests/**"],
+      "affected_services": [],
+      "affected_tables": [],
+      "forbidden_changes": ["weakening a test to make code pass instead of fixing the code"],
+      "required_tests": []
+    },
+    {
+      "id": "INV-7",
+      "status": "active",
+      "source_adr": "docs/adr/0002-schema-drift-complete-class-c-exceptions.md",
+      "kind": "forbidden-change",
+      "decision": "The 4 Class-C tables are INTENTIONAL raw-SQL exceptions and MUST stay raw-SQL-only.",
+      "affected_paths": ["apps/backend/src/database/schema.ts", "infra/postgres/migrations/**"],
+      "affected_services": [],
+      "affected_tables": ["mikrotik_wg_samples", "mikrotik_wg_rates", "outbound_test_settings", "egress_tier_prices"],
+      "forbidden_changes": ["modeling any Class-C table as a Drizzle entity", "reopening schema-drift for these tables"],
+      "required_tests": []
+    },
+    {
+      "id": "INV-9",
+      "status": "active",
+      "source_adr": "docs/adr/0003-raw-sql-runtime-and-query-shaped-types-preserved.md",
+      "kind": "forbidden-change",
+      "decision": "Raw-SQL runtime MUST be preserved; MUST NOT convert DatabaseService.query/transaction to the Drizzle query builder; never run push/generate/migrate.",
+      "affected_paths": ["apps/backend/src/**"],
+      "affected_services": ["DatabaseService"],
+      "affected_tables": [],
+      "forbidden_changes": ["converting raw SQL to Drizzle query builder", "running drizzle push/generate/migrate"],
+      "required_tests": []
+    },
+    {
+      "id": "INV-10",
+      "status": "active",
+      "source_adr": "docs/adr/0003-raw-sql-runtime-and-query-shaped-types-preserved.md",
+      "kind": "forbidden-change",
+      "decision": "Query-shaped/partial/domain row types MUST NOT be force-replaced by $inferSelect; replace only when structurally equivalent AND tests prove it.",
+      "affected_paths": ["apps/backend/src/**"],
+      "affected_services": [],
+      "affected_tables": [],
+      "forbidden_changes": ["replacing RouterRow/WireguardPeerRecord-style types with $inferSelect without equivalence proof"],
+      "required_tests": []
+    },
+    {
+      "id": "INV-11",
+      "status": "active",
+      "source_adr": "docs/adr/0004-money-bigint-semantics.md",
+      "kind": "data-semantics",
+      "decision": "Money and byte-quota columns use bigint({mode:'number'}); new such columns follow suit.",
+      "affected_paths": ["apps/backend/src/database/schema.ts", "apps/backend/src/billing/**"],
+      "affected_services": ["BillingService"],
+      "affected_tables": ["gems_ledger", "reseller_wallet_ledger", "payment_orders", "customer_accounts"],
+      "forbidden_changes": ["representing money/byte columns as float or string"],
+      "required_tests": ["apps/backend/test/gems.test.ts", "apps/backend/test/billing-normalizers.test.ts"]
+    },
+    {
+      "id": "INV-12",
+      "status": "active",
+      "source_adr": "docs/adr/0005-telegram-users-natural-key-no-fk.md",
+      "kind": "forbidden-change",
+      "decision": "telegram_users.telegram_id is an intentional natural text PK and is NOT a FK to customer_accounts; the join is a soft lookup.",
+      "affected_paths": ["apps/backend/src/database/schema.ts"],
+      "affected_services": [],
+      "affected_tables": ["telegram_users", "customer_accounts"],
+      "forbidden_changes": ["adding .references()/relations() for telegram_id -> customer_accounts", "inferring this FK from the name collision"],
+      "required_tests": []
+    },
+    {
+      "id": "INV-13",
+      "status": "active",
+      "source_adr": "docs/adr/0006-knowledge-vault-generated-decisions-in-adrs.md",
+      "kind": "forbidden-change",
+      "decision": "knowledge/** and graphify-out/** are GENERATED and MUST NOT be hand-edited; change the generator and regenerate.",
+      "affected_paths": ["knowledge/**", "graphify-out/**"],
+      "affected_services": [],
+      "affected_tables": [],
+      "forbidden_changes": ["hand-editing any file under knowledge/ or graphify-out/"],
+      "required_tests": []
+    }
+  ]
+}

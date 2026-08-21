@@ -1,0 +1,93 @@
+{
+  "schema": "afrows-security-patterns/v1",
+  "note": "Repository-grounded, reusable security remediation patterns. HUMAN-AUTHORED. Every 'safe' entry points at a REAL fix already merged in this repo (commit + path) so a future task reuses the proven canonical remedy instead of re-deriving it. Detection regexes power the static guards in apps/backend/test/static-injection-guards.test.ts. Not a substitute for reading source; a router uses `applies_when` to attach the right pattern to a task context bundle.",
+  "patterns": [
+    {
+      "id": "SEC-RANDOM-001",
+      "codeql_rules": ["js/biased-cryptographic-random", "js/insecure-randomness"],
+      "threat": "Predictable or biased values used where unpredictability matters (tokens, claim keys, referral/display codes).",
+      "unsafe_patterns": [
+        "Math.random() for anything security-relevant",
+        "randomBytes(n)[i] % alphabet.length (modulo bias)",
+        "Math.floor(randomByte / slot) reductions of a raw CSPRNG byte"
+      ],
+      "safe_pattern": "crypto.randomInt(max) for a uniform index; crypto.randomUUID() / crypto.getRandomValues() for keys. No manual byte->index arithmetic.",
+      "repo_examples": [
+        { "path": "apps/backend/src/billing/gems.ts", "symbol": "generateReferralCode", "commit": "de606d3", "note": "randomInt injectable seam" },
+        { "path": "apps/backend/src/billing/display-name.ts", "symbol": "generateCustomerDisplayName", "commit": "29b5b48" },
+        { "path": "apps/client/src/reward-claim-key.ts", "symbol": "createRewardClaimKey", "commit": "29b5b48", "note": "randomUUID + getRandomValues fallback" }
+      ],
+      "detection": "/%\\s*[A-Z_]*ALPHABET\\.length|Math\\.random\\(|Math\\.floor\\([^)]*byte[^)]*\\/",
+      "regression": "Inject the randomness source; assert one uniform draw per char + byte-range; deterministic full-range distribution (no timing).",
+      "validation": ["targeted unit tests", "full backend suite", "remote CodeQL"],
+      "bypass_notes": "CodeQL flags ANY arithmetic reduction of a crypto byte, even after rejection sampling — prefer crypto.randomInt over % or / entirely.",
+      "applies_when": ["billing", "client", "auth", "token generation"]
+    },
+    {
+      "id": "SEC-SSRF-001",
+      "codeql_rules": ["js/request-forgery"],
+      "threat": "Server-side HTTP to an admin/user-influenced URL reaching cloud metadata / internal hosts, incl. via redirects.",
+      "unsafe_patterns": [
+        "global fetch(url) on a stored/user-influenced URL",
+        "redirect: 'follow' on such a fetch (a 302 to 169.254.169.254 defeats any pre-check)"
+      ],
+      "safe_pattern": "Route through OutboundHttpService.request()/requestBinary() — it applies assertAllowedOutboundUrl (scheme allowlist + metadata block), routes via the egress proxy, and does not follow redirects.",
+      "repo_examples": [
+        { "path": "apps/backend/src/outbound/outbound-http.service.ts", "symbol": "OutboundHttpService", "note": "canonical egress client" },
+        { "path": "apps/backend/src/outbound/outbound-url-policy.ts", "symbol": "assertAllowedOutboundUrl", "note": "shared sanitizer boundary" },
+        { "path": "apps/backend/src/operations/operations.service.ts", "symbol": "fetchAndParseSubscription", "commit": "566c2df", "note": "the fix" }
+      ],
+      "detection": "/(^|[^.\\w])fetch\\s*\\(/",
+      "regression": "Assert assertAllowedOutboundUrl rejects metadata IPv4/IPv6/GCP + non-http(s) schemes; a static no-raw-fetch guard on the fixed service.",
+      "validation": ["policy-boundary unit tests", "static no-raw-fetch guard", "full backend suite", "remote CodeQL"],
+      "bypass_notes": "assertAllowedOutboundUrl intentionally ALLOWS localhost/private (health probes use the local egress relay) — do NOT tighten the shared policy without human review; the no-redirect + proxy boundary is what clears the alert.",
+      "applies_when": ["operations", "outbound", "any server-side fetch of a stored URL"]
+    },
+    {
+      "id": "SEC-TEMPFILE-001",
+      "codeql_rules": ["js/insecure-temporary-file"],
+      "threat": "Predictable filename in the shared os.tmpdir() enabling a local pre-create/symlink race.",
+      "unsafe_patterns": ["path.join(os.tmpdir(), `fixed-${interpolated}.ext`) then writeFile"],
+      "safe_pattern": "createSecureTempFile(basename): fs.mkdtemp('afrows-') private 0700 dir, write with mode 0o600, recursive cleanup in finally.",
+      "repo_examples": [
+        { "path": "apps/backend/src/common/secure-temp-file.ts", "symbol": "createSecureTempFile", "commit": "24bfb83", "note": "shared helper" },
+        { "path": "apps/backend/src/operations/operations.service.ts", "line": 8523, "note": "original mkdtemp+chmod idiom the helper mirrors" }
+      ],
+      "detection": "/path\\s*\\.\\s*join\\s*\\(\\s*os\\s*\\.\\s*tmpdir\\s*\\(\\s*\\)\\s*,\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`/",
+      "regression": "Helper unit tests (path under tmpdir, 0700 dir, no collision, cleanup) + static no-predictable-tmpfile guard on the affected services.",
+      "validation": ["helper unit tests", "static guard", "full backend suite", "remote CodeQL"],
+      "bypass_notes": "Preserve the exact basename/extension the child binary expects; keep cleanup in finally (now removes the dir).",
+      "applies_when": ["outbound", "client provisioning", "any temp-file handoff to a child process"]
+    },
+    {
+      "id": "SEC-REDOS-001",
+      "codeql_rules": ["js/polynomial-redos"],
+      "threat": "Polynomial regex backtracking on user-influenced input blocking the single-threaded event loop.",
+      "unsafe_patterns": [".replace(/^X+|X+$/g,'') trailing-anchor alternation strip", "unbounded input reaching the regex before any length cap"],
+      "safe_pattern": "Linear two-pointer character strip (stripSurroundingUnderscores) — no backtracking, byte-identical output. Splitting the alternation does NOT fix it (measured still quadratic).",
+      "repo_examples": [
+        { "path": "apps/backend/src/billing/billing-normalizers.ts", "symbol": "stripSurroundingUnderscores", "commit": "8cdbbf8", "note": "linear helper" }
+      ],
+      "detection": "/\\.replace\\s*\\(\\s*\\/\\^_\\+\\|_\\+\\$\\/g\\s*,/",
+      "regression": "Full normalization contract + pathological input 'a'+'_'.repeat(50000)+'b' (completion+correctness, NOT timing) + static guard against /^_+|_+$/g.",
+      "validation": ["contract + pathological unit tests", "static guard", "full backend suite", "remote CodeQL"],
+      "bypass_notes": "The obvious /^_+/ + /_+$/ split is a measured trap (still O(n^2)); use character scanning.",
+      "applies_when": ["billing", "normalizers", "any anchored repeated-char strip on user input"]
+    },
+    {
+      "id": "SEC-CMD-001",
+      "codeql_rules": ["js/indirect-command-line-injection"],
+      "threat": "User/config-influenced value interpolated into a shell command string.",
+      "unsafe_patterns": ["execSync(`... ${value}`)", "spawn/exec with a shell string built from input"],
+      "safe_pattern": "execFile/spawn with an ARGUMENT ARRAY (no shell); for identifiers use the command-safety sanitizers (safePathSegment, safeRouteTableName, shellToken) before interpolation.",
+      "repo_examples": [
+        { "path": "apps/backend/src/operations/command-safety.ts", "symbol": "shellToken/safePathSegment/safeRouteTableName", "note": "allowlist sanitizers + POSIX quoting" }
+      ],
+      "detection": "/execSync\\s*\\(\\s*`|exec\\s*\\(\\s*`[^`]*\\$\\{/",
+      "regression": "Adversarial payloads ('; rm -rf / #, $(id), a'b) asserted neutralized; prefer argument-array invocation.",
+      "validation": ["command-safety unit tests", "full backend suite", "remote CodeQL"],
+      "bypass_notes": "The open alerts #12/#13 are operator-run standalone scripts (not app-reachable) — a future grouped task, not urgent.",
+      "applies_when": ["operations", "scripts", "any child-process invocation with interpolated input"]
+    }
+  ]
+}
