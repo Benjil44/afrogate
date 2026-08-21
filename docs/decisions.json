@@ -122,6 +122,18 @@
       "affected_tables": ["outbound_subscriptions", "alerts"],
       "forbidden_changes": ["changing the P0 accept/reject decision under the guise of observability", "wiring route_failover_events for subscription refresh (semantic mismatch)", "adding a second source of truth for refresh state"],
       "required_tests": ["apps/backend/test/subscription-refresh-reason.test.ts"]
+    },
+    {
+      "id": "INV-17",
+      "status": "active",
+      "source_adr": "docs/adr/0009-egress-p2-explicit-state-machine-anti-flap.md",
+      "kind": "state-machine",
+      "decision": "Egress transitions run through the explicit pure egress_state.decide (asymmetric hysteresis k_out=2/k_back=3, flapping circuit breaker, bounded transition log). The priority ORDER (CATCHALL_ORDER via-germany>proxy>direct; GAMING_ORDER via-village>via-germany>proxy) is UNCHANGED from the prior inline logic — reordering it is P4, not P2. egress_state.py must deploy alongside afrows-egress-mode-sync.py (sibling import).",
+      "affected_paths": ["scripts/egress_state.py", "scripts/afrows-egress-mode-sync.py", "apps/backend/src/alerts/alert-engine.service.ts", "apps/backend/src/operations/subscription-refresh-reason.ts"],
+      "affected_services": ["AlertEngineService"],
+      "affected_tables": ["alerts", "outbound_subscriptions"],
+      "forbidden_changes": ["reordering the egress priority ladder under the guise of P2 (that is P4)", "letting the circuit breaker pin traffic on a worse/dead path", "deploying afrows-egress-mode-sync.py without egress_state.py alongside it"],
+      "required_tests": ["scripts/test_egress_state.py", "scripts/test_egress_mode_sync.py"]
     }
   ]
 }
