@@ -96,9 +96,26 @@ export function normalizeSlug(value: string): string {
   return slug;
 }
 
+/**
+ * Strip leading and trailing '_' characters in O(n) via a two-pointer scan.
+ *
+ * Replaces the regex `.replace(/^_+|_+$/g, '')`, which is polynomial-time
+ * (js/polynomial-redos): its `_+$` alternative backtrack-scans at every start
+ * position when a long '_' run is not actually at the end (e.g. `"a"+"_"*N+"b"`
+ * was measured at ~6.5s for N=80000, blocking the event loop). A character
+ * scan has no backtracking and produces byte-identical output for all inputs.
+ */
+export function stripSurroundingUnderscores(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) === 95) start++; // 95 = '_'
+  while (end > start && value.charCodeAt(end - 1) === 95) end--;
+  return value.slice(start, end);
+}
+
 /** Normalized payment provider key (letters/numbers/_/-, max 40 chars). */
 export function normalizeProvider(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+  const normalized = stripSurroundingUnderscores(value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_'));
   if (!normalized) throw new BadRequestException('Payment provider is required');
   if (normalized.length > 40) throw new BadRequestException('Payment provider is too long');
   return normalized;

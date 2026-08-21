@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { stripSurroundingUnderscores } from './billing-normalizers';
 import type {
   AdminPaymentProviderAdapterSummary,
   PaymentProviderAdapterStatus,
@@ -294,7 +295,7 @@ function normalizeExistingReference(value: string | null | undefined): string | 
 }
 
 function normalizeProvider(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+  return stripSurroundingUnderscores(value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_'));
 }
 
 function normalizeNullableString(value: unknown): string | null {
