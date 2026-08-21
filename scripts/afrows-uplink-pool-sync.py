@@ -146,16 +146,47 @@ def identity(ob):
 
 
 def score_relay(samples):
-    """(eligible, score, success_rate) from a relay's recent samples."""
+    """(eligible, score, success_rate) from a relay's recent samples (oldest->newest).
+
+    P3 stability scoring. success_rate is the leading term (`*1000`): a reliable relay
+    outranks a flaky one for throughput below ~1000/HISTORY_N Mbps (~125 @ N=8) — i.e.
+    across the entire realistic relay band; only an extreme-throughput half-failing relay
+    could out-point a steady low one, and the last-K-healthy + MIN_SUCCESS gate already
+    filters true flappers out. The throughput tiebreak is now:
+      * RECENCY-WEIGHTED  — recent samples weigh more, so a recovering relay outranks a
+        recently-degrading one (a lightweight stale-decay within the sample window);
+      * VARIANCE-PENALIZED — a steady relay outranks an equal-mean flapper, so raw
+        instantaneous throughput alone can never win the pick.
+    The ELIGIBILITY gates (last-K healthy + MIN_SUCCESS) are UNCHANGED, so which relays
+    qualify is identical to before — only the ranking among them improves. Live latency
+    selection is handled downstream by the pool xray observatory/leastPing balancer.
+    """
     if not samples:
         return False, 0.0, 0.0
-    passes = [1 if s >= MIN_MBPS else 0 for s in samples]
-    success = sum(passes) / len(passes)
+    n = len(samples)
+    weights = list(range(1, n + 1))  # linear recency: oldest=1 .. newest=n
+    wsum = sum(weights)
+    passes = [1.0 if s >= MIN_MBPS else 0.0 for s in samples]
+    success = sum(passes) / n  # unweighted -> the eligibility gate (unchanged)
+    success_w = sum(p * w for p, w in zip(passes, weights)) / wsum  # recency-weighted, drives score
     healthy = [s for s in samples if s >= MIN_MBPS]
-    healthy_avg = sum(healthy) / len(healthy) if healthy else 0.0
-    recent_ok = len(samples) >= HYSTERESIS_K and all(s >= MIN_MBPS for s in samples[-HYSTERESIS_K:])
+    hw = [(s, w) for s, w in zip(samples, weights) if s >= MIN_MBPS]
+    healthy_avg_w = (sum(s * w for s, w in hw) / sum(w for _, w in hw)) if hw else 0.0
+    # stability: penalize magnitude instability among passing samples (coeff. of variation);
+    # pass/fail flapping is already captured by success_rate.
+    if len(healthy) >= 2:
+        mean = sum(healthy) / len(healthy)
+        if mean > 0:
+            var = sum((s - mean) ** 2 for s in healthy) / len(healthy)
+            stability = 1.0 / (1.0 + (var ** 0.5) / mean)
+        else:
+            stability = 1.0
+    else:
+        stability = 1.0
+    recent_ok = n >= HYSTERESIS_K and all(s >= MIN_MBPS for s in samples[-HYSTERESIS_K:])
     eligible = recent_ok and success >= MIN_SUCCESS
-    return eligible, success * 1000 + healthy_avg, success
+    score = success_w * 1000 + healthy_avg_w * stability
+    return eligible, score, success
 
 
 def main():

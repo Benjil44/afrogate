@@ -52,7 +52,7 @@ jobs:
         run: npm run test:backend
 
       - name: Run egress state-machine tests (python)
-        run: python3 scripts/test_egress_state.py && python3 scripts/test_egress_mode_sync.py
+        run: python3 scripts/test_egress_state.py && python3 scripts/test_egress_mode_sync.py && python3 scripts/test_uplink_pool_score.py
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
