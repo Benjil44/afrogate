@@ -23,6 +23,12 @@ Idempotent: only rewrites + restarts a service when its routing/outbounds change
 No secrets in this file. Run by the afrows-egress-mode-sync systemd timer.
 """
 import json, os, subprocess, sys, time
+import egress_state as es  # P2: explicit asymmetric-hysteresis + circuit-breaker core
+
+# Explicit priority ladders (most-preferred first). P2 makes these EXPLICIT and
+# single-sourced; the ORDER is unchanged from the prior inline logic (that is P4).
+CATCHALL_ORDER = ["via-germany", "proxy", "direct"]
+GAMING_ORDER = ["via-village", "via-germany", "proxy"]
 
 ENV = os.environ.get("AFROWS_ENV", "/etc/afrows/afrows.env")
 XRAY = os.environ.get("AFROWS_XRAY_BIN", "/usr/local/bin/xray")
@@ -202,29 +208,53 @@ def iface_alive(iface):
     return False
 
 
+def hysteresis_cfg():
+    """Env-tunable asymmetric-hysteresis + circuit-breaker config (falls back to the
+    egress_state DEFAULTS). k_out preserves today's 2-strike fail-OUT exactly; only
+    fail-BACK (k_back) is slower — the best-practice anti-flap change."""
+    def _i(key, default):
+        try:
+            return int(file_env(key, str(default)))
+        except Exception:
+            return default
+    return {
+        "k_out": _i("AFROWS_EGRESS_K_OUT", es.DEFAULTS["k_out"]),
+        "k_back": _i("AFROWS_EGRESS_K_BACK", es.DEFAULTS["k_back"]),
+        "breaker_window": _i("AFROWS_EGRESS_BREAKER_WINDOW", es.DEFAULTS["breaker_window"]),
+        "breaker_max": _i("AFROWS_EGRESS_BREAKER_MAX", es.DEFAULTS["breaker_max"]),
+        "breaker_extra": _i("AFROWS_EGRESS_BREAKER_EXTRA", es.DEFAULTS["breaker_extra"]),
+    }
+
+
 def choose_catchall(via_germany_ok, pool_ok, state):
-    """Pure health-ordered failover decision with 2-strike hysteresis (so a single
-    bad probe never flips the live egress). Returns (applied_tag, new_state).
-    Priority: via-germany (owned Germany via the village) -> proxy (relay pool,
-    village-independent reserve) -> direct (last resort; only the foreign sites
-    Ireland doesn't filter)."""
+    """Health-ordered failover via the explicit egress_state machine: asymmetric
+    hysteresis (fail out fast, fail back slow) + a flapping circuit breaker + a
+    transition log. Returns (applied_tag, new_state). Priority (UNCHANGED):
+    via-germany (owned Germany via the village) -> proxy (village-independent relay
+    pool) -> direct (last resort; only the foreign sites Ireland doesn't filter)."""
     if via_germany_ok:
         want = "via-germany"
     elif pool_ok:
         want = "proxy"
     else:
         want = "direct"
-    applied = state.get("applied", want)
-    if want == applied:
-        return applied, {"applied": applied, "pending": want, "count": 0}
-    cnt = (state.get("count", 0) + 1) if state.get("pending") == want else 1
-    if cnt >= 2:
-        return want, {"applied": want, "pending": want, "count": 0}
-    return applied, {"applied": applied, "pending": want, "count": cnt}
+    return es.decide(want, state, CATCHALL_ORDER, hysteresis_cfg())
+
+
+def _breaker_of(state_file):
+    """Read the circuit-breaker summary a lane persisted (tripped + recent switch
+    count), for the health snapshot. Missing/old state -> a calm default."""
+    try:
+        b = json.load(open(state_file)).get("breaker", {})
+        return {"tripped": bool(b.get("tripped", False)), "recent": int(b.get("recent", 0))}
+    except Exception:
+        return {"tripped": False, "recent": 0}
 
 
 def write_health(starlink_up, germany_up, catch_all, gaming_out, mode):
-    """Persist an egress-health snapshot the backend serves to the dashboard."""
+    """Persist an egress-health snapshot the backend serves to the dashboard. Now
+    includes the P2 circuit-breaker state per lane so the backend can alert on a
+    flapping egress ("why is my egress unstable")."""
     try:
         os.makedirs(os.path.dirname(HEALTH_FILE), exist_ok=True)
         json.dump({
@@ -233,6 +263,8 @@ def write_health(starlink_up, germany_up, catch_all, gaming_out, mode):
             "appliedCatchAll": catch_all,
             "gamingOutbound": gaming_out,
             "mode": mode,
+            "catchAllBreaker": _breaker_of(STATE_FILE),
+            "gamingBreaker": _breaker_of(GAMING_STATE_FILE),
             "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }, open(HEALTH_FILE, "w"))
     except Exception:
@@ -254,13 +286,7 @@ def choose_gaming(village_ok, germany_ok, pool_ok, state):
         want = "proxy"
     else:
         want = "via-village"
-    applied = state.get("applied", want)
-    if want == applied:
-        return applied, {"applied": applied, "pending": want, "count": 0}
-    cnt = (state.get("count", 0) + 1) if state.get("pending") == want else 1
-    if cnt >= 2:
-        return want, {"applied": want, "pending": want, "count": 0}
-    return applied, {"applied": applied, "pending": want, "count": cnt}
+    return es.decide(want, state, GAMING_ORDER, hysteresis_cfg())
 
 
 def decide_gaming():

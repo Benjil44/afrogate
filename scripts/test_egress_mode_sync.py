@@ -37,11 +37,14 @@ assert applied == "proxy", applied
 applied, st = ch(False, False, st)
 assert applied == "direct", ("last resort direct", applied)
 
-# Recovery: village back -> fail back to via-germany after 2 strikes.
+# Recovery: village back -> fail back to via-germany, but SLOWLY (asymmetric
+# hysteresis, k_back=3). Fail-out was 2 strikes; fail-back is deliberately stickier.
 applied, st = ch(True, False, {"applied": "proxy"})
 assert applied == "proxy", applied
 applied, st = ch(True, False, st)
-assert applied == "via-germany", ("failback", applied)
+assert applied == "proxy", ("still holding on 2nd strike (slow fail-back)", applied)
+applied, st = ch(True, False, st)
+assert applied == "via-germany", ("failback on 3rd strike", applied)
 
 print("OK: choose_catchall failover via-germany -> proxy -> direct with hysteresis")
 
@@ -73,11 +76,13 @@ assert applied == "via-village", ("no flip on 1st strike", applied)
 applied, st = cg(False, True, False, st)
 assert applied == "via-germany", ("failover to Germany on 2nd strike", applied)
 
-# Recovery: Starlink back -> fail back to via-village after 2 strikes.
+# Recovery: Starlink back -> fail back to via-village, SLOWLY (asymmetric, k_back=3).
 applied, st = cg(True, True, False, {"applied": "via-germany"})
 assert applied == "via-germany", applied
 applied, st = cg(True, True, False, st)
-assert applied == "via-village", ("failback to Starlink", applied)
+assert applied == "via-germany", ("still holding on 2nd strike (slow fail-back)", applied)
+applied, st = cg(True, True, False, st)
+assert applied == "via-village", ("failback to Starlink on 3rd strike", applied)
 
 # Both village paths down but the relay pool is up -> gaming fails over to the
 # village-INDEPENDENT proxy reserve (the operator's added exits), 2-strike hysteresis,
