@@ -2189,6 +2189,13 @@ export interface AdminOutboundSubscriptionSummary {
   lastFetchedAt?: string | null;
   lastStatus: string;
   lastError?: string | null;
+  /** Egress P1 refresh observability. */
+  consecutiveFailures?: number;
+  lastSuccessAt?: string | null;
+  /** Typed failure code (SUBSCRIPTION_*); lastError keeps the human message. */
+  lastFailureReason?: string | null;
+  /** Seconds since the last successful refresh (null if never succeeded). */
+  secondsSinceSuccess?: number | null;
   createdAt: string;
   updatedAt: string;
 }

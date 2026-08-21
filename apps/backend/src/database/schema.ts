@@ -1263,6 +1263,12 @@ export const outboundSubscriptions = pgTable('outbound_subscriptions', {
   lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
   lastStatus: text('last_status').notNull().default('unknown'),
   lastError: text('last_error'),
+  // Refresh observability (migration 0055): consecutive_failures resets to 0 on any
+  // success; last_success_at drives stale detection; last_failure_reason is a typed
+  // code (subscription-refresh-reason.ts) — last_error keeps the human message.
+  consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+  lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+  lastFailureReason: text('last_failure_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

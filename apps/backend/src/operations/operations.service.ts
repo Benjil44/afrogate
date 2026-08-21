@@ -83,6 +83,7 @@ import { DatabaseService, type DatabaseQueryExecutor } from '../database/databas
 import { parseVlessUrl } from './outbound-vless-parser';
 import { parseSubscription, type ParsedSubscription } from './outbound-subscription-parser';
 import { assertRefreshSafe } from './subscription-refresh-safety';
+import { classifyRefreshError } from './subscription-refresh-reason';
 import { OutboundHttpService, type OutboundHttpResponse } from '../outbound/outbound-http.service';
 import type { IncomingHttpHeaders } from 'node:http';
 import { routeMarkHex, safeConfigFileName, safePathSegment, safeRouteTableName, safeWireGuardInterfaceName, shellToken } from './command-safety';
@@ -204,6 +205,9 @@ interface OutboundSubscriptionRow {
   lastFetchedAt: Date | null;
   lastStatus: string;
   lastError: string | null;
+  consecutiveFailures: number;
+  lastSuccessAt: Date | null;
+  lastFailureReason: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1498,6 +1502,8 @@ export class OperationsService {
                update_interval_hours AS "updateIntervalHours", userinfo AS "userInfo",
                enabled, config_count AS "configCount", last_fetched_at AS "lastFetchedAt",
                last_status AS "lastStatus", last_error AS "lastError",
+               consecutive_failures AS "consecutiveFailures", last_success_at AS "lastSuccessAt",
+               last_failure_reason AS "lastFailureReason",
                created_at AS "createdAt", updated_at AS "updatedAt"
         FROM outbound_subscriptions
         ORDER BY created_at ASC
@@ -1513,6 +1519,8 @@ export class OperationsService {
                update_interval_hours AS "updateIntervalHours", userinfo AS "userInfo",
                enabled, config_count AS "configCount", last_fetched_at AS "lastFetchedAt",
                last_status AS "lastStatus", last_error AS "lastError",
+               consecutive_failures AS "consecutiveFailures", last_success_at AS "lastSuccessAt",
+               last_failure_reason AS "lastFailureReason",
                created_at AS "createdAt", updated_at AS "updatedAt"
         FROM outbound_subscriptions
         WHERE id = $1
@@ -1539,8 +1547,8 @@ export class OperationsService {
       const ins = await executor.query<{ id: string }>(
         `
           INSERT INTO outbound_subscriptions
-            (name, url, route_group, profile_title, update_interval_hours, userinfo, enabled, last_fetched_at, last_status)
-          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, now(), 'ok')
+            (name, url, route_group, profile_title, update_interval_hours, userinfo, enabled, last_fetched_at, last_status, last_success_at)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, now(), 'ok', now())
           RETURNING id
         `,
         [name, url, routeGroup, parsed.title ?? null, parsed.updateIntervalHours ?? null, JSON.stringify(parsed.userInfo), enabled],
@@ -1573,7 +1581,9 @@ export class OperationsService {
           `
             UPDATE outbound_subscriptions
             SET profile_title = $2, update_interval_hours = $3, userinfo = $4::jsonb,
-                last_fetched_at = now(), last_status = 'ok', last_error = NULL, updated_at = now()
+                last_fetched_at = now(), last_status = 'ok', last_error = NULL,
+                last_failure_reason = NULL, consecutive_failures = 0, last_success_at = now(),
+                updated_at = now()
             WHERE id = $1
           `,
           [id, parsed.title ?? null, parsed.updateIntervalHours ?? null, JSON.stringify(parsed.userInfo)],
@@ -1590,9 +1600,17 @@ export class OperationsService {
       });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      // P1 observability: classify the failure into a typed reason, bump the
+      // consecutive-failure counter, and keep the human message in last_error. The
+      // live child set is untouched (P0 preserved it); this only records why.
+      const reason = classifyRefreshError(msg);
       await this.database.query(
-        `UPDATE outbound_subscriptions SET last_status = 'error', last_error = $2, last_fetched_at = now(), updated_at = now() WHERE id = $1`,
-        [id, msg.slice(0, 500)],
+        `UPDATE outbound_subscriptions
+         SET last_status = 'error', last_error = $2, last_failure_reason = $3,
+             consecutive_failures = consecutive_failures + 1,
+             last_fetched_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [id, msg.slice(0, 500), reason],
       );
       throw new BadRequestException(`Subscription refresh failed: ${msg}`);
     }
@@ -1749,6 +1767,12 @@ export class OperationsService {
       lastFetchedAt: row.lastFetchedAt?.toISOString() ?? null,
       lastStatus: row.lastStatus,
       lastError: row.lastError,
+      consecutiveFailures: row.consecutiveFailures,
+      lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
+      lastFailureReason: row.lastFailureReason,
+      secondsSinceSuccess: row.lastSuccessAt
+        ? Math.max(0, Math.floor((Date.now() - row.lastSuccessAt.getTime()) / 1000))
+        : null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

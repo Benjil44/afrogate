@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
+import { subscriptionRefreshAlertLevel } from '../operations/subscription-refresh-reason';
 
 type AlertSeverity = 'warning' | 'critical';
 
@@ -28,6 +29,15 @@ interface OutboundAlertSignalRow {
   maintenanceMode: boolean;
   healthStatus: string;
   lastCheckedAt: Date | null;
+}
+
+interface SubscriptionAlertSignalRow {
+  id: string;
+  name: string;
+  enabled: boolean;
+  lastStatus: string;
+  consecutiveFailures: number;
+  lastFailureReason: string | null;
 }
 
 interface AlertCondition {
@@ -79,6 +89,15 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
       // One aggregated egress-pool alert instead of one-per-relay (dead pool
       // members are normal churn that failover handles).
       await this.syncAlert(this.outboundPoolCondition(outboundSignals));
+
+      // Egress P1 — one alert per subscription that is repeatedly failing refresh,
+      // so a permanently-rejected (last-known-good-frozen) reserve is visible. The
+      // counter resets to 0 on any successful refresh, so recovery auto-resolves
+      // the alert (no flapping: syncAlert opens once and resolves once).
+      const subscriptionSignals = await this.listSubscriptionSignals();
+      for (const signal of subscriptionSignals) {
+        await this.syncAlert(this.subscriptionRefreshCondition(signal));
+      }
     } catch (error) {
       this.logger.warn(error instanceof Error ? error.message : 'Alert engine evaluation failed');
     } finally {
@@ -139,6 +158,48 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
     );
 
     return result.rows;
+  }
+
+  private async listSubscriptionSignals(): Promise<SubscriptionAlertSignalRow[]> {
+    const result = await this.database.query<SubscriptionAlertSignalRow>(
+      `
+        SELECT id, name, enabled,
+               last_status AS "lastStatus",
+               consecutive_failures AS "consecutiveFailures",
+               last_failure_reason AS "lastFailureReason"
+        FROM outbound_subscriptions
+        WHERE enabled = true
+        ORDER BY updated_at DESC
+        LIMIT $1
+      `,
+      [this.batchSize()],
+    );
+    return result.rows;
+  }
+
+  /**
+   * A subscription that has failed refresh `AFROWS_SUBSCRIPTION_ALERT_FAILURES`
+   * times in a row (default 3) is flagged; the reserve is frozen on its
+   * last-known-good set (P0) and needs an operator. Critical once it reaches
+   * `AFROWS_SUBSCRIPTION_ALERT_CRITICAL_FAILURES` (default 6). Deterministic and
+   * non-flapping: driven purely by the persisted counter, which resets on success.
+   */
+  private subscriptionRefreshCondition(signal: SubscriptionAlertSignalRow): AlertCondition {
+    const warnAt = this.configInteger('AFROWS_SUBSCRIPTION_ALERT_FAILURES', 3, 1, 1000);
+    // Clamp crit >= warn so a misconfiguration (crit < warn) can't emit 'critical'
+    // below the warning threshold.
+    const critAt = Math.max(warnAt, this.configInteger('AFROWS_SUBSCRIPTION_ALERT_CRITICAL_FAILURES', 6, 1, 1000));
+    const failures = signal.consecutiveFailures;
+    const reason = signal.lastFailureReason ?? 'unknown';
+    const level = subscriptionRefreshAlertLevel(failures, warnAt, critAt);
+    return {
+      sourceType: 'subscription',
+      sourceId: signal.id,
+      title: 'Subscription refresh failing',
+      active: level !== 'none',
+      severity: level === 'critical' ? 'critical' : 'warning',
+      message: `Subscription ${signal.name} has ${failures} consecutive refresh failures (last: ${reason}); reserve is frozen on its last-known-good set.`,
+    };
   }
 
   private serverConditions(signal: ServerAlertSignalRow): AlertCondition[] {
