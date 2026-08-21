@@ -8,7 +8,12 @@ the transition log, and that the priority ORDER is never altered by the machine.
 import importlib.util
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("egress_state", str(Path(__file__).with_name("egress_state.py")))
+# The state machine is inlined in the reconciler (self-contained single-file deploy),
+# so load `decide`/`rank`/DEFAULTS from it — the same importlib pattern the sibling
+# test uses. This also exercises that the reconciler module imports cleanly.
+spec = importlib.util.spec_from_file_location(
+    "egress_mode_sync", str(Path(__file__).with_name("afrows-egress-mode-sync.py"))
+)
 es = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(es)
 

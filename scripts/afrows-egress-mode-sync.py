@@ -23,12 +23,57 @@ Idempotent: only rewrites + restarts a service when its routing/outbounds change
 No secrets in this file. Run by the afrows-egress-mode-sync systemd timer.
 """
 import json, os, subprocess, sys, time
-import egress_state as es  # P2: explicit asymmetric-hysteresis + circuit-breaker core
 
-# Explicit priority ladders (most-preferred first). P2 makes these EXPLICIT and
-# single-sourced; the ORDER is unchanged from the prior inline logic (that is P4).
+# ---- P2 egress state machine (inlined; kept in this file so the reconciler stays a
+# self-contained single script the operator deploys — no sibling-import dependency).
+# Pure/deterministic: asymmetric hysteresis (fail out fast, fail back slow) + a flapping
+# circuit breaker + a bounded transition log. `seq` (stored in state) is the time proxy,
+# so the breaker window is in decisions (matching the 1/min cadence). The priority ORDER
+# is unchanged from the prior inline logic (reordering it is P4). Tested by
+# scripts/test_egress_state.py (which loads these from this module).
+EGRESS_STATE_DEFAULTS = {
+    "k_out": 2,           # strikes to leave a higher-priority path that went unhealthy
+    "k_back": 3,          # strikes to return to a recovered higher-priority path (slower)
+    "breaker_window": 10, # recent decisions defining "recent" (~10 min @ 1/min)
+    "breaker_max": 4,     # transitions within the window that mark the lane flapping
+    "breaker_extra": 2,   # extra strikes required while flapping (damping)
+}
+# Explicit priority ladders (most-preferred first).
 CATCHALL_ORDER = ["via-germany", "proxy", "direct"]
 GAMING_ORDER = ["via-village", "via-germany", "proxy"]
+
+
+def rank(order, tag):
+    """Priority rank of a tag: 0 = most preferred; unknown tags rank last."""
+    return order.index(tag) if tag in order else len(order)
+
+
+def _state(applied, pending, count, seq, transitions, tripped):
+    return {
+        "applied": applied, "pending": pending, "count": count, "seq": seq,
+        "transitions": list(transitions),
+        "breaker": {"tripped": bool(tripped), "recent": len(transitions)},
+    }
+
+
+def decide(want, state, order, cfg=None):
+    """Pure asymmetric-hysteresis + circuit-breaker transition. Returns (applied, new_state)."""
+    c = {**EGRESS_STATE_DEFAULTS, **(cfg or {})}
+    seq = int(state.get("seq", 0)) + 1
+    applied = state.get("applied", want)
+    transitions = [t for t in state.get("transitions", []) if t > seq - c["breaker_window"]]
+    flapping = len(transitions) >= c["breaker_max"]
+    if want == applied:
+        return applied, _state(applied, want, 0, seq, transitions, flapping)
+    recovering = rank(order, want) < rank(order, applied)
+    need = c["k_back"] if recovering else c["k_out"]
+    if flapping:
+        need += c["breaker_extra"]
+    cnt = (int(state.get("count", 0)) + 1) if state.get("pending") == want else 1
+    if cnt >= need:
+        transitions = transitions + [seq]
+        return want, _state(want, want, 0, seq, transitions, len(transitions) >= c["breaker_max"])
+    return applied, _state(applied, want, cnt, seq, transitions, flapping)
 
 ENV = os.environ.get("AFROWS_ENV", "/etc/afrows/afrows.env")
 XRAY = os.environ.get("AFROWS_XRAY_BIN", "/usr/local/bin/xray")
@@ -218,11 +263,11 @@ def hysteresis_cfg():
         except Exception:
             return default
     return {
-        "k_out": _i("AFROWS_EGRESS_K_OUT", es.DEFAULTS["k_out"]),
-        "k_back": _i("AFROWS_EGRESS_K_BACK", es.DEFAULTS["k_back"]),
-        "breaker_window": _i("AFROWS_EGRESS_BREAKER_WINDOW", es.DEFAULTS["breaker_window"]),
-        "breaker_max": _i("AFROWS_EGRESS_BREAKER_MAX", es.DEFAULTS["breaker_max"]),
-        "breaker_extra": _i("AFROWS_EGRESS_BREAKER_EXTRA", es.DEFAULTS["breaker_extra"]),
+        "k_out": _i("AFROWS_EGRESS_K_OUT", EGRESS_STATE_DEFAULTS["k_out"]),
+        "k_back": _i("AFROWS_EGRESS_K_BACK", EGRESS_STATE_DEFAULTS["k_back"]),
+        "breaker_window": _i("AFROWS_EGRESS_BREAKER_WINDOW", EGRESS_STATE_DEFAULTS["breaker_window"]),
+        "breaker_max": _i("AFROWS_EGRESS_BREAKER_MAX", EGRESS_STATE_DEFAULTS["breaker_max"]),
+        "breaker_extra": _i("AFROWS_EGRESS_BREAKER_EXTRA", EGRESS_STATE_DEFAULTS["breaker_extra"]),
     }
 
 
@@ -238,7 +283,7 @@ def choose_catchall(via_germany_ok, pool_ok, state):
         want = "proxy"
     else:
         want = "direct"
-    return es.decide(want, state, CATCHALL_ORDER, hysteresis_cfg())
+    return decide(want, state, CATCHALL_ORDER, hysteresis_cfg())
 
 
 def _breaker_of(state_file):
@@ -286,7 +331,7 @@ def choose_gaming(village_ok, germany_ok, pool_ok, state):
         want = "proxy"
     else:
         want = "via-village"
-    return es.decide(want, state, GAMING_ORDER, hysteresis_cfg())
+    return decide(want, state, GAMING_ORDER, hysteresis_cfg())
 
 
 def decide_gaming():

@@ -19,9 +19,13 @@ yank live traffic back and forth (best-practice #10).
 
 ## Decision (Option A — formalize in place, box-local, behavior-preserving on order)
 
-Introduce `scripts/egress_state.py`, a **pure, deterministic** transition core, and route
-both `choose_*` through it. The priority ladders are made **explicit and single-sourced**
-(`CATCHALL_ORDER`, `GAMING_ORDER`) but their order is identical to the prior inline logic.
+Inline a **pure, deterministic** transition core (`decide` / `rank` /
+`EGRESS_STATE_DEFAULTS`) **into `afrows-egress-mode-sync.py`** and route both `choose_*`
+through it. It is kept *in the reconciler* — not a sibling module — because the operator
+deploy convention copies each reconciler as a single self-contained file; a sibling import
+would silently break failover the first time the script is deployed without its module.
+The priority ladders are made **explicit and single-sourced** (`CATCHALL_ORDER`,
+`GAMING_ORDER`) but their order is identical to the prior inline logic.
 
 - **Asymmetric hysteresis** — fail **out** of a failing higher-priority path fast
   (`k_out=2`, unchanged from today) but fail **back** to a recovered one slowly
@@ -59,15 +63,19 @@ both `choose_*` through it. The priority ladders are made **explicit and single-
 
 ## Consequences
 
-- Transitions are explicit, single-sourced, and tested (`test_egress_state.py`);
-  `test_egress_mode_sync.py` proves the ladder order is unchanged and fail-out is still 2.
-- **Deploy note:** `egress_state.py` MUST be deployed alongside `afrows-egress-mode-sync.py`
-  (sibling import); the systemd unit runs the script from a directory that must contain both.
+- Transitions are explicit, single-sourced, and tested: `test_egress_state.py` loads
+  `decide`/`rank` from the reconciler module; `test_egress_mode_sync.py` proves the ladder
+  order is unchanged and fail-out is still 2. Both run in CI (`ci.yml`), which also
+  exercises that the reconciler module imports cleanly.
+- **Self-contained deploy:** the state machine is inlined, so the reconciler remains a
+  single file the operator deploys (no separate module, no sibling-import failure mode).
 - **Human-gated deploy:** this changes the live applier's transition timing; roll out with
   the Python suites green and observe `egress-health.json` breaker state.
 
 ## Conditions that invalidate this decision
 
+- If the operator deploy convention changes to ship a directory (not single files), the
+  core could be extracted back to a shared module.
 - If P4 re-orders the ladder (VLESS primary / MikroTik-direct fallback), `CATCHALL_ORDER`
   / `GAMING_ORDER` change here (one tested place) — the machine itself stays.
 - If the decision is ever moved into the backend (TS), this box-local formalization is
