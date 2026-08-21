@@ -359,6 +359,35 @@ if (conflicts.length) {
   };
 }
 
+// ---- STAGE 3b: F9 MATERIALIZATION GATE (before spending a review cycle) -----
+// The workflow sandbox cannot import scripts/orchestration/execution-state.mjs
+// (that pure module is the tested source of truth, apps/backend/test/
+// execution-state.test.ts); this mirrors its classify/fallback logic. Two real
+// runs (SSRF, ReDoS) produced empty deliverables yet still ran a full
+// adversarial review on nothing. Detect IMPLEMENTATION_MISSING here and return
+// WITHOUT paying for the reviewer.
+const expectedWriters = runnable.filter((w) => w.writes_files !== false).length;
+const changedOwnedFiles = collected.reduce((n, r) => n + ((r.files_changed && r.files_changed.length) || 0), 0);
+const tier = (impact.overall_risk || 'MEDIUM'); // best signal available inside the workflow
+if (expectedWriters > 0 && changedOwnedFiles === 0) {
+  const highRisk = tier === 'HIGH';
+  return {
+    stage: 'IMPLEMENT',
+    status: 'BLOCKED',
+    execution_state: 'IMPLEMENTATION_MISSING',
+    reason:
+      'F9 materialization gate: writers were expected but no owned files changed. Review/validation SKIPPED to avoid spending a cycle on an empty deliverable.',
+    fallback: highRisk
+      ? { action: 'human', reason: 'implementation missing on a high-risk task; require a human to re-dispatch or implement directly' }
+      : { action: 'retry-or-serialize', reason: 're-dispatch the writers, or serialize one specialist; do not review nothing' },
+    impact,
+    plan,
+    results: collected,
+    expected_writers: expectedWriters,
+    changed_owned_files: changedOwnedFiles,
+  };
+}
+
 // ---- STAGE 4: INTEGRATION BARRIER ------------------------------------------
 phase('Integrate');
 const review = await agent(
