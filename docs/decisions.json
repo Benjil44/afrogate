@@ -134,6 +134,18 @@
       "affected_tables": ["alerts", "outbound_subscriptions"],
       "forbidden_changes": ["reordering the egress priority ladder under the guise of P2 (that is P4)", "letting the circuit breaker pin traffic on a worse/dead path", "extracting the state machine to a sibling module that the single-file deploy would not ship"],
       "required_tests": ["scripts/test_egress_state.py", "scripts/test_egress_mode_sync.py"]
+    },
+    {
+      "id": "INV-18",
+      "status": "active",
+      "source_adr": "docs/adr/0010-egress-p3-uplink-pool-stability-scoring.md",
+      "kind": "scoring",
+      "decision": "The uplink pool selector (afrows-uplink-pool-sync.py score_relay) ranks relays by a STABILITY score: success_rate dominant (*1000), recency-weighted throughput, and a variance penalty (1/(1+CV) over passing samples). Eligibility (last-K healthy + MIN_SUCCESS), cold-start, stale gate, and the 0-eligible SAFETY are UNCHANGED — only ranking among eligible relays changed. Live latency selection stays downstream (pool xray observatory/leastPing).",
+      "affected_paths": ["scripts/afrows-uplink-pool-sync.py"],
+      "affected_services": [],
+      "affected_tables": ["outbounds"],
+      "forbidden_changes": ["changing eligibility/safety gates under the guise of scoring", "letting raw instantaneous throughput alone decide selection", "emptying the pool on a scoring change (0-eligible must leave it unchanged)"],
+      "required_tests": ["scripts/test_uplink_pool_score.py"]
     }
   ]
 }

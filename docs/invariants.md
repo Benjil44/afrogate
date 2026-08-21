@@ -41,6 +41,8 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 
 ## 6. Security exceptions
 
+- **INV-18** The uplink pool selector (`afrows-uplink-pool-sync.py` `score_relay`) ranks relays by a **stability score**: `success_rate` dominant (`*1000`), **recency-weighted** throughput, and a **variance penalty** (`1/(1+CV)` over passing samples) so raw instantaneous throughput never alone decides. **Eligibility** (last-K healthy + `MIN_SUCCESS`), cold-start, the stale gate, and the **0-eligible SAFETY** (leave the pool unchanged) are **UNCHANGED** — only ranking among eligible relays changed. Live latency selection stays downstream (pool xray observatory/leastPing). → ADR 0010; `docs/decisions.json` INV-18.
+
 - **INV-17** Egress transitions run through the explicit pure `decide()` **inlined in `afrows-egress-mode-sync.py`** (**asymmetric hysteresis** `k_out=2`/`k_back=3`, a **flapping circuit breaker** that damps but never pins a worse path, and a bounded transition log). It is kept in the reconciler — not a sibling module — so the script stays a **self-contained single-file deploy**. The **priority ORDER is UNCHANGED** from the prior inline logic — `CATCHALL_ORDER` (via-germany > proxy > direct) and `GAMING_ORDER` (via-village > via-germany > proxy). **Reordering the ladder is P4, not P2.** → ADR 0009; `docs/decisions.json` INV-17.
 
 - **INV-16** Subscription-refresh health is **durable + causal, observability-only**: `outbound_subscriptions.consecutive_failures` (reset on success) / `last_success_at` / `last_failure_reason` (typed code), a consecutive-failure alert via the existing `AlertEngineService` (non-flapping open/resolve), and the alert open→`resolved_at` lifecycle **is** the transition record. MUST NOT change the P0 accept/reject decision, wire `route_failover_events` for refresh (semantic mismatch), or add a second source of truth. No `SUBSCRIPTION_PARSE_FAILED` (the parser does not throw). → ADR 0008; `docs/decisions.json` INV-16.
@@ -60,6 +62,7 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 - [ADR 0007](adr/0007-subscription-key-non-security-hashing-exception.md) — `subscription_key` SHA-1 is non-security hashing (CodeQL #8 risk-accepted)
 - [ADR 0008](adr/0008-egress-p1-subscription-refresh-observability.md) — Egress P1: subscription-refresh observability & causal state
 - [ADR 0009](adr/0009-egress-p2-explicit-state-machine-anti-flap.md) — Egress P2: explicit state machine, asymmetric hysteresis, circuit breaker
+- [ADR 0010](adr/0010-egress-p3-uplink-pool-stability-scoring.md) — Egress P3: uplink pool stability scoring
 
 ## See also
 
