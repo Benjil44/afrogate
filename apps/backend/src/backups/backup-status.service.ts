@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { readFile, stat } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type {
   AdminBackupIssueSummary,
@@ -298,9 +298,15 @@ export class BackupStatusService {
       return { payload: null, readable: false, updatedAt: null };
     }
 
+    // Open the file ONCE and stat + read through the same handle, so the
+    // size/type check and the read observe the same inode — closing the
+    // check-then-read race (CodeQL js/file-system-race: the path could be
+    // swapped between a separate stat() and readFile()).
+    const absolutePath = resolve(pathValue);
+    let handle: Awaited<ReturnType<typeof open>> | null = null;
     try {
-      const absolutePath = resolve(pathValue);
-      const fileStat = await stat(absolutePath);
+      handle = await open(absolutePath, 'r');
+      const fileStat = await handle.stat();
       if (!fileStat.isFile()) {
         issues.push({ code: 'backup_status_file_unreadable', severity: 'critical' });
         return { payload: null, readable: false, updatedAt: null };
@@ -310,7 +316,7 @@ export class BackupStatusService {
         return { payload: null, readable: false, updatedAt: fileStat.mtime.toISOString() };
       }
 
-      const fileContent = await readFile(absolutePath, 'utf8');
+      const fileContent = await handle.readFile('utf8');
       let parsed: unknown;
       try {
         parsed = JSON.parse(fileContent) as unknown;
@@ -331,6 +337,8 @@ export class BackupStatusService {
     } catch {
       issues.push({ code: 'backup_status_file_unreadable', severity: 'critical' });
       return { payload: null, readable: false, updatedAt: null };
+    } finally {
+      await handle?.close();
     }
   }
 
