@@ -153,6 +153,56 @@ describe('insecure-temp-file guard (predictable os.tmpdir() filenames)', () => {
   });
 });
 
+describe('command-injection guard (router egress operator scripts)', () => {
+  // SEC-CMD-001. These standalone operator scripts take a CLI router-id and shell
+  // it into `sudo psql`. Behavioral tests are impossible in CI (they exec sudo),
+  // so a static guard is the deterministic regression tool: no execSync shell
+  // string, and psql goes through execFileSync with an argument array.
+  const strip = (src: string) =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .map((l) => l.replace(/\/\/.*$/, ''))
+      .join('\n');
+
+  // execSync with a template-literal command (shell interpretation of an
+  // interpolated value) — the vulnerable primitive.
+  const execSyncShellString = /execSync\s*\(\s*`/;
+
+  const targets = [
+    join(repoRoot, 'scripts', 'afrows-router-egress-inspect.js'),
+    join(repoRoot, 'scripts', 'afrows-router-egress-set.js'),
+  ];
+
+  it('the guard matches the vulnerable primitive and ignores the safe replacement', () => {
+    assert.match('execSync(`sudo psql -c ${q}`)', execSyncShellString); // positive
+    assert.doesNotMatch("execFileSync('sudo', ['psql', '-c', q])", execSyncShellString); // negative
+  });
+
+  it('neither router egress script builds a shell command string with execSync', () => {
+    const violations: string[] = [];
+    for (const file of targets) {
+      strip(readFileSync(file, 'utf8'))
+        .split('\n')
+        .forEach((line, i) => {
+          if (execSyncShellString.test(line)) violations.push(`${file}:${i + 1}: ${line.trim()}`);
+        });
+    }
+    assert.deepEqual(
+      violations,
+      [],
+      `execSync shell-string found (use execFileSync('sudo', [...argv, q]) so a CLI arg cannot inject shell metacharacters):\n${violations.join('\n')}`,
+    );
+  });
+
+  it('both scripts route psql through execFileSync with an argument array', () => {
+    for (const file of targets) {
+      const src = readFileSync(file, 'utf8');
+      assert.match(src, /execFileSync\(\s*'sudo'\s*,\s*\[/, `${file} must invoke psql via execFileSync with an argv array`);
+    }
+  });
+});
+
 describe('polynomial-ReDoS guard (provider normalization)', () => {
   // Remove block and line comments so the fix's own explanatory prose (which
   // quotes the old pattern) cannot mask or fake a real regression.
