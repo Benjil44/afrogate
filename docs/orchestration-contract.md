@@ -234,6 +234,29 @@ structurally rather than parsing prose.
 
 ---
 
+## 11b. Closed-loop history overlay (F10)
+
+The router does not decide in a vacuum. `scripts/orchestration/telemetry-priors.mjs`
+reads the F8 telemetry log (`graphify-out/telemetry/runs.jsonl`) and turns recorded
+outcomes into **decision priors** the router layers on top of its deterministic base
+score:
+
+- **per-tier reliability** — fallback rate, success rate, avg human-interventions,
+  avg tokens, and the most common fallback reason for each complexity tier;
+- **a recent-vs-prior health signal** — `STABLE / DEGRADING / IMPROVING /
+  INSUFFICIENT_DATA` from the tail window vs the window before it;
+- **budget calibration** — flags a tier as `UNDER_/OVER_BUDGETED` when observed
+  tokens diverge from the static budget, with a rounded recommendation;
+- **reliability cautions** — surfaced when a tier historically falls back a lot or
+  health is degrading.
+
+This overlay is **advisory only**. It annotates `routing.history`; it never mutates
+the auditable base `score`/`tier`/`plan`, and it degrades safely — a missing/empty
+log yields `{available:false}` and byte-identical pre-F10 routing. It is pure and
+deterministic (record append order is the time proxy; no wall-clock, no randomness),
+covered by `apps/backend/test/telemetry-priors.test.ts`. Inspect it with
+`node scripts/orchestration/telemetry.mjs health` (or `telemetry-priors.mjs`).
+
 ## 12. Known limitations
 
 - The knowledge layer does not guarantee complete coverage; a missing link is not
@@ -242,6 +265,10 @@ structurally rather than parsing prose.
   not prove.
 - Worktree isolation costs setup time and disk per writing agent.
 - Parallelism helps only when packages are genuinely file-disjoint.
+- The F10 history overlay is only as good as the log: priors below
+  `MIN_RUNS_FOR_PRIOR` are flagged `LOW_CONFIDENCE`, and the health signal needs
+  `2×window` runs before it reads anything but `INSUFFICIENT_DATA`. It informs, it
+  does not decide.
 - `lint` is not yet a real gate.
 - E2E depends on local dev servers and is sensitive to the environment (Linux CI
   font metrics differ from Windows).

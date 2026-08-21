@@ -4,6 +4,7 @@
 //   node scripts/orchestration/telemetry.mjs record --json '<metrics-json>'
 //   node scripts/orchestration/telemetry.mjs record --file <metrics.json>
 //   node scripts/orchestration/telemetry.mjs summary [--json]
+//   node scripts/orchestration/telemetry.mjs health [--json] [--window N]   (F10 priors/trend)
 //
 // Records live in graphify-out/telemetry/runs.jsonl (gitignored / local /
 // regenerable). Workflow scripts have no filesystem access, so the main loop
@@ -13,6 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { computePriors, healthSignal } from './telemetry-priors.mjs';
 
 const ROOT = process.cwd();
 const DIR = path.join(ROOT, 'graphify-out', 'telemetry');
@@ -144,8 +146,24 @@ if (cmd === 'record') {
     console.log(`avg agents/run=${s.averages.agents_per_run} avg human-interventions/run=${s.averages.human_interventions_per_run}`);
     console.log(`by outcome: ${JSON.stringify(s.by_outcome)}`);
   }
+} else if (cmd === 'health') {
+  // F10 — the consumer side of the loop: per-tier priors + recent-vs-prior trend.
+  const records = readRecords();
+  const wIdx = rest.indexOf('--window');
+  const window = wIdx >= 0 ? NUM(rest[wIdx + 1]) || 5 : 5;
+  const priors = computePriors(records);
+  const health = healthSignal(records, window);
+  if (rest.includes('--json')) {
+    console.log(JSON.stringify({ schema: 'afrows-telemetry-health/v1', runs: records.length, priors, health }, null, 2));
+  } else {
+    console.log(`runs=${records.length} health=${health.state}${health.recent ? ` (recent success ${health.recent.success_rate} vs prior ${health.prior.success_rate})` : ''}`);
+    for (const t of Object.keys(priors)) {
+      const p = priors[t];
+      console.log(`  ${t.padEnd(9)} runs=${p.runs} fallback=${p.fallback_rate} success=${p.success_rate} avg_tok=${p.avg_tokens} interventions=${p.avg_human_interventions} [${p.confidence}]`);
+    }
+  }
 } else {
-  console.error('usage: telemetry.mjs record --json <json> | record --file <path> | summary [--json]');
+  console.error('usage: telemetry.mjs record --json <json> | record --file <path> | summary [--json] | health [--json] [--window N]');
   process.exit(2);
 }
 

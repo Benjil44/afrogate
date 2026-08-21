@@ -13,6 +13,7 @@
 
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { readRecordsSafe, routingAdvice } from './telemetry-priors.mjs';
 
 const ROOT = process.cwd();
 const argv = process.argv.slice(2);
@@ -82,6 +83,12 @@ const PLANS = {
 };
 const plan = PLANS[tier];
 
+// ---- F10: closed-loop history overlay (advisory; base score is untouched) ---
+// Best-effort read of the F8 telemetry log. If it is absent/empty the overlay is
+// {available:false} and routing is byte-identical to the pre-F10 behavior. This
+// layer only ANNOTATES — it never changes `tier`, `score`, or `plan` above.
+const history = routingAdvice(readRecordsSafe(), tier, plan.token_budget);
+
 // ---- validation router (F3) — evidence-tagged, UNKNOWN escalates ------------
 const verifiedTests = impact.targeted_tests?.verified || [];
 const conventionTests = impact.targeted_tests?.convention_hints || [];
@@ -117,6 +124,7 @@ const routing = {
   complexity: { tier, score, signals },
   plan,
   validation,
+  history,
   note:
     'Deterministic risk-driven routing. TRIVIAL/SMALL should NOT pay for the full workflow; HIGH/CRITICAL should. UNKNOWN coverage always escalates to broader validation. Remote CodeQL/CI is the final security arbiter.',
 };
@@ -137,4 +145,14 @@ if (asJson) {
   if (validation.unknown_coverage.length) L(`  UNKNOWN coverage (escalates): ${validation.unknown_coverage.join(', ')}`);
   L(`  broader required: ${validation.broader_required}${validation.broader_reasons.length ? ' — ' + validation.broader_reasons.join('; ') : ''}`);
   L(`  security gate: ${validation.security_gate} | remote: ${validation.remote_gate}`);
+  L('');
+  if (!history.available) {
+    L(`History (F10): ${history.reason} — routing on static heuristics only.`);
+  } else {
+    const p = history.tier_prior;
+    L(`History (F10): ${history.runs} run(s) | health ${history.health.state} | tier ${tier}: fallback ${p.fallback_rate}, success ${p.success_rate}, avg ${p.avg_tokens} tok [${p.confidence}]`);
+    L(`  budget calibration: ${history.budget_calibration.verdict}${history.budget_calibration.verdict !== 'WELL_CALIBRATED' && history.budget_calibration.verdict !== 'INSUFFICIENT_DATA' ? ` -> recommend ~${history.budget_calibration.recommended_budget} (static ${history.budget_calibration.static_budget})` : ''}`);
+    if (history.cautions.length) for (const c of history.cautions) L(`  ⚠ ${c}`);
+    else L('  ⚠ (no cautions)');
+  }
 }
