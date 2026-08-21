@@ -110,6 +110,18 @@
       "affected_tables": ["outbounds"],
       "forbidden_changes": ["swapping the subscription_key hash algorithm in place without a recompute+backfill migration", "treating subscription_key as a security token / exposing it to clients / authorizing off it"],
       "required_tests": []
+    },
+    {
+      "id": "INV-16",
+      "status": "active",
+      "source_adr": "docs/adr/0008-egress-p1-subscription-refresh-observability.md",
+      "kind": "observability",
+      "decision": "Subscription refresh health is durable + causal: consecutive_failures/last_success_at/last_failure_reason on outbound_subscriptions; typed reason codes (no SUBSCRIPTION_PARSE_FAILED — parser does not throw); consecutive-failure alert via the existing AlertEngineService (non-flapping open/resolve); transition record = the alert lifecycle (NOT route_failover_events, NOT a new table). Observability only — no P0 accept/reject or topology change.",
+      "affected_paths": ["apps/backend/src/operations/operations.service.ts", "apps/backend/src/operations/subscription-refresh-reason.ts", "apps/backend/src/alerts/alert-engine.service.ts", "apps/backend/src/database/schema.ts", "infra/postgres/migrations/0055_subscription_refresh_observability.sql"],
+      "affected_services": ["OperationsService", "AlertEngineService"],
+      "affected_tables": ["outbound_subscriptions", "alerts"],
+      "forbidden_changes": ["changing the P0 accept/reject decision under the guise of observability", "wiring route_failover_events for subscription refresh (semantic mismatch)", "adding a second source of truth for refresh state"],
+      "required_tests": ["apps/backend/test/subscription-refresh-reason.test.ts"]
     }
   ]
 }

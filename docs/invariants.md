@@ -41,6 +41,8 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 
 ## 6. Security exceptions
 
+- **INV-16** Subscription-refresh health is **durable + causal, observability-only**: `outbound_subscriptions.consecutive_failures` (reset on success) / `last_success_at` / `last_failure_reason` (typed code), a consecutive-failure alert via the existing `AlertEngineService` (non-flapping open/resolve), and the alert open→`resolved_at` lifecycle **is** the transition record. MUST NOT change the P0 accept/reject decision, wire `route_failover_events` for refresh (semantic mismatch), or add a second source of truth. No `SUBSCRIPTION_PARSE_FAILED` (the parser does not throw). → ADR 0008; `docs/decisions.json` INV-16.
+
 - **INV-15** `outbounds.subscription_key` (in `outbound-subscription-parser.ts`) is a **non-security identity / de-dup hash** — SHA-1, truncated to 16 hex. CodeQL `js/weak-cryptographic-algorithm` (**#8**) is **risk-accepted, not a defect**: the value is never a token/secret, never client-exposed, and nothing authenticates off it, so collision resistance is not a boundary here. It MUST NOT be swapped to another algorithm **in place** — the sync path deletes children whose key is not in the new set, so a naive swap churns every row (resets `enabled`, gaps the village-reserve pool). Any hardening MUST be a human-approved SHA-256 migration with recompute+backfill and atomic cutover. → ADR 0007; `docs/decisions.json` INV-15.
 
 ---
@@ -54,6 +56,7 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 - [ADR 0005](adr/0005-telegram-users-natural-key-no-fk.md) — `telegram_users.telegram_id` natural key, no FK
 - [ADR 0006](adr/0006-knowledge-vault-generated-decisions-in-adrs.md) — Vault is generated; decisions live in ADRs/invariants
 - [ADR 0007](adr/0007-subscription-key-non-security-hashing-exception.md) — `subscription_key` SHA-1 is non-security hashing (CodeQL #8 risk-accepted)
+- [ADR 0008](adr/0008-egress-p1-subscription-refresh-observability.md) — Egress P1: subscription-refresh observability & causal state
 
 ## See also
 
