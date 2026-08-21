@@ -152,3 +152,48 @@ describe('insecure-temp-file guard (predictable os.tmpdir() filenames)', () => {
     );
   });
 });
+
+describe('polynomial-ReDoS guard (provider normalization)', () => {
+  // Remove block and line comments so the fix's own explanatory prose (which
+  // quotes the old pattern) cannot mask or fake a real regression.
+  const strip = (src: string) =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .map((l) => l.replace(/\/\/.*$/, ''))
+      .join('\n');
+
+  // The vulnerable trailing-anchor alternation strip: `.replace(/^_+|_+$/g, '')`.
+  // Its `_+$` alternative backtrack-scans (O(n^2), js/polynomial-redos). The
+  // linear stripSurroundingUnderscores() helper replaces it.
+  const reDoSStrip = /\.replace\s*\(\s*\/\^_\+\|_\+\$\/g\s*,/;
+
+  const targets = [
+    join(repoRoot, 'apps', 'backend', 'src', 'billing', 'billing-normalizers.ts'),
+    join(repoRoot, 'apps', 'backend', 'src', 'billing', 'payment-provider-adapters.ts'),
+  ];
+
+  it('the guard itself matches the vulnerable pattern and ignores the safe replacement', () => {
+    assert.match(`value.replace(/^_+|_+$/g, '')`, reDoSStrip); // positive sample
+    assert.doesNotMatch(`stripSurroundingUnderscores(value)`, reDoSStrip); // negative sample
+    assert.doesNotMatch(`value.replace(/[^a-z0-9_-]+/g, '_')`, reDoSStrip); // the kept collapse regex
+  });
+
+  it('neither billing provider normalizer uses the polynomial /^_+|_+$/g strip', () => {
+    const violations: string[] = [];
+    for (const file of targets) {
+      strip(readFileSync(file, 'utf8'))
+        .split('\n')
+        .forEach((line, i) => {
+          if (reDoSStrip.test(line)) violations.push(`${file}:${i + 1}: ${line.trim()}`);
+        });
+    }
+    assert.deepEqual(
+      violations,
+      [],
+      `Polynomial-ReDoS strip /^_+|_+$/g found (use stripSurroundingUnderscores() from ` +
+        `src/billing/billing-normalizers.ts — a linear two-pointer scan with no backtracking):\n` +
+        `${violations.join('\n')}`,
+    );
+  });
+});

@@ -12,6 +12,7 @@ import {
   normalizeSlug,
   normalizeTelegramUsername,
   normalizeUsageMultiplier,
+  stripSurroundingUnderscores,
   bytesAtMultiplier,
   usageMultiplierLabel,
   parseJsonValue,
@@ -137,6 +138,41 @@ describe('normalizeProvider', () => {
   it('rejects empty or overly long providers', () => {
     assert.throws(() => normalizeProvider('!!!'), BadRequestException);
     assert.throws(() => normalizeProvider('a'.repeat(41)), BadRequestException);
+  });
+  it('preserves the full normalization contract (lowercase, collapse, strip, length)', () => {
+    assert.equal(normalizeProvider('STRIPE'), 'stripe'); // lowercase
+    assert.equal(normalizeProvider('a b   c'), 'a_b_c'); // non-alnum runs collapse to one _
+    assert.equal(normalizeProvider('__paypal'), 'paypal'); // leading _ stripped
+    assert.equal(normalizeProvider('paypal__'), 'paypal'); // trailing _ stripped
+    assert.equal(normalizeProvider('__pay_pal__'), 'pay_pal'); // both sides, inner kept
+    assert.equal(normalizeProvider('a_b-c'), 'a_b-c'); // hyphen kept, no collapse
+    assert.throws(() => normalizeProvider('___'), BadRequestException); // all-underscore -> required
+    assert.equal(normalizeProvider('a'.repeat(40)), 'a'.repeat(40)); // exactly 40 ok
+  });
+  it('handles the polynomial-ReDoS shape without catastrophic backtracking (js/polynomial-redos guard)', () => {
+    // The old `.replace(/^_+|_+$/g,'')` was O(n^2) on this input (~seconds for
+    // 50k). The linear strip returns the correct value effectively instantly;
+    // the test completing at all proves no catastrophic backtracking — no
+    // timing assertion (which would be machine-flaky) is used.
+    const pathological = 'a' + '_'.repeat(50000) + 'b';
+    // Result exceeds 40 chars (underscores are kept, not collapsed) -> rejected,
+    // exactly as the old impl would have after the (now-linear) strip.
+    assert.throws(() => normalizeProvider(pathological), BadRequestException);
+  });
+});
+
+describe('stripSurroundingUnderscores', () => {
+  it('strips leading and trailing underscores only, keeping the interior', () => {
+    assert.equal(stripSurroundingUnderscores('__ab__'), 'ab');
+    assert.equal(stripSurroundingUnderscores('a__b'), 'a__b');
+    assert.equal(stripSurroundingUnderscores('___'), '');
+    assert.equal(stripSurroundingUnderscores(''), '');
+    assert.equal(stripSurroundingUnderscores('nostrip'), 'nostrip');
+  });
+  it('is linear on a long underscore run flanked by non-underscores (no backtracking)', () => {
+    const s = 'a' + '_'.repeat(50000) + 'b';
+    // Interior underscores are neither leading nor trailing -> returned intact.
+    assert.equal(stripSurroundingUnderscores(s), s);
   });
 });
 
