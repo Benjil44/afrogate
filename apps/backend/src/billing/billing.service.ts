@@ -3407,12 +3407,13 @@ export class BillingService {
     };
   }
 
-  /** The native afrows-in VLESS entry link for a client config (admin-only).
-   *  The link's display name (the remark shown in the client app) is the
-   *  customer's display name (e.g. "ramin"), falling back to the config label
-   *  (e.g. "vless-1") then "Afrows". */
+  /** The native VLESS entry link for a client config (admin-only), used by the
+   *  dashboard "copy link" button. Prefers the fast Germany entry (Cloudflare-fronted
+   *  WS+TLS) when AFROWS_DE_ENTRY_* is enabled, falling back to the Ireland afrows-in
+   *  inbound. The link's display name (remark in the client app) is the customer's
+   *  display name (e.g. "ben"), falling back to the config label then "Afrows". */
   async getClientConfigEntryLink(clientConfigId: string): Promise<{ link: string | null }> {
-    const inbound = readAfrowsInboundEnv(process.env);
+    const inbound = readAfrowsDeEntryEnv(process.env) ?? readAfrowsInboundEnv(process.env);
     if (!inbound) return { link: null };
     const result = await this.database.query<{
       entryUuid: string | null;

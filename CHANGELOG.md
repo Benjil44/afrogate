@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.90 - 2026-08-24
+
+- **Dashboard "copy link" now hands out the Germany entry.** `getClientConfigEntryLink` (the admin per-customer entry-link the dashboard's copy-link button uses, and the source of the single VLESS links operators distribute) now prefers the fast Germany entry (`readAfrowsDeEntryEnv`, Cloudflare-fronted WS+TLS) when enabled, falling back to the Ireland `afrows-in` inbound. Previously it always returned the slow Ireland link, so copied/distributed single-VLESS configs (e.g. one named "ben" after the customer's display name) stayed on the throttled path even after the Germany rollout. Remark/name behavior unchanged.
+
 ## 0.114.89 - 2026-08-24
 
 - **Subscription: Germany primary for everyone; Starlink/village fallback gated by the per-customer bypass flag.** The `de.afrows.com` Germany entry now leads **every** customer's subscription. The Ireland/village entries (WireGuard, afrows-in WS, afrows-reality) route out via the village Starlink and are now included **only when `customer_accounts.egress_bypass_enabled` is ON** (the operator's bypass list) — so only those customers fall back to Starlink when the main path is gone; everyone else is Germany-only. Safety: when the Germany entry is unavailable (env off / no `entry_uuid`), the Ireland fallback is included for **all** customers so no one is left without an entry (`billing.service.getClientEgressBypassEnabled` + `includeStarlinkFallback = bypassEnabled || deEntryLink === null`). Also seeds the Germany box into the admin `servers` inventory (`de.afrows.com`, DE/Frankfurt, role `entry`).
