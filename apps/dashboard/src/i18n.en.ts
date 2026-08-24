@@ -106,6 +106,8 @@ export const en = {
       egAlertChecked: 'checked',
       egFlapTitle: 'Egress unstable',
       egFlapHint: 'the egress path is flapping (frequent failovers) — it is being damped',
+      egBypass: 'Bypass',
+      egBypassHint: 'Allow this customer to fall over to direct MikroTik internet when VLESS is down (opt-in list)',
       egModeNormal: 'Normal',
       egModeGame: 'Game',
       egToGame: 'Switch to Game (Starlink)',

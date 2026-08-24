@@ -108,6 +108,8 @@ export const fa: DashboardStrings = {
       egAlertChecked: 'بررسی',
       egFlapTitle: 'خروج ناپایدار',
       egFlapHint: 'مسیر خروج مدام جابه‌جا می‌شود (failover مکرر) — در حال مهار است',
+      egBypass: 'بایپس',
+      egBypassHint: 'به این مشتری اجازه بده هنگام قطع VLESS به اینترنت مستقیم مایکروتیک سوییچ کند (فهرست اختیاری)',
       egModeNormal: 'معمولی',
       egModeGame: 'گیمینگ',
       egToGame: 'تغییر به گیمینگ (استارلینک)',

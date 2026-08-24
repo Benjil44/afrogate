@@ -941,6 +941,8 @@ export interface AdminCustomerAccountSummary {
   loginEmail?: string | null;
   hasPassword?: boolean;
   egressTier?: EgressTier | string | null;
+  /** Egress P4 Part A: opt-in MikroTik-direct bypass allow-list (activation is Part B). */
+  egressBypassEnabled?: boolean;
   gamingEntitled?: boolean;
   expiresAt?: string | null;
   tags?: string[];
@@ -1446,6 +1448,8 @@ export interface UpdateCustomerAccountRequest {
   loginEmail?: string | null;
   password?: string | null;
   egressTier?: EgressTier;
+  /** Egress P4 Part A: opt-in MikroTik-direct bypass allow-list. */
+  egressBypassEnabled?: boolean;
   gamingEntitled?: boolean;
   expiresAt?: string | null;
   tags?: string[];

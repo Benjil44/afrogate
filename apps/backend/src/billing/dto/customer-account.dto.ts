@@ -146,6 +146,10 @@ export class CreateCustomerAccountDto {
 
   @IsOptional()
   @IsBoolean()
+  egressBypassEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   gamingEntitled?: boolean;
 
   @IsOptional()
@@ -232,6 +236,10 @@ export class UpdateCustomerAccountDto {
   @IsOptional()
   @IsIn(['normal', 'gaming'])
   egressTier?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  egressBypassEnabled?: boolean;
 
   @IsOptional()
   @IsBoolean()

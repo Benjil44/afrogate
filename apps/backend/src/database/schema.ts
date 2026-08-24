@@ -593,6 +593,10 @@ export const customerAccounts = pgTable(
     referralCode: text('referral_code'),
     referredBy: uuid('referred_by').references((): AnyPgColumn => customerAccounts.id),
     egressTier: text('egress_tier').notNull().default('normal'),
+    // Egress P4 Part A (migration 0056): opt-in MikroTik-direct bypass allow-list.
+    // When VLESS/foreign egress is down, only customers with this set may fall over
+    // to the MikroTik-direct internet (activation is Part B).
+    egressBypassEnabled: boolean('egress_bypass_enabled').notNull().default(false),
     // Auth credentials for mobile-app account login (migration 0030). password_hash is a
     // hash, never plaintext; login_email is unique case-insensitively (see loginEmailIdx).
     loginEmail: text('login_email'),

@@ -3554,9 +3554,9 @@ export class BillingService {
           void this.xrayProvisioning.reconcile();
         }
       }
-      // Egress-tier change (Normal/Germany <-> Game/Starlink): kick the reconciler
-      // so the new route applies in seconds instead of waiting for its 60s timer.
-      if (changedFields.includes('egressTier')) {
+      // Egress-tier or bypass-list change: kick the reconciler so the new routing
+      // applies in seconds instead of waiting for its 60s timer.
+      if (changedFields.includes('egressTier') || changedFields.includes('egressBypassEnabled')) {
         this.triggerEgressModeSync();
       }
 
@@ -7437,6 +7437,7 @@ export class BillingService {
         ca.login_email AS "loginEmail",
         (ca.password_hash IS NOT NULL) AS "hasPassword",
         ca.egress_tier AS "egressTier",
+        ca.egress_bypass_enabled AS "egressBypassEnabled",
         ca.gaming_entitled AS "gamingEntitled",
         ca.expires_at AS "expiresAt",
         ca.tags AS "tags",
@@ -8819,6 +8820,7 @@ export class BillingService {
     if (dto.usedBytes !== undefined) add('usedBytes', 'used_bytes', dto.usedBytes);
     if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
     if (dto.egressTier !== undefined) add('egressTier', 'egress_tier', dto.egressTier);
+    if (dto.egressBypassEnabled !== undefined) add('egressBypassEnabled', 'egress_bypass_enabled', dto.egressBypassEnabled);
     if (dto.gamingEntitled !== undefined) add('gamingEntitled', 'gaming_entitled', dto.gamingEntitled);
     if (dto.expiresAt !== undefined) add('expiresAt', 'expires_at', dto.expiresAt);
     if (dto.tags !== undefined) add('tags', 'tags', dto.tags);

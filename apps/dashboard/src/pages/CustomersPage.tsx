@@ -349,6 +349,25 @@ export function CustomersPage({
     }
   };
 
+  // Egress P4 Part A: add/remove a customer from the MikroTik-direct bypass allow-list.
+  // Persists egress_bypass_enabled; when VLESS is down, only allow-listed customers fall
+  // over to MikroTik-direct (activation is Part B). Optimistic, mirrors toggleEgressTier.
+  const toggleBypass = async (a: AdminCustomerAccountSummary) => {
+    const next = !a.egressBypassEnabled;
+    setEgressBusy(a.id);
+    setError(null);
+    setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, egressBypassEnabled: next } : row)));
+    try {
+      await updateAdminCustomerAccount(sessionToken, a.id, { egressBypassEnabled: next });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      await load();
+    } finally {
+      setEgressBusy(null);
+    }
+  };
+
   const assignGatewayInEdit = async (routerId: string) => {
     if (!editId || !routerId) return;
     setError(null);
@@ -1039,6 +1058,17 @@ export function CustomersPage({
             <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
               {e.failover ? '⚠ ' : ''}{e.label}
             </span>
+            {/* Egress P4 Part A — opt-in MikroTik-direct bypass allow-list (activation is Part B). */}
+            <label className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-bold text-afro-muted" title={s.egBypassHint}>
+              <input
+                type="checkbox"
+                checked={Boolean(a.egressBypassEnabled)}
+                disabled={egressBusy === a.id}
+                onChange={() => void toggleBypass(a)}
+                className="h-3.5 w-3.5 accent-afro-teal disabled:opacity-50"
+              />
+              {s.egBypass}
+            </label>
           </span>
         );
       },
