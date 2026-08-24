@@ -108,3 +108,53 @@ export function readAfrowsRealityEnv(env: Record<string, string | undefined>): A
     flow: env.AFROWS_REALITY_FLOW?.trim() || undefined,
   };
 }
+
+/**
+ * Reads the NEW remote Germany entry (data plane: client→Cloudflare→tunnel→Germany
+ * →exit; fast, no Ireland/village hop). Emitted FIRST in the subscription as the
+ * primary, with the existing Ireland/village entries kept as failover. This is an
+ * ENTRY only (no exit creds) so per-user metering on the Germany xray is preserved.
+ *
+ * Gated on AFROWS_DE_ENTRY_ENABLED (default off). `AFROWS_DE_ENTRY_MODE` selects
+ * `ws` (VLESS+WS+TLS via Cloudflare — the deployed default) or `reality`. Returns
+ * null unless enabled AND the mode's required params are set.
+ */
+export function readAfrowsDeEntryEnv(env: Record<string, string | undefined>): AfrowsInboundParams | null {
+  const enabled = (env.AFROWS_DE_ENTRY_ENABLED?.trim().toLowerCase() ?? '');
+  if (!['1', 'true', 'yes', 'on'].includes(enabled)) return null;
+
+  const host = env.AFROWS_DE_ENTRY_HOST?.trim();
+  const serverName = env.AFROWS_DE_ENTRY_SNI?.trim();
+  if (!host || !serverName) return null;
+
+  const portRaw = Number(env.AFROWS_DE_ENTRY_PORT ?? '443');
+  const port = Number.isInteger(portRaw) && portRaw > 0 && portRaw <= 65535 ? portRaw : 443;
+  const fingerprint = env.AFROWS_DE_ENTRY_FP?.trim() || 'chrome';
+  const mode = (env.AFROWS_DE_ENTRY_MODE?.trim() || 'ws') === 'reality' ? 'reality' : 'ws';
+
+  if (mode === 'ws') {
+    return {
+      mode: 'ws',
+      host,
+      port,
+      serverName,
+      fingerprint,
+      wsPath: env.AFROWS_DE_ENTRY_WS_PATH?.trim() || '/afrowsws',
+      wsHost: env.AFROWS_DE_ENTRY_WS_HOST?.trim() || serverName,
+    };
+  }
+
+  const publicKey = env.AFROWS_DE_ENTRY_PBK?.trim();
+  const shortId = env.AFROWS_DE_ENTRY_SID?.trim();
+  if (!publicKey || !shortId) return null;
+  return {
+    mode: 'reality',
+    host,
+    port,
+    serverName,
+    fingerprint,
+    publicKey,
+    shortId,
+    flow: env.AFROWS_DE_ENTRY_FLOW?.trim() || undefined,
+  };
+}

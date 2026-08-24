@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAfrowsEntryUri, readAfrowsInboundEnv } from '../src/client/afrows-entry-link.ts';
+import {
+  buildAfrowsEntryUri,
+  readAfrowsDeEntryEnv,
+  readAfrowsInboundEnv,
+  readAfrowsRealityEnv,
+} from '../src/client/afrows-entry-link.ts';
 
 test('builds a ws+tls entry uri', () => {
   const uri = buildAfrowsEntryUri(
@@ -51,4 +56,70 @@ test('readAfrowsInboundEnv reality default + null when missing', () => {
   });
   assert.equal(cfg?.mode, 'reality');
   assert.equal(cfg?.publicKey, 'PBK');
+});
+
+// Deployed default: Germany is a VLESS+WS+TLS entry fronted by Cloudflare (de.afrows.com:443).
+const DE_ENV = {
+  AFROWS_DE_ENTRY_ENABLED: 'true',
+  AFROWS_DE_ENTRY_HOST: 'de.afrows.com',
+  AFROWS_DE_ENTRY_PORT: '443',
+  AFROWS_DE_ENTRY_SNI: 'de.afrows.com',
+  AFROWS_DE_ENTRY_WS_PATH: '/afrowsws',
+};
+
+test('readAfrowsDeEntryEnv off by default (flag unset) and when disabled', () => {
+  assert.equal(readAfrowsDeEntryEnv({}), null);
+  assert.equal(readAfrowsDeEntryEnv({ ...DE_ENV, AFROWS_DE_ENTRY_ENABLED: 'false' }), null);
+});
+
+test('readAfrowsDeEntryEnv null when enabled but missing host/sni', () => {
+  assert.equal(readAfrowsDeEntryEnv({ ...DE_ENV, AFROWS_DE_ENTRY_HOST: '' }), null);
+  assert.equal(readAfrowsDeEntryEnv({ ...DE_ENV, AFROWS_DE_ENTRY_SNI: undefined }), null);
+});
+
+test('readAfrowsDeEntryEnv (reality mode) null when missing pbk/sid', () => {
+  const rEnv = { ...DE_ENV, AFROWS_DE_ENTRY_MODE: 'reality' };
+  assert.equal(readAfrowsDeEntryEnv({ ...rEnv, AFROWS_DE_ENTRY_PBK: '' }), null);
+});
+
+test('readAfrowsDeEntryEnv builds the Germany WS+TLS entry when enabled + configured', () => {
+  const cfg = readAfrowsDeEntryEnv(DE_ENV);
+  assert.equal(cfg?.mode, 'ws');
+  assert.equal(cfg?.host, 'de.afrows.com');
+  assert.equal(cfg?.port, 443);
+  assert.equal(cfg?.wsPath, '/afrowsws');
+  const uri = buildAfrowsEntryUri(cfg!, 'uuid-de', 'Afrows Germany');
+  assert.match(uri, /^vless:\/\/uuid-de@de\.afrows\.com:443\?/);
+  assert.match(uri, /security=tls/);
+  assert.match(uri, /type=ws/);
+  assert.match(uri, /path=%2Fafrowsws/);
+  assert.match(uri, /#Afrows%20Germany$/);
+});
+
+test('subscription entry order: Germany first, Ireland reality as fallback when DE on', () => {
+  const de = readAfrowsDeEntryEnv(DE_ENV);
+  const ie = readAfrowsRealityEnv({
+    AFROWS_REALITY_HOST: '1.2.3.4',
+    AFROWS_REALITY_SNI: 'x.com',
+    AFROWS_REALITY_PBK: 'IE_PBK',
+    AFROWS_REALITY_SID: 'IE_SID',
+  });
+  // Mirrors billing.service assembly: [deEntryLink, ...ireland].filter(Boolean)
+  const ordered = [de, ie].filter((x): x is NonNullable<typeof x> => x !== null);
+  assert.equal(ordered.length, 2);
+  assert.equal(ordered[0]?.host, 'de.afrows.com'); // Germany primary
+  assert.equal(ordered[1]?.host, '1.2.3.4'); // Ireland fallback
+});
+
+test('subscription entry order: DE omitted when flag off, Ireland stays primary', () => {
+  const de = readAfrowsDeEntryEnv({ ...DE_ENV, AFROWS_DE_ENTRY_ENABLED: 'off' });
+  const ie = readAfrowsRealityEnv({
+    AFROWS_REALITY_HOST: '1.2.3.4',
+    AFROWS_REALITY_SNI: 'x.com',
+    AFROWS_REALITY_PBK: 'IE_PBK',
+    AFROWS_REALITY_SID: 'IE_SID',
+  });
+  const ordered = [de, ie].filter((x): x is NonNullable<typeof x> => x !== null);
+  assert.equal(ordered.length, 1);
+  assert.equal(ordered[0]?.host, '1.2.3.4'); // Ireland only
 });
