@@ -1947,6 +1947,36 @@ export interface AgentHeartbeatResponse {
   receivedAt: string;
 }
 
+/**
+ * Edge-sync contract between the Ireland backend and the remote Germany
+ * data-plane agent (called over Cloudflare). One active client_config the
+ * Germany agent should keep provisioned on its WS inbound. `email` is the
+ * stable provisioning identity (`cc_<clientConfigId>@afrows`), never PII.
+ */
+export interface EdgeDeClient {
+  clientConfigId: string;
+  entryUuid: string;
+  email: string;
+}
+
+export interface EdgeDeClientsResponse {
+  clients: EdgeDeClient[];
+}
+
+/** One per-customer usage delta reported by the Germany agent for metering. */
+export interface EdgeUsageDelta {
+  clientConfigId: string;
+  bytes: number;
+}
+
+export interface EdgeUsageReport {
+  deltas: EdgeUsageDelta[];
+}
+
+export interface EdgeUsageResponse {
+  applied: number;
+}
+
 export type ServerAccessMethod = 'ssh_key' | 'temporary_root_password' | 'temporary_root_key' | 'existing_admin_key';
 
 export type ServerBootstrapState = 'not_started' | 'pending' | 'installed' | 'failed' | 'revoked';

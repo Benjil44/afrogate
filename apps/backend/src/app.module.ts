@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database/database.module';
+import { EdgeModule } from './edge/edge.module';
 import { AgentHeartbeatController } from './agents/agent-heartbeat.controller';
 import { AgentsController } from './agents/agents.controller';
 import { AgentsService } from './agents/agents.service';
@@ -70,6 +71,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
       envFilePath: ['.env', '../../.env'],
     }),
     DatabaseModule,
+    EdgeModule,
   ],
   controllers: [
     AgentHeartbeatController,

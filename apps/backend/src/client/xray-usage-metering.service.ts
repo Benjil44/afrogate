@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DatabaseService } from '../database/database.service';
 import { parseUserStats } from './xray-usage';
+import { applyUsageDelta } from './usage-accounting';
 import { provisioningEmail } from './xray-provisioning';
 
 const execFileAsync = promisify(execFile);
@@ -71,23 +72,8 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     const deltas = parseUserStats(out);
     for (const delta of deltas) {
       // add the delta to the client and roll it up to the owning account
-      await this.database.query(
-        `
-          WITH cc AS (
-            UPDATE client_configs
-            SET used_bytes = used_bytes + $2,
-                last_connected_at = CASE WHEN $2 > 0 THEN now() ELSE last_connected_at END,
-                updated_at = now()
-            WHERE id = $1
-            RETURNING customer_account_id
-          )
-          UPDATE customer_accounts ca
-          SET used_bytes = ca.used_bytes + $2, updated_at = now()
-          FROM cc
-          WHERE ca.id = cc.customer_account_id
-        `,
-        [delta.clientConfigId, delta.bytes],
-      );
+      // (shared with the Germany edge-usage endpoint so accounting is identical)
+      await applyUsageDelta(this.database, delta.clientConfigId, delta.bytes);
     }
     if (deltas.length) {
       this.logger.log(`Metered ${deltas.length} user(s), ${deltas.reduce((a, d) => a + d.bytes, 0)} bytes`);

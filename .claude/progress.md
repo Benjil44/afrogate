@@ -2,6 +2,16 @@
 
 ## 2026-08-24
 
+### Edge-sync API — Ireland half for the Germany data-plane agent (0.114.91, flag-gated, inert by default)
+
+- **What.** New `EdgeModule` (`apps/backend/src/edge/`) the remote Germany agent calls over Cloudflare: `GET /api/edge/de/clients` → active client_configs (with `entry_uuid`) to keep provisioned on the Germany WS inbound; `POST /api/edge/de/usage` → per-customer `{clientConfigId, bytes}` deltas for metering. Germany agent is a separate build.
+- **Shared accounting.** Extracted the metering UPDATE into one `applyUsageDelta(db, id, bytes)` (`apps/backend/src/client/usage-accounting.ts`); **both** `XrayUsageMeteringService.meter()` and `EdgeService.applyUsage()` call it, so `used_bytes` on `client_configs` + `customer_accounts` is byte-for-byte identical no matter the source (additive, never resets). Returns rows-updated so an unknown id (0 rows) is not counted as applied.
+- **Guard.** `EdgeTokenGuard` + pure `checkEdgeToken()` (`apps/backend/src/security/edge-token.{guard.ts,ts}`): authorized iff `Authorization: Bearer <token>` == `AFROWS_EDGE_TOKEN` (constant-time, node:crypto). **Unset/empty ⇒ inert**: every request 503s until configured. Never logs token/uuid.
+- **Input hardening** (`edge-usage.ts::normalizeUsageDeltas`, pure): drop non-string/empty id + non-finite/≤0 bytes (bad row can't sink a good batch), floor to whole bytes, **cap one delta at 1 TB = 10^12 bytes** (bad agent overshoots by ≤1 TB/delta, can't nuke quota). Envelope DTO caps the batch at 5000; per-row validation is delegated to the service so it ignores (not 400s) bad rows.
+- **Enforcement latency.** This endpoint only *records*; quota cutoff stays on the metering tick (`AFROWS_XRAY_METERING_INTERVAL_SECONDS`, default 15s). Germany-path overshoot ≈ agent report cadence + one tick.
+- **Testability note.** Repo test runner is `node --test` with type-stripping → **cannot load `@Injectable` classes or extensionless relative imports**. So all tested logic lives in decorator-free, node/npm/type-only-import modules (`edge-token.ts`, `edge-usage.ts`, `usage-accounting.ts`); the guard/service/controller are thin wrappers. New tests: `edge-token-guard.test.ts`, `edge-service.test.ts`, `usage-accounting.test.ts`.
+- **Contracts:** `EdgeDeClient`, `EdgeDeClientsResponse`, `EdgeUsageDelta`, `EdgeUsageReport`, `EdgeUsageResponse` in `packages/shared`. Env: `AFROWS_EDGE_TOKEN` (`.env.example`, default empty). Backend 678/678, typecheck clean. Not deployed (commit only).
+
 ### Remote Germany xray entry — push-provisioning + primary subscription entry (0.114.87, flag-gated default off)
 
 - **Asymmetry handled by design.** Germany→Ireland is blocked; Ireland→Germany works only over the flaky `wg-village-de` route. So provisioning is **PUSHED** Ireland→Germany (never pulled), and the data plane (client→Germany→exit) needs neither Ireland nor the village. Chose **option (a)** — extend `XrayProvisioningService` to a second xray API endpoint — over a separate push-agent: reuses the existing `adu`/`rmu` reconcile loop and idempotency, one deploy surface, and the "second endpoint" is just Germany's `127.0.0.1:10086` reached via a local forward over the village route (`AFROWS_XRAY_DE_API_SERVER`).
