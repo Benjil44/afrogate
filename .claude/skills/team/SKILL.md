@@ -20,6 +20,7 @@ size a task before spending specialists. This is Afrows' own system; it referenc
 | Schema / migration | `senior-backend-engineer` (+ `database-engineer` if present) → `qa-tester` → `cto-architect` | **yes** |
 | Dashboard / web / client UI | `senior-frontend-designer` (Fable 5) → `qa-tester` (+ `accessibility-specialist` if present) → `cto-architect` | if new screen/behaviour |
 | Xray / VLESS / WireGuard / MikroTik / routing / egress / DNS | `network-infra-engineer` → `qa-tester` → `cto-architect` | if topology/failover changes |
+| Slow egress / low speed / high latency / jitter | `network-performance-engineer` (diagnose per-hop) → `network-infra-engineer` (Xray/WG config) → `cto-architect` | if topology changes |
 | Telegram bot flow / copy | `telegram-bot-ux-designer` → `senior-backend-engineer` (contract) → `cto-architect` | if new flow |
 | Security-sensitive (auth, secrets, CodeQL, egress policy) | owner specialist → `cto-architect` (adversarial) → remote CodeQL | **yes** |
 | Planning / decomposition only | `scrum-master` | as needed |
