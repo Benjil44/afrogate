@@ -45,10 +45,12 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
 
   /** Provision one user now onto every target inbound (best-effort). */
   async addUser(uuid: string, email: string): Promise<boolean> {
-    const flow = this.config.get<string>('AFROWS_XRAY_INBOUND_FLOW')?.trim();
+    const globalFlow = this.config.get<string>('AFROWS_XRAY_INBOUND_FLOW')?.trim();
     let ok = false;
     for (const t of this.inboundTargets()) {
-      const cfg = buildAddUserConfig({ inboundTag: t.tag, port: t.port, uuid, email, flow });
+      // per-inbound flow (from tag:port:flow) wins; else the global flow. Keeps Vision
+      // on the reality inbound only and off WS/tcp inbounds.
+      const cfg = buildAddUserConfig({ inboundTag: t.tag, port: t.port, uuid, email, flow: t.flow ?? globalFlow });
       const tmp = await createSecureTempFile(`afrows-adu-${t.tag}-${email.replace(/[^a-z0-9_-]/gi, '')}.json`);
       const file = tmp.path;
       try {
@@ -126,13 +128,16 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
    * comma list of `tag:port` (e.g. "afrows-in:8447,afrows-reality:8443");
    * falls back to the single AFROWS_XRAY_INBOUND_TAG/PORT for back-compat.
    */
-  private inboundTargets(): { tag: string; port: number }[] {
+  private inboundTargets(): { tag: string; port: number; flow?: string }[] {
     const raw = this.config.get<string>('AFROWS_XRAY_INBOUND_TAGS')?.trim();
     if (raw) {
-      const out: { tag: string; port: number }[] = [];
+      const out: { tag: string; port: number; flow?: string }[] = [];
       for (const part of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
-        const [tag, portStr] = part.split(':').map((s) => s.trim());
-        if (tag) out.push({ tag, port: this.intFromValue(portStr, this.inboundPort(), 1, 65535) });
+        // tag:port[:flow] — a per-inbound flow lets xtls-rprx-vision apply ONLY to the
+        // reality inbound (Vision is invalid on the WS / tcp-header inbounds, so a single
+        // global flow would break `adu` on those or leave reality without Vision).
+        const [tag, portStr, flowStr] = part.split(':').map((s) => s.trim());
+        if (tag) out.push({ tag, port: this.intFromValue(portStr, this.inboundPort(), 1, 65535), flow: flowStr || undefined });
       }
       if (out.length) return out;
     }
