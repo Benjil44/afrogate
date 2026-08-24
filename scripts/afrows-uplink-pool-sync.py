@@ -152,8 +152,13 @@ def build_outbound(tag, c):
 
 def identity(ob):
     v = ob["settings"]["vnext"][0]
-    return "%s:%s#%s/%s/%s" % (v["address"], v["port"], v["users"][0]["id"],
-                               ob["streamSettings"]["network"], ob["streamSettings"]["security"])
+    ss = ob["streamSettings"]
+    # Include the egress binding (sockopt.interface) so a binding change is detected as a
+    # real membership change and the pool is re-rendered/reloaded (otherwise a same-set
+    # relay with a new/added egress binding looks unchanged and the fix never applies).
+    iface = (ss.get("sockopt") or {}).get("interface", "")
+    return "%s:%s#%s/%s/%s@%s" % (v["address"], v["port"], v["users"][0]["id"],
+                                  ss["network"], ss["security"], iface)
 
 
 def score_relay(samples):
