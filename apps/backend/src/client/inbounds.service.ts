@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import type { AdminEgressHealth, AdminInboundSummary, AdminNetworkOverviewResponse } from '@afrows/shared';
+import type { AdminEgressBreaker, AdminEgressHealth, AdminInboundSummary, AdminNetworkOverviewResponse } from '@afrows/shared';
 
 const execFileAsync = promisify(execFile);
 
@@ -105,12 +105,18 @@ export class InboundsService {
       this.config.get<string>('AFROWS_EGRESS_HEALTH_PATH')?.trim() || '/var/lib/afrows/egress-health.json';
     try {
       const raw = JSON.parse(await readFile(path, 'utf8')) as Partial<AdminEgressHealth>;
+      const breaker = (b: unknown): AdminEgressBreaker | null =>
+        b && typeof b === 'object' && 'tripped' in b
+          ? { tripped: Boolean((b as { tripped?: unknown }).tripped), recent: Number((b as { recent?: unknown }).recent) || 0 }
+          : null;
       return {
         starlinkUp: Boolean(raw.starlinkUp),
         germanyUp: Boolean(raw.germanyUp),
         appliedCatchAll: typeof raw.appliedCatchAll === 'string' ? raw.appliedCatchAll : null,
         gamingOutbound: typeof raw.gamingOutbound === 'string' ? raw.gamingOutbound : null,
         mode: typeof raw.mode === 'string' ? raw.mode : null,
+        catchAllBreaker: breaker(raw.catchAllBreaker),
+        gamingBreaker: breaker(raw.gamingBreaker),
         updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
       };
     } catch {

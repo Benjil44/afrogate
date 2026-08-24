@@ -1821,6 +1821,23 @@ export function CustomersPage({
         </div>
       ) : null}
 
+      {/* Egress P2 — flapping indicator: a tripped circuit breaker means the failover is
+          oscillating (and being damped). Amber (warning), distinct from the red down banner. */}
+      {overview?.egressHealth && (overview.egressHealth.catchAllBreaker?.tripped || overview.egressHealth.gamingBreaker?.tripped) ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-bold">⚡ {s.egFlapTitle}</span>
+            <span>{s.egFlapHint}</span>
+            {overview.egressHealth.catchAllBreaker?.tripped ? (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold">catch-all ×{overview.egressHealth.catchAllBreaker.recent}</span>
+            ) : null}
+            {overview.egressHealth.gamingBreaker?.tripped ? (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold">gaming ×{overview.egressHealth.gamingBreaker.recent}</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-md border border-afro-line bg-afro-panel p-4">
         <PanelHeading title={s.title} icon={Plus} meta={loading ? t.dataStatus.loading : undefined} />
         {/* Row-action errors (status/egress toggle, delete) — the editor and the

@@ -104,6 +104,8 @@ export const en = {
       egAlertGamingFailover: 'gaming users routed via Germany',
       egAlertGermanyDown: 'Germany path is DOWN',
       egAlertChecked: 'checked',
+      egFlapTitle: 'Egress unstable',
+      egFlapHint: 'the egress path is flapping (frequent failovers) — it is being damped',
       egModeNormal: 'Normal',
       egModeGame: 'Game',
       egToGame: 'Switch to Game (Starlink)',

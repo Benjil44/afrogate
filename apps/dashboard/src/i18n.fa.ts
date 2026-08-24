@@ -106,6 +106,8 @@ export const fa: DashboardStrings = {
       egAlertGamingFailover: 'کاربران گیمینگ از آلمان عبور می‌کنند',
       egAlertGermanyDown: 'مسیر آلمان قطع است',
       egAlertChecked: 'بررسی',
+      egFlapTitle: 'خروج ناپایدار',
+      egFlapHint: 'مسیر خروج مدام جابه‌جا می‌شود (failover مکرر) — در حال مهار است',
       egModeNormal: 'معمولی',
       egModeGame: 'گیمینگ',
       egToGame: 'تغییر به گیمینگ (استارلینک)',

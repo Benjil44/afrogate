@@ -1006,7 +1006,16 @@ export interface AdminEgressHealth {
   /** Outbound tag the gaming tier currently uses (via-village normally; via-germany on Starlink outage). */
   gamingOutbound: string | null;
   mode: string | null;
+  /** P2 circuit-breaker state per lane — tripped => the lane is flapping (unstable). */
+  catchAllBreaker: AdminEgressBreaker | null;
+  gamingBreaker: AdminEgressBreaker | null;
   updatedAt: string | null;
+}
+
+/** Egress lane circuit-breaker snapshot (P2). `recent` = transitions in the window. */
+export interface AdminEgressBreaker {
+  tripped: boolean;
+  recent: number;
 }
 
 export interface ClientLoginRequest {
