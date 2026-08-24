@@ -125,7 +125,12 @@ import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-re
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
 import { hashPassword, verifyScryptPassword } from '../security/password';
 import { generatePassword, normalizeLoginIdentifier } from '../security/generate-password';
-import { buildAfrowsEntryUri, readAfrowsInboundEnv, readAfrowsRealityEnv } from '../client/afrows-entry-link';
+import {
+  buildAfrowsEntryUri,
+  readAfrowsDeEntryEnv,
+  readAfrowsInboundEnv,
+  readAfrowsRealityEnv,
+} from '../client/afrows-entry-link';
 import {
   buildWireguardConf,
   generateWireguardKeypair,
@@ -5385,13 +5390,15 @@ export class BillingService {
       const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
       return this.subscriptionConfigLink(outbound, credential);
     });
-    // Native links first so the app connects to our own engine by default:
-    // WireGuard (kernel wg0) is the primary mobile transport now, then the
-    // native afrows-in VLESS link. Each is omitted until configured via env.
+    // Native links first so the app connects to our own engine by default. The remote
+    // Germany Reality entry is PRIMARY (direct-to-exit, fast) and leads the list; the
+    // Ireland/village entries (WireGuard, afrows-in WS, afrows-reality) follow as
+    // failover. Each is omitted until configured via env (Germany default off).
+    const deEntryLink = await this.buildNativeDeEntryConfigLink(actor.clientConfigId, routeGroup);
     const wireguardLink = await this.buildNativeWireguardConfigLink(actor.clientConfigId, routeGroup);
     const nativeLink = await this.buildNativeEntryConfigLink(actor.clientConfigId, routeGroup);
     const realityLink = await this.buildNativeRealityConfigLink(actor.clientConfigId, routeGroup);
-    const configLinks = [wireguardLink, nativeLink, realityLink, ...baseConfigLinks].filter(
+    const configLinks = [deEntryLink, wireguardLink, nativeLink, realityLink, ...baseConfigLinks].filter(
       (link): link is ClientSubscriptionConfigLinkSummary => link !== null,
     );
 
@@ -5406,6 +5413,39 @@ export class BillingService {
           .filter((endpoint): endpoint is ClientSubscriptionEndpointSummary => Boolean(endpoint)),
         configLinks,
       },
+    };
+  }
+
+  /** Builds the PRIMARY remote Germany VLESS+Reality entry link (fast, direct-to-exit),
+   *  or null when AFROWS_DE_ENTRY_* env isn't enabled/configured. This is an entry only
+   *  (no exit creds), so per-user metering on the Germany xray is preserved. */
+  private async buildNativeDeEntryConfigLink(
+    clientConfigId: string,
+    routeGroup: string,
+  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
+    const inbound = readAfrowsDeEntryEnv(process.env);
+    if (!inbound) return null;
+    const result = await this.database.query<{ entryUuid: string | null }>(
+      `SELECT entry_uuid AS "entryUuid" FROM client_configs WHERE id = $1`,
+      [clientConfigId],
+    );
+    const entryUuid = result.rows[0]?.entryUuid;
+    if (!entryUuid) return null;
+
+    const uri = buildAfrowsEntryUri(inbound, entryUuid, 'Afrows Germany');
+    return {
+      outboundId: 'afrows-de-in',
+      name: 'Afrows Germany',
+      type: 'vless',
+      routeGroup,
+      usageMultiplier: 1,
+      chargeLabel: 'standard',
+      format: 'vless-uri',
+      renderStatus: 'rendered',
+      uri,
+      missingFields: [],
+      warnings: [],
+      requiresClientSecret: false,
     };
   }
 

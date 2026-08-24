@@ -5,7 +5,13 @@ import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import { DatabaseService } from '../database/database.service';
 import { createSecureTempFile } from '../common/secure-temp-file';
-import { buildAddUserConfig, provisioningEmail } from './xray-provisioning';
+import {
+  applyAcrossEndpoints,
+  buildAddUserConfig,
+  buildProvisioningEndpoints,
+  provisioningEmail,
+  type ProvisioningEndpoint,
+} from './xray-provisioning';
 
 const execFileAsync = promisify(execFile);
 
@@ -43,40 +49,43 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Provision one user now onto every target inbound (best-effort). */
+  /** Provision one user now onto every target inbound of every endpoint (best-effort).
+   *  A remote endpoint (Germany) being unreachable NEVER blocks the local one (Ireland). */
   async addUser(uuid: string, email: string): Promise<boolean> {
     const globalFlow = this.config.get<string>('AFROWS_XRAY_INBOUND_FLOW')?.trim();
-    let ok = false;
-    for (const t of this.inboundTargets()) {
-      // per-inbound flow (from tag:port:flow) wins; else the global flow. Keeps Vision
-      // on the reality inbound only and off WS/tcp inbounds.
-      const cfg = buildAddUserConfig({ inboundTag: t.tag, port: t.port, uuid, email, flow: t.flow ?? globalFlow });
-      const tmp = await createSecureTempFile(`afrows-adu-${t.tag}-${email.replace(/[^a-z0-9_-]/gi, '')}.json`);
-      const file = tmp.path;
-      try {
-        await fs.writeFile(file, JSON.stringify(cfg), { encoding: 'utf8', mode: 0o600 });
-        await this.xray(['api', 'adu', `--server=${this.apiServer()}`, file]);
-        ok = true;
-      } catch (error) {
-        this.logger.warn(`adu ${email} on ${t.tag} failed: ${error instanceof Error ? error.message : error}`);
-      } finally {
-        await tmp.cleanup();
-      }
-    }
-    return ok;
+    const okByEndpoint = await applyAcrossEndpoints(
+      this.endpoints(),
+      async (endpoint, t) => {
+        // per-inbound flow (from tag:port:flow) wins; else the global flow. Keeps Vision
+        // on the reality inbound only and off WS/tcp inbounds.
+        const cfg = buildAddUserConfig({ inboundTag: t.tag, port: t.port, uuid, email, flow: t.flow ?? globalFlow });
+        const tmp = await createSecureTempFile(
+          `afrows-adu-${endpoint.label}-${t.tag}-${email.replace(/[^a-z0-9_-]/gi, '')}.json`,
+        );
+        try {
+          await fs.writeFile(tmp.path, JSON.stringify(cfg), { encoding: 'utf8', mode: 0o600 });
+          await this.xray(['api', 'adu', `--server=${endpoint.apiServer}`, tmp.path]);
+        } finally {
+          await tmp.cleanup();
+        }
+      },
+      (endpoint, t, error) =>
+        this.logger.warn(`adu ${email} on ${endpoint.label}/${t.tag} failed: ${this.errMsg(error)}`),
+    );
+    // Success = the LOCAL endpoint took the user; remote (Germany) is best-effort.
+    return okByEndpoint.get(this.localApiServer()) ?? false;
   }
 
   async removeUser(email: string): Promise<boolean> {
-    let ok = false;
-    for (const t of this.inboundTargets()) {
-      try {
-        await this.xray(['api', 'rmu', `--server=${this.apiServer()}`, `-tag=${t.tag}`, email]);
-        ok = true;
-      } catch (error) {
-        this.logger.warn(`rmu ${email} on ${t.tag} failed: ${error instanceof Error ? error.message : error}`);
-      }
-    }
-    return ok;
+    const okByEndpoint = await applyAcrossEndpoints(
+      this.endpoints(),
+      async (endpoint, t) => {
+        await this.xray(['api', 'rmu', `--server=${endpoint.apiServer}`, `-tag=${t.tag}`, email]);
+      },
+      (endpoint, t, error) =>
+        this.logger.warn(`rmu ${email} on ${endpoint.label}/${t.tag} failed: ${this.errMsg(error)}`),
+    );
+    return okByEndpoint.get(this.localApiServer()) ?? false;
   }
 
   /** Sync Postgres active client_configs → xray inbound users. */
@@ -99,7 +108,12 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
         // adu is idempotent enough for our scale: re-adding an existing user is a no-op/ignored.
         if (await this.addUser(row.entryUuid, provisioningEmail(row.id))) added += 1;
       }
-      if (added) this.logger.log(`Provisioning reconcile: ensured ${added} user(s) on ${this.inboundTargets().map((t) => t.tag).join(',')}`);
+      if (added)
+        this.logger.log(
+          `Provisioning reconcile: ensured ${added} user(s) across ${this.endpoints()
+            .map((e) => `${e.label}[${e.targets.map((t) => t.tag).join(',')}]`)
+            .join(' ')}`,
+        );
     } catch (error) {
       this.logger.warn(`Provisioning reconcile failed: ${error instanceof Error ? error.message : error}`);
     } finally {
@@ -114,34 +128,32 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   private bin(): string {
     return this.config.get<string>('AFROWS_XRAY_BIN')?.trim() || 'xray';
   }
-  private apiServer(): string {
+  private localApiServer(): string {
     return this.config.get<string>('AFROWS_XRAY_API_SERVER')?.trim() || '127.0.0.1:10085';
   }
-  private inboundTag(): string {
-    return this.config.get<string>('AFROWS_XRAY_INBOUND_TAG')?.trim() || 'afrows-in';
-  }
-  private inboundPort(): number {
-    return this.intFromValue(this.config.get<string>('AFROWS_XRAY_INBOUND_PORT'), 8443, 1, 65535);
-  }
   /**
-   * Inbound(s) to provision each user onto. AFROWS_XRAY_INBOUND_TAGS is a
-   * comma list of `tag:port` (e.g. "afrows-in:8447,afrows-reality:8443");
-   * falls back to the single AFROWS_XRAY_INBOUND_TAG/PORT for back-compat.
+   * Ordered provisioning endpoints: local Ireland xray first, then the remote
+   * Germany xray (pushed Ireland→Germany over the village route) when
+   * AFROWS_XRAY_DE_API_SERVER is set. Germany is best-effort and never blocks Ireland.
    */
-  private inboundTargets(): { tag: string; port: number; flow?: string }[] {
-    const raw = this.config.get<string>('AFROWS_XRAY_INBOUND_TAGS')?.trim();
-    if (raw) {
-      const out: { tag: string; port: number; flow?: string }[] = [];
-      for (const part of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
-        // tag:port[:flow] — a per-inbound flow lets xtls-rprx-vision apply ONLY to the
-        // reality inbound (Vision is invalid on the WS / tcp-header inbounds, so a single
-        // global flow would break `adu` on those or leave reality without Vision).
-        const [tag, portStr, flowStr] = part.split(':').map((s) => s.trim());
-        if (tag) out.push({ tag, port: this.intFromValue(portStr, this.inboundPort(), 1, 65535), flow: flowStr || undefined });
-      }
-      if (out.length) return out;
-    }
-    return [{ tag: this.inboundTag(), port: this.inboundPort() }];
+  private endpoints(): ProvisioningEndpoint[] {
+    return buildProvisioningEndpoints(this.envRecord());
+  }
+  /** Config-backed view of the env keys the endpoint builder reads (test/DI-friendly). */
+  private envRecord(): Record<string, string | undefined> {
+    const get = (k: string) => this.config.get<string>(k) ?? process.env[k];
+    return {
+      AFROWS_XRAY_API_SERVER: get('AFROWS_XRAY_API_SERVER'),
+      AFROWS_XRAY_INBOUND_TAG: get('AFROWS_XRAY_INBOUND_TAG'),
+      AFROWS_XRAY_INBOUND_PORT: get('AFROWS_XRAY_INBOUND_PORT'),
+      AFROWS_XRAY_INBOUND_TAGS: get('AFROWS_XRAY_INBOUND_TAGS'),
+      AFROWS_XRAY_DE_API_SERVER: get('AFROWS_XRAY_DE_API_SERVER'),
+      AFROWS_XRAY_DE_INBOUND_TAGS: get('AFROWS_XRAY_DE_INBOUND_TAGS'),
+      AFROWS_XRAY_DE_INBOUND_PORT: get('AFROWS_XRAY_DE_INBOUND_PORT'),
+    };
+  }
+  private errMsg(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
   private intervalMs(): number {
     return this.intFromValue(this.config.get<string>('AFROWS_XRAY_PROVISION_INTERVAL_SECONDS'), 60, 15, 3600) * 1000;

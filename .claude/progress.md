@@ -1,5 +1,16 @@
 # Afrows Progress
 
+## 2026-08-24
+
+### Remote Germany xray entry — push-provisioning + primary subscription entry (0.114.87, flag-gated default off)
+
+- **Asymmetry handled by design.** Germany→Ireland is blocked; Ireland→Germany works only over the flaky `wg-village-de` route. So provisioning is **PUSHED** Ireland→Germany (never pulled), and the data plane (client→Germany→exit) needs neither Ireland nor the village. Chose **option (a)** — extend `XrayProvisioningService` to a second xray API endpoint — over a separate push-agent: reuses the existing `adu`/`rmu` reconcile loop and idempotency, one deploy surface, and the "second endpoint" is just Germany's `127.0.0.1:10086` reached via a local forward over the village route (`AFROWS_XRAY_DE_API_SERVER`).
+- **Pure helpers** (`apps/backend/src/client/xray-provisioning.ts`): `parseInboundTargets` (extracted from the service; `tag:port[:flow]`), `buildProvisioningEndpoints(env)` → ordered `[ie, de?]` (Germany appended only when `AFROWS_XRAY_DE_API_SERVER` set), `applyAcrossEndpoints(endpoints, apply, onError)` → per-(endpoint,target) try/catch so **Germany down never blocks Ireland**; returns per-endpoint success keyed by apiServer.
+- **Service** (`xray-provisioning.service.ts`): `addUser`/`removeUser` now iterate endpoints via `applyAcrossEndpoints`, temp files namespaced by endpoint label, success reported off the **local** (Ireland) endpoint; remote is best-effort. No uuids/keys logged (label/tag only).
+- **Subscription** (`afrows-entry-link.ts` + `billing.service.ts`): `readAfrowsDeEntryEnv` (Reality, gated on `AFROWS_DE_ENTRY_ENABLED`) + `buildNativeDeEntryConfigLink` (`outboundId: afrows-de-in`) prepended to `configLinks` → Germany **primary**, Ireland/village entries **failover**. Entry only, no exit creds → metering preserved.
+- **Tests** (node:test — repo runner; task said "jest" but backend uses `node --test`): `parseInboundTargets`, `buildProvisioningEndpoints` (IE-only off / IE+DE on), `applyAcrossEndpoints` best-effort isolation + both-reachable, `readAfrowsDeEntryEnv` on/off/missing-fields, subscription ordering DE-first-vs-Ireland-only. Backend 660/660, typecheck clean.
+- **Follow-up:** live-verify the Ireland→Germany forward + Germany reconcile during a village-up window; enforcement latency = `AFROWS_XRAY_PROVISION_INTERVAL_SECONDS` (default 60s).
+
 ## 2026-08-18 → 2026-08-20
 
 ### Knowledge layer B-track + PR #49 merged green + multi-agent orchestration workflow (all pushed, CI green at `6feb645`)
