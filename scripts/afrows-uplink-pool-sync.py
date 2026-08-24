@@ -32,6 +32,13 @@ MIN_HEALTHY = int(os.environ.get("POOL_MIN_HEALTHY", "3"))
 HISTORY_N = int(os.environ.get("POOL_HISTORY_N", "8"))       # samples kept per relay
 HYSTERESIS_K = int(os.environ.get("POOL_HYSTERESIS_K", "2")) # consecutive-healthy to admit
 MIN_SUCCESS = float(os.environ.get("POOL_MIN_SUCCESS", "0.5"))
+# Egress binding for relay outbounds. The VPS eth0 default route is filtered (it cannot
+# reach the free internet), so relays with no egress binding get 0 throughput — the pool
+# is dead. Pin each relay's egress to the working village WireGuard tunnel via
+# SO_BINDTODEVICE (streamSettings.sockopt.interface); deterministic regardless of the
+# default route, re-applied on every pool re-sync because it is rendered here. Set
+# AFROWS_RELAY_EGRESS_IFACE="" to disable (e.g. once the VPS gets a fast direct uplink).
+RELAY_EGRESS_IFACE = os.environ.get("AFROWS_RELAY_EGRESS_IFACE", "wg-village-de")
 
 
 def log(*a):
@@ -135,6 +142,10 @@ def build_outbound(tag, c):
     elif net == "tcp" and c.get("headerType") == "http":
         ss["tcpSettings"] = {"header": {"type": "http",
                              "request": {"headers": {"Host": [c.get("host", "")]}}}}
+    # Pin egress to the working village tunnel (see RELAY_EGRESS_IFACE) — the eth0
+    # default route is filtered, so an unbound relay gets 0 throughput.
+    if RELAY_EGRESS_IFACE:
+        ss.setdefault("sockopt", {})["interface"] = RELAY_EGRESS_IFACE
     ob["streamSettings"] = ss
     return ob
 

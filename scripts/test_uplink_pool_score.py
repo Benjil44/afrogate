@@ -67,3 +67,9 @@ assert sc([10, 20, 15, 12]) == sc([10, 20, 15, 12]), "deterministic"
 print("OK: deterministic")
 
 print("\nALL uplink pool score tests passed")
+
+# --- egress binding: build_outbound pins relays to the village tunnel (fix for the
+# dead pool where relays exited the filtered eth0 default route with 0 throughput). ---
+ob = m.build_outbound("relay-1", {"address": "188.114.97.2", "port": 2087, "uuid": "x", "network": "xhttp", "security": "tls"})
+assert ob["streamSettings"].get("sockopt", {}).get("interface") == "wg-village-de", ("relay must bind egress to the village tunnel", ob["streamSettings"].get("sockopt"))
+print("OK: build_outbound pins relay egress to the village tunnel (sockopt.interface)")
