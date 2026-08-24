@@ -41,6 +41,11 @@ taking egress down.
 `update-afrows.sh` keeps built trees + `.bak-<ts>` xray configs; redeploy the prior commit
 (`git checkout <prev> && bash scripts/deploy/afrows-deploy.sh`). Additive migrations are safe to leave in place.
 
+## Decide the next step
+Hand the deploy result (and the reachability probe, if run) to the **`release-orchestrator`** agent — it reads the
+output and returns STATE → DECISION (proceed / retry the next path / hold-for-human / rollback) → NEXT → GATE, then
+drives the loop. That is how "read this result and choose best and continue" happens without a human relaying every step.
+
 ## Report
 State: which path was used, git SHA deployed, migration/restart result, and each phase's verification evidence.
 If the VPS is unreachable (village/uplink degraded), report that and stop — do not force a deploy through an

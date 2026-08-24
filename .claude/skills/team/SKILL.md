@@ -23,7 +23,8 @@ size a task before spending specialists. This is Afrows' own system; it referenc
 | Telegram bot flow / copy | `telegram-bot-ux-designer` → `senior-backend-engineer` (contract) → `cto-architect` | if new flow |
 | Security-sensitive (auth, secrets, CodeQL, egress policy) | owner specialist → `cto-architect` (adversarial) → remote CodeQL | **yes** |
 | Planning / decomposition only | `scrum-master` | as needed |
-| Release / deploy | Lead → `/deploy` (the deployer) → verify | — |
+| Release / deploy | Lead → `/deploy` (the deployer) → `release-orchestrator` reads the result → next | — |
+| Interpret a result & decide the next step (probe / deploy / CI / egress-health / telemetry) | `release-orchestrator` | — |
 
 **Smallest team that is safe.** Add a specialist only when a distinct concern needs it; a second reviewer is cheap,
 a second implementer on the same files is a merge conflict.
@@ -85,11 +86,16 @@ Before implementing in a domain the roster doesn't cover: **name the gap**, rese
 `.claude/agents/` (technique + toolchain + failure modes + quality bar + `model:`) and a skill if the procedure is
 reusable — only then implement. Do not create an agent that merely renames an existing role.
 
-## 8. Deploy (the deployer)
+## 8. Deploy + decide (the deployer + the orchestrator)
 When the user asks to ship: `/deploy` runs `scripts/deploy/afrows-deploy.sh` (multi-path: direct → fallback),
 then the per-phase checks in `scripts/deploy/DEPLOY-VERIFY.md`. **Deploy is human-gated** — never deploy without an
 explicit ask. Push to `origin/main` is fast-forward only; CI (incl. remote CodeQL) is the final arbiter; never claim
 "live" until the on-box checks pass.
+
+**Turning a raw result into the next step is the `release-orchestrator` agent's job** — hand it the reachability-probe
+output, a deploy result, CI conclusions, `egress-health.json`, or telemetry priors and it returns STATE → DECISION
+(proceed / retry-with-fallback / hold-for-human / rollback) → NEXT (the exact command or a specialist task card) →
+GATE. It manages the deploy → verify → decide → continue loop; it does not implement features.
 
 ## 9. Close the loop
 - Durable decision/exception? → an ADR (`docs/adr/`) + `docs/invariants.md` (INV-N) + `docs/decisions.json` (the machine layer).
