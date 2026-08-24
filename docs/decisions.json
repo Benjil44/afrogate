@@ -146,6 +146,18 @@
       "affected_tables": ["outbounds"],
       "forbidden_changes": ["changing eligibility/safety gates under the guise of scoring", "letting raw instantaneous throughput alone decide selection", "emptying the pool on a scoring change (0-eligible must leave it unchanged)"],
       "required_tests": ["scripts/test_uplink_pool_score.py"]
+    },
+    {
+      "id": "INV-19",
+      "status": "active",
+      "source_adr": "docs/adr/0011-egress-p4-opt-in-mikrotik-bypass.md",
+      "kind": "egress-policy",
+      "decision": "VLESS is primary for everyone; a per-customer opt-in allow-list (customer_accounts.egress_bypass_enabled) may fall over to MikroTik-direct ONLY when foreign egress is fully down (catch == 'direct'). Part A (checkbox + column) is live; Part B (routing) is flag-gated OFF via AFROWS_BYPASS_ENABLED (default false) with a configurable AFROWS_BYPASS_OUTBOUND (default 'direct'). Activation requires the reachability probe Q3>=1, a real bypass outbound in the Xray config, and a cto-architect review — never a code change, only config.",
+      "affected_paths": ["infra/postgres/migrations/0056_customer_egress_bypass.sql", "apps/backend/src/database/schema.ts", "apps/backend/src/billing/billing.service.ts", "apps/dashboard/src/pages/CustomersPage.tsx", "scripts/afrows-egress-mode-sync.py"],
+      "affected_services": ["BillingService"],
+      "affected_tables": ["customer_accounts"],
+      "forbidden_changes": ["activating the bypass (flag on) without the reachability probe confirming the direct path", "routing non-bypass users to MikroTik-direct", "reordering the egress ladder under the guise of the bypass (that is a separate INV-17 concern)"],
+      "required_tests": ["scripts/test_egress_mode_sync.py"]
     }
   ]
 }

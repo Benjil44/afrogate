@@ -108,3 +108,34 @@ assert {"type": "field", "user": ["g@afrows"], "outboundTag": "via-germany"} in 
 rv = mod.desired_rules("smart", ["t1"], ["10.0.0.5"], [], "via-germany")
 assert {"type": "field", "source": ["10.0.0.5"], "outboundTag": "via-village"} in rv
 print("OK: desired_rules gaming_outbound failover")
+
+# --- P4 Part B: opt-in MikroTik-direct bypass (flag-gated) ---
+# When active, main() injects a bypass rule (source/user -> AFROWS_BYPASS_OUTBOUND) via the
+# fixed-rule path, so it is emitted BEFORE the catch-all and overrides the dead-VLESS
+# catch-all. When the master flag is off, main() passes no bypass rule at all. Verify the
+# rule shape + precedence via desired_rules (the activation condition is a trivial boolean
+# in main(): AFROWS_BYPASS_ENABLED and catch == 'direct').
+rb = mod.desired_rules("smart", ["client"], [], [], "direct", [{"source": ["10.9.0.5"], "outboundTag": "direct"}])
+assert {"type": "field", "source": ["10.9.0.5"], "outboundTag": "direct"} in rb, "bypass rule present when active"
+assert rb[-1].get("inboundTag") and rb[-1]["outboundTag"] == "direct", "catch-all stays last (bypass overrides it earlier)"
+rb0 = mod.desired_rules("smart", ["client"], [], [], "direct", [])
+assert not any(rule.get("source") == ["10.9.0.5"] for rule in rb0), "no bypass rule when flag off"
+# the bypass query functions exist and are callable (shape only; no DB here)
+assert callable(mod.bypass_ips) and callable(mod.bypass_xray_emails), "bypass collectors present"
+print("OK: P4 Part B bypass rule shape + off-by-default")
+
+# P4 Part B — HIGH fix: an unknown bypass/D2 outbound is DROPPED (xray -test won't catch it).
+kept, dropped = mod.partition_known_outbound_rules(
+    [{"source": ["1.1.1.1"], "outboundTag": "mikrotik-direct"},   # unknown -> dropped
+     {"source": ["2.2.2.2"], "outboundTag": "via-germany"}],       # known -> kept
+    {"via-germany", "via-village", "proxy", "direct"})
+assert dropped and dropped[0]["outboundTag"] == "mikrotik-direct", "unknown tag dropped"
+assert kept and kept[0]["outboundTag"] == "via-germany", "known tag kept"
+# P4 Part B — MEDIUM fix: bypass wins over a conflicting D2 pin (identity stripped from D2).
+d2 = [{"source": ["10.9.0.5", "10.9.0.6"], "outboundTag": "via-germany"},
+      {"user": ["cc_a@afrows"], "outboundTag": "via-village"}]
+cleaned = mod.strip_identities_from_fixed(d2, {"10.9.0.5"}, {"cc_a@afrows"})
+assert {"10.9.0.5"} not in [set(r.get("source", [])) for r in cleaned], "bypass source removed from D2"
+assert any(r.get("source") == ["10.9.0.6"] for r in cleaned), "non-bypass source retained"
+assert not any(r.get("user") == ["cc_a@afrows"] for r in cleaned), "sole bypass-user D2 rule dropped when emptied"
+print("OK: P4 Part B unknown-tag drop + bypass-over-D2 precedence")

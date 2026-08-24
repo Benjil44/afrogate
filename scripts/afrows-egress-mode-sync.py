@@ -190,6 +190,36 @@ def xray_gaming_emails(url):
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
+# ---- P4 Part B (flag-gated) — opt-in MikroTik-direct bypass allow-list ----------
+# The checkbox in the Customers table sets customer_accounts.egress_bypass_enabled.
+# When VLESS/foreign egress is FULLY down (the catch-all fell to 'direct'), ONLY these
+# customers are routed to a configurable MikroTik-direct outbound (AFROWS_BYPASS_OUTBOUND);
+# everyone else waits for VLESS. Master flag AFROWS_BYPASS_ENABLED defaults OFF, so this
+# changes nothing until the operator confirms the direct path (reachability probe) and
+# points AFROWS_BYPASS_OUTBOUND at the real MikroTik-direct tag, then flips the flag.
+def bypass_ips(url):
+    """afrows-wg peer source IPs of active bypass-listed customers."""
+    s = psql1(url, (
+        "select coalesce(string_agg(wp.client_address, ',' order by wp.client_address), '') from wireguard_peers wp "
+        "join client_configs cc on cc.id = wp.client_config_id "
+        "join customer_accounts ca on ca.id = cc.customer_account_id "
+        "where ca.egress_bypass_enabled = true and ca.status = 'active' "
+        "and wp.desired_state = 'present' and wp.client_address is not null"
+    ))
+    return [x.strip() for x in s.split(",") if x.strip()] if s else []
+
+
+def bypass_xray_emails(url):
+    """afrows-xray VLESS emails (cc_<id>@afrows) of active bypass-listed customers."""
+    s = psql1(url, (
+        "select coalesce(string_agg('cc_' || cc.id || '@afrows', ',' order by cc.id), '') "
+        "from client_configs cc "
+        "join customer_accounts ca on ca.id = cc.customer_account_id "
+        "where ca.egress_bypass_enabled = true and ca.status = 'active' and cc.status <> 'disabled'"
+    ))
+    return [x.strip() for x in s.split(",") if x.strip()] if s else []
+
+
 # D2: per-client-config FIXED egress path -> outbound tag (germany/village/direct).
 PATH_TAGS = {"germany": "via-germany", "village": "via-village", "direct": "direct"}
 
@@ -421,6 +451,33 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outboun
     return rules
 
 
+def partition_known_outbound_rules(fixed_rules, known_tags):
+    """Split fixed rules into (kept, dropped) by whether their outboundTag exists as a real
+    outbound. A dangling outboundTag is NOT caught by `xray -test` (tag references resolve
+    lazily at dispatch, not at -test), so routing to a missing tag would silently strand
+    those users — drop + log instead of shipping a dead route."""
+    kept, dropped = [], []
+    for fr in (fixed_rules or []):
+        (kept if fr.get("outboundTag") in known_tags else dropped).append(fr)
+    return kept, dropped
+
+
+def strip_identities_from_fixed(fixed, src_set, usr_set):
+    """Remove given source IPs / VLESS emails from D2 fixed rules so a higher-priority rule
+    (the bypass rule) wins over a conflicting per-config pin — otherwise `desired_rules`'
+    alphabetical outboundTag sort would decide it arbitrarily. Drops any rule left empty."""
+    out = []
+    for fr in fixed:
+        nfr = dict(fr)
+        if nfr.get("source"):
+            nfr["source"] = [s for s in nfr["source"] if s not in src_set]
+        if nfr.get("user"):
+            nfr["user"] = [u for u in nfr["user"] if u not in usr_set]
+        if nfr.get("source") or nfr.get("user"):
+            out.append(nfr)
+    return out
+
+
 def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village"):
     """gaming_sources: source IPs -> via-village; gaming_users: VLESS emails -> via-village.
     catch_outbound: where the normal foreign catch-all goes ('proxy' or 'via-village')."""
@@ -441,6 +498,12 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
         if not any(o.get("tag") == spec["tag"] for o in outs):
             outs.append(dict(spec))
             changed_out = True
+
+    # Drop any fixed rule (D2 pin / bypass) whose outbound does not exist — `xray -test`
+    # would NOT reject a dangling outboundTag, so an unknown target must be caught here.
+    fixed_rules, dropped_rules = partition_known_outbound_rules(fixed_rules or [], {o.get("tag") for o in outs})
+    for dr in dropped_rules:
+        log("%s: dropping fixed rule -> unknown outbound '%s' (create it before routing to it)" % (svc, dr.get("outboundTag")))
 
     want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound)
     # Include the trusted DNS block in the change gate so an already-converged
@@ -494,6 +557,16 @@ def main():
     egress = file_env("AFROWS_FOREIGN_EGRESS", "germany").lower()
     catch = decide_catchall(egress)
     gaming_out = decide_gaming()  # via-village normally; via-germany when Starlink is down
+    # P4 Part B (flag-gated, default OFF): route opt-in bypass customers to MikroTik-direct
+    # only when foreign egress is fully down (catch == 'direct'). OFF -> no bypass rule at all.
+    bypass_on = file_env("AFROWS_BYPASS_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+    bypass_active = bypass_on and catch == "direct"
+    bypass_outbound = file_env("AFROWS_BYPASS_OUTBOUND", "direct")
+    bypass_wg = bypass_ips(url) if bypass_active else []
+    bypass_xray = bypass_xray_emails(url) if bypass_active else []
+    if bypass_on:
+        log("bypass: enabled active=%s catch=%s -> %s (wg=%d xray=%d)" % (
+            bypass_active, catch, bypass_outbound, len(bypass_wg), len(bypass_xray)))
     changed = False
     for cfg_path, svc, use_db in TARGETS:
         if not os.path.exists(cfg_path):
@@ -516,6 +589,16 @@ def main():
                 usr = path_xray_users(url, p)
                 if usr:
                     fixed.append({"user": usr, "outboundTag": eff_tag})
+        # P4 Part B: inject the bypass rule (only when active) via the same fixed-rule
+        # mechanism, so bypass customers override the (dead-VLESS) catch-all. First strip
+        # bypass identities from the D2 pins so bypass wins over a conflicting pin
+        # (otherwise desired_rules' alphabetical sort would decide it arbitrarily).
+        if bypass_active:
+            fixed = strip_identities_from_fixed(fixed, set(bypass_wg), set(bypass_xray))
+            if use_db and bypass_wg:
+                fixed.append({"source": bypass_wg, "outboundTag": bypass_outbound})
+            elif not use_db and bypass_xray:
+                fixed.append({"user": bypass_xray, "outboundTag": bypass_outbound})
         changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed, gaming_out)
     # Health snapshot for the dashboard: raw path reachability + the applied
     # outbounds, so operators can see at a glance which egress (Starlink/Germany)

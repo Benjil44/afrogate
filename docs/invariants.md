@@ -41,6 +41,7 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 
 ## 6. Security exceptions
 
+- **INV-19** VLESS is primary for everyone; a **per-customer opt-in allow-list** (`customer_accounts.egress_bypass_enabled`, the Customers-table "Bypass" checkbox) may fall over to **MikroTik-direct** ONLY when foreign egress is fully down (`catch == 'direct'`). Part A (checkbox+column) is live; **Part B (routing) is flag-gated OFF** (`AFROWS_BYPASS_ENABLED` default false, `AFROWS_BYPASS_OUTBOUND` default `direct`). Activation needs the reachability probe **Q3≥1**, a real bypass outbound in the Xray config, and a cto-architect review — config, never code. Non-bypass users are never routed to MikroTik. → ADR 0011; `docs/decisions.json` INV-19.
 - **INV-18** The uplink pool selector (`afrows-uplink-pool-sync.py` `score_relay`) ranks relays by a **stability score**: `success_rate` dominant (`*1000`), **recency-weighted** throughput, and a **variance penalty** (`1/(1+CV)` over passing samples) so raw instantaneous throughput never alone decides. **Eligibility** (last-K healthy + `MIN_SUCCESS`), cold-start, the stale gate, and the **0-eligible SAFETY** (leave the pool unchanged) are **UNCHANGED** — only ranking among eligible relays changed. Live latency selection stays downstream (pool xray observatory/leastPing). → ADR 0010; `docs/decisions.json` INV-18.
 
 - **INV-17** Egress transitions run through the explicit pure `decide()` **inlined in `afrows-egress-mode-sync.py`** (**asymmetric hysteresis** `k_out=2`/`k_back=3`, a **flapping circuit breaker** that damps but never pins a worse path, and a bounded transition log). It is kept in the reconciler — not a sibling module — so the script stays a **self-contained single-file deploy**. The **priority ORDER is UNCHANGED** from the prior inline logic — `CATCHALL_ORDER` (via-germany > proxy > direct) and `GAMING_ORDER` (via-village > via-germany > proxy). **Reordering the ladder is P4, not P2.** → ADR 0009; `docs/decisions.json` INV-17.
@@ -63,6 +64,7 @@ Legend: **MUST / MUST NOT / SHOULD**. Each rule cites its owning ADR + evidence.
 - [ADR 0008](adr/0008-egress-p1-subscription-refresh-observability.md) — Egress P1: subscription-refresh observability & causal state
 - [ADR 0009](adr/0009-egress-p2-explicit-state-machine-anti-flap.md) — Egress P2: explicit state machine, asymmetric hysteresis, circuit breaker
 - [ADR 0010](adr/0010-egress-p3-uplink-pool-stability-scoring.md) — Egress P3: uplink pool stability scoring
+- [ADR 0011](adr/0011-egress-p4-opt-in-mikrotik-bypass.md) — Egress P4: opt-in MikroTik-direct bypass (per-customer)
 
 ## See also
 
