@@ -36,3 +36,20 @@ Override per-invocation with the Agent tool's `model` field when a task warrants
 - Typed, deduplicated, low-resource-friendly code; no secrets/PII committed.
 - Version bump + `CHANGELOG.md` + `npm run version:check` per meaningful section.
 - **Never `git stash` / `git checkout -- .` / `git reset --hard` on the shared working tree** when other agents may be running — it discards their uncommitted edits. To test on clean HEAD, use a git worktree or read the committed version with `git show HEAD:<file>`. Stage only your own files (`git add <your paths>`); do not commit, push, or bump version unless coordinated.
+
+## Orchestration & workflows (Afrows-native)
+
+The team is driven by a Lead-orchestrator playbook and Afrows' own tooling — self-contained, linked to no other project:
+
+- **`/team <request>`** (`.claude/skills/team/SKILL.md`) — the Lead playbook: classify → size with the Foundation
+  Core router (`scripts/orchestration/route.mjs`) → gather knowledge (`docs/invariants.md`, `decisions.json`,
+  graphify) → spec-gate → assign task cards to the 7 agents above → gates (impact → implement → QA/security →
+  cto-architect review → validate → CI) → close the loop. The main session is the Lead.
+- **`/opsx:propose|apply|archive|explore|update|sync`** (`.claude/commands/opsx/`) — OpenSpec spec-driven changes
+  (`openspec/` holds `config.yaml` + `specs/` + `changes/`; the `openspec` CLI is required and installed).
+- **`/deploy`** (`.claude/skills/deploy/SKILL.md`) — the deployer: multi-path (direct → MikroTik/jump fallback),
+  key-based, human-gated, wrapping `scripts/deploy/afrows-deploy.sh` + `DEPLOY-VERIFY.md`.
+- **`render-check`** (`.claude/skills/render-check/`) — headless-Chrome UI verification for dashboard pages/mocks.
+
+Deterministic layer (sizing, impact, telemetry, worktree isolation, integration barrier):
+`scripts/orchestration/*` + `.claude/workflows/engineering-task.js` + `docs/orchestration-contract.md`.

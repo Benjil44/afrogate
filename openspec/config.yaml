@@ -1,0 +1,38 @@
+schema: spec-driven
+
+context: |
+  Project: Afrows / AfroGate — a NestJS backend VPN/proxy management platform (VLESS/Xray,
+  WireGuard, MikroTik CPE, egress/failover engine) with a React/Vite dashboard, a shared
+  TypeScript contracts package, and a Telegram self-service bot. Monorepo: apps/backend,
+  apps/dashboard, apps/web, apps/client, packages/shared; raw-SQL runtime over Postgres
+  (migrations in infra/postgres/migrations/); Python systemd reconcilers in scripts/ drive
+  the live egress data plane.
+  Language: English for specs/design/tasks (internal engineering artifacts); dashboard UI copy
+  is bilingual (English + Persian, apps/dashboard/src/i18n.*.ts) — keep Persian strings verbatim.
+  Ground every spec in the authoritative layer: docs/invariants.md (INV-N rules) + docs/decisions.json
+  (machine layer) + docs/adr/**, then current source/migrations/tests. knowledge/** and graphify-out/**
+  are GENERATED hints, never authoritative. Never violate an INV-N silently; flag contradictions.
+  Money and byte-quota columns are bigint (INV-11); raw-SQL runtime is preserved (INV-9); the egress
+  priority ladder is fixed unless a spec explicitly reorders it (INV-17). Never touch
+  scripts/mikrotik/village-wan-failover-recursive.rsc.
+  Sizing: run scripts/orchestration/route.mjs before assigning specialists. Deploy is human-gated
+  via scripts/deploy/afrows-deploy.sh; remote CI + CodeQL are the final arbiter.
+
+rules:
+  proposal:
+    - Include "Non-goals" and "Open questions" sections
+    - Cite the INV-N / ADR / source file each requirement rests on; never invent requirements
+  tasks:
+    - Each task names the file(s) it touches so the Lead can assign file ownership to one agent
+    - End with a verification task (npm run test:backend / typecheck / render-check) and, if structure
+      changed, a graphify/knowledge regeneration task
+    - Any durable exception or decision ends with an ADR + docs/invariants.md (INV-N) + docs/decisions.json entry
+
+operations:
+  apply:
+    guidance:
+      - Size with scripts/orchestration/route.mjs; run the cto-architect adversarial review on risky diffs
+      - "Done" means verified with evidence (green tests / CI), not "code written"
+  archive:
+    guidance:
+      - Fold durable decisions into docs/adr + invariants; regenerate graphify if structure changed
