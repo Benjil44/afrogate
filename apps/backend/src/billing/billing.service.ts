@@ -5391,14 +5391,21 @@ export class BillingService {
       return this.subscriptionConfigLink(outbound, credential);
     });
     // Native links first so the app connects to our own engine by default. The remote
-    // Germany Reality entry is PRIMARY (direct-to-exit, fast) and leads the list; the
-    // Ireland/village entries (WireGuard, afrows-in WS, afrows-reality) follow as
-    // failover. Each is omitted until configured via env (Germany default off).
+    // Germany entry is PRIMARY (Cloudflare-fronted WS+TLS, fast) and leads the list for
+    // EVERY customer. The Ireland/village entries (WireGuard, afrows-in WS, afrows-reality)
+    // route out via the village Starlink and are the FALLBACK — included only for customers
+    // with the egress-bypass flag ON (per the operator's "bypass list"), so only they fall
+    // back to Starlink when the main path is gone. Safety: if the Germany entry is not
+    // available (env off / no uuid), the Ireland fallback is included for everyone so no one
+    // is left without an entry. Each link is still omitted until configured via env.
     const deEntryLink = await this.buildNativeDeEntryConfigLink(actor.clientConfigId, routeGroup);
     const wireguardLink = await this.buildNativeWireguardConfigLink(actor.clientConfigId, routeGroup);
     const nativeLink = await this.buildNativeEntryConfigLink(actor.clientConfigId, routeGroup);
     const realityLink = await this.buildNativeRealityConfigLink(actor.clientConfigId, routeGroup);
-    const configLinks = [deEntryLink, wireguardLink, nativeLink, realityLink, ...baseConfigLinks].filter(
+    const bypassEnabled = await this.getClientEgressBypassEnabled(actor.clientConfigId);
+    const includeStarlinkFallback = bypassEnabled || deEntryLink === null;
+    const starlinkFallback = includeStarlinkFallback ? [wireguardLink, nativeLink, realityLink] : [];
+    const configLinks = [deEntryLink, ...starlinkFallback, ...baseConfigLinks].filter(
       (link): link is ClientSubscriptionConfigLinkSummary => link !== null,
     );
 
@@ -5416,9 +5423,23 @@ export class BillingService {
     };
   }
 
-  /** Builds the PRIMARY remote Germany VLESS+Reality entry link (fast, direct-to-exit),
-   *  or null when AFROWS_DE_ENTRY_* env isn't enabled/configured. This is an entry only
-   *  (no exit creds), so per-user metering on the Germany xray is preserved. */
+  /** Whether the customer's egress-bypass flag (customer_accounts.egress_bypass_enabled) is
+   *  ON. ON = opt this customer into the Starlink/village fallback entries; OFF = Germany-only.
+   *  Defaults to false on any miss (a missing customer gets no Starlink fallback). */
+  private async getClientEgressBypassEnabled(clientConfigId: string): Promise<boolean> {
+    const result = await this.database.query<{ bypass: boolean | null }>(
+      `SELECT ca.egress_bypass_enabled AS bypass
+         FROM client_configs cc
+         JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+        WHERE cc.id = $1`,
+      [clientConfigId],
+    );
+    return result.rows[0]?.bypass === true;
+  }
+
+  /** Builds the PRIMARY remote Germany entry link (Cloudflare-fronted WS+TLS, fast), or null
+   *  when AFROWS_DE_ENTRY_* env isn't enabled/configured. This is an entry only (no exit
+   *  creds), so per-user metering on the Germany xray is preserved. */
   private async buildNativeDeEntryConfigLink(
     clientConfigId: string,
     routeGroup: string,
