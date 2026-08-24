@@ -10,6 +10,8 @@ Parallel, role-specialized Claude Code sub-agents for Afrows. Invoke by name (e.
 | `senior-backend-engineer` | API, billing/quota, traffic accounting | Opus | `apps/backend`, `packages/shared` |
 | `network-infra-engineer` | Xray/VLESS routing, DNS, WireGuard, MikroTik, power resilience | Opus | `xray-config.json`, infra docs |
 | `qa-tester` | Reproduce, test, verify, guard regressions | Sonnet | `tests/`, quality gates |
+| `xray-routing-engineer` | Outbound routing: sendThrough/sockopt.interface/fwmark, fix dead pools, tunnel egress, mux | Opus | Xray outbound routing |
+| `anti-censorship-transport-engineer` | Entry anti-DPI: VLESS+Reality+Vision, SNI/uTLS, CDN-fronting vs Reality | Opus | the client→VPS entry transport |
 | `network-performance-engineer` | Egress SPEED: per-hop diagnosis, entry obfuscation (CDN/reality), path/MTU/MSS tuning | Opus | the client→VPS→exit performance path |
 | `release-orchestrator` | Reads results (probe/deploy/CI/egress-health/telemetry) → decides proceed/retry/hold/rollback → drives the next step | Opus | the deploy→verify→decide→continue loop |
 
