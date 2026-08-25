@@ -477,7 +477,7 @@ function ResellerExperiencePanel({
         <div className="grid gap-2 sm:grid-cols-3">
           <MetricPill icon={ShieldCheck} label={t.reseller.remainingVolume} value={stats.remainingBytes === null ? t.billing.unlimited : format.bytes(stats.remainingBytes)} />
           <MetricPill icon={UserRound} label={t.reseller.lowQuotaUsers} value={format.integer(stats.lowQuotaCount)} />
-          <MetricPill icon={Activity} label={t.reseller.averageSoldGb} value={format.bytes(Math.round(stats.averageSoldGb * 1024 ** 3))} />
+          <MetricPill icon={Activity} label={t.reseller.averageSoldGb} value={format.bytes(Math.round(stats.averageSoldGb * 1e9))} />
         </div>
         {hasAccounts ? (
           <EChart
@@ -941,7 +941,8 @@ export function BillingPage({
         dailyLimit: dailyLimitValue,
         enabled: rewardEnabled,
         provider,
-        rewardBytes: Math.round(rewardMbValue * 1024 ** 2),
+        // Decimal MB (1 MB = 1e6 bytes) — quota credits are decimal end-to-end.
+        rewardBytes: Math.round(rewardMbValue * 1e6),
         verificationMode,
       });
       setRewardSettings(response.rewardedAds);
@@ -2799,13 +2800,14 @@ function parseGbLimitInput(value: string): number | null | undefined {
   const numericValue = Number(trimmedValue);
   if (!Number.isFinite(numericValue) || numericValue < 0) return undefined;
 
-  return Math.round(numericValue * 1024 ** 3);
+  // Decimal GB (1 GB = 1e9 bytes) — matches backend quota-math BYTES_PER_GB.
+  return Math.round(numericValue * 1e9);
 }
 
 function formatGbInput(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return '';
 
-  const gigabytes = value / 1024 ** 3;
+  const gigabytes = value / 1e9;
   const rounded = Math.round(gigabytes * 100) / 100;
 
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');

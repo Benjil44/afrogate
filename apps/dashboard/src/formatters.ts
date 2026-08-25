@@ -107,10 +107,6 @@ export function createDashboardFormatters(language: DashboardLanguage) {
     'quic': 'QUIC',
     'dns': 'DNS',
     'wireguard': 'WireGuard',
-    'ether1 / Mobinnet / wg1': 'ether1 / مبین‌نت / wg1',
-    'ether2 / Irelandcell / wireguard2': 'ether2 / ایرانسل / wireguard2',
-    'ether5 / Irelandcell / wireguard3': 'ether5 / ایرانسل / wireguard3',
-    'core uplink / Germany / gateway': 'آپ‌لینک هسته / آلمان / درگاه',
   };
 
   const formatCompactNumber = (value: number): string => {
@@ -135,8 +131,9 @@ export function createDashboardFormatters(language: DashboardLanguage) {
       let currentValue = value;
       let unitIndex = 0;
 
-      while (currentValue >= 1024 && unitIndex < units.length - 1) {
-        currentValue /= 1024;
+      // Decimal units (1 MB/s = 1e6 B/s) — Afrows traffic/quota math is decimal.
+      while (currentValue >= 1000 && unitIndex < units.length - 1) {
+        currentValue /= 1000;
         unitIndex += 1;
       }
 
@@ -151,8 +148,10 @@ export function createDashboardFormatters(language: DashboardLanguage) {
       let currentValue = value;
       let unitIndex = 0;
 
-      while (currentValue >= 1024 && unitIndex < units.length - 1) {
-        currentValue /= 1024;
+      // Decimal units (1 GB = 1e9 bytes) — matches quota-math BYTES_PER_GB, so a
+      // stored 50 GB quota renders as exactly "50 GB" with no binary drift.
+      while (currentValue >= 1000 && unitIndex < units.length - 1) {
+        currentValue /= 1000;
         unitIndex += 1;
       }
 

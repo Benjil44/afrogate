@@ -240,7 +240,7 @@ export function CapacityPanel({ activeUsers, format, t, trafficTotals }: { activ
     { label: t.capacity.usersOnline, value: format.integer(activeUsers) },
     { label: t.summary.downloadNow, value: format.bytesPerSecond(trafficTotals.downloadBps) },
     { label: t.summary.uploadNow, value: format.bytesPerSecond(trafficTotals.uploadBps) },
-    { label: t.capacity.minTargetUser, value: format.bytesPerSecond(1024 * 1024) },
+    { label: t.capacity.minTargetUser, value: format.bytesPerSecond(1_000_000) },
     { label: t.capacity.routeMode, value: t.capacity.autoLock },
   ];
 

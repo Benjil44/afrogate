@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.114.93 - 2026-08-25
+
+- **Dashboard P0 correctness + i18n fixes (audit follow-up).**
+  - **P0-1 — GB/MB math is decimal end-to-end (was silently corrupting quotas).** `parseGbLimitInput`/`formatGbInput` on the Billing page and all reseller-chart GB conversions now use decimal units (`1e9`/`1e6`) matching backend `quota-math.ts BYTES_PER_GB`; a "50 GB" quota entered on Billing stores exactly `50_000_000_000` bytes (previously `1024**3` inflated it ~7.4%). The rewarded-ad reward MB→bytes write is decimal too. `format.bytes`/`format.bytesPerSecond` display divisors switched from 1024 to 1000 so stored decimal quotas render back as the same number the admin typed (all call sites are traffic/quota/volume values; RAM/disk render as percents and are unaffected). Known follow-up for backend: `billing.service.ts` still returns `rewardMb` via `rewardBytes / 1024**2` and should switch to `1e6`.
+  - **P0-2 — removed fabricated server interfaces.** `ServersPage` no longer invents `ether1/Mobinnet/wg1`-style interface names by array index; cards and the Interfaces tab render only real agent/inventory interface rows with a localized empty state, the hardcoded cosmetic "metrics interval 10s" row is dropped, and the overview route group is computed from real tunnel inventory.
+  - **P0-3 — MicrotiksPage fully localized.** New typed `microtiksPage` block (en + fa) replaces ~80 hardcoded English literals; tables use logical start/end alignment and `dir="ltr"` islands for hosts/addresses/byte values so the page renders correctly in RTL Persian. Its local byte formatter is decimal now too.
+  - **P0-4 — CustomersPage editor strings localized.** Game-mode entitlement, expiry, tags, and MikroTik-assignment labels/options moved into `t.customersPage` (en + fa).
+
 ## 0.114.92 - 2026-08-24
 
 - **Germany edge agent (data-plane half of edge-sync).** `scripts/afrows-de-edge-agent.py` runs on the Germany box and talks to the Ireland edge API (0.114.91) over Cloudflare (`edge.afrows.com`; Germany→Ireland direct is filtered, Germany→Cloudflare→Ireland works and survives a village blackout). Each 60s tick it (1) **auto-provisions**: pulls `GET /api/edge/de/clients` and reconciles the local WS inbound via `xray api adu`/`rmu`, mirroring the set into `config.json` so new customers land on Germany within ~60s with no manual step and it persists across restart; (2) **meters**: reads local `xray api statsquery` per `cc_<id>@afrows` user against a persisted baseline (no `-reset`), computes reset-safe deltas, and pushes them to `POST /api/edge/de/usage` — the baseline only advances after a successful push, so a transient Ireland outage (e.g. a deploy) loses no usage. stdlib-only, secrets never logged; installed as `afrows-de-edge-agent.service`.

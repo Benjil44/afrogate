@@ -42,7 +42,7 @@ export function createResellerSalesStats(
   return {
     activeCustomerCount: accounts.filter((account) => account.status === 'active').length,
     afrowsShareAmount,
-    averageSoldGb: completedOrders.length > 0 ? soldBytes / completedOrders.length / 1024 ** 3 : 0,
+    averageSoldGb: completedOrders.length > 0 ? soldBytes / completedOrders.length / 1e9 : 0,
     currency: reseller?.currency ?? completedOrders[0]?.currency ?? 'IRR',
     lowQuotaCount,
     orderCount: completedOrders.length,
@@ -83,7 +83,7 @@ export function createResellerSalesTrendOption(
 
     bucket.amount += order.amount;
     bucket.orderCount += 1;
-    bucket.volumeGb += order.volumeBytes / 1024 ** 3;
+    bucket.volumeGb += order.volumeBytes / 1e9;
   });
 
   return {
@@ -202,7 +202,7 @@ export function createResellerUsageMixOption(
     },
     tooltip: {
       trigger: 'axis',
-      valueFormatter: (value) => format.bytes(Math.round(Number(value) * 1024 ** 3)),
+      valueFormatter: (value) => format.bytes(Math.round(Number(value) * 1e9)),
     },
     legend: {
       top: 0,
@@ -260,7 +260,7 @@ export function createResellerUsageMixOption(
         type: 'bar',
         stack: 'quota',
         barMaxWidth: 26,
-        data: rows.map((account) => Math.round(account.usedBytes / 1024 ** 3 * 10) / 10),
+        data: rows.map((account) => Math.round(account.usedBytes / 1e9 * 10) / 10),
       },
       {
         name: t.reseller.remainingGbSeries,
@@ -273,7 +273,7 @@ export function createResellerUsageMixOption(
         data: rows.map((account) => (
           account.remainingBytes === null || account.remainingBytes === undefined
             ? 0
-            : Math.round(account.remainingBytes / 1024 ** 3 * 10) / 10
+            : Math.round(account.remainingBytes / 1e9 * 10) / 10
         )),
       },
     ],

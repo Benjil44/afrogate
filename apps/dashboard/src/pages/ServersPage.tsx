@@ -41,8 +41,7 @@ export function ServersPage({
     }
   }, [selectedServerId, servers]);
 
-  const selectedServerIndex = Math.max(0, servers.findIndex((server) => server.id === selectedServerId));
-  const selectedServer = servers[selectedServerIndex] ?? null;
+  const selectedServer = servers.find((server) => server.id === selectedServerId) ?? servers[0] ?? null;
 
   return (
     <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
@@ -51,10 +50,9 @@ export function ServersPage({
         <div className="mt-2 grid gap-2.5">
           {servers.length > 0 && dataState !== 'live' ? <DataStateNotice state={dataState} t={t} /> : null}
           {servers.length === 0 ? <DataStateEmpty emptyMessage={t.operationalData.noServers} state={dataState} t={t} /> : null}
-          {servers.map((server, index) => (
+          {servers.map((server) => (
             <ServerManagementCard
               format={format}
-              index={index}
               isSelected={server.id === selectedServerId}
               key={server.id}
               onEdit={() => setSelectedServerId(server.id)}
@@ -69,7 +67,6 @@ export function ServersPage({
         format={format}
         onServerUpdated={onServerUpdated}
         server={selectedServer}
-        serverIndex={selectedServerIndex}
         session={session}
         sessionToken={sessionToken}
         t={t}
@@ -78,30 +75,21 @@ export function ServersPage({
   );
 }
 
-function getServerInterfaces(index: number): string[] {
-  return index === 0
-    ? ['ether1 / Mobinnet / wg1', 'ether2 / Irelandcell / wireguard2']
-    : index === 1
-      ? ['ether5 / Irelandcell / wireguard3']
-      : ['core uplink / Germany / gateway'];
-}
-
 function ServerManagementCard({
   format,
-  index,
   isSelected,
   onEdit,
   server,
   t,
 }: {
   format: DashboardFormatters;
-  index: number;
   isSelected: boolean;
   onEdit: () => void;
   server: ServerRowData;
   t: DashboardStrings;
 }) {
-  const interfaces = getServerInterfaces(index);
+  // Only real reported interfaces — never fabricated names.
+  const interfaceNames = server.networkInterfaces.map((item) => item.name);
   const selectedClass = isSelected ? 'border-afro-blue ring-2 ring-afro-blue/15' : 'border-afro-line';
 
   return (
@@ -128,11 +116,17 @@ function ServerManagementCard({
 
       <div className="mt-2.5 grid gap-2 sm:grid-cols-[1fr_auto]">
         <div className="grid gap-1.5">
-          {interfaces.map((item) => (
-            <span className="rounded-md bg-[#eef3f5] px-2 py-1 text-[12px] text-afro-muted" key={item}>
-              {format.label(item)}
+          {interfaceNames.length > 0 ? (
+            interfaceNames.map((item) => (
+              <span className="rounded-md bg-[#eef3f5] px-2 py-1 text-[12px] text-afro-muted" key={item}>
+                {format.label(item)}
+              </span>
+            ))
+          ) : (
+            <span className="rounded-md bg-[#eef3f5] px-2 py-1 text-[12px] text-afro-muted">
+              {t.serverEdit.values.noInventoryInterfaces}
             </span>
-          ))}
+          )}
         </div>
         <div className="text-left sm:text-right">
           <span className={mutedTextClass}>{t.resources.health}</span>
@@ -147,7 +141,6 @@ function ServerEditPanel({
   format,
   onServerUpdated,
   server,
-  serverIndex,
   session,
   sessionToken,
   t,
@@ -155,7 +148,6 @@ function ServerEditPanel({
   format: DashboardFormatters;
   onServerUpdated: (server: AdminServerDetail) => void;
   server: ServerRowData | null;
-  serverIndex: number;
   session: AdminSessionResponse;
   sessionToken: string;
   t: DashboardStrings;
@@ -231,7 +223,6 @@ function ServerEditPanel({
 
   const detailedServer = serverDetail ? mapAdminServerToServerRow(serverDetail) : null;
   const activeServer = detailedServer ?? server;
-  const interfaces = getServerInterfaces(serverIndex);
   const tabs: Array<{ id: ServerEditTab; label: string }> = [
     { id: 'overview', label: t.serverEdit.tabs.overview },
     { id: 'access', label: t.serverEdit.tabs.access },
@@ -297,7 +288,6 @@ function ServerEditPanel({
           <ServerInterfacesTab
             detailDataState={detailDataState}
             format={format}
-            interfaces={interfaces}
             inventoryInterfaces={inventoryInterfaces}
             inventoryTunnels={inventoryTunnels}
             server={activeServer}
@@ -347,7 +337,11 @@ function ServerOverviewTab({
       <DetailRow label={t.serverEdit.labels.role}>
         {server.role ? format.label(server.role) : server.name.toLowerCase().includes('core') ? t.serverEdit.values.gatewayNode : t.serverEdit.values.edgeNode}
       </DetailRow>
-      <DetailRow label={t.serverEdit.labels.routeGroup}>{t.serverEdit.values.routeGroupMain}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.routeGroup}>
+        {inventoryTunnels.length > 0
+          ? [...new Set(inventoryTunnels.map((tunnel) => tunnel.routeGroup))].map(format.label).join(', ')
+          : t.serverEdit.values.none}
+      </DetailRow>
       <DetailRow label={t.serverEdit.labels.lastSeen}>
         {server.observedAt ? format.time(new Date(server.observedAt), false) : t.serverEdit.values.localSample}
       </DetailRow>
@@ -669,7 +663,6 @@ function ServerMonitoringTab({ format, server, t }: { format: DashboardFormatter
         <UsageBar format={format} icon={MemoryStick} label={t.resources.ram} value={server.ram} />
         <UsageBar format={format} icon={HardDrive} label={t.resources.diskFree} value={server.diskFree} invert />
       </div>
-      <DetailRow label={t.serverEdit.labels.metricsInterval}>{format.durationSeconds(10)}</DetailRow>
       <DetailRow label={t.serverEdit.labels.networkRate}>
         {format.bytesPerSecond(server.inboundBps)} / {format.bytesPerSecond(server.outboundBps)}
       </DetailRow>
@@ -697,7 +690,6 @@ function ServerMonitoringTab({ format, server, t }: { format: DashboardFormatter
 function ServerInterfacesTab({
   detailDataState,
   format,
-  interfaces,
   inventoryInterfaces,
   inventoryTunnels,
   server,
@@ -705,18 +697,16 @@ function ServerInterfacesTab({
 }: {
   detailDataState: DataState;
   format: DashboardFormatters;
-  interfaces: string[];
   inventoryInterfaces: AdminServerInterfaceSummary[];
   inventoryTunnels: AdminTunnelSummary[];
   server: ServerRowData;
   t: DashboardStrings;
 }) {
-  const metricRows = server.networkInterfaces.length > 0
-    ? server.networkInterfaces.map((item) => ({
-        name: item.name,
-        value: `${format.bytesPerSecond(item.rxBps ?? null)} / ${format.bytesPerSecond(item.txBps ?? null)}`,
-      }))
-    : interfaces.map((item) => ({ name: format.label(item), value: t.serverEdit.values.localSample }));
+  // Only real reported interface telemetry — no fabricated fallback rows.
+  const metricRows = server.networkInterfaces.map((item) => ({
+    name: item.name,
+    value: `${format.bytesPerSecond(item.rxBps ?? null)} / ${format.bytesPerSecond(item.txBps ?? null)}`,
+  }));
   const wireGuardRows = server.wireGuardInterfaces.map((item) => ({
     name: item.name,
     status: wireGuardStatusLabel(item.status, t),
@@ -762,7 +752,7 @@ function ServerInterfacesTab({
           ))}
         </>
       ) : null}
-      {detailDataState === 'live' && inventoryInterfaces.length === 0 ? (
+      {inventoryInterfaces.length === 0 && metricRows.length === 0 ? (
         <DetailRow label={t.serverEdit.labels.inventoryInterfaces}>{t.serverEdit.values.noInventoryInterfaces}</DetailRow>
       ) : null}
       {detailDataState === 'live' && inventoryTunnels.length === 0 ? (
@@ -792,7 +782,6 @@ function ServerInterfacesTab({
       {wireGuardRows.length === 0 ? (
         <DetailRow label={t.serverEdit.labels.wireGuardInterfaces}>{t.serverEdit.values.noWireGuardTelemetry}</DetailRow>
       ) : null}
-      <DetailRow label={t.serverEdit.labels.interfaceMap}>{interfaces.map((item) => format.label(item)).join(' / ')}</DetailRow>
     </div>
   );
 }

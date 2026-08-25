@@ -1260,7 +1260,7 @@ export function CustomersPage({
           <div key={p.tier} className="min-w-[220px] flex-1 rounded-md border border-afro-line bg-white px-4 py-3">
             <div className="text-[13px] font-bold text-afro-ink">{p.label}</div>
             <div className="mt-1 text-[12px] text-afro-muted">
-              {format.integer(p.count)} customers · {format.bytes(p.bytes)}
+              {s.total.replace('{n}', format.integer(p.count))} · {format.bytes(p.bytes)}
             </div>
             <div className="mt-1 text-[14px] font-bold text-afro-ink">{p.cost.toLocaleString()} {p.currency}</div>
           </div>
@@ -1362,14 +1362,14 @@ export function CustomersPage({
                 onChange={(e) => setGamingEntitled(e.target.checked)}
                 className="h-4 w-4 accent-afro-accent"
               />
-              <span className="text-[13px] font-bold text-afro-muted">Allow Game mode toggle (in app)</span>
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldGamingEntitled}</span>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-[13px] font-bold text-afro-muted">Expiry date (blank = never)</span>
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldExpiry}</span>
               <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className={inputClass} />
             </label>
             <label className="grid gap-1.5">
-              <span className="text-[13px] font-bold text-afro-muted">Tags (comma separated)</span>
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldTags}</span>
               <input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="vip, trial" className={inputClass} />
             </label>
             <label className="grid gap-1.5 md:col-span-2">
@@ -1410,16 +1410,16 @@ export function CustomersPage({
             ) : null}
             {!editId ? (
               <label className="grid gap-1.5 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">Assign MikroTik (optional)</span>
+                <span className="text-[13px] font-bold text-afro-muted">{s.fldAssignRouter}</span>
                 <select className={inputClass} value={assignRouterId} onChange={(e) => setAssignRouterId(e.target.value)}>
-                  <option value="">— none —</option>
+                  <option value="">{s.assignRouterNone}</option>
                   {routers
                     .filter((r) => r.kind !== 'village' && !r.customerAccountId)
                     .map((r) => (
-                      <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
+                      <option key={r.id} value={r.id}>{`${r.label} · ${r.online ? s.assignRouterOnline : s.assignRouterOffline}`}</option>
                     ))}
                 </select>
-                <span className="text-[11px] text-afro-muted">Links this router as a Gateway owned by the new customer (only unassigned, non-village routers shown).</span>
+                <span className="text-[11px] text-afro-muted">{s.assignRouterHint}</span>
               </label>
             ) : null}
             {!editId ? (

@@ -76,8 +76,9 @@ function formatBytes(value: number | null | undefined): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let n = value;
   let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
+  // Decimal units (1 GB = 1e9 bytes) — matches Afrows quota math everywhere.
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000;
     i += 1;
   }
   return `${n.toFixed(n >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
@@ -111,7 +112,7 @@ const primaryBtnClass =
   'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-afro-blue px-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50';
 
 export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }: { customerAccountId?: string; roleFilter?: MikroTikRouterRole; sessionToken: string; t: DashboardStrings }) {
-  void t;
+  const s = t.microtiksPage;
   const [rows, setRows] = useState<MikroTikRouterSummary[]>([]);
   const visibleRows = rows.filter((router) =>
     (roleFilter ? router.role === roleFilter : true) &&
@@ -140,11 +141,11 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
       setRows(res.routers);
       setError(null);
     } catch {
-      setError('Could not load routers');
+      setError(s.loadError);
     } finally {
       setLoading(false);
     }
-  }, [sessionToken]);
+  }, [s.loadError, sessionToken]);
 
   useEffect(() => {
     void load();
@@ -227,7 +228,7 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
           role: draft.role,
           customerAccountId: draft.role === 'gateway' ? (draft.customerAccountId || null) : null,
         });
-        setNotice(`Updated ${draft.label}`);
+        setNotice(s.updatedNotice(draft.label));
         setDialogOpen(false);
         await load();
       } else {
@@ -246,7 +247,7 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
           customerAccountId: draft.role === 'gateway' ? (draft.customerAccountId || null) : null,
         };
         const res = await createRouter(sessionToken, payload);
-        setNotice(`Added ${draft.label} — now copy the connect config below and paste it into the MikroTik terminal`);
+        setNotice(s.addedNotice(draft.label));
         await load();
         // Keep the dialog open and switch into the saved router so the connect-config
         // button (which needs a persisted router) is available right away.
@@ -254,21 +255,21 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
         void loadStatus(res.router.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      setError(err instanceof Error ? err.message : s.saveFailed);
     } finally {
       setSaving(false);
     }
   };
 
   const remove = async (router: MikroTikRouterSummary) => {
-    if (!window.confirm(`Remove ${router.label}? This only deletes it from the panel.`)) return;
+    if (!window.confirm(s.removeConfirm(router.label))) return;
     setBusy((b) => ({ ...b, [router.id]: true }));
     try {
       await deleteRouter(sessionToken, router.id);
-      setNotice(`Removed ${router.label}`);
+      setNotice(s.removedNotice(router.label));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      setError(err instanceof Error ? err.message : s.deleteFailed);
     } finally {
       setBusy((b) => ({ ...b, [router.id]: false }));
     }
@@ -279,9 +280,9 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     try {
       const res = await setRouterWgRate(sessionToken, editId, { peerKey, pricePerGb, label });
       setUsage(res.usage);
-      setNotice('Rate saved');
+      setNotice(s.rateSaved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save rate');
+      setError(err instanceof Error ? err.message : s.rateSaveFailed);
     }
   };
 
@@ -296,7 +297,7 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
       );
       setRollup(results.filter((r) => r.rows.length));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load usage');
+      setError(err instanceof Error ? err.message : s.usageLoadFailed);
     } finally {
       setRollupLoading(false);
     }
@@ -307,9 +308,9 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     try {
       const res = await fetchRouterCredential(sessionToken, editId);
       setDraft((d) => ({ ...d, password: res.password ?? '' }));
-      setNotice('Stored password revealed');
+      setNotice(s.passwordRevealed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reveal password');
+      setError(err instanceof Error ? err.message : s.passwordRevealFailed);
     }
   };
 
@@ -322,9 +323,9 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     try {
       const res = await rotateRouterPassword(sessionToken, editId);
       setDraft((d) => ({ ...d, password: res.password ?? '' }));
-      setNotice('New strong password generated and applied to the router');
+      setNotice(s.passwordRotated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not rotate password');
+      setError(err instanceof Error ? err.message : s.passwordRotateFailed);
     } finally {
       setSaving(false);
     }
@@ -335,9 +336,9 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     try {
       const res = await fetchRouterConnectConfig(sessionToken, editId);
       await navigator.clipboard.writeText(res.script);
-      setNotice('Connect config copied — paste it into the MikroTik terminal');
+      setNotice(s.configCopied);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not build connect config');
+      setError(err instanceof Error ? err.message : s.configCopyFailed);
     }
   };
 
@@ -347,10 +348,10 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     setRows((prev) => prev.map((r) => (r.id === router.id ? { ...r, egressEnabled: next } : r)));
     try {
       await setRouterEgress(sessionToken, router.id, next);
-      setNotice(`${router.label}: Afrows internet ${next ? 'ON' : 'OFF (local)'}`);
+      setNotice(s.egressNotice(router.label, next ? s.egressOnState : s.egressOffState));
     } catch (err) {
       setRows((prev) => prev.map((r) => (r.id === router.id ? { ...r, egressEnabled: router.egressEnabled } : r)));
-      setError(err instanceof Error ? err.message : 'Egress toggle failed');
+      setError(err instanceof Error ? err.message : s.egressToggleFailed);
     } finally {
       setBusy((b) => ({ ...b, [router.id]: false }));
     }
@@ -361,10 +362,10 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     setModemBusy((b) => ({ ...b, [iface]: true }));
     try {
       const res = await reconnectRouterModem(sessionToken, editId, iface);
-      setNotice(res.message ?? `Reconnect sent to ${iface}`);
+      setNotice(res.message ?? s.reconnectSent(iface));
       await loadStatus(editId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reconnect failed');
+      setError(err instanceof Error ? err.message : s.reconnectFailed);
     } finally {
       setModemBusy((b) => ({ ...b, [iface]: false }));
     }
@@ -376,10 +377,10 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     setRows((prev) => prev.map((r) => (r.id === router.id ? { ...r, mode: next } : r)));
     try {
       await setRouterMode(sessionToken, router.id, next);
-      setNotice(`${router.label}: ${next === 'game' ? 'Game (Starlink)' : 'Normal'} mode`);
+      setNotice(s.modeNotice(router.label, next === 'game' ? s.modeGameStarlink : s.normal));
     } catch (err) {
       setRows((prev) => prev.map((r) => (r.id === router.id ? { ...r, mode: router.mode } : r)));
-      setError(err instanceof Error ? err.message : 'Mode change failed');
+      setError(err instanceof Error ? err.message : s.modeChangeFailed);
     } finally {
       setBusy((b) => ({ ...b, [router.id]: false }));
     }
@@ -389,14 +390,14 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-afro-muted">
-          Manage your MikroTik routers — status, Game/Normal egress, and full configuration.
+          {s.intro}
         </p>
         <div className="flex items-center gap-2">
           <button className={btnClass} onClick={() => void load()} type="button">
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> {s.refresh}
           </button>
           <button className={primaryBtnClass} onClick={openAdd} type="button">
-            <Plus size={15} /> Add MikroTik
+            <Plus size={15} /> {s.addButton}
           </button>
         </div>
       </div>
@@ -407,149 +408,151 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
       {charts ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className={cardClass}>
-            <div className="text-sm font-bold text-afro-ink">Data used per day — last 15 days (GB)</div>
-            <EChart ariaLabel="GB used per day, last 15 days" className="mt-2 h-[220px] w-full" option={barOption(charts.daily, '#2f6f6a')} />
+            <div className="text-sm font-bold text-afro-ink">{s.dailyChartTitle}</div>
+            <EChart ariaLabel={s.dailyChartAria} className="mt-2 h-[220px] w-full" option={barOption(charts.daily, '#2f6f6a')} />
           </div>
           <div className={cardClass}>
-            <div className="text-sm font-bold text-afro-ink">Usage by hour — last 24h (peak time, Tehran)</div>
-            <EChart ariaLabel="Usage by hour, last 24 hours" className="mt-2 h-[220px] w-full" option={barOption(charts.hourly, '#b9772b')} />
+            <div className="text-sm font-bold text-afro-ink">{s.hourlyChartTitle}</div>
+            <EChart ariaLabel={s.hourlyChartAria} className="mt-2 h-[220px] w-full" option={barOption(charts.hourly, '#b9772b')} />
           </div>
         </div>
       ) : null}
 
       <div className={cardClass}>
         <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-bold text-afro-ink">WireGuard usage — all tunnels (30 days)</div>
+          <div className="text-sm font-bold text-afro-ink">{s.rollupTitle}</div>
           <button className={btnClass} disabled={rollupLoading || visibleRows.length === 0} onClick={() => void loadRollup()} type="button">
-            <RefreshCw size={14} /> {rollupLoading ? 'Loading…' : rollup ? 'Refresh' : 'Load usage'}
+            <RefreshCw size={14} /> {rollupLoading ? s.loading : rollup ? s.refresh : s.loadUsage}
           </button>
         </div>
         {rollup ? (
           rollup.length ? (
             <table className="mt-3 w-full text-sm">
               <thead>
-                <tr className="border-b border-afro-line text-left text-xs uppercase text-afro-muted">
-                  <th className="py-1 pr-2">Router</th>
-                  <th className="py-1 pr-2">Tunnel</th>
-                  <th className="py-1 pr-2 text-right">↓ in</th>
-                  <th className="py-1 pr-2 text-right">↑ out</th>
-                  <th className="py-1 pr-2 text-right">total</th>
-                  <th className="py-1 text-right">cost</th>
+                <tr className="border-b border-afro-line text-start text-xs uppercase text-afro-muted">
+                  <th className="py-1 pe-2 text-start">{s.colRouter}</th>
+                  <th className="py-1 pe-2 text-start">{s.colTunnel}</th>
+                  <th className="py-1 pe-2 text-end">{s.colIn}</th>
+                  <th className="py-1 pe-2 text-end">{s.colOut}</th>
+                  <th className="py-1 pe-2 text-end">{s.colTotal}</th>
+                  <th className="py-1 text-end">{s.colCost}</th>
                 </tr>
               </thead>
               <tbody>
                 {rollup.flatMap((g) =>
                   g.rows.map((u) => (
                     <tr className="border-b border-afro-line/40" key={`${g.router}:${u.peerKey}`}>
-                      <td className="py-1 pr-2">{g.router}</td>
-                      <td className="py-1 pr-2">{u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}</td>
-                      <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.rxBytes)}</td>
-                      <td className="py-1 pr-2 text-right font-mono">{formatBytes(u.txBytes)}</td>
-                      <td className="py-1 pr-2 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
-                      <td className="py-1 text-right font-mono">{formatCost(u.cost, u.currency)}</td>
+                      <td className="py-1 pe-2">{g.router}</td>
+                      <td className="py-1 pe-2">{u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}</td>
+                      <td className="py-1 pe-2 text-end font-mono" dir="ltr">{formatBytes(u.rxBytes)}</td>
+                      <td className="py-1 pe-2 text-end font-mono" dir="ltr">{formatBytes(u.txBytes)}</td>
+                      <td className="py-1 pe-2 text-end font-mono font-bold" dir="ltr">{formatBytes(u.totalBytes)}</td>
+                      <td className="py-1 text-end font-mono" dir="ltr">{formatCost(u.cost, u.currency)}</td>
                     </tr>
                   )),
                 )}
               </tbody>
             </table>
           ) : (
-            <div className="mt-2 text-xs text-afro-muted">No usage yet — samples accrue every ~15 min.</div>
+            <div className="mt-2 text-xs text-afro-muted">{s.noUsageYet}</div>
           )
         ) : (
-          <div className="mt-2 text-xs text-afro-muted">Click “Load usage” for per-tunnel data across all routers (great for billing the village tunnels).</div>
+          <div className="mt-2 text-xs text-afro-muted">{s.rollupHint}</div>
         )}
       </div>
 
       <div className={`${cardClass} overflow-x-auto`}>
         <table className="w-full min-w-[760px] text-sm">
           <thead>
-            <tr className="border-b border-afro-line text-left text-xs uppercase text-afro-muted">
-              <th className="py-2 pr-3">Router</th>
-              <th className="py-2 pr-3">Host</th>
-              <th className="py-2 pr-3">Role</th>
-              <th className="py-2 pr-3">Customer</th>
-              <th className="py-2 pr-3">Status</th>
-              <th className="py-2 pr-3">Mode (Game / Normal)</th>
-              <th className="py-2 pr-3">Afrows internet</th>
-              <th className="py-2 pr-3 text-right">Actions</th>
+            <tr className="border-b border-afro-line text-start text-xs uppercase text-afro-muted">
+              <th className="py-2 pe-3 text-start">{s.colRouter}</th>
+              <th className="py-2 pe-3 text-start">{s.colHost}</th>
+              <th className="py-2 pe-3 text-start">{s.colRole}</th>
+              <th className="py-2 pe-3 text-start">{s.colCustomer}</th>
+              <th className="py-2 pe-3 text-start">{s.colStatus}</th>
+              <th className="py-2 pe-3 text-start">{s.colMode}</th>
+              <th className="py-2 pe-3 text-start">{s.colInternet}</th>
+              <th className="py-2 pe-3 text-end">{s.colActions}</th>
             </tr>
           </thead>
           <tbody>
             {loading && visibleRows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={8}>Loading…</td></tr>
+              <tr><td className="py-4 text-afro-muted" colSpan={8}>{s.loading}</td></tr>
             ) : visibleRows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={8}>No MikroTiks yet — add one with the button above.</td></tr>
+              <tr><td className="py-4 text-afro-muted" colSpan={8}>{s.emptyTable}</td></tr>
             ) : (
               visibleRows.map((router) => (
                 <tr className="border-b border-afro-line/60 align-middle" key={router.id}>
-                  <td className="py-3 pr-3">
+                  <td className="py-3 pe-3">
                     <div className="flex items-center gap-2 font-bold text-afro-ink">
                       <RouterIcon size={16} /> {router.label}
                       {router.kind === 'village' ? (
-                        <span className="rounded-full bg-afro-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-afro-accent" title="Critical egress hub — locked">
-                          Primary
+                        <span className="rounded-full bg-afro-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-afro-accent" title={s.primaryBadgeTitle}>
+                          {s.primaryBadge}
                         </span>
                       ) : null}
                     </div>
                     <div className="text-xs text-afro-muted">{router.kind}{router.board ? ` · ${router.board}` : ''}{router.version ? ` · ${router.version}` : ''}</div>
                   </td>
-                  <td className="py-3 pr-3 font-mono text-xs">{router.host}:{router.restPort}</td>
-                  <td className="py-3 pr-3">
+                  <td className="py-3 pe-3 font-mono text-xs" dir="ltr">{router.host}:{router.restPort}</td>
+                  <td className="py-3 pe-3">
                     {router.role === 'transport' ? (
-                      <span className="text-xs text-afro-muted">Transport</span>
+                      <span className="text-xs text-afro-muted">{s.roleTransport}</span>
                     ) : (
-                      <span className="rounded bg-afro-line/40 px-1.5 py-0.5 text-xs">Gateway</span>
+                      <span className="rounded bg-afro-line/40 px-1.5 py-0.5 text-xs">{s.roleGateway}</span>
                     )}
                   </td>
-                  <td className="py-3 pr-3 text-xs">
+                  <td className="py-3 pe-3 text-xs">
                     {router.role === 'transport' ? (
                       <span className="text-afro-muted">—</span>
                     ) : router.customerDisplayName ? (
                       <span className="text-afro-ink">{router.customerDisplayName}</span>
                     ) : (
-                      <span className="text-amber-500">— unassigned</span>
+                      <span className="text-amber-500">{s.unassigned}</span>
                     )}
                   </td>
-                  <td className="py-3 pr-3">
+                  <td className="py-3 pe-3">
                     <span className={`inline-flex items-center gap-1.5 ${router.online ? 'text-emerald-600' : 'text-red-500'}`}>
                       <span className={`size-2 rounded-full ${router.online ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                      {router.online ? 'Online' : 'Offline'}
+                      {router.online ? s.online : s.offline}
                     </span>
-                    {router.uptime ? <div className="text-xs text-afro-muted">up {router.uptime}</div> : null}
+                    {router.uptime ? <div className="text-xs text-afro-muted">{s.uptime(router.uptime)}</div> : null}
                   </td>
-                  <td className="py-3 pr-3">
+                  <td className="py-3 pe-3">
                     {router.kind === 'village' ? (
-                      <span className="text-xs font-bold text-afro-muted" title="Primary hub — mode is fixed">Locked</span>
+                      <span className="text-xs font-bold text-afro-muted" title={s.modeLockedTitle}>{s.modeLocked}</span>
                     ) : (
                       <ModeToggle
                         mode={router.mode}
                         disabled={Boolean(busy[router.id])}
                         onToggle={() => void toggleMode(router)}
+                        s={s}
                       />
                     )}
                   </td>
-                  <td className="py-3 pr-3">
+                  <td className="py-3 pe-3">
                     {router.kind === 'village' ? (
-                      <span className="text-xs font-bold text-emerald-600" title="Primary hub — always on">Always on</span>
+                      <span className="text-xs font-bold text-emerald-600" title={s.alwaysOnTitle}>{s.alwaysOn}</span>
                     ) : (
                       <OnOffToggle
                         on={router.egressEnabled}
                         disabled={Boolean(busy[router.id])}
                         onToggle={() => void toggleEgress(router)}
+                        s={s}
                       />
                     )}
                   </td>
-                  <td className="py-3 pr-3">
+                  <td className="py-3 pe-3">
                     <div className="flex items-center justify-end gap-1.5">
-                      <button className={btnClass} onClick={() => openEdit(router)} type="button" title="Edit / details">
-                        <Pencil size={14} /> Edit
+                      <button className={btnClass} onClick={() => openEdit(router)} type="button" title={s.editActionTitle}>
+                        <Pencil size={14} /> {s.edit}
                       </button>
                       {router.webfigUrl ? (
-                        <a className={btnClass} href={router.webfigUrl} target="_blank" rel="noreferrer" title="Open the router's own web UI">
-                          <ExternalLink size={14} /> Advanced
+                        <a className={btnClass} href={router.webfigUrl} target="_blank" rel="noreferrer" title={s.advancedTitle}>
+                          <ExternalLink size={14} /> {s.advanced}
                         </a>
                       ) : null}
-                      <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id]) || router.kind === 'village'} onClick={() => void remove(router)} type="button" title={router.kind === 'village' ? 'Primary hub — cannot be removed' : 'Remove from panel'}>
+                      <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id]) || router.kind === 'village'} onClick={() => void remove(router)} type="button" title={router.kind === 'village' ? s.removeLockedTitle : s.removeTitle}>
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -565,6 +568,7 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
         <RouterDialog
           draft={draft}
           editId={editId}
+          s={s}
           saving={saving}
           status={statusFor === editId ? status : null}
           usage={statusFor === editId ? usage : null}
@@ -584,7 +588,9 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
   );
 }
 
-function ModeToggle({ mode, disabled, onToggle }: { mode: 'game' | 'normal' | null; disabled: boolean; onToggle: () => void }) {
+type MicrotiksStrings = DashboardStrings['microtiksPage'];
+
+function ModeToggle({ mode, disabled, onToggle, s }: { mode: 'game' | 'normal' | null; disabled: boolean; onToggle: () => void; s: MicrotiksStrings }) {
   const isGame = mode === 'game';
   return (
     <button
@@ -593,17 +599,17 @@ function ModeToggle({ mode, disabled, onToggle }: { mode: 'game' | 'normal' | nu
       disabled={disabled}
       onClick={onToggle}
       type="button"
-      title={isGame ? 'Game mode (egress via Starlink) — click for Normal' : 'Normal mode (relay pool) — click for Game'}
+      title={isGame ? s.gameModeTitle : s.normalModeTitle}
     >
       <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isGame ? 'bg-afro-blue' : 'bg-afro-line'}`}>
         <span className={`inline-block size-4 transform rounded-full bg-white shadow transition-transform ${isGame ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </span>
-      <span className={`text-xs font-bold ${isGame ? 'text-afro-blue' : 'text-afro-muted'}`}>{isGame ? 'Game' : 'Normal'}</span>
+      <span className={`text-xs font-bold ${isGame ? 'text-afro-blue' : 'text-afro-muted'}`}>{isGame ? s.game : s.normal}</span>
     </button>
   );
 }
 
-function OnOffToggle({ on, disabled, onToggle }: { on: boolean; disabled: boolean; onToggle: () => void }) {
+function OnOffToggle({ on, disabled, onToggle, s }: { on: boolean; disabled: boolean; onToggle: () => void; s: MicrotiksStrings }) {
   return (
     <button
       aria-pressed={on}
@@ -611,12 +617,12 @@ function OnOffToggle({ on, disabled, onToggle }: { on: boolean; disabled: boolea
       disabled={disabled}
       onClick={onToggle}
       type="button"
-      title={on ? 'Clients use Afrows internet — click to turn OFF (local internet)' : 'Clients use local internet — click to route through Afrows'}
+      title={on ? s.egressOnTitle : s.egressOffTitle}
     >
       <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${on ? 'bg-emerald-500' : 'bg-afro-line'}`}>
         <span className={`inline-block size-4 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </span>
-      <span className={`text-xs font-bold ${on ? 'text-emerald-600' : 'text-afro-muted'}`}>{on ? 'On' : 'Off'}</span>
+      <span className={`text-xs font-bold ${on ? 'text-emerald-600' : 'text-afro-muted'}`}>{on ? s.on : s.off}</span>
     </button>
   );
 }
@@ -624,6 +630,7 @@ function OnOffToggle({ on, disabled, onToggle }: { on: boolean; disabled: boolea
 function RouterDialog({
   draft,
   editId,
+  s,
   saving,
   status,
   usage,
@@ -641,6 +648,7 @@ function RouterDialog({
   draft: DraftForm;
   customers: AdminCustomerAccountSummary[];
   editId: string | null;
+  s: MicrotiksStrings;
   saving: boolean;
   status: MikroTikRouterStatus | null;
   usage: MikroTikWgUsage[] | null;
@@ -664,51 +672,50 @@ function RouterDialog({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
       <div className="my-8 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-afro-ink">{editId ? `Edit ${draft.label}` : 'Add MikroTik'}</h2>
+          <h2 className="text-lg font-bold text-afro-ink">{editId ? s.dialogEditTitle(draft.label) : s.addButton}</h2>
           <button className="text-afro-muted hover:text-afro-ink" onClick={onClose} type="button"><X size={18} /></button>
         </div>
 
         {!editId ? (
           <div className="mt-3 rounded-md border border-afro-line bg-afro-bg/40 px-3 py-2 text-xs text-afro-muted">
-            Afrows auto-assigns the tunnel IP, generates the WireGuard keys, and a strong password.
-            Just set an ID + label, click <b>Add</b>, then <b>Copy connect config</b> and paste it into the new MikroTik terminal — that's the only step.
+            {s.addIntro}
           </div>
         ) : null}
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {!editId ? (
             <div>
-              <label className={labelClass}>ID (slug)</label>
-              <input className={field} placeholder="village" value={draft.id} onChange={(e) => set({ id: e.target.value })} />
+              <label className={labelClass}>{s.fldId}</label>
+              <input className={field} dir="ltr" placeholder="village" value={draft.id} onChange={(e) => set({ id: e.target.value })} />
             </div>
           ) : null}
           <div>
-            <label className={labelClass}>Label</label>
+            <label className={labelClass}>{s.fldLabel}</label>
             <input className={field} placeholder="Village ax3" value={draft.label} onChange={(e) => set({ label: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>Kind</label>
+            <label className={labelClass}>{s.fldKind}</label>
             <select className={field} value={draft.kind} onChange={(e) => set({ kind: e.target.value as MikroTikRouterKind })}>
               {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
           </div>
           <div>
-            <label className={labelClass}>Role</label>
+            <label className={labelClass}>{s.fldRole}</label>
             <select
               className={field}
               value={draft.role}
               disabled={draft.kind === 'village'}
               onChange={(e) => set({ role: e.target.value as MikroTikRouterRole })}
             >
-              <option value="gateway">Gateway (customer)</option>
-              <option value="transport">Transport (infra)</option>
+              <option value="gateway">{s.roleGatewayOption}</option>
+              <option value="transport">{s.roleTransportOption}</option>
             </select>
           </div>
           {draft.role === 'gateway' ? (
             <div>
-              <label className={labelClass}>Customer</label>
+              <label className={labelClass}>{s.fldCustomer}</label>
               <select className={field} value={draft.customerAccountId} onChange={(e) => set({ customerAccountId: e.target.value })}>
-                <option value="">— unassigned —</option>
+                <option value="">{s.customerUnassignedOption}</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.displayName ?? c.loginEmail ?? c.id}</option>
                 ))}
@@ -716,38 +723,38 @@ function RouterDialog({
             </div>
           ) : null}
           <div>
-            <label className={labelClass}>Host (tunnel IP){!editId ? ' — leave blank to auto-assign' : ''}</label>
-            <input className={field} placeholder={editId ? '10.22.0.3' : 'auto-assigned by Afrows'} value={draft.host} onChange={(e) => set({ host: e.target.value })} />
+            <label className={labelClass}>{s.fldHost}{!editId ? s.fldHostAutoHint : ''}</label>
+            <input className={field} dir="ltr" placeholder={editId ? '10.22.0.3' : s.hostAutoPlaceholder} value={draft.host} onChange={(e) => set({ host: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>REST port</label>
-            <input className={field} value={draft.restPort} onChange={(e) => set({ restPort: e.target.value })} />
+            <label className={labelClass}>{s.fldRestPort}</label>
+            <input className={field} dir="ltr" value={draft.restPort} onChange={(e) => set({ restPort: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>REST user</label>
-            <input className={field} value={draft.restUser} onChange={(e) => set({ restUser: e.target.value })} />
+            <label className={labelClass}>{s.fldRestUser}</label>
+            <input className={field} dir="ltr" value={draft.restUser} onChange={(e) => set({ restUser: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>Password</label>
+            <label className={labelClass}>{s.fldPassword}</label>
             <div className="flex items-center gap-1">
-              <input className={field} type={showPw ? 'text' : 'password'} placeholder={editId ? '(blank = keep)' : ''} value={draft.password} onChange={(e) => set({ password: e.target.value })} />
-              <button className={`${btnClass} min-h-9 px-2`} onClick={() => setShowPw((v) => !v)} type="button" title={showPw ? 'Hide' : 'Show typed'}><Eye size={14} /></button>
-              <button className={`${btnClass} min-h-9 px-2`} onClick={onGeneratePassword} type="button" title={editId ? 'Generate + apply a strong password to the router' : 'Generate a strong password'}><KeyRound size={14} /></button>
+              <input className={field} dir="ltr" type={showPw ? 'text' : 'password'} placeholder={editId ? s.passwordKeepPlaceholder : ''} value={draft.password} onChange={(e) => set({ password: e.target.value })} />
+              <button className={`${btnClass} min-h-9 px-2`} onClick={() => setShowPw((v) => !v)} type="button" title={showPw ? s.hidePassword : s.showTyped}><Eye size={14} /></button>
+              <button className={`${btnClass} min-h-9 px-2`} onClick={onGeneratePassword} type="button" title={editId ? s.generateApplyTitle : s.generateTitle}><KeyRound size={14} /></button>
             </div>
             {editId ? (
-              <button className="mt-1 text-xs font-bold text-afro-blue hover:underline" onClick={onShowPassword} type="button">Reveal stored password</button>
+              <button className="mt-1 text-xs font-bold text-afro-blue hover:underline" onClick={onShowPassword} type="button">{s.revealStored}</button>
             ) : null}
           </div>
           <div>
-            <label className={labelClass}>WebFig URL (Advanced button)</label>
-            <input className={field} placeholder="https://afrows.com/router/village/" value={draft.webfigUrl} onChange={(e) => set({ webfigUrl: e.target.value })} />
+            <label className={labelClass}>{s.fldWebfig}</label>
+            <input className={field} dir="ltr" placeholder="https://afrows.com/router/village/" value={draft.webfigUrl} onChange={(e) => set({ webfigUrl: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>Gaming source IP (for Game mode)</label>
-            <input className={field} placeholder="10.7.0.2" value={draft.gamingSourceIp} onChange={(e) => set({ gamingSourceIp: e.target.value })} />
+            <label className={labelClass}>{s.fldGamingIp}</label>
+            <input className={field} dir="ltr" placeholder="10.7.0.2" value={draft.gamingSourceIp} onChange={(e) => set({ gamingSourceIp: e.target.value })} />
           </div>
           <div className="sm:col-span-2">
-            <label className={labelClass}>Notes</label>
+            <label className={labelClass}>{s.fldNotes}</label>
             <input className={field} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />
           </div>
         </div>
@@ -755,46 +762,46 @@ function RouterDialog({
         {editId ? (
           <div className="mt-4 rounded-md border border-afro-line bg-afro-bg/40 p-3">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <button className={btnClass} onClick={onCopyConfig} type="button" title="Copy a RouterOS script to paste into the MikroTik terminal to connect it to Afrows">
-                <ClipboardCopy size={14} /> Copy connect config
+              <button className={btnClass} onClick={onCopyConfig} type="button" title={s.copyConfigTitle}>
+                <ClipboardCopy size={14} /> {s.copyConfig}
               </button>
               {draft.webfigUrl ? (
                 <a className={btnClass} href={draft.webfigUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink size={14} /> Open WebFig (Advanced)
+                  <ExternalLink size={14} /> {s.openWebfig}
                 </a>
               ) : null}
             </div>
-            <div className="mb-2 text-xs font-bold uppercase text-afro-muted">Live status</div>
+            <div className="mb-2 text-xs font-bold uppercase text-afro-muted">{s.liveStatus}</div>
             {!status ? (
-              <div className="text-sm text-afro-muted">Loading status…</div>
+              <div className="text-sm text-afro-muted">{s.loadingStatus}</div>
             ) : status.error ? (
               <div className="text-sm text-red-600">{status.error}</div>
             ) : (
               <div className="space-y-2 text-sm">
                 <div className="text-afro-ink">
-                  {status.identity ?? status.label} · {status.board ?? '—'} · {status.version ?? '—'} · up {status.uptime ?? '—'} · CPU {status.cpuLoad ?? 0}%
+                  {s.statusSummary(status.identity ?? status.label, status.board ?? '—', status.version ?? '—', status.uptime ?? '—', String(status.cpuLoad ?? 0))}
                 </div>
                 {status.wans.length ? (
                   <div>
-                    <div className="mb-1 text-xs font-bold text-afro-muted">Modems / WANs</div>
+                    <div className="mb-1 text-xs font-bold text-afro-muted">{s.modemsTitle}</div>
                     <table className="w-full text-xs">
                       <tbody>
                         {status.wans.map((w) => (
                           <tr className="border-b border-afro-line/40" key={w.name}>
-                            <td className="py-1 pr-2">
+                            <td className="py-1 pe-2">
                               <span className={w.running ? 'text-emerald-600' : 'text-red-500'}>●</span> {w.name}
                             </td>
-                            <td className="py-1 pr-2 font-mono">{w.sim ?? (w.comment ?? '')}</td>
-                            <td className="py-1 pr-2 font-mono text-afro-muted">{w.address ?? '—'}</td>
-                            <td className="py-1 text-right">
+                            <td className="py-1 pe-2 font-mono" dir="ltr">{w.sim ?? (w.comment ?? '')}</td>
+                            <td className="py-1 pe-2 font-mono text-afro-muted" dir="ltr">{w.address ?? '—'}</td>
+                            <td className="py-1 text-end">
                               <button
                                 className={`${btnClass} min-h-7 px-2 py-0`}
                                 disabled={Boolean(modemBusy[w.name])}
                                 onClick={() => onReconnect(w.name)}
-                                title="Renew this WAN link (a full power reboot needs the modem's own login)"
+                                title={s.reconnectTitle}
                                 type="button"
                               >
-                                <RefreshCw size={12} /> {modemBusy[w.name] ? '…' : 'Reconnect'}
+                                <RefreshCw size={12} /> {modemBusy[w.name] ? '…' : s.reconnect}
                               </button>
                             </td>
                           </tr>
@@ -805,24 +812,24 @@ function RouterDialog({
                 ) : null}
                 {status.wgPeers.length ? (
                   <div>
-                    <div className="text-xs font-bold text-afro-muted">WireGuard peers</div>
+                    <div className="text-xs font-bold text-afro-muted">{s.wgPeersTitle}</div>
                     {status.wgPeers.map((p) => (
-                      <div className="font-mono text-xs" key={p.interfaceName + (p.endpoint ?? '')}>
-                        {p.interfaceName} → {p.endpoint ?? '—'} · hs {p.lastHandshakeSeconds != null ? `${p.lastHandshakeSeconds}s` : '—'} · ↓{formatBytes(p.rxBytes)} ↑{formatBytes(p.txBytes)}
+                      <div className="font-mono text-xs" dir="ltr" key={p.interfaceName + (p.endpoint ?? '')}>
+                        {p.interfaceName} → {p.endpoint ?? '—'} · {s.handshakeAbbrev} {p.lastHandshakeSeconds != null ? `${p.lastHandshakeSeconds}s` : '—'} · ↓{formatBytes(p.rxBytes)} ↑{formatBytes(p.txBytes)}
                       </div>
                     ))}
                   </div>
                 ) : null}
                 {usage && usage.length ? (
                   <div>
-                    <div className="mb-1 text-xs font-bold text-afro-muted">WireGuard usage + billing (last 30 days)</div>
+                    <div className="mb-1 text-xs font-bold text-afro-muted">{s.usageBillingTitle}</div>
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-left text-afro-muted">
-                          <th className="py-1 pr-2">Tunnel</th>
-                          <th className="py-1 pr-2 text-right">total</th>
-                          <th className="py-1 pr-2 text-right">price/GB</th>
-                          <th className="py-1 pr-2 text-right">cost</th>
+                        <tr className="text-start text-afro-muted">
+                          <th className="py-1 pe-2 text-start">{s.colTunnel}</th>
+                          <th className="py-1 pe-2 text-end">{s.colTotal}</th>
+                          <th className="py-1 pe-2 text-end">{s.colPricePerGb}</th>
+                          <th className="py-1 pe-2 text-end">{s.colCost}</th>
                           <th className="py-1"></th>
                         </tr>
                       </thead>
@@ -831,24 +838,25 @@ function RouterDialog({
                           const inputVal = rateInputs[u.peerKey] ?? (u.pricePerGb != null ? String(u.pricePerGb) : '');
                           return (
                             <tr className="border-b border-afro-line/40" key={u.peerKey}>
-                              <td className="py-1 pr-2">{u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}</td>
-                              <td className="py-1 pr-2 text-right font-mono font-bold">{formatBytes(u.totalBytes)}</td>
-                              <td className="py-1 pr-2 text-right">
+                              <td className="py-1 pe-2">{u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}</td>
+                              <td className="py-1 pe-2 text-end font-mono font-bold" dir="ltr">{formatBytes(u.totalBytes)}</td>
+                              <td className="py-1 pe-2 text-end">
                                 <input
-                                  className="w-20 rounded border border-afro-line px-1 text-right text-xs"
+                                  className="w-20 rounded border border-afro-line px-1 text-end text-xs"
+                                  dir="ltr"
                                   inputMode="decimal"
                                   value={inputVal}
                                   onChange={(e) => setRateInputs((m) => ({ ...m, [u.peerKey]: e.target.value }))}
                                 />
                               </td>
-                              <td className="py-1 pr-2 text-right font-mono">{formatCost(u.cost, u.currency)}</td>
-                              <td className="py-1 text-right">
+                              <td className="py-1 pe-2 text-end font-mono" dir="ltr">{formatCost(u.cost, u.currency)}</td>
+                              <td className="py-1 text-end">
                                 <button
                                   className={`${btnClass} min-h-7 px-2 py-0`}
                                   onClick={() => onSetRate(u.peerKey, Number(inputVal) || 0, u.label ?? u.comment ?? null)}
                                   type="button"
                                 >
-                                  Save
+                                  {s.saveRate}
                                 </button>
                               </td>
                             </tr>
@@ -856,10 +864,10 @@ function RouterDialog({
                         })}
                       </tbody>
                     </table>
-                    <div className="mt-1 text-[11px] text-afro-muted">Set a price per GB per tunnel → cost = usage × rate. Default currency IRT.</div>
+                    <div className="mt-1 text-[11px] text-afro-muted">{s.rateHint}</div>
                   </div>
                 ) : usage ? (
-                  <div className="text-xs text-afro-muted">No usage samples yet — they accrue every ~15 min.</div>
+                  <div className="text-xs text-afro-muted">{s.noUsageSamples}</div>
                 ) : null}
               </div>
             )}
@@ -867,9 +875,9 @@ function RouterDialog({
         ) : null}
 
         <div className="mt-5 flex items-center justify-end gap-2">
-          <button className={btnClass} onClick={onClose} type="button">Cancel</button>
+          <button className={btnClass} onClick={onClose} type="button">{s.cancel}</button>
           <button className={primaryBtnClass} disabled={saving || !draft.label || (!editId && !draft.id)} onClick={onSave} type="button">
-            {saving ? 'Saving…' : editId ? 'Save changes' : 'Add'}
+            {saving ? s.saving : editId ? s.saveChanges : s.add}
           </button>
         </div>
       </div>
