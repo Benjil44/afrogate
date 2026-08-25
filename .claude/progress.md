@@ -1,5 +1,19 @@
 # Afrows Progress
 
+## 2026-08-25
+
+### Germany-path usage metering + per-user usage charts + quota enforcement (0.114.94, flag-gated, default OFF, commit only)
+
+- **What.** `GermanyUsageMeteringService` (`apps/backend/src/client/germany-usage-metering.service.ts`) is the Ireland-side consumer of the VERIFIED Germany durable buffer (`/var/lib/afrows/de-usage.json`, monotonic cumulative per-user bytes). It pulls the buffer over the locked-down Ireland→Germany SSH channel and folds Germany traffic into the SAME accounting as the local Xray path. Gated by `AFROWS_DE_USAGE_ENABLED` (default off), interval `AFROWS_DE_USAGE_INTERVAL_SECONDS` (default 60s).
+- **Baseline / no-loss.** New `client_usage_de_baseline` table stores the last-seen cumulative per `cc_<id>`. `computeUsageDelta` = `current < baseline ? current : current - baseline`, capped at 1 TB (10^12), baseline advanced **only after a successful DB write** → a ~2h village blackout loses nothing (reconnect catch-up = full jump), and a mid-write failure retries the same delta (no double count). First-sight counts from 0 (recorder counter also starts at 0); counter-reset counts `current`.
+- **Identical accounting.** Per positive delta: append-only `client_usage_events` row (`source='germany-xray'`, idempotency key `<clientConfigId>:<cumulative>` on the existing `(source, idempotency_key)` unique index) → UPSERT `client_usage_hourly` + `client_usage_daily` (additive) → SHARED `applyUsageDelta` (byte-for-byte identical to local path). All DB shaping/decision logic is in decorator-free `germany-usage.ts` / `germany-usage-db.ts` (shared `applyUsageDelta`/`computeUsageDelta` injected as `DeUsageDeps` so the module has zero relative runtime imports and loads in the `node --test` strip-types runner).
+- **Enforcement on BOTH entries.** After applying, the tick triggers `XrayUsageMeteringService.enforceQuotaNow()`/`enforceAccountStatusNow()`; those now also `rmu` on Germany via new `GermanyMgmtService` (SSH) in addition to Ireland's Xray. Cutoff latency ≈ interval + one local metering tick.
+- **Charts.** `GET /api/admin/client-configs/:id/usage-series?window=48h|30d` → `{ window, hourly, daily }` from the rollups (guarded admin/supervisor/support/auditor). Shared types `ClientUsageSeriesPoint`/`AdminClientUsageSeriesResponse`/`ClientUsageSeriesWindow` + dashboard `fetchAdminClientUsageSeries`.
+- **Best-effort isolation.** Every SSH call (read-usage/rmu/adu) is time-bounded and catches its own failure; the flaky village link NEVER blocks Ireland's local metering/provisioning/accounting, and never advances a baseline. Never logs tokens/uuids (email carries the uuid → logged only as sub-command name).
+- **Migration** `0057_client_usage_rollups.sql` (idempotent; adds `germany-xray` to the events source check + rollup + baseline tables). Retention pruning (hourly ~48h / daily ~400d) throttled to hourly in the tick.
+- **Verified.** Backend `node --test` 702→ (24 new cases: delta math incl. counter-reset + blackout catch-up, rollup/idempotency/no-double-count via mock executor, charts-series shape, exact SSH command strings, enforcement-on-both wiring). Workspace typecheck clean; backend `nest build` clean; `version:check` green at 0.114.94. **NOT deployed** (commit only).
+- **To set live on Ireland (when enabling):** `AFROWS_DE_USAGE_ENABLED=true`; the single-purpose key at `AFROWS_DE_MGMT_KEY` (default `/etc/afrows/de_mgmt_key`) present + authorized for `read-usage`/`rmu`/`adu` against `AFROWS_DE_MGMT_SSH` (default `root@162.19.253.235`); run migration `0057`. Live-verify a metering + rmu round-trip during a village-up window.
+
 ## 2026-08-24
 
 ### Edge-sync API — Ireland half for the Germany data-plane agent (0.114.91, flag-gated, inert by default)

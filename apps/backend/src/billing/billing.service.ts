@@ -34,6 +34,8 @@ import type {
   AdminClientConfigsExportResponse,
   AdminClientRoutePreferenceSummary,
   AdminClientUsageEventSummary,
+  AdminClientUsageSeriesResponse,
+  ClientUsageSeriesWindow,
   AdminAllocatePaymentOrderResponse,
   AdminCustomerAccountDetail,
   AdminCustomerDevicesResponse,
@@ -142,6 +144,7 @@ import { TelegramAlertService, type TelegramMessageSendResult } from '../notific
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
 import { XrayUsageMeteringService } from '../client/xray-usage-metering.service';
 import { XrayProvisioningService } from '../client/xray-provisioning.service';
+import { queryClientUsageSeries } from '../client/germany-usage-db';
 import { UpdateOwnClientRoutePreferenceDto } from '../client/dto/client-route-preference.dto';
 import { ClaimRewardedAdDto } from '../client/dto/rewarded-ad.dto';
 import { RewardedAdProviderWebhookDto } from './dto/rewarded-ad-webhook.dto';
@@ -4179,6 +4182,21 @@ export class BillingService {
     );
 
     return result.rows.map((row) => this.mapClientUsageEvent(row));
+  }
+
+  /**
+   * Rollup-backed usage series for the per-user usage charts. `48h` returns the
+   * last 48 hourly buckets plus the last 2 daily buckets; `30d` returns the last
+   * 48 hourly buckets plus the last 30 daily buckets. Both come from the compact
+   * client_usage_hourly / client_usage_daily rollups (no full-ledger rescan).
+   */
+  async getClientUsageSeries(
+    clientConfigId: string,
+    window: ClientUsageSeriesWindow,
+  ): Promise<AdminClientUsageSeriesResponse> {
+    await this.getClientConfigRow(clientConfigId);
+    const series = await queryClientUsageSeries(this.database, clientConfigId, window);
+    return { window, ...series };
   }
 
   async recordClientUsageEvent(

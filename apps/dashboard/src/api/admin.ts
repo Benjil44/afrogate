@@ -17,6 +17,8 @@ import type {
   UpdateResellerAccountRequest,
   TopUpResellerWalletRequest,
   AdminClientConfigEntryLinkResponse,
+  AdminClientUsageSeriesResponse,
+  ClientUsageSeriesWindow,
   CreateClientConfigRequest,
   AdminCurrentPanelImportPreviewResponse,
   AdminCurrentPanelImportConfigsResponse,
@@ -1118,6 +1120,19 @@ export async function fetchAdminClientConfigEntryLink(
     { headers: createSessionHeaders(sessionToken) },
   );
   return response.json() as Promise<AdminClientConfigEntryLinkResponse>;
+}
+
+/** Rollup-backed per-user usage series (hourly + daily) for the usage charts. */
+export async function fetchAdminClientUsageSeries(
+  sessionToken: string,
+  clientConfigId: string,
+  window: ClientUsageSeriesWindow = '48h',
+): Promise<AdminClientUsageSeriesResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}/usage-series?window=${encodeURIComponent(window)}`,
+    { headers: createSessionHeaders(sessionToken) },
+  );
+  return response.json() as Promise<AdminClientUsageSeriesResponse>;
 }
 
 /** Deletes a client config (WireGuard peers are removed from wg0 by the reconciler). */

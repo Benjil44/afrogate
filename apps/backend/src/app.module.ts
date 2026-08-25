@@ -21,6 +21,8 @@ import { InboundsService } from './client/inbounds.service';
 import { ConnectionsService } from './client/connections.service';
 import { OperationsOverviewService } from './client/operations-overview.service';
 import { XrayUsageMeteringService } from './client/xray-usage-metering.service';
+import { GermanyUsageMeteringService } from './client/germany-usage-metering.service';
+import { GermanyMgmtService } from './client/germany-mgmt.service';
 import { WireguardMeteringService } from './client/wireguard-metering.service';
 import { XrayAccessLogService } from './client/xray-access-log.service';
 import { HealthController } from './health/health.controller';
@@ -110,6 +112,8 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     OutboundSpeedTestService,
     XrayProvisioningService,
     XrayUsageMeteringService,
+    GermanyMgmtService,
+    GermanyUsageMeteringService,
     WireguardMeteringService,
     XrayAccessLogService,
     InboundsService,

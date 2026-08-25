@@ -361,8 +361,25 @@ export type ClientUsageEventSource =
   | 'payment_adjustment'
   | 'manual_adjustment'
   | 'client_report'
+  | 'germany-xray'
   | 'unknown';
 export type ClientUsageDirection = 'rx' | 'tx' | 'combined';
+
+/** One time-bucketed usage point for the per-user usage charts. */
+export interface ClientUsageSeriesPoint {
+  /** ISO timestamp of the bucket start (hour- or day-truncated, UTC). */
+  bucketStart: string;
+  usedBytes: number;
+}
+
+export type ClientUsageSeriesWindow = '48h' | '30d';
+
+/** Rollup-backed usage series for one client config (hourly + daily). */
+export interface AdminClientUsageSeriesResponse {
+  window: ClientUsageSeriesWindow;
+  hourly: ClientUsageSeriesPoint[];
+  daily: ClientUsageSeriesPoint[];
+}
 
 export interface AdminClientRoutePreferenceSummary {
   id?: string | null;

@@ -37,6 +37,8 @@ import type {
   AdminClientSubscriptionCredentialResponse,
   AdminClientSubscriptionCredentialsResponse,
   AdminClientUsageEventsResponse,
+  AdminClientUsageSeriesResponse,
+  ClientUsageSeriesWindow,
   AdminCustomerAccountDetail,
   AdminCustomerDevicesResponse,
   AdminAllocatePaymentOrderResponse,
@@ -888,6 +890,16 @@ export class BillingController {
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
     };
+  }
+
+  @Get('client-configs/:id/usage-series')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getClientUsageSeries(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Query('window') window?: string,
+  ): Promise<AdminClientUsageSeriesResponse> {
+    const normalized: ClientUsageSeriesWindow = window === '30d' ? '30d' : '48h';
+    return this.billingService.getClientUsageSeries(id, normalized);
   }
 
   @Post('client-configs/:id/usage-events')

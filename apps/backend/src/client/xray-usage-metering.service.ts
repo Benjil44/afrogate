@@ -6,6 +6,7 @@ import { DatabaseService } from '../database/database.service';
 import { parseUserStats } from './xray-usage';
 import { applyUsageDelta } from './usage-accounting';
 import { provisioningEmail } from './xray-provisioning';
+import { GermanyMgmtService } from './germany-mgmt.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -29,6 +30,7 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly database: DatabaseService,
+    private readonly germanyMgmt: GermanyMgmtService,
   ) {}
 
   onModuleInit(): void {
@@ -110,6 +112,8 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
           /* best-effort; reconcile/next tick retries */
         }
       }
+      // Also cut the Germany WS entry (best-effort; flaky village link never blocks).
+      await this.germanyMgmt.removeUser(provisioningEmail(row.clientConfigId));
     }
     if (result.rows.length) {
       this.logger.log(`Quota enforced: limited ${result.rows.length} over-quota client(s)`);
@@ -135,6 +139,18 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Trigger an immediate over-quota enforcement sweep. Called by the Germany
+   * metering service after it advances usage so an over-quota user is cut on
+   * BOTH Ireland's xray and Germany within one tick instead of waiting for the
+   * local metering interval. Best-effort; the periodic tick remains the net. */
+  async enforceQuotaNow(): Promise<void> {
+    try {
+      await this.enforceQuota();
+    } catch (error) {
+      this.logger.warn(`Immediate quota enforcement failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
   private async enforceAccountStatus(): Promise<void> {
     const result = await this.database.query<OverQuotaRow>(
       `
@@ -157,6 +173,8 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
           /* best-effort; next tick retries */
         }
       }
+      // Also cut the Germany WS entry (best-effort; flaky village link never blocks).
+      await this.germanyMgmt.removeUser(provisioningEmail(row.clientConfigId));
     }
     if (result.rows.length) {
       this.logger.log(`Account status enforced: disconnected ${result.rows.length} inactive-account client(s)`);
