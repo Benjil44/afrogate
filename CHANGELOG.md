@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.95 - 2026-08-25
+
+- **Germany usage recorder (durable buffer) committed + rewarded-ad MB decimal fix.** Adds `scripts/afrows-de-usage-recorder.py` — the process that runs on the Germany box next to `afrows-xray-de`, reads-and-resets per-user xray stats each tick and accumulates them into a persisted cumulative buffer (`/var/lib/afrows/de-usage.json`) that survives xray restarts and the village blackout; the Ireland `GermanyUsageMeteringService` (0.114.94) pulls this buffer over the locked-down SSH channel. Also fixes `billing.service.ts` rewarded-ad readback `rewardMb` (was `/1024²`, now `/1e6`) to match the decimal-GB convention the P0 dashboard fix (0.114.93) standardized — otherwise a saved 100 MB reward read back as 95.4.
+
 ## 0.114.94 - 2026-08-25
 
 - **Germany-path usage metering + per-user usage charts + quota enforcement (Ireland-side, flag-gated, default OFF).** New `GermanyUsageMeteringService` consumes the VERIFIED Germany durable buffer (`/var/lib/afrows/de-usage.json`, monotonic cumulative per-user bytes) over the locked-down Ireland→Germany SSH channel and folds Germany traffic into the SAME accounting as the local Xray path.

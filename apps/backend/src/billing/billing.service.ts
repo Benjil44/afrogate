@@ -7072,7 +7072,7 @@ export class BillingService {
       settingKey: row.settingKey,
       enabled: row.enabled,
       rewardBytes,
-      rewardMb: rewardBytes / (1024 ** 2),
+      rewardMb: rewardBytes / 1e6,
       dailyLimit: Math.max(row.dailyLimit, 0),
       provider: row.provider || DEFAULT_REWARDED_AD_PROVIDER,
       verificationMode: row.verificationMode || DEFAULT_REWARDED_AD_VERIFICATION_MODE,
