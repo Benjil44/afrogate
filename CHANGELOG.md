@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.114.96 - 2026-08-25
+
+- **Dashboard: per-user Usage panel with hourly + daily charts (UI for the 0.114.94 charts endpoint).**
+  - **New reusable `UsageChart` component** (`apps/dashboard/src/components/UsageChart.tsx`): self-contained inline-SVG bar chart (no chart lib, CSP-safe) for time-bucketed byte series — fixed 48/30-bucket axis with zero gap-fill, recessive gridlines, halo'd y-labels, sparse edge-safe time ticks, full-height hover targets with a tooltip (bucket time + `format.bytes`), per-bucket `<title>` for accessibility, localized loading/empty states, theme tokens via CSS variables, RTL-mirrored time axis (numbers stay LTR), and internal horizontal scroll below 8px/bucket so phones never get page-level overflow. Built to be reused later for per-node / per-reseller series.
+  - **Customers page Usage section** in the customer editor: account used / limit / % summary with amber near-limit and red over-limit states (over-quota badge + blocked-traffic hint), a config selector for multi-config customers, and Hourly (48h) + Daily (30d) charts from one `fetchAdminClientUsageSeries(…, '30d')` call. Fetches on panel open / config change with an error + retry state (no polling — rollup buckets are hourly). New `format.chartDate` day-axis helper and typed `t.customersPage.usage*` strings (en + fa).
+
 ## 0.114.95 - 2026-08-25
 
 - **Germany usage recorder (durable buffer) committed + rewarded-ad MB decimal fix.** Adds `scripts/afrows-de-usage-recorder.py` — the process that runs on the Germany box next to `afrows-xray-de`, reads-and-resets per-user xray stats each tick and accumulates them into a persisted cumulative buffer (`/var/lib/afrows/de-usage.json`) that survives xray restarts and the village blackout; the Ireland `GermanyUsageMeteringService` (0.114.94) pulls this buffer over the locked-down SSH channel. Also fixes `billing.service.ts` rewarded-ad readback `rewardMb` (was `/1024²`, now `/1e6`) to match the decimal-GB convention the P0 dashboard fix (0.114.93) standardized — otherwise a saved 100 MB reward read back as 95.4.

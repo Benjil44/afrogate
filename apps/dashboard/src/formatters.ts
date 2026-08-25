@@ -77,6 +77,10 @@ export function createDashboardFormatters(language: DashboardLanguage) {
     minute: '2-digit',
     month: 'short',
   });
+  const shortDateFormatter = new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+  });
 
   const integer = (value: number): string => integerFormatter.format(Number.isFinite(value) ? value : 0);
   const decimal = (value: number): string => decimalFormatter.format(Number.isFinite(value) ? value : 0);
@@ -207,6 +211,12 @@ export function createDashboardFormatters(language: DashboardLanguage) {
       const timestamp = typeof value === 'number' ? value : Date.parse(value);
 
       return Number.isFinite(timestamp) ? shortTimeFormatter.format(new Date(timestamp)) : String(value);
+    },
+    /** Day-granularity axis label, e.g. "Aug 24" / «۲ شهریور» (localized calendar). */
+    chartDate(value: string | number): string {
+      const timestamp = typeof value === 'number' ? value : Date.parse(value);
+
+      return Number.isFinite(timestamp) ? shortDateFormatter.format(new Date(timestamp)) : String(value);
     },
   };
 }

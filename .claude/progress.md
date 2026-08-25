@@ -2,6 +2,14 @@
 
 ## 2026-08-25
 
+### Dashboard per-user Usage panel — hourly + daily charts (0.114.96, commit only)
+
+- **What.** UI for the 0.114.94 charts endpoint. New reusable `apps/dashboard/src/components/UsageChart.tsx`: self-contained inline-SVG bar chart (no chart lib, CSP-safe) for `ClientUsageSeriesPoint[]` — fixed 48/30-bucket time axis with zero gap-fill (sparse rollup buckets read as explicit zero), recessive gridlines, halo'd y-labels drawn over bars, sparse edge-safe x ticks, full-height hover targets + tooltip (`format.dateTime`/`format.chartDate` + `format.bytes`), per-bucket `<title>`, localized loading/empty states, theme via `--color-afro-*` CSS vars, RTL-mirrored time axis, internal horizontal scroll below 8px/bucket (no page overflow on phones). Reusable for future per-node / per-reseller series.
+- **Where.** `CustomerUsageSection` in `CustomersPage.tsx` renders inside the customer editor (below the exit-per-config section, `editId && editConfigs.length > 0`): account used/limit/% summary with amber ≥80% and red over-limit states (over-quota badge + `usageOverHint`), config `<select>` when the customer has multiple configs, Hourly (48h) + Daily (30d) `UsageChart`s.
+- **Fetch model.** One `fetchAdminClientUsageSeries(token, configId, '30d')` per panel-open/config-change/retry — the `30d` response carries BOTH series (48 hourly + 30 daily). No polling: rollup buckets are hourly, an interval would re-download identical data. Error → `EmptyState kind="error"` + retry button.
+- **Support.** New `format.chartDate` (day+short-month, localized calendar) in `formatters.ts`; typed `t.customersPage.usage*` strings (en + fa).
+- **Verified.** Dashboard typecheck, `contrast:check`, `version:check`, Vite build all green. SSR harness of the real component render-checked at 1440/375 (light theme): no page overflow at 375 (chart scrolls internally), y-labels/ticks unclipped, empty state renders. Not verified against live rollup data yet (backend flag `AFROWS_DE_USAGE_ENABLED` still off in prod).
+
 ### Germany-path usage metering + per-user usage charts + quota enforcement (0.114.94, flag-gated, default OFF, commit only)
 
 - **What.** `GermanyUsageMeteringService` (`apps/backend/src/client/germany-usage-metering.service.ts`) is the Ireland-side consumer of the VERIFIED Germany durable buffer (`/var/lib/afrows/de-usage.json`, monotonic cumulative per-user bytes). It pulls the buffer over the locked-down Ireland→Germany SSH channel and folds Germany traffic into the SAME accounting as the local Xray path. Gated by `AFROWS_DE_USAGE_ENABLED` (default off), interval `AFROWS_DE_USAGE_INTERVAL_SECONDS` (default 60s).

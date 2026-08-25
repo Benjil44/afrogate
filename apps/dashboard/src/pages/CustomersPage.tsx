@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchiveRestore, Copy, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import { ArchiveRestore, ChartColumn, Copy, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import type { AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   createAdminClientConfig,
   createAdminCustomerAccount,
   exportAdminCustomerClientConfigs,
   fetchAdminClientConfigEntryLink,
   fetchAdminClientRoutePreference,
+  fetchAdminClientUsageSeries,
   fetchAdminCustomerDevices,
   fetchAdminNetworkOverview,
   fetchAdminOutbounds,
@@ -26,6 +27,7 @@ import {
 import { adjustCustomerGems, customerGemFields } from '../api/gems';
 import { mergeCustomerAccount } from '../api/merge';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
+import { UsageChart } from '../components/UsageChart';
 import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
@@ -38,6 +40,155 @@ const BYTES_PER_GB = 1_000_000_000;
 
 type Status = 'active' | 'suspended' | 'disabled';
 type Scope = 'account_shared' | 'per_client';
+
+/** Per-customer Usage panel: used/limit summary plus rollup-backed hourly (48h)
+ * and daily (30d) charts for one selected config. One `30d` fetch returns both
+ * series; data loads when the panel opens and refetches on config change or
+ * retry — no polling (rollup buckets are hourly, so an interval would only
+ * re-download identical data). */
+function CustomerUsageSection({
+  account,
+  configs,
+  format,
+  sessionToken,
+  t,
+}: {
+  account: AdminCustomerAccountSummary | null;
+  configs: AdminClientConfigSummary[];
+  format: DashboardFormatters;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const s = t.customersPage;
+  const [configId, setConfigId] = useState('');
+  const [series, setSeries] = useState<AdminClientUsageSeriesResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  // Falls back to the first config when none is picked (or the picked one was deleted).
+  const selectedId = configs.some((c) => c.id === configId) ? configId : configs[0]?.id ?? '';
+
+  useEffect(() => {
+    if (!selectedId) return;
+    let active = true;
+    setLoading(true);
+    setLoadFailed(false);
+    fetchAdminClientUsageSeries(sessionToken, selectedId, '30d')
+      .then((res) => {
+        if (active) setSeries(res);
+      })
+      .catch(() => {
+        if (active) {
+          setSeries(null);
+          setLoadFailed(true);
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionToken, selectedId, retryNonce]);
+
+  const used = account?.usedBytes ?? 0;
+  const limit = account?.quotaLimitBytes ?? null;
+  const hasLimit = limit != null && limit > 0;
+  const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : null;
+  const over = hasLimit && used >= limit;
+  const near = pct != null && pct >= 80;
+  const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-afro-teal';
+
+  return (
+    <div className="grid gap-2 md:col-span-2">
+      <span className="flex items-center gap-1.5 text-[13px] font-bold text-afro-muted">
+        <ChartColumn aria-hidden size={13} />
+        {s.usageSection}
+      </span>
+      {/* Account-level summary: used / limit / % with an explicit over-limit state. */}
+      <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+          <span className="text-afro-muted">
+            {s.colUsed}: <strong className={`tabular-nums ${over ? 'text-red-600' : 'text-afro-ink'}`}>{format.bytes(used)}</strong>
+          </span>
+          <span className="text-afro-muted">
+            {s.usageLimitLabel}:{' '}
+            <strong className="tabular-nums text-afro-ink">{hasLimit ? format.bytes(limit) : s.usageNoLimit}</strong>
+          </span>
+          {pct != null ? (
+            <span className="text-afro-muted">
+              <strong className={`tabular-nums ${over ? 'text-red-600' : near ? 'text-[#9a5b00]' : 'text-afro-ink'}`}>
+                {format.percent(pct)}
+              </strong>
+            </span>
+          ) : null}
+          {over ? (
+            <span className="inline-flex whitespace-nowrap rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+              {s.overQuota}
+            </span>
+          ) : null}
+        </div>
+        {pct != null ? (
+          <span aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-afro-line">
+            <span className={`block h-full ${barColor}`} style={{ width: `${pct}%` }} />
+          </span>
+        ) : null}
+        {over ? <span className="text-[12px] font-bold text-red-600">{s.usageOverHint}</span> : null}
+      </div>
+      {configs.length > 1 ? (
+        <label className="flex flex-wrap items-center gap-2 text-[13px] text-afro-muted">
+          {s.usageConfigLabel}
+          <select
+            className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal"
+            onChange={(e) => setConfigId(e.target.value)}
+            value={selectedId}
+          >
+            {configs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {`${c.label} · ${c.protocol} · ${format.bytes(c.usedBytes)}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {loadFailed ? (
+        <div className="grid gap-2">
+          <EmptyState kind="error" message={s.usageLoadError} />
+          <button
+            className="inline-flex min-h-11 w-fit items-center rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
+            onClick={() => setRetryNonce((n) => n + 1)}
+            type="button"
+          >
+            {s.usageRetry}
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <UsageChart
+            bucketCount={48}
+            emptyLabel={s.usageEmpty}
+            format={format}
+            granularity="hour"
+            loading={loading}
+            loadingLabel={t.dataStatus.loading}
+            points={series?.hourly ?? []}
+            title={s.usageHourlyTitle}
+          />
+          <UsageChart
+            bucketCount={30}
+            emptyLabel={s.usageEmpty}
+            format={format}
+            granularity="day"
+            loading={loading}
+            loadingLabel={t.dataStatus.loading}
+            points={series?.daily ?? []}
+            title={s.usageDailyTitle}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Subscribers you sell to — the single place to create, edit and review them.
  * (Create/edit was consolidated here out of Billing.) */
@@ -1523,6 +1674,15 @@ export function CustomersPage({
                 <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
                 {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
               </div>
+            ) : null}
+            {editId && editConfigs.length > 0 ? (
+              <CustomerUsageSection
+                account={editAccount}
+                configs={editConfigs}
+                format={format}
+                sessionToken={sessionToken}
+                t={t}
+              />
             ) : null}
             {editId ? (
               <div className="grid gap-2 md:col-span-2">
