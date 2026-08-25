@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.97 - 2026-08-25
+
+- **Fix Germany usage metering insert** — `client_usage_events` requires `raw_used_bytes_delta` (NOT NULL) and `usage_multiplier`; the Germany metering insert omitted them, so every apply failed the constraint and no Germany usage was recorded. Germany is an entry (multiplier 1), so `raw_used_bytes_delta = used_bytes_delta` and `usage_multiplier = 1`.
+
 ## 0.114.96 - 2026-08-25
 
 - **Dashboard: per-user Usage panel with hourly + daily charts (UI for the 0.114.94 charts endpoint).**
