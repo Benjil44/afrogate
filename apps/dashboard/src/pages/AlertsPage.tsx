@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Bell, Clock, Route, ScrollText, Server } from 'lucide-react';
+import { AlertTriangle, Clock, Route, ScrollText, Server } from 'lucide-react';
 import type { AdminIncidentTimelineResponse } from '@afrows/shared';
 import { fetchAdminAlerts, fetchIncidentTimeline } from '../api/admin';
 import { DataStateEmpty, DataStateNotice, DataTable, MetricPill, PanelHeading, StatusBadge } from '../components/primitives';
@@ -242,26 +242,7 @@ export function AlertsPage({
         </div>
       </section>
 
-      <div className="grid gap-3">
-        <IncidentTimelinePanel dataState={incidentTimelineState} format={format} timeline={incidentTimeline} t={t} />
-
-        <section className={panelClass}>
-          <PanelHeading title={t.panels.alertRules} icon={Bell} meta={t.panels.mvpThresholds} />
-          <div className="mt-2 grid gap-2">
-            {([
-              [t.alertRules.storage, format.percentThreshold('<', 10), 'critical'],
-              [t.alertRules.healthScore, format.numberThreshold('<', 60), 'warning'],
-              [t.alertRules.ping, format.latencyThreshold('>', 150), 'warning'],
-              [t.alertRules.packetLoss, format.percentThreshold('>', 1), 'critical'],
-            ] as Array<[string, string, Tone]>).map(([label, value, tone]) => (
-              <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" key={label}>
-                <span className={`${mutedTextClass} min-w-0 truncate`}>{label}</span>
-                <StatusBadge tone={tone}>{value}</StatusBadge>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
+      <IncidentTimelinePanel dataState={incidentTimelineState} format={format} timeline={incidentTimeline} t={t} />
     </section>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArchiveRestore, ChartColumn, Copy, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
+  adjustCustomerGems,
   createAdminClientConfig,
   createAdminCustomerAccount,
   exportAdminCustomerClientConfigs,
@@ -17,6 +18,7 @@ import {
   fetchAdminWireguardConfig,
   fetchEgressTierPrices,
   fetchRouters,
+  mergeCustomerAccount,
   setEgressTierPrice,
   resetCustomerAccountPassword,
   restoreAdminCustomerAccount,
@@ -24,8 +26,6 @@ import {
   updateAdminCustomerAccount,
   updateRouter,
 } from '../api/admin';
-import { adjustCustomerGems, customerGemFields } from '../api/gems';
-import { mergeCustomerAccount } from '../api/merge';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import { UsageChart } from '../components/UsageChart';
 import { MicrotiksPage } from './MicrotiksPage';
@@ -206,6 +206,9 @@ export function CustomersPage({
   const [overview, setOverview] = useState<AdminNetworkOverviewResponse | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  // First-load failure must not look like "no customers": when the accounts
+  // fetch has never succeeded and fails, show an error state with a Retry.
+  const [loadError, setLoadError] = useState(false);
   // Off by default: the list fetch only returns active accounts. When on, the
   // archived filter widens to 'all' so soft-deleted accounts show up (greyed,
   // with a Restore action) alongside active ones.
@@ -304,8 +307,10 @@ export function CustomersPage({
     try {
       const res = await fetchAdminCustomerAccounts(sessionToken, undefined, showArchived ? 'all' : 'active');
       setAccounts(res.accounts);
+      setLoadError(false);
     } catch {
-      /* keep last */
+      /* keep last rows; surface the failure instead of an empty list */
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -454,8 +459,9 @@ export function CustomersPage({
   );
 
   // Bot-v2 profile (phone / gems / referrals) of the customer being edited.
+  // The v2 fields are optional on the shared summary type, so read them directly.
   const editAccount = useMemo(() => accounts.find((a) => a.id === editId) ?? null, [accounts, editId]);
-  const editGemInfo = editAccount ? customerGemFields(editAccount) : null;
+  const editGemInfo = editAccount;
   const editHasGemInfo = Boolean(
     editGemInfo &&
       (editGemInfo.phone !== undefined ||
@@ -808,8 +814,7 @@ export function CustomersPage({
     const q = mergeQuery.trim().toLowerCase();
     if (!q) return pool;
     return pool.filter((a) => {
-      const v2 = customerGemFields(a);
-      return [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, v2.phone, v2.referralCode]
+      return [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, a.phone, a.referralCode]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
@@ -948,7 +953,7 @@ export function CustomersPage({
     const hasQuota = a.quotaLimitBytes != null && a.quotaLimitBytes > 0;
     // Bot-v2 fields (phone/gems/referrals) — rows only appear once the backend
     // serves them, so pre-migration accounts don't render four empty rows.
-    const v2 = customerGemFields(a);
+    const v2 = a;
 
     return (
       <div className="grid gap-2.5">
@@ -1809,8 +1814,7 @@ export function CustomersPage({
             <div className="grid max-h-72 gap-1.5 overflow-y-auto">
               {mergeCandidates.slice(0, 30).map((c) => {
                 const selected = c.id === mergeTargetId;
-                const v2 = customerGemFields(c);
-                const contact = v2.phone || (c.telegramUsername ? `@${c.telegramUsername}` : c.loginEmail || c.telegramId);
+                const contact = c.phone || (c.telegramUsername ? `@${c.telegramUsername}` : c.loginEmail || c.telegramId);
                 const hasQuota = c.quotaLimitBytes != null && c.quotaLimitBytes > 0;
                 return (
                   <button
@@ -2043,7 +2047,25 @@ export function CustomersPage({
         ) : null}
         {filtered.length === 0 ? (
           <div className="mt-2">
-            <EmptyState message={loading ? t.dataStatus.loading : s.empty} />
+            {loading ? (
+              <EmptyState kind="loading" message={t.panelStates.loadingTitle} detail={t.panelStates.loadingDetail} />
+            ) : loadError && accounts.length === 0 ? (
+              <div className="grid gap-2">
+                <EmptyState kind="error" message={t.panelStates.errorTitle} detail={s.loadError} />
+                <button
+                  className="inline-flex min-h-11 w-fit items-center rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
+                  onClick={() => {
+                    setLoading(true);
+                    void load();
+                  }}
+                  type="button"
+                >
+                  {t.actions.retry}
+                </button>
+              </div>
+            ) : (
+              <EmptyState message={s.empty} />
+            )}
           </div>
         ) : (
           <div className="mt-2">

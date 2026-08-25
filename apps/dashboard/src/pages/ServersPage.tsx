@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Cpu, HardDrive, MemoryStick, Server, ShieldCheck } from 'lucide-react';
-import type { AdminServerDetail, AdminServerInterfaceSummary, AdminSessionResponse, AdminTunnelSummary, ServerAccessMethod, ServerBootstrapState, ServerCredentialKind } from '@afrows/shared';
-import { fetchAdminServer, fetchAdminServerInterfaces, fetchAdminTunnels, storeAdminServerCredential, updateAdminServer } from '../api/admin';
+import type { AdminAuditLogSummary, AdminServerDetail, AdminServerInterfaceSummary, AdminSessionResponse, AdminTunnelSummary, ServerAccessMethod, ServerBootstrapState, ServerCredentialKind } from '@afrows/shared';
+import { fetchAdminAuditLogs, fetchAdminServer, fetchAdminServerInterfaces, fetchAdminTunnels, storeAdminServerCredential, updateAdminServer } from '../api/admin';
 import { DataStateEmpty, DataStateNotice, DetailRow, EmptyState, PanelHeading, StatusBadge, UsageBar } from '../components/primitives';
 import type { DataState, ServerEditTab, ServerRowData } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
@@ -294,7 +294,15 @@ function ServerEditPanel({
             t={t}
           />
         ) : null}
-        {activeTab === 'audit' ? <ServerAuditTab detailDataState={detailDataState} format={format} server={activeServer} t={t} /> : null}
+        {activeTab === 'audit' ? (
+          <ServerAuditTab
+            detailDataState={detailDataState}
+            format={format}
+            server={activeServer}
+            sessionToken={sessionToken}
+            t={t}
+          />
+        ) : null}
       </div>
     </section>
   );
@@ -791,27 +799,88 @@ function ServerAuditTab({
   detailDataState,
   format,
   server,
+  sessionToken,
   t,
 }: {
   detailDataState: DataState;
   format: DashboardFormatters;
   server: ServerRowData;
+  sessionToken: string;
   t: DashboardStrings;
 }) {
+  const [auditEntries, setAuditEntries] = useState<AdminAuditLogSummary[]>([]);
+  const [auditLoadState, setAuditLoadState] = useState<'loading' | 'live' | 'error'>('loading');
+  const [retryNonce, setRetryNonce] = useState(0);
+
+  useEffect(() => {
+    setAuditEntries([]);
+
+    // Sample/fallback servers have no backing audit rows to query.
+    if (server.source !== 'admin') {
+      setAuditLoadState('live');
+      return;
+    }
+
+    const controller = new AbortController();
+    setAuditLoadState('loading');
+
+    fetchAdminAuditLogs(sessionToken, { limit: 20, targetId: server.id, targetType: 'server' }, controller.signal)
+      .then((response) => {
+        setAuditEntries(response.auditLogs);
+        setAuditLoadState('live');
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+
+        setAuditLoadState('error');
+      });
+
+    return () => controller.abort();
+  }, [retryNonce, server.id, server.source, sessionToken]);
+
   return (
     <div className="grid gap-2">
       <DetailRow label={t.serverEdit.labels.detailSource}>
         {detailDataState === 'live' ? t.serverEdit.values.apiDetail : detailDataState === 'loading' ? t.dataStatus.loading : t.serverEdit.values.fallbackDetail}
       </DetailRow>
-      <DetailRow label={t.accessRows.auditMode}>
-        <StatusBadge tone="warning">{t.accessRows.required}</StatusBadge>
-      </DetailRow>
-      <DetailRow label={t.serverEdit.labels.lastChange}>
-        {server.observedAt ? format.time(new Date(server.observedAt), false) : t.serverEdit.values.localSample}
-      </DetailRow>
-      <DetailRow label={t.serverEdit.labels.auditTrail}>{t.serverEdit.values.readOnlyMvp}</DetailRow>
-      <DetailRow label={t.serverEdit.labels.agentFirst}>{t.serverEdit.values.agentFirst}</DetailRow>
       <DetailRow label={t.serverEdit.labels.secretPolicy}>{t.serverEdit.values.secretsHidden}</DetailRow>
+      <DetailRow label={t.serverEdit.labels.auditTrail}>
+        {auditLoadState === 'live' ? t.auditLogs.eventsLoaded(format.integer(auditEntries.length)) : auditLoadState === 'loading' ? t.dataStatus.loading : t.dataStatus.fallback}
+      </DetailRow>
+
+      {auditLoadState === 'loading' ? (
+        <EmptyState kind="loading" message={t.panelStates.loadingTitle} detail={t.panelStates.loadingDetail} />
+      ) : null}
+      {auditLoadState === 'error' ? (
+        <div className="grid gap-2">
+          <EmptyState kind="error" message={t.panelStates.errorTitle} detail={t.auditLogs.errors.load} />
+          <button
+            className="inline-flex min-h-11 w-fit items-center rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
+            onClick={() => setRetryNonce((nonce) => nonce + 1)}
+            type="button"
+          >
+            {t.actions.retry}
+          </button>
+        </div>
+      ) : null}
+      {auditLoadState === 'live' && auditEntries.length === 0 ? (
+        <EmptyState message={t.auditLogs.noEvents} />
+      ) : null}
+      {auditLoadState === 'live'
+        ? auditEntries.map((log) => (
+          <div className="grid min-h-11 content-center gap-0.5 rounded-md border border-afro-line px-2.5 py-1.5" key={log.id}>
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <code className="min-w-0 truncate font-mono text-[12px] font-bold text-afro-ink" dir="ltr" title={log.action}>
+                {log.action}
+              </code>
+              <span className={`${mutedTextClass} shrink-0`}>{format.dateTime(new Date(log.createdAt))}</span>
+            </div>
+            <span className={`${mutedTextClass} min-w-0 truncate`}>
+              {`${t.auditLogs.actor}: ${format.label(log.actorType)}`}
+            </span>
+          </div>
+        ))
+        : null}
     </div>
   );
 }

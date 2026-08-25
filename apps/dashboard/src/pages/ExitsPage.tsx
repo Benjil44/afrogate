@@ -43,7 +43,7 @@ export function ExitsPage({
   return (
     <div className="flex flex-col gap-4">
       <DashboardTabs activeTab={activeTab} ariaLabel={t.tabs.exitsSections} onChange={setActiveTab} tabs={tabs} />
-      {activeTab === 'egress' ? <OutboundsPage sessionToken={sessionToken} t={t} /> : null}
+      {activeTab === 'egress' ? <OutboundsPage format={format} sessionToken={sessionToken} t={t} /> : null}
       {activeTab === 'routing' ? (
         <div className="flex flex-col gap-4">
           <RouteSettingsPanel format={format} session={session} sessionToken={sessionToken} t={t} />

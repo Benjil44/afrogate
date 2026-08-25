@@ -1,8 +1,8 @@
 import { createResellerSalesStats, createResellerSalesTrendOption, createResellerUsageMixOption, isCompletedResellerSaleOrder, resellerCustomerName, type ResellerSalesStats } from '../reseller-charts';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Activity, Bot, CreditCard, Gauge, Gift, Inbox, Plus, ShieldCheck, Upload, UserRound, WifiOff, X } from 'lucide-react';
-import type { AdminBillingSettingsSummary, AdminClientConfigsExportResponse, AdminCurrentPanelImportConfigsResponse, AdminCurrentPanelImportPreviewResponse, AdminCurrentPanelUsageSyncResponse, AdminCurrentPanelVolumeChargeResponse, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CurrentPanelKind, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
-import { chargeAdminCurrentPanelVolume, createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, importAdminCurrentPanelConfigs, previewAdminCurrentPanelImport, syncAdminCurrentPanelUsage, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
+import { Activity, Bot, CreditCard, Gauge, Gift, Inbox, Plus, ShieldCheck, UserRound, X } from 'lucide-react';
+import type { AdminBillingSettingsSummary, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
+import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
@@ -11,7 +11,7 @@ import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import type { BillingTab, DashboardTabItem, DataState, DataTableColumn, MetricCardData, Tone } from '../dashboard-types';
 import { normalizeNullableText, sumNullable, type DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
-import { billingStatusTone, currentPanelKindLabel, currentPanelStatusLabel, currentPanelStatusTone, customerAccountStatusLabel, customerQuotaScopeLabel, formatMoneyAmount, paymentAdapterStatusLabel, paymentAdapterStatusTone, paymentCheckoutModeLabel, paymentProviderLabel, paymentSettlementLabel, paymentVerificationLabel, resellerWalletEntryTypeLabel, resellerWalletSourceLabel } from '../labels';
+import { billingStatusTone, customerAccountStatusLabel, customerQuotaScopeLabel, formatMoneyAmount, paymentAdapterStatusLabel, paymentAdapterStatusTone, paymentCheckoutModeLabel, paymentProviderLabel, paymentSettlementLabel, paymentVerificationLabel, resellerWalletEntryTypeLabel, resellerWalletSourceLabel } from '../labels';
 import { telegramTestStatusLabel } from '../route-labels';
 import { formLabelClass, inputClass, mutedTextClass, panelClass, primaryButtonClass } from '../ui-classes';
 
@@ -28,7 +28,6 @@ type CustomerAccountFormState = {
 
 const customerQuotaScopeOptions: CustomerQuotaScope[] = ['account_shared', 'per_client'];
 const customerAccountStatusOptions: CustomerAccountStatus[] = ['active', 'suspended', 'disabled'];
-const currentPanelKindOptions: CurrentPanelKind[] = ['marzban', 'xui', 'sanayi', 'generic'];
 
 function createEmptyCustomerAccountForm(): CustomerAccountFormState {
   return {
@@ -78,26 +77,6 @@ function createEmptyVolumePackageForm(defaultCurrency: string): VolumePackageFor
     status: 'active',
     totalPrice: '',
     volumeGb: '',
-  };
-}
-
-type CurrentPanelImportFormState = {
-  chargeGb: string;
-  customerAccountId: string;
-  defaultProtocol: string;
-  panelKind: CurrentPanelKind;
-  payloadJson: string;
-  sourceName: string;
-};
-
-function createEmptyCurrentPanelImportForm(): CurrentPanelImportFormState {
-  return {
-    chargeGb: '10',
-    customerAccountId: '',
-    defaultProtocol: 'vless',
-    panelKind: 'marzban',
-    payloadJson: '',
-    sourceName: '',
   };
 }
 
@@ -771,15 +750,6 @@ export function BillingPage({
   const [resellerSaleForm, setResellerSaleForm] = useState<ResellerPackageSaleFormState>(() => createEmptyResellerPackageSaleForm());
   const [resellerSaleMessage, setResellerSaleMessage] = useState<string | null>(null);
   const [isSellingResellerPackage, setIsSellingResellerPackage] = useState(false);
-  const [currentPanelForm, setCurrentPanelForm] = useState<CurrentPanelImportFormState>(() => createEmptyCurrentPanelImportForm());
-  const [currentPanelPreview, setCurrentPanelPreview] = useState<AdminCurrentPanelImportPreviewResponse | null>(null);
-  const [currentPanelMessage, setCurrentPanelMessage] = useState<string | null>(null);
-  const [clientConfigExportJson, setClientConfigExportJson] = useState<string | null>(null);
-  const [isPreviewingCurrentPanel, setIsPreviewingCurrentPanel] = useState(false);
-  const [isImportingCurrentPanel, setIsImportingCurrentPanel] = useState(false);
-  const [isSyncingCurrentPanelUsage, setIsSyncingCurrentPanelUsage] = useState(false);
-  const [isExportingClientConfigs, setIsExportingClientConfigs] = useState(false);
-  const [isChargingCurrentPanelVolume, setIsChargingCurrentPanelVolume] = useState(false);
   const [activeBillingTab, setActiveBillingTab] = useState<BillingTab>('catalog');
   const isResellerSession = session.actor.role === 'reseller';
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
@@ -1086,172 +1056,6 @@ export function BillingPage({
     }
   };
 
-  const handlePreviewCurrentPanelImport = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!canManageBilling) return;
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(currentPanelForm.payloadJson);
-    } catch {
-      setCurrentPanelPreview(null);
-      setCurrentPanelMessage(t.billing.currentPanelPayloadInvalid);
-      return;
-    }
-
-    setIsPreviewingCurrentPanel(true);
-    setCurrentPanelMessage(null);
-
-    try {
-      const preview = await previewAdminCurrentPanelImport(sessionToken, {
-        defaultProtocol: currentPanelForm.defaultProtocol,
-        panelKind: currentPanelForm.panelKind,
-        payload,
-        sourceName: normalizeNullableText(currentPanelForm.sourceName),
-      });
-
-      setCurrentPanelPreview(preview);
-      setCurrentPanelMessage(t.billing.currentPanelPreviewReady(format.integer(preview.candidateCount)));
-    } catch {
-      setCurrentPanelPreview(null);
-      setCurrentPanelMessage(t.billing.currentPanelPreviewFailed);
-    } finally {
-      setIsPreviewingCurrentPanel(false);
-    }
-  };
-
-  const handleImportCurrentPanelConfigs = async () => {
-    if (!canManageBilling) return;
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(currentPanelForm.payloadJson);
-    } catch {
-      setCurrentPanelMessage(t.billing.currentPanelPayloadInvalid);
-      return;
-    }
-
-    if (!currentPanelForm.customerAccountId) {
-      setCurrentPanelMessage(t.billing.currentPanelSelectCustomer);
-      return;
-    }
-
-    setIsImportingCurrentPanel(true);
-    setCurrentPanelMessage(null);
-
-    try {
-      const result = await importAdminCurrentPanelConfigs(sessionToken, {
-        customerAccountId: currentPanelForm.customerAccountId,
-        defaultProtocol: currentPanelForm.defaultProtocol,
-        panelKind: currentPanelForm.panelKind,
-        payload,
-        sourceName: normalizeNullableText(currentPanelForm.sourceName),
-      });
-
-      setAccounts((current) => updateImportedCurrentPanelAccount(current, result));
-      setCurrentPanelMessage(t.billing.currentPanelImportSucceeded(format.integer(result.importedCount), format.integer(result.skippedCount)));
-    } catch {
-      setCurrentPanelMessage(t.billing.currentPanelImportFailed);
-    } finally {
-      setIsImportingCurrentPanel(false);
-    }
-  };
-
-  const handleSyncCurrentPanelUsage = async () => {
-    if (!canManageBilling) return;
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(currentPanelForm.payloadJson);
-    } catch {
-      setCurrentPanelMessage(t.billing.currentPanelPayloadInvalid);
-      return;
-    }
-
-    if (!currentPanelForm.customerAccountId) {
-      setCurrentPanelMessage(t.billing.currentPanelSelectCustomer);
-      return;
-    }
-
-    setIsSyncingCurrentPanelUsage(true);
-    setCurrentPanelMessage(null);
-
-    try {
-      const result = await syncAdminCurrentPanelUsage(sessionToken, {
-        customerAccountId: currentPanelForm.customerAccountId,
-        defaultProtocol: currentPanelForm.defaultProtocol,
-        panelKind: currentPanelForm.panelKind,
-        payload,
-        sourceName: normalizeNullableText(currentPanelForm.sourceName),
-      });
-
-      setAccounts((current) => updateSyncedCurrentPanelUsageAccount(current, result));
-      setCurrentPanelMessage(t.billing.currentPanelUsageSyncSucceeded(format.integer(result.syncedCount), format.integer(result.skippedCount)));
-    } catch {
-      setCurrentPanelMessage(t.billing.currentPanelUsageSyncFailed);
-    } finally {
-      setIsSyncingCurrentPanelUsage(false);
-    }
-  };
-
-  const handleExportClientConfigs = async () => {
-    if (!canManageBilling) return;
-
-    if (!currentPanelForm.customerAccountId) {
-      setCurrentPanelMessage(t.billing.currentPanelSelectCustomer);
-      return;
-    }
-
-    setIsExportingClientConfigs(true);
-    setCurrentPanelMessage(null);
-
-    try {
-      const result = await exportAdminCustomerClientConfigs(sessionToken, currentPanelForm.customerAccountId);
-      setClientConfigExportJson(formatClientConfigExportJson(result));
-      setCurrentPanelMessage(t.billing.currentPanelExportSucceeded(format.integer(result.configCount)));
-    } catch {
-      setCurrentPanelMessage(t.billing.currentPanelExportFailed);
-    } finally {
-      setIsExportingClientConfigs(false);
-    }
-  };
-
-  const handleChargeCurrentPanelVolume = async () => {
-    if (!canManageBilling) return;
-
-    if (!currentPanelForm.customerAccountId) {
-      setCurrentPanelMessage(t.billing.currentPanelSelectCustomer);
-      return;
-    }
-
-    const volumeBytesDelta = parseGbLimitInput(currentPanelForm.chargeGb);
-    if (volumeBytesDelta === undefined || volumeBytesDelta === null || volumeBytesDelta <= 0) {
-      setCurrentPanelMessage(t.billing.currentPanelChargeFailed);
-      return;
-    }
-
-    setIsChargingCurrentPanelVolume(true);
-    setCurrentPanelMessage(null);
-
-    try {
-      const result = await chargeAdminCurrentPanelVolume(sessionToken, {
-        customerAccountId: currentPanelForm.customerAccountId,
-        idempotencyKey: `dashboard:${currentPanelForm.customerAccountId}:${Date.now()}`,
-        metadata: {
-          dashboardFlow: 'current_panel_charge_volume',
-        },
-        scope: 'account_quota',
-        volumeBytesDelta,
-      });
-      setAccounts((current) => updateCurrentPanelVolumeChargeAccount(current, result));
-      setCurrentPanelMessage(t.billing.currentPanelChargeSucceeded(format.bytes(result.chargeEvent.volumeBytesDelta)));
-    } catch {
-      setCurrentPanelMessage(t.billing.currentPanelChargeFailed);
-    } finally {
-      setIsChargingCurrentPanelVolume(false);
-    }
-  };
-
   const billingTabs: Array<DashboardTabItem<BillingTab>> = [
     { id: 'catalog', label: t.tabs.billingCatalog, meta: t.billing.packagesLoaded(format.integer(packages.length)) },
     // Admins manage customers on the dedicated Customers page; resellers (no
@@ -1260,14 +1064,25 @@ export function BillingPage({
       ? [{ id: 'customers' as BillingTab, label: t.tabs.billingCustomers, meta: t.billing.accountsLoaded(format.integer(accounts.length)) }]
       : []),
     // Customer config import (VLESS/panel) lives with customer management, not
-    // billing — removed from the billing tabs. (Section code kept but unreachable.)
+    // billing — removed from the billing tabs and this page.
     { id: 'telegram', label: t.tabs.billingTelegram, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
     { id: 'orders', label: t.tabs.billingOrders, meta: t.billing.ordersLoaded(format.integer(paymentOrders.length)) },
   ];
 
   return (
     <section className="mt-0 grid gap-3">
-      {error ? <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} /> : null}
+      {error ? (
+        <div className="grid gap-2">
+          <PanelState detail={error} kind="error" title={t.panelStates.errorTitle} />
+          <button
+            className="inline-flex min-h-11 w-fit items-center rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
+            onClick={() => void loadBilling()}
+            type="button"
+          >
+            {t.actions.retry}
+          </button>
+        </div>
+      ) : null}
       {dataState === 'loading' ? <PanelState detail={t.panelStates.loadingDetail} kind="loading" title={t.panelStates.loadingTitle} /> : null}
       {dataState !== 'live' && dataState !== 'loading' ? <DataStateNotice state={dataState} t={t} /> : null}
 
@@ -1418,41 +1233,16 @@ export function BillingPage({
         <CustomerAccountsPanel accounts={accounts} format={format} t={t} />
       </section>
       {!isResellerSession ? (
-        <>
-          <div className={activeBillingTab === 'panelImport' ? 'min-w-0' : 'hidden'}>
-            <CurrentPanelImportPreviewPanel
-              accounts={accounts}
-              canManageBilling={canManageBilling}
-              clientConfigExportJson={clientConfigExportJson}
-              currentPanelForm={currentPanelForm}
-              currentPanelMessage={currentPanelMessage}
-              currentPanelPreview={currentPanelPreview}
-              format={format}
-              isExportingClientConfigs={isExportingClientConfigs}
-              isChargingCurrentPanelVolume={isChargingCurrentPanelVolume}
-              isImportingCurrentPanel={isImportingCurrentPanel}
-              isPreviewingCurrentPanel={isPreviewingCurrentPanel}
-              isSyncingCurrentPanelUsage={isSyncingCurrentPanelUsage}
-              onFormChange={setCurrentPanelForm}
-              onExportClientConfigs={handleExportClientConfigs}
-              onChargeCurrentPanelVolume={handleChargeCurrentPanelVolume}
-              onImportCurrentPanelConfigs={handleImportCurrentPanelConfigs}
-              onPreviewCurrentPanelImport={handlePreviewCurrentPanelImport}
-              onSyncCurrentPanelUsage={handleSyncCurrentPanelUsage}
-              t={t}
-            />
-          </div>
-          <div className={activeBillingTab === 'telegram' ? 'min-w-0' : 'hidden'}>
-            <TelegramBotOperationsPanel
-              accounts={accounts}
-              canViewTelegramOperations={canViewTelegramOperations}
-              format={format}
-              paymentOrders={paymentOrders}
-              telegramBotSettings={telegramBotSettings}
-              t={t}
-            />
-          </div>
-        </>
+        <div className={activeBillingTab === 'telegram' ? 'min-w-0' : 'hidden'}>
+          <TelegramBotOperationsPanel
+            accounts={accounts}
+            canViewTelegramOperations={canViewTelegramOperations}
+            format={format}
+            paymentOrders={paymentOrders}
+            telegramBotSettings={telegramBotSettings}
+            t={t}
+          />
+        </div>
       ) : null}
       <div className={isResellerSession || activeBillingTab === 'orders' ? 'min-w-0' : 'hidden'}>
         <PaymentOrdersPanel format={format} paymentOrders={paymentOrders} t={t} />
@@ -1681,70 +1471,6 @@ function ResellerPackageSalePanel({
   );
 }
 
-function updateImportedCurrentPanelAccount(
-  accounts: AdminCustomerAccountSummary[],
-  result: AdminCurrentPanelImportConfigsResponse,
-): AdminCustomerAccountSummary[] {
-  const activeImportedCount = result.importedConfigs.filter((config) => config.status === 'active').length;
-
-  return accounts.map((account) => {
-    if (account.id !== result.customerAccountId) return account;
-
-    const usedBytes = account.usedBytes + result.baselineUsedBytes;
-    return {
-      ...account,
-      activeClientCount: account.activeClientCount + activeImportedCount,
-      clientCount: account.clientCount + result.importedCount,
-      remainingBytes: account.quotaLimitBytes === null || account.quotaLimitBytes === undefined
-        ? null
-        : Math.max(account.quotaLimitBytes - usedBytes, 0),
-      updatedAt: result.generatedAt,
-      usedBytes,
-    };
-  });
-}
-
-function updateSyncedCurrentPanelUsageAccount(
-  accounts: AdminCustomerAccountSummary[],
-  result: AdminCurrentPanelUsageSyncResponse,
-): AdminCustomerAccountSummary[] {
-  return accounts.map((account) => {
-    if (account.id !== result.customerAccountId) return account;
-
-    const usedBytes = account.usedBytes + result.syncedUsedBytesDelta;
-    return {
-      ...account,
-      remainingBytes: account.quotaLimitBytes === null || account.quotaLimitBytes === undefined
-        ? null
-        : Math.max(account.quotaLimitBytes - usedBytes, 0),
-      updatedAt: result.generatedAt,
-      usedBytes,
-    };
-  });
-}
-
-function updateCurrentPanelVolumeChargeAccount(
-  accounts: AdminCustomerAccountSummary[],
-  result: AdminCurrentPanelVolumeChargeResponse,
-): AdminCustomerAccountSummary[] {
-  return [
-    result.account,
-    ...accounts.filter((account) => account.id !== result.account.id),
-  ];
-}
-
-function formatClientConfigExportJson(result: AdminClientConfigsExportResponse): string {
-  return JSON.stringify({
-    configCount: result.configCount,
-    configs: result.configs,
-    customerAccountId: result.customerAccountId,
-    exportFormat: result.exportFormat,
-    generatedAt: result.generatedAt,
-    warnings: result.warnings,
-  }, null, 2);
-}
-
-
 function CustomerAccountEditorPanel({
   accounts,
   canManageBilling,
@@ -1929,269 +1655,6 @@ function CustomerAccountEditorPanel({
           {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
         </div>
       </form>
-    </section>
-  );
-}
-
-function CurrentPanelImportPreviewPanel({
-  accounts,
-  canManageBilling,
-  clientConfigExportJson,
-  currentPanelForm,
-  currentPanelMessage,
-  currentPanelPreview,
-  format,
-  isChargingCurrentPanelVolume,
-  isExportingClientConfigs,
-  isImportingCurrentPanel,
-  isPreviewingCurrentPanel,
-  isSyncingCurrentPanelUsage,
-  onFormChange,
-  onChargeCurrentPanelVolume,
-  onExportClientConfigs,
-  onImportCurrentPanelConfigs,
-  onPreviewCurrentPanelImport,
-  onSyncCurrentPanelUsage,
-  t,
-}: {
-  accounts: AdminCustomerAccountSummary[];
-  canManageBilling: boolean;
-  clientConfigExportJson: string | null;
-  currentPanelForm: CurrentPanelImportFormState;
-  currentPanelMessage: string | null;
-  currentPanelPreview: AdminCurrentPanelImportPreviewResponse | null;
-  format: DashboardFormatters;
-  isChargingCurrentPanelVolume: boolean;
-  isExportingClientConfigs: boolean;
-  isImportingCurrentPanel: boolean;
-  isPreviewingCurrentPanel: boolean;
-  isSyncingCurrentPanelUsage: boolean;
-  onFormChange: (form: CurrentPanelImportFormState) => void;
-  onChargeCurrentPanelVolume: () => void;
-  onExportClientConfigs: () => void;
-  onImportCurrentPanelConfigs: () => void;
-  onPreviewCurrentPanelImport: (event: FormEvent<HTMLFormElement>) => void;
-  onSyncCurrentPanelUsage: () => void;
-  t: DashboardStrings;
-}) {
-  const updateForm = (patch: Partial<CurrentPanelImportFormState>) => onFormChange({ ...currentPanelForm, ...patch });
-  const candidates = currentPanelPreview?.candidates ?? [];
-  const isBusy = isPreviewingCurrentPanel || isImportingCurrentPanel || isSyncingCurrentPanelUsage || isExportingClientConfigs || isChargingCurrentPanelVolume;
-  const payloadPlaceholder = `{"users":[{"username":"vip_gamer","status":"active","data_limit":"25GB","used_traffic":"6GB","expire":1893456000}]}`;
-  const candidateRows = candidates.slice(0, 8);
-  const candidateColumns: Array<DataTableColumn<(typeof candidateRows)[number]>> = [
-    {
-      key: 'candidate',
-      header: t.billing.currentPanelCandidate,
-      render: (candidate) => (
-        <>
-          <strong className="block text-afro-ink">{candidate.label}</strong>
-          <span className="text-[12px] text-afro-muted">{candidate.username ?? candidate.externalPanelUserId ?? candidate.protocol}</span>
-        </>
-      ),
-    },
-    {
-      key: 'kind',
-      header: t.billing.currentPanelKind,
-      render: () => currentPanelPreview ? currentPanelKindLabel(currentPanelPreview.panelKind as CurrentPanelKind, t) : '--',
-    },
-    {
-      key: 'usedQuota',
-      header: t.billing.usedQuota,
-      render: (candidate) => candidate.usedBytes === null || candidate.usedBytes === undefined ? '--' : format.bytes(candidate.usedBytes),
-    },
-    {
-      key: 'totalQuota',
-      header: t.billing.totalQuota,
-      render: (candidate) => candidate.quotaBytes === null || candidate.quotaBytes === undefined ? t.billing.unlimited : format.bytes(candidate.quotaBytes),
-    },
-    {
-      key: 'remaining',
-      header: t.billing.remaining,
-      render: (candidate) => candidate.remainingBytes === null || candidate.remainingBytes === undefined ? t.billing.unlimited : format.bytes(candidate.remainingBytes),
-    },
-    {
-      key: 'status',
-      header: t.billing.status,
-      render: (candidate) => (
-        <StatusBadge tone={currentPanelStatusTone(candidate.status)}>
-          {currentPanelStatusLabel(candidate.status, t)}
-        </StatusBadge>
-      ),
-    },
-  ];
-
-  return (
-    <section className={panelClass}>
-      <PanelHeading
-        title={t.billing.currentPanelImport}
-        icon={Upload}
-        meta={currentPanelPreview ? t.billing.currentPanelAdapter(currentPanelPreview.adapterVersion) : t.billing.currentPanelReadOnly}
-      />
-      <form className="mt-2 grid gap-2" onSubmit={onPreviewCurrentPanelImport}>
-        <div className="grid gap-2 md:grid-cols-4">
-          <label className="grid gap-1.5">
-            <span className={mutedTextClass}>{t.billing.currentPanelKind}</span>
-            <select
-              aria-label={t.billing.currentPanelKind}
-              className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
-              disabled={!canManageBilling || isBusy}
-              onChange={(event) => updateForm({ panelKind: event.target.value as CurrentPanelKind })}
-              value={currentPanelForm.panelKind}
-            >
-              {currentPanelKindOptions.map((kind) => (
-                <option key={kind} value={kind}>
-                  {currentPanelKindLabel(kind, t)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <SettingsInput
-            disabled={!canManageBilling || isBusy}
-            label={t.billing.currentPanelSourceName}
-            onChange={(sourceName) => updateForm({ sourceName })}
-            value={currentPanelForm.sourceName}
-          />
-          <SettingsInput
-            disabled={!canManageBilling || isBusy}
-            label={t.billing.currentPanelDefaultProtocol}
-            onChange={(defaultProtocol) => updateForm({ defaultProtocol })}
-            value={currentPanelForm.defaultProtocol}
-          />
-          <div className="grid content-end">
-            <button
-              className={primaryButtonClass}
-              disabled={!canManageBilling || isBusy || !currentPanelForm.payloadJson.trim()}
-              type="submit"
-            >
-              {isPreviewingCurrentPanel ? t.billing.saving : t.billing.currentPanelPreviewImport}
-            </button>
-          </div>
-        </div>
-        <label className="grid gap-1.5">
-          <span className={mutedTextClass}>{t.billing.currentPanelPayloadJson}</span>
-          <textarea
-            aria-label={t.billing.currentPanelPayloadJson}
-            className="min-h-[150px] w-full rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-[13px] text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
-            dir="ltr"
-            disabled={!canManageBilling || isBusy}
-            onChange={(event) => updateForm({ payloadJson: event.target.value })}
-            placeholder={payloadPlaceholder}
-            value={currentPanelForm.payloadJson}
-          />
-        </label>
-        <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_minmax(140px,180px)_minmax(260px,1fr)]">
-          <label className="grid gap-1.5">
-            <span className={mutedTextClass}>{t.billing.currentPanelImportToCustomer}</span>
-            <select
-              aria-label={t.billing.currentPanelImportToCustomer}
-              className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
-              disabled={!canManageBilling || isBusy}
-              onChange={(event) => updateForm({ customerAccountId: event.target.value })}
-              value={currentPanelForm.customerAccountId}
-            >
-              <option value="">{t.billing.currentPanelSelectCustomer}</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.displayName ?? account.telegramUsername ?? account.id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <SettingsInput
-            disabled={!canManageBilling || isBusy}
-            inputMode="numeric"
-            label={t.billing.currentPanelChargeGb}
-            onChange={(chargeGb) => updateForm({ chargeGb })}
-            value={currentPanelForm.chargeGb}
-          />
-          <div className="grid content-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <button
-              className={primaryButtonClass}
-              disabled={!canManageBilling || isBusy || !currentPanelForm.payloadJson.trim() || !currentPanelForm.customerAccountId}
-              onClick={onImportCurrentPanelConfigs}
-              type="button"
-            >
-              {isImportingCurrentPanel ? t.billing.saving : t.billing.currentPanelImportConfigs}
-            </button>
-            <button
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
-              disabled={!canManageBilling || isBusy || !currentPanelForm.payloadJson.trim() || !currentPanelForm.customerAccountId}
-              onClick={onSyncCurrentPanelUsage}
-              type="button"
-            >
-              {isSyncingCurrentPanelUsage ? t.billing.saving : t.billing.currentPanelSyncUsage}
-            </button>
-            <button
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
-              disabled={!canManageBilling || isBusy || !currentPanelForm.customerAccountId}
-              onClick={onExportClientConfigs}
-              type="button"
-            >
-              {isExportingClientConfigs ? t.billing.saving : t.billing.currentPanelExportConfigs}
-            </button>
-            <button
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
-              disabled={!canManageBilling || isBusy || !currentPanelForm.customerAccountId || !currentPanelForm.chargeGb.trim()}
-              onClick={onChargeCurrentPanelVolume}
-              type="button"
-            >
-              {isChargingCurrentPanelVolume ? t.billing.saving : t.billing.currentPanelChargeVolume}
-            </button>
-          </div>
-        </div>
-        {clientConfigExportJson ? (
-          <label className="grid gap-1.5">
-            <span className={mutedTextClass}>{t.billing.currentPanelExportJson}</span>
-            <textarea
-              aria-label={t.billing.currentPanelExportJson}
-              className="min-h-[130px] w-full rounded-md border border-afro-line bg-white px-3 py-2 font-mono text-[13px] text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4"
-              dir="ltr"
-              readOnly
-              value={clientConfigExportJson}
-            />
-          </label>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-2">
-          {currentPanelMessage ? <span className={mutedTextClass}>{currentPanelMessage}</span> : null}
-          {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
-        </div>
-      </form>
-
-      {currentPanelPreview ? (
-        <div className="mt-2 grid gap-2">
-          <div className="grid gap-2 sm:grid-cols-4">
-            <MetricPill icon={UserRound} label={t.billing.currentPanelCandidates} value={format.integer(currentPanelPreview.candidateCount)} />
-            <MetricPill icon={ShieldCheck} label={t.billing.active} value={format.integer(currentPanelPreview.activeCount)} />
-            <MetricPill icon={WifiOff} label={t.billing.limited} value={format.integer(currentPanelPreview.limitedCount)} />
-            <MetricPill
-              icon={Inbox}
-              label={t.billing.totalQuota}
-              value={currentPanelPreview.totalQuotaBytes === null || currentPanelPreview.totalQuotaBytes === undefined ? t.billing.unlimited : format.bytes(currentPanelPreview.totalQuotaBytes)}
-            />
-          </div>
-          {candidates.length > 0 ? (
-            <DataTable
-              columns={candidateColumns}
-              minWidth="760px"
-              rowKey={(candidate) => `${candidate.externalPanel}:${candidate.externalPanelUserId ?? candidate.label}`}
-              rows={candidateRows}
-            />
-          ) : <EmptyState message={t.billing.currentPanelNoPreview} />}
-          <div className="flex flex-wrap gap-1.5">
-            {currentPanelPreview.rejectedRows.length > 0 ? (
-              <StatusBadge tone="warning">{t.billing.currentPanelRejectedRows(format.integer(currentPanelPreview.rejectedRows.length))}</StatusBadge>
-            ) : null}
-            {currentPanelPreview.warnings.map((warning) => (
-              <StatusBadge key={warning} tone="neutral">{format.label(warning)}</StatusBadge>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="mt-2">
-          <EmptyState message={t.billing.currentPanelNoPreview} />
-        </div>
-      )}
     </section>
   );
 }

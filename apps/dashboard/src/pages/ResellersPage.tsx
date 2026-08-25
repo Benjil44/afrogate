@@ -29,6 +29,8 @@ export function ResellersPage({
   const [rows, setRows] = useState<AdminResellerAccountSummary[]>([]);
   const [resellerUsers, setResellerUsers] = useState<AdminUserSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // First-load failure must not look like "no sellers yet".
+  const [loadState, setLoadState] = useState<'loading' | 'live' | 'error'>('loading');
   const [showAdd, setShowAdd] = useState(false);
   const [adminUserId, setAdminUserId] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -58,8 +60,9 @@ export function ResellersPage({
       ]);
       setRows(res.resellers);
       setResellerUsers(users.users.filter((u) => u.role === 'reseller'));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setLoadState('live');
+    } catch {
+      setLoadState('error');
     }
   };
   useEffect(() => {
@@ -369,7 +372,29 @@ export function ResellersPage({
         </div>
       ) : null}
 
-      {rows.length === 0 ? <EmptyState message={s.empty} /> : <DataTable rows={rows} columns={columns} rowKey={(r) => r.id} minWidth="980px" />}
+      {rows.length === 0 ? (
+        loadState === 'loading' ? (
+          <EmptyState kind="loading" message={t.panelStates.loadingTitle} detail={t.panelStates.loadingDetail} />
+        ) : loadState === 'error' ? (
+          <div className="grid gap-2">
+            <EmptyState kind="error" message={t.panelStates.errorTitle} detail={s.loadFailed} />
+            <button
+              className="inline-flex min-h-11 w-fit items-center rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
+              onClick={() => {
+                setLoadState('loading');
+                void load();
+              }}
+              type="button"
+            >
+              {t.actions.retry}
+            </button>
+          </div>
+        ) : (
+          <EmptyState message={s.empty} />
+        )
+      ) : (
+        <DataTable rows={rows} columns={columns} rowKey={(r) => r.id} minWidth="980px" />
+      )}
     </section>
   );
 }

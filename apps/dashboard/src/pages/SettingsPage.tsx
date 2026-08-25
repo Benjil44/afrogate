@@ -1,9 +1,8 @@
 import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowDownUp, Bot, CheckCircle2, Clock, Gauge, Gem, LockKeyhole, Network, Palette, Plus, Route, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
-import type { AdminOutboundSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolSetupSummary, AdminRouteAssignmentSummary, AdminSessionResponse, AdminSettingsResponse, AdminTelegramBotProfile, AdminTelegramBotSettingsSummary, AdminTenantBrandSettingsSummary, AdminWireGuardCandidate, LoadBalanceStrategy, ProtocolKind, ProtocolProfile, RouteSelectionMode } from '@afrows/shared';
-import { createAdminProtocolSetup, createAdminSettingsSecret, fetchAdminSettings, fetchAdminTelegramBotSettings, fetchAdminTenantBranding, fetchProtocolServerApplyEvent, fetchProtocolServerApplyEvents, fetchRouteAssignment, fetchTelegramBotProfile, provisionAdminProtocolSetup, publishTelegramBotProfile, recordAdminProtocolServerApplyDryRun, requestAdminProtocolServerApply, testAdminTelegramBotConnection, updateAdminTelegramBotSettings, updateAdminTenantBranding } from '../api/admin';
-import { telegramGemEconomy, type UpdateTelegramBotSettingsWithGems } from '../api/gems';
+import type { AdminOutboundSummary, AdminProtocolServerApplyEventDetail, AdminProtocolServerApplyEventSummary, AdminProtocolSetupSummary, AdminRouteAssignmentSummary, AdminSessionResponse, AdminSettingsResponse, AdminTelegramBotProfile, AdminTelegramBotSettingsSummary, AdminTenantBrandSettingsSummary, AdminWireGuardCandidate, LoadBalanceStrategy, ProtocolKind, ProtocolProfile, RouteSelectionMode, UpdateTelegramBotSettingsRequest } from '@afrows/shared';
+import { createAdminProtocolSetup, createAdminSettingsSecret, fetchAdminSettings, fetchAdminTelegramBotSettings, fetchAdminTenantBranding, fetchProtocolServerApplyEvent, fetchProtocolServerApplyEvents, fetchRouteAssignment, fetchTelegramBotProfile, provisionAdminProtocolSetup, publishTelegramBotProfile, recordAdminProtocolServerApplyDryRun, requestAdminProtocolServerApply, testAdminTelegramBotConnection, updateAdminRouteSettings, updateAdminTelegramBotSettings, updateAdminTenantBranding } from '../api/admin';
 import type { DashboardTabItem, DataState, ProtocolSetupDraft, ServerRowData, SettingsTab, TelegramBotSettingsForm, TenantBrandSettingsForm, Tone, WireGuardHealthCandidate, WireGuardSetupDraft } from '../dashboard-types';
 import { normalizeNullableText, type DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
@@ -103,10 +102,13 @@ export function SettingsPage({
   const [serverLiveApplyingSetupId, setServerLiveApplyingSetupId] = useState<string | null>(null);
   const [isTelegramBotSaving, setIsTelegramBotSaving] = useState(false);
   const [isTelegramBotTesting, setIsTelegramBotTesting] = useState(false);
+  const [isRouteSettingsSaving, setIsRouteSettingsSaving] = useState(false);
+  const [routeSettingsMessage, setRouteSettingsMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
   const [isProtocolApplyEventDetailLoading, setIsProtocolApplyEventDetailLoading] = useState(false);
   const canCreateProtocols = session.actor.role === 'superadmin' || Boolean(session.actor.isSuperAdmin);
   const canManageTelegramBot = canCreateProtocols;
   const canManageTenantBranding = ['superadmin', 'owner', 'admin'].includes(session.actor.role);
+  const canSaveRouteSettings = ['superadmin', 'owner', 'admin'].includes(session.actor.role);
   const sampleWireGuardCandidates = useMemo<WireGuardHealthCandidate[]>(
     () => buildSampleWireGuardCandidates(t, draft.endpoint),
     [draft.endpoint, t],
@@ -135,7 +137,8 @@ export function SettingsPage({
   };
   const applyTelegramBotSettings = (settings: AdminTelegramBotSettingsSummary) => {
     setTelegramBotSettings(settings);
-    const gems = telegramGemEconomy(settings);
+    // Gem-economy fields (bot v2) live directly on the shared settings summary.
+    const gems = settings;
     setTelegramBotForm((current) => ({
       ...current,
       botToken: '',
@@ -448,6 +451,28 @@ export function SettingsPage({
     setTelegramBotMessage(null);
   };
 
+  // Persist the route mode + load-balance strategy through PATCH /admin/settings/route.
+  // Control-plane state only — no live OS/data-plane route mutation happens here.
+  const saveRouteSelectionSettings = async () => {
+    setIsRouteSettingsSaving(true);
+    setRouteSettingsMessage(null);
+
+    try {
+      const selectedManagedOutboundId = activeWireGuard.source === 'outbound' ? activeWireGuard.id : null;
+      await updateAdminRouteSettings(sessionToken, {
+        routeGroup: 'main',
+        mode: routeMode,
+        selectedOutboundId: routeMode === 'manual' ? selectedManagedOutboundId : null,
+        loadBalanceStrategy,
+      });
+      setRouteSettingsMessage({ text: t.settings.routeSettingsSaved, tone: 'ok' });
+    } catch {
+      setRouteSettingsMessage({ text: t.settings.saveFailed, tone: 'error' });
+    } finally {
+      setIsRouteSettingsSaving(false);
+    }
+  };
+
   const selectProtocol = (protocol: ProtocolKind) => {
     setProtocolDraft((current) => ({
       ...current,
@@ -710,7 +735,7 @@ export function SettingsPage({
       : null;
 
     try {
-      const payload: UpdateTelegramBotSettingsWithGems = {
+      const payload: UpdateTelegramBotSettingsRequest = {
         botToken: telegramBotForm.botToken.trim() || undefined,
         webhookSecret: telegramBotForm.webhookSecret.trim() || undefined,
         alertChatId: telegramBotForm.alertChatId.trim() || null,
@@ -1527,6 +1552,45 @@ export function SettingsPage({
       </section>
 
       <section className={`grid gap-3 ${settingsHasSideRail ? '' : 'hidden'}`}>
+        <section className={`${panelClass} ${activeSettingsTab === 'wireguard' || activeSettingsTab === 'protocols' ? '' : 'hidden'}`}>
+          <PanelHeading title={t.settings.routeSelectionTitle} icon={Route} meta={t.settings.smartRoute} />
+          <div className="mt-2 grid gap-2">
+            <SettingsSelect
+              disabled={!canSaveRouteSettings || isRouteSettingsSaving}
+              label={t.settings.routeMode}
+              onChange={(value) => setRouteMode(value as RouteSelectionMode)}
+              options={[
+                { value: 'automatic', label: t.settings.automatic },
+                { value: 'manual', label: t.settings.manual },
+              ]}
+              value={routeMode}
+            />
+            <SettingsSelect
+              disabled={!canSaveRouteSettings || isRouteSettingsSaving}
+              label={t.settings.loadBalanceStrategy}
+              onChange={(value) => setLoadBalanceStrategy(value as LoadBalanceStrategy)}
+              options={loadBalanceOptions.map(([value, label]) => ({ value, label }))}
+              value={loadBalanceStrategy}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-wait disabled:opacity-60"
+                disabled={!canSaveRouteSettings || isRouteSettingsSaving}
+                onClick={() => void saveRouteSelectionSettings()}
+                type="button"
+              >
+                {isRouteSettingsSaving ? t.settings.saving : t.settings.saveRouteSettings}
+              </button>
+              {!canSaveRouteSettings ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
+              {routeSettingsMessage ? (
+                <span className={`text-[13px] font-bold ${routeSettingsMessage.tone === 'ok' ? 'text-afro-teal' : 'text-[#b91c1c]'}`} role="status">
+                  {routeSettingsMessage.text}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
         <section className={`${panelClass} ${activeSettingsTab === 'wireguard' || activeSettingsTab === 'protocols' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.setupReadiness} icon={ShieldCheck} meta={t.settings.secretSafe} />
           <div className="mt-2 grid gap-2">

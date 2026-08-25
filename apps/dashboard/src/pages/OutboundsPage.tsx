@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Plus, RefreshCw, Trash2, Zap, Power, X, Pencil, ChevronDown, ChevronRight, AlertTriangle, Clock } from 'lucide-react';
 import type { AdminOutboundSummary, AdminOutboundSubscriptionSummary } from '@afrows/shared';
+import { EmptyState } from '../components/primitives';
+import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 import {
   fetchAdminOutbounds,
@@ -37,10 +39,14 @@ type SortKey = 'name' | 'status' | 'ping' | 'jitter' | 'down' | 'up';
 const POLL_MS = 20000;
 const FAST_POLL_MS = 4000;
 
-export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: DashboardStrings }) {
+export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFormatters; sessionToken: string; t: DashboardStrings }) {
   const s = t.outboundsPage;
   const [rows, setRows] = useState<AdminOutboundSummary[]>([]);
   const [subs, setSubs] = useState<AdminOutboundSubscriptionSummary[]>([]);
+  // First-load / refresh health: 'error' with rows means "showing last known
+  // data" (this page is checked during outages, so staleness must be visible).
+  const [loadState, setLoadState] = useState<'loading' | 'live' | 'error'>('loading');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [sortKey, setSortKey] = useState<SortKey>('status');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -82,9 +88,12 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
       ]);
       setRows(res.outbounds);
       setSubs(subRes.subscriptions);
+      setLoadState('live');
+      setLastUpdatedAt(new Date());
       return res.outbounds;
     } catch {
-      return null; // keep last data on transient failure
+      setLoadState('error'); // keep last data, but surface the failed refresh
+      return null;
     }
   }, [sessionToken]);
 
@@ -502,6 +511,27 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
         </div>
       ) : null}
 
+      {/* Refresh failed but last-known rows are still shown: make the staleness
+          explicit (this page is consulted mid-outage) and offer a manual retry. */}
+      {loadState === 'error' && (rows.length > 0 || subs.length > 0) ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] font-bold text-[#8a6d1f]" role="alert">
+          <span className="inline-flex min-w-0 items-center gap-2">
+            <AlertTriangle className="shrink-0" size={15} />
+            <span className="min-w-0">
+              {s.staleNotice(lastUpdatedAt ? format.time(lastUpdatedAt, false) : '—')}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-amber-300 bg-white px-3 text-[13px] font-bold text-[#8a6d1f] hover:border-afro-teal hover:text-afro-teal"
+          >
+            <RefreshCw size={13} />
+            {t.actions.retry}
+          </button>
+        </div>
+      ) : null}
+
       {/* Add panel */}
       {addOpen ? (
         <div className="rounded-md border border-afro-line bg-afro-panel p-4">
@@ -718,8 +748,24 @@ export function OutboundsPage({ sessionToken, t }: { sessionToken: string; t: Da
           <tbody>
             {rows.length === 0 && subs.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-afro-muted">
-                  {s.empty}
+                <td colSpan={8} className="px-4 py-6">
+                  {loadState === 'loading' ? (
+                    <EmptyState kind="loading" message={t.panelStates.loadingTitle} detail={t.panelStates.loadingDetail} />
+                  ) : loadState === 'error' ? (
+                    <div className="grid justify-items-center gap-2">
+                      <EmptyState kind="error" message={t.panelStates.errorTitle} detail={s.loadFailed} />
+                      <button
+                        type="button"
+                        onClick={() => void load()}
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
+                      >
+                        <RefreshCw size={13} />
+                        {t.actions.retry}
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="block py-4 text-center text-afro-muted">{s.empty}</span>
+                  )}
                 </td>
               </tr>
             ) : (

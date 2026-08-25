@@ -1459,7 +1459,7 @@ function ActivePage({
         />
       );
     case 'outbounds':
-      return <OutboundsPage sessionToken={sessionToken} t={t} />;
+      return <OutboundsPage format={format} sessionToken={sessionToken} t={t} />;
     case 'microtiks':
       return <MicrotiksPage roleFilter="gateway" sessionToken={sessionToken} t={t} />;
     case 'customers':
