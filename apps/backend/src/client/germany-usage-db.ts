@@ -70,9 +70,9 @@ export async function applyDeUserUsage(
   const windowStart = baseline?.observedAt ?? null;
   const inserted = await ex.query(
     `INSERT INTO client_usage_events
-       (customer_account_id, client_config_id, source, direction, used_bytes_delta,
+       (customer_account_id, client_config_id, source, direction, used_bytes_delta, raw_used_bytes_delta, usage_multiplier,
         observed_at, window_start, window_end, idempotency_key, metadata, created_by)
-     VALUES ($1, $2, 'germany-xray', 'combined', $3, $4::timestamptz, $5, $4::timestamptz, $6, '{}'::jsonb, 'germany-usage-meter')
+     VALUES ($1, $2, 'germany-xray', 'combined', $3, $3, 1, $4::timestamptz, $5, $4::timestamptz, $6, '{}'::jsonb, 'germany-usage-meter')
      ON CONFLICT (source, idempotency_key)
        WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''
        DO NOTHING
