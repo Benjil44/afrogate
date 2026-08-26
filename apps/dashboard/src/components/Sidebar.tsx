@@ -1,51 +1,47 @@
-import { ChevronDown, ChevronUp, Languages, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronUp, Languages, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ShieldCheck, X } from 'lucide-react';
 import type { AdminSessionResponse } from '@afrows/shared';
-import { appVersion, resellerNavViews } from '../app-config';
-import type { ActiveView, NavItemData, SidebarAlertState } from '../dashboard-types';
+import { appVersion } from '../app-config';
+import type { ActiveView, SidebarAlertState } from '../dashboard-types';
 import { dashboardLanguageLabel } from '../formatters';
 import { LANGUAGE_TOGGLE_ENABLED } from '../i18n';
 import type { DashboardLanguage, DashboardStrings } from '../i18n';
-import { ADVANCED_NAV, MAIN_NAV } from '../nav-config';
-import { canViewAdminUsers, canViewAuditLogs, canViewBackupStatus, canViewReports } from '../session-access';
-
-function filterNavForSession(items: NavItemData[], session: AdminSessionResponse): NavItemData[] {
-  return items.filter((item) => {
-    if (session.actor.role === 'reseller') return resellerNavViews.has(item.id);
-    if (item.id === 'users') return canViewAdminUsers(session);
-    if (item.id === 'audit') return canViewAuditLogs(session);
-    if (item.id === 'backups') return canViewBackupStatus(session);
-    if (item.id === 'reports') return canViewReports(session);
-    return true;
-  });
-}
+import { visibleNavGroups, type SidebarNavGroup, type SidebarNavItem } from '../nav-config';
+import { activeNavEntryId, NAV_GROUPS, RESELLER_NAV_GROUPS, type NavGroupId } from '../nav-views';
 
 export function Sidebar({
+  activeTab,
   activeView,
-  advancedMode,
+  collapsedGroups,
   isCollapsed,
   isRtl,
   nextLanguage,
+  onCloseMobile,
   onLanguageChange,
+  onNavigate,
   onSignOut,
-  onToggleAdvancedMode,
   onToggleCollapse,
-  onViewChange,
+  onToggleGroup,
   resellerTopupPendingState = null,
   sidebarAlertState,
   session,
   t,
   topupPendingState = null,
 }: {
+  /** Canonical `?tab=` value of the current URL (null when absent). */
+  activeTab: string | null;
   activeView: ActiveView;
-  advancedMode: boolean;
+  /** Persisted collapsed sidebar groups (localStorage-backed in DashboardApp). */
+  collapsedGroups: NavGroupId[];
   isCollapsed: boolean;
   isRtl: boolean;
   nextLanguage: DashboardLanguage;
+  /** Mobile drawer close ("X") button; omitted on desktop where no drawer exists. */
+  onCloseMobile?: () => void;
   onLanguageChange: (language: DashboardLanguage) => void;
+  onNavigate: (item: SidebarNavItem) => void;
   onSignOut: () => void;
-  onToggleAdvancedMode: () => void;
   onToggleCollapse: () => void;
-  onViewChange: (view: ActiveView) => void;
+  onToggleGroup: (groupId: NavGroupId) => void;
   /** Pending seller wallet top-up count badge on the Seller top-ups nav item (null hides it). */
   resellerTopupPendingState?: SidebarAlertState | null;
   sidebarAlertState: SidebarAlertState | null;
@@ -54,99 +50,130 @@ export function Sidebar({
   /** Pending Telegram top-up count badge on the Top-ups nav item (null hides it). */
   topupPendingState?: SidebarAlertState | null;
 }) {
-  const mainItems = filterNavForSession(MAIN_NAV, session);
-  const advancedItems = filterNavForSession(ADVANCED_NAV, session);
-  const badgeStateFor = (item: NavItemData): SidebarAlertState | null => {
+  const groups = visibleNavGroups(session);
+  const navModel = session.actor.role === 'reseller' ? RESELLER_NAV_GROUPS : NAV_GROUPS;
+  const activeEntryId = activeNavEntryId(navModel, activeView, activeTab);
+  const badgeStateFor = (item: SidebarNavItem): SidebarAlertState | null => {
     if (item.id === 'alerts') return sidebarAlertState;
     if (item.id === 'topups') return topupPendingState;
     if (item.id === 'reseller-topups') return resellerTopupPendingState;
     return null;
   };
-  const canUseAdvancedToggle = session.actor.role !== 'reseller';
-  const showAdvanced = advancedMode && canUseAdvancedToggle && advancedItems.length > 0;
+  // Worst badge among a group's items, surfaced on the header while collapsed
+  // so pending alerts/receipts stay visible even with the group folded away.
+  const groupBadgeFor = (group: SidebarNavGroup): SidebarAlertState | null => {
+    const states = group.items.map(badgeStateFor).filter((state): state is SidebarAlertState => state !== null);
+    return states.find((state) => state.tone === 'critical') ?? states[0] ?? null;
+  };
 
   return (
     <aside
-      className={`relative bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-visible lg:py-6 ${isCollapsed ? 'lg:px-3' : ''}`}
+      className={`relative flex h-full flex-col bg-afro-sidebar px-4 py-4 text-[#eef6f4] md:px-[18px] lg:py-6 ${isCollapsed ? 'lg:px-3' : ''}`}
       data-sidebar-collapsed={isCollapsed ? 'true' : 'false'}
     >
-      <div className={`flex items-center justify-between gap-3 ${isCollapsed ? 'lg:justify-center' : 'lg:block'}`}>
+      <div className={`flex items-center justify-between gap-3 ${isCollapsed ? 'lg:justify-center' : ''}`}>
         <div className={`flex h-10 items-center gap-2.5 text-xl font-bold ${isCollapsed ? 'lg:justify-center' : ''}`}>
           <ShieldCheck size={22} />
           <span className={isCollapsed ? 'lg:sr-only' : ''}>Afrows</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-[#91a5a2] lg:hidden">
-          <span>v{appVersion}</span>
-          <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
-          <SignOutButton onSignOut={onSignOut} t={t} />
-        </div>
+        {onCloseMobile ? (
+          <button
+            aria-label={t.closeNavMenu}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white lg:hidden"
+            onClick={onCloseMobile}
+            title={t.closeNavMenu}
+            type="button"
+          >
+            <X className="shrink-0" size={18} />
+          </button>
+        ) : null}
       </div>
       <SidebarToggle isCollapsed={isCollapsed} isRtl={isRtl} onToggle={onToggleCollapse} t={t} />
-      <nav className={`afro-scroll mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-6 lg:min-h-0 lg:flex-1 lg:grid-cols-1 lg:content-start lg:overflow-y-auto lg:pr-1 ${isCollapsed ? 'lg:mt-6' : 'lg:mt-8'}`}>
-        {mainItems.map((item) => (
-          <NavItem
-            item={item}
-            alertState={badgeStateFor(item)}
-            isActive={activeView === item.id}
-            isSidebarCollapsed={isCollapsed}
-            key={item.id}
-            onClick={() => onViewChange(item.id)}
-            t={t}
-          />
-        ))}
-        {canUseAdvancedToggle && advancedItems.length > 0 ? (
-          <>
-            <button
-              type="button"
-              onClick={onToggleAdvancedMode}
-              aria-expanded={showAdvanced}
-              title={showAdvanced ? t.hideAdvancedNav : t.showAdvancedNav}
-              className={`col-span-2 mt-2 flex items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wide text-[#7c9490] hover:text-[#c8d7d5] sm:col-span-6 lg:col-span-1 ${isCollapsed ? 'lg:justify-center' : 'justify-between'}`}
-            >
-              <span className={isCollapsed ? 'lg:sr-only' : ''}>{t.advancedNavGroup}</span>
-              {showAdvanced ? <ChevronUp className="shrink-0" size={14} /> : <ChevronDown className="shrink-0" size={14} />}
-            </button>
-            {showAdvanced
-              ? advancedItems.map((item) => (
+      <nav className="afro-scroll mt-5 min-h-0 flex-1 overflow-y-auto pe-1 lg:mt-7">
+        {groups.map((group) => {
+          const isGroupCollapsed = collapsedGroups.includes(group.id);
+          const groupBadge = isGroupCollapsed ? groupBadgeFor(group) : null;
+          const listId = `afro-nav-group-${group.id}`;
+
+          if (isCollapsed) {
+            // Icon rail: flat entries, no group headers (labels via title/aria).
+            return (
+              <div className="mb-1.5 grid gap-1.5 border-b border-[#25383f] pb-1.5 last:border-b-0" key={group.id} role="group" aria-label={t.navGroups[group.id]}>
+                {group.items.map((item) => (
                   <NavItem
-                    item={item}
                     alertState={badgeStateFor(item)}
-                    isActive={activeView === item.id}
-                    isSidebarCollapsed={isCollapsed}
+                    isActive={item.id === activeEntryId}
+                    isSidebarCollapsed
+                    item={item}
                     key={item.id}
-                    onClick={() => onViewChange(item.id)}
+                    onClick={() => onNavigate(item)}
                     t={t}
                   />
-                ))
-              : null}
-          </>
-        ) : null}
+                ))}
+              </div>
+            );
+          }
+
+          return (
+            <section className="mb-1" key={group.id}>
+              <button
+                aria-controls={listId}
+                aria-expanded={!isGroupCollapsed}
+                className="flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-3 text-start text-[11px] font-bold uppercase tracking-wide text-[#7c9490] hover:bg-[#1f3138] hover:text-[#c8d7d5]"
+                onClick={() => onToggleGroup(group.id)}
+                type="button"
+              >
+                <span className="min-w-0 truncate">{t.navGroups[group.id]}</span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {groupBadge ? (
+                    <span className={`inline-flex min-h-5 min-w-5 items-center justify-center rounded-full border px-1 text-[11px] leading-none normal-case ${groupBadge.tone === 'critical' ? 'border-[#ef4444] bg-[#dc2626] text-white' : 'border-[#d9972b] bg-[#f5b84b] text-[#20160a]'}`}>
+                      {groupBadge.countLabel}
+                    </span>
+                  ) : null}
+                  {isGroupCollapsed ? <ChevronDown className="shrink-0" size={14} /> : <ChevronUp className="shrink-0" size={14} />}
+                </span>
+              </button>
+              <div className={`grid gap-1 pt-0.5 ${isGroupCollapsed ? 'hidden' : ''}`} id={listId}>
+                {group.items.map((item) => (
+                  <NavItem
+                    alertState={badgeStateFor(item)}
+                    isActive={item.id === activeEntryId}
+                    isSidebarCollapsed={false}
+                    item={item}
+                    key={item.id}
+                    onClick={() => onNavigate(item)}
+                    t={t}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </nav>
-      <div className="hidden text-xs text-[#91a5a2] lg:mt-6 lg:block lg:border-t lg:border-[#334852] lg:pt-3">
+      <div className="mt-4 border-t border-[#334852] pt-3 text-xs text-[#91a5a2] lg:mt-6">
         {isCollapsed ? (
-          <div className="flex flex-col items-center gap-2">
+          <div className="hidden flex-col items-center gap-2 lg:flex">
             <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
             <SignOutButton onSignOut={onSignOut} t={t} />
             <div className="text-[11px] font-bold text-[#c8d7d5]">v{appVersion}</div>
           </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-bold text-[#c8d7d5]">Afrows</div>
-                <div>v{appVersion}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
-                <SignOutButton onSignOut={onSignOut} t={t} />
-              </div>
+        ) : null}
+        <div className={isCollapsed ? 'lg:hidden' : ''}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-bold text-[#c8d7d5]">Afrows</div>
+              <div>v{appVersion}</div>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <span>{t.languageName}</span>
-              <span className="truncate font-bold text-[#c8d7d5]">{t.auth.sessionRole(session.actor.role)}</span>
+            <div className="flex items-center gap-2">
+              <LanguageButton nextLanguage={nextLanguage} onLanguageChange={onLanguageChange} t={t} />
+              <SignOutButton onSignOut={onSignOut} t={t} />
             </div>
-          </>
-        )}
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span>{t.languageName}</span>
+            <span className="truncate font-bold text-[#c8d7d5]">{t.auth.sessionRole(session.actor.role)}</span>
+          </div>
+        </div>
       </div>
     </aside>
   );
@@ -228,7 +255,7 @@ function NavItem({
   t,
 }: {
   alertState: SidebarAlertState | null;
-  item: NavItemData;
+  item: SidebarNavItem;
   isActive: boolean;
   isSidebarCollapsed: boolean;
   onClick: () => void;
@@ -254,14 +281,14 @@ function NavItem({
       }[alertState.tone]
     : '';
   const ariaLabel = alertState
-    ? `${t.nav[item.labelKey]} ${alertState.countLabel} ${t.status[alertState.tone]}`
-    : t.nav[item.labelKey];
+    ? `${t.nav[item.id]} ${alertState.countLabel} ${t.status[alertState.tone]}`
+    : t.nav[item.id];
 
   return (
     <button
       aria-current={isActive ? 'page' : undefined}
       aria-label={ariaLabel}
-      className={`flex min-h-10 min-w-0 items-center justify-between gap-2 rounded-md px-3 text-left text-sm font-bold ${activeClass} ${isSidebarCollapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      className={`flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded-md px-3 text-start text-sm font-bold lg:min-h-10 ${activeClass} ${isSidebarCollapsed ? 'lg:justify-center lg:px-2' : ''}`}
       data-view={item.id}
       onClick={onClick}
       title={ariaLabel}
@@ -269,7 +296,7 @@ function NavItem({
     >
       <span className={`flex min-w-0 items-center gap-2 ${isSidebarCollapsed ? 'lg:justify-center' : ''}`}>
         <Icon className="shrink-0" size={18} />
-        <span className={`min-w-0 truncate ${isSidebarCollapsed ? 'lg:sr-only' : ''}`}>{t.nav[item.labelKey]}</span>
+        <span className={`min-w-0 truncate ${isSidebarCollapsed ? 'lg:sr-only' : ''}`}>{t.nav[item.id]}</span>
       </span>
       {alertState ? (
         <span className={`inline-flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full border px-1 text-[11px] leading-none ${badgeClass}`}>

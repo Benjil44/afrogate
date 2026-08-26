@@ -1,6 +1,6 @@
 {
   "name": "afrows-versioning",
-  "version": "0.114.99",
+  "version": "0.115.0",
   "description": "Versioning workflow for Afrows implementation sessions.",
   "author": {
     "name": "Afrows",

@@ -13,7 +13,7 @@ import type {
 export type Tone = 'good' | 'neutral' | 'warning' | 'critical';
 export type DataState = 'loading' | 'live' | 'stale' | 'fallback';
 export type PanelStateKind = 'empty' | 'loading' | 'stale' | 'fallback' | 'error';
-export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'connections' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'topups' | 'reseller-topups' | 'reports' | 'routes' | 'outbounds' | 'microtiks' | 'alerts' | 'settings' | 'exits' | 'network' | 'resellers';
+export type ActiveView = 'dashboard' | 'servers' | 'users' | 'customers' | 'connections' | 'inbounds' | 'audit' | 'backups' | 'billing' | 'topups' | 'reseller-topups' | 'reports' | 'routes' | 'outbounds' | 'microtiks' | 'alerts' | 'settings' | 'exits' | 'network' | 'resellers' | 'pricing';
 export type AlertStatusFilter = 'open' | 'resolved';
 export type AlertSeverityFilter = 'all' | Tone;
 export type ServerEditTab = 'overview' | 'access' | 'monitoring' | 'interfaces' | 'audit';
@@ -197,12 +197,6 @@ export interface TenantBrandSettingsForm {
   accentColor: string;
   publicBrandingEnabled: boolean;
   clientSupportMessage: string;
-}
-
-export interface NavItemData {
-  id: ActiveView;
-  labelKey: ActiveView;
-  icon: AfroIcon;
 }
 
 export interface SidebarAlertState {

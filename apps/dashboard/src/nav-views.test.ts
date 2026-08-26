@@ -1,41 +1,67 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN_VIEWS, ADVANCED_VIEWS, parseAdvancedMode, serializeAdvancedMode } from './nav-views.ts';
+import {
+  NAV_GROUPS,
+  ORPHAN_VIEW_REDIRECTS,
+  RESELLER_NAV_GROUPS,
+  activeNavEntryId,
+  parseCollapsedGroups,
+  serializeCollapsedGroups,
+} from './nav-views.ts';
 
-// Views shown in the sidebar after D1 (outbounds/routes/microtiks routable but hidden).
-const SIDEBAR_VIEWS = [
-  'dashboard', 'customers', 'billing', 'resellers', 'exits', 'microtiks', 'alerts', 'users', 'settings',
-  'network', 'servers', 'audit', 'backups', 'reports',
-];
+const GROUP_ORDER = ['overview', 'customers', 'revenue', 'infrastructure', 'observability', 'automation', 'settings'];
 
-test('Main has the 9 everyday views in order', () => {
-  assert.deepEqual(MAIN_VIEWS, [
-    'dashboard', 'customers', 'billing', 'resellers', 'exits', 'microtiks', 'alerts', 'users', 'settings',
-  ]);
+test('admin sidebar has the 7 CTO-plan groups in order', () => {
+  assert.deepEqual(NAV_GROUPS.map((group) => group.id), GROUP_ORDER);
 });
 
-test('Advanced has the 5 infrastructure views in order', () => {
-  assert.deepEqual(ADVANCED_VIEWS, ['network', 'servers', 'audit', 'backups', 'reports']);
+test('every sidebar entry id is unique (one nav item per feature)', () => {
+  const ids = NAV_GROUPS.flatMap((group) => group.entries.map((entry) => entry.id));
+  assert.equal(new Set(ids).size, ids.length, 'duplicate entry id across groups');
 });
 
-test('sidebar groups: no duplicates, and outbounds/routes/microtiks are hidden', () => {
-  const union = [...MAIN_VIEWS, ...ADVANCED_VIEWS];
-  assert.equal(new Set(union).size, union.length, 'duplicate view across groups');
-  assert.deepEqual([...union].sort(), [...SIDEBAR_VIEWS].sort(), 'union != expected sidebar set');
-  assert.ok(!union.includes('outbounds'), 'outbounds must not be a sidebar item');
-  assert.ok(!union.includes('routes'), 'routes must not be a sidebar item');
-  assert.ok(!union.includes('inbounds'), 'inbounds must not be a sidebar item');
-  assert.ok(!union.includes('connections'), 'connections must not be a sidebar item');
+test('no two entries address the same view+tab (one URL per feature)', () => {
+  const addresses = NAV_GROUPS.flatMap((group) => group.entries.map((entry) => `${entry.view}?tab=${entry.tab ?? ''}`));
+  assert.equal(new Set(addresses).size, addresses.length, 'duplicate view+tab address');
 });
 
-test('parseAdvancedMode: only "enabled" is true; default false', () => {
-  assert.equal(parseAdvancedMode('enabled'), true);
-  assert.equal(parseAdvancedMode('disabled'), false);
-  assert.equal(parseAdvancedMode(null), false);
-  assert.equal(parseAdvancedMode(''), false);
+test('orphan views are redirected, never sidebar entries', () => {
+  const orphans = ['routes', 'outbounds', 'inbounds', 'connections'] as const;
+  const entryViews = new Set(NAV_GROUPS.flatMap((group) => group.entries.map((entry) => entry.view)));
+  for (const orphan of orphans) {
+    assert.ok(!entryViews.has(orphan), `${orphan} must not be a sidebar entry`);
+    const redirect = ORPHAN_VIEW_REDIRECTS[orphan];
+    assert.ok(redirect, `${orphan} must redirect to a canonical URL`);
+    // The redirect target must itself be a real sidebar destination.
+    const target = NAV_GROUPS.flatMap((group) => group.entries)
+      .find((entry) => entry.view === redirect.view && (entry.tab === redirect.tab || entry.tab === undefined));
+    assert.ok(target, `${orphan} redirect target ${redirect.view}?tab=${redirect.tab} has no sidebar entry`);
+  }
 });
 
-test('serializeAdvancedMode round-trips through parseAdvancedMode', () => {
-  assert.equal(parseAdvancedMode(serializeAdvancedMode(true)), true);
-  assert.equal(parseAdvancedMode(serializeAdvancedMode(false)), false);
+test('reseller sidebar is scoped to Overview + Customers + Revenue', () => {
+  assert.deepEqual(RESELLER_NAV_GROUPS.map((group) => group.id), ['overview', 'customers', 'revenue']);
+  const views = RESELLER_NAV_GROUPS.flatMap((group) => group.entries.map((entry) => entry.view));
+  assert.deepEqual([...views].sort(), ['billing', 'dashboard', 'users']);
+});
+
+test('activeNavEntryId: exact tab match wins, then untabbed, then first', () => {
+  assert.equal(activeNavEntryId(NAV_GROUPS, 'exits', 'routing'), 'exits-routing');
+  assert.equal(activeNavEntryId(NAV_GROUPS, 'exits', 'sources'), 'exits-sources');
+  // No tab -> the view's first entry (Exits egress).
+  assert.equal(activeNavEntryId(NAV_GROUPS, 'exits', null), 'exits');
+  // Settings without a tab -> the untabbed Settings entry, not Telegram bot.
+  assert.equal(activeNavEntryId(NAV_GROUPS, 'settings', null), 'settings');
+  assert.equal(activeNavEntryId(NAV_GROUPS, 'settings', 'telegram'), 'telegram-bot');
+  // Unknown tab falls back to the untabbed entry.
+  assert.equal(activeNavEntryId(NAV_GROUPS, 'settings', 'branding'), 'settings');
+  assert.equal(activeNavEntryId(NAV_GROUPS, 'routes', null), null);
+});
+
+test('collapsed groups round-trip and tolerate garbage', () => {
+  assert.deepEqual(parseCollapsedGroups(serializeCollapsedGroups(['revenue', 'automation'])), ['revenue', 'automation']);
+  assert.deepEqual(parseCollapsedGroups(null), []);
+  assert.deepEqual(parseCollapsedGroups('not json'), []);
+  assert.deepEqual(parseCollapsedGroups('{"a":1}'), []);
+  assert.deepEqual(parseCollapsedGroups('["bogus","settings"]'), ['settings']);
 });

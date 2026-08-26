@@ -712,13 +712,20 @@ function mapCustomerAccountToForm(account: AdminCustomerAccountSummary): Custome
   };
 }
 
+const BILLING_TABS: BillingTab[] = ['catalog', 'customers', 'telegram', 'orders'];
+
 export function BillingPage({
+  activeTab,
   format,
+  onTabChange,
   session,
   sessionToken,
   t,
 }: {
+  /** Canonical `?tab=` search param from the router (null falls back to catalog). */
+  activeTab: string | null;
   format: DashboardFormatters;
+  onTabChange: (tab: string) => void;
   session: AdminSessionResponse;
   sessionToken: string;
   t: DashboardStrings;
@@ -750,7 +757,8 @@ export function BillingPage({
   const [resellerSaleForm, setResellerSaleForm] = useState<ResellerPackageSaleFormState>(() => createEmptyResellerPackageSaleForm());
   const [resellerSaleMessage, setResellerSaleMessage] = useState<string | null>(null);
   const [isSellingResellerPackage, setIsSellingResellerPackage] = useState(false);
-  const [activeBillingTab, setActiveBillingTab] = useState<BillingTab>('catalog');
+  // Tab lives in the URL (?tab=) so refresh + deep links keep the section.
+  const activeBillingTab: BillingTab = BILLING_TABS.includes(activeTab as BillingTab) ? (activeTab as BillingTab) : 'catalog';
   const isResellerSession = session.actor.role === 'reseller';
   const canManageBilling = session.actor.role === 'superadmin' || session.actor.role === 'owner' || session.actor.role === 'admin';
   const canManageCustomerAccounts = canManageBilling || isResellerSession;
@@ -1126,7 +1134,7 @@ export function BillingPage({
         <DashboardTabs
           activeTab={activeBillingTab}
           ariaLabel={t.tabs.billingSections}
-          onChange={setActiveBillingTab}
+          onChange={onTabChange}
           tabs={billingTabs}
         />
       ) : null}

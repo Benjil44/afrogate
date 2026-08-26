@@ -113,6 +113,7 @@ import {
   LogOut,
   Maximize2,
   MemoryStick,
+  Menu,
   Minimize2,
   Network,
   Palette,
@@ -237,7 +238,6 @@ import type {
   DataTableColumn,
   DashboardTabItem,
   MetricCardData,
-  NavItemData,
   OutboundRowData,
   PanelStateKind,
   ProtocolSetupDraft,
@@ -470,7 +470,15 @@ import { KioskToggleButton, LanguageButton, Sidebar } from './components/Sidebar
 import { SystemResourceHeader } from './components/SystemResourceHeader';
 import { VersionWatcher } from './components/version-watcher';
 import { appVersion, resellerNavViews } from './app-config';
-import { advancedModeStorageKey, parseAdvancedMode, serializeAdvancedMode } from './nav-views';
+import {
+  collapsedGroupsStorageKey,
+  ORPHAN_VIEW_REDIRECTS,
+  parseCollapsedGroups,
+  serializeCollapsedGroups,
+  type NavGroupId,
+} from './nav-views';
+import type { SidebarNavItem } from './nav-config';
+import { GbPricePanel } from './pages/GbPricePanel';
 import { SettingsInput, SettingsSelect } from './components/settings-form';
 import {
   formatRouteHourWindow,
@@ -650,20 +658,47 @@ function loadInitialKioskMode() {
   return window.localStorage.getItem(kioskStorageKey) === 'enabled';
 }
 
-function loadInitialAdvancedMode() {
-  if (typeof window === 'undefined') return false;
-  return parseAdvancedMode(window.localStorage.getItem(advancedModeStorageKey));
+function loadInitialCollapsedGroups(): NavGroupId[] {
+  if (typeof window === 'undefined') return [];
+  return parseCollapsedGroups(window.localStorage.getItem(collapsedGroupsStorageKey));
 }
 
 const ROUTE_VIEWS: ActiveView[] = [
   'dashboard', 'servers', 'users', 'customers', 'connections', 'inbounds', 'audit',
-  'backups', 'billing', 'topups', 'reseller-topups', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network', 'resellers',
+  'backups', 'billing', 'topups', 'reseller-topups', 'reports', 'routes', 'outbounds', 'microtiks', 'alerts', 'settings', 'exits', 'network', 'resellers', 'pricing',
 ];
 
-/** Derive the active view from the URL path (so refresh + the address bar work). */
-function viewFromUrl(): ActiveView {
+interface DashboardRoute {
+  view: ActiveView;
+  /** Canonical `?tab=` search param (deep-linkable wrapper-page tab). */
+  tab: string | null;
+}
+
+/**
+ * Derive the active view + tab from the URL (so refresh and deep links work).
+ * Orphan views that now live as tabs inside a wrapper page resolve to their
+ * canonical `/view?tab=` route instead of a duplicate standalone page.
+ */
+function routeFromUrl(): DashboardRoute {
   const seg = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-  return (ROUTE_VIEWS as string[]).includes(seg) ? (seg as ActiveView) : 'dashboard';
+  const view = (ROUTE_VIEWS as string[]).includes(seg) ? (seg as ActiveView) : 'dashboard';
+  const redirect = ORPHAN_VIEW_REDIRECTS[view];
+  if (redirect) return { view: redirect.view, tab: redirect.tab };
+  return { view, tab: new URLSearchParams(window.location.search).get('tab') };
+}
+
+/**
+ * If the address bar shows an orphan URL (e.g. /routes), rewrite it in place
+ * to the canonical wrapper-tab URL (e.g. /exits?tab=routing) without adding a
+ * history entry — old bookmarks keep working and Back never loops.
+ */
+function normalizeOrphanUrl() {
+  const seg = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  const redirect = (ROUTE_VIEWS as string[]).includes(seg) ? ORPHAN_VIEW_REDIRECTS[seg as ActiveView] : undefined;
+  if (!redirect) return;
+  const params = new URLSearchParams(window.location.search);
+  params.set('tab', redirect.tab);
+  window.history.replaceState({ view: redirect.view, tab: redirect.tab }, '', `/${redirect.view}?${params.toString()}`);
 }
 
 export function DashboardApp() {
@@ -775,20 +810,56 @@ function AuthenticatedDashboard({
   t: DashboardStrings;
 }) {
   const isResellerSession = session.actor.role === 'reseller';
-  const [activeView, setActiveView] = useState<ActiveView>(viewFromUrl);
-  // Keep the URL path in sync with the active view: the address bar shows each
-  // page, and a refresh restores it (instead of dropping back to Dashboard).
+  const [route, setRoute] = useState<DashboardRoute>(routeFromUrl);
+  const activeView = route.view;
+  const activeTab = route.tab;
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  /** Navigate to a view (optionally deep-linking a wrapper-page tab). */
+  const navigateTo = (view: ActiveView, tab: string | null = null) => {
+    setRoute({ view, tab });
+    setIsMobileNavOpen(false);
+  };
+  /** A wrapper page switched its own tab: keep the URL's ?tab= canonical. */
+  const handlePageTabChange = (tab: string) => setRoute((current) => ({ ...current, tab }));
+  // Rewrite orphan URLs (/routes, /outbounds, /inbounds, /connections) to
+  // their canonical wrapper-tab URL before the sync effect below runs.
   useEffect(() => {
-    const path = activeView === 'dashboard' ? '/' : `/${activeView}`;
-    if (window.location.pathname !== path) {
-      window.history.pushState({ view: activeView }, '', path + window.location.search);
+    normalizeOrphanUrl();
+  }, []);
+  // Keep the URL in sync with the active view + tab: the address bar shows
+  // each page (and wrapper tab), and a refresh restores it.
+  useEffect(() => {
+    const path = route.view === 'dashboard' ? '/' : `/${route.view}`;
+    const params = new URLSearchParams(window.location.search);
+    if (route.tab) params.set('tab', route.tab);
+    else params.delete('tab');
+    const search = params.toString();
+    const target = `${path}${search ? `?${search}` : ''}`;
+    if (window.location.pathname + window.location.search === target) return;
+    if (window.location.pathname === path) {
+      // Same page, different tab: replace so Back steps between pages, not tabs.
+      window.history.replaceState({ view: route.view, tab: route.tab }, '', target);
+    } else {
+      window.history.pushState({ view: route.view, tab: route.tab }, '', target);
     }
-  }, [activeView]);
+  }, [route]);
   useEffect(() => {
-    const onPop = () => setActiveView(viewFromUrl());
+    const onPop = () => {
+      normalizeOrphanUrl();
+      setRoute(routeFromUrl());
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+  // Escape closes the mobile nav drawer.
+  useEffect(() => {
+    if (!isMobileNavOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isMobileNavOpen]);
   const [metrics, setMetrics] = useState<ServerMetricSnapshot[]>([]);
   const [timeseries, setTimeseries] = useState<ServerMetricTimeseries[]>([]);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
@@ -811,8 +882,9 @@ function AuthenticatedDashboard({
   const [resellerTopupRefreshTick, setResellerTopupRefreshTick] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(loadInitialSidebarCollapsed);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isKioskMode, setIsKioskMode] = useState(loadInitialKioskMode);
-  const [advancedMode, setAdvancedMode] = useState(loadInitialAdvancedMode);
+  const [collapsedGroups, setCollapsedGroups] = useState<NavGroupId[]>(loadInitialCollapsedGroups);
   const wallClock = useWallClock(format);
 
   // Auto-collapse the sidebar on narrow desktops (lg..xl) so content isn't
@@ -821,6 +893,17 @@ function AuthenticatedDashboard({
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mq = window.matchMedia('(max-width: 1279px)');
     const apply = () => setIsNarrowViewport(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  // Below Tailwind's lg breakpoint the sidebar is a drawer: it must always
+  // render the full grouped nav (never the collapsed icon rail).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const apply = () => setIsMobileViewport(mq.matches);
     apply();
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
@@ -1010,7 +1093,7 @@ function AuthenticatedDashboard({
 
   useEffect(() => {
     if (isResellerSession && !resellerNavViews.has(activeView)) {
-      setActiveView('dashboard');
+      setRoute({ view: 'dashboard', tab: null });
     }
   }, [activeView, isResellerSession]);
 
@@ -1083,8 +1166,8 @@ function AuthenticatedDashboard({
   }, [isKioskMode]);
 
   useEffect(() => {
-    window.localStorage.setItem(advancedModeStorageKey, serializeAdvancedMode(advancedMode));
-  }, [advancedMode]);
+    window.localStorage.setItem(collapsedGroupsStorageKey, serializeCollapsedGroups(collapsedGroups));
+  }, [collapsedGroups]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -1207,7 +1290,7 @@ function AuthenticatedDashboard({
   );
   const status = getDataStatus(dataState, lastUpdated, t, format);
   const header = getPageHeader(activeView, t, session);
-  const effectiveSidebarCollapsed = isSidebarCollapsed || isNarrowViewport;
+  const effectiveSidebarCollapsed = (isSidebarCollapsed || isNarrowViewport) && !isMobileViewport;
   const shellGridClass = isKioskMode
     ? 'lg:grid-cols-[minmax(0,1fr)]'
     : effectiveSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
@@ -1221,23 +1304,58 @@ function AuthenticatedDashboard({
     >
       <VersionWatcher language={language} />
       {isKioskMode ? null : (
-        <Sidebar
-          activeView={activeView}
-          advancedMode={advancedMode}
-          isCollapsed={effectiveSidebarCollapsed}
-          isRtl={isRtl}
-          nextLanguage={nextLanguage}
-          onLanguageChange={onLanguageChange}
-          onSignOut={onSignOut}
-          onToggleAdvancedMode={() => setAdvancedMode((current) => !current)}
-          onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
-          onViewChange={setActiveView}
-          resellerTopupPendingState={resellerTopupPendingState}
-          sidebarAlertState={sidebarAlertState}
-          session={session}
-          t={t}
-          topupPendingState={topupPendingState}
-        />
+        <>
+          {/* Mobile top bar: hamburger opens the nav drawer. */}
+          <div className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-afro-sidebar px-3 py-2 text-[#eef6f4] lg:hidden">
+            <button
+              aria-expanded={isMobileNavOpen}
+              aria-label={t.openNavMenu}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-[#334852] text-[#c8d7d5] hover:border-[#5c7782] hover:text-white"
+              data-mobile-nav-toggle="true"
+              onClick={() => setIsMobileNavOpen(true)}
+              title={t.openNavMenu}
+              type="button"
+            >
+              <Menu className="shrink-0" size={20} />
+            </button>
+            <div className="flex items-center gap-2 text-lg font-bold">
+              <ShieldCheck size={20} />
+              Afrows
+            </div>
+            <span className="text-xs text-[#91a5a2]">v{appVersion}</span>
+          </div>
+          {isMobileNavOpen ? (
+            <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setIsMobileNavOpen(false)} />
+          ) : null}
+          {/* Nav drawer on mobile; sticky first grid column on lg+. */}
+          <div
+            className={`fixed inset-y-0 z-50 w-[280px] max-w-[85vw] overflow-y-auto lg:sticky lg:top-0 lg:z-auto lg:block lg:h-screen lg:w-auto lg:max-w-none lg:overflow-visible ${isRtl ? 'right-0' : 'left-0'} ${isMobileNavOpen ? '' : 'hidden'}`}
+          >
+            <Sidebar
+              activeTab={activeTab}
+              activeView={activeView}
+              collapsedGroups={collapsedGroups}
+              isCollapsed={effectiveSidebarCollapsed}
+              isRtl={isRtl}
+              nextLanguage={nextLanguage}
+              onCloseMobile={() => setIsMobileNavOpen(false)}
+              onLanguageChange={onLanguageChange}
+              onNavigate={(item: SidebarNavItem) => navigateTo(item.view, item.tab ?? null)}
+              onSignOut={onSignOut}
+              onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+              onToggleGroup={(groupId) =>
+                setCollapsedGroups((current) =>
+                  current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId],
+                )
+              }
+              resellerTopupPendingState={resellerTopupPendingState}
+              sidebarAlertState={sidebarAlertState}
+              session={session}
+              t={t}
+              topupPendingState={topupPendingState}
+            />
+          </div>
+        </>
       )}
 
       {/* Single page scroll: the window is the only vertical scroller (no nested
@@ -1288,6 +1406,7 @@ function AuthenticatedDashboard({
         ) : null}
 
         <ActivePage
+          activeTab={activeTab}
           activeView={activeView}
           alertDataState={alertDataState}
           alerts={alerts}
@@ -1299,8 +1418,9 @@ function AuthenticatedDashboard({
           onServerUpdated={handleAdminServerUpdated}
           onRangeChange={setTimeRange}
           onImpersonate={onImpersonate}
-          onNavigate={setActiveView}
+          onNavigate={navigateTo}
           onResellerTopupPendingChanged={() => setResellerTopupRefreshTick((tick) => tick + 1)}
+          onTabChange={handlePageTabChange}
           onTopupPendingChanged={() => setTopupRefreshTick((tick) => tick + 1)}
           routeDataState={routeDataState}
           routeFailoverRows={failoverRows}
@@ -1327,6 +1447,7 @@ function AuthenticatedDashboard({
 
 
 function ActivePage({
+  activeTab,
   activeView,
   alertDataState,
   alerts,
@@ -1340,6 +1461,7 @@ function ActivePage({
   onImpersonate,
   onNavigate,
   onResellerTopupPendingChanged,
+  onTabChange,
   onTopupPendingChanged,
   routeDataState,
   routeFailoverRows,
@@ -1358,6 +1480,7 @@ function ActivePage({
   timeRange,
   trafficTotals,
 }: {
+  activeTab: string | null;
   activeView: ActiveView;
   alertDataState: DataState;
   alerts: AlertRowData[];
@@ -1369,8 +1492,9 @@ function ActivePage({
   onServerUpdated: (server: AdminServerDetail) => void;
   onRangeChange: (range: MetricsTimeRange) => void;
   onImpersonate?: (result: ImpersonateResellerResult) => void;
-  onNavigate: (view: ActiveView) => void;
+  onNavigate: (view: ActiveView, tab?: string | null) => void;
   onResellerTopupPendingChanged: () => void;
+  onTabChange: (tab: string) => void;
   onTopupPendingChanged: () => void;
   routeDataState: DataState;
   routeFailoverRows: RouteFailoverRowData[];
@@ -1395,7 +1519,7 @@ function ActivePage({
     }
 
     if (activeView === 'billing') {
-      return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
+      return <BillingPage activeTab={activeTab} format={format} onTabChange={onTabChange} session={session} sessionToken={sessionToken} t={t} />;
     }
 
     return <ResellerDashboardPage format={format} sessionToken={sessionToken} t={t} />;
@@ -1421,7 +1545,7 @@ function ActivePage({
     case 'backups':
       return <BackupsPage format={format} initialBackupStatus={backupStatus} sessionToken={sessionToken} t={t} />;
     case 'billing':
-      return <BillingPage format={format} session={session} sessionToken={sessionToken} t={t} />;
+      return <BillingPage activeTab={activeTab} format={format} onTabChange={onTabChange} session={session} sessionToken={sessionToken} t={t} />;
     case 'topups':
       return <TopupRequestsPage format={format} onPendingChanged={onTopupPendingChanged} sessionToken={sessionToken} t={t} />;
     case 'reseller-topups':
@@ -1431,6 +1555,8 @@ function ActivePage({
     case 'exits':
       return (
         <ExitsPage
+          activeTab={activeTab}
+          onTabChange={onTabChange}
           dataState={routeDataState}
           failoverRows={routeFailoverRows}
           format={format}
@@ -1465,7 +1591,28 @@ function ActivePage({
     case 'customers':
       return <CustomersPage format={format} sessionToken={sessionToken} t={t} />;
     case 'network':
-      return <NetworkPage format={format} sessionToken={sessionToken} onOpenExits={() => onNavigate('exits')} t={t} />;
+      return (
+        <NetworkPage
+          activeTab={activeTab}
+          format={format}
+          onOpenExits={() => onNavigate('exits', 'egress')}
+          onTabChange={onTabChange}
+          sessionToken={sessionToken}
+          t={t}
+        />
+      );
+    case 'pricing':
+      // Plans & Pricing (Customers group): the superadmin per-GB price control.
+      return (
+        <section className="mt-3 grid gap-3">
+          <GbPricePanel
+            canEdit={session.actor.role === 'superadmin' || session.actor.isSuperAdmin === true}
+            format={format}
+            sessionToken={sessionToken}
+            t={t}
+          />
+        </section>
+      );
     case 'resellers':
       return <ResellersPage format={format} onImpersonate={onImpersonate} sessionToken={sessionToken} t={t} />;
     case 'inbounds':
@@ -1475,7 +1622,7 @@ function ActivePage({
     case 'alerts':
       return <AlertsPage alerts={alerts} dataState={alertDataState} format={format} sessionToken={sessionToken} t={t} />;
     case 'settings':
-      return <SettingsPage format={format} managementServers={managementServers} session={session} sessionToken={sessionToken} t={t} />;
+      return <SettingsPage activeTab={activeTab} format={format} managementServers={managementServers} onTabChange={onTabChange} session={session} sessionToken={sessionToken} t={t} />;
     default:
       return (
         <DashboardPage

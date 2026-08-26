@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { AdminSessionResponse, AdminTunnelSummary } from '@afrows/shared';
 import { DashboardTabs } from '../components/primitives';
 import type { DashboardTabItem, DataState, ExitsTab, OutboundRowData, RouteFailoverRowData, TunnelRowData } from '../dashboard-types';
@@ -9,7 +8,11 @@ import { RoutesPage } from './RoutesPage';
 import { MicrotiksPage } from './MicrotiksPage';
 import { RouteSettingsPanel } from '../components/route-settings-panel';
 
+const EXITS_TABS: ExitsTab[] = ['egress', 'routing', 'sources'];
+
 export function ExitsPage({
+  activeTab: activeTabParam,
+  onTabChange,
   dataState,
   failoverRows,
   format,
@@ -21,6 +24,9 @@ export function ExitsPage({
   tunnels,
   t,
 }: {
+  /** Canonical `?tab=` search param from the router (null falls back to egress). */
+  activeTab: string | null;
+  onTabChange: (tab: string) => void;
   dataState: DataState;
   failoverRows: RouteFailoverRowData[];
   format: DashboardFormatters;
@@ -32,7 +38,8 @@ export function ExitsPage({
   tunnels: TunnelRowData[];
   t: DashboardStrings;
 }) {
-  const [activeTab, setActiveTab] = useState<ExitsTab>('egress');
+  // Tab lives in the URL (?tab=) so refresh + deep links keep the section.
+  const activeTab: ExitsTab = EXITS_TABS.includes(activeTabParam as ExitsTab) ? (activeTabParam as ExitsTab) : 'egress';
 
   const tabs: Array<DashboardTabItem<ExitsTab>> = [
     { id: 'egress', label: t.tabs.exitsEgress },
@@ -42,7 +49,7 @@ export function ExitsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <DashboardTabs activeTab={activeTab} ariaLabel={t.tabs.exitsSections} onChange={setActiveTab} tabs={tabs} />
+      <DashboardTabs activeTab={activeTab} ariaLabel={t.tabs.exitsSections} onChange={onTabChange} tabs={tabs} />
       {activeTab === 'egress' ? <OutboundsPage format={format} sessionToken={sessionToken} t={t} /> : null}
       {activeTab === 'routing' ? (
         <div className="flex flex-col gap-4">

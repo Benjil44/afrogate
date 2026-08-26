@@ -16,15 +16,22 @@ import { ProtocolApplyEventsPanel, ProtocolServerApplyPlanCard } from '../compon
 
 
 
+const SETTINGS_TABS: SettingsTab[] = ['wireguard', 'protocols', 'branding', 'telegram'];
+
 export function SettingsPage({
+  activeTab,
   format,
   managementServers,
+  onTabChange,
   session,
   sessionToken,
   t,
 }: {
+  /** Canonical `?tab=` search param from the router (null falls back to protocols). */
+  activeTab: string | null;
   format: DashboardFormatters;
   managementServers: ServerRowData[];
+  onTabChange: (tab: string) => void;
   session: AdminSessionResponse;
   sessionToken: string;
   t: DashboardStrings;
@@ -73,7 +80,8 @@ export function SettingsPage({
     gemMilestoneEvery: '',
     gemMilestoneBonus: '',
   });
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('protocols');
+  // Tab lives in the URL (?tab=) so refresh + deep links keep the section.
+  const activeSettingsTab: SettingsTab = SETTINGS_TABS.includes(activeTab as SettingsTab) ? (activeTab as SettingsTab) : 'protocols';
   const [privateKeyAccepted, setPrivateKeyAccepted] = useState(false);
   const [privateKeySecretRef, setPrivateKeySecretRef] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -911,7 +919,7 @@ export function SettingsPage({
       <DashboardTabs
         activeTab={activeSettingsTab}
         ariaLabel={t.tabs.settingsSections}
-        onChange={setActiveSettingsTab}
+        onChange={onTabChange}
         tabs={settingsTabs}
       />
 

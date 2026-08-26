@@ -1,7 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
-// Authoritative Advanced-mode contract (same module the app persists from), so
-// the specs never hardcode a second copy of the storage key/value.
-import { advancedModeStorageKey, serializeAdvancedMode } from '../../apps/dashboard/src/nav-views';
+﻿import { expect, test, type Page, type Route } from '@playwright/test';
 
 const visualSessionToken = 'visual-session-token';
 const fixedNow = '2026-05-28T08:00:00.000Z';
@@ -22,13 +19,6 @@ const snapshots = [
 type VisualSessionRole = 'superadmin' | 'reseller';
 
 interface VisualDashboardOptions {
-  /**
-   * Turn on the sidebar's Advanced group (network / servers / audit / backups /
-   * reports). Those views are intentionally hidden by default (see
-   * apps/dashboard/src/nav-views.ts), so any spec that navigates to one via the
-   * sidebar must opt in — exactly as an operator does with "Show advanced".
-   */
-  advancedMode?: boolean;
   sessionRole?: VisualSessionRole;
 }
 
@@ -72,15 +62,17 @@ test.describe('dashboard all-page horizontal overflow audit', () => {
     { name: 'desktop', size: { width: 1440, height: 900 } },
   ]) {
     test(`${viewport.name} pages keep document width stable`, async ({ page }) => {
-      // servers/audit/backups/reports live in the Advanced sidebar group.
-      await loadSignedInDashboard(page, viewport.size, { advancedMode: true });
+      await loadSignedInDashboard(page, viewport.size);
 
+      // On mobile the sidebar is a hamburger drawer; open it before clicking.
       const auditView = async (view: string, heading: string) => {
+        const mobileToggle = page.locator('[data-mobile-nav-toggle="true"]');
+        if (await mobileToggle.isVisible()) await mobileToggle.click();
         await page.locator(`[data-view="${view}"]`).click();
         await expect(page.getByRole('heading', { name: heading })).toBeVisible();
         await expectNoDocumentHorizontalOverflow(page);
       };
-      // `routes` has no sidebar entry by design — reach it through its URL.
+      // Orphan views (e.g. `routes`) redirect to their canonical wrapper-tab URL.
       const auditViewByUrl = async (view: string, heading: string) => {
         await gotoView(page, view);
         await expect(page.getByRole('heading', { name: heading })).toBeVisible();
@@ -107,7 +99,9 @@ test.describe('dashboard all-page horizontal overflow audit', () => {
       await auditTab(/Orders/);
       await auditView('customers', 'Customers');
       await auditView('reports', 'Reports and analysis');
-      await auditViewByUrl('routes', 'Routes and failover');
+      // /routes is an orphan URL: it redirects to Exits ? routing tab.
+      await auditViewByUrl('routes', 'Exits / internet sources');
+      await expect(page).toHaveURL(/\/exits\?.*tab=routing/);
       await auditTab(/Policy/);
       await auditTab(/Canary/);
       await auditTab(/History/);
@@ -186,9 +180,10 @@ test('alerts page filters open and resolved history rows', async ({ page }) => {
 
 test('routes page shows route health score history', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 });
-  // Routes is intentionally not a sidebar item; it stays reachable by URL.
+  // Routing/failover lives on the Exits page; the old /routes URL redirects there.
   await gotoView(page, 'routes');
-  await expect(page.getByRole('heading', { name: 'Routes and failover' })).toBeVisible();
+  await expect(page).toHaveURL(/\/exits\?.*tab=routing/);
+  await expect(page.getByRole('heading', { name: 'Exits / internet sources' })).toBeVisible();
   await page.getByRole('tab', { name: /History/ }).click();
 
   const historyPanel = page.locator('section').filter({
@@ -249,14 +244,15 @@ test('reseller session shows scoped seller dashboard, users, and billing', async
 
   await expect(page.getByRole('heading', { name: 'Seller dashboard' })).toBeVisible();
   await expect(page.locator('[data-view="dashboard"]')).toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('[data-view="users"]')).toBeVisible();
+  // The reseller's customer list is the "customers" nav entry (renders their sold users).
+  await expect(page.locator('[data-view="customers"]')).toBeVisible();
   await expect(page.locator('[data-view="billing"]')).toBeVisible();
   await expect(page.locator('[data-view="servers"]')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Sales trend' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Service experience' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Selling summary' })).toBeVisible();
 
-  await page.locator('[data-view="users"]').click();
+  await page.locator('[data-view="customers"]').click();
   await expect(page.locator('h1', { hasText: 'Sold users' })).toBeVisible();
   await expect(page.getByRole('cell', { name: /Reseller gaming customer/ }).first()).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Sold volume' })).toBeVisible();
@@ -310,7 +306,7 @@ test('reseller session shows scoped seller dashboard, users, and billing', async
 });
 
 test('audit logs page shows sanitized audit events', async ({ page }) => {
-  await loadSignedInDashboard(page, { width: 1440, height: 900 }, { advancedMode: true });
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="audit"]').click();
 
   await expect(page.getByRole('heading', { name: 'Audit logs' })).toBeVisible();
@@ -320,7 +316,7 @@ test('audit logs page shows sanitized audit events', async ({ page }) => {
 });
 
 test('backups page shows monitored backup readiness', async ({ page }) => {
-  await loadSignedInDashboard(page, { width: 1440, height: 900 }, { advancedMode: true });
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="backups"]').click();
 
   await expect(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
@@ -338,7 +334,7 @@ test('backups page shows monitored backup readiness', async ({ page }) => {
 });
 
 test('reports page shows operational analysis summary', async ({ page }) => {
-  await loadSignedInDashboard(page, { width: 1440, height: 900 }, { advancedMode: true });
+  await loadSignedInDashboard(page, { width: 1440, height: 900 });
   await page.locator('[data-view="reports"]').click();
 
   await expect(page.getByRole('heading', { name: 'Reports and analysis' })).toBeVisible();
@@ -400,11 +396,8 @@ async function loadSignedInDashboard(
     (init) => {
       window.localStorage.setItem('afrows.dashboard.language', 'en');
       window.sessionStorage.setItem('afrows.dashboard.adminSessionToken', init.sessionToken);
-      window.localStorage.setItem(init.advancedKey, init.advancedValue);
     },
     {
-      advancedKey: advancedModeStorageKey,
-      advancedValue: serializeAdvancedMode(options.advancedMode ?? false),
       sessionToken: visualSessionToken,
     },
   );
@@ -426,9 +419,10 @@ async function disableAnimations(page: Page): Promise<void> {
 }
 
 /**
- * Open a view by URL. Required for `routes`, which is deliberately NOT a sidebar
- * item (asserted by apps/dashboard/src/nav-views.test.ts) but is still a real
- * routed view — the app derives the active view from the path (viewFromUrl).
+ * Open a view by URL. Orphan views (`routes`, `outbounds`, `inbounds`,
+ * `connections`) are deliberately NOT sidebar items (asserted by
+ * apps/dashboard/src/nav-views.test.ts): the router rewrites their URL to the
+ * canonical wrapper-tab URL (see ORPHAN_VIEW_REDIRECTS in nav-views.ts).
  */
 async function gotoView(page: Page, view: string): Promise<void> {
   await page.goto(`/${view}`);
