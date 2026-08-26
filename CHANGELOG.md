@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.114.99 - 2026-08-25
+
+- **Version-control the Germany management-command wrapper** (`scripts/afrows-de-mgmt-cmd`) — the forced `command=` for the Ireland→Germany management SSH key that scopes the channel to exactly `read-usage` / `rmu` / `adu` on the Germany xray WS inbound and nothing else. Includes the fix that `adu` stages its stdin JSON to a temp file (xray `api adu` wants a file arg, not `-`), so provisioning + re-provisioning-on-top-up work over the channel. Enforcement (disconnect on both Ireland+Germany at `used_bytes ≥ quota_limit_bytes`) and re-provision were verified live end-to-end.
+
 ## 0.114.98 - 2026-08-25
 
 - **Dashboard wiring-audit cleanup: WIRE / REMOVE / reliability (P1) items.**

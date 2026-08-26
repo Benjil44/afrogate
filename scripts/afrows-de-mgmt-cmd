@@ -1,0 +1,43 @@
+#!/bin/bash
+# Afrows Germany management-command dispatcher.
+#
+# This is the FORCED command for the Ireland->Germany management SSH key
+# (`command="/usr/local/bin/afrows-de-mgmt-cmd"` in Germany's authorized_keys).
+# Germany cannot reach Ireland (datacenter-filtered) and Ireland reaches Germany
+# only over the flaky village WireGuard route, so this key is the single, tightly
+# scoped control channel: the Ireland backend can read usage, disconnect (rmu), and
+# provision (adu) a user on the Germany xray WS inbound — and NOTHING else. The
+# actual sub-command is taken from $SSH_ORIGINAL_COMMAND, never from a shell.
+#
+# Install: copy to /usr/local/bin/afrows-de-mgmt-cmd (chmod 755) on the Germany box
+# and authorize the Ireland public key with the command= restriction.
+set -euo pipefail
+read -ra cmd <<< "${SSH_ORIGINAL_COMMAND:-}"
+API=127.0.0.1:10085
+TAG=afrows-de-ws
+XR=/usr/local/bin/xray
+case "${cmd[0]:-}" in
+  read-usage)
+    # dump the durable per-user usage buffer for the Ireland metering pull
+    exec cat /var/lib/afrows/de-usage.json
+    ;;
+  rmu)
+    # disconnect one user (quota enforcement / deprovision)
+    [[ "${cmd[1]:-}" =~ ^cc_[0-9a-fA-F-]+@afrows$ ]] || { echo "bad-email"; exit 2; }
+    exec "$XR" api rmu --server="$API" -tag="$TAG" "${cmd[1]}"
+    ;;
+  adu)
+    # provision one user; the adu JSON arrives on stdin. xray's `api adu` wants a
+    # FILE argument (not `-`/stdin), so stage stdin to a temp file.
+    tmp=$(mktemp)
+    cat > "$tmp"
+    "$XR" api adu --server="$API" "$tmp"
+    rc=$?
+    rm -f "$tmp"
+    exit $rc
+    ;;
+  *)
+    echo "denied"
+    exit 3
+    ;;
+esac
