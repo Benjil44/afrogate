@@ -11,6 +11,7 @@ import type {
   MikroTikWgUsage,
 } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
+import { DataTable, type DataTableColumnDef } from '../components/DataTable';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import {
   createRouter,
@@ -40,6 +41,9 @@ function clientStrongPassword(): string {
 
 const POLL_MS = 20000;
 const KINDS: MikroTikRouterKind[] = ['village', 'home', 'other'];
+
+/** Flattened row of the 30-day usage rollup DataTable. */
+type RollupRow = { router: string; u: MikroTikWgUsage };
 
 interface DraftForm {
   id: string;
@@ -386,6 +390,146 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
     }
   };
 
+  const rollupRows: RollupRow[] = (rollup ?? []).flatMap((g) => g.rows.map((u) => ({ router: g.router, u })));
+  const rollupColumns: Array<DataTableColumnDef<RollupRow>> = [
+    { key: 'router', header: s.colRouter, render: (row) => row.router },
+    { key: 'tunnel', header: s.colTunnel, render: ({ u }) => u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12) },
+    {
+      key: 'in',
+      header: s.colIn,
+      align: 'right',
+      render: ({ u }) => <span className="font-mono" dir="ltr">{formatBytes(u.rxBytes)}</span>,
+    },
+    {
+      key: 'out',
+      header: s.colOut,
+      align: 'right',
+      render: ({ u }) => <span className="font-mono" dir="ltr">{formatBytes(u.txBytes)}</span>,
+    },
+    {
+      key: 'total',
+      header: s.colTotal,
+      align: 'right',
+      render: ({ u }) => <span className="font-mono font-bold text-afro-ink" dir="ltr">{formatBytes(u.totalBytes)}</span>,
+    },
+    {
+      key: 'cost',
+      header: s.colCost,
+      align: 'right',
+      render: ({ u }) => <span className="font-mono" dir="ltr">{formatCost(u.cost, u.currency)}</span>,
+    },
+  ];
+
+  const routerColumns: Array<DataTableColumnDef<MikroTikRouterSummary>> = [
+    {
+      key: 'router',
+      header: s.colRouter,
+      render: (router) => (
+        <span className="block">
+          <span className="flex items-center gap-2 font-bold text-afro-ink">
+            <RouterIcon size={16} /> {router.label}
+            {router.kind === 'village' ? (
+              <span className="rounded-full bg-afro-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-afro-accent" title={s.primaryBadgeTitle}>
+                {s.primaryBadge}
+              </span>
+            ) : null}
+          </span>
+          <span className="block text-xs text-afro-muted">{router.kind}{router.board ? ` · ${router.board}` : ''}{router.version ? ` · ${router.version}` : ''}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'host',
+      header: s.colHost,
+      render: (router) => <span className="font-mono text-xs" dir="ltr">{router.host}:{router.restPort}</span>,
+    },
+    {
+      key: 'role',
+      header: s.colRole,
+      render: (router) =>
+        router.role === 'transport' ? (
+          <span className="text-xs text-afro-muted">{s.roleTransport}</span>
+        ) : (
+          <span className="rounded bg-afro-line/40 px-1.5 py-0.5 text-xs">{s.roleGateway}</span>
+        ),
+    },
+    {
+      key: 'customer',
+      header: s.colCustomer,
+      render: (router) =>
+        router.role === 'transport' ? (
+          <span className="text-xs text-afro-muted">—</span>
+        ) : router.customerDisplayName ? (
+          <span className="text-xs text-afro-ink">{router.customerDisplayName}</span>
+        ) : (
+          <span className="text-xs text-amber-500">{s.unassigned}</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: s.colStatus,
+      render: (router) => (
+        <span className="block">
+          <span className={`inline-flex items-center gap-1.5 ${router.online ? 'text-emerald-600' : 'text-red-500'}`}>
+            <span className={`size-2 rounded-full ${router.online ? 'bg-emerald-500' : 'bg-red-400'}`} />
+            {router.online ? s.online : s.offline}
+          </span>
+          {router.uptime ? <span className="block text-xs text-afro-muted">{s.uptime(router.uptime)}</span> : null}
+        </span>
+      ),
+    },
+    {
+      key: 'mode',
+      header: s.colMode,
+      render: (router) =>
+        router.kind === 'village' ? (
+          <span className="text-xs font-bold text-afro-muted" title={s.modeLockedTitle}>{s.modeLocked}</span>
+        ) : (
+          <ModeToggle
+            mode={router.mode}
+            disabled={Boolean(busy[router.id])}
+            onToggle={() => void toggleMode(router)}
+            s={s}
+          />
+        ),
+    },
+    {
+      key: 'internet',
+      header: s.colInternet,
+      render: (router) =>
+        router.kind === 'village' ? (
+          <span className="text-xs font-bold text-emerald-600" title={s.alwaysOnTitle}>{s.alwaysOn}</span>
+        ) : (
+          <OnOffToggle
+            on={router.egressEnabled}
+            disabled={Boolean(busy[router.id])}
+            onToggle={() => void toggleEgress(router)}
+            s={s}
+          />
+        ),
+    },
+    {
+      key: 'actions',
+      header: s.colActions,
+      align: 'right',
+      render: (router) => (
+        <div className="flex items-center justify-end gap-1.5">
+          <button className={btnClass} onClick={() => openEdit(router)} type="button" title={s.editActionTitle}>
+            <Pencil size={14} /> {s.edit}
+          </button>
+          {router.webfigUrl ? (
+            <a className={btnClass} href={router.webfigUrl} target="_blank" rel="noreferrer" title={s.advancedTitle}>
+              <ExternalLink size={14} /> {s.advanced}
+            </a>
+          ) : null}
+          <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id]) || router.kind === 'village'} onClick={() => void remove(router)} type="button" title={router.kind === 'village' ? s.removeLockedTitle : s.removeTitle}>
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -427,32 +571,14 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
         </div>
         {rollup ? (
           rollup.length ? (
-            <table className="mt-3 w-full text-sm">
-              <thead>
-                <tr className="border-b border-afro-line text-start text-xs uppercase text-afro-muted">
-                  <th className="py-1 pe-2 text-start">{s.colRouter}</th>
-                  <th className="py-1 pe-2 text-start">{s.colTunnel}</th>
-                  <th className="py-1 pe-2 text-end">{s.colIn}</th>
-                  <th className="py-1 pe-2 text-end">{s.colOut}</th>
-                  <th className="py-1 pe-2 text-end">{s.colTotal}</th>
-                  <th className="py-1 text-end">{s.colCost}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rollup.flatMap((g) =>
-                  g.rows.map((u) => (
-                    <tr className="border-b border-afro-line/40" key={`${g.router}:${u.peerKey}`}>
-                      <td className="py-1 pe-2">{g.router}</td>
-                      <td className="py-1 pe-2">{u.label ?? u.iface ?? u.comment ?? u.peerKey.slice(0, 12)}</td>
-                      <td className="py-1 pe-2 text-end font-mono" dir="ltr">{formatBytes(u.rxBytes)}</td>
-                      <td className="py-1 pe-2 text-end font-mono" dir="ltr">{formatBytes(u.txBytes)}</td>
-                      <td className="py-1 pe-2 text-end font-mono font-bold" dir="ltr">{formatBytes(u.totalBytes)}</td>
-                      <td className="py-1 text-end font-mono" dir="ltr">{formatCost(u.cost, u.currency)}</td>
-                    </tr>
-                  )),
-                )}
-              </tbody>
-            </table>
+            <div className="mt-3">
+              <DataTable
+                columns={rollupColumns}
+                minWidth="560px"
+                rowKey={(row) => `${row.router}:${row.u.peerKey}`}
+                rows={rollupRows}
+              />
+            </div>
           ) : (
             <div className="mt-2 text-xs text-afro-muted">{s.noUsageYet}</div>
           )
@@ -461,107 +587,16 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
         )}
       </div>
 
-      <div className={`${cardClass} overflow-x-auto`}>
-        <table className="w-full min-w-[760px] text-sm">
-          <thead>
-            <tr className="border-b border-afro-line text-start text-xs uppercase text-afro-muted">
-              <th className="py-2 pe-3 text-start">{s.colRouter}</th>
-              <th className="py-2 pe-3 text-start">{s.colHost}</th>
-              <th className="py-2 pe-3 text-start">{s.colRole}</th>
-              <th className="py-2 pe-3 text-start">{s.colCustomer}</th>
-              <th className="py-2 pe-3 text-start">{s.colStatus}</th>
-              <th className="py-2 pe-3 text-start">{s.colMode}</th>
-              <th className="py-2 pe-3 text-start">{s.colInternet}</th>
-              <th className="py-2 pe-3 text-end">{s.colActions}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && visibleRows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={8}>{s.loading}</td></tr>
-            ) : visibleRows.length === 0 ? (
-              <tr><td className="py-4 text-afro-muted" colSpan={8}>{s.emptyTable}</td></tr>
-            ) : (
-              visibleRows.map((router) => (
-                <tr className="border-b border-afro-line/60 align-middle" key={router.id}>
-                  <td className="py-3 pe-3">
-                    <div className="flex items-center gap-2 font-bold text-afro-ink">
-                      <RouterIcon size={16} /> {router.label}
-                      {router.kind === 'village' ? (
-                        <span className="rounded-full bg-afro-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-afro-accent" title={s.primaryBadgeTitle}>
-                          {s.primaryBadge}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="text-xs text-afro-muted">{router.kind}{router.board ? ` · ${router.board}` : ''}{router.version ? ` · ${router.version}` : ''}</div>
-                  </td>
-                  <td className="py-3 pe-3 font-mono text-xs" dir="ltr">{router.host}:{router.restPort}</td>
-                  <td className="py-3 pe-3">
-                    {router.role === 'transport' ? (
-                      <span className="text-xs text-afro-muted">{s.roleTransport}</span>
-                    ) : (
-                      <span className="rounded bg-afro-line/40 px-1.5 py-0.5 text-xs">{s.roleGateway}</span>
-                    )}
-                  </td>
-                  <td className="py-3 pe-3 text-xs">
-                    {router.role === 'transport' ? (
-                      <span className="text-afro-muted">—</span>
-                    ) : router.customerDisplayName ? (
-                      <span className="text-afro-ink">{router.customerDisplayName}</span>
-                    ) : (
-                      <span className="text-amber-500">{s.unassigned}</span>
-                    )}
-                  </td>
-                  <td className="py-3 pe-3">
-                    <span className={`inline-flex items-center gap-1.5 ${router.online ? 'text-emerald-600' : 'text-red-500'}`}>
-                      <span className={`size-2 rounded-full ${router.online ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                      {router.online ? s.online : s.offline}
-                    </span>
-                    {router.uptime ? <div className="text-xs text-afro-muted">{s.uptime(router.uptime)}</div> : null}
-                  </td>
-                  <td className="py-3 pe-3">
-                    {router.kind === 'village' ? (
-                      <span className="text-xs font-bold text-afro-muted" title={s.modeLockedTitle}>{s.modeLocked}</span>
-                    ) : (
-                      <ModeToggle
-                        mode={router.mode}
-                        disabled={Boolean(busy[router.id])}
-                        onToggle={() => void toggleMode(router)}
-                        s={s}
-                      />
-                    )}
-                  </td>
-                  <td className="py-3 pe-3">
-                    {router.kind === 'village' ? (
-                      <span className="text-xs font-bold text-emerald-600" title={s.alwaysOnTitle}>{s.alwaysOn}</span>
-                    ) : (
-                      <OnOffToggle
-                        on={router.egressEnabled}
-                        disabled={Boolean(busy[router.id])}
-                        onToggle={() => void toggleEgress(router)}
-                        s={s}
-                      />
-                    )}
-                  </td>
-                  <td className="py-3 pe-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button className={btnClass} onClick={() => openEdit(router)} type="button" title={s.editActionTitle}>
-                        <Pencil size={14} /> {s.edit}
-                      </button>
-                      {router.webfigUrl ? (
-                        <a className={btnClass} href={router.webfigUrl} target="_blank" rel="noreferrer" title={s.advancedTitle}>
-                          <ExternalLink size={14} /> {s.advanced}
-                        </a>
-                      ) : null}
-                      <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id]) || router.kind === 'village'} onClick={() => void remove(router)} type="button" title={router.kind === 'village' ? s.removeLockedTitle : s.removeTitle}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className={cardClass}>
+        <DataTable
+          columns={routerColumns}
+          empty={{ message: s.emptyTable }}
+          loading={loading}
+          loadingLabel={s.loading}
+          minWidth="760px"
+          rowKey={(router) => router.id}
+          rows={visibleRows}
+        />
       </div>
 
       {dialogOpen ? (

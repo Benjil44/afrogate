@@ -1,7 +1,7 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus, RefreshCw, Trash2, Zap, Power, X, Pencil, ChevronDown, ChevronRight, AlertTriangle, Clock } from 'lucide-react';
 import type { AdminOutboundSummary, AdminOutboundSubscriptionSummary } from '@afrows/shared';
-import { EmptyState } from '../components/primitives';
+import { DataTable, type DataTableColumnDef, type DataTableSection } from '../components/DataTable';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 import {
@@ -35,6 +35,9 @@ const fmtAge = (sec?: number | null): string => {
 const humanizeReason = (code?: string | null): string =>
   (code ?? '').replace(/^SUBSCRIPTION_/, '').replace(/_/g, ' ').toLowerCase() || 'unknown';
 type SortKey = 'name' | 'status' | 'ping' | 'jitter' | 'down' | 'up';
+
+/** DataTable row: an outbound plus whether it renders indented under a subscription group. */
+type OutboundRow = { child: boolean; o: AdminOutboundSummary };
 
 const POLL_MS = 20000;
 const FAST_POLL_MS = 4000;
@@ -387,23 +390,45 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
     }
   }
 
-  const renderRow = (o: AdminOutboundSummary, isChild = false) => {
-    const testing = busy[o.id] || !!o.pendingTest;
-    return (
-      <tr key={o.id} className="border-b border-[#eef2f4] last:border-0">
-        <td className={`px-4 py-3 font-bold text-afro-ink ${isChild ? 'pl-10' : ''}`}>{o.name}</td>
-        <td className="px-3 py-3 uppercase text-afro-muted">{o.type}</td>
-        <td className="px-3 py-3">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusTone(o.healthStatus) }} />
-            {statusLabel(o.healthStatus)}
-          </span>
-        </td>
-        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestLatencyMs, ' ms')}</td>
-        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestJitterMs, ' ms')}</td>
-        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestDownMbps, ' Mbps')}</td>
-        <td className={`px-3 py-3 text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(o.latestUpMbps, ' Mbps')}</td>
-        <td className="px-4 py-3">
+  const sortHeader = (key: SortKey, label: string) => (
+    <button type="button" onClick={() => onSort(key)} className="uppercase hover:text-afro-teal">
+      {label}
+      {sortArrow(key)}
+    </button>
+  );
+
+  const metricCell = (o: AdminOutboundSummary, value: number | null | undefined, unit: string) => (
+    <span className={`text-afro-ink ${o.pendingTest ? 'opacity-50' : ''}`}>{fmt(value, unit)}</span>
+  );
+
+  const columns: Array<DataTableColumnDef<OutboundRow>> = [
+    {
+      key: 'name',
+      header: sortHeader('name', s.colName),
+      render: ({ child, o }) => <span className={`block font-bold text-afro-ink ${child ? 'ps-6' : ''}`}>{o.name}</span>,
+    },
+    { key: 'type', header: s.colType, render: ({ o }) => <span className="uppercase">{o.type}</span> },
+    {
+      key: 'status',
+      header: sortHeader('status', s.colStatus),
+      render: ({ o }) => (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusTone(o.healthStatus) }} />
+          {statusLabel(o.healthStatus)}
+        </span>
+      ),
+    },
+    { key: 'ping', header: sortHeader('ping', s.colPing), render: ({ o }) => metricCell(o, o.latestLatencyMs, ' ms') },
+    { key: 'jitter', header: sortHeader('jitter', s.colJitter), render: ({ o }) => metricCell(o, o.latestJitterMs, ' ms') },
+    { key: 'down', header: sortHeader('down', s.colDown), render: ({ o }) => metricCell(o, o.latestDownMbps, ' Mbps') },
+    { key: 'up', header: sortHeader('up', s.colUp), render: ({ o }) => metricCell(o, o.latestUpMbps, ' Mbps') },
+    {
+      key: 'actions',
+      header: s.colActions,
+      align: 'right',
+      render: ({ child, o }) => {
+        const testing = busy[o.id] || !!o.pendingTest;
+        return (
           <div className="flex items-center justify-end gap-1.5">
             <button
               type="button"
@@ -433,7 +458,7 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
             >
               <Power size={14} className={o.enabled ? 'text-afro-teal' : ''} />
             </button>
-            {isChild ? null : (
+            {child ? null : (
               <button
                 type="button"
                 onClick={() => onDelete(o.id)}
@@ -445,10 +470,90 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
               </button>
             )}
           </div>
-        </td>
-      </tr>
-    );
-  };
+        );
+      },
+    },
+  ];
+
+  const sections: Array<DataTableSection<OutboundRow>> = [
+    ...subs.map((sub): DataTableSection<OutboundRow> => {
+      const kids = sortRows(childrenBySub.get(sub.id) ?? []);
+      const used = (sub.userInfo.upload ?? 0) + (sub.userInfo.download ?? 0);
+      const open = isExpanded(sub.id);
+      const subBusy = busy[`sub:${sub.id}`];
+
+      return {
+        key: `sub:${sub.id}`,
+        headerClassName: 'bg-[#f1f6f6]',
+        header: (
+          <>
+            <button
+              type="button"
+              onClick={() => toggleExpanded(sub.id)}
+              className="inline-flex items-center gap-2 text-left font-bold text-afro-ink"
+            >
+              {open ? <ChevronDown size={15} /> : <ChevronRight className="rtl:-scale-x-100" size={15} />}
+              {sub.name}
+              <span className="text-[12px] font-normal text-afro-muted">
+                {' · '}
+                {kids.length} {s.subConfigs}
+                {sub.userInfo.total ? ` · ${fmtBytes(used)} / ${fmtBytes(sub.userInfo.total)}` : ''}
+                {sub.userInfo.expire ? ` · ${s.subExpires} ${fmtExpire(sub.userInfo.expire)}` : ''}
+                {sub.lastStatus === 'error' ? ` · ⚠ ${sub.lastError ?? ''}` : ''}
+              </span>
+            </button>
+            {/* Egress P1 — refresh health: frozen/failing reserve is visible with a
+                typed reason + failure count + staleness, so "why is my reserve
+                frozen on last-known-good" is answerable at a glance. */}
+            {(sub.consecutiveFailures ?? 0) > 0 ? (
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 ps-6 text-[11px]">
+                <span className="inline-flex items-center gap-1 rounded bg-[#fdecec] px-1.5 py-0.5 font-semibold text-[#b91c1c]">
+                  <AlertTriangle size={11} /> {sub.consecutiveFailures}× failed
+                </span>
+                {sub.lastFailureReason ? (
+                  <span className="rounded bg-[#f6efe3] px-1.5 py-0.5 font-mono text-[10px] text-[#8a6d1f]">
+                    {humanizeReason(sub.lastFailureReason)}
+                  </span>
+                ) : null}
+                <span className="inline-flex items-center gap-1 text-afro-muted">
+                  <Clock size={10} /> last ok {fmtAge(sub.secondsSinceSuccess)} ago
+                </span>
+              </div>
+            ) : sub.secondsSinceSuccess != null ? (
+              <div className="mt-1 inline-flex items-center gap-1 ps-6 text-[11px] text-afro-muted">
+                <Clock size={10} /> refreshed {fmtAge(sub.secondsSinceSuccess)} ago
+              </div>
+            ) : null}
+          </>
+        ),
+        headerActions: (
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => onRefreshSub(sub.id)}
+              disabled={subBusy}
+              title={s.subRefresh}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={subBusy ? 'animate-spin' : ''} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onDeleteSub(sub.id)}
+              disabled={subBusy}
+              title={s.subDelete}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-[#e0b4b4] hover:text-[#b91c1c] disabled:opacity-50"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ),
+        rows: open ? kids.map((o) => ({ child: true, o })) : [],
+        emptyContent: open ? <span className="block ps-6 text-[13px] text-afro-muted">{s.subEmpty}</span> : undefined,
+      };
+    }),
+    { key: 'standalone', rows: sortRows(standalone).map((o) => ({ child: false, o })) },
+  ];
 
   return (
     <section className="grid gap-4">
@@ -706,156 +811,24 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
         </div>
       ) : null}
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-md border border-afro-line bg-afro-panel">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead>
-            <tr className="border-b border-afro-line text-left text-[12px] uppercase tracking-wide text-afro-muted">
-              <th className="px-4 py-3 font-bold">
-                <button type="button" onClick={() => onSort('name')} className="uppercase hover:text-afro-teal">
-                  {s.colName}{sortArrow('name')}
-                </button>
-              </th>
-              <th className="px-3 py-3 font-bold">{s.colType}</th>
-              <th className="px-3 py-3 font-bold">
-                <button type="button" onClick={() => onSort('status')} className="uppercase hover:text-afro-teal">
-                  {s.colStatus}{sortArrow('status')}
-                </button>
-              </th>
-              <th className="px-3 py-3 font-bold">
-                <button type="button" onClick={() => onSort('ping')} className="uppercase hover:text-afro-teal">
-                  {s.colPing}{sortArrow('ping')}
-                </button>
-              </th>
-              <th className="px-3 py-3 font-bold">
-                <button type="button" onClick={() => onSort('jitter')} className="uppercase hover:text-afro-teal">
-                  {s.colJitter}{sortArrow('jitter')}
-                </button>
-              </th>
-              <th className="px-3 py-3 font-bold">
-                <button type="button" onClick={() => onSort('down')} className="uppercase hover:text-afro-teal">
-                  {s.colDown}{sortArrow('down')}
-                </button>
-              </th>
-              <th className="px-3 py-3 font-bold">
-                <button type="button" onClick={() => onSort('up')} className="uppercase hover:text-afro-teal">
-                  {s.colUp}{sortArrow('up')}
-                </button>
-              </th>
-              <th className="px-4 py-3 text-right font-bold">{s.colActions}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && subs.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-6">
-                  {loadState === 'loading' ? (
-                    <EmptyState kind="loading" message={t.panelStates.loadingTitle} detail={t.panelStates.loadingDetail} />
-                  ) : loadState === 'error' ? (
-                    <div className="grid justify-items-center gap-2">
-                      <EmptyState kind="error" message={t.panelStates.errorTitle} detail={s.loadFailed} />
-                      <button
-                        type="button"
-                        onClick={() => void load()}
-                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
-                      >
-                        <RefreshCw size={13} />
-                        {t.actions.retry}
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="block py-4 text-center text-afro-muted">{s.empty}</span>
-                  )}
-                </td>
-              </tr>
-            ) : (
-              <>
-                {subs.map((sub) => {
-                  const kids = sortRows(childrenBySub.get(sub.id) ?? []);
-                  const used = (sub.userInfo.upload ?? 0) + (sub.userInfo.download ?? 0);
-                  const open = isExpanded(sub.id);
-                  const subBusy = busy[`sub:${sub.id}`];
-                  return (
-                    <Fragment key={sub.id}>
-                      <tr className="border-b border-afro-line bg-[#f1f6f6]">
-                        <td colSpan={7} className="px-4 py-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(sub.id)}
-                            className="inline-flex items-center gap-2 text-left font-bold text-afro-ink"
-                          >
-                            {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                            {sub.name}
-                            <span className="text-[12px] font-normal text-afro-muted">
-                              {' · '}
-                              {kids.length} {s.subConfigs}
-                              {sub.userInfo.total ? ` · ${fmtBytes(used)} / ${fmtBytes(sub.userInfo.total)}` : ''}
-                              {sub.userInfo.expire ? ` · ${s.subExpires} ${fmtExpire(sub.userInfo.expire)}` : ''}
-                              {sub.lastStatus === 'error' ? ` · ⚠ ${sub.lastError ?? ''}` : ''}
-                            </span>
-                          </button>
-                          {/* Egress P1 — refresh health: frozen/failing reserve is visible with a
-                              typed reason + failure count + staleness, so "why is my reserve
-                              frozen on last-known-good" is answerable at a glance. */}
-                          {(sub.consecutiveFailures ?? 0) > 0 ? (
-                            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-6 text-[11px]">
-                              <span className="inline-flex items-center gap-1 rounded bg-[#fdecec] px-1.5 py-0.5 font-semibold text-[#b91c1c]">
-                                <AlertTriangle size={11} /> {sub.consecutiveFailures}× failed
-                              </span>
-                              {sub.lastFailureReason ? (
-                                <span className="rounded bg-[#f6efe3] px-1.5 py-0.5 font-mono text-[10px] text-[#8a6d1f]">
-                                  {humanizeReason(sub.lastFailureReason)}
-                                </span>
-                              ) : null}
-                              <span className="inline-flex items-center gap-1 text-afro-muted">
-                                <Clock size={10} /> last ok {fmtAge(sub.secondsSinceSuccess)} ago
-                              </span>
-                            </div>
-                          ) : sub.secondsSinceSuccess != null ? (
-                            <div className="mt-1 inline-flex items-center gap-1 pl-6 text-[11px] text-afro-muted">
-                              <Clock size={10} /> refreshed {fmtAge(sub.secondsSinceSuccess)} ago
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => onRefreshSub(sub.id)}
-                              disabled={subBusy}
-                              title={s.subRefresh}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
-                            >
-                              <RefreshCw size={14} className={subBusy ? 'animate-spin' : ''} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDeleteSub(sub.id)}
-                              disabled={subBusy}
-                              title={s.subDelete}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-afro-line text-afro-muted hover:border-[#e0b4b4] hover:text-[#b91c1c] disabled:opacity-50"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {open ? kids.map((o) => renderRow(o, true)) : null}
-                      {open && kids.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="px-4 py-4 pl-10 text-[13px] text-afro-muted">
-                            {s.subEmpty}
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-                {sortRows(standalone).map((o) => renderRow(o, false))}
-              </>
-            )}
-          </tbody>
-        </table>
+      {/* Table — shared DataTable primitive: horizontal scroll stays inside the
+          panel, loading/empty/error states are delegated to the shared
+          EmptyState/ErrorState primitives. */}
+      <div className="rounded-md border border-afro-line bg-afro-panel px-4 py-1">
+        <DataTable
+          columns={columns}
+          empty={{ message: s.empty }}
+          error={
+            loadState === 'error'
+              ? { detail: s.loadFailed, message: t.panelStates.errorTitle, onRetry: () => void load(), retryLabel: t.actions.retry }
+              : null
+          }
+          loading={loadState === 'loading'}
+          loadingLabel={t.panelStates.loadingTitle}
+          minWidth="760px"
+          rowKey={({ o }) => o.id}
+          sections={sections}
+        />
       </div>
     </section>
   );

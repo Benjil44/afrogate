@@ -1,18 +1,24 @@
-import { Fragment, useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Inbox, Loader2, WifiOff } from 'lucide-react';
+import type { CSSProperties, ReactNode } from 'react';
 import type {
   AfroIcon,
   DashboardTabItem,
   DataState,
-  DataTableColumn,
   MetricCardData,
   PanelStateKind,
-  TableCellAlign,
   Tone,
 } from '../dashboard-types';
 import { clamp, type DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 import { mutedTextClass, panelClass } from '../ui-classes';
+import { PanelState } from './EmptyState';
+
+// Shared table/state primitives moved to dedicated modules; re-exported here so
+// existing `components/primitives` imports keep working.
+export { DataTable, TableCell, tableAlignmentClass } from './DataTable';
+export type { DataTableColumnDef, DataTableEmptyConfig, DataTableErrorConfig, DataTableSection } from './DataTable';
+export { EmptyState, PanelState, panelStateClass, panelStateIcon } from './EmptyState';
+export type { PanelStateAction } from './EmptyState';
+export { ErrorState } from './ErrorState';
 
 export function primitiveTooltip(value: ReactNode): string | undefined {
   if (typeof value === 'string' || typeof value === 'number') return String(value);
@@ -27,39 +33,6 @@ export function DetailRow({ children, label }: { children: ReactNode; label: str
     <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" title={rowTooltip}>
       <span className={`${mutedTextClass} min-w-0 truncate`} title={label}>{label}</span>
       <strong className="min-w-0 shrink text-right text-sm" title={valueTooltip}>{children}</strong>
-    </div>
-  );
-}
-
-export function EmptyState({ detail, kind = 'empty', message }: { detail?: string; kind?: PanelStateKind; message: string }) {
-  return <PanelState detail={detail} kind={kind} title={message} />;
-}
-
-export function PanelState({
-  detail,
-  kind,
-  title,
-}: {
-  detail?: string;
-  kind: PanelStateKind;
-  title: string;
-}) {
-  const Icon = panelStateIcon(kind);
-  const toneClass = panelStateClass(kind);
-  const iconClass = kind === 'loading' ? 'animate-spin' : '';
-
-  return (
-    <div
-      className={`flex min-h-[58px] items-center gap-2 rounded-md border border-dashed px-3 py-2.5 ${toneClass}`}
-      role={kind === 'error' ? 'alert' : 'status'}
-    >
-      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-white/70">
-        <Icon className={iconClass} size={16} />
-      </span>
-      <span className="min-w-0">
-        <strong className="block truncate text-[13px] leading-tight">{title}</strong>
-        {detail ? <span className="mt-0.5 block text-[12px] leading-snug opacity-80">{detail}</span> : null}
-      </span>
     </div>
   );
 }
@@ -115,23 +88,6 @@ export function dataStatePanelDetail(state: DataState, t: DashboardStrings): str
   if (state === 'fallback') return t.panelStates.fallbackDetail;
 
   return t.panelStates.emptyDetail;
-}
-
-export function panelStateIcon(kind: PanelStateKind): AfroIcon {
-  if (kind === 'loading') return Loader2;
-  if (kind === 'stale') return WifiOff;
-  if (kind === 'empty') return Inbox;
-
-  return AlertTriangle;
-}
-
-export function panelStateClass(kind: PanelStateKind): string {
-  if (kind === 'loading') return 'border-[#bfd1ea] bg-[#edf4ff] text-afro-blue';
-  if (kind === 'stale') return 'border-[#e6cf9c] bg-[#fff7e6] text-[#9a5b00]';
-  if (kind === 'fallback') return 'border-afro-line bg-[#f8fafb] text-afro-muted';
-  if (kind === 'error') return 'border-[#f0b7b7] bg-[#fff1f1] text-[#b91c1c]';
-
-  return 'border-afro-line bg-[#f8fafb] text-afro-muted';
 }
 
 export function StatusBadge({
@@ -292,177 +248,6 @@ export function DashboardTabs<T extends string>({
         })}
       </div>
     </div>
-  );
-}
-
-/** Sticky trailing column: pinned to the inline-end edge of the horizontal scroller
- * (logical `end-0`, so it is RTL-correct) with an opaque background and a 1px
- * inline-start separator painted via inset shadow — collapsed table borders do not
- * travel with sticky cells, so the shadow keeps the row/column lines visible. */
-const stickyCellShadow =
-  'shadow-[inset_1px_0_0_var(--color-afro-line),inset_0_-1px_0_var(--color-afro-line)] rtl:shadow-[inset_-1px_0_0_var(--color-afro-line),inset_0_-1px_0_var(--color-afro-line)]';
-const stickyCellClass = `sticky end-0 z-[1] bg-afro-panel ${stickyCellShadow}`;
-
-export function DataTable<Row>({
-  columns,
-  detailCollapseLabel,
-  detailExpandLabel,
-  minWidth = '760px',
-  renderDetail,
-  rowClassName,
-  rowKey,
-  rows,
-  stickyLastColumn = false,
-}: {
-  columns: Array<DataTableColumn<Row>>;
-  /** Accessible label for collapsing an open detail row. Provide it together with renderDetail. */
-  detailCollapseLabel?: string;
-  /** Accessible label for expanding a row's detail panel. Provide it together with renderDetail. */
-  detailExpandLabel?: string;
-  minWidth?: string;
-  /**
-   * Optional inline detail panel rendered full-width directly under a row.
-   * When set, each row gains a leading chevron toggle (and the row itself becomes
-   * tappable) so actions stay reachable on narrow screens where trailing columns
-   * would sit beyond the horizontal scroll.
-   */
-  renderDetail?: (row: Row) => ReactNode;
-  rowClassName?: (row: Row) => string | undefined;
-  rowKey: (row: Row) => string;
-  rows: Row[];
-  /**
-   * Pin the last column (usually row actions) to the inline-end edge of the
-   * horizontal scroller so actions stay reachable at any viewport width.
-   * RTL-correct (uses logical inset-inline-end).
-   */
-  stickyLastColumn?: boolean;
-}) {
-  const detailIdPrefix = useId();
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const hasDetail = Boolean(renderDetail);
-  const toggleRow = (key: string) => setExpandedRows((current) => ({ ...current, [key]: !current[key] }));
-  const onRowClick = (event: MouseEvent<HTMLTableRowElement>, key: string) => {
-    // Row tap toggles the detail panel, but never steals taps from interactive cells.
-    if ((event.target as HTMLElement).closest('a,button,input,label,select,textarea')) return;
-    toggleRow(key);
-  };
-
-  return (
-    // overflow-y-clip: with overflow-x auto alone, overflow-y computes to auto and can
-    // spawn a nested vertical scrollbar; clip (used value: hidden) guarantees this
-    // wrapper only ever scrolls horizontally — the page keeps a single vertical scroll.
-    <div className={`overflow-x-auto overflow-y-clip ${hasDetail ? '[container-type:inline-size]' : ''}`}>
-      <table className="w-full border-collapse" style={{ minWidth }}>
-        <thead>
-          <tr>
-            {hasDetail ? (
-              <th className="w-9 border-b border-afro-line py-1.5 pl-0 pr-1" scope="col">
-                <span className="sr-only">{detailExpandLabel}</span>
-              </th>
-            ) : null}
-            {columns.map((column, columnIndex) => (
-              <th
-                className={`border-b border-afro-line px-2 py-1.5 text-[13px] font-bold text-afro-muted first:pl-0 last:pr-0 ${tableAlignmentClass(column.align, column.alignRight)} ${stickyLastColumn && columnIndex === columns.length - 1 ? stickyCellClass : ''} ${column.className ?? ''}`}
-                key={column.key}
-              >
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const key = rowKey(row);
-            const isOpen = hasDetail && Boolean(expandedRows[key]);
-            const detailId = `${detailIdPrefix}-${key}`;
-            const toggleLabel = isOpen ? detailCollapseLabel : detailExpandLabel;
-
-            return (
-              <Fragment key={key}>
-                <tr
-                  className={`group ${rowClassName?.(row) ?? ''} ${hasDetail ? 'cursor-pointer hover:bg-[#f8fafb]' : ''}`}
-                  onClick={hasDetail ? (event) => onRowClick(event, key) : undefined}
-                >
-                  {hasDetail ? (
-                    <td className="border-b border-afro-line py-1.5 pl-0 pr-1 align-middle">
-                      <button
-                        aria-controls={detailId}
-                        aria-expanded={isOpen}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-afro-line text-afro-muted transition hover:border-afro-teal hover:text-afro-teal md:h-8 md:w-8"
-                        onClick={() => toggleRow(key)}
-                        title={toggleLabel}
-                        type="button"
-                      >
-                        <span className="sr-only">{toggleLabel}</span>
-                        {isOpen ? <ChevronDown size={15} /> : <ChevronRight className="rtl:-scale-x-100" size={15} />}
-                      </button>
-                    </td>
-                  ) : null}
-                  {columns.map((column, columnIndex) => (
-                    <TableCell
-                      align={column.align}
-                      alignRight={column.alignRight}
-                      className={
-                        stickyLastColumn && columnIndex === columns.length - 1
-                          ? // Background must track the row's hover state so the pinned cell
-                            // never looks detached from its row.
-                            `${stickyCellClass} ${hasDetail ? 'group-hover:bg-[#f8fafb]' : ''}`
-                          : undefined
-                      }
-                      key={column.key}
-                    >
-                      {column.render(row)}
-                    </TableCell>
-                  ))}
-                </tr>
-                {isOpen && renderDetail ? (
-                  <tr id={detailId}>
-                    <td className="border-b border-afro-line bg-[#f8fafb] p-0" colSpan={columns.length + 1}>
-                      {/* Sticky + container-width cap keeps the panel fully visible inside the
-                          horizontal scroller, even when the table itself is wider than the screen. */}
-                      <div className="sticky start-0 max-w-[100cqw] px-2 py-2.5">
-                        {renderDetail(row)}
-                      </div>
-                    </td>
-                  </tr>
-                ) : null}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export function tableAlignmentClass(align?: TableCellAlign, alignRight = false): string {
-  if (align === 'center') return 'text-center';
-  if (align === 'right' || alignRight) return 'text-right';
-
-  return 'text-left';
-}
-
-export function TableCell({
-  align,
-  alignRight = false,
-  children,
-  className,
-}: {
-  align?: TableCellAlign;
-  alignRight?: boolean;
-  children: ReactNode;
-  className?: string;
-}) {
-  const alignmentClass = tableAlignmentClass(align, alignRight);
-  const tooltip = primitiveTooltip(children);
-
-  return (
-    <td
-      className={`border-b border-afro-line px-2 py-1.5 align-middle text-[13px] text-afro-muted first:pl-0 last:pr-0 ${alignmentClass} ${className ?? ''}`}
-      title={tooltip}
-    >
-      {children}
-    </td>
   );
 }
 

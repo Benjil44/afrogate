@@ -3,9 +3,9 @@ import { Loader2, LogIn, Store, Users } from 'lucide-react';
 import type { AdminCustomerAccountSummary, AdminResellerAccountSummary, AdminResellerWalletLedgerEntry, AdminUserSummary } from '@afrows/shared';
 import { createAdminReseller, fetchAdminResellers, fetchAdminUsers, fetchResellerWalletLedger, topUpResellerWallet, updateAdminReseller } from '../api/admin';
 import { fetchGbPrice, fetchResellerCustomers, impersonateReseller, type ImpersonateResellerResult } from '../api/reseller-pricing';
-import { DataTable, EmptyState, PanelHeading, StatusBadge } from '../components/primitives';
+import { DataTable, type DataTableColumnDef } from '../components/DataTable';
+import { PanelHeading, StatusBadge } from '../components/primitives';
 import { billingStatusTone, customerAccountStatusLabel } from '../labels';
-import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 
@@ -186,7 +186,7 @@ export function ResellersPage({
 
   const money = (n: number, cur: string) => `${n.toLocaleString()} ${cur}`;
 
-  const columns: Array<DataTableColumn<AdminResellerAccountSummary>> = [
+  const columns: Array<DataTableColumnDef<AdminResellerAccountSummary>> = [
     {
       key: 'name',
       header: s.colName,
@@ -372,29 +372,28 @@ export function ResellersPage({
         </div>
       ) : null}
 
-      {rows.length === 0 ? (
-        loadState === 'loading' ? (
-          <EmptyState kind="loading" message={t.panelStates.loadingTitle} detail={t.panelStates.loadingDetail} />
-        ) : loadState === 'error' ? (
-          <div className="grid gap-2">
-            <EmptyState kind="error" message={t.panelStates.errorTitle} detail={s.loadFailed} />
-            <button
-              className="inline-flex min-h-11 w-fit items-center rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
-              onClick={() => {
-                setLoadState('loading');
-                void load();
-              }}
-              type="button"
-            >
-              {t.actions.retry}
-            </button>
-          </div>
-        ) : (
-          <EmptyState message={s.empty} />
-        )
-      ) : (
-        <DataTable rows={rows} columns={columns} rowKey={(r) => r.id} minWidth="980px" />
-      )}
+      <DataTable
+        columns={columns}
+        empty={{ message: s.empty }}
+        error={
+          loadState === 'error'
+            ? {
+                detail: s.loadFailed,
+                message: t.panelStates.errorTitle,
+                onRetry: () => {
+                  setLoadState('loading');
+                  void load();
+                },
+                retryLabel: t.actions.retry,
+              }
+            : null
+        }
+        loading={loadState === 'loading'}
+        loadingLabel={t.panelStates.loadingTitle}
+        minWidth="980px"
+        rowKey={(r) => r.id}
+        rows={rows}
+      />
     </section>
   );
 }
