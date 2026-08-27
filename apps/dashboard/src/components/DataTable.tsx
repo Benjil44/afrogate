@@ -76,10 +76,12 @@ export function DataTable<Row>({
   detailExpandLabel,
   empty,
   error,
+  expandedRows: controlledExpandedRows,
   loading = false,
   loadingLabel,
   minWidth = '760px',
   onRowClick,
+  onToggleRow,
   renderDetail,
   rowClassName,
   rowKey,
@@ -97,6 +99,13 @@ export function DataTable<Row>({
   empty?: DataTableEmptyConfig | null;
   /** Localized error state, shown instead of rows when there is no data to keep on screen. */
   error?: DataTableErrorConfig | null;
+  /**
+   * Optional controlled expand-state map (rowKey -> open). When provided, the
+   * page owns which rows are open (e.g. so a row action can force a row open
+   * in a specific mode) and must handle toggles via `onToggleRow`. Omit for
+   * the default uncontrolled behavior (DataTable owns its own open state).
+   */
+  expandedRows?: Record<string, boolean>;
   /** While true and no rows exist yet, renders animated skeleton rows. */
   loading?: boolean;
   /** Accessible label announced while the skeleton is shown (e.g. `t.panelStates.loadingTitle`). */
@@ -104,6 +113,8 @@ export function DataTable<Row>({
   minWidth?: string;
   /** Optional whole-row click. Ignored for taps on interactive cells; when renderDetail is set the row tap toggles the detail panel instead. */
   onRowClick?: (row: Row) => void;
+  /** Required together with a controlled `expandedRows` map; called with a row key when the chevron/row is tapped. */
+  onToggleRow?: (key: string) => void;
   /**
    * Optional inline detail panel rendered full-width directly under a row.
    * When set, each row gains a leading chevron toggle (and the row itself becomes
@@ -126,7 +137,9 @@ export function DataTable<Row>({
   stickyLastColumn?: boolean;
 }) {
   const detailIdPrefix = useId();
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const isControlledExpand = controlledExpandedRows !== undefined;
+  const [internalExpandedRows, setInternalExpandedRows] = useState<Record<string, boolean>>({});
+  const expandedRows = isControlledExpand ? controlledExpandedRows! : internalExpandedRows;
   const columnDefs = columns as Array<DataTableColumnDef<Row>>;
   const hasDetail = Boolean(renderDetail);
   const colCount = columnDefs.length + (hasDetail ? 1 : 0);
@@ -135,7 +148,13 @@ export function DataTable<Row>({
   const showError = !hasContent && Boolean(error);
   const showLoading = !hasContent && !showError && loading;
   const showEmpty = !hasContent && !showError && !showLoading && Boolean(empty);
-  const toggleRow = (key: string) => setExpandedRows((current) => ({ ...current, [key]: !current[key] }));
+  const toggleRow = (key: string) => {
+    if (isControlledExpand) {
+      onToggleRow?.(key);
+    } else {
+      setInternalExpandedRows((current) => ({ ...current, [key]: !current[key] }));
+    }
+  };
   const onRowTap = (event: MouseEvent<HTMLTableRowElement>, row: Row, key: string) => {
     // Row tap toggles the detail panel / fires onRowClick, but never steals taps
     // from interactive cells.

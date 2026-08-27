@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchiveRestore, ChartColumn, Copy, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   adjustCustomerGems,
@@ -214,11 +214,19 @@ export function CustomersPage({
   // with a Restore action) alongside active ones.
   const [showArchived, setShowArchived] = useState(false);
 
-  // editor
-  const [editorOpen, setEditorOpen] = useState(false);
+  // create panel (top-of-page, new-customer only — existing accounts are edited
+  // inline in their row's expandable detail panel, see editId/expandedRows below)
+  const [createOpen, setCreateOpen] = useState(false);
+  // Row currently shown in the inline detail panel's EDIT mode (null = every
+  // expanded row shows its read-only VIEW mode). Only one row can be mid-edit
+  // at a time since the edit form fields below are singular, not row-keyed.
   const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Inline detail-row expand state, keyed by account id (DataTable is
+  // controlled here so the row pencil can force a row open in Edit mode).
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
   // tier pricing (super-admin editable)
   const [tierPrices, setTierPrices] = useState<EgressTierPrice[]>([]);
@@ -262,7 +270,11 @@ export function CustomersPage({
   // Routers available to assign to a NEW customer (gateways with no owner yet).
   const [routers, setRouters] = useState<MikroTikRouterSummary[]>([]);
   const [assignRouterId, setAssignRouterId] = useState('');
-  const [editConfigs, setEditConfigs] = useState<AdminClientConfigSummary[]>([]);
+  // Per-account client-config cache, keyed by account id. Feeds both the
+  // Edit-mode exit-path list and the View-mode usage chart's config selector
+  // (CustomerUsageSection) — populated lazily the first time a row expands.
+  const [rowConfigs, setRowConfigs] = useState<Record<string, AdminClientConfigSummary[]>>({});
+  const [rowConfigsLoading, setRowConfigsLoading] = useState<Record<string, boolean>>({});
   // configId -> fixed egress path ('auto' | 'germany' | 'village' | 'direct')
   const [exitPath, setExitPath] = useState<Record<string, string>>({});
   const [exitMsg, setExitMsg] = useState<string | null>(null);
@@ -389,9 +401,23 @@ export function CustomersPage({
   const openCreate = () => {
     resetForm();
     setEditId(null);
-    setEditorOpen(true);
+    setCreateOpen(true);
   };
 
+  // Fetch (once) + cache a customer's client configs, used by the View-mode
+  // usage chart's config selector for any expanded row (not only the one
+  // being edited).
+  const ensureRowConfigs = (accountId: string) => {
+    if (rowConfigs[accountId] || rowConfigsLoading[accountId]) return;
+    setRowConfigsLoading((cur) => ({ ...cur, [accountId]: true }));
+    void exportAdminCustomerClientConfigs(sessionToken, accountId)
+      .then((res) => setRowConfigs((cur) => ({ ...cur, [accountId]: res.configs })))
+      .catch(() => undefined)
+      .finally(() => setRowConfigsLoading((cur) => ({ ...cur, [accountId]: false })));
+  };
+
+  // Row pencil (or the panel's own Edit toggle): expands the row directly in
+  // Edit mode and loads the edit-only data (devices, per-config exit paths).
   const openEdit = (a: AdminCustomerAccountSummary) => {
     resetForm();
     setEditId(a.id);
@@ -408,8 +434,7 @@ export function CustomersPage({
     setExpiresAt(a.expiresAt ? a.expiresAt.slice(0, 10) : '');
     setTagsInput((a.tags ?? []).join(', '));
     setNotes(a.notes ?? '');
-    setEditorOpen(true);
-    setEditConfigs([]);
+    setExpandedRows((cur) => ({ ...cur, [a.id]: true }));
     setExitPath({});
     setExitMsg(null);
     setDevices([]);
@@ -421,7 +446,7 @@ export function CustomersPage({
     void (async () => {
       try {
         const cfgRes = await exportAdminCustomerClientConfigs(sessionToken, a.id);
-        setEditConfigs(cfgRes.configs);
+        setRowConfigs((cur) => ({ ...cur, [a.id]: cfgRes.configs }));
         const paths: Record<string, string> = {};
         await Promise.all(cfgRes.configs.map(async (cfg) => {
           try {
@@ -436,6 +461,28 @@ export function CustomersPage({
         /* best-effort; selector simply won't populate */
       }
     })();
+  };
+
+  // Panel's View toggle (or a successful Save): leaves the row expanded but
+  // switches its panel back to read-only View mode without collapsing it.
+  const closeEditToView = () => {
+    setEditId(null);
+    setShownPassword(null);
+    setPwCopied(false);
+    setCustomPw('');
+    setError(null);
+  };
+
+  // Chevron / row-body tap: expands a row in View mode. If the row being
+  // (re)opened was left mid-edit, re-opening via the chevron intentionally
+  // reverts to View — only the pencil forces Edit mode.
+  const onToggleRowExpand = (key: string) => {
+    const willOpen = !expandedRows[key];
+    if (willOpen) {
+      ensureRowConfigs(key);
+      if (editId === key) setEditId(null);
+    }
+    setExpandedRows((cur) => ({ ...cur, [key]: !cur[key] }));
   };
 
   const saveExitPath = async (configId: string, path: string) => {
@@ -456,18 +503,6 @@ export function CustomersPage({
   const editProtocols = useMemo(
     () => accounts.find((a) => a.id === editId)?.protocols ?? [],
     [accounts, editId],
-  );
-
-  // Bot-v2 profile (phone / gems / referrals) of the customer being edited.
-  // The v2 fields are optional on the shared summary type, so read them directly.
-  const editAccount = useMemo(() => accounts.find((a) => a.id === editId) ?? null, [accounts, editId]);
-  const editGemInfo = editAccount;
-  const editHasGemInfo = Boolean(
-    editGemInfo &&
-      (editGemInfo.phone !== undefined ||
-        editGemInfo.gemsBalance !== undefined ||
-        editGemInfo.referralCode !== undefined ||
-        editGemInfo.referralCount !== undefined),
   );
 
   // Activate/deactivate a customer straight from the table (active <-> disabled).
@@ -608,6 +643,11 @@ export function CustomersPage({
     }
     setSaving(true);
     setError(null);
+    // Existing edits keep the account's live tier: it's managed by the panel's
+    // immediate toggle (see toggleEgressTier), not this batched Save, so an
+    // unrelated field edit can never silently revert a Normal/Game switch made
+    // moments earlier via the toggle.
+    const liveTier = editId ? accounts.find((acc) => acc.id === editId)?.egressTier : undefined;
     const payload = {
       displayName: name.trim(),
       loginEmail: email.trim() || null,
@@ -617,7 +657,7 @@ export function CustomersPage({
       perClientLimitBytes: gbToBytes(perClientGb),
       quotaScope: scope,
       status,
-      egressTier,
+      egressTier: editId ? (liveTier === 'gaming' ? 'gaming' : 'normal') : egressTier,
       gamingEntitled,
       expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : null,
       tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
@@ -635,8 +675,10 @@ export function CustomersPage({
           setPwCopied(false);
           await load();
           setSaving(false);
-          return; // keep the editor open so the password is shown once
+          return; // keep the panel open in Edit mode so the password is shown once
         }
+        await load();
+        closeEditToView();
       } else {
         const created = await createAdminCustomerAccount(sessionToken, {
           ...payload,
@@ -659,18 +701,12 @@ export function CustomersPage({
           }
         }
         await load();
-        // If the new account has a login, reopen it in edit mode and reveal the
-        // password once so the operator can copy it for the user.
-        if (created.generatedPassword) {
-          openEdit(created);
-          setShownPassword(created.generatedPassword);
-          setSaving(false);
-          return;
-        }
+        setCreateOpen(false);
+        // Open the new account's row inline in Edit mode, and reveal the
+        // generated password once so the operator can copy it for the user.
+        openEdit(created);
+        if (created.generatedPassword) setShownPassword(created.generatedPassword);
       }
-      setEditorOpen(false);
-      setEditId(null);
-      await load();
     } catch {
       setError(s.saveError);
     } finally {
@@ -707,7 +743,6 @@ export function CustomersPage({
   };
 
   const openConfigs = (a: AdminCustomerAccountSummary) => {
-    setEditorOpen(false);
     setConfigsFor(a);
     setConfigList([]);
     setLinkMap({});
@@ -774,10 +809,7 @@ export function CustomersPage({
       // Close any panel still pointing at the deleted account.
       if (configsFor?.id === accountId) setConfigsFor(null);
       if (mergeFor?.id === accountId) closeMerge();
-      if (editId === accountId) {
-        setEditorOpen(false);
-        setEditId(null);
-      }
+      if (editId === accountId) setEditId(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -789,8 +821,9 @@ export function CustomersPage({
   // away: its remaining GB, gems, and configs move to the TARGET, then the
   // source is archived by the backend.
   const openMerge = (a: AdminCustomerAccountSummary) => {
-    setEditorOpen(false);
-    setEditId(null);
+    // If the source row was mid-edit inline, drop out of Edit mode (the row
+    // may be archived by the merge); other rows' edit sessions are untouched.
+    if (editId === a.id) setEditId(null);
     setConfigsFor(null);
     setMergeFor(a);
     setMergeQuery('');
@@ -943,9 +976,15 @@ export function CustomersPage({
 
   const inputClass = 'min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal';
 
-  // Inline detail panel under each row — the primary way to reach Edit/Configs on
-  // phones, where the trailing actions column sits beyond the horizontal scroll.
-  const renderCustomerDetail = (a: AdminCustomerAccountSummary) => {
+  // Inline detail panel under each row — the single place to view details and
+  // edit a customer on any screen size. The chevron always opens View mode
+  // (compact, read-only); the row pencil (or the panel's own Edit toggle)
+  // opens/switches to Edit mode, which exposes every editable field. A View
+  // <-> Edit toggle inside the panel switches modes without collapsing the row.
+  const renderCustomerDetail = (a: AdminCustomerAccountSummary) =>
+    editId === a.id ? renderCustomerEdit(a) : renderCustomerView(a);
+
+  const renderCustomerView = (a: AdminCustomerAccountSummary) => {
     const e = egressFor(a);
     const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
     const price = priceFor(tier);
@@ -954,6 +993,7 @@ export function CustomersPage({
     // Bot-v2 fields (phone/gems/referrals) — rows only appear once the backend
     // serves them, so pre-migration accounts don't render four empty rows.
     const v2 = a;
+    const configs = rowConfigs[a.id] ?? [];
 
     return (
       <div className="grid gap-2.5">
@@ -986,6 +1026,26 @@ export function CustomersPage({
               {s.mergeAction}
             </button>
           ) : null}
+          {isArchived(a) ? (
+            <button
+              type="button"
+              onClick={() => void onRestoreAccount(a.id, nameOf(a))}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-700 hover:border-emerald-500 hover:bg-emerald-50 sm:flex-none"
+            >
+              <ArchiveRestore size={15} />
+              {s.restoreAccount}
+            </button>
+          ) : (
+            // Destructive: last on purpose so it's never the easy accidental tap.
+            <button
+              type="button"
+              onClick={() => void onDeleteAccount(a.id, nameOf(a))}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-red-300 bg-white px-3 text-sm font-bold text-red-600 hover:border-red-500 hover:bg-red-50 sm:flex-none"
+            >
+              <Trash2 size={15} />
+              {s.deleteAccount}
+            </button>
+          )}
         </div>
         <div className="grid gap-1.5 sm:grid-cols-2">
           <DetailRow label={s.colEmail}>{a.loginEmail || '—'}</DetailRow>
@@ -1024,6 +1084,11 @@ export function CustomersPage({
             <DetailRow label={s.colCost}>{`${Math.round((a.usedBytes / BYTES_PER_GB) * price).toLocaleString()} ${currency}`}</DetailRow>
           ) : null}
         </div>
+        {configs.length > 0 ? (
+          <CustomerUsageSection account={a} configs={configs} format={format} sessionToken={sessionToken} t={t} />
+        ) : rowConfigsLoading[a.id] ? (
+          <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
+        ) : null}
         {v2.gemsBalance !== undefined ? (
           // Manual wallet adjustment: delta + audited reason -> confirm -> one POST.
           <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
@@ -1068,26 +1133,304 @@ export function CustomersPage({
     );
   };
 
-  // Protocol pills render in fixed slots (VLESS first, then WIREGUARD) so the
-  // column reads as aligned sub-columns across rows: each slot has a fixed min
-  // width and the pill fills it with the amount right-justified, so usage
-  // numbers line up. Slots only exist for protocols present in the current
-  // list, so an all-VLESS list doesn't reserve an empty WIREGUARD lane.
-  const protoSlotWidths: Record<string, string> = { vless: 'minmax(7.5rem,auto)', wireguard: 'minmax(9.25rem,auto)' };
-  const protoSlots = ['vless', 'wireguard'].filter((name) =>
-    filtered.some((a) => a.protocols?.some((p) => p.protocol === name)),
-  );
-  const protoGridTemplate = protoSlots.map((name) => protoSlotWidths[name]).join(' ');
-  const protoPill = (p: { protocol: string; usedBytes: number }) => (
-    <span
-      key={p.protocol}
-      title={`${p.protocol}: ${format.bytes(p.usedBytes)}`}
-      className="flex w-full min-w-0 items-center justify-between gap-1 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-afro-ink"
-    >
-      {p.protocol}
-      <span className="font-normal normal-case tabular-nums text-afro-muted">{format.bytes(p.usedBytes)}</span>
-    </span>
-  );
+  // Edit mode: every editable field from the old top-of-page editor, now
+  // rendered inline under the row it edits. Internet path (tier + bypass) is
+  // relocated here from the row (see the `internet` column) as an immediate-
+  // persist toggle, matching how it always behaved rather than the batched Save.
+  const renderCustomerEdit = (a: AdminCustomerAccountSummary) => {
+    const configs = rowConfigs[a.id] ?? [];
+    const gaming = a.egressTier === 'gaming';
+    const e = egressFor(a);
+
+    return (
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-afro-ink">{s.editTitle}</h3>
+          <button
+            type="button"
+            onClick={closeEditToView}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+          >
+            <Eye size={15} />
+            {s.viewAction}
+          </button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldName}</span>
+            <input value={name} onChange={(e2) => setName(e2.target.value)} className={inputClass} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldEmail}</span>
+            <input value={email} onChange={(e2) => setEmail(e2.target.value)} dir="ltr" className={inputClass} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegram}</span>
+            <input value={telegram} onChange={(e2) => setTelegram(e2.target.value)} dir="ltr" className={inputClass} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegramId}</span>
+            <input value={telegramId} onChange={(e2) => setTelegramId(e2.target.value)} dir="ltr" inputMode="numeric" placeholder={s.fldTelegramIdHint} className={inputClass} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldQuotaGb}</span>
+            <input value={quotaGb} onChange={(e2) => setQuotaGb(e2.target.value)} dir="ltr" inputMode="decimal" className={inputClass} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldPerClientGb}</span>
+            <input value={perClientGb} onChange={(e2) => setPerClientGb(e2.target.value)} dir="ltr" inputMode="decimal" className={inputClass} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldScope}</span>
+            <select value={scope} onChange={(e2) => setScope(e2.target.value as Scope)} className={inputClass}>
+              <option value="account_shared">account_shared</option>
+              <option value="per_client">per_client</option>
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldStatus}</span>
+            <select value={status} onChange={(e2) => setStatus(e2.target.value as Status)} className={inputClass}>
+              <option value="active">active</option>
+              <option value="suspended">suspended</option>
+              <option value="disabled">disabled</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 self-end pb-2">
+            <input
+              type="checkbox"
+              checked={gamingEntitled}
+              onChange={(e2) => setGamingEntitled(e2.target.checked)}
+              className="h-4 w-4 accent-afro-accent"
+            />
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldGamingEntitled}</span>
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldExpiry}</span>
+            <input type="date" value={expiresAt} onChange={(e2) => setExpiresAt(e2.target.value)} className={inputClass} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldTags}</span>
+            <input value={tagsInput} onChange={(e2) => setTagsInput(e2.target.value)} placeholder="vip, trial" className={inputClass} />
+          </label>
+          <label className="grid gap-1.5 md:col-span-2">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
+            <input value={notes} onChange={(e2) => setNotes(e2.target.value)} className={inputClass} />
+          </label>
+        </div>
+
+        {/* Internet path — relocated from the row (declutter): gaming tier implies
+            Starlink, normal implies Germany, so one toggle plus the bypass opt-in
+            covers both former row controls. Both persist immediately, like they
+            did on the row, instead of waiting for Save. */}
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-afro-line bg-white p-2.5">
+          <span className="text-[13px] font-bold text-afro-muted">{s.fldEgressTier}</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={gaming}
+            disabled={egressBusy === a.id}
+            onClick={() => void toggleEgressTier(a)}
+            title={gaming ? s.egToNormal : s.egToGame}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${gaming ? 'bg-sky-500' : 'bg-emerald-500'}`}
+          >
+            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+          </button>
+          <span className="text-[12px] font-bold text-afro-muted">{gaming ? s.egModeGame : s.egModeNormal}</span>
+          <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+            {e.failover ? '⚠ ' : ''}{e.label}
+          </span>
+          <label className="inline-flex cursor-pointer items-center gap-1 text-[12px] font-bold text-afro-muted" title={s.egBypassHint}>
+            <input
+              type="checkbox"
+              checked={Boolean(a.egressBypassEnabled)}
+              disabled={egressBusy === a.id}
+              onChange={() => void toggleBypass(a)}
+              className="h-3.5 w-3.5 accent-afro-teal disabled:opacity-50"
+            />
+            {s.egBypass}
+          </label>
+        </div>
+
+        <div className="grid gap-1.5">
+          <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {editProtocols.length > 0 ? (
+              editProtocols.map((p) => (
+                <span
+                  key={p.protocol}
+                  className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-afro-ink"
+                >
+                  {p.protocol}
+                  <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
+                </span>
+              ))
+            ) : (
+              <span className="text-[13px] text-afro-muted">{s.noConfigs}</span>
+            )}
+            {(['vless', 'wireguard'] as const)
+              .filter((proto) => !editProtocols.some((p) => p.protocol === proto))
+              .map((proto) => (
+                <button
+                  key={proto}
+                  type="button"
+                  disabled={addProtoBusy}
+                  onClick={() => void onAddProtocol(proto)}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                >
+                  <Plus size={13} />
+                  {proto}
+                </button>
+              ))}
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <span className="text-[13px] font-bold text-afro-muted">{s.gatewaySection}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className={inputClass}
+              value=""
+              onChange={(e2) => { void assignGatewayInEdit(e2.target.value); }}
+            >
+              <option value="">{s.gatewayAssign}</option>
+              {routers
+                .filter((r) => r.kind !== 'village' && !r.customerAccountId)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
+                ))}
+            </select>
+            {routers.filter((r) => r.customerAccountId === a.id).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => void unassignGateway(r.id)}
+                className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-red-400 hover:text-red-500"
+              >
+                {r.label} · {s.gatewayUnassign}
+              </button>
+            ))}
+          </div>
+          {routers.some((r) => r.customerAccountId === a.id) ? (
+            <MicrotiksPage roleFilter="gateway" customerAccountId={a.id} sessionToken={sessionToken} t={t} />
+          ) : (
+            <span className="text-[12px] text-afro-muted">{s.gatewayNone}</span>
+          )}
+        </div>
+
+        {configs.length > 0 ? (
+          <div className="grid gap-2">
+            <span className="text-[13px] font-bold text-afro-muted">{s.exitSection}</span>
+            {configs.map((cfg) => (
+              <div key={cfg.id} className="flex flex-wrap items-center gap-2 rounded-md border border-afro-line px-2.5 py-2">
+                <span className="text-[12px] font-bold uppercase tracking-wide text-afro-ink">{cfg.protocol}</span>
+                <select
+                  className={inputClass}
+                  value={exitPath[cfg.id] ?? 'auto'}
+                  onChange={(e2) => void saveExitPath(cfg.id, e2.target.value)}
+                >
+                  <option value="auto">{s.exitAuto}</option>
+                  <option value="germany">{s.exitGermany}</option>
+                  <option value="village">{s.exitStarlink}</option>
+                  <option value="direct">{s.exitDirect}</option>
+                </select>
+              </div>
+            ))}
+            <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
+            {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
+          </div>
+        ) : null}
+
+        <div className="grid gap-2">
+          <span className="text-[13px] font-bold text-afro-muted">
+            {s.devicesSection} · {devicesNetworks} {s.devicesNetworks} ({devicesActive} {s.devicesActive})
+            {devicesNetworks >= 2 ? <span className="ml-1.5 text-red-600">⚠ {s.devicesSharing}</span> : null}
+          </span>
+          {devices.length === 0 ? (
+            <span className="text-[12px] text-afro-muted">{s.devicesNone}</span>
+          ) : (
+            <div className="grid gap-1">
+              {devices.map((d) => (
+                <div
+                  key={`${d.clientConfigId}-${d.sourceIp}`}
+                  className={`flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] ${d.active ? 'border-afro-teal' : 'border-afro-line'}`}
+                >
+                  {d.active ? <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-afro-teal" /> : <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-afro-line" />}
+                  <span className="font-bold uppercase tracking-wide text-afro-ink">{d.protocol}</span>
+                  <span className="font-mono" dir="ltr">{d.sourceIp}</span>
+                  <span className="text-afro-muted">{s.devicesColLastSeen}: {format.time(new Date(d.lastSeenAt), false)}</span>
+                  <span className="text-afro-muted">{s.devicesColHits}: {d.hits}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <span className="text-[11px] text-afro-muted">{s.devicesCaveat}</span>
+        </div>
+
+        {email.trim() ? (
+          <div className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
+            {shownPassword ? (
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={shownPassword}
+                  dir="ltr"
+                  className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[13px] outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => void copyPassword()}
+                  className="inline-flex h-9 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                >
+                  <Copy size={13} />
+                  {pwCopied ? s.copied : s.copyLink}
+                </button>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={customPw}
+                onChange={(e2) => setCustomPw(e2.target.value)}
+                dir="ltr"
+                placeholder={s.passwordCustomPlaceholder}
+                className={`${inputClass} min-w-[200px] flex-1`}
+              />
+              <button
+                type="button"
+                disabled={pwBusy}
+                onClick={() => void onResetPassword()}
+                className="inline-flex min-h-10 items-center gap-1 rounded-md border border-afro-line px-3 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+              >
+                {customPw.trim() ? s.setPassword : s.generatePassword}
+              </button>
+            </div>
+            <span className="text-[12px] text-afro-muted">
+              {shownPassword ? s.passwordShownOnce : s.passwordHashedNote}
+            </span>
+          </div>
+        ) : null}
+
+        {error ? <p className="text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void onSave()}
+            disabled={saving}
+            className="inline-flex min-h-10 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-60"
+          >
+            {s.save}
+          </button>
+          <button
+            type="button"
+            onClick={closeEditToView}
+            className="inline-flex min-h-10 items-center rounded-md border border-afro-line px-4 text-sm font-bold text-afro-muted"
+          >
+            {s.cancel}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // `w-px` on a header cell is the standard auto-table-layout trick: the column
   // shrinks to its content's minimum width (content is nowrap, so that's one
@@ -1191,60 +1534,18 @@ export function CustomersPage({
       ),
     },
     {
+      // Compact, read-only effective-path indicator only — gaming tier implies
+      // Starlink and normal implies Germany, so this single pill already says
+      // both. The tier toggle and Bypass checkbox that used to live here moved
+      // into the row's Edit-mode panel (see renderCustomerEdit).
       key: 'internet',
       header: s.colInternet,
       className: fitCol,
       render: (a) => {
         const e = egressFor(a);
-        const gaming = a.egressTier === 'gaming';
         return (
-          <span className="inline-flex items-center gap-2">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={gaming}
-              disabled={egressBusy === a.id}
-              onClick={() => void toggleEgressTier(a)}
-              title={gaming ? s.egToNormal : s.egToGame}
-              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${gaming ? 'bg-sky-500' : 'bg-emerald-500'}`}
-            >
-              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-            </button>
-            <span className="text-[11px] font-bold text-afro-muted">{gaming ? s.egModeGame : s.egModeNormal}</span>
-            <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
-              {e.failover ? '⚠ ' : ''}{e.label}
-            </span>
-            {/* Egress P4 Part A — opt-in MikroTik-direct bypass allow-list (activation is Part B). */}
-            <label className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-bold text-afro-muted" title={s.egBypassHint}>
-              <input
-                type="checkbox"
-                checked={Boolean(a.egressBypassEnabled)}
-                disabled={egressBusy === a.id}
-                onChange={() => void toggleBypass(a)}
-                className="h-3.5 w-3.5 accent-afro-teal disabled:opacity-50"
-              />
-              {s.egBypass}
-            </label>
-          </span>
-        );
-      },
-    },
-    {
-      key: 'protocols',
-      header: s.colProtocols,
-      className: fitCol,
-      render: (a) => {
-        const protos = a.protocols ?? [];
-        if (protos.length === 0) return <span className="text-afro-muted">—</span>;
-        const extras = protos.filter((p) => !protoSlots.includes(p.protocol));
-        return (
-          <span className="grid w-max items-center gap-1" style={{ gridTemplateColumns: protoGridTemplate || undefined }}>
-            {protoSlots.map((name) => {
-              const p = protos.find((row) => row.protocol === name);
-              // Empty placeholder keeps the slot (and every later slot) aligned.
-              return p ? protoPill(p) : <span aria-hidden key={`${name}-empty`} />;
-            })}
-            {extras.map(protoPill)}
+          <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+            {e.failover ? '⚠ ' : ''}{e.label}
           </span>
         );
       },
@@ -1456,11 +1757,14 @@ export function CustomersPage({
         </div>
       </div>
 
-      {editorOpen ? (
+      {/* Top-of-page panel: NEW customers only. Existing accounts are viewed and
+          edited inline in their row's expandable detail panel (renderCustomerDetail
+          below) — the pencil opens Edit mode there directly. */}
+      {createOpen ? (
         <div className="rounded-md border border-afro-line bg-afro-panel p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-afro-ink">{editId ? s.editTitle : s.addTitle}</h2>
-            <button type="button" onClick={() => setEditorOpen(false)} className="text-afro-muted hover:text-afro-ink">
+            <h2 className="text-sm font-bold text-afro-ink">{s.addTitle}</h2>
+            <button type="button" onClick={() => setCreateOpen(false)} className="text-afro-muted hover:text-afro-ink">
               <X size={16} />
             </button>
           </div>
@@ -1532,27 +1836,7 @@ export function CustomersPage({
               <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} />
             </label>
-            {editId && editGemInfo && editHasGemInfo ? (
-              // Read-only bot-v2 profile: the bot fills these at signup; gems are
-              // adjusted from the row's detail panel (single audited entry point).
-              <div className="grid gap-1.5 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.botProfileSection}</span>
-                <div className="grid gap-1.5 sm:grid-cols-2">
-                  <DetailRow label={s.colPhone}>{editGemInfo.phone ? <span dir="ltr">{editGemInfo.phone}</span> : '—'}</DetailRow>
-                  <DetailRow label={s.colGems}>
-                    {editGemInfo.gemsBalance != null ? format.integer(editGemInfo.gemsBalance) : '—'}
-                  </DetailRow>
-                  <DetailRow label={s.colReferralCode}>
-                    {editGemInfo.referralCode ? <span className="font-mono" dir="ltr">{editGemInfo.referralCode}</span> : '—'}
-                  </DetailRow>
-                  <DetailRow label={s.colReferrals}>
-                    {editGemInfo.referralCount != null ? format.integer(editGemInfo.referralCount) : '—'}
-                  </DetailRow>
-                </div>
-                <span className="text-[11px] text-afro-muted">{s.botProfileNote}</span>
-              </div>
-            ) : null}
-            {!editId && email.trim() ? (
+            {email.trim() ? (
               <label className="grid gap-1.5 md:col-span-2">
                 <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
                 <input
@@ -1564,201 +1848,29 @@ export function CustomersPage({
                 />
               </label>
             ) : null}
-            {!editId ? (
-              <label className="grid gap-1.5 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.fldAssignRouter}</span>
-                <select className={inputClass} value={assignRouterId} onChange={(e) => setAssignRouterId(e.target.value)}>
-                  <option value="">{s.assignRouterNone}</option>
-                  {routers
-                    .filter((r) => r.kind !== 'village' && !r.customerAccountId)
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>{`${r.label} · ${r.online ? s.assignRouterOnline : s.assignRouterOffline}`}</option>
-                    ))}
-                </select>
-                <span className="text-[11px] text-afro-muted">{s.assignRouterHint}</span>
-              </label>
-            ) : null}
-            {!editId ? (
-              <div className="grid gap-1.5 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
-                <div className="flex flex-wrap gap-4">
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={protoVless} onChange={(e) => setProtoVless(e.target.checked)} /> {s.protoVless}
-                  </label>
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={protoWg} onChange={(e) => setProtoWg(e.target.checked)} /> {s.protoWireguard}
-                  </label>
-                </div>
-              </div>
-            ) : (
-              <div className="grid gap-1.5 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  {editProtocols.length > 0 ? (
-                    editProtocols.map((p) => (
-                      <span
-                        key={p.protocol}
-                        className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-afro-ink"
-                      >
-                        {p.protocol}
-                        <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[13px] text-afro-muted">{s.noConfigs}</span>
-                  )}
-                  {(['vless', 'wireguard'] as const)
-                    .filter((proto) => !editProtocols.some((p) => p.protocol === proto))
-                    .map((proto) => (
-                      <button
-                        key={proto}
-                        type="button"
-                        disabled={addProtoBusy}
-                        onClick={() => void onAddProtocol(proto)}
-                        className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
-                      >
-                        <Plus size={13} />
-                        {proto}
-                      </button>
-                    ))}
-                </div>
-              </div>
-            )}
-            {editId ? (
-              <div className="grid gap-2 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.gatewaySection}</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    className={inputClass}
-                    value=""
-                    onChange={(e) => { void assignGatewayInEdit(e.target.value); }}
-                  >
-                    <option value="">{s.gatewayAssign}</option>
-                    {routers
-                      .filter((r) => r.kind !== 'village' && !r.customerAccountId)
-                      .map((r) => (
-                        <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
-                      ))}
-                  </select>
-                  {routers.filter((r) => r.customerAccountId === editId).map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => void unassignGateway(r.id)}
-                      className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-red-400 hover:text-red-500"
-                    >
-                      {r.label} · {s.gatewayUnassign}
-                    </button>
+            <label className="grid gap-1.5 md:col-span-2">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldAssignRouter}</span>
+              <select className={inputClass} value={assignRouterId} onChange={(e) => setAssignRouterId(e.target.value)}>
+                <option value="">{s.assignRouterNone}</option>
+                {routers
+                  .filter((r) => r.kind !== 'village' && !r.customerAccountId)
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>{`${r.label} · ${r.online ? s.assignRouterOnline : s.assignRouterOffline}`}</option>
                   ))}
-                </div>
-                {routers.some((r) => r.customerAccountId === editId) ? (
-                  <MicrotiksPage roleFilter="gateway" customerAccountId={editId} sessionToken={sessionToken} t={t} />
-                ) : (
-                  <span className="text-[12px] text-afro-muted">{s.gatewayNone}</span>
-                )}
+              </select>
+              <span className="text-[11px] text-afro-muted">{s.assignRouterHint}</span>
+            </label>
+            <div className="grid gap-1.5 md:col-span-2">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
+              <div className="flex flex-wrap gap-4">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={protoVless} onChange={(e) => setProtoVless(e.target.checked)} /> {s.protoVless}
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={protoWg} onChange={(e) => setProtoWg(e.target.checked)} /> {s.protoWireguard}
+                </label>
               </div>
-            ) : null}
-            {editId && editConfigs.length > 0 ? (
-              <div className="grid gap-2 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.exitSection}</span>
-                {editConfigs.map((cfg) => (
-                    <div key={cfg.id} className="flex flex-wrap items-center gap-2 rounded-md border border-afro-line px-2.5 py-2">
-                      <span className="text-[12px] font-bold uppercase tracking-wide text-afro-ink">{cfg.protocol}</span>
-                      <select
-                        className={inputClass}
-                        value={exitPath[cfg.id] ?? 'auto'}
-                        onChange={(e) => void saveExitPath(cfg.id, e.target.value)}
-                      >
-                        <option value="auto">{s.exitAuto}</option>
-                        <option value="germany">{s.exitGermany}</option>
-                        <option value="village">{s.exitStarlink}</option>
-                        <option value="direct">{s.exitDirect}</option>
-                      </select>
-                    </div>
-                ))}
-                <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
-                {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
-              </div>
-            ) : null}
-            {editId && editConfigs.length > 0 ? (
-              <CustomerUsageSection
-                account={editAccount}
-                configs={editConfigs}
-                format={format}
-                sessionToken={sessionToken}
-                t={t}
-              />
-            ) : null}
-            {editId ? (
-              <div className="grid gap-2 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">
-                  {s.devicesSection} · {devicesNetworks} {s.devicesNetworks} ({devicesActive} {s.devicesActive})
-                  {devicesNetworks >= 2 ? <span className="ml-1.5 text-red-600">⚠ {s.devicesSharing}</span> : null}
-                </span>
-                {devices.length === 0 ? (
-                  <span className="text-[12px] text-afro-muted">{s.devicesNone}</span>
-                ) : (
-                  <div className="grid gap-1">
-                    {devices.map((d) => (
-                      <div
-                        key={`${d.clientConfigId}-${d.sourceIp}`}
-                        className={`flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] ${d.active ? 'border-afro-teal' : 'border-afro-line'}`}
-                      >
-                        {d.active ? <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-afro-teal" /> : <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-afro-line" />}
-                        <span className="font-bold uppercase tracking-wide text-afro-ink">{d.protocol}</span>
-                        <span className="font-mono" dir="ltr">{d.sourceIp}</span>
-                        <span className="text-afro-muted">{s.devicesColLastSeen}: {format.time(new Date(d.lastSeenAt), false)}</span>
-                        <span className="text-afro-muted">{s.devicesColHits}: {d.hits}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <span className="text-[11px] text-afro-muted">{s.devicesCaveat}</span>
-              </div>
-            ) : null}
-            {editId && email.trim() ? (
-              <div className="grid gap-1.5 md:col-span-2">
-                <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
-                {shownPassword ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      readOnly
-                      value={shownPassword}
-                      dir="ltr"
-                      className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[13px] outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void copyPassword()}
-                      className="inline-flex h-9 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
-                    >
-                      <Copy size={13} />
-                      {pwCopied ? s.copied : s.copyLink}
-                    </button>
-                  </div>
-                ) : null}
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    value={customPw}
-                    onChange={(e) => setCustomPw(e.target.value)}
-                    dir="ltr"
-                    placeholder={s.passwordCustomPlaceholder}
-                    className={`${inputClass} min-w-[200px] flex-1`}
-                  />
-                  <button
-                    type="button"
-                    disabled={pwBusy}
-                    onClick={() => void onResetPassword()}
-                    className="inline-flex min-h-10 items-center gap-1 rounded-md border border-afro-line px-3 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
-                  >
-                    {customPw.trim() ? s.setPassword : s.generatePassword}
-                  </button>
-                </div>
-                <span className="text-[12px] text-afro-muted">
-                  {shownPassword ? s.passwordShownOnce : s.passwordHashedNote}
-                </span>
-              </div>
-            ) : null}
+            </div>
           </div>
           {error ? <p className="mt-3 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
           <div className="mt-4 flex gap-2">
@@ -1772,7 +1884,7 @@ export function CustomersPage({
             </button>
             <button
               type="button"
-              onClick={() => setEditorOpen(false)}
+              onClick={() => setCreateOpen(false)}
               className="inline-flex min-h-10 items-center rounded-md border border-afro-line px-4 text-sm font-bold text-afro-muted"
             >
               {s.cancel}
@@ -2037,7 +2149,7 @@ export function CustomersPage({
         {/* Row-action errors (status/egress toggle, delete) — the editor and the
             merge panel have their own error lines, so only show this one while
             both are closed. */}
-        {error && !editorOpen && !mergeFor ? <p className="mt-2 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
+        {error && !createOpen && !mergeFor ? <p className="mt-2 text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
         {/* One-shot merge outcome: shown after the panel closes and the source
             row has left the (active) list. */}
         {mergeSuccess ? (
@@ -2073,6 +2185,10 @@ export function CustomersPage({
               columns={visibleColumns}
               detailCollapseLabel={s.detailCollapse}
               detailExpandLabel={s.detailExpand}
+              // Controlled expand state: the row pencil (openEdit) forces a row
+              // open in Edit mode directly, not only the chevron/row tap.
+              expandedRows={expandedRows}
+              onToggleRow={onToggleRowExpand}
               minWidth="900px"
               renderDetail={renderCustomerDetail}
               // opacity groups the row before compositing, so the pinned actions
