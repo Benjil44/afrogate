@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import { DatabaseService } from '../database/database.service';
 import { createSecureTempFile } from '../common/secure-temp-file';
+import { GermanyMgmtService } from './germany-mgmt.service';
 import {
   applyAcrossEndpoints,
   buildAddUserConfig,
@@ -35,6 +36,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly database: DatabaseService,
+    private readonly germanyMgmt: GermanyMgmtService,
   ) {}
 
   onModuleInit(): void {
@@ -93,6 +95,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     if (this.running) return;
     this.running = true;
     try {
+      await this.recoverBackUnderQuota();
       const result = await this.database.query<ActiveClientRow>(
         `
           SELECT cc.id, cc.entry_uuid AS "entryUuid"
@@ -119,6 +122,50 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * Self-healing recovery for customers who were cut for over-quota and have since
+   * returned under quota (top-up, quota increase, or a usage correction). Quota
+   * enforcement sets `client_configs.status = 'limited'` and removes the user from
+   * BOTH Ireland's inbounds AND Germany's WS inbound. The Ireland reconcile below
+   * re-adds `limited` users on Ireland, but Germany is reachable only over the SSH
+   * mgmt channel (not a direct-API provisioning endpoint), so nothing re-adds them
+   * there — a topped-up customer keeps timing out on the Germany data plane.
+   *
+   * This clears the stale `limited` status for every active, under-quota client and
+   * re-provisions each recovered one on Germany (idempotent adu; a still-present
+   * user is a no-op). It acts ONLY on the transition set (usually empty), so it adds
+   * no steady-state SSH load. Best-effort: a Germany link failure is logged, the
+   * status is already cleared, and the next tick retries the adu.
+   */
+  private async recoverBackUnderQuota(): Promise<void> {
+    let recovered: { rows: ActiveClientRow[] };
+    try {
+      recovered = await this.database.query<ActiveClientRow>(
+        `
+          UPDATE client_configs cc
+          SET status = 'active', updated_at = now()
+          FROM customer_accounts ca
+          WHERE cc.customer_account_id = ca.id
+            AND cc.status = 'limited'
+            AND ca.status = 'active'
+            AND ca.deleted_at IS NULL
+            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+          RETURNING cc.id, cc.entry_uuid AS "entryUuid"
+        `,
+      );
+    } catch (error) {
+      this.logger.warn(`Provisioning recovery query failed: ${error instanceof Error ? error.message : error}`);
+      return;
+    }
+    if (!recovered.rows.length) return;
+    for (const row of recovered.rows) {
+      await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id));
+    }
+    this.logger.log(
+      `Provisioning recovery: un-limited + re-provisioned ${recovered.rows.length} back-under-quota client(s) on Germany`,
+    );
   }
 
   private async xray(args: string[]): Promise<void> {

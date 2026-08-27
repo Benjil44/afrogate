@@ -27,6 +27,35 @@ export const DE_MGMT_DEFAULT_SSH = 'root@162.19.253.235';
 export const DE_MGMT_DEFAULT_KEY = '/etc/afrows/de_mgmt_key';
 export const DE_MGMT_DEFAULT_CONNECT_TIMEOUT = 10;
 
+/** Germany's WS inbound the mgmt channel provisions onto (tag + port). The wrapper
+ *  hard-codes the same tag for `rmu`; adu carries it in the JSON below. */
+export const DE_INBOUND_TAG = 'afrows-de-ws';
+export const DE_INBOUND_PORT = 8090;
+
+/**
+ * Build the `xray api adu` JSON for one user on Germany's WS inbound. VLESS with
+ * NO flow — the WS/TLS transport rejects xtls-rprx-vision, unlike the reality
+ * inbound. The inbound descriptor MUST carry tag+port+protocol+settings or xray
+ * rejects the call. One client per call (adu is idempotent per user).
+ */
+export function buildDeAduJson(
+  uuid: string,
+  email: string,
+  tag: string = DE_INBOUND_TAG,
+  port: number = DE_INBOUND_PORT,
+): string {
+  return JSON.stringify({
+    inbounds: [
+      {
+        tag,
+        port,
+        protocol: 'vless',
+        settings: { decryption: 'none', clients: [{ id: uuid, email, level: 0 }] },
+      },
+    ],
+  });
+}
+
 export function resolveDeMgmtConfig(env: Record<string, string | undefined>): DeMgmtConfig {
   return {
     sshTarget: env.AFROWS_DE_MGMT_SSH?.trim() || DE_MGMT_DEFAULT_SSH,

@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execFile } from 'node:child_process';
 import {
+  DE_INBOUND_PORT,
+  DE_INBOUND_TAG,
+  buildDeAduJson,
   deAddUserArgs,
   deReadUsageArgs,
   deRemoveUserArgs,
@@ -57,6 +60,25 @@ export class GermanyMgmtService {
       this.logger.warn(`Germany adu failed: ${this.errMsg(error)}`);
       return false;
     }
+  }
+
+  /** Re-provision a user onto Germany's WS inbound by identity (builds the adu
+   *  JSON). Idempotent on the remote side — a user that still exists is a no-op.
+   *  Used by the provisioning recovery step to restore a customer who was cut for
+   *  over-quota and has since returned under quota (top-up / correction). */
+  async addUserByIdentity(uuid: string, email: string): Promise<boolean> {
+    const tag = this.config.get<string>('AFROWS_XRAY_DE_INBOUND_TAG')?.trim() || DE_INBOUND_TAG;
+    return this.addUser(buildDeAduJson(uuid, email, tag, this.dePort()));
+  }
+
+  private dePort(): number {
+    const raw = (
+      this.config.get<string>('AFROWS_XRAY_DE_INBOUND_PORT') ??
+      process.env.AFROWS_XRAY_DE_INBOUND_PORT ??
+      ''
+    ).trim();
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : DE_INBOUND_PORT;
   }
 
   private cfg(): DeMgmtConfig {

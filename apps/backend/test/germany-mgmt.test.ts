@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  DE_INBOUND_PORT,
+  DE_INBOUND_TAG,
   DE_MGMT_DEFAULT_KEY,
   DE_MGMT_DEFAULT_SSH,
+  buildDeAduJson,
   deAddUserArgs,
   deReadUsageArgs,
   deRemoveUserArgs,
@@ -25,6 +28,32 @@ describe('resolveDeMgmtConfig (env-configurable SSH channel)', () => {
     });
     assert.equal(cfg.sshTarget, 'ops@10.0.0.9');
     assert.equal(cfg.keyPath, '/keys/de');
+  });
+});
+
+describe('buildDeAduJson (Germany WS re-provisioning payload)', () => {
+  it('builds a VLESS adu payload with NO flow (WS/TLS rejects xtls flow)', () => {
+    const json = buildDeAduJson('8917dc5c-7770-4e32-93c7-be28a952b1b8', 'cc_d719c7d2@afrows');
+    const parsed = JSON.parse(json);
+    assert.equal(parsed.inbounds.length, 1);
+    const inbound = parsed.inbounds[0];
+    assert.equal(inbound.tag, DE_INBOUND_TAG);
+    assert.equal(inbound.tag, 'afrows-de-ws');
+    assert.equal(inbound.port, DE_INBOUND_PORT);
+    assert.equal(inbound.port, 8090);
+    assert.equal(inbound.protocol, 'vless');
+    assert.equal(inbound.settings.decryption, 'none');
+    assert.deepEqual(inbound.settings.clients, [
+      { id: '8917dc5c-7770-4e32-93c7-be28a952b1b8', email: 'cc_d719c7d2@afrows', level: 0 },
+    ]);
+    // no flow key at all — a WS inbound rejects xtls-rprx-vision
+    assert.equal('flow' in inbound.settings.clients[0], false);
+  });
+
+  it('honors tag/port overrides', () => {
+    const parsed = JSON.parse(buildDeAduJson('u', 'e', 'afrows-de-alt', 9000));
+    assert.equal(parsed.inbounds[0].tag, 'afrows-de-alt');
+    assert.equal(parsed.inbounds[0].port, 9000);
   });
 });
 
