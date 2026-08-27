@@ -69,6 +69,17 @@ describe('computeUsageDelta (baseline / high-water-mark math)', () => {
     assert.equal(computeUsageDelta(6_000_000_000, 1_000_000_000), 5_000_000_000);
   });
 
+  it('subtracts a STRING baseline (Postgres bigint comes back as a string)', () => {
+    // Regression: node-postgres returns bigint columns as strings. A bare
+    // Number.isFinite("3000") is false, which silently zeroed the baseline and
+    // recorded the WHOLE cumulative as the delta every tick (a live over-count of
+    // hundreds of GB). Both args must coerce with Number() first.
+    assert.equal(computeUsageDelta(5000, '3000'), 2000);
+    assert.equal(computeUsageDelta('5000', '3000'), 2000);
+    assert.equal(computeUsageDelta(7_581_305_161, '7580802967'), 502_194);
+    assert.equal(computeUsageDelta('3000', '3000'), 0);
+  });
+
   it('caps a single delta at 1 TB and clamps invalid current to 0', () => {
     assert.equal(computeUsageDelta(5 * MAX_DE_USAGE_DELTA_BYTES, 0), MAX_DE_USAGE_DELTA_BYTES);
     assert.equal(MAX_DE_USAGE_DELTA_BYTES, 1_000_000_000_000);

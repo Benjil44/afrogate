@@ -79,11 +79,21 @@ export function parseDeUsageBuffer(json: string): DeUsageBuffer {
  *    during a blackout, since the baseline only advances after a successful write).
  * The result is clamped to [0, MAX_DE_USAGE_DELTA_BYTES].
  */
-export function computeUsageDelta(current: number, baseline: number | null | undefined): number {
-  if (!Number.isFinite(current) || current < 0) return 0;
-  const c = Math.floor(current);
-  const b =
-    baseline == null || !Number.isFinite(baseline) || baseline < 0 ? 0 : Math.floor(baseline);
+export function computeUsageDelta(
+  current: number | string,
+  baseline: number | string | null | undefined,
+): number {
+  // Coerce BOTH args with Number() before any finiteness check. Postgres returns
+  // `bigint` columns (cumulative_bytes) as STRINGS via node-postgres, and
+  // Number.isFinite("123") is false (it never coerces), so a bare isFinite guard
+  // silently treats the baseline as 0 and records the whole cumulative as the
+  // delta every tick — a catastrophic over-count. Number() handles both the string
+  // (bigint) and number (buffer) shapes; only genuinely absent/NaN falls back to 0.
+  const c0 = Number(current);
+  if (!Number.isFinite(c0) || c0 < 0) return 0;
+  const c = Math.floor(c0);
+  const b0 = Number(baseline);
+  const b = baseline == null || !Number.isFinite(b0) || b0 < 0 ? 0 : Math.floor(b0);
   const raw = c < b ? c : c - b;
   return Math.min(Math.max(raw, 0), MAX_DE_USAGE_DELTA_BYTES);
 }

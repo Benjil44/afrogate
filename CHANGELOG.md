@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.115.2 - 2026-08-27
+
+- **Critical fix: Germany usage meter was massively over-counting (bigint-baseline bug).** The Ireland-side meter reads the last-seen cumulative baseline from Postgres, where `client_usage_de_baseline.cumulative_bytes` is a `bigint` — node-postgres returns bigint columns as **strings**. `computeUsageDelta` guarded the baseline with `Number.isFinite(baseline)`, which is `false` for a string, so the baseline was silently treated as **0 on every tick** and the *entire running cumulative* was recorded as the per-tick delta instead of the increment. The idempotency key (`ccid:cumulative`) hid it for idle users (a frozen total dedups), but any actively-downloading user was charged the sum of every 30–120s cumulative snapshot — e.g. 1.5 GB of real traffic booked as 374 GB, forcing false OVER-QUOTA disconnects.
+  - **Fix:** coerce both operands with `Number(...)` before the finiteness check in `computeUsageDelta` (`germany-usage.ts`), and coerce `cumulativeBytes` to a number in `loadDeBaselines` (`germany-usage-db.ts`) so the map's typed contract is honest. Added a regression test that feeds a string (bigint) baseline (`germany-usage.test.ts`) — 15/15 pass.
+  - **Data repair (prod, one reversible transaction, backups retained):** the durable buffer's cumulative totals are real, so true per-tick deltas were reconstructed from the cumulative sequence and the over-count subtracted from `client_configs.used_bytes` + `customer_accounts.used_bytes`; the 1546 corrupted `client_usage_events` rows were rewritten to true deltas and the affected hourly/daily rollups rebuilt. Corrected: Mahdis 467→94.4 GB, mahshid 320→86.9 GB, Masoud 2 106→37.7 GB (all back under quota), Ben (test) 1050→104.5 GB.
+
 ## 0.115.1 - 2026-08-25
 
 - **Shared dashboard component library: `DataTable` / `EmptyState` / `ErrorState` extracted to dedicated modules + table pages refactored onto them.**

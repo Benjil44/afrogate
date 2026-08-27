@@ -35,7 +35,17 @@ export async function loadDeBaselines(db: DatabaseQueryExecutor): Promise<Map<st
             observed_at AS "observedAt"
      FROM client_usage_de_baseline`,
   );
-  return new Map(result.rows.map((row) => [row.clientConfigId, row]));
+  // cumulative_bytes is a bigint → node-postgres hands it back as a STRING. Coerce
+  // to a real number here so every consumer (computeUsageDelta) subtracts a number,
+  // not a string that isFinite() rejects → treats-as-0 → over-counts (see
+  // computeUsageDelta). computeUsageDelta also coerces defensively; this keeps the
+  // map's typed contract honest.
+  return new Map(
+    result.rows.map((row) => [
+      row.clientConfigId,
+      { ...row, cumulativeBytes: Number(row.cumulativeBytes) },
+    ]),
+  );
 }
 
 /**
