@@ -1590,12 +1590,44 @@ export function CustomersPage({
       key: 'internet',
       header: s.colInternet,
       className: fitCol,
+      // Quick inline controls: a Germany⇄Starlink switch (persists egress tier; the
+      // reconciler re-routes within ~1 min) and a Bypass opt-in (allow-lists this
+      // customer to fail over to village/Starlink automatically during a blackout).
+      // Both are interactive, so the DataTable's row-tap won't toggle the detail.
       render: (a) => {
         const e = egressFor(a);
+        const gaming = a.egressTier === 'gaming';
         return (
-          <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
-            {e.failover ? '⚠ ' : ''}{e.label}
-          </span>
+          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={gaming}
+              aria-label={gaming ? s.egToNormal : s.egToGame}
+              disabled={egressBusy === a.id}
+              onClick={() => void toggleEgressTier(a)}
+              title={gaming ? s.egToNormal : s.egToGame}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${gaming ? 'bg-sky-500' : 'bg-emerald-500'}`}
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+            </button>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+              {e.failover ? '⚠ ' : ''}{e.label}
+            </span>
+            <label
+              className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-bold text-afro-muted"
+              title={s.egBypassHint}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(a.egressBypassEnabled)}
+                disabled={egressBusy === a.id}
+                onChange={() => void toggleBypass(a)}
+                className="h-3.5 w-3.5 accent-afro-teal disabled:opacity-50"
+              />
+              {s.egBypass}
+            </label>
+          </div>
         );
       },
     },

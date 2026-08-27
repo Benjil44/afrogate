@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.7 - 2026-08-27
+
+- **Inline Germany⇄Starlink toggle + Bypass control back in the Customer row's Internet column.** Operators asked for one-tap egress control without opening Edit. The Internet column now shows a green/blue switch (persists `egress_tier`: normal→Germany / gaming→Starlink; the egress reconciler re-routes within ~1 min) beside the current-path pill, plus a **Bypass** checkbox (`egress_bypass_enabled`) that allow-lists the customer to auto-fail-over to village/Starlink during a blackout. Both persist immediately (optimistic) and are interactive, so the DataTable row-tap still opens the detail panel only when tapping elsewhere. The same controls remain in the Edit-mode Routing section. No backend change — the bypass auto-failover behavior already exists.
+
 ## 0.115.6 - 2026-08-27
 
 - **Usage charts: default to the VLESS config (primary) and remember the operator's per-account choice.** For a multi-config customer the usage panel picked `configs[0]` — often the WireGuard config, which showed empty charts while the VLESS config had the data. The selector now defaults to the VLESS config (the primary account; WireGuard is the alternative) and **persists the chosen config per account** in `localStorage` (`afrows.usageConfig.<accountId>`), so re-opening a row restores the last config you viewed (VLESS or WireGuard) instead of resetting. Storage access is wrapped so private-mode/disabled-storage just falls back to the default. `CustomerUsageSection` fetch/`UsageChart` logic unchanged.
