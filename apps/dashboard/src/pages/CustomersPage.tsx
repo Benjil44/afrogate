@@ -91,6 +91,13 @@ function CustomerUsageSection({
     };
   }, [sessionToken, selectedId, retryNonce]);
 
+  // Collapsed empty state: once loaded (no error), if neither window has any
+  // real usage, a single compact line replaces the two big empty chart boxes.
+  // Reads only already-fetched `series` state — the fetch above is untouched.
+  const hourlyHasData = (series?.hourly ?? []).some((p) => p.usedBytes > 0);
+  const dailyHasData = (series?.daily ?? []).some((p) => p.usedBytes > 0);
+  const noUsageInWindow = !loading && !loadFailed && !hourlyHasData && !dailyHasData;
+
   const used = account?.usedBytes ?? 0;
   const limit = account?.quotaLimitBytes ?? null;
   const hasLimit = limit != null && limit > 0;
@@ -161,6 +168,13 @@ function CustomerUsageSection({
           >
             {s.usageRetry}
           </button>
+        </div>
+      ) : noUsageInWindow ? (
+        // Compact single line instead of two tall empty chart panels — same
+        // fetched data, just a denser render when there's nothing to plot.
+        <div className="flex items-center gap-1.5 rounded-md border border-dashed border-afro-line bg-afro-page px-3 py-2 text-[12px] text-afro-muted">
+          <ChartColumn aria-hidden size={13} />
+          {s.usageEmptyCompact}
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
@@ -975,6 +989,11 @@ export function CustomersPage({
     st === 'active' ? '#1f9d57' : st === 'suspended' || st === 'disabled' ? '#d23f3f' : '#9aa7ad';
 
   const inputClass = 'min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal';
+  // Edit-panel field grouping (Identity / Quota & status / Routing / Configs &
+  // gateway / Tags & notes / login password) — a consistent card + heading so
+  // the flat 15-field form scans as sections instead of one long list.
+  const sectionCardClass = 'grid gap-2.5 rounded-md border border-afro-line bg-white p-2.5';
+  const sectionHeadingClass = 'text-[11px] font-bold uppercase tracking-wide text-afro-muted';
 
   // Inline detail panel under each row — the single place to view details and
   // edit a customer on any screen size. The chevron always opens View mode
@@ -985,23 +1004,27 @@ export function CustomersPage({
     editId === a.id ? renderCustomerEdit(a) : renderCustomerView(a);
 
   const renderCustomerView = (a: AdminCustomerAccountSummary) => {
-    const e = egressFor(a);
     const tier = a.egressTier === 'gaming' ? 'gaming' : 'normal';
     const price = priceFor(tier);
     const currency = tierPrices.find((p) => p.tier === tier)?.currency ?? 'IRT';
-    const hasQuota = a.quotaLimitBytes != null && a.quotaLimitBytes > 0;
     // Bot-v2 fields (phone/gems/referrals) — rows only appear once the backend
     // serves them, so pre-migration accounts don't render four empty rows.
     const v2 = a;
     const configs = rowConfigs[a.id] ?? [];
+    const toolbarBtn = 'inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-sm font-bold md:min-h-9';
+    const toolbarGhost = 'inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] font-semibold text-afro-muted md:min-h-9';
 
     return (
       <div className="grid gap-2.5">
-        <div className="flex flex-wrap gap-2">
+        {/* Compact horizontal toolbar — a normal-height row, not a stretched
+            column: Configs (primary) leads, Edit is secondary, Merge/Delete are
+            de-emphasized (ghost) so the destructive action never reads as loud
+            as Configs/Edit. Delete stays last so it's never the easy accidental tap. */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => openConfigs(a)}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-afro-teal px-3 text-sm font-bold text-white hover:opacity-90 sm:flex-none"
+            className={`${toolbarBtn} bg-afro-teal text-white hover:opacity-90`}
           >
             <Link2 size={15} />
             {s.configsAction}
@@ -1009,7 +1032,7 @@ export function CustomersPage({
           <button
             type="button"
             onClick={() => openEdit(a)}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal sm:flex-none"
+            className={`${toolbarBtn} border border-afro-line bg-white text-afro-ink hover:border-afro-teal hover:text-afro-teal`}
           >
             <Pencil size={15} />
             {s.editAction}
@@ -1020,7 +1043,7 @@ export function CustomersPage({
             <button
               type="button"
               onClick={() => openMerge(a)}
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-white px-3 text-sm font-bold text-amber-700 hover:border-amber-500 hover:bg-amber-50 sm:flex-none"
+              className={`${toolbarGhost} hover:bg-amber-50 hover:text-amber-700`}
             >
               <GitMerge size={15} />
               {s.mergeAction}
@@ -1030,38 +1053,33 @@ export function CustomersPage({
             <button
               type="button"
               onClick={() => void onRestoreAccount(a.id, nameOf(a))}
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-700 hover:border-emerald-500 hover:bg-emerald-50 sm:flex-none"
+              className={`${toolbarGhost} hover:bg-emerald-50 hover:text-emerald-700`}
             >
               <ArchiveRestore size={15} />
               {s.restoreAccount}
             </button>
           ) : (
-            // Destructive: last on purpose so it's never the easy accidental tap.
+            // Destructive: last on purpose, and quiet until hovered so it never
+            // reads as loud as Configs/Edit.
             <button
               type="button"
               onClick={() => void onDeleteAccount(a.id, nameOf(a))}
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-red-300 bg-white px-3 text-sm font-bold text-red-600 hover:border-red-500 hover:bg-red-50 sm:flex-none"
+              className={`${toolbarGhost} hover:bg-red-50 hover:text-red-600`}
             >
               <Trash2 size={15} />
               {s.deleteAccount}
             </button>
           )}
         </div>
+        {/* Only fields NOT already visible in the row (status/used/clients/
+            internet/last-connected) — and only when there's a real value, so an
+            account with no phone/expiry/referral code doesn't leave empty rows. */}
         <div className="grid gap-1.5 sm:grid-cols-2">
-          <DetailRow label={s.colEmail}>{a.loginEmail || '—'}</DetailRow>
-          <DetailRow label={s.colStatus}>{String(a.status)}</DetailRow>
-          <DetailRow label={s.colUsed}>
-            {hasQuota ? `${format.bytes(a.usedBytes)} / ${format.bytes(a.quotaLimitBytes ?? 0)}` : `${format.bytes(a.usedBytes)} · ∞`}
-          </DetailRow>
-          <DetailRow label={s.colClients}>{`${format.integer(a.activeClientCount)} / ${format.integer(a.clientCount)}`}</DetailRow>
-          <DetailRow label={s.colInternet}>
-            {`${a.egressTier === 'gaming' ? s.egModeGame : s.egModeNormal} · ${e.failover ? '⚠ ' : ''}${e.label}`}
-          </DetailRow>
-          <DetailRow label={s.colExpiry}>{a.expiresAt ? format.time(new Date(a.expiresAt), false) : '—'}</DetailRow>
-          <DetailRow label={s.colLastConnected}>{a.lastConnectedAt ? format.time(new Date(a.lastConnectedAt), false) : '—'}</DetailRow>
+          {a.loginEmail ? <DetailRow label={s.colEmail}>{a.loginEmail}</DetailRow> : null}
+          {a.expiresAt ? <DetailRow label={s.colExpiry}>{format.time(new Date(a.expiresAt), false)}</DetailRow> : null}
           <DetailRow label={s.colSeller}>{a.resellerDisplayName || s.direct}</DetailRow>
-          {v2.phone !== undefined ? (
-            <DetailRow label={s.colPhone}>{v2.phone ? <span dir="ltr">{v2.phone}</span> : '—'}</DetailRow>
+          {v2.phone ? (
+            <DetailRow label={s.colPhone}><span dir="ltr">{v2.phone}</span></DetailRow>
           ) : null}
           {v2.gemsBalance !== undefined ? (
             <DetailRow label={s.colGems}>
@@ -1071,10 +1089,8 @@ export function CustomersPage({
               </span>
             </DetailRow>
           ) : null}
-          {v2.referralCode !== undefined ? (
-            <DetailRow label={s.colReferralCode}>
-              {v2.referralCode ? <span className="font-mono" dir="ltr">{v2.referralCode}</span> : '—'}
-            </DetailRow>
+          {v2.referralCode ? (
+            <DetailRow label={s.colReferralCode}><span className="font-mono" dir="ltr">{v2.referralCode}</span></DetailRow>
           ) : null}
           {v2.referralCount !== undefined ? (
             <DetailRow label={s.colReferrals}>{format.integer(v2.referralCount)}</DetailRow>
@@ -1155,190 +1171,215 @@ export function CustomersPage({
             {s.viewAction}
           </button>
         </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldName}</span>
-            <input value={name} onChange={(e2) => setName(e2.target.value)} className={inputClass} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldEmail}</span>
-            <input value={email} onChange={(e2) => setEmail(e2.target.value)} dir="ltr" className={inputClass} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegram}</span>
-            <input value={telegram} onChange={(e2) => setTelegram(e2.target.value)} dir="ltr" className={inputClass} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegramId}</span>
-            <input value={telegramId} onChange={(e2) => setTelegramId(e2.target.value)} dir="ltr" inputMode="numeric" placeholder={s.fldTelegramIdHint} className={inputClass} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldQuotaGb}</span>
-            <input value={quotaGb} onChange={(e2) => setQuotaGb(e2.target.value)} dir="ltr" inputMode="decimal" className={inputClass} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldPerClientGb}</span>
-            <input value={perClientGb} onChange={(e2) => setPerClientGb(e2.target.value)} dir="ltr" inputMode="decimal" className={inputClass} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldScope}</span>
-            <select value={scope} onChange={(e2) => setScope(e2.target.value as Scope)} className={inputClass}>
-              <option value="account_shared">account_shared</option>
-              <option value="per_client">per_client</option>
-            </select>
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldStatus}</span>
-            <select value={status} onChange={(e2) => setStatus(e2.target.value as Status)} className={inputClass}>
-              <option value="active">active</option>
-              <option value="suspended">suspended</option>
-              <option value="disabled">disabled</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2 self-end pb-2">
-            <input
-              type="checkbox"
-              checked={gamingEntitled}
-              onChange={(e2) => setGamingEntitled(e2.target.checked)}
-              className="h-4 w-4 accent-afro-accent"
-            />
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldGamingEntitled}</span>
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldExpiry}</span>
-            <input type="date" value={expiresAt} onChange={(e2) => setExpiresAt(e2.target.value)} className={inputClass} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldTags}</span>
-            <input value={tagsInput} onChange={(e2) => setTagsInput(e2.target.value)} placeholder="vip, trial" className={inputClass} />
-          </label>
-          <label className="grid gap-1.5 md:col-span-2">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
-            <input value={notes} onChange={(e2) => setNotes(e2.target.value)} className={inputClass} />
-          </label>
-        </div>
+        {/* Identity */}
+        <section className={sectionCardClass}>
+          <h4 className={sectionHeadingClass}>{s.editSectionIdentity}</h4>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldName}</span>
+              <input value={name} onChange={(e2) => setName(e2.target.value)} className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldEmail}</span>
+              <input value={email} onChange={(e2) => setEmail(e2.target.value)} dir="ltr" className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegram}</span>
+              <input value={telegram} onChange={(e2) => setTelegram(e2.target.value)} dir="ltr" className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegramId}</span>
+              <input value={telegramId} onChange={(e2) => setTelegramId(e2.target.value)} dir="ltr" inputMode="numeric" placeholder={s.fldTelegramIdHint} className={inputClass} />
+            </label>
+          </div>
+        </section>
 
-        {/* Internet path — relocated from the row (declutter): gaming tier implies
-            Starlink, normal implies Germany, so one toggle plus the bypass opt-in
-            covers both former row controls. Both persist immediately, like they
-            did on the row, instead of waiting for Save. */}
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-afro-line bg-white p-2.5">
-          <span className="text-[13px] font-bold text-afro-muted">{s.fldEgressTier}</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={gaming}
-            disabled={egressBusy === a.id}
-            onClick={() => void toggleEgressTier(a)}
-            title={gaming ? s.egToNormal : s.egToGame}
-            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${gaming ? 'bg-sky-500' : 'bg-emerald-500'}`}
-          >
-            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-          </button>
-          <span className="text-[12px] font-bold text-afro-muted">{gaming ? s.egModeGame : s.egModeNormal}</span>
-          <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
-            {e.failover ? '⚠ ' : ''}{e.label}
-          </span>
-          <label className="inline-flex cursor-pointer items-center gap-1 text-[12px] font-bold text-afro-muted" title={s.egBypassHint}>
-            <input
-              type="checkbox"
-              checked={Boolean(a.egressBypassEnabled)}
+        {/* Quota & status */}
+        <section className={sectionCardClass}>
+          <h4 className={sectionHeadingClass}>{s.editSectionQuota}</h4>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldQuotaGb}</span>
+              <input value={quotaGb} onChange={(e2) => setQuotaGb(e2.target.value)} dir="ltr" inputMode="decimal" className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldPerClientGb}</span>
+              <input value={perClientGb} onChange={(e2) => setPerClientGb(e2.target.value)} dir="ltr" inputMode="decimal" className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldScope}</span>
+              <select value={scope} onChange={(e2) => setScope(e2.target.value as Scope)} className={inputClass}>
+                <option value="account_shared">account_shared</option>
+                <option value="per_client">per_client</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldStatus}</span>
+              <select value={status} onChange={(e2) => setStatus(e2.target.value as Status)} className={inputClass}>
+                <option value="active">active</option>
+                <option value="suspended">suspended</option>
+                <option value="disabled">disabled</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldExpiry}</span>
+              <input type="date" value={expiresAt} onChange={(e2) => setExpiresAt(e2.target.value)} className={inputClass} />
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2">
+              <input
+                type="checkbox"
+                checked={gamingEntitled}
+                onChange={(e2) => setGamingEntitled(e2.target.checked)}
+                className="h-4 w-4 accent-afro-accent"
+              />
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldGamingEntitled}</span>
+            </label>
+          </div>
+        </section>
+
+        {/* Routing / egress — relocated from the row (declutter): gaming tier
+            implies Starlink, normal implies Germany, so one toggle plus the
+            bypass opt-in covers both former row controls. Both persist
+            immediately, like they did on the row, instead of waiting for Save. */}
+        <section className={sectionCardClass}>
+          <h4 className={sectionHeadingClass}>{s.editSectionRouting}</h4>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldEgressTier}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={gaming}
               disabled={egressBusy === a.id}
-              onChange={() => void toggleBypass(a)}
-              className="h-3.5 w-3.5 accent-afro-teal disabled:opacity-50"
-            />
-            {s.egBypass}
-          </label>
-        </div>
+              onClick={() => void toggleEgressTier(a)}
+              title={gaming ? s.egToNormal : s.egToGame}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${gaming ? 'bg-sky-500' : 'bg-emerald-500'}`}
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${gaming ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-[12px] font-bold text-afro-muted">{gaming ? s.egModeGame : s.egModeNormal}</span>
+            <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
+              {e.failover ? '⚠ ' : ''}{e.label}
+            </span>
+            <label className="inline-flex cursor-pointer items-center gap-1 text-[12px] font-bold text-afro-muted" title={s.egBypassHint}>
+              <input
+                type="checkbox"
+                checked={Boolean(a.egressBypassEnabled)}
+                disabled={egressBusy === a.id}
+                onChange={() => void toggleBypass(a)}
+                className="h-3.5 w-3.5 accent-afro-teal disabled:opacity-50"
+              />
+              {s.egBypass}
+            </label>
+          </div>
+        </section>
 
-        <div className="grid gap-1.5">
-          <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
-          <div className="flex flex-wrap items-center gap-2">
-            {editProtocols.length > 0 ? (
-              editProtocols.map((p) => (
-                <span
-                  key={p.protocol}
-                  className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-afro-ink"
-                >
-                  {p.protocol}
-                  <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
-                </span>
-              ))
-            ) : (
-              <span className="text-[13px] text-afro-muted">{s.noConfigs}</span>
-            )}
-            {(['vless', 'wireguard'] as const)
-              .filter((proto) => !editProtocols.some((p) => p.protocol === proto))
-              .map((proto) => (
+        {/* Configs & gateway */}
+        <section className={`${sectionCardClass} gap-3`}>
+          <h4 className={sectionHeadingClass}>{s.editSectionConfigs}</h4>
+          <div className="grid gap-1.5">
+            <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {editProtocols.length > 0 ? (
+                editProtocols.map((p) => (
+                  <span
+                    key={p.protocol}
+                    className="inline-flex items-center gap-1 rounded-full border border-afro-line bg-afro-page px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-afro-ink"
+                  >
+                    {p.protocol}
+                    <span className="font-normal normal-case text-afro-muted">{format.bytes(p.usedBytes)}</span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-[13px] text-afro-muted">{s.noConfigs}</span>
+              )}
+              {(['vless', 'wireguard'] as const)
+                .filter((proto) => !editProtocols.some((p) => p.protocol === proto))
+                .map((proto) => (
+                  <button
+                    key={proto}
+                    type="button"
+                    disabled={addProtoBusy}
+                    onClick={() => void onAddProtocol(proto)}
+                    className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                  >
+                    <Plus size={13} />
+                    {proto}
+                  </button>
+                ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <span className="text-[13px] font-bold text-afro-muted">{s.gatewaySection}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className={inputClass}
+                value=""
+                onChange={(e2) => { void assignGatewayInEdit(e2.target.value); }}
+              >
+                <option value="">{s.gatewayAssign}</option>
+                {routers
+                  .filter((r) => r.kind !== 'village' && !r.customerAccountId)
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
+                  ))}
+              </select>
+              {routers.filter((r) => r.customerAccountId === a.id).map((r) => (
                 <button
-                  key={proto}
+                  key={r.id}
                   type="button"
-                  disabled={addProtoBusy}
-                  onClick={() => void onAddProtocol(proto)}
-                  className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                  onClick={() => void unassignGateway(r.id)}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-red-400 hover:text-red-500"
                 >
-                  <Plus size={13} />
-                  {proto}
+                  {r.label} · {s.gatewayUnassign}
                 </button>
               ))}
+            </div>
+            {routers.some((r) => r.customerAccountId === a.id) ? (
+              <MicrotiksPage roleFilter="gateway" customerAccountId={a.id} sessionToken={sessionToken} t={t} />
+            ) : (
+              <span className="text-[12px] text-afro-muted">{s.gatewayNone}</span>
+            )}
           </div>
-        </div>
 
-        <div className="grid gap-2">
-          <span className="text-[13px] font-bold text-afro-muted">{s.gatewaySection}</span>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              className={inputClass}
-              value=""
-              onChange={(e2) => { void assignGatewayInEdit(e2.target.value); }}
-            >
-              <option value="">{s.gatewayAssign}</option>
-              {routers
-                .filter((r) => r.kind !== 'village' && !r.customerAccountId)
-                .map((r) => (
-                  <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
-                ))}
-            </select>
-            {routers.filter((r) => r.customerAccountId === a.id).map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => void unassignGateway(r.id)}
-                className="inline-flex min-h-8 items-center gap-1 rounded-md border border-afro-line px-2.5 text-[12px] font-bold text-afro-ink hover:border-red-400 hover:text-red-500"
-              >
-                {r.label} · {s.gatewayUnassign}
-              </button>
-            ))}
-          </div>
-          {routers.some((r) => r.customerAccountId === a.id) ? (
-            <MicrotiksPage roleFilter="gateway" customerAccountId={a.id} sessionToken={sessionToken} t={t} />
-          ) : (
-            <span className="text-[12px] text-afro-muted">{s.gatewayNone}</span>
-          )}
-        </div>
+          {configs.length > 0 ? (
+            <div className="grid gap-2">
+              <span className="text-[13px] font-bold text-afro-muted">{s.exitSection}</span>
+              {configs.map((cfg) => (
+                <div key={cfg.id} className="flex flex-wrap items-center gap-2 rounded-md border border-afro-line px-2.5 py-2">
+                  <span className="text-[12px] font-bold uppercase tracking-wide text-afro-ink">{cfg.protocol}</span>
+                  <select
+                    className={inputClass}
+                    value={exitPath[cfg.id] ?? 'auto'}
+                    onChange={(e2) => void saveExitPath(cfg.id, e2.target.value)}
+                  >
+                    <option value="auto">{s.exitAuto}</option>
+                    <option value="germany">{s.exitGermany}</option>
+                    <option value="village">{s.exitStarlink}</option>
+                    <option value="direct">{s.exitDirect}</option>
+                  </select>
+                </div>
+              ))}
+              <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
+              {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
+            </div>
+          ) : null}
+        </section>
 
-        {configs.length > 0 ? (
-          <div className="grid gap-2">
-            <span className="text-[13px] font-bold text-afro-muted">{s.exitSection}</span>
-            {configs.map((cfg) => (
-              <div key={cfg.id} className="flex flex-wrap items-center gap-2 rounded-md border border-afro-line px-2.5 py-2">
-                <span className="text-[12px] font-bold uppercase tracking-wide text-afro-ink">{cfg.protocol}</span>
-                <select
-                  className={inputClass}
-                  value={exitPath[cfg.id] ?? 'auto'}
-                  onChange={(e2) => void saveExitPath(cfg.id, e2.target.value)}
-                >
-                  <option value="auto">{s.exitAuto}</option>
-                  <option value="germany">{s.exitGermany}</option>
-                  <option value="village">{s.exitStarlink}</option>
-                  <option value="direct">{s.exitDirect}</option>
-                </select>
-              </div>
-            ))}
-            <span className="text-[11px] text-afro-muted">{s.exitSavedNote}</span>
-            {exitMsg ? <span className="text-[12px] font-bold text-afro-teal">{exitMsg}</span> : null}
+        {/* Tags & notes */}
+        <section className={sectionCardClass}>
+          <h4 className={sectionHeadingClass}>{s.editSectionTags}</h4>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldTags}</span>
+              <input value={tagsInput} onChange={(e2) => setTagsInput(e2.target.value)} placeholder="vip, trial" className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldNotes}</span>
+              <input value={notes} onChange={(e2) => setNotes(e2.target.value)} className={inputClass} />
+            </label>
           </div>
-        ) : null}
+        </section>
 
         <div className="grid gap-2">
           <span className="text-[13px] font-bold text-afro-muted">
@@ -1367,8 +1408,8 @@ export function CustomersPage({
         </div>
 
         {email.trim() ? (
-          <div className="grid gap-1.5">
-            <span className="text-[13px] font-bold text-afro-muted">{s.fldLoginPassword}</span>
+          <section className={sectionCardClass}>
+            <h4 className={sectionHeadingClass}>{s.fldLoginPassword}</h4>
             {shownPassword ? (
               <div className="flex items-center gap-2">
                 <input
@@ -1407,7 +1448,7 @@ export function CustomersPage({
             <span className="text-[12px] text-afro-muted">
               {shownPassword ? s.passwordShownOnce : s.passwordHashedNote}
             </span>
-          </div>
+          </section>
         ) : null}
 
         {error ? <p className="text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
