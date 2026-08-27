@@ -91,13 +91,6 @@ function CustomerUsageSection({
     };
   }, [sessionToken, selectedId, retryNonce]);
 
-  // Collapsed empty state: once loaded (no error), if neither window has any
-  // real usage, a single compact line replaces the two big empty chart boxes.
-  // Reads only already-fetched `series` state — the fetch above is untouched.
-  const hourlyHasData = (series?.hourly ?? []).some((p) => p.usedBytes > 0);
-  const dailyHasData = (series?.daily ?? []).some((p) => p.usedBytes > 0);
-  const noUsageInWindow = !loading && !loadFailed && !hourlyHasData && !dailyHasData;
-
   const used = account?.usedBytes ?? 0;
   const limit = account?.quotaLimitBytes ?? null;
   const hasLimit = limit != null && limit > 0;
@@ -168,13 +161,6 @@ function CustomerUsageSection({
           >
             {s.usageRetry}
           </button>
-        </div>
-      ) : noUsageInWindow ? (
-        // Compact single line instead of two tall empty chart panels — same
-        // fetched data, just a denser render when there's nothing to plot.
-        <div className="flex items-center gap-1.5 rounded-md border border-dashed border-afro-line bg-afro-page px-3 py-2 text-[12px] text-afro-muted">
-          <ChartColumn aria-hidden size={13} />
-          {s.usageEmptyCompact}
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
@@ -1081,14 +1067,6 @@ export function CustomersPage({
           {v2.phone ? (
             <DetailRow label={s.colPhone}><span dir="ltr">{v2.phone}</span></DetailRow>
           ) : null}
-          {v2.gemsBalance !== undefined ? (
-            <DetailRow label={s.colGems}>
-              <span className="inline-flex items-center gap-1 tabular-nums">
-                <Gem aria-hidden className="text-afro-teal" size={13} />
-                {format.integer(v2.gemsBalance)}
-              </span>
-            </DetailRow>
-          ) : null}
           {v2.referralCode ? (
             <DetailRow label={s.colReferralCode}><span className="font-mono" dir="ltr">{v2.referralCode}</span></DetailRow>
           ) : null}
@@ -1105,49 +1083,52 @@ export function CustomersPage({
         ) : rowConfigsLoading[a.id] ? (
           <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
         ) : null}
-        {v2.gemsBalance !== undefined ? (
-          // Manual wallet adjustment: delta + audited reason -> confirm -> one POST.
-          <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
-            <span className="flex items-center gap-1.5 text-[12px] font-bold text-afro-muted">
-              <Gem aria-hidden size={13} />
-              {s.gemsAdjustTitle}
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                aria-label={s.gemsAdjustTitle}
-                className="min-h-11 w-40 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
-                dir="ltr"
-                inputMode="numeric"
-                onChange={(e2) => setGemsDelta((cur) => ({ ...cur, [a.id]: e2.target.value }))}
-                placeholder={s.gemsDeltaPlaceholder}
-                value={gemsDelta[a.id] ?? ''}
-              />
-              <input
-                aria-label={s.gemsReasonPlaceholder}
-                className="min-h-11 min-w-[180px] flex-1 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
-                onChange={(e2) => setGemsReason((cur) => ({ ...cur, [a.id]: e2.target.value }))}
-                placeholder={s.gemsReasonPlaceholder}
-                value={gemsReason[a.id] ?? ''}
-              />
-              <button
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-afro-teal px-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 md:min-h-9"
-                disabled={gemsBusy === a.id}
-                onClick={() => void onAdjustGems(a)}
-                type="button"
-              >
-                {s.gemsApply}
-              </button>
-            </div>
-            {gemsMsg && gemsMsg.id === a.id ? (
-              <span className={`text-[12px] font-bold ${gemsMsg.ok ? 'text-afro-teal' : 'text-red-600'}`} role="status">
-                {gemsMsg.text}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
       </div>
     );
   };
+
+  /** Audited wallet (gems) adjustment: delta + reason -> confirm -> one POST.
+   *  Lives in Edit mode (an occasional operator action), out of the View panel. */
+  const renderGemsAdjust = (a: AdminCustomerAccountSummary) =>
+    a.gemsBalance === undefined ? null : (
+      <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+        <span className="flex items-center gap-1.5 text-[12px] font-bold text-afro-muted">
+          <Gem aria-hidden size={13} />
+          {s.gemsAdjustTitle} · <span className="tabular-nums text-afro-ink">{format.integer(a.gemsBalance)}</span>
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            aria-label={s.gemsAdjustTitle}
+            className="min-h-11 w-40 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
+            dir="ltr"
+            inputMode="numeric"
+            onChange={(e2) => setGemsDelta((cur) => ({ ...cur, [a.id]: e2.target.value }))}
+            placeholder={s.gemsDeltaPlaceholder}
+            value={gemsDelta[a.id] ?? ''}
+          />
+          <input
+            aria-label={s.gemsReasonPlaceholder}
+            className="min-h-11 min-w-[180px] flex-1 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal md:min-h-9"
+            onChange={(e2) => setGemsReason((cur) => ({ ...cur, [a.id]: e2.target.value }))}
+            placeholder={s.gemsReasonPlaceholder}
+            value={gemsReason[a.id] ?? ''}
+          />
+          <button
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-afro-teal px-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 md:min-h-9"
+            disabled={gemsBusy === a.id}
+            onClick={() => void onAdjustGems(a)}
+            type="button"
+          >
+            {s.gemsApply}
+          </button>
+        </div>
+        {gemsMsg && gemsMsg.id === a.id ? (
+          <span className={`text-[12px] font-bold ${gemsMsg.ok ? 'text-afro-teal' : 'text-red-600'}`} role="status">
+            {gemsMsg.text}
+          </span>
+        ) : null}
+      </div>
+    );
 
   // Edit mode: every editable field from the old top-of-page editor, now
   // rendered inline under the row it edits. Internet path (tier + bypass) is
@@ -1450,6 +1431,8 @@ export function CustomersPage({
             </span>
           </section>
         ) : null}
+
+        {renderGemsAdjust(a)}
 
         {error ? <p className="text-[13px] font-bold text-[#b91c1c]">{error}</p> : null}
         <div className="flex gap-2">

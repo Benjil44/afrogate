@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.115.5 - 2026-08-27
+
+- **Customer View panel: hourly/daily usage charts always shown; Gems moved out of View.** Operator feedback: the usage charts (which exist) weren't visible for idle accounts, and the gems block wasn't wanted in the summary view.
+  - Reverted the collapsed "No usage yet" single-line state in `CustomerUsageSection` — the **Hourly (48h) + Daily (30d) chart panels now always render** (each shows its own empty label when a given account has no windowed data), so the charts are always where operators expect them. `CustomerUsageSection` fetch/`UsageChart` logic unchanged.
+  - **Removed the Gems row + the Adjust-gems panel from View mode** and relocated the audited wallet-adjust control into **Edit mode** (`renderGemsAdjust`, shown with the current balance) — the feature is preserved for the occasional adjustment without cluttering the at-a-glance View.
+
 ## 0.115.4 - 2026-08-27
 
 - **Customers page: compact the inline View/Edit panel — button toolbar, de-duped details, grouped edit form.** Operator screenshots showed the panel reading as visually bloated (tall action buttons, duplicated fields, two big empty chart boxes, a flat 15-field edit form).
