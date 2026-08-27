@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.8 - 2026-08-27
+
+- **Fix: customers silently fell off the Germany inbound after re-enable / other transitions (Germany membership reconciler).** Enforcement removes a user from BOTH Ireland and Germany when their account is disabled or over-quota; the reconcile re-adds `<>disabled` users on Ireland, and `recoverBackUnderQuota` (0.115.3) re-adds the over-quota→top-up case on Germany — but a **disabled→re-enabled** account (and fresh signups, transient rmu's) were never re-added to Germany, so their VLESS kept failing until a manual `adu`. `XrayProvisioningService.reconcile` now runs a throttled **`ensureGermanyMembership`** sweep: every `AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS` (default 300s) it ensures **every active, under-quota, non-disabled VLESS client is present on Germany's `afrows-de-ws` inbound** via idempotent `GermanyMgmtService.addUserByIdentity`. Idempotent `adu` can only ADD missing users — it never disconnects anyone already present — closing the whole class of "silently off Germany" bugs (disable/enable, top-up, new signup). Gated on `AFROWS_DE_MGMT_SSH` being set; best-effort (link failure logs, next window retries).
+
 ## 0.115.7 - 2026-08-27
 
 - **Inline Germany⇄Starlink toggle + Bypass control back in the Customer row's Internet column.** Operators asked for one-tap egress control without opening Edit. The Internet column now shows a green/blue switch (persists `egress_tier`: normal→Germany / gaming→Starlink; the egress reconciler re-routes within ~1 min) beside the current-path pill, plus a **Bypass** checkbox (`egress_bypass_enabled`) that allow-lists the customer to auto-fail-over to village/Starlink during a blackout. Both persist immediately (optimistic) and are interactive, so the DataTable row-tap still opens the detail panel only when tapping elsewhere. The same controls remain in the Edit-mode Routing section. No backend change — the bypass auto-failover behavior already exists.

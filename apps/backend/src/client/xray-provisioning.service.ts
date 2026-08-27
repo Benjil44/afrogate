@@ -32,6 +32,8 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(XrayProvisioningService.name);
   private timer: NodeJS.Timeout | undefined;
   private running = false;
+  /** Throttle for the full Germany-membership sweep (epoch ms of last run). */
+  private lastGermanySweepAt = 0;
 
   constructor(
     private readonly config: ConfigService,
@@ -96,6 +98,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       await this.recoverBackUnderQuota();
+      await this.ensureGermanyMembership();
       const result = await this.database.query<ActiveClientRow>(
         `
           SELECT cc.id, cc.entry_uuid AS "entryUuid"
@@ -166,6 +169,60 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Provisioning recovery: un-limited + re-provisioned ${recovered.rows.length} back-under-quota client(s) on Germany`,
     );
+  }
+
+  /**
+   * Throttled full sweep that guarantees EVERY active, under-quota, non-disabled
+   * client is present on Germany's WS inbound. Germany is reachable only over the
+   * SSH mgmt channel (not a direct-API provisioning endpoint), so it isn't covered
+   * by the Ireland reconcile below, and `recoverBackUnderQuota` only catches the
+   * over-quota→top-up transition. Any OTHER way a user returns to good standing
+   * (disabled→re-enabled, a fresh signup, a transient enforcement rmu) would leave
+   * them silently off Germany until this runs. `adu` is idempotent — a still-present
+   * user is a no-op — so this can only ADD missing users, never disconnect anyone.
+   *
+   * Bounded to one run per AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS (default 300s) so the
+   * per-user SSH calls don't run every 60s tick. Best-effort: a link failure logs
+   * and the next window retries; a per-user failure never sinks the rest.
+   */
+  private async ensureGermanyMembership(): Promise<void> {
+    if (!this.germanyEnabled()) return;
+    const now = Date.now();
+    if (now - this.lastGermanySweepAt < this.germanySweepIntervalMs()) return;
+    this.lastGermanySweepAt = now;
+
+    let rows: { rows: ActiveClientRow[] };
+    try {
+      rows = await this.database.query<ActiveClientRow>(
+        `
+          SELECT cc.id, cc.entry_uuid AS "entryUuid"
+          FROM client_configs cc
+          JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+          WHERE cc.status <> 'disabled'
+            AND ca.status = 'active'
+            AND ca.deleted_at IS NULL
+            AND lower(cc.protocol) = 'vless'
+            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+        `,
+      );
+    } catch (error) {
+      this.logger.warn(`Germany membership query failed: ${error instanceof Error ? error.message : error}`);
+      return;
+    }
+    let ensured = 0;
+    for (const row of rows.rows) {
+      if (await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id))) ensured += 1;
+    }
+    if (ensured) {
+      this.logger.log(`Germany membership sweep: ensured ${ensured}/${rows.rows.length} active under-quota client(s) present on Germany`);
+    }
+  }
+
+  private germanyEnabled(): boolean {
+    return Boolean((this.config.get<string>('AFROWS_DE_MGMT_SSH') ?? process.env.AFROWS_DE_MGMT_SSH)?.trim());
+  }
+  private germanySweepIntervalMs(): number {
+    return this.intFromValue(this.config.get<string>('AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS'), 300, 60, 3600) * 1000;
   }
 
   private async xray(args: string[]): Promise<void> {
