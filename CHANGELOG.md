@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.6 - 2026-08-27
+
+- **Usage charts: default to the VLESS config (primary) and remember the operator's per-account choice.** For a multi-config customer the usage panel picked `configs[0]` — often the WireGuard config, which showed empty charts while the VLESS config had the data. The selector now defaults to the VLESS config (the primary account; WireGuard is the alternative) and **persists the chosen config per account** in `localStorage` (`afrows.usageConfig.<accountId>`), so re-opening a row restores the last config you viewed (VLESS or WireGuard) instead of resetting. Storage access is wrapped so private-mode/disabled-storage just falls back to the default. `CustomerUsageSection` fetch/`UsageChart` logic unchanged.
+
 ## 0.115.5 - 2026-08-27
 
 - **Customer View panel: hourly/daily usage charts always shown; Gems moved out of View.** Operator feedback: the usage charts (which exist) weren't visible for idle accounts, and the gems block wasn't wanted in the summary view.

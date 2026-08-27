@@ -60,13 +60,38 @@ function CustomerUsageSection({
   t: DashboardStrings;
 }) {
   const s = t.customersPage;
-  const [configId, setConfigId] = useState('');
+  // Per-account persisted config choice (survives collapse/reopen + reloads). The
+  // key is account-scoped so switching to WireGuard on one customer doesn't leak to
+  // another; a missing/blank value falls through to the VLESS-first default below.
+  const storageKey = account ? `afrows.usageConfig.${account.id}` : '';
+  const readStoredConfig = (): string => {
+    try {
+      return storageKey ? localStorage.getItem(storageKey) ?? '' : '';
+    } catch {
+      return '';
+    }
+  };
+  const [configId, setConfigId] = useState<string>(readStoredConfig);
   const [series, setSeries] = useState<AdminClientUsageSeriesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
-  // Falls back to the first config when none is picked (or the picked one was deleted).
-  const selectedId = configs.some((c) => c.id === configId) ? configId : configs[0]?.id ?? '';
+  // Selection preference: the persisted choice (if it still exists) → the VLESS
+  // config (the primary account for a user; WireGuard is the alternative) → the
+  // first config. So a fresh open lands on VLESS, not whatever happens to be first.
+  const selectedId =
+    configs.find((c) => c.id === configId)?.id ??
+    configs.find((c) => (c.protocol ?? '').toLowerCase() === 'vless')?.id ??
+    configs[0]?.id ??
+    '';
+  const selectConfig = (id: string): void => {
+    setConfigId(id);
+    try {
+      if (storageKey) localStorage.setItem(storageKey, id);
+    } catch {
+      /* private mode / storage disabled — selection just won't persist */
+    }
+  };
 
   useEffect(() => {
     if (!selectedId) return;
@@ -140,7 +165,7 @@ function CustomerUsageSection({
           {s.usageConfigLabel}
           <select
             className="min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal"
-            onChange={(e) => setConfigId(e.target.value)}
+            onChange={(e) => selectConfig(e.target.value)}
             value={selectedId}
           >
             {configs.map((c) => (
