@@ -478,6 +478,7 @@ export const en = {
       marginPercent: 'Margin %',
       currency: 'Currency',
       creditLimit: 'Credit limit',
+      creditLimitHint: 'Overdraft allowed — how far the wallet may go negative when selling.',
       maxCustomers: 'Max customers',
       maxCustomersHint: 'Empty = unlimited.',
       unlimited: 'Unlimited',

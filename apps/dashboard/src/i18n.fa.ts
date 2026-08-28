@@ -480,6 +480,7 @@ export const fa: DashboardStrings = {
       marginPercent: 'حاشیه سود ٪',
       currency: 'واحد پول',
       creditLimit: 'سقف اعتبار',
+      creditLimitHint: 'اجازه‌ی بدهکاری — کیف پول تا چه حد می‌تواند هنگام فروش منفی شود.',
       maxCustomers: 'حداکثر مشتری',
       maxCustomersHint: 'خالی = نامحدود.',
       unlimited: 'نامحدود',

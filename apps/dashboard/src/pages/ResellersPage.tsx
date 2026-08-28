@@ -52,6 +52,9 @@ export function ResellersPage({
   // Inline per-seller customer-cap editor.
   const [limitFor, setLimitFor] = useState<string | null>(null);
   const [limitValue, setLimitValue] = useState('');
+  // Inline per-seller credit-limit (overdraft allowance) editor.
+  const [creditFor, setCreditFor] = useState<string | null>(null);
+  const [creditValue, setCreditValue] = useState('');
   const [ledgerFor, setLedgerFor] = useState<string | null>(null);
   const [ledger, setLedger] = useState<AdminResellerWalletLedgerEntry[]>([]);
   // Drill-down: which seller's customers are expanded + their usage rows.
@@ -165,6 +168,23 @@ export function ResellersPage({
     }
   };
 
+  const onSetCredit = async (id: string) => {
+    // The seller's overdraft allowance: how far the wallet may go negative.
+    const creditLimitAmount = Math.max(0, Math.round(Number(creditValue.trim()) || 0));
+    setBusy(true);
+    setError(null);
+    try {
+      await updateAdminReseller(sessionToken, id, { creditLimitAmount });
+      setCreditFor(null);
+      setCreditValue('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onToggleStatus = async (r: AdminResellerAccountSummary) => {
     const next = r.status === 'active' ? 'disabled' : 'active';
     setError(null);
@@ -243,6 +263,7 @@ export function ResellersPage({
         <span className="text-[12px]">
           <strong>{money(r.balanceAmount, r.currency)}</strong>
           <span className="block text-afro-muted">{money(r.availableBalanceAmount, r.currency)} {s.available}</span>
+          <span className="block text-afro-muted">{s.creditLimit}: {money(r.creditLimitAmount, r.currency)}</span>
         </span>
       ),
     },
@@ -287,6 +308,7 @@ export function ResellersPage({
       render: (r) => (
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <button type="button" onClick={() => { setTopUpFor(r.id); setTopUpAmount(''); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.topUp}</button>
+          <button type="button" onClick={() => { setCreditFor(r.id); setCreditValue(String(r.creditLimitAmount)); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.creditLimit}</button>
           <button type="button" onClick={() => { setLimitFor(r.id); setLimitValue(r.maxCustomers != null ? String(r.maxCustomers) : ''); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.limit}</button>
           <button type="button" onClick={() => void openLedger(r.id)} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.ledger}</button>
           <button
@@ -400,6 +422,16 @@ export function ResellersPage({
           <input className={`${inputClass} w-40`} inputMode="numeric" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)} />
           <button type="button" disabled={busy} onClick={() => void onTopUp(topUpFor)} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.topUp}</button>
           <button type="button" onClick={() => setTopUpFor(null)} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold">{s.cancel}</button>
+        </div>
+      ) : null}
+
+      {creditFor ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-afro-line bg-white p-3">
+          <span className="text-[13px] font-bold text-afro-muted">{s.creditLimit}:</span>
+          <input className={`${inputClass} w-40`} inputMode="numeric" value={creditValue} onChange={(e) => setCreditValue(e.target.value)} />
+          <button type="button" disabled={busy} onClick={() => void onSetCredit(creditFor)} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.save}</button>
+          <button type="button" onClick={() => setCreditFor(null)} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold">{s.cancel}</button>
+          <span className="text-[12px] text-afro-muted">{s.creditLimitHint}</span>
         </div>
       ) : null}
 
