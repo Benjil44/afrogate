@@ -7,6 +7,12 @@
 
 > **Status legend:** ✅ already built · 🔴 P0 must-fix · 🟠 P1 core-completion · 🟡 P2 nice-to-have
 
+> **PROGRESS (2026-08-28, branch `feat/reseller-hardening`):**
+> - **P0 — DONE** (`801705a`): free-quota bypass closed via `stripResellerManagedQuotaFields` (strip, not reject, so edits round-trip); quota field read-only for resellers in the editor. 5 unit tests; full suite 710/710.
+> - **P1a — DONE** (`5daba4b`): `POST /admin/reseller/customer-accounts/:id/reset-password` (IDOR-guarded) + "Reset login password" button.
+> - **P1b — DONE** (`40cfe23`): one-step create-seller — `POST /admin/resellers` accepts `newLoginUsername`+`newLoginPassword`, creates the reseller-role login and links it; Sellers form gets a link-existing / create-new toggle.
+> - **Remaining:** P2 (per-seller caps, egress-tier pricing) + final deploy (version bump + CHANGELOG). Not yet deployed to prod.
+
 ---
 
 ## 0. What already exists (do NOT rebuild)
