@@ -1397,6 +1397,7 @@ export const fa: DashboardStrings = {
       loginEmail: 'ایمیل / نام کاربری ورود',
       passwordOnce: 'رمز عبور حساب (فقط یک‌بار نمایش داده می‌شود — همین حالا کپی کنید)',
       passwordOnceHint: 'این را همراه ایمیل به مشتری بدهید. دوباره نمایش داده نمی‌شود؛ برای رمز جدید از بازنشانی استفاده کنید.',
+      resetLoginPassword: 'بازنشانی رمز ورود',
       remaining: 'باقی‌مانده',
       quotaScope: 'محدوده حجم',
       accountsLoaded: (count: number | string) => `${count} حساب`,

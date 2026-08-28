@@ -2,7 +2,7 @@ import { createResellerSalesStats, createResellerSalesTrendOption, createReselle
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Activity, Bot, CreditCard, Gauge, Gift, Inbox, Plus, ShieldCheck, UserRound, X } from 'lucide-react';
 import type { AdminBillingSettingsSummary, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
-import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
+import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
@@ -1002,6 +1002,21 @@ export function BillingPage({
     }
   };
 
+  const handleResetResellerCustomerPassword = async () => {
+    if (!isResellerSession || !selectedCustomerAccountId) return;
+    setIsSavingCustomer(true);
+    setCustomerMessage(null);
+    try {
+      const { generatedPassword } = await resetResellerCustomerAccountPassword(sessionToken, selectedCustomerAccountId);
+      setGeneratedPassword(generatedPassword);
+      setCustomerMessage(t.billing.customerAccountSaved);
+    } catch {
+      setCustomerMessage(t.billing.customerAccountSaveFailed);
+    } finally {
+      setIsSavingCustomer(false);
+    }
+  };
+
   const handleCreateResellerPackageSale = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isResellerSession || !resellerSaleForm.volumePackageId) return;
@@ -1233,6 +1248,7 @@ export function BillingPage({
           isResellerSession={isResellerSession}
           isSavingCustomer={isSavingCustomer}
           onFormChange={setCustomerForm}
+          onResetPassword={handleResetResellerCustomerPassword}
           onSaveCustomerAccount={handleSaveCustomerAccount}
           onSelectCustomerAccount={handleSelectCustomerAccount}
           onStartNewCustomerAccount={handleStartNewCustomerAccount}
@@ -1490,6 +1506,7 @@ function CustomerAccountEditorPanel({
   isResellerSession,
   isSavingCustomer,
   onFormChange,
+  onResetPassword,
   onSaveCustomerAccount,
   onSelectCustomerAccount,
   onStartNewCustomerAccount,
@@ -1505,6 +1522,7 @@ function CustomerAccountEditorPanel({
   isResellerSession: boolean;
   isSavingCustomer: boolean;
   onFormChange: (form: CustomerAccountFormState) => void;
+  onResetPassword: () => void;
   onSaveCustomerAccount: (event: FormEvent<HTMLFormElement>) => void;
   onSelectCustomerAccount: (accountId: string) => void;
   onStartNewCustomerAccount: () => void;
@@ -1665,6 +1683,16 @@ function CustomerAccountEditorPanel({
                 ? t.billing.updateCustomerAccount
                 : t.billing.createCustomerAccount}
           </button>
+          {isResellerSession && selectedCustomerAccountId ? (
+            <button
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-blue hover:text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!canManageBilling || isSavingCustomer}
+              onClick={onResetPassword}
+              type="button"
+            >
+              {t.billing.resetLoginPassword}
+            </button>
+          ) : null}
           {customerMessage ? <span className={mutedTextClass}>{customerMessage}</span> : null}
           {!canManageBilling ? <StatusBadge tone="warning">{t.billing.adminOnly}</StatusBadge> : null}
         </div>

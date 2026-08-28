@@ -489,6 +489,17 @@ export class BillingController {
     return this.billingService.updateResellerCustomerAccount(id, payload, request.actor);
   }
 
+  @Post('reseller/customer-accounts/:id/reset-password')
+  @Roles('reseller')
+  @Permissions('customers:write')
+  resetResellerCustomerAccountPassword(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: SetCustomerAccountPasswordDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<{ generatedPassword: string }> {
+    return this.billingService.resetResellerCustomerAccountPassword(id, request.actor, body?.password ?? null);
+  }
+
   @Get('resellers')
   @Roles('admin', 'supervisor', 'support')
   async listResellers(

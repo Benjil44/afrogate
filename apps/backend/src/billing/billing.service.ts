@@ -2833,6 +2833,22 @@ export class BillingService {
     }, actor);
   }
 
+  /**
+   * A reseller resets the login password of one of THEIR OWN customers. IDOR-
+   * guarded (the customer must belong to the acting reseller); delegates to the
+   * shared reset logic, which requires the customer to have a login email and
+   * returns the new password once.
+   */
+  async resetResellerCustomerAccountPassword(
+    id: string,
+    actor: AuthActor | undefined,
+    customPassword?: string | null,
+  ): Promise<{ generatedPassword: string }> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    await ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
+    return this.resetCustomerAccountPassword(id, actor, customPassword ?? null);
+  }
+
   async listCustomerAccounts(filters: CustomerAccountFilters): Promise<AdminCustomerAccountSummary[]> {
     const values: unknown[] = [];
     const where: string[] = [];

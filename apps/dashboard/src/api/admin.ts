@@ -1111,6 +1111,23 @@ export async function resetCustomerAccountPassword(
   return response.json() as Promise<{ generatedPassword: string }>;
 }
 
+/** Reseller resets one of THEIR OWN customer's login passwords (IDOR-guarded server-side). */
+export async function resetResellerCustomerAccountPassword(
+  sessionToken: string,
+  accountId: string,
+  password?: string,
+): Promise<{ generatedPassword: string }> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller/customer-accounts/${encodeURIComponent(accountId)}/reset-password`,
+    {
+      body: JSON.stringify(password && password.trim() ? { password: password.trim() } : {}),
+      headers: createSessionHeaders(sessionToken),
+      method: 'POST',
+    },
+  );
+  return response.json() as Promise<{ generatedPassword: string }>;
+}
+
 export async function fetchAdminClientConfigEntryLink(
   sessionToken: string,
   clientConfigId: string,

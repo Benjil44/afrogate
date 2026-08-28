@@ -1395,6 +1395,7 @@ export const en = {
       loginEmail: 'Login email / username',
       passwordOnce: 'Account password (shown once — copy it now)',
       passwordOnceHint: 'Give this with the email to the customer. It is not shown again; use Reset to make a new one.',
+      resetLoginPassword: 'Reset login password',
       remaining: 'Remaining',
       quotaScope: 'Quota scope',
       accountsLoaded: (count: number | string) => `${count} accounts`,
