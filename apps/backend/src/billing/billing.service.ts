@@ -79,6 +79,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
+import { stripResellerManagedQuotaFields } from './reseller-customer-guard';
 import { resolveAllocationIdempotencyKey, resolveExistingAllocation } from './allocation-idempotency';
 import {
   archiveCustomerAccountInTransaction,
@@ -2634,8 +2635,11 @@ export class BillingService {
     const reseller = await this.getResellerAccountRowForActor(actor);
     this.assertResellerCustomerPayload(dto);
 
+    // Billing-integrity invariant: the bare create path must never set quota/used
+    // directly (that would be a free-quota bypass) — quota is granted only via a
+    // wallet-debiting sale. See reseller-customer-guard.ts.
     return this.createCustomerAccount({
-      ...dto,
+      ...stripResellerManagedQuotaFields(dto),
       resellerAccountId: reseller.id,
     }, actor);
   }
@@ -2820,8 +2824,11 @@ export class BillingService {
     await ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
     this.assertResellerCustomerPayload(dto);
 
+    // Same invariant as create: resellers cannot raise quota (or rewrite used
+    // volume) via a plain edit — stripped here so the editor can round-trip the
+    // fields while quota still changes only through a wallet-debiting sale.
     return this.updateCustomerAccount(id, {
-      ...dto,
+      ...stripResellerManagedQuotaFields(dto),
       resellerAccountId: reseller.id,
     }, actor);
   }

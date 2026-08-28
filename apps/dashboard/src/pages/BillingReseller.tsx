@@ -1230,6 +1230,7 @@ export function BillingPage({
           customerMessage={customerMessage}
           format={format}
           generatedPassword={generatedPassword}
+          isResellerSession={isResellerSession}
           isSavingCustomer={isSavingCustomer}
           onFormChange={setCustomerForm}
           onSaveCustomerAccount={handleSaveCustomerAccount}
@@ -1486,6 +1487,7 @@ function CustomerAccountEditorPanel({
   customerMessage,
   format,
   generatedPassword,
+  isResellerSession,
   isSavingCustomer,
   onFormChange,
   onSaveCustomerAccount,
@@ -1500,6 +1502,7 @@ function CustomerAccountEditorPanel({
   customerMessage: string | null;
   format: DashboardFormatters;
   generatedPassword: string | null;
+  isResellerSession: boolean;
   isSavingCustomer: boolean;
   onFormChange: (form: CustomerAccountFormState) => void;
   onSaveCustomerAccount: (event: FormEvent<HTMLFormElement>) => void;
@@ -1567,8 +1570,11 @@ function CustomerAccountEditorPanel({
             onChange={(loginEmail) => updateForm({ loginEmail })}
             value={customerForm.loginEmail}
           />
+          {/* Resellers grant quota only via wallet-debiting sales (see the sale
+              panel); the backend strips quota on the reseller create/update path,
+              so this field is read-only for them to avoid a silent no-op. */}
           <SettingsInput
-            disabled={!canManageBilling}
+            disabled={!canManageBilling || isResellerSession}
             inputMode="numeric"
             label={t.billing.accountQuotaGb}
             onChange={(quotaLimitGb) => updateForm({ quotaLimitGb })}
