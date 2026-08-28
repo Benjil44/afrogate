@@ -7,6 +7,7 @@ export const RESELLER_ACCOUNT_STATUSES = ['active', 'suspended', 'disabled'] as 
 const MAX_AMOUNT = Number.MAX_SAFE_INTEGER;
 const MAX_MARGIN_BPS = 8000;
 const MAX_SALE_GB = 1_000_000;
+const MAX_RESELLER_CUSTOMERS = 1_000_000;
 
 export class CreateResellerAccountDto {
   /**
@@ -68,6 +69,14 @@ export class CreateResellerAccountDto {
   @Max(MAX_AMOUNT)
   creditLimitAmount?: number;
 
+  /** Per-seller customer cap; null/omitted = unlimited. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_RESELLER_CUSTOMERS)
+  maxCustomers?: number | null;
+
   @IsOptional()
   @IsString()
   @MaxLength(500)
@@ -112,6 +121,14 @@ export class UpdateResellerAccountDto {
   @Min(0)
   @Max(MAX_AMOUNT)
   creditLimitAmount?: number;
+
+  /** Per-seller customer cap; null clears it (unlimited). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_RESELLER_CUSTOMERS)
+  maxCustomers?: number | null;
 
   @IsOptional()
   @IsString()

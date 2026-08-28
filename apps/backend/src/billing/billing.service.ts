@@ -562,6 +562,7 @@ interface ResellerAccountRow {
   currency: string;
   balanceAmount: string | number;
   creditLimitAmount: string | number;
+  maxCustomers: number | null;
   notes: string | null;
   createdBy: string | null;
   updatedBy: string | null;
@@ -1933,10 +1934,10 @@ export class BillingService {
           `
             INSERT INTO reseller_accounts (
               admin_user_id, display_name, contact_name, telegram_username,
-              status, seller_margin_bps, currency, credit_limit_amount,
+              status, seller_margin_bps, currency, credit_limit_amount, max_customers,
               notes, created_by, updated_by
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
             RETURNING id
           `,
           [
@@ -1948,6 +1949,7 @@ export class BillingService {
             normalizeResellerMarginBps(dto.sellerMarginBps, DEFAULT_RESELLER_MARGIN_BPS),
             dto.currency !== undefined ? normalizeCurrency(dto.currency) : settings.currency,
             normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0),
+            this.normalizeResellerMaxCustomers(dto.maxCustomers),
             normalizeNullableString(dto.notes),
             actor?.id ?? null,
           ],
@@ -2634,6 +2636,7 @@ export class BillingService {
   ): Promise<AdminCustomerAccountDetail> {
     const reseller = await this.getResellerAccountRowForActor(actor);
     this.assertResellerCustomerPayload(dto);
+    await this.assertResellerUnderCustomerCap(this.database, reseller.id);
 
     // Billing-integrity invariant: the bare create path must never set quota/used
     // directly (that would be a free-quota bypass) — quota is granted only via a
@@ -2847,6 +2850,43 @@ export class BillingService {
     const reseller = await this.getResellerAccountRowForActor(actor);
     await ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
     return this.resetCustomerAccountPassword(id, actor, customPassword ?? null);
+  }
+
+  /** Normalize an optional per-seller customer cap. null/undefined -> null (unlimited). */
+  private normalizeResellerMaxCustomers(value: number | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n) || n < 0) {
+      throw new BadRequestException('maxCustomers must be a non-negative integer or null (unlimited)');
+    }
+    return n;
+  }
+
+  /**
+   * Enforce the per-seller customer cap before a reseller creates a new customer.
+   * NULL cap = unlimited. Counts non-archived customers owned by the reseller.
+   * Called inside the sale transaction (and on the bare create path) so a seller
+   * cannot exceed the headcount their admin allotted.
+   */
+  private async assertResellerUnderCustomerCap(
+    executor: DatabaseQueryExecutor,
+    resellerAccountId: string,
+  ): Promise<void> {
+    const capRow = await executor.query<{ maxCustomers: number | null }>(
+      'SELECT max_customers AS "maxCustomers" FROM reseller_accounts WHERE id = $1',
+      [resellerAccountId],
+    );
+    const cap = capRow.rows[0]?.maxCustomers;
+    if (cap === null || cap === undefined) return; // unlimited
+    const countRow = await executor.query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM customer_accounts WHERE reseller_account_id = $1 AND deleted_at IS NULL',
+      [resellerAccountId],
+    );
+    if (Number(countRow.rows[0]?.count ?? 0) >= cap) {
+      throw new BadRequestException(
+        `Seller customer limit reached (${cap}). Ask an admin to raise the limit, or remove a customer.`,
+      );
+    }
   }
 
   async listCustomerAccounts(filters: CustomerAccountFilters): Promise<AdminCustomerAccountSummary[]> {
@@ -6206,6 +6246,7 @@ export class BillingService {
         ra.currency,
         ra.balance_amount AS "balanceAmount",
         ra.credit_limit_amount AS "creditLimitAmount",
+        ra.max_customers AS "maxCustomers",
         ra.notes,
         ra.created_by AS "createdBy",
         ra.updated_by AS "updatedBy",
@@ -6342,6 +6383,9 @@ export class BillingService {
     }
     if (dto.creditLimitAmount !== undefined) {
       add('creditLimitAmount', 'credit_limit_amount', normalizeMoneyAmount(dto.creditLimitAmount, 'creditLimitAmount', 0));
+    }
+    if (dto.maxCustomers !== undefined) {
+      add('maxCustomers', 'max_customers', this.normalizeResellerMaxCustomers(dto.maxCustomers));
     }
     if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
 
@@ -6502,6 +6546,7 @@ export class BillingService {
   ): Promise<string> {
     if (!dto) throw new BadRequestException('Customer account payload is required for a new reseller package sale');
     this.assertResellerCustomerPayload(dto);
+    await this.assertResellerUnderCustomerCap(executor, resellerAccountId);
     const requestedResellerAccountId = normalizeNullableString(dto.resellerAccountId);
     if (requestedResellerAccountId && requestedResellerAccountId !== resellerAccountId) {
       throw new BadRequestException('Reseller package sale customer must belong to the current reseller');
@@ -7148,6 +7193,7 @@ export class BillingService {
       currency: row.currency,
       balanceAmount,
       creditLimitAmount,
+      maxCustomers: row.maxCustomers ?? null,
       availableBalanceAmount: balanceAmount + creditLimitAmount,
       customerAccountCount: Number(row.customerAccountCount ?? 0),
       activeCustomerAccountCount: Number(row.activeCustomerAccountCount ?? 0),

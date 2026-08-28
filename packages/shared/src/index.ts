@@ -1071,6 +1071,8 @@ export interface AdminResellerAccountSummary {
   currency: string;
   balanceAmount: number;
   creditLimitAmount: number;
+  /** Per-seller customer cap; null = unlimited. */
+  maxCustomers: number | null;
   availableBalanceAmount: number;
   customerAccountCount: number;
   activeCustomerAccountCount: number;
@@ -1230,6 +1232,8 @@ export interface CreateResellerAccountRequest {
   newLoginUsername?: string;
   newLoginPassword?: string;
   displayName: string;
+  /** Per-seller customer cap; null/omitted = unlimited. */
+  maxCustomers?: number | null;
   contactName?: string | null;
   telegramUsername?: string | null;
   status?: ResellerAccountStatus;
@@ -1247,6 +1251,8 @@ export interface UpdateResellerAccountRequest {
   sellerMarginBps?: number;
   currency?: string;
   creditLimitAmount?: number;
+  /** Per-seller customer cap; null clears it (unlimited). */
+  maxCustomers?: number | null;
   notes?: string | null;
 }
 

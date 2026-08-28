@@ -45,9 +45,13 @@ export function ResellersPage({
   // per-GB sale, so the create form prefills + locks the currency to it.
   const [platformCurrency, setPlatformCurrency] = useState<string | null>(null);
   const [creditLimit, setCreditLimit] = useState('0');
+  const [maxCustomers, setMaxCustomers] = useState(''); // '' = unlimited
   const [busy, setBusy] = useState(false);
   const [topUpFor, setTopUpFor] = useState<string | null>(null);
   const [topUpAmount, setTopUpAmount] = useState('');
+  // Inline per-seller customer-cap editor.
+  const [limitFor, setLimitFor] = useState<string | null>(null);
+  const [limitValue, setLimitValue] = useState('');
   const [ledgerFor, setLedgerFor] = useState<string | null>(null);
   const [ledger, setLedger] = useState<AdminResellerWalletLedgerEntry[]>([]);
   // Drill-down: which seller's customers are expanded + their usage rows.
@@ -108,6 +112,7 @@ export function ResellersPage({
         sellerMarginBps: Math.round((Number(marginPct) || 0) * 100),
         currency: platformCurrency ?? (currency.trim() || 'IRT'),
         creditLimitAmount: Math.round(Number(creditLimit) || 0),
+        maxCustomers: maxCustomers.trim() ? Math.max(0, Math.round(Number(maxCustomers) || 0)) : null,
       });
       setShowAdd(false);
       setAdminUserId('');
@@ -116,6 +121,7 @@ export function ResellersPage({
       setDisplayName('');
       setMarginPct('20');
       setCreditLimit('0');
+      setMaxCustomers('');
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -133,6 +139,24 @@ export function ResellersPage({
       await topUpResellerWallet(sessionToken, id, { amount });
       setTopUpFor(null);
       setTopUpAmount('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSetLimit = async (id: string) => {
+    // Empty input clears the cap (unlimited); a number sets it.
+    const trimmed = limitValue.trim();
+    const maxCustomers = trimmed ? Math.max(0, Math.round(Number(trimmed) || 0)) : null;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateAdminReseller(sessionToken, id, { maxCustomers });
+      setLimitFor(null);
+      setLimitValue('');
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -222,7 +246,19 @@ export function ResellersPage({
         </span>
       ),
     },
-    { key: 'customers', header: s.colCustomers, alignRight: true, render: (r) => `${r.activeCustomerAccountCount} / ${r.customerAccountCount}` },
+    {
+      key: 'customers',
+      header: s.colCustomers,
+      alignRight: true,
+      render: (r) => (
+        <span className="text-[12px]">
+          {r.activeCustomerAccountCount} / {r.customerAccountCount}
+          <span className="block text-afro-muted">
+            {r.maxCustomers != null ? `${s.limit}: ${r.maxCustomers}` : s.unlimited}
+          </span>
+        </span>
+      ),
+    },
     {
       key: 'status',
       header: s.colStatus,
@@ -251,6 +287,7 @@ export function ResellersPage({
       render: (r) => (
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <button type="button" onClick={() => { setTopUpFor(r.id); setTopUpAmount(''); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.topUp}</button>
+          <button type="button" onClick={() => { setLimitFor(r.id); setLimitValue(r.maxCustomers != null ? String(r.maxCustomers) : ''); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.limit}</button>
           <button type="button" onClick={() => void openLedger(r.id)} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.ledger}</button>
           <button
             aria-expanded={customersFor === r.id}
@@ -348,6 +385,9 @@ export function ResellersPage({
             ) : null}</label>
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.creditLimit}</span>
             <input className={inputClass} inputMode="numeric" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} /></label>
+          <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.maxCustomers}</span>
+            <input className={inputClass} inputMode="numeric" placeholder={s.unlimited} value={maxCustomers} onChange={(e) => setMaxCustomers(e.target.value)} />
+            <span className="text-[12px] text-afro-muted">{s.maxCustomersHint}</span></label>
           <div className="md:col-span-2">
             <button type="button" disabled={busy || !createReady} onClick={() => void onCreate()} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.create}</button>
           </div>
@@ -360,6 +400,16 @@ export function ResellersPage({
           <input className={`${inputClass} w-40`} inputMode="numeric" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)} />
           <button type="button" disabled={busy} onClick={() => void onTopUp(topUpFor)} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.topUp}</button>
           <button type="button" onClick={() => setTopUpFor(null)} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold">{s.cancel}</button>
+        </div>
+      ) : null}
+
+      {limitFor ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-afro-line bg-white p-3">
+          <span className="text-[13px] font-bold text-afro-muted">{s.maxCustomers}:</span>
+          <input className={`${inputClass} w-40`} inputMode="numeric" placeholder={s.unlimited} value={limitValue} onChange={(e) => setLimitValue(e.target.value)} />
+          <button type="button" disabled={busy} onClick={() => void onSetLimit(limitFor)} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.save}</button>
+          <button type="button" onClick={() => setLimitFor(null)} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold">{s.cancel}</button>
+          <span className="text-[12px] text-afro-muted">{s.maxCustomersHint}</span>
         </div>
       ) : null}
 
