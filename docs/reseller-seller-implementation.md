@@ -11,7 +11,10 @@
 > - **P0 — DONE** (`801705a`): free-quota bypass closed via `stripResellerManagedQuotaFields` (strip, not reject, so edits round-trip); quota field read-only for resellers in the editor. 5 unit tests; full suite 710/710.
 > - **P1a — DONE** (`5daba4b`): `POST /admin/reseller/customer-accounts/:id/reset-password` (IDOR-guarded) + "Reset login password" button.
 > - **P1b — DONE** (`40cfe23`): one-step create-seller — `POST /admin/resellers` accepts `newLoginUsername`+`newLoginPassword`, creates the reseller-role login and links it; Sellers form gets a link-existing / create-new toggle.
-> - **Remaining:** P2 (per-seller caps, egress-tier pricing) + final deploy (version bump + CHANGELOG). Not yet deployed to prod.
+> - **P0/P1a/P1b — DEPLOYED as 0.115.9** (live, smoke-tested).
+> - **P2a — DONE** (`feat/reseller-caps`): per-seller customer cap (`max_customers`, migration 0058) enforced on both create paths; admin sets it at create + inline "Limit" editor + shown in the Customers column. Not yet deployed.
+> - **P2b — SKIPPED (intentional):** reseller sale customers are always `normal` tier (the sale INSERT omits `egress_tier`), so tier-based pricing has nothing to price differently — dead code until "resellers sell a premium tier" is a feature. Revisit only if that's wanted.
+> - **Remaining:** deploy P2a.
 
 ---
 
