@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.10 - 2026-08-28
+
+- **Reseller P2a: per-seller customer cap.** Sellers were bounded only by their wallet credit limit (spend), never by headcount. New optional `max_customers` on `reseller_accounts` (migration `0058`; `NULL` = unlimited) caps how many customer accounts a seller can create. Enforced (`assertResellerUnderCustomerCap`, counting non-archived owned customers) before **both** reseller create paths — the bare `createResellerCustomerAccount` and the package/GB `createResellerSaleCustomer` — so a seller cannot exceed the headcount their admin allotted. Threaded through the create/update DTOs, the reseller summary (`maxCustomers`), and shared types. Admin dashboard (Sellers page): a **Max customers** field on create, an inline **Limit** editor per seller row, and the cap shown in the Customers column. Bilingual. (P2b — egress-tier-aware reseller pricing — intentionally skipped: reseller sale customers are always `normal` tier, so tiered pricing has nothing to price differently until "resellers sell a premium tier" is a feature.)
+
 ## 0.115.9 - 2026-08-28
 
 - **Reseller hardening: closed a free-quota bypass + completed seller self-management (P0/P1).**
