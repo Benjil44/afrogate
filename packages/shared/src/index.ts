@@ -1224,7 +1224,11 @@ export interface AdminResellerTopupRequestResponse {
 }
 
 export interface CreateResellerAccountRequest {
-  adminUserId: string;
+  /** Link an existing reseller-role login, OR supply newLogin* to create one. */
+  adminUserId?: string;
+  /** One-step onboarding: create a fresh reseller-role login with these credentials. */
+  newLoginUsername?: string;
+  newLoginPassword?: string;
   displayName: string;
   contactName?: string | null;
   telegramUsername?: string | null;

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { CreateCustomerAccountDto } from './customer-account.dto';
 
 export const RESELLER_ACCOUNT_STATUSES = ['active', 'suspended', 'disabled'] as const;
@@ -9,9 +9,27 @@ const MAX_MARGIN_BPS = 8000;
 const MAX_SALE_GB = 1_000_000;
 
 export class CreateResellerAccountDto {
+  /**
+   * Link an EXISTING reseller-role login. Provide EITHER this OR the
+   * newLogin* fields below (one-step onboarding). The controller validates
+   * that exactly one path is used.
+   */
+  @IsOptional()
   @IsString()
   @MaxLength(120)
-  adminUserId!: string;
+  adminUserId?: string;
+
+  /** One-step onboarding: create a fresh reseller-role login with these credentials. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  newLoginUsername?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(200)
+  newLoginPassword?: string;
 
   @IsString()
   @MaxLength(120)

@@ -33,6 +33,10 @@ export function ResellersPage({
   const [loadState, setLoadState] = useState<'loading' | 'live' | 'error'>('loading');
   const [showAdd, setShowAdd] = useState(false);
   const [adminUserId, setAdminUserId] = useState('');
+  // One-step onboarding: link an existing reseller login, or create a fresh one.
+  const [loginMode, setLoginMode] = useState<'existing' | 'new'>('existing');
+  const [newLoginUsername, setNewLoginUsername] = useState('');
+  const [newLoginPassword, setNewLoginPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [marginPct, setMarginPct] = useState('20');
   const [currency, setCurrency] = useState('IRT');
@@ -86,13 +90,20 @@ export function ResellersPage({
     return resellerUsers.filter((u) => !linked.has(u.id));
   }, [rows, resellerUsers]);
 
+  const creatingNewLogin = loginMode === 'new';
+  const createReady =
+    displayName.trim().length > 0 &&
+    (creatingNewLogin ? newLoginUsername.trim().length > 0 && newLoginPassword.trim().length >= 8 : Boolean(adminUserId));
+
   const onCreate = async () => {
-    if (!adminUserId || !displayName.trim()) return;
+    if (!createReady) return;
     setBusy(true);
     setError(null);
     try {
       await createAdminReseller(sessionToken, {
-        adminUserId,
+        ...(creatingNewLogin
+          ? { newLoginUsername: newLoginUsername.trim(), newLoginPassword: newLoginPassword.trim() }
+          : { adminUserId }),
         displayName: displayName.trim(),
         sellerMarginBps: Math.round((Number(marginPct) || 0) * 100),
         currency: platformCurrency ?? (currency.trim() || 'IRT'),
@@ -100,6 +111,8 @@ export function ResellersPage({
       });
       setShowAdd(false);
       setAdminUserId('');
+      setNewLoginUsername('');
+      setNewLoginPassword('');
       setDisplayName('');
       setMarginPct('20');
       setCreditLimit('0');
@@ -275,17 +288,48 @@ export function ResellersPage({
 
       {showAdd ? (
         <div className="grid gap-2 rounded-lg border border-afro-line bg-white p-3 md:grid-cols-2">
-          <label className="grid gap-1 md:col-span-2">
-            <span className="text-[13px] font-bold text-afro-muted">{s.login}</span>
-            {availableLogins.length === 0 ? (
-              <span className="text-[12px] text-afro-muted">{s.noLogins}</span>
+          <div className="grid gap-2 md:col-span-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setLoginMode('existing')}
+                className={`inline-flex min-h-9 items-center rounded-md px-3 text-sm font-bold ${loginMode === 'existing' ? 'bg-afro-teal text-white' : 'border border-afro-line bg-white text-afro-ink'}`}
+              >
+                {s.loginModeExisting}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMode('new')}
+                className={`inline-flex min-h-9 items-center rounded-md px-3 text-sm font-bold ${loginMode === 'new' ? 'bg-afro-teal text-white' : 'border border-afro-line bg-white text-afro-ink'}`}
+              >
+                {s.loginModeNew}
+              </button>
+            </div>
+            {loginMode === 'existing' ? (
+              <label className="grid gap-1">
+                <span className="text-[13px] font-bold text-afro-muted">{s.login}</span>
+                {availableLogins.length === 0 ? (
+                  <span className="text-[12px] text-afro-muted">{s.noLogins}</span>
+                ) : (
+                  <select className={inputClass} value={adminUserId} onChange={(e) => setAdminUserId(e.target.value)}>
+                    <option value="">—</option>
+                    {availableLogins.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
+                  </select>
+                )}
+              </label>
             ) : (
-              <select className={inputClass} value={adminUserId} onChange={(e) => setAdminUserId(e.target.value)}>
-                <option value="">—</option>
-                {availableLogins.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
-              </select>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="grid gap-1">
+                  <span className="text-[13px] font-bold text-afro-muted">{s.newUsername}</span>
+                  <input className={inputClass} value={newLoginUsername} onChange={(e) => setNewLoginUsername(e.target.value)} autoComplete="off" />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-[13px] font-bold text-afro-muted">{s.newPassword}</span>
+                  <input className={inputClass} type="password" value={newLoginPassword} onChange={(e) => setNewLoginPassword(e.target.value)} autoComplete="new-password" />
+                </label>
+              </div>
             )}
-          </label>
+          </div>
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.displayName}</span>
             <input className={inputClass} value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.marginPercent}</span>
@@ -305,7 +349,7 @@ export function ResellersPage({
           <label className="grid gap-1"><span className="text-[13px] font-bold text-afro-muted">{s.creditLimit}</span>
             <input className={inputClass} inputMode="numeric" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} /></label>
           <div className="md:col-span-2">
-            <button type="button" disabled={busy || !adminUserId || !displayName.trim()} onClick={() => void onCreate()} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.create}</button>
+            <button type="button" disabled={busy || !createReady} onClick={() => void onCreate()} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.create}</button>
           </div>
         </div>
       ) : null}

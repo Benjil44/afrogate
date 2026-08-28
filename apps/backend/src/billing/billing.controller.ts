@@ -526,11 +526,30 @@ export class BillingController {
 
   @Post('resellers')
   @Roles('admin')
-  createReseller(
+  async createReseller(
     @Body() payload: CreateResellerAccountDto,
     @Req() request: RequestWithAuth,
   ): Promise<AdminResellerAccountSummary> {
-    return this.billingService.createResellerAccount(payload, request.actor);
+    let adminUserId = payload.adminUserId?.trim() || null;
+    const newLoginUsername = payload.newLoginUsername?.trim();
+    // One-step onboarding: instead of linking a pre-made reseller-role user,
+    // create the login here (role 'reseller') and link it. If the reseller-
+    // account insert below fails, the login is left in place and simply shows up
+    // as an available login for a retry via the link-existing path.
+    if (!adminUserId && newLoginUsername) {
+      const login = await this.authService.createAdminUser(request.actor, {
+        username: newLoginUsername,
+        password: payload.newLoginPassword ?? '',
+        role: 'reseller',
+      });
+      adminUserId = login.id;
+    }
+    if (!adminUserId) {
+      throw new BadRequestException(
+        'Provide an existing reseller login (adminUserId) or a new one (newLoginUsername + newLoginPassword)',
+      );
+    }
+    return this.billingService.createResellerAccount({ ...payload, adminUserId }, request.actor);
   }
 
   @Patch('resellers/:id')
