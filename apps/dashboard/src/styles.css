@@ -53,6 +53,14 @@
 .afro-login-aurora { animation: afro-login-breathe 7s ease-in-out infinite alternate; }
 .afro-login-input::placeholder { color: #6b7280; }
 
+/* Attention blink for the VPS-bill reminder: slow (yellow, <=1wk) / fast (red, <=3d/overdue). */
+@keyframes afro-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.afro-blink-slow { animation: afro-blink 1.3s ease-in-out infinite; }
+.afro-blink-fast { animation: afro-blink 0.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .afro-blink-slow, .afro-blink-fast { animation: none; }
+}
+
 /* Modern thin sidebar scrollbar (dark): subtle overlay thumb, no arrow buttons. */
 .afro-scroll {
   scrollbar-width: thin;

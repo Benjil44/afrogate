@@ -118,11 +118,12 @@ export function VpsBillBanner({ t }: { t: DashboardStrings }) {
     setDismissed(true);
   };
 
-  const tone = overdue || days <= 2
-    ? { box: 'border-red-300 bg-red-50 text-red-800', accent: 'text-red-700' }
+  // <=3 days (or overdue): blinking red. <=7 days: blinking yellow. else: steady.
+  const tone = overdue || days <= 3
+    ? { box: 'border-red-300 bg-red-50 text-red-800', accent: 'text-red-700', blink: 'afro-blink-fast' }
     : days <= 7
-      ? { box: 'border-amber-300 bg-amber-50 text-amber-900', accent: 'text-amber-800' }
-      : { box: 'border-afro-line bg-[#eef7f6] text-afro-ink', accent: 'text-afro-teal' };
+      ? { box: 'border-amber-300 bg-amber-50 text-amber-900', accent: 'text-amber-800', blink: 'afro-blink-slow' }
+      : { box: 'border-afro-line bg-[#eef7f6] text-afro-ink', accent: 'text-afro-teal', blink: '' };
 
   const dueDateLabel = target.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const amountLabel = `${cfg.amount.toLocaleString()} ${cfg.currency}`;
@@ -133,7 +134,7 @@ export function VpsBillBanner({ t }: { t: DashboardStrings }) {
       : s.dueIn(days);
 
   return (
-    <div className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2 text-[13px] ${tone.box}`}>
+    <div className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2 text-[13px] ${tone.box} ${tone.blink}`}>
       {overdue ? <AlertTriangle size={16} className={tone.accent} /> : <CalendarClock size={16} className={tone.accent} />}
       <span className="font-bold">{s.title}:</span>
       <span className="font-bold">{amountLabel}</span>
