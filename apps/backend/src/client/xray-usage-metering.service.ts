@@ -12,6 +12,7 @@ const execFileAsync = promisify(execFile);
 
 interface OverQuotaRow {
   clientConfigId: string;
+  configStatus?: string;
 }
 
 /**
@@ -83,22 +84,33 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async enforceQuota(): Promise<void> {
+    // Select EVERY over-quota config that isn't disabled — both 'active' (newly
+    // over quota) AND 'limited' (already cut). We re-issue the removal for the
+    // already-limited ones every tick on purpose: the Ireland rmu is local+cheap,
+    // and the Germany removal is best-effort over a flaky link — a single failed
+    // `rmu` (link down / blackout) must NOT leave an over-quota user egressing
+    // forever. Re-running is idempotent, so it self-heals once Germany is reachable.
     const result = await this.database.query<OverQuotaRow>(
       `
-        SELECT cc.id AS "clientConfigId"
+        SELECT cc.id AS "clientConfigId", cc.status AS "configStatus"
         FROM client_configs cc
         JOIN customer_accounts ca ON ca.id = cc.customer_account_id
-        WHERE cc.status = 'active'
+        WHERE cc.status <> 'disabled'
           AND ca.quota_limit_bytes IS NOT NULL
           AND ca.used_bytes >= ca.quota_limit_bytes
       `,
     );
+    let newlyLimited = 0;
     for (const row of result.rows) {
-      // mark limited (Postgres = source of truth) then disconnect from xray
-      await this.database.query(
-        `UPDATE client_configs SET status = 'limited', updated_at = now() WHERE id = $1`,
-        [row.clientConfigId],
-      );
+      // mark limited (Postgres = source of truth) only on the active->limited
+      // transition, so the log/count reflects genuinely new cuts, not every retry.
+      if (row.configStatus === 'active') {
+        await this.database.query(
+          `UPDATE client_configs SET status = 'limited', updated_at = now() WHERE id = $1`,
+          [row.clientConfigId],
+        );
+        newlyLimited += 1;
+      }
       // Remove from EVERY provisioned inbound (afrows-in, afrows-in-tcp, …) so an
       // over-quota user can't keep flowing via a secondary entry.
       for (const tag of this.inboundTags()) {
@@ -109,14 +121,15 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
             { timeout: 15000 },
           );
         } catch {
-          /* best-effort; reconcile/next tick retries */
+          /* best-effort; next tick retries */
         }
       }
       // Also cut the Germany WS entry (best-effort; flaky village link never blocks).
+      // Retried every tick (see above) until the removal actually sticks.
       await this.germanyMgmt.removeUser(provisioningEmail(row.clientConfigId));
     }
-    if (result.rows.length) {
-      this.logger.log(`Quota enforced: limited ${result.rows.length} over-quota client(s)`);
+    if (newlyLimited) {
+      this.logger.log(`Quota enforced: limited ${newlyLimited} newly over-quota client(s)`);
     }
   }
 

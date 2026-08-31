@@ -107,6 +107,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
           WHERE cc.status <> 'disabled'
             AND ca.status = 'active'
             AND ca.deleted_at IS NULL
+            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
         `,
       );
       let added = 0;
