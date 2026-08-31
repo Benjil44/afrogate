@@ -225,6 +225,7 @@ import { BillingPage, ResellerDashboardPage, ResellerUsersPage } from './pages/B
 import { AdminLoginPage } from './pages/AdminLoginPage';
 import { canViewAdminUsers, canViewAuditLogs, canViewBackupStatus, canViewReports } from './session-access';
 import { EChart, type AfroChartOption } from './components/EChart';
+import { VpsBillBanner } from './components/VpsBillBanner';
 import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } from './i18n';
 import type {
   ActiveView,
@@ -1363,6 +1364,7 @@ function AuthenticatedDashboard({
           (not hidden) keeps this from becoming a scroll container so descendant
           position:sticky elements still track the viewport. */}
       <section className="min-w-0 max-w-full overflow-x-clip p-3 md:p-4">
+        {!isResellerSession ? <VpsBillBanner t={t} /> : null}
         <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-0.5 text-[11px] font-bold uppercase text-afro-teal">{header.eyebrow}</p>
