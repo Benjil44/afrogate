@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -125,6 +126,8 @@ interface UploadedReceiptFile {
 @Controller('admin')
 @UseGuards(AdminTokenGuard, RolesGuard)
 export class BillingController {
+  private readonly logger = new Logger(BillingController.name);
+
   constructor(
     private readonly billingService: BillingService,
     private readonly authService: AuthService,
@@ -506,11 +509,13 @@ export class BillingController {
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
+    @Query('archived') archived?: string,
   ): Promise<AdminResellerAccountsResponse> {
     return {
       resellers: await this.billingService.listResellerAccounts({
         status,
         search,
+        archived: archived === 'only' || archived === 'all' ? archived : 'active',
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
     };
@@ -560,6 +565,52 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminResellerAccountSummary> {
     return this.billingService.updateResellerAccount(id, payload, request.actor);
+  }
+
+  /**
+   * Archive (soft-delete) a seller. The service stamps `archived_at` + forces the
+   * reseller row to `status = 'disabled'` (which the reseller-session guard already
+   * rejects); we ALSO disable the seller's login user so they cannot sign in. The
+   * seller's existing customers are left fully intact and active. Best-effort on the
+   * login disable: a missing login must not fail the archive (the row is what matters).
+   */
+  @Post('resellers/:id/archive')
+  @Roles('superadmin')
+  async archiveReseller(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    const summary = await this.billingService.archiveResellerAccount(id, request.actor);
+    try {
+      await this.authService.updateAdminUser(request.actor, summary.adminUserId, { status: 'disabled' });
+    } catch (error) {
+      this.logger.warn(
+        `Reseller ${id} archived but disabling its login user ${summary.adminUserId} failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return summary;
+  }
+
+  /** Restore (un-archive) a seller: clears `archived_at`, re-activates the reseller row, and re-enables its login. */
+  @Post('resellers/:id/restore')
+  @Roles('superadmin')
+  async restoreReseller(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    const summary = await this.billingService.restoreResellerAccount(id, request.actor);
+    try {
+      await this.authService.updateAdminUser(request.actor, summary.adminUserId, { status: 'active' });
+    } catch (error) {
+      this.logger.warn(
+        `Reseller ${id} restored but re-enabling its login user ${summary.adminUserId} failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return summary;
   }
 
   @Get('resellers/:id/wallet-ledger')

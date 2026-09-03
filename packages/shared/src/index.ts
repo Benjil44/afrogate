@@ -932,6 +932,8 @@ export interface AdminCustomerAccountSummary {
   id: string;
   resellerAccountId?: string | null;
   resellerDisplayName?: string | null;
+  /** True when the owning seller is archived (soft-deleted); false when there is no seller. */
+  resellerArchived: boolean;
   displayName?: string | null;
   telegramId?: string | null;
   telegramUsername?: string | null;
@@ -1078,6 +1080,8 @@ export interface AdminResellerAccountSummary {
   activeCustomerAccountCount: number;
   ledgerEntryCount: number;
   notes?: string | null;
+  /** When the seller was archived (soft-deleted), or null if live/active. */
+  archivedAt: string | null;
   createdBy?: string | null;
   updatedBy?: string | null;
   createdAt: string;

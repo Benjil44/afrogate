@@ -236,6 +236,7 @@ interface CustomerAccountRow {
   id: string;
   resellerAccountId: string | null;
   resellerDisplayName: string | null;
+  resellerArchived: boolean | null;
   displayName: string | null;
   telegramId: string | null;
   telegramUsername: string | null;
@@ -564,6 +565,7 @@ interface ResellerAccountRow {
   creditLimitAmount: string | number;
   maxCustomers: number | null;
   notes: string | null;
+  archivedAt: Date | string | null;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;
@@ -717,6 +719,8 @@ interface CustomerAccountFilters {
 interface ResellerAccountFilters {
   status?: string;
   search?: string;
+  /** Archived visibility: 'active' (default, live only), 'only' (archived), 'all'. */
+  archived?: CustomerAccountArchivedFilter;
   limit: number;
 }
 
@@ -752,6 +756,26 @@ interface RewardedAdGrantCreateState {
   clientConfigId: string;
   customerAccountId: string;
   provider: string;
+}
+
+/**
+ * SQL WHERE fragment (on alias `ra`) for the reseller-accounts listing archived
+ * visibility. Mirrors `customerAccountArchivedWhereClause`. Returns null for
+ * 'all' (no archived predicate). Defaults to 'active' (live only) so the
+ * historical Sellers-listing behavior is preserved (archived sellers hidden).
+ */
+function resellerAccountArchivedWhereClause(
+  archived: CustomerAccountArchivedFilter | undefined,
+): string | null {
+  switch (archived ?? 'active') {
+    case 'only':
+      return 'ra.archived_at IS NOT NULL';
+    case 'all':
+      return null;
+    case 'active':
+    default:
+      return 'ra.archived_at IS NULL';
+  }
 }
 
 @Injectable()
@@ -1884,6 +1908,12 @@ export class BillingService {
     const values: unknown[] = [];
     const where: string[] = [];
 
+    // Archived-seller visibility. Default 'active' keeps the historical behavior:
+    // archived (soft-deleted) sellers stay hidden from the Sellers listing. 'only'
+    // surfaces just archived sellers (so the UI can offer Restore); 'all' shows both.
+    const archivedClause = resellerAccountArchivedWhereClause(filters.archived);
+    if (archivedClause) where.push(archivedClause);
+
     if (filters.status?.trim()) {
       values.push(normalizeResellerStatus(filters.status));
       where.push(`ra.status = $${values.length}`);
@@ -1997,6 +2027,64 @@ export class BillingService {
         { changedFields },
         executor,
       );
+    });
+
+    return this.getResellerAccount(id);
+  }
+
+  /**
+   * Archives (soft-deletes) a seller. Afrows never hard-deletes: the row is kept
+   * (wallet/ledger history intact) and recoverable. Stamps `archived_at` (hides
+   * the seller from the default Sellers listing) and forces `status = 'disabled'`
+   * — `getResellerAccountRowForActor` rejects any non-'active' status, so an
+   * archived seller's session can no longer log in or create/manage customers or
+   * VLESS. The seller's existing customer accounts are deliberately UNTOUCHED
+   * (they keep working, keep buying via Telegram, stay manageable by admins);
+   * only the seller is archived. Guarded on `archived_at IS NULL` (idempotent).
+   */
+  async archiveResellerAccount(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerAccountSummary> {
+    await this.database.transaction(async (executor) => {
+      await this.getResellerAccountRowForUpdate(executor, id);
+      await executor.query(
+        `
+          UPDATE reseller_accounts
+             SET archived_at = now(), status = 'disabled', updated_by = $2, updated_at = now()
+           WHERE id = $1 AND archived_at IS NULL
+        `,
+        [id, actor?.id ?? null],
+      );
+
+      await this.audit.record(actor, 'reseller_account.archive', 'reseller_account', id, {}, executor);
+    });
+
+    return this.getResellerAccount(id);
+  }
+
+  /**
+   * Restores (un-archives) a seller: clears `archived_at` and re-enables the login
+   * status to 'active' so the seller can sign in and manage customers again. The
+   * customer accounts were never touched by archive, so nothing else needs
+   * re-provisioning. Guarded on `archived_at IS NOT NULL` (idempotent).
+   */
+  async restoreResellerAccount(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerAccountSummary> {
+    await this.database.transaction(async (executor) => {
+      await this.getResellerAccountRowForUpdate(executor, id);
+      await executor.query(
+        `
+          UPDATE reseller_accounts
+             SET archived_at = NULL, status = 'active', updated_by = $2, updated_at = now()
+           WHERE id = $1 AND archived_at IS NOT NULL
+        `,
+        [id, actor?.id ?? null],
+      );
+
+      await this.audit.record(actor, 'reseller_account.restore', 'reseller_account', id, {}, executor);
     });
 
     return this.getResellerAccount(id);
@@ -6248,6 +6336,7 @@ export class BillingService {
         ra.credit_limit_amount AS "creditLimitAmount",
         ra.max_customers AS "maxCustomers",
         ra.notes,
+        ra.archived_at AS "archivedAt",
         ra.created_by AS "createdBy",
         ra.updated_by AS "updatedBy",
         ra.created_at AS "createdAt",
@@ -7199,6 +7288,7 @@ export class BillingService {
       activeCustomerAccountCount: Number(row.activeCustomerAccountCount ?? 0),
       ledgerEntryCount: Number(row.ledgerEntryCount ?? 0),
       notes: row.notes,
+      archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null,
       createdBy: row.createdBy,
       updatedBy: row.updatedBy,
       createdAt: row.createdAt.toISOString(),
@@ -7565,6 +7655,7 @@ export class BillingService {
         ca.id,
         ca.reseller_account_id AS "resellerAccountId",
         ra.display_name AS "resellerDisplayName",
+        (ra.archived_at IS NOT NULL) AS "resellerArchived",
         ca.display_name AS "displayName",
         ca.telegram_id AS "telegramId",
         ca.telegram_username AS "telegramUsername",
@@ -9045,6 +9136,7 @@ export class BillingService {
       id: row.id,
       resellerAccountId: row.resellerAccountId,
       resellerDisplayName: row.resellerDisplayName,
+      resellerArchived: row.resellerArchived === true,
       displayName: row.displayName,
       telegramId: row.telegramId,
       telegramUsername: row.telegramUsername,
