@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.14 - 2026-09-03
+
+- **Seller archive (soft-delete) — backend.** Sellers can now be archived instead of deleted (Afrows never hard-deletes). `POST /admin/resellers/:id/archive` and `/restore` (superadmin-only): archive stamps `reseller_accounts.archived_at` + forces `status='disabled'` (the reseller-session guard rejects any non-active status, so an archived seller can no longer log in or create/manage customers or VLESS) and disables the seller's login user (best-effort — a missing login doesn't fail the archive). The seller's existing **customers are left fully intact** — they keep working, keep buying via Telegram, and stay manageable by admins; only the seller is archived. Migration `0059` adds `archived_at`; `AdminResellerAccountSummary` gains `archivedAt`, `AdminCustomerAccountSummary` gains `resellerArchived` (so archived-seller customers can be tagged "seller removed"), and the seller list takes an `archived` filter (active | only | all). (UI — archive/restore actions, sub-rows, tag — follows.)
+
 ## 0.115.13 - 2026-09-01
 
 - **Fix: VPS bill reminder banner — window-based visibility + "Mark paid" now hides it.** From operator feedback: (1) once the bill was **overdue**, clicking "Mark paid" didn't hide the banner — the `&& !overdue` guard blocked both dismiss and mark-paid; now marking paid hides it unconditionally for the cycle (Mark paid wins). (2) The banner now only shows **inside the reminder window** — hidden until 10 days before the due day, **blinking yellow from 10 days out**, **blinking red within ~4 days or once overdue**, and nothing at all outside that window (removed the always-on teal state). (3) Default due day changed **1 → 5** to match the monthly hosting due date; the `localStorage` key is bumped to `v2` so the corrected default applies and any stuck v1 state is cleared. Operators can still change amount/currency/due-day via the gear.
