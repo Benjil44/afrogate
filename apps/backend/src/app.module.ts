@@ -17,6 +17,7 @@ import { RewardedAdWebhookService } from './billing/rewarded-ad-webhook.service'
 import { ClientController } from './client/client.controller';
 import { ClientAuthController } from './client/client-auth.controller';
 import { XrayProvisioningService } from './client/xray-provisioning.service';
+import { DeviceLimitService } from './client/device-limit.service';
 import { InboundsService } from './client/inbounds.service';
 import { ConnectionsService } from './client/connections.service';
 import { OperationsOverviewService } from './client/operations-overview.service';
@@ -112,6 +113,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     OutboundSpeedTestService,
     XrayProvisioningService,
     XrayUsageMeteringService,
+    DeviceLimitService,
     GermanyMgmtService,
     GermanyUsageMeteringService,
     WireguardMeteringService,

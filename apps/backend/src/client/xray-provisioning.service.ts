@@ -108,6 +108,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
             AND ca.status = 'active'
             AND ca.deleted_at IS NULL
             AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+            AND (cc.blocked_until IS NULL OR cc.blocked_until <= now())
         `,
       );
       let added = 0;
@@ -204,6 +205,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
             AND ca.deleted_at IS NULL
             AND lower(cc.protocol) = 'vless'
             AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+            AND (cc.blocked_until IS NULL OR cc.blocked_until <= now())
         `,
       );
     } catch (error) {
