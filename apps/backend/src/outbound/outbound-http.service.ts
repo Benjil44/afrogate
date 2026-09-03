@@ -266,6 +266,13 @@ export class OutboundHttpService {
         method: request.method,
         path: this.targetPath(target),
         headers: request.headers,
+        // Force IPv4. The VPS egresses only over the village WireGuard tunnel, which
+        // carries IPv4 (Telegram's IPv4 149.154.0.0/16 ranges are routed there); the
+        // box has NO working IPv6 route, yet DNS for filtered hosts like
+        // api.telegram.org returns AAAA records (sometimes a bogus one). Without this,
+        // Node may pick the unroutable IPv6 and every request silently times out — the
+        // exact cause of the Telegram bot's "poll cycle failed" (000) failures.
+        family: 4,
       },
       request,
     );
