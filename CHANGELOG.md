@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.13 - 2026-09-01
+
+- **Fix: VPS bill reminder banner — window-based visibility + "Mark paid" now hides it.** From operator feedback: (1) once the bill was **overdue**, clicking "Mark paid" didn't hide the banner — the `&& !overdue` guard blocked both dismiss and mark-paid; now marking paid hides it unconditionally for the cycle (Mark paid wins). (2) The banner now only shows **inside the reminder window** — hidden until 10 days before the due day, **blinking yellow from 10 days out**, **blinking red within ~4 days or once overdue**, and nothing at all outside that window (removed the always-on teal state). (3) Default due day changed **1 → 5** to match the monthly hosting due date; the `localStorage` key is bumped to `v2` so the corrected default applies and any stuck v1 state is cleared. Operators can still change amount/currency/due-day via the gear.
+
 ## 0.115.12 - 2026-08-31
 
 - **Fix: over-quota customers could keep egressing past their limit (2 enforcement gaps).** Root cause of "an account went over 100 GB and kept working": (1) the Ireland entry reconcile provisioned everyone with `cc.status <> 'disabled'`, which includes `limited` (over-quota) configs, so an over-quota user was re-added to the entry every ~60s; and (2) `enforceQuota` only selected `cc.status = 'active'`, so once a user was marked `limited` its Germany-egress removal (best-effort over the flaky village link) was **never retried** — a single failed `rmu` (link down / blackout) left the user on the exit forever. Fix A: the reconcile now also requires under-quota (`used_bytes < quota_limit_bytes`, mirroring the Germany membership sweep). Fix B: `enforceQuota` reselects **all** over-quota non-disabled configs and re-issues the removal every tick (idempotent), self-healing once Germany is reachable; it only flips `active`→`limited` + logs on the genuine transition. Together: over quota = cleanly cut at **both** entry and egress, retried until it sticks.
