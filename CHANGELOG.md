@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.18 - 2026-09-03
+
+- **Superadmin can reassign a customer's seller + archived-seller tag (All-Customers).** The customer's **Seller** is now editable in the row's edit mode — a dropdown of all sellers (archived ones marked "(archived)") plus "Direct (no seller)", defaulting to the current owner; saved via `updateAdminCustomerAccount({ resellerAccountId })` (empty = Direct → null). Also, customers whose owning seller has been archived now show a muted **"seller removed"** badge (from the `resellerArchived` field) in the Seller column and the detail row. The create-customer panel is unchanged.
+
 ## 0.115.17 - 2026-09-03
 
 - **Seller "My users" view now uses a rich customer table.** The seller's flat customer list is replaced by a `DataTable` with per-row expandable detail rows matching the superadmin table's patterns (usage bar with %/over-quota styling, status badge, detail fields, chevron expand, View/Edit toggle) — but fed by the reseller-scoped workspace and restricted to reseller-safe actions: view usage/detail, inline edit (display name / login email / Telegram / per-client cap / status / notes), reset the customer's login password, and the existing Add-user/sell flow. Quota stays hidden (granted only via a wallet-debiting sale); no admin-only controls (delete/restore/merge/gems/devices/egress-tier/reassign) are exposed. The admin CustomersPage is untouched.
