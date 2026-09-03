@@ -1,5 +1,16 @@
 # Afrows Progress
 
+## 2026-09-03
+
+### VLESS QR + Telegram config delivery — backend (0.115.19, commit only)
+
+- **What.** Backend for two dashboard capabilities: show a config QR, and push a customer's VLESS config to their Telegram.
+- **QR in export.** `exportCustomerClientConfigs` (`GET /admin/customer-accounts/:id/client-configs/export`) now decorates each config via `decorateExportedClientConfig`: resolves the config's native VLESS entry link (`getClientConfigEntryLink`, unchanged) and attaches `entryUri` (the `vless://…` link or `null`) + `qrSvg` (`QRCode.toString(uri,{type:'svg',margin:1,width:240})`, `''` when no link). Response `configs[]` element type changed `AdminClientConfigSummary` → new `AdminClientConfigExportEntry extends AdminClientConfigSummary`. Config generation untouched.
+- **Send-to-Telegram.** `sendCustomerConfigToTelegram(id, actor)` → `{ sent, reason? }`; never throws. Resolves `telegram_users.chat_id` via `resolveCustomerTelegramChatId` (no chat → `no_telegram`); picks primary VLESS config via `resolvePrimaryVlessEntryLink` (active-first, then non-disabled; none → `no_config`); sends config text via `sendMessage` + QR PNG (`QRCode.toBuffer(uri,{type:'png',margin:1,width:512})`) via new `TelegramAlertService.sendPhoto` (multipart over the shared SSRF-guarded, timeout-bounded outbound path). Message-send failure → `send_failed`; photo is best-effort (never fails the request). Audited `customer_account.config_sent_telegram`.
+- **Endpoints.** `POST /admin/customer-accounts/:id/send-config-telegram` (`@Roles('admin')`) and `POST /admin/reseller/customer-accounts/:id/send-config-telegram` (`@Roles('reseller')`, IDOR-guarded via `ensureCustomerAccountBelongsToReseller` → `sendResellerCustomerConfigToTelegram`). New shared type `AdminSendConfigTelegramResponse`.
+- **Verified.** `npm --workspace @afrows/backend run typecheck` green (rebuilds `@afrows/shared` first). Commit only — NOT deployed. No app/migrations run.
+- **Remains.** Frontend wiring of "Show QR" (render `configs[].qrSvg`) + "Send to Telegram" buttons; a unit test for the send-outcome branches.
+
 ## 2026-08-25
 
 ### Shared DataTable/EmptyState/ErrorState component library + table-page refactor (0.115.1, commit only)
