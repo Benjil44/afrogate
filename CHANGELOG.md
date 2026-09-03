@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.17 - 2026-09-03
+
+- **Seller "My users" view now uses a rich customer table.** The seller's flat customer list is replaced by a `DataTable` with per-row expandable detail rows matching the superadmin table's patterns (usage bar with %/over-quota styling, status badge, detail fields, chevron expand, View/Edit toggle) — but fed by the reseller-scoped workspace and restricted to reseller-safe actions: view usage/detail, inline edit (display name / login email / Telegram / per-client cap / status / notes), reset the customer's login password, and the existing Add-user/sell flow. Quota stays hidden (granted only via a wallet-debiting sale); no admin-only controls (delete/restore/merge/gems/devices/egress-tier/reassign) are exposed. The admin CustomersPage is untouched.
+
 ## 0.115.16 - 2026-09-03
 
 - **Sellers page redesign + archive/restore UI.** The scattered top-stacked panels (Top up / Credit limit / Limit / Ledger / Customers — several could be open at once) are replaced by a **per-row expandable sub-row** (one seller at a time, via the DataTable chevron): a **consolidated Edit** (margin %, credit limit, max customers, status — one Save), **Top up** + toggleable **Ledger**, and the seller's **customers list** (name, **remaining GB**, usage bar, status). Row actions are now just **Sign in as seller** + **Archive/Restore** (sticky last column so they're never clipped). Archiving (backend from 0.115.14) is now reachable: a confirm dialog, an **"Archived"** badge, a disabled status switch on archived rows, and a **"Show archived"** toggle (uses the seller list `archived` filter). New API client fns `archiveAdminReseller`/`restoreAdminReseller`. Bilingual.
