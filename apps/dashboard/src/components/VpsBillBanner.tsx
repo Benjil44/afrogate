@@ -10,7 +10,7 @@ import type { DashboardStrings } from '../i18n';
  * needed) so it works even independently of the API.
  */
 
-const STORAGE_KEY = 'afrows.vpsBill';
+const STORAGE_KEY = 'afrows.vpsBill.v2'; // v2: due-day default 5 + window-based visibility
 const DISMISS_KEY = 'afrows.vpsBill.dismissedPeriod'; // sessionStorage: hide once per period
 
 interface VpsBillConfig {
@@ -20,7 +20,7 @@ interface VpsBillConfig {
   lastPaidPeriod: string | null; // 'YYYY-MM' marked paid
 }
 
-const DEFAULTS: VpsBillConfig = { amount: 30, currency: 'USD', dueDay: 1, lastPaidPeriod: null };
+const DEFAULTS: VpsBillConfig = { amount: 30, currency: 'USD', dueDay: 5, lastPaidPeriod: null };
 
 function readConfig(): VpsBillConfig {
   try {
@@ -90,8 +90,15 @@ export function VpsBillBanner({ t }: { t: DashboardStrings }) {
     }
   }, [thisPeriod]);
 
-  // Paid this period, or dismissed for the session (never hide an OVERDUE warning).
-  if ((paidThisPeriod || dismissed) && !overdue) return null;
+  // Paid this cycle → hidden until next month, ALWAYS (even if the due date already
+  // passed) — this is what "Mark paid" does, so it must win over the overdue state.
+  if (paidThisPeriod) return null;
+  // Only show inside the reminder window: nothing until 10 days before the due day;
+  // yellow from 10 days out; red near/after it. Outside the window → show nothing.
+  const inWindow = overdue || days <= 10;
+  if (!inWindow) return null;
+  // Session-dismiss (the ✕) hides it for the session, but never an overdue warning.
+  if (dismissed && !overdue) return null;
 
   const save = () => {
     const next: VpsBillConfig = {
@@ -118,12 +125,10 @@ export function VpsBillBanner({ t }: { t: DashboardStrings }) {
     setDismissed(true);
   };
 
-  // <=3 days (or overdue): blinking red. <=7 days: blinking yellow. else: steady.
-  const tone = overdue || days <= 3
+  // Within ~4 days of the due day (or overdue): blinking RED. From 10 to 5 days out: blinking YELLOW.
+  const tone = overdue || days <= 4
     ? { box: 'border-red-300 bg-red-50 text-red-800', accent: 'text-red-700', blink: 'afro-blink-fast' }
-    : days <= 7
-      ? { box: 'border-amber-300 bg-amber-50 text-amber-900', accent: 'text-amber-800', blink: 'afro-blink-slow' }
-      : { box: 'border-afro-line bg-[#eef7f6] text-afro-ink', accent: 'text-afro-teal', blink: '' };
+    : { box: 'border-amber-300 bg-amber-50 text-amber-900', accent: 'text-amber-800', blink: 'afro-blink-slow' };
 
   const dueDateLabel = target.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const amountLabel = `${cfg.amount.toLocaleString()} ${cfg.currency}`;
