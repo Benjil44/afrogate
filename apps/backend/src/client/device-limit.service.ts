@@ -1,50 +1,46 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { DatabaseService } from '../database/database.service';
 import { XrayProvisioningService } from './xray-provisioning.service';
-import { parseOnlineIpList } from './device-limit.util';
+import { provisioningEmail } from './xray-provisioning';
 
-const execFileAsync = promisify(execFile);
-
-interface ConfigLimitRow {
+interface OverLimitRow {
   clientConfigId: string;
   customerAccountId: string;
   limitValue: number;
   blockedUntil: Date | null;
+  ipCount: number;
+  ips: string[];
 }
 
 /**
  * Per-VLESS concurrent-device (source-IP) limiting.
  *
- * Xray tracks the live source-IPs per user (policy.statsUserOnline=true). Each
- * customer VLESS config is one xray "user" whose email is cc_<clientConfigId>@afrows.
- * This service polls, per online config, how many DISTINCT source-IPs it is
- * connected from. If that exceeds the config's limit (per-customer
- * max_concurrent_ips, else AFROWS_DEVICE_LIMIT_DEFAULT, default 1) on two
- * CONSECUTIVE polls — so a single phone's transient WiFi↔cellular double-IP
- * during a handoff does not count — it is a violation.
+ * SOURCE OF TRUTH = `client_device_sightings` (populated by XrayAccessLogService
+ * tailing the xray access log — real client IPs per config). On this box xray's
+ * online-IP API (statsgetallonlineusers/statsonlineiplist) returns empty even
+ * when clients are connected, so we count DISTINCT recent source-IPs per config
+ * from the sightings table instead. A config with more distinct IPs than its
+ * limit (per-customer `max_concurrent_ips`, else AFROWS_DEVICE_LIMIT_DEFAULT,
+ * default 1; 0/NULL-override = exempt) within the recency window
+ * (AFROWS_DEVICE_LIMIT_WINDOW_SECONDS, default 300) — on two CONSECUTIVE polls,
+ * so a single phone's brief WiFi↔cellular IP change is smoothed — is a violation.
  *
  * Modes (AFROWS_DEVICE_LIMIT_MODE):
- *   observe (default) — log + record the violation, block nothing. Used to
- *     validate thresholds against real traffic before arming.
+ *   observe (default) — record (client_ip_violations) + WARN log; block nothing.
  *   enforce — additionally set client_configs.blocked_until = now()+cooldown and
- *     kick the user from xray (rmu). The provisioning reconcile is block-aware
- *     (skips blocked_until > now()), so the block holds for the cooldown and the
- *     normal reconcile auto-reconnects the user afterwards. A genuine single
- *     device reconnects clean (1 IP, no re-violation); two devices keep flapping.
+ *     kick the user (rmu). The provisioning reconcile is block-aware (skips
+ *     blocked_until > now()), so the block holds for the cooldown and the normal
+ *     reconcile auto-reconnects the user afterwards.
  *
- * Kill-switch: AFROWS_DEVICE_LIMIT_ENABLED=false disables the whole poller.
- * Box-coupled (needs the local xray API); a no-xray dev box simply sees no
- * online users and no-ops.
+ * Kill-switch: AFROWS_DEVICE_LIMIT_ENABLED=false.
  */
 @Injectable()
 export class DeviceLimitService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DeviceLimitService.name);
   private timer: NodeJS.Timeout | undefined;
   private running = false;
-  /** email -> consecutive polls observed over the limit. */
+  /** clientConfigId -> consecutive polls observed over the limit. */
   private readonly overCount = new Map<string, number>();
 
   constructor(
@@ -69,55 +65,30 @@ export class DeviceLimitService implements OnModuleInit, OnModuleDestroy {
     if (this.running) return;
     this.running = true;
     try {
-      const onlineEmails = await this.onlineEmails();
-      if (onlineEmails.size === 0) {
-        this.overCount.clear();
-        return;
-      }
-
-      const limits = await this.limitsFor([...onlineEmails]);
-      if (limits.size === 0) return;
-
+      const over = await this.overLimitConfigs();
+      const seen = new Set<string>();
       const mode = this.mode();
       const required = this.requiredConsecutive();
-      const stillOnline = new Set<string>();
 
-      for (const email of onlineEmails) {
-        const info = limits.get(email);
-        if (!info) continue; // not a known VLESS config
-        stillOnline.add(email);
-
-        // Already blocked (enforce mode, within cooldown): leave it alone.
-        if (info.blockedUntil && info.blockedUntil.getTime() > Date.now()) {
-          this.overCount.delete(email);
+      for (const row of over) {
+        seen.add(row.clientConfigId);
+        // Already blocked within cooldown → leave alone, reset streak.
+        if (row.blockedUntil && row.blockedUntil.getTime() > Date.now()) {
+          this.overCount.delete(row.clientConfigId);
           continue;
         }
-        // limit <= 0 => exempt / unlimited.
-        if (info.limitValue <= 0) {
-          this.overCount.delete(email);
-          continue;
-        }
-
-        const ips = await this.onlineIps(email);
-        if (ips.length <= info.limitValue) {
-          this.overCount.delete(email);
-          continue;
-        }
-
-        const streak = (this.overCount.get(email) ?? 0) + 1;
+        const streak = (this.overCount.get(row.clientConfigId) ?? 0) + 1;
         if (streak < required) {
-          this.overCount.set(email, streak);
+          this.overCount.set(row.clientConfigId, streak);
           continue;
         }
-
-        // Confirmed violation.
-        this.overCount.delete(email);
-        await this.handleViolation(email, info, ips, mode);
+        this.overCount.delete(row.clientConfigId);
+        await this.handleViolation(row, mode);
       }
 
-      // Drop state for anyone who went offline.
-      for (const email of [...this.overCount.keys()]) {
-        if (!stillOnline.has(email)) this.overCount.delete(email);
+      // Drop streaks for configs no longer over-limit.
+      for (const id of [...this.overCount.keys()]) {
+        if (!seen.has(id)) this.overCount.delete(id);
       }
     } catch (error) {
       this.logger.warn(`Device-limit tick failed: ${this.errMsg(error)}`);
@@ -126,58 +97,95 @@ export class DeviceLimitService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async handleViolation(
-    email: string,
-    info: ConfigLimitRow,
-    ips: string[],
-    mode: 'observe' | 'enforce',
-  ): Promise<void> {
+  /**
+   * Configs whose DISTINCT recent (within the window) source-IP count exceeds
+   * their effective limit. Exempt (limit <= 0) configs are filtered out in SQL.
+   */
+  private async overLimitConfigs(): Promise<OverLimitRow[]> {
+    const windowSeconds = this.windowSeconds();
+    try {
+      const res = await this.database.query<{
+        clientConfigId: string;
+        customerAccountId: string;
+        limitValue: number | string;
+        blockedUntil: Date | string | null;
+        ipCount: number | string;
+        ips: string[];
+      }>(
+        `
+          SELECT cc.id AS "clientConfigId",
+                 cc.customer_account_id AS "customerAccountId",
+                 COALESCE(ca.max_concurrent_ips, $1) AS "limitValue",
+                 cc.blocked_until AS "blockedUntil",
+                 count(DISTINCT s.source_ip) AS "ipCount",
+                 (array_agg(DISTINCT s.source_ip))[1:20] AS "ips"
+          FROM client_device_sightings s
+          JOIN client_configs cc ON cc.id = s.client_config_id
+          JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+          WHERE s.last_seen_at > now() - make_interval(secs => $2)
+            AND ca.status = 'active'
+            AND ca.deleted_at IS NULL
+            AND cc.status <> 'disabled'
+          GROUP BY cc.id, cc.customer_account_id, ca.max_concurrent_ips, cc.blocked_until
+          HAVING COALESCE(ca.max_concurrent_ips, $1) > 0
+             AND count(DISTINCT s.source_ip) > COALESCE(ca.max_concurrent_ips, $1)
+        `,
+        [this.globalDefault(), windowSeconds],
+      );
+      return res.rows.map((r) => ({
+        clientConfigId: r.clientConfigId,
+        customerAccountId: r.customerAccountId,
+        limitValue: Number(r.limitValue),
+        blockedUntil: r.blockedUntil ? new Date(r.blockedUntil) : null,
+        ipCount: Number(r.ipCount),
+        ips: Array.isArray(r.ips) ? r.ips : [],
+      }));
+    } catch (error) {
+      this.logger.warn(`Device-limit query failed: ${this.errMsg(error)}`);
+      return [];
+    }
+  }
+
+  private async handleViolation(row: OverLimitRow, mode: 'observe' | 'enforce'): Promise<void> {
+    const email = provisioningEmail(row.clientConfigId);
     const action = mode === 'enforce' ? 'blocked' : 'logged';
-    const masked = this.maskEmail(email);
     this.logger.warn(
-      `Device-limit ${mode}: ${masked} using ${ips.length} IPs > limit ${info.limitValue} — ${action}`,
+      `Device-limit ${mode}: ${this.maskId(row.clientConfigId)} using ${row.ipCount} IPs > limit ${row.limitValue} — ${action}`,
     );
 
-    await this.recordViolation(email, info, ips, mode, action);
+    await this.recordViolation(row, mode, action);
 
     if (mode !== 'enforce') return;
 
     try {
       await this.database.query(
         `UPDATE client_configs
-           SET blocked_until = now() + ($2 || ' seconds')::interval,
+           SET blocked_until = now() + make_interval(secs => $2),
                block_reason = $3,
                updated_at = now()
          WHERE id = $1`,
-        [info.clientConfigId, String(this.cooldownSeconds()), `ip_limit:${ips.length}ips`],
+        [row.clientConfigId, this.cooldownSeconds(), `ip_limit:${row.ipCount}ips`],
       );
     } catch (error) {
-      this.logger.warn(`Device-limit block-update failed for ${masked}: ${this.errMsg(error)}`);
+      this.logger.warn(`Device-limit block-update failed for ${this.maskId(row.clientConfigId)}: ${this.errMsg(error)}`);
       return;
     }
-    // Kick from xray now; the block-aware reconcile keeps them off until cooldown ends.
     await this.provisioning.removeUser(email);
   }
 
-  private async recordViolation(
-    email: string,
-    info: ConfigLimitRow,
-    ips: string[],
-    mode: string,
-    action: string,
-  ): Promise<void> {
+  private async recordViolation(row: OverLimitRow, mode: string, action: string): Promise<void> {
     try {
       await this.database.query(
         `INSERT INTO client_ip_violations
            (customer_account_id, client_config_id, email, ip_count, limit_value, ips, mode, action)
          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
         [
-          info.customerAccountId,
-          info.clientConfigId,
-          email,
-          ips.length,
-          info.limitValue,
-          JSON.stringify(ips),
+          row.customerAccountId,
+          row.clientConfigId,
+          provisioningEmail(row.clientConfigId),
+          row.ipCount,
+          row.limitValue,
+          JSON.stringify(row.ips),
           mode,
           action,
         ],
@@ -187,80 +195,8 @@ export class DeviceLimitService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Online VLESS config emails, from xray's statsgetallonlineusers. */
-  private async onlineEmails(): Promise<Set<string>> {
-    try {
-      const res = await execFileAsync(
-        this.bin(),
-        ['api', 'statsgetallonlineusers', `--server=${this.apiServer()}`],
-        { timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
-      );
-      const data = JSON.parse(res.stdout) as Record<string, unknown>;
-      const users = (data.users ?? data) as Record<string, unknown>;
-      const emails = users && typeof users === 'object' ? Object.keys(users) : [];
-      return new Set(emails.filter((e) => /^cc_.+@afrows$/.test(e)));
-    } catch {
-      return new Set();
-    }
-  }
-
-  /** Distinct live source-IPs for one config email. */
-  private async onlineIps(email: string): Promise<string[]> {
-    try {
-      const res = await execFileAsync(
-        this.bin(),
-        ['api', 'statsonlineiplist', `--server=${this.apiServer()}`, '-email', email],
-        { timeout: 15000, maxBuffer: 4 * 1024 * 1024 },
-      );
-      return parseOnlineIpList(res.stdout);
-    } catch {
-      return [];
-    }
-  }
-
-  private async limitsFor(emails: string[]): Promise<Map<string, ConfigLimitRow>> {
-    const map = new Map<string, ConfigLimitRow>();
-    const ids = emails
-      .map((e) => e.match(/^cc_(.+?)@afrows$/)?.[1])
-      .filter((v): v is string => Boolean(v));
-    if (ids.length === 0) return map;
-    try {
-      const res = await this.database.query<{
-        clientConfigId: string;
-        customerAccountId: string;
-        limitValue: number | string;
-        blockedUntil: Date | string | null;
-      }>(
-        `
-          SELECT cc.id AS "clientConfigId",
-                 cc.customer_account_id AS "customerAccountId",
-                 COALESCE(ca.max_concurrent_ips, $2) AS "limitValue",
-                 cc.blocked_until AS "blockedUntil"
-          FROM client_configs cc
-          JOIN customer_accounts ca ON ca.id = cc.customer_account_id
-          WHERE cc.id = ANY($1::uuid[])
-            AND ca.status = 'active'
-            AND ca.deleted_at IS NULL
-        `,
-        [ids, this.globalDefault()],
-      );
-      for (const r of res.rows) {
-        map.set(`cc_${r.clientConfigId}@afrows`, {
-          clientConfigId: r.clientConfigId,
-          customerAccountId: r.customerAccountId,
-          limitValue: Number(r.limitValue),
-          blockedUntil: r.blockedUntil ? new Date(r.blockedUntil) : null,
-        });
-      }
-    } catch (error) {
-      this.logger.warn(`Device-limit limits query failed: ${this.errMsg(error)}`);
-    }
-    return map;
-  }
-
-  private maskEmail(email: string): string {
-    const id = email.match(/^cc_(.+?)@afrows$/)?.[1] ?? email;
-    return id.length > 10 ? `cc_${id.slice(0, 8)}…` : email;
+  private maskId(id: string): string {
+    return id.length > 8 ? `${id.slice(0, 8)}…` : id;
   }
 
   // --- config ---
@@ -271,6 +207,9 @@ export class DeviceLimitService implements OnModuleInit, OnModuleDestroy {
   private globalDefault(): number {
     return this.intFromValue(this.config.get<string>('AFROWS_DEVICE_LIMIT_DEFAULT'), 1, 0, 100);
   }
+  private windowSeconds(): number {
+    return this.intFromValue(this.config.get<string>('AFROWS_DEVICE_LIMIT_WINDOW_SECONDS'), 300, 30, 3600);
+  }
   private requiredConsecutive(): number {
     return this.intFromValue(this.config.get<string>('AFROWS_DEVICE_LIMIT_CONSECUTIVE'), 2, 1, 10);
   }
@@ -278,13 +217,7 @@ export class DeviceLimitService implements OnModuleInit, OnModuleDestroy {
     return this.intFromValue(this.config.get<string>('AFROWS_DEVICE_LIMIT_COOLDOWN_SECONDS'), 180, 30, 3600);
   }
   private intervalMs(): number {
-    return this.intFromValue(this.config.get<string>('AFROWS_DEVICE_LIMIT_INTERVAL_SECONDS'), 25, 10, 300) * 1000;
-  }
-  private bin(): string {
-    return this.config.get<string>('AFROWS_XRAY_BIN')?.trim() || 'xray';
-  }
-  private apiServer(): string {
-    return this.config.get<string>('AFROWS_XRAY_API_SERVER')?.trim() || '127.0.0.1:10085';
+    return this.intFromValue(this.config.get<string>('AFROWS_DEVICE_LIMIT_INTERVAL_SECONDS'), 30, 10, 300) * 1000;
   }
   private flag(name: string, fallback: boolean): boolean {
     const v = this.config.get<string>(name)?.trim().toLowerCase();
