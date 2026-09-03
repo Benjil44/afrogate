@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, AdminResellerAccountSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   adjustCustomerGems,
   createAdminClientConfig,
@@ -12,6 +12,7 @@ import {
   fetchAdminCustomerDevices,
   fetchAdminNetworkOverview,
   fetchAdminOutbounds,
+  fetchAdminResellers,
   deleteAdminClientConfig,
   deleteAdminCustomerAccount,
   fetchAdminCustomerAccounts,
@@ -295,6 +296,13 @@ export function CustomersPage({
   // Routers available to assign to a NEW customer (gateways with no owner yet).
   const [routers, setRouters] = useState<MikroTikRouterSummary[]>([]);
   const [assignRouterId, setAssignRouterId] = useState('');
+  // Sellers (resellers), for the edit panel's Seller reassignment select. Loaded
+  // once including archived ones so a customer already on an archived seller
+  // still resolves to a name in the dropdown.
+  const [sellers, setSellers] = useState<AdminResellerAccountSummary[]>([]);
+  // '' = Direct (no seller); otherwise a reseller account id. Only meaningful
+  // while editing (editId set) — see openEdit/resetForm.
+  const [resellerId, setResellerId] = useState('');
   // Per-account client-config cache, keyed by account id. Feeds both the
   // Edit-mode exit-path list and the View-mode usage chart's config selector
   // (CustomerUsageSection) — populated lazily the first time a row expands.
@@ -368,6 +376,8 @@ export function CustomersPage({
     void run();
     void fetchEgressTierPrices(sessionToken).then((p) => active && setTierPrices(p)).catch(() => undefined);
     void fetchRouters(sessionToken).then((r) => active && setRouters(r.routers)).catch(() => undefined);
+    // 'all' so a customer already on an archived seller still resolves to a name.
+    void fetchAdminResellers(sessionToken, undefined, 'all').then((r) => active && setSellers(r.resellers)).catch(() => undefined);
     return () => {
       active = false;
       if (timer) window.clearTimeout(timer);
@@ -417,6 +427,7 @@ export function CustomersPage({
     setProtoVless(true);
     setProtoWg(false);
     setAssignRouterId('');
+    setResellerId('');
     setShownPassword(null);
     setPwCopied(false);
     setCustomPw('');
@@ -459,6 +470,7 @@ export function CustomersPage({
     setExpiresAt(a.expiresAt ? a.expiresAt.slice(0, 10) : '');
     setTagsInput((a.tags ?? []).join(', '));
     setNotes(a.notes ?? '');
+    setResellerId(a.resellerAccountId ?? '');
     setExpandedRows((cur) => ({ ...cur, [a.id]: true }));
     setExitPath({});
     setExitMsg(null);
@@ -674,6 +686,10 @@ export function CustomersPage({
     // moments earlier via the toggle.
     const liveTier = editId ? accounts.find((acc) => acc.id === editId)?.egressTier : undefined;
     const payload = {
+      // Seller reassignment is only exposed in the edit form (see the Seller
+      // select in the Identity section) — undefined on create so it never
+      // changes the existing create-panel behavior (JSON.stringify drops it).
+      resellerAccountId: editId ? (resellerId || null) : undefined,
       displayName: name.trim(),
       loginEmail: email.trim() || null,
       telegramUsername: telegram.trim() || null,
@@ -1088,7 +1104,14 @@ export function CustomersPage({
         <div className="grid gap-1.5 sm:grid-cols-2">
           {a.loginEmail ? <DetailRow label={s.colEmail}>{a.loginEmail}</DetailRow> : null}
           {a.expiresAt ? <DetailRow label={s.colExpiry}>{format.time(new Date(a.expiresAt), false)}</DetailRow> : null}
-          <DetailRow label={s.colSeller}>{a.resellerDisplayName || s.direct}</DetailRow>
+          <DetailRow label={s.colSeller}>
+            {a.resellerDisplayName || s.direct}
+            {a.resellerArchived ? (
+              <span className="ms-1.5 inline-flex rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-normal text-afro-muted">
+                {s.sellerRemoved}
+              </span>
+            ) : null}
+          </DetailRow>
           {v2.phone ? (
             <DetailRow label={s.colPhone}><span dir="ltr">{v2.phone}</span></DetailRow>
           ) : null}
@@ -1196,6 +1219,17 @@ export function CustomersPage({
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldTelegramId}</span>
               <input value={telegramId} onChange={(e2) => setTelegramId(e2.target.value)} dir="ltr" inputMode="numeric" placeholder={s.fldTelegramIdHint} className={inputClass} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[13px] font-bold text-afro-muted">{s.fldSeller}</span>
+              <select value={resellerId} onChange={(e2) => setResellerId(e2.target.value)} className={inputClass}>
+                <option value="">{s.fldSellerDirect}</option>
+                {sellers.map((seller) => (
+                  <option key={seller.id} value={seller.id}>
+                    {seller.archivedAt ? `${seller.displayName} ${s.fldSellerArchivedSuffix}` : seller.displayName}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
         </section>
@@ -1692,7 +1726,16 @@ export function CustomersPage({
       key: 'seller',
       header: s.colSeller,
       className: fitCol,
-      render: (a) => <span className="whitespace-nowrap">{a.resellerDisplayName || s.direct}</span>,
+      render: (a) => (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          {a.resellerDisplayName || s.direct}
+          {a.resellerArchived ? (
+            <span className="inline-flex rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 text-[10px] font-normal text-afro-muted">
+              {s.sellerRemoved}
+            </span>
+          ) : null}
+        </span>
+      ),
     },
     {
       key: 'actions',
