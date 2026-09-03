@@ -2331,6 +2331,21 @@ export interface AdminOperationsOverview {
   uploadTotalBytes: number;
 }
 
+/** Lightweight, fast-pollable live throughput sample for the dashboard's real-time
+ *  traffic chart. Independent sample state from AdminOperationsOverview so a fast
+ *  poll here does not perturb the 10s overview's rate numbers. */
+export interface AdminOperationsThroughput {
+  available: boolean;
+  /** bytes/sec since the previous call to this endpoint (0 on the first call). */
+  downloadBps: number;
+  uploadBps: number;
+  /** cumulative bytes across all inbounds (monotonic; not reset by metering). */
+  downloadTotalBytes: number;
+  uploadTotalBytes: number;
+  /** server epoch ms of this sample. */
+  ts: number;
+}
+
 export interface AdminInboundSummary {
   /** xray inbound tag (e.g. afrows-in, afrows-in-tcp) */
   tag: string;

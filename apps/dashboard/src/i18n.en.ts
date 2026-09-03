@@ -832,6 +832,14 @@ export const en = {
       routeMode: 'Route mode',
       autoLock: 'Auto + lock',
     },
+    liveTraffic: {
+      title: 'Live traffic',
+      subtitle: 'Real-time',
+      clientsOnline: 'Clients online',
+      download: 'Download',
+      upload: 'Upload',
+      unavailable: 'Live traffic unavailable',
+    },
     controlPlaneRows: {
       metricsIngest: 'Metrics ingest',
       telegramApiEgress: 'Telegram/API egress',

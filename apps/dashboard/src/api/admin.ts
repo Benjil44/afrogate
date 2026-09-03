@@ -49,6 +49,7 @@ import type {
   AdminInboundsResponse,
   AdminConnectionsResponse,
   AdminOperationsOverview,
+  AdminOperationsThroughput,
   AdminOutboundSummary,
   AdminOutboundSubscriptionSummary,
   AdminOutboundTestResult,
@@ -696,6 +697,17 @@ export async function fetchAdminOperationsOverview(
     signal,
   });
   return response.json() as Promise<AdminOperationsOverview>;
+}
+
+export async function fetchAdminOperationsThroughput(
+  sessionToken: string,
+  signal?: AbortSignal,
+): Promise<AdminOperationsThroughput> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/operations-throughput`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
+  return response.json() as Promise<AdminOperationsThroughput>;
 }
 
 export async function fetchAdminConnections(

@@ -29,6 +29,7 @@ import type {
   AdminNetworkOverviewResponse,
   AdminConnectionsResponse,
   AdminOperationsOverview,
+  AdminOperationsThroughput,
   AdminOutboundsResponse,
   AdminServerDetail,
   AdminServerInterfaceSummary,
@@ -728,6 +729,12 @@ export class OperationsController {
   @Roles('admin', 'supervisor', 'support', 'auditor')
   getOperationsOverview(): Promise<AdminOperationsOverview> {
     return this.overviewService.getOverview();
+  }
+
+  @Get('operations-throughput')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getOperationsThroughput(): Promise<AdminOperationsThroughput> {
+    return this.overviewService.getThroughput();
   }
 
   @Get('connections')

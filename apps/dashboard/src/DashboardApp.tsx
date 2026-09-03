@@ -1642,6 +1642,7 @@ function ActivePage({
           servers={servers}
           summary={summary}
           activeUsers={activeUsers}
+          sessionToken={sessionToken}
           t={t}
           tunnelDataState={tunnelDataState}
           tunnels={routeTunnels}

@@ -900,6 +900,14 @@ export const fa: DashboardStrings = {
       routeMode: 'حالت مسیر',
       autoLock: 'خودکار + قفل',
     },
+    liveTraffic: {
+      title: 'ترافیک زنده',
+      subtitle: 'لحظه‌ای',
+      clientsOnline: 'کاربران آنلاین',
+      download: 'دانلود',
+      upload: 'آپلود',
+      unavailable: 'ترافیک زنده در دسترس نیست',
+    },
     controlPlaneRows: {
       metricsIngest: 'دریافت متریک',
       telegramApiEgress: 'خروجی تلگرام/API',

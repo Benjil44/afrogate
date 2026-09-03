@@ -1,6 +1,7 @@
 import type { AdminBackupStatusSummary, MetricsTimeRange, ServerMetricTimeseries } from '@afrows/shared';
 import { AlertsPanel, CapacityPanel, ControlPlanePanel, DashboardOverviewChartsPanel, HealthChartPanel, OutboundsPanel } from '../components/dashboard-panels';
 import { ServerPanel, TunnelPanel } from '../components/panels';
+import { LiveThroughputPanel } from '../components/LiveThroughputPanel';
 import { MetricCard } from '../components/primitives';
 import { countActiveUsers } from '../mappers';
 import type { AlertRowData, DataState, MetricCardData, OutboundRowData, ServerRowData, TrafficTotals, TunnelRowData } from '../dashboard-types';
@@ -22,6 +23,7 @@ export function DashboardPage({
   servers,
   summary,
   activeUsers,
+  sessionToken,
   t,
   tunnelDataState,
   tunnels,
@@ -42,6 +44,7 @@ export function DashboardPage({
   servers: ServerRowData[];
   summary: MetricCardData[];
   activeUsers?: number;
+  sessionToken: string;
   t: DashboardStrings;
   tunnelDataState: DataState;
   tunnels: TunnelRowData[];
@@ -77,6 +80,10 @@ export function DashboardPage({
           />
         ) : null}
         <DashboardOverviewChartsPanel alerts={alerts} format={format} outbounds={outbounds} servers={servers} t={t} />
+      </section>
+
+      <section className="mt-2" aria-label={t.liveTraffic.title}>
+        <LiveThroughputPanel activeUsers={activeUsers} format={format} sessionToken={sessionToken} t={t} />
       </section>
 
       <section className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.85fr)]">

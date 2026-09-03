@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { statfs } from 'node:fs/promises';
 import * as os from 'node:os';
 import { promisify } from 'node:util';
-import type { AdminOperationsOverview } from '@afrows/shared';
+import type { AdminOperationsOverview, AdminOperationsThroughput } from '@afrows/shared';
 import { DatabaseService } from '../database/database.service';
 
 const execFileAsync = promisify(execFile);
@@ -19,6 +19,9 @@ const execFileAsync = promisify(execFile);
 export class OperationsOverviewService {
   private readonly logger = new Logger(OperationsOverviewService.name);
   private lastSample: { ts: number; up: number; down: number } | null = null;
+  /** Separate sample state for the fast live-throughput endpoint, so polling it
+   *  every few seconds does not perturb getOverview's 10s rate. */
+  private lastThroughputSample: { ts: number; up: number; down: number } | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -58,6 +61,35 @@ export class OperationsOverviewService {
       uploadBps,
       downloadTotalBytes: traffic?.down ?? 0,
       uploadTotalBytes: traffic?.up ?? 0,
+    };
+  }
+
+  /** Fast, light live-throughput sample for the dashboard's real-time chart.
+   *  Inbound counters are monotonic (metering resets only user counters), so the
+   *  delta since the previous call is a clean byte/sec rate. Uses its own sample
+   *  state (lastThroughputSample) so it never perturbs getOverview. */
+  async getThroughput(): Promise<AdminOperationsThroughput> {
+    const traffic = await this.inboundTrafficTotals();
+    const now = Date.now();
+    let downloadBps = 0;
+    let uploadBps = 0;
+    if (traffic) {
+      if (this.lastThroughputSample) {
+        const elapsed = (now - this.lastThroughputSample.ts) / 1000;
+        if (elapsed > 0) {
+          downloadBps = Math.max(0, (traffic.down - this.lastThroughputSample.down) / elapsed);
+          uploadBps = Math.max(0, (traffic.up - this.lastThroughputSample.up) / elapsed);
+        }
+      }
+      this.lastThroughputSample = { ts: now, up: traffic.up, down: traffic.down };
+    }
+    return {
+      available: traffic !== null,
+      downloadBps,
+      uploadBps,
+      downloadTotalBytes: traffic?.down ?? 0,
+      uploadTotalBytes: traffic?.up ?? 0,
+      ts: now,
     };
   }
 
