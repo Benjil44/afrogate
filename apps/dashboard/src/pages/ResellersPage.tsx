@@ -1,17 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, LogIn, Store, Users } from 'lucide-react';
-import type { AdminCustomerAccountSummary, AdminResellerAccountSummary, AdminResellerWalletLedgerEntry, AdminUserSummary } from '@afrows/shared';
-import { createAdminReseller, fetchAdminResellers, fetchAdminUsers, fetchResellerWalletLedger, topUpResellerWallet, updateAdminReseller } from '../api/admin';
+import { Activity, Archive, ArchiveRestore, Database, Loader2, LogIn, Store } from 'lucide-react';
+import type {
+  AdminCustomerAccountSummary,
+  AdminResellerAccountSummary,
+  AdminResellerWalletLedgerEntry,
+  AdminUserSummary,
+  ResellerAccountStatus,
+} from '@afrows/shared';
+import {
+  archiveAdminReseller,
+  createAdminReseller,
+  fetchAdminResellers,
+  fetchAdminUsers,
+  fetchResellerWalletLedger,
+  restoreAdminReseller,
+  topUpResellerWallet,
+  updateAdminReseller,
+} from '../api/admin';
 import { fetchGbPrice, fetchResellerCustomers, impersonateReseller, type ImpersonateResellerResult } from '../api/reseller-pricing';
 import { DataTable, type DataTableColumnDef } from '../components/DataTable';
-import { PanelHeading, StatusBadge } from '../components/primitives';
+import { MetricPill, PanelHeading, StatusBadge, UsageBar } from '../components/primitives';
 import { billingStatusTone, customerAccountStatusLabel } from '../labels';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 
 const inputClass = 'min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal';
+const rowActionBtn =
+  'inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal disabled:cursor-wait disabled:opacity-60';
 
-type SellerCustomersState = 'loading' | 'live' | 'error';
+type LoadState = 'idle' | 'loading' | 'live' | 'error';
 
 export function ResellersPage({
   format,
@@ -31,6 +48,7 @@ export function ResellersPage({
   const [error, setError] = useState<string | null>(null);
   // First-load failure must not look like "no sellers yet".
   const [loadState, setLoadState] = useState<'loading' | 'live' | 'error'>('loading');
+  const [showArchived, setShowArchived] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [adminUserId, setAdminUserId] = useState('');
   // One-step onboarding: link an existing reseller login, or create a fresh one.
@@ -47,26 +65,16 @@ export function ResellersPage({
   const [creditLimit, setCreditLimit] = useState('0');
   const [maxCustomers, setMaxCustomers] = useState(''); // '' = unlimited
   const [busy, setBusy] = useState(false);
-  const [topUpFor, setTopUpFor] = useState<string | null>(null);
-  const [topUpAmount, setTopUpAmount] = useState('');
-  // Inline per-seller customer-cap editor.
-  const [limitFor, setLimitFor] = useState<string | null>(null);
-  const [limitValue, setLimitValue] = useState('');
-  // Inline per-seller credit-limit (overdraft allowance) editor.
-  const [creditFor, setCreditFor] = useState<string | null>(null);
-  const [creditValue, setCreditValue] = useState('');
-  const [ledgerFor, setLedgerFor] = useState<string | null>(null);
-  const [ledger, setLedger] = useState<AdminResellerWalletLedgerEntry[]>([]);
-  // Drill-down: which seller's customers are expanded + their usage rows.
-  const [customersFor, setCustomersFor] = useState<string | null>(null);
-  const [customers, setCustomers] = useState<AdminCustomerAccountSummary[]>([]);
-  const [customersState, setCustomersState] = useState<SellerCustomersState>('loading');
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+  // Archive/restore in-flight row id, so only that row's action shows a spinner.
+  const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
+  // Only one seller's sub-row is ever open at a time.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = async () => {
     try {
       const [res, users] = await Promise.all([
-        fetchAdminResellers(sessionToken),
+        fetchAdminResellers(sessionToken, undefined, showArchived ? 'all' : 'active'),
         fetchAdminUsers(sessionToken).catch(() => ({ users: [] as AdminUserSummary[] })),
       ]);
       setRows(res.resellers);
@@ -78,7 +86,7 @@ export function ResellersPage({
   };
   useEffect(() => {
     void load();
-  }, [sessionToken]);
+  }, [sessionToken, showArchived]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -133,59 +141,8 @@ export function ResellersPage({
     }
   };
 
-  const onTopUp = async (id: string) => {
-    const amount = Math.round(Number(topUpAmount) || 0);
-    if (amount <= 0) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await topUpResellerWallet(sessionToken, id, { amount });
-      setTopUpFor(null);
-      setTopUpAmount('');
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onSetLimit = async (id: string) => {
-    // Empty input clears the cap (unlimited); a number sets it.
-    const trimmed = limitValue.trim();
-    const maxCustomers = trimmed ? Math.max(0, Math.round(Number(trimmed) || 0)) : null;
-    setBusy(true);
-    setError(null);
-    try {
-      await updateAdminReseller(sessionToken, id, { maxCustomers });
-      setLimitFor(null);
-      setLimitValue('');
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onSetCredit = async (id: string) => {
-    // The seller's overdraft allowance: how far the wallet may go negative.
-    const creditLimitAmount = Math.max(0, Math.round(Number(creditValue.trim()) || 0));
-    setBusy(true);
-    setError(null);
-    try {
-      await updateAdminReseller(sessionToken, id, { creditLimitAmount });
-      setCreditFor(null);
-      setCreditValue('');
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const onToggleStatus = async (r: AdminResellerAccountSummary) => {
+    if (r.archivedAt) return;
     const next = r.status === 'active' ? 'disabled' : 'active';
     setError(null);
     setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: next } : x)));
@@ -195,35 +152,6 @@ export function ResellersPage({
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       await load();
-    }
-  };
-
-  const openLedger = async (id: string) => {
-    setLedgerFor(id);
-    setLedger([]);
-    try {
-      const res = await fetchResellerWalletLedger(sessionToken, id);
-      setLedger(res.entries);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  /** Drill into a seller: list their customer accounts + used/quota usage. */
-  const openCustomers = async (id: string) => {
-    if (customersFor === id) {
-      setCustomersFor(null);
-      return;
-    }
-    setCustomersFor(id);
-    setCustomers([]);
-    setCustomersState('loading');
-    try {
-      const accounts = await fetchResellerCustomers(sessionToken, id);
-      setCustomers(accounts);
-      setCustomersState('live');
-    } catch {
-      setCustomersState('error');
     }
   };
 
@@ -241,6 +169,34 @@ export function ResellersPage({
     }
   };
 
+  const onArchive = async (r: AdminResellerAccountSummary) => {
+    if (!window.confirm(s.archiveConfirm(r.displayName, r.customerAccountCount))) return;
+    setArchiveBusyId(r.id);
+    setError(null);
+    try {
+      await archiveAdminReseller(sessionToken, r.id);
+      if (expandedId === r.id) setExpandedId(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : s.archiveFailed);
+    } finally {
+      setArchiveBusyId(null);
+    }
+  };
+
+  const onRestore = async (r: AdminResellerAccountSummary) => {
+    setArchiveBusyId(r.id);
+    setError(null);
+    try {
+      await restoreAdminReseller(sessionToken, r.id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : s.restoreFailed);
+    } finally {
+      setArchiveBusyId(null);
+    }
+  };
+
   const money = (n: number, cur: string) => `${n.toLocaleString()} ${cur}`;
 
   const columns: Array<DataTableColumnDef<AdminResellerAccountSummary>> = [
@@ -249,7 +205,14 @@ export function ResellersPage({
       header: s.colName,
       render: (r) => (
         <span>
-          <strong className="block text-afro-ink">{r.displayName}</strong>
+          <strong className="block text-afro-ink">
+            {r.displayName}
+            {r.archivedAt ? (
+              <span className="ms-1.5 inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-afro-muted">
+                {s.archivedBadge}
+              </span>
+            ) : null}
+          </strong>
           <span className="text-[12px] text-afro-muted">{r.contactName || r.telegramUsername || '—'}</span>
         </span>
       ),
@@ -285,14 +248,16 @@ export function ResellersPage({
       header: s.colStatus,
       render: (r) => {
         const on = r.status === 'active';
+        const archived = Boolean(r.archivedAt);
         return (
           <span className="inline-flex items-center gap-2">
             <button
               type="button"
               role="switch"
               aria-checked={on}
+              disabled={archived}
               onClick={() => void onToggleStatus(r)}
-              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full ${on ? 'bg-afro-teal' : 'bg-afro-line'}`}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full disabled:opacity-40 ${on ? 'bg-afro-teal' : 'bg-afro-line'}`}
             >
               <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${on ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
             </button>
@@ -305,44 +270,71 @@ export function ResellersPage({
       key: 'actions',
       header: s.colActions,
       alignRight: true,
-      render: (r) => (
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          <button type="button" onClick={() => { setTopUpFor(r.id); setTopUpAmount(''); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.topUp}</button>
-          <button type="button" onClick={() => { setCreditFor(r.id); setCreditValue(String(r.creditLimitAmount)); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.creditLimit}</button>
-          <button type="button" onClick={() => { setLimitFor(r.id); setLimitValue(r.maxCustomers != null ? String(r.maxCustomers) : ''); }} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.limit}</button>
-          <button type="button" onClick={() => void openLedger(r.id)} className="inline-flex h-8 items-center rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal">{s.ledger}</button>
-          <button
-            aria-expanded={customersFor === r.id}
-            data-seller-customers-toggle={r.id}
-            type="button"
-            onClick={() => void openCustomers(r.id)}
-            className={`inline-flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-bold hover:border-afro-teal hover:text-afro-teal ${customersFor === r.id ? 'border-afro-teal text-afro-teal' : 'border-afro-line'}`}
-          >
-            <Users size={13} />
-            {s.customers}
-          </button>
-          <button
-            data-seller-impersonate={r.id}
-            type="button"
-            disabled={impersonatingId !== null}
-            onClick={() => void onSignInAs(r)}
-            title={s.signInAs}
-            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold hover:border-afro-blue hover:text-afro-blue disabled:cursor-wait disabled:opacity-60"
-          >
-            {impersonatingId === r.id ? <Loader2 className="animate-spin" size={13} /> : <LogIn size={13} />}
-            {impersonatingId === r.id ? s.signingInAs : s.signInAs}
-          </button>
-        </div>
-      ),
+      width: '1%',
+      render: (r) => {
+        const rowBusy = archiveBusyId === r.id;
+        const archived = Boolean(r.archivedAt);
+        return (
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {!archived ? (
+              <button
+                data-seller-impersonate={r.id}
+                type="button"
+                disabled={impersonatingId !== null}
+                onClick={() => void onSignInAs(r)}
+                title={s.signInAs}
+                className={`${rowActionBtn} hover:border-afro-blue hover:text-afro-blue`}
+              >
+                {impersonatingId === r.id ? <Loader2 className="animate-spin" size={13} /> : <LogIn size={13} />}
+                <span className="sr-only sm:not-sr-only">{impersonatingId === r.id ? s.signingInAs : s.signInAs}</span>
+              </button>
+            ) : null}
+            {archived ? (
+              <button
+                type="button"
+                disabled={rowBusy}
+                onClick={() => void onRestore(r)}
+                title={s.restore}
+                className={`${rowActionBtn} hover:border-afro-green hover:text-afro-green`}
+              >
+                {rowBusy ? <Loader2 className="animate-spin" size={13} /> : <ArchiveRestore size={13} />}
+                <span className="sr-only sm:not-sr-only">{rowBusy ? s.restoring : s.restore}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={rowBusy}
+                onClick={() => void onArchive(r)}
+                title={s.archive}
+                className={`${rowActionBtn} hover:border-red-400 hover:text-red-600`}
+              >
+                {rowBusy ? <Loader2 className="animate-spin" size={13} /> : <Archive size={13} />}
+                <span className="sr-only sm:not-sr-only">{rowBusy ? s.archiving : s.archive}</span>
+              </button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
   return (
     <section className="grid gap-4">
       {error ? <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] text-red-700">{error}</div> : null}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <PanelHeading title={s.colName} icon={Store} />
-        <button type="button" onClick={() => setShowAdd((v) => !v)} className="inline-flex min-h-9 items-center gap-1 rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white hover:bg-[#1f3138]">+ {s.add}</button>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex min-h-11 items-center gap-2 text-[13px] font-bold text-afro-muted md:min-h-9">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="h-4 w-4 accent-afro-teal"
+            />
+            {s.showArchived}
+          </label>
+          <button type="button" onClick={() => setShowAdd((v) => !v)} className="inline-flex min-h-9 items-center gap-1 rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white hover:bg-[#1f3138]">+ {s.add}</button>
+        </div>
       </div>
 
       {showAdd ? (
@@ -416,90 +408,10 @@ export function ResellersPage({
         </div>
       ) : null}
 
-      {topUpFor ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-afro-line bg-white p-3">
-          <span className="text-[13px] font-bold text-afro-muted">{s.topUpAmount}:</span>
-          <input className={`${inputClass} w-40`} inputMode="numeric" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)} />
-          <button type="button" disabled={busy} onClick={() => void onTopUp(topUpFor)} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.topUp}</button>
-          <button type="button" onClick={() => setTopUpFor(null)} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold">{s.cancel}</button>
-        </div>
-      ) : null}
-
-      {creditFor ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-afro-line bg-white p-3">
-          <span className="text-[13px] font-bold text-afro-muted">{s.creditLimit}:</span>
-          <input className={`${inputClass} w-40`} inputMode="numeric" value={creditValue} onChange={(e) => setCreditValue(e.target.value)} />
-          <button type="button" disabled={busy} onClick={() => void onSetCredit(creditFor)} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.save}</button>
-          <button type="button" onClick={() => setCreditFor(null)} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold">{s.cancel}</button>
-          <span className="text-[12px] text-afro-muted">{s.creditLimitHint}</span>
-        </div>
-      ) : null}
-
-      {limitFor ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-afro-line bg-white p-3">
-          <span className="text-[13px] font-bold text-afro-muted">{s.maxCustomers}:</span>
-          <input className={`${inputClass} w-40`} inputMode="numeric" placeholder={s.unlimited} value={limitValue} onChange={(e) => setLimitValue(e.target.value)} />
-          <button type="button" disabled={busy} onClick={() => void onSetLimit(limitFor)} className="inline-flex min-h-9 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">{s.save}</button>
-          <button type="button" onClick={() => setLimitFor(null)} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold">{s.cancel}</button>
-          <span className="text-[12px] text-afro-muted">{s.maxCustomersHint}</span>
-        </div>
-      ) : null}
-
-      {ledgerFor ? (
-        <div className="grid gap-1 rounded-lg border border-afro-line bg-white p-3">
-          <div className="flex items-center justify-between">
-            <strong className="text-[13px]">{s.ledger}</strong>
-            <button type="button" onClick={() => setLedgerFor(null)} className="text-[12px] font-bold text-afro-muted hover:text-afro-ink">{s.cancel}</button>
-          </div>
-          {ledger.length === 0 ? (
-            <span className="text-[12px] text-afro-muted">{s.ledgerEmpty}</span>
-          ) : (
-            ledger.map((e) => (
-              <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-afro-line/60 py-1 text-[12px]">
-                <span className="font-bold uppercase tracking-wide">{e.entryType}</span>
-                <span dir="ltr">{e.amount.toLocaleString()} {e.currency}</span>
-                <span className="text-afro-muted">{e.customerDisplayName || e.volumePackageName || e.source}</span>
-                <span className="text-afro-muted">{new Date(e.createdAt).toLocaleString()}</span>
-              </div>
-            ))
-          )}
-        </div>
-      ) : null}
-
-      {customersFor ? (
-        <div className="grid gap-1.5 rounded-lg border border-afro-line bg-white p-3" data-seller-customers="true">
-          <div className="flex items-center justify-between gap-2">
-            <strong className="min-w-0 truncate text-[13px]">
-              {s.customersTitle(rows.find((r) => r.id === customersFor)?.displayName ?? '')}
-            </strong>
-            <button type="button" onClick={() => setCustomersFor(null)} className="inline-flex min-h-9 items-center px-1 text-[12px] font-bold text-afro-muted hover:text-afro-ink">{s.cancel}</button>
-          </div>
-          {customersState === 'loading' ? (
-            <span className="inline-flex items-center gap-2 text-[12px] text-afro-muted"><Loader2 className="animate-spin" size={14} />{t.panelStates.loadingTitle}</span>
-          ) : customersState === 'error' ? (
-            <span className="text-[12px] text-afro-muted">{s.customersLoadFailed}</span>
-          ) : customers.length === 0 ? (
-            <span className="text-[12px] text-afro-muted">{s.customersEmpty}</span>
-          ) : (
-            customers.map((account) => (
-              <div key={account.id} className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-afro-line/60 py-1.5 last:border-b-0">
-                <span className="min-w-0">
-                  <strong className="block truncate text-[13px] text-afro-ink">
-                    {account.displayName ?? account.telegramUsername ?? account.id.slice(0, 8)}
-                  </strong>
-                  <span className="block truncate text-[12px] text-afro-muted" dir="ltr">
-                    {s.colUsedQuota}: {format.bytes(account.usedBytes)} / {account.quotaLimitBytes === null || account.quotaLimitBytes === undefined ? t.billing.unlimited : format.bytes(account.quotaLimitBytes)}
-                  </span>
-                </span>
-                <StatusBadge tone={billingStatusTone(account.status)}>{customerAccountStatusLabel(account.status, t)}</StatusBadge>
-              </div>
-            ))
-          )}
-        </div>
-      ) : null}
-
       <DataTable
         columns={columns}
+        detailCollapseLabel={s.collapseRow}
+        detailExpandLabel={s.expandRow}
         empty={{ message: s.empty }}
         error={
           loadState === 'error'
@@ -514,12 +426,237 @@ export function ResellersPage({
               }
             : null
         }
+        expandedRows={expandedId ? { [expandedId]: true } : {}}
         loading={loadState === 'loading'}
         loadingLabel={t.panelStates.loadingTitle}
-        minWidth="980px"
+        minWidth="900px"
+        onToggleRow={(key) => setExpandedId((current) => (current === key ? null : key))}
+        renderDetail={(r) => (
+          <SellerDetailPanel format={format} onSaved={load} r={r} s={s} sessionToken={sessionToken} t={t} />
+        )}
         rowKey={(r) => r.id}
         rows={rows}
+        stickyLastColumn
       />
     </section>
+  );
+}
+
+/**
+ * Everything for one seller that used to be a top-stacked panel — consolidated
+ * Edit (margin/credit/max/status), Top up, Ledger, and the customer drill-down —
+ * now lives directly under that seller's row. Mounted only while its row is
+ * expanded, so each seller gets a fresh, independent copy of this state.
+ */
+function SellerDetailPanel({
+  format,
+  onSaved,
+  r,
+  s,
+  sessionToken,
+  t,
+}: {
+  format: DashboardFormatters;
+  onSaved: () => Promise<void>;
+  r: AdminResellerAccountSummary;
+  s: DashboardStrings['resellersPage'];
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  // Consolidated edit
+  const [marginPct, setMarginPct] = useState(String(r.sellerMarginPercent));
+  const [creditLimit, setCreditLimit] = useState(String(r.creditLimitAmount));
+  const [maxCustomers, setMaxCustomers] = useState(r.maxCustomers != null ? String(r.maxCustomers) : '');
+  const [status, setStatus] = useState<ResellerAccountStatus | string>(r.status);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editMessage, setEditMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Top up
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpBusy, setTopUpBusy] = useState(false);
+  const [topUpError, setTopUpError] = useState<string | null>(null);
+
+  // Ledger
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [ledger, setLedger] = useState<AdminResellerWalletLedgerEntry[]>([]);
+  const [ledgerState, setLedgerState] = useState<LoadState>('idle');
+
+  // Customers drill-down
+  const [customers, setCustomers] = useState<AdminCustomerAccountSummary[]>([]);
+  const [customersState, setCustomersState] = useState<LoadState>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    setCustomersState('loading');
+    fetchResellerCustomers(sessionToken, r.id)
+      .then((accounts) => {
+        if (cancelled) return;
+        setCustomers(accounts);
+        setCustomersState('live');
+      })
+      .catch(() => {
+        if (!cancelled) setCustomersState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, r.id]);
+
+  const onSaveEdit = async () => {
+    setEditBusy(true);
+    setEditMessage(null);
+    try {
+      await updateAdminReseller(sessionToken, r.id, {
+        sellerMarginBps: Math.round((Number(marginPct) || 0) * 100),
+        creditLimitAmount: Math.max(0, Math.round(Number(creditLimit) || 0)),
+        maxCustomers: maxCustomers.trim() ? Math.max(0, Math.round(Number(maxCustomers) || 0)) : null,
+        status: status as ResellerAccountStatus,
+      });
+      setEditMessage({ ok: true, text: s.editSaved });
+      await onSaved();
+    } catch (e) {
+      setEditMessage({ ok: false, text: e instanceof Error ? e.message : s.editFailed });
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const onTopUp = async () => {
+    const amount = Math.round(Number(topUpAmount) || 0);
+    if (amount <= 0) return;
+    setTopUpBusy(true);
+    setTopUpError(null);
+    try {
+      await topUpResellerWallet(sessionToken, r.id, { amount });
+      setTopUpAmount('');
+      await onSaved();
+    } catch (e) {
+      setTopUpError(e instanceof Error ? e.message : s.topUpFailed);
+    } finally {
+      setTopUpBusy(false);
+    }
+  };
+
+  const onToggleLedger = () => {
+    if (ledgerOpen) {
+      setLedgerOpen(false);
+      return;
+    }
+    setLedgerOpen(true);
+    if (ledgerState === 'idle' || ledgerState === 'error') {
+      setLedgerState('loading');
+      fetchResellerWalletLedger(sessionToken, r.id)
+        .then((res) => {
+          setLedger(res.entries);
+          setLedgerState('live');
+        })
+        .catch(() => setLedgerState('error'));
+    }
+  };
+
+  return (
+    <div className="grid gap-3">
+      {/* Consolidated edit: margin, credit limit, max customers, status. */}
+      <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5 sm:grid-cols-2 lg:grid-cols-5">
+        <label className="grid gap-1">
+          <span className="text-[12px] font-bold text-afro-muted">{s.marginPercent}</span>
+          <input className={inputClass} inputMode="numeric" value={marginPct} onChange={(e) => setMarginPct(e.target.value)} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-[12px] font-bold text-afro-muted">{s.creditLimit}</span>
+          <input className={inputClass} inputMode="numeric" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-[12px] font-bold text-afro-muted">{s.maxCustomers}</span>
+          <input className={inputClass} inputMode="numeric" placeholder={s.unlimited} value={maxCustomers} onChange={(e) => setMaxCustomers(e.target.value)} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-[12px] font-bold text-afro-muted">{s.statusLabel}</span>
+          <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="active">{s.statusActive}</option>
+            <option value="suspended">{s.statusSuspended}</option>
+            <option value="disabled">{s.statusDisabled}</option>
+          </select>
+        </label>
+        <div className="flex items-end gap-2">
+          <button type="button" disabled={editBusy} onClick={() => void onSaveEdit()} className="inline-flex min-h-10 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-50">
+            {editBusy ? <Loader2 className="animate-spin" size={14} /> : s.save}
+          </button>
+        </div>
+        {editMessage ? (
+          <span className={`sm:col-span-2 lg:col-span-5 text-[12px] ${editMessage.ok ? 'text-afro-green' : 'text-red-600'}`}>{editMessage.text}</span>
+        ) : null}
+      </div>
+
+      {/* Top up + ledger. */}
+      <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[13px] font-bold text-afro-muted">{s.topUpAmount}:</span>
+          <input className={`${inputClass} w-32`} inputMode="numeric" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)} />
+          <button type="button" disabled={topUpBusy || Math.round(Number(topUpAmount) || 0) <= 0} onClick={() => void onTopUp()} className="inline-flex min-h-9 items-center rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white disabled:opacity-50">
+            {topUpBusy ? <Loader2 className="animate-spin" size={14} /> : s.topUp}
+          </button>
+          <button type="button" onClick={onToggleLedger} className="inline-flex min-h-9 items-center rounded-md border border-afro-line px-3 text-sm font-bold hover:border-afro-teal hover:text-afro-teal">
+            {s.ledger}
+          </button>
+          {topUpError ? <span className="text-[12px] text-red-600">{topUpError}</span> : null}
+        </div>
+        {ledgerOpen ? (
+          <div className="grid gap-1 border-t border-afro-line pt-2">
+            {ledgerState === 'loading' ? (
+              <span className="inline-flex items-center gap-2 text-[12px] text-afro-muted"><Loader2 className="animate-spin" size={14} />{t.panelStates.loadingTitle}</span>
+            ) : ledgerState === 'error' ? (
+              <span className="text-[12px] text-afro-muted">{t.panelStates.errorTitle}</span>
+            ) : ledger.length === 0 ? (
+              <span className="text-[12px] text-afro-muted">{s.ledgerEmpty}</span>
+            ) : (
+              ledger.map((e) => (
+                <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-afro-line/60 py-1 text-[12px] last:border-b-0">
+                  <span className="font-bold uppercase tracking-wide">{e.entryType}</span>
+                  <span dir="ltr">{e.amount.toLocaleString()} {e.currency}</span>
+                  <span className="text-afro-muted">{e.customerDisplayName || e.volumePackageName || e.source}</span>
+                  <span className="text-afro-muted">{new Date(e.createdAt).toLocaleString()}</span>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Customers drill-down. */}
+      <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+        <strong className="text-[13px]">{s.customersTitle(r.displayName)}</strong>
+        {customersState === 'loading' ? (
+          <span className="inline-flex items-center gap-2 text-[12px] text-afro-muted"><Loader2 className="animate-spin" size={14} />{t.panelStates.loadingTitle}</span>
+        ) : customersState === 'error' ? (
+          <span className="text-[12px] text-afro-muted">{s.customersLoadFailed}</span>
+        ) : customers.length === 0 ? (
+          <span className="text-[12px] text-afro-muted">{s.customersEmpty}</span>
+        ) : (
+          customers.map((account) => {
+            const hasQuota = typeof account.quotaLimitBytes === 'number';
+            const remainingBytes = hasQuota ? Math.max(0, (account.quotaLimitBytes as number) - account.usedBytes) : null;
+            const usagePercent = hasQuota && (account.quotaLimitBytes as number) > 0
+              ? Math.min(100, (account.usedBytes / (account.quotaLimitBytes as number)) * 100)
+              : null;
+
+            return (
+              <div key={account.id} className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-afro-line/60 py-1.5 last:border-b-0">
+                <span className="min-w-0">
+                  <strong className="block truncate text-[13px] text-afro-ink">
+                    {account.displayName ?? account.telegramUsername ?? account.id.slice(0, 8)}
+                  </strong>
+                  <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <MetricPill icon={Database} label={s.remainingGb} value={remainingBytes === null ? t.billing.unlimited : format.bytes(remainingBytes)} />
+                    <UsageBar format={format} icon={Activity} label={s.usage} value={usagePercent} />
+                  </span>
+                </span>
+                <StatusBadge tone={billingStatusTone(account.status)}>{customerAccountStatusLabel(account.status, t)}</StatusBadge>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }

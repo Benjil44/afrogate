@@ -446,8 +446,24 @@ export async function fetchAdminInbounds(sessionToken: string, signal?: AbortSig
   return response.json() as Promise<AdminInboundsResponse>;
 }
 
-export async function fetchAdminResellers(sessionToken: string, signal?: AbortSignal): Promise<AdminResellerAccountsResponse> {
-  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers`, { headers: createSessionHeaders(sessionToken), signal });
+/**
+ * Lists reseller (seller) accounts. `archived` controls visibility of soft-deleted
+ * sellers: omitted/'active' = live only (default), 'only' = archived only,
+ * 'all' = both. Archived rows carry `archivedAt` so the UI can style them and offer
+ * Restore.
+ */
+export async function fetchAdminResellers(
+  sessionToken: string,
+  signal?: AbortSignal,
+  archived?: 'active' | 'only' | 'all',
+): Promise<AdminResellerAccountsResponse> {
+  const params = new URLSearchParams();
+  if (archived === 'only' || archived === 'all') params.set('archived', archived);
+  const query = params.toString();
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers${query ? `?${query}` : ''}`, {
+    headers: createSessionHeaders(sessionToken),
+    signal,
+  });
   return response.json() as Promise<AdminResellerAccountsResponse>;
 }
 
@@ -465,6 +481,27 @@ export async function updateAdminReseller(sessionToken: string, id: string, payl
     method: 'PATCH',
     headers: createSessionHeaders(sessionToken),
     body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+/**
+ * Archives (soft-deletes) a seller: they can no longer log in or create
+ * accounts. Their existing customers stay active and manageable. Superadmin-only.
+ */
+export async function archiveAdminReseller(sessionToken: string, id: string): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}/archive`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+/** Restores (un-archives) a previously archived seller. Superadmin-only. */
+export async function restoreAdminReseller(sessionToken: string, id: string): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
   });
   return response.json() as Promise<AdminResellerAccountSummary>;
 }
