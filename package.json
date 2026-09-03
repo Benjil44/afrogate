@@ -1,6 +1,6 @@
 {
   "name": "afrows",
-  "version": "0.115.14",
+  "version": "0.115.15",
   "private": true,
   "description": "Afrows operations, monitoring, routing, and billing platform.",
   "workspaces": [

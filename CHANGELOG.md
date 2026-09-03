@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.15 - 2026-09-03
+
+- **Fix: Telegram bot couldn't reach Telegram (force IPv4 outbound).** The bot's poll cycle was failing every few seconds (`000`): the VPS egresses only over the village WireGuard tunnel (IPv4 — Telegram's `149.154.0.0/16` ranges are routed there) and has no working IPv6 route, but DNS for `api.telegram.org` returns AAAA records (at times a bogus/hijacked one), so Node could pick the unroutable IPv6 and time out. `OutboundHttpService.directRequest` now pins `family: 4`, so all direct outbound (Telegram included) resolves to the routed IPv4. Verified on the box: `curl -4` to api.telegram.org is reachable (302/404) while IPv6 has no route.
+
 ## 0.115.14 - 2026-09-03
 
 - **Seller archive (soft-delete) — backend.** Sellers can now be archived instead of deleted (Afrows never hard-deletes). `POST /admin/resellers/:id/archive` and `/restore` (superadmin-only): archive stamps `reseller_accounts.archived_at` + forces `status='disabled'` (the reseller-session guard rejects any non-active status, so an archived seller can no longer log in or create/manage customers or VLESS) and disables the seller's login user (best-effort — a missing login doesn't fail the archive). The seller's existing **customers are left fully intact** — they keep working, keep buying via Telegram, and stay manageable by admins; only the seller is archived. Migration `0059` adds `archived_at`; `AdminResellerAccountSummary` gains `archivedAt`, `AdminCustomerAccountSummary` gains `resellerArchived` (so archived-seller customers can be tagged "seller removed"), and the seller list takes an `archived` filter (active | only | all). (UI — archive/restore actions, sub-rows, tag — follows.)
