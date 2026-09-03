@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { AdminAlertSummary } from '@afrows/shared';
 import { OutboundHttpService } from '../outbound/outbound-http.service';
 import { TelegramBotConfigService } from '../telegram/telegram-bot-config.service';
+import { buildPhotoMultipart } from './telegram-multipart';
 
 export type TelegramAlertSendResult =
   | { status: 'sent'; statusCode: number; durationMs: number }
@@ -157,6 +158,70 @@ export class TelegramAlertService {
           status: 'failed',
           statusCode: response.statusCode,
           reason: parsed.description ? this.truncate(parsed.description, 120) : 'telegram_rejected_message',
+          durationMs: response.durationMs,
+        };
+      }
+
+      return {
+        status: 'sent',
+        statusCode: response.statusCode,
+        durationMs: response.durationMs,
+      };
+    } catch (error) {
+      return {
+        status: 'failed',
+        reason: error instanceof Error ? this.truncate(error.message, 120) : 'telegram_request_failed',
+      };
+    }
+  }
+
+  /**
+   * Send a photo (e.g. a config QR PNG) to a chat via the Bot API `sendPhoto`
+   * method, uploading the image bytes as multipart/form-data. Same time-bound,
+   * SSRF-guarded outbound path as `sendMessage`; returns the same result shape
+   * so callers can treat text + photo delivery uniformly. Best-effort by design:
+   * callers send the config text as a message first, then the QR as a photo, so
+   * a photo failure never loses the config itself.
+   */
+  async sendPhoto(
+    chatId: string | number,
+    photo: Buffer,
+    options: { caption?: string; botToken?: string; filename?: string } = {},
+  ): Promise<TelegramMessageSendResult> {
+    const runtime = await this.safeRuntimeConfig();
+    const token = options.botToken ?? runtime?.botToken;
+    const normalizedChatId = String(chatId).trim();
+    if (!token || !normalizedChatId) {
+      return { status: 'skipped', reason: 'missing_config' };
+    }
+
+    try {
+      const fields: Record<string, string> = { chat_id: normalizedChatId };
+      if (options.caption) fields.caption = this.truncate(options.caption, 1000);
+      const { contentType, body } = buildPhotoMultipart(fields, photo, options.filename ?? 'config.png');
+
+      const response = await this.outboundHttp.request(`${this.apiBaseUrl()}/bot${token}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': contentType },
+        body,
+        timeoutMs: this.timeoutMs(),
+      });
+
+      if (!response.ok) {
+        return {
+          status: 'failed',
+          statusCode: response.statusCode,
+          reason: `telegram_status_${response.statusCode}`,
+          durationMs: response.durationMs,
+        };
+      }
+
+      const parsed = this.parseTelegramResponse(response.body);
+      if (parsed.ok === false) {
+        return {
+          status: 'failed',
+          statusCode: response.statusCode,
+          reason: parsed.description ? this.truncate(parsed.description, 120) : 'telegram_rejected_photo',
           durationMs: response.durationMs,
         };
       }

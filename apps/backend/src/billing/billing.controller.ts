@@ -34,6 +34,7 @@ import type {
   AdminClientAccessTokensResponse,
   AdminClientConfigSummary,
   AdminClientConfigsExportResponse,
+  AdminSendConfigTelegramResponse,
   AdminClientRoutePreferenceResponse,
   AdminClientSubscriptionCredentialResponse,
   AdminClientSubscriptionCredentialsResponse,
@@ -503,6 +504,16 @@ export class BillingController {
     return this.billingService.resetResellerCustomerAccountPassword(id, request.actor, body?.password ?? null);
   }
 
+  @Post('reseller/customer-accounts/:id/send-config-telegram')
+  @Roles('reseller')
+  @Permissions('customers:write')
+  sendResellerCustomerConfigToTelegram(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminSendConfigTelegramResponse> {
+    return this.billingService.sendResellerCustomerConfigToTelegram(id, request.actor);
+  }
+
   @Get('resellers')
   @Roles('admin', 'supervisor', 'support')
   async listResellers(
@@ -828,6 +839,15 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<{ generatedPassword: string }> {
     return this.billingService.resetCustomerAccountPassword(id, request.actor, body?.password ?? null);
+  }
+
+  @Post('customer-accounts/:id/send-config-telegram')
+  @Roles('admin')
+  sendCustomerConfigToTelegram(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminSendConfigTelegramResponse> {
+    return this.billingService.sendCustomerConfigToTelegram(id, request.actor);
   }
 
   @Get('egress-tier-prices')

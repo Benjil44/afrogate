@@ -6,6 +6,7 @@ import type {
   AdminBillingCatalogResponse,
   AdminClientConfigsExportResponse,
   AdminClientConfigSummary,
+  AdminSendConfigTelegramResponse,
   AdminClientRoutePreferenceResponse,
   AdminCustomerDevicesResponse,
   AdminNetworkOverviewResponse,
@@ -1276,6 +1277,30 @@ export async function exportAdminCustomerClientConfigs(
   });
 
   return response.json() as Promise<AdminClientConfigsExportResponse>;
+}
+
+/** Superadmin: sends the customer's VLESS config (QR + import link) to their linked Telegram. */
+export async function sendCustomerConfigTelegram(
+  sessionToken: string,
+  accountId: string,
+): Promise<AdminSendConfigTelegramResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/send-config-telegram`,
+    { headers: createSessionHeaders(sessionToken), method: 'POST' },
+  );
+  return response.json() as Promise<AdminSendConfigTelegramResponse>;
+}
+
+/** Reseller: sends the config for THEIR OWN customer to that customer's linked Telegram (IDOR-guarded server-side). */
+export async function sendResellerCustomerConfigTelegram(
+  sessionToken: string,
+  accountId: string,
+): Promise<AdminSendConfigTelegramResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller/customer-accounts/${encodeURIComponent(accountId)}/send-config-telegram`,
+    { headers: createSessionHeaders(sessionToken), method: 'POST' },
+  );
+  return response.json() as Promise<AdminSendConfigTelegramResponse>;
 }
 
 export async function previewAdminCurrentPanelImport(

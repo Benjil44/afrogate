@@ -1292,13 +1292,37 @@ export interface AdminClientConfigEntryLinkResponse {
   link: string | null;
 }
 
+/**
+ * An exported client config, enriched with a QR of its native VLESS entry link
+ * so the dashboard can render a "Show QR" panel without a second round-trip.
+ * `entryUri` is the `vless://…` import link (null when no inbound is configured
+ * or the config has no entry uuid); `qrSvg` is that link rendered as an inline
+ * SVG QR (empty string when there is no link to encode).
+ */
+export interface AdminClientConfigExportEntry extends AdminClientConfigSummary {
+  entryUri: string | null;
+  qrSvg: string;
+}
+
 export interface AdminClientConfigsExportResponse {
   customerAccountId: string;
   generatedAt: string;
   exportFormat: 'afrows_client_configs_export_v1';
   configCount: number;
-  configs: AdminClientConfigSummary[];
+  configs: AdminClientConfigExportEntry[];
   warnings: string[];
+}
+
+/**
+ * Result of sending a customer's VLESS config + QR to their linked Telegram
+ * chat. `sent` is true only when the config message was delivered. `reason`
+ * (present when not sent) is one of: `no_telegram` (no linked chat id),
+ * `no_config` (no eligible VLESS config to send), `send_failed` (the Telegram
+ * network call failed or was rejected).
+ */
+export interface AdminSendConfigTelegramResponse {
+  sent: boolean;
+  reason?: 'no_telegram' | 'no_config' | 'send_failed' | string;
 }
 
 export type CurrentPanelKind = 'marzban' | 'xui' | 'sanayi' | 'generic';

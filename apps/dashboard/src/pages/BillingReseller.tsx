@@ -1,8 +1,8 @@
 import { createResellerSalesStats, createResellerSalesTrendOption, createResellerUsageMixOption, isCompletedResellerSaleOrder, resellerCustomerName, type ResellerSalesStats } from '../reseller-charts';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Activity, Bot, Copy, CreditCard, Eye, Gauge, Gift, Inbox, Pencil, Plus, ShieldCheck, UserRound, X } from 'lucide-react';
-import type { AdminBillingSettingsSummary, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
-import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
+import type { AdminBillingSettingsSummary, AdminClientConfigExportEntry, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
+import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, sendResellerCustomerConfigTelegram, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
@@ -630,6 +630,44 @@ function ResellerUsersTable({
   const [shownPassword, setShownPassword] = useState<string | null>(null);
   const [pwCopied, setPwCopied] = useState(false);
 
+  // VLESS QR + Send-to-Telegram: configs are fetched lazily (once) per account
+  // as its row is expanded, mirroring CustomersPage's ensureRowConfigs pattern.
+  const [configsByAccount, setConfigsByAccount] = useState<Record<string, AdminClientConfigExportEntry[]>>({});
+  const [configsLoading, setConfigsLoading] = useState<Record<string, boolean>>({});
+  const [qrOpenId, setQrOpenId] = useState<string | null>(null);
+  const [telegramBusy, setTelegramBusy] = useState<string | null>(null);
+  const [telegramResult, setTelegramResult] = useState<{ id: string; ok: boolean; text: string } | null>(null);
+
+  const ensureConfigs = (accountId: string) => {
+    if (configsByAccount[accountId] || configsLoading[accountId]) return;
+    setConfigsLoading((cur) => ({ ...cur, [accountId]: true }));
+    void exportAdminCustomerClientConfigs(sessionToken, accountId)
+      .then((res) => setConfigsByAccount((cur) => ({ ...cur, [accountId]: res.configs })))
+      .catch(() => undefined)
+      .finally(() => setConfigsLoading((cur) => ({ ...cur, [accountId]: false })));
+  };
+
+  // Pushes this customer's VLESS QR + import link to their linked Telegram
+  // (account-scoped, IDOR-guarded to this reseller's own customers server-side).
+  const onSendTelegram = async (accountId: string) => {
+    setTelegramBusy(accountId);
+    setTelegramResult(null);
+    try {
+      const res = await sendResellerCustomerConfigTelegram(sessionToken, accountId);
+      if (res.sent) {
+        setTelegramResult({ id: accountId, ok: true, text: s.telegramSent });
+      } else if (res.reason === 'no_telegram') {
+        setTelegramResult({ id: accountId, ok: false, text: s.telegramNoLink });
+      } else {
+        setTelegramResult({ id: accountId, ok: false, text: s.telegramSendFailed });
+      }
+    } catch {
+      setTelegramResult({ id: accountId, ok: false, text: s.telegramSendFailed });
+    } finally {
+      setTelegramBusy(null);
+    }
+  };
+
   const openEdit = (account: AdminCustomerAccountSummary) => {
     setEditId(account.id);
     setEditForm(resellerCustomerEditFormFromAccount(account));
@@ -638,6 +676,7 @@ function ResellerUsersTable({
     setCustomPw('');
     setPwCopied(false);
     setExpandedRows((current) => ({ ...current, [account.id]: true }));
+    ensureConfigs(account.id);
   };
 
   const closeEditToView = () => {
@@ -652,6 +691,7 @@ function ResellerUsersTable({
     const willOpen = !expandedRows[key];
     // Reopening via the chevron always reverts to View, matching CustomersPage.
     if (willOpen && editId === key) setEditId(null);
+    if (willOpen) ensureConfigs(key);
     setExpandedRows((current) => ({ ...current, [key]: !current[key] }));
   };
 
@@ -707,6 +747,17 @@ function ResellerUsersTable({
       await navigator.clipboard.writeText(shownPassword);
       setPwCopied(true);
       window.setTimeout(() => setPwCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
+  const copyEntryLink = async (accountId: string, link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedEntryId(accountId);
+      window.setTimeout(() => setCopiedEntryId(null), 1500);
     } catch {
       /* ignore */
     }
@@ -829,6 +880,74 @@ function ResellerUsersTable({
             {s.editAction}
           </button>
         </div>
+        {(() => {
+          const configs = configsByAccount[a.id] ?? [];
+          const vless = configs.find((c) => (c.protocol ?? '').toLowerCase() === 'vless' && c.qrSvg);
+          const busy = configsLoading[a.id];
+          return (
+            <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[13px] font-bold text-afro-muted">{s.configsTitle}</span>
+                <button
+                  type="button"
+                  onClick={() => void onSendTelegram(a.id)}
+                  disabled={telegramBusy === a.id}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-afro-line bg-white px-3 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+                >
+                  {telegramBusy === a.id ? s.sendingToTelegram : s.sendToTelegram}
+                </button>
+              </div>
+              {telegramResult && telegramResult.id === a.id ? (
+                <p className={`text-[12px] font-bold ${telegramResult.ok ? 'text-afro-teal' : 'text-[#b91c1c]'}`} role="status">
+                  {telegramResult.text}
+                </p>
+              ) : null}
+              {vless ? (
+                <div className="grid gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {vless.entryUri ? (
+                      <input
+                        readOnly
+                        value={vless.entryUri}
+                        dir="ltr"
+                        className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[11px] outline-none"
+                      />
+                    ) : null}
+                    {vless.entryUri ? (
+                      <button
+                        type="button"
+                        onClick={() => void copyEntryLink(a.id, vless.entryUri as string)}
+                        className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                      >
+                        <Copy size={13} />
+                        {copiedEntryId === a.id ? s.copied : s.copyLink}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setQrOpenId((cur) => (cur === a.id ? null : a.id))}
+                      className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                    >
+                      {qrOpenId === a.id ? s.hideQr : s.showQr}
+                    </button>
+                  </div>
+                  {qrOpenId === a.id ? (
+                    <div
+                      className="mx-auto h-48 w-48 rounded-md bg-white p-2 [&_svg]:h-full [&_svg]:w-full"
+                      dangerouslySetInnerHTML={{ __html: vless.qrSvg }}
+                      title={s.scanVless}
+                      aria-label={s.scanVless}
+                    />
+                  ) : null}
+                </div>
+              ) : busy ? (
+                <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
+              ) : (
+                <span className="text-[12px] text-afro-muted">{s.noConfigs}</span>
+              )}
+            </div>
+          );
+        })()}
         <div className="grid gap-1.5 sm:grid-cols-2">
           {a.loginEmail ? <DetailRow label={s.colEmail}>{a.loginEmail}</DetailRow> : null}
           {a.phone ? <DetailRow label={s.colPhone}><span dir="ltr">{a.phone}</span></DetailRow> : null}

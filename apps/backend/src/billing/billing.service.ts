@@ -31,7 +31,9 @@ import type {
   TelegramBotAccountLookup,
   TelegramBotAccountSummary,
   AdminClientConfigSummary,
+  AdminClientConfigExportEntry,
   AdminClientConfigsExportResponse,
+  AdminSendConfigTelegramResponse,
   AdminClientRoutePreferenceSummary,
   AdminClientUsageEventSummary,
   AdminClientUsageSeriesResponse,
@@ -3547,9 +3549,16 @@ export class BillingService {
       subscriptionCredentialsIncluded: false,
     });
 
+    // Enrich each config with its native VLESS entry link + an inline SVG QR of
+    // that link, so the dashboard's "Show QR" panel needs no extra round-trip.
+    // Config generation is untouched — this only reads the existing entry link.
+    const configs = await Promise.all(
+      account.clientConfigs.map((config) => this.decorateExportedClientConfig(config)),
+    );
+
     return {
-      configCount: account.clientConfigs.length,
-      configs: account.clientConfigs,
+      configCount: configs.length,
+      configs,
       customerAccountId: id,
       exportFormat: 'afrows_client_configs_export_v1',
       generatedAt: new Date().toISOString(),
@@ -3584,6 +3593,194 @@ export class BillingService {
     if (!row?.entryUuid) return { link: null };
     const name = row.displayName?.trim() || row.label || 'Afrows';
     return { link: buildAfrowsEntryUri(inbound, row.entryUuid, name) };
+  }
+
+  /**
+   * Attach the VLESS entry link + inline SVG QR to one exported config. The QR
+   * encodes the exact `vless://…` import link (same one the "copy link" button
+   * uses); when no inbound is configured or the config has no entry uuid the
+   * link is null and the QR is an empty string.
+   */
+  private async decorateExportedClientConfig(
+    config: AdminClientConfigSummary,
+  ): Promise<AdminClientConfigExportEntry> {
+    const { link } = await this.getClientConfigEntryLink(config.id);
+    const qrSvg = link
+      ? await QRCode.toString(link, { type: 'svg', margin: 1, width: 240 })
+      : '';
+    return { ...config, entryUri: link, qrSvg };
+  }
+
+  /**
+   * Resolve the Telegram chat id a customer can be messaged on, via the linked
+   * `telegram_users` row (chat id captured when the user started the bot). Returns
+   * null when the customer has no linked chat — the caller then reports
+   * `no_telegram` rather than attempting a send.
+   */
+  private async resolveCustomerTelegramChatId(customerAccountId: string): Promise<string | null> {
+    const result = await this.database.query<{ chatId: string | null }>(
+      `
+        SELECT tu.chat_id AS "chatId"
+        FROM customer_accounts ca
+        LEFT JOIN telegram_users tu ON tu.telegram_id = ca.telegram_id
+        WHERE ca.id = $1
+        LIMIT 1
+      `,
+      [customerAccountId],
+    );
+    return normalizeNullableString(result.rows[0]?.chatId);
+  }
+
+  /**
+   * Pick the customer's primary VLESS config and resolve its entry link. Prefers
+   * an active config, then any non-disabled one, taking the first (newest-first
+   * ordering from `listClientConfigs`) whose native entry link resolves. Returns
+   * null when the account has no VLESS config with a usable entry link.
+   */
+  private async resolvePrimaryVlessEntryLink(
+    account: AdminCustomerAccountDetail,
+  ): Promise<{ configId: string; label: string; uri: string } | null> {
+    const vlessConfigs = account.clientConfigs.filter(
+      (config) =>
+        typeof config.protocol === 'string' &&
+        config.protocol.toLowerCase().startsWith('vless') &&
+        config.status !== 'disabled',
+    );
+    const ordered = [
+      ...vlessConfigs.filter((config) => config.status === 'active'),
+      ...vlessConfigs.filter((config) => config.status !== 'active'),
+    ];
+    for (const config of ordered) {
+      const { link } = await this.getClientConfigEntryLink(config.id);
+      if (link) {
+        return { configId: config.id, label: config.label, uri: link };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Send the customer's primary VLESS config (as a text message) and its QR (as
+   * a photo) to their linked Telegram chat. Never throws: returns
+   * `{ sent:false, reason }` for the no-chat / no-config / network-failure cases
+   * so the dashboard can show a precise outcome. The Telegram calls are bounded
+   * by the shared outbound timeout, so a flaky link cannot hang the request.
+   */
+  async sendCustomerConfigToTelegram(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminSendConfigTelegramResponse> {
+    const account = await this.getCustomerAccount(id);
+
+    const chatId = await this.resolveCustomerTelegramChatId(id);
+    if (!chatId) {
+      await this.recordConfigSentTelegram(actor, id, { sent: false, reason: 'no_telegram' });
+      return { sent: false, reason: 'no_telegram' };
+    }
+
+    const primary = await this.resolvePrimaryVlessEntryLink(account);
+    if (!primary) {
+      await this.recordConfigSentTelegram(actor, id, {
+        sent: false,
+        reason: 'no_config',
+        telegramChatIdAvailable: true,
+      });
+      return { sent: false, reason: 'no_config' };
+    }
+
+    const accountName = account.displayName?.trim() || 'Afrows account';
+    const messageText = [
+      'Afrows VLESS config',
+      `Account: ${accountName}`,
+      `Client: ${primary.label}`,
+      '',
+      primary.uri,
+      '',
+      'Keep this config private. Support will never ask for your full config.',
+    ].join('\n');
+
+    try {
+      const messageResult = await this.telegram.sendMessage(chatId, messageText, {
+        disableWebPagePreview: true,
+      });
+
+      // The QR is best-effort: send it as a photo, but never fail the request if
+      // only the image cannot be produced/delivered — the config text already went.
+      let photoStatus: TelegramMessageSendResult['status'] | 'not_attempted' = 'not_attempted';
+      try {
+        const qrPng = await QRCode.toBuffer(primary.uri, { type: 'png', margin: 1, width: 512 });
+        const photoResult = await this.telegram.sendPhoto(chatId, qrPng, {
+          caption: `Afrows config QR — ${primary.label}`,
+          filename: 'afrows-vless-qr.png',
+        });
+        photoStatus = photoResult.status;
+      } catch {
+        photoStatus = 'not_attempted';
+      }
+
+      if (messageResult.status !== 'sent') {
+        await this.recordConfigSentTelegram(actor, id, {
+          sent: false,
+          reason: 'send_failed',
+          telegramChatIdAvailable: true,
+          clientConfigId: primary.configId,
+          messageStatus: messageResult.status,
+          messageReason: this.telegramSendMessageReason(messageResult),
+          photoStatus,
+        });
+        return { sent: false, reason: 'send_failed' };
+      }
+
+      await this.recordConfigSentTelegram(actor, id, {
+        sent: true,
+        telegramChatIdAvailable: true,
+        clientConfigId: primary.configId,
+        messageStatus: messageResult.status,
+        photoStatus,
+      });
+      return { sent: true };
+    } catch (error) {
+      await this.recordConfigSentTelegram(actor, id, {
+        sent: false,
+        reason: 'send_failed',
+        telegramChatIdAvailable: true,
+        clientConfigId: primary.configId,
+        messageReason: this.safeErrorMessage(error),
+      });
+      return { sent: false, reason: 'send_failed' };
+    }
+  }
+
+  /**
+   * Reseller variant: a seller sends the config to one of THEIR OWN customers.
+   * IDOR-guarded (the customer must belong to the acting reseller) before
+   * delegating to the shared send logic.
+   */
+  async sendResellerCustomerConfigToTelegram(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminSendConfigTelegramResponse> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    await ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
+    return this.sendCustomerConfigToTelegram(id, actor);
+  }
+
+  private async recordConfigSentTelegram(
+    actor: AuthActor | undefined,
+    customerAccountId: string,
+    meta: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.audit.record(
+        actor,
+        'customer_account.config_sent_telegram',
+        'customer_account',
+        customerAccountId,
+        meta,
+      );
+    } catch {
+      // Audit is best-effort; never let it change the send outcome.
+    }
   }
 
   /** Random "Customer-XXXXXX" display name. Implementation lives in the pure

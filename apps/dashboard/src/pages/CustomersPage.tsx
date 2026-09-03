@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, AdminResellerAccountSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, AdminResellerAccountSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   adjustCustomerGems,
   createAdminClientConfig,
@@ -20,6 +20,7 @@ import {
   fetchEgressTierPrices,
   fetchRouters,
   mergeCustomerAccount,
+  sendCustomerConfigTelegram,
   setEgressTierPrice,
   resetCustomerAccountPassword,
   restoreAdminCustomerAccount,
@@ -339,7 +340,7 @@ export function CustomersPage({
 
   // configs panel
   const [configsFor, setConfigsFor] = useState<AdminCustomerAccountSummary | null>(null);
-  const [configList, setConfigList] = useState<AdminClientConfigSummary[]>([]);
+  const [configList, setConfigList] = useState<AdminClientConfigExportEntry[]>([]);
   const [linkMap, setLinkMap] = useState<Record<string, string>>({});
   const [wgConfigMap, setWgConfigMap] = useState<Record<string, string>>({});
   const [wgQrMap, setWgQrMap] = useState<Record<string, string>>({});
@@ -347,6 +348,10 @@ export function CustomersPage({
   const [configBusy, setConfigBusy] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // VLESS QR reveal (toggle only, no fetch — qrSvg already came with the export) + Send-to-Telegram outcome.
+  const [qrOpenId, setQrOpenId] = useState<string | null>(null);
+  const [telegramBusy, setTelegramBusy] = useState(false);
+  const [telegramResult, setTelegramResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = async () => {
     try {
@@ -789,7 +794,31 @@ export function CustomersPage({
     setLinkMap({});
     setWgConfigMap({});
     setWgQrMap({});
+    setQrOpenId(null);
+    setTelegramResult(null);
     void loadConfigs(a.id);
+  };
+
+  // Pushes the customer's VLESS QR + import link to their linked Telegram
+  // (account-scoped — the backend picks the single eligible VLESS config).
+  const onSendTelegram = async () => {
+    if (!configsFor) return;
+    setTelegramBusy(true);
+    setTelegramResult(null);
+    try {
+      const res = await sendCustomerConfigTelegram(sessionToken, configsFor.id);
+      if (res.sent) {
+        setTelegramResult({ ok: true, text: s.telegramSent });
+      } else if (res.reason === 'no_telegram') {
+        setTelegramResult({ ok: false, text: s.telegramNoLink });
+      } else {
+        setTelegramResult({ ok: false, text: s.telegramSendFailed });
+      }
+    } catch {
+      setTelegramResult({ ok: false, text: s.telegramSendFailed });
+    } finally {
+      setTelegramBusy(false);
+    }
   };
 
   // Fetch + reveal a WireGuard config's .conf text (provisions the peer if needed).
@@ -2124,7 +2153,7 @@ export function CustomersPage({
               <X size={16} />
             </button>
           </div>
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <select value={newConfigProto} onChange={(e) => setNewConfigProto(e.target.value)} className={inputClass}>
               <option value="vless">{s.protoVless}</option>
               <option value="wireguard">{s.protoWireguard}</option>
@@ -2138,7 +2167,20 @@ export function CustomersPage({
               <Plus size={15} />
               {s.newConfig}
             </button>
+            <button
+              type="button"
+              onClick={() => void onSendTelegram()}
+              disabled={telegramBusy}
+              className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+            >
+              {telegramBusy ? s.sendingToTelegram : s.sendToTelegram}
+            </button>
           </div>
+          {telegramResult ? (
+            <p className={`mb-2 text-[13px] font-bold ${telegramResult.ok ? 'text-afro-teal' : 'text-[#b91c1c]'}`} role="status">
+              {telegramResult.text}
+            </p>
+          ) : null}
           {configError ? <p className="mb-2 text-[13px] font-bold text-[#b91c1c]">{configError}</p> : null}
           {configList.length === 0 ? (
             <EmptyState message={configBusy ? t.dataStatus.loading : s.noConfigs} />
@@ -2162,21 +2204,40 @@ export function CustomersPage({
                     </span>
                   </div>
                   {linkMap[c.id] ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        readOnly
-                        value={linkMap[c.id]}
-                        dir="ltr"
-                        className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[11px] outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void copyLink(c.id, linkMap[c.id])}
-                        className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
-                      >
-                        <Copy size={13} />
-                        {copiedId === c.id ? s.copied : s.copyLink}
-                      </button>
+                    <div className="grid gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          readOnly
+                          value={linkMap[c.id]}
+                          dir="ltr"
+                          className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[11px] outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void copyLink(c.id, linkMap[c.id])}
+                          className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                        >
+                          <Copy size={13} />
+                          {copiedId === c.id ? s.copied : s.copyLink}
+                        </button>
+                        {c.qrSvg ? (
+                          <button
+                            type="button"
+                            onClick={() => setQrOpenId((cur) => (cur === c.id ? null : c.id))}
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+                          >
+                            {qrOpenId === c.id ? s.hideQr : s.showQr}
+                          </button>
+                        ) : null}
+                      </div>
+                      {qrOpenId === c.id && c.qrSvg ? (
+                        <div
+                          className="mx-auto h-48 w-48 rounded-md bg-white p-2 [&_svg]:h-full [&_svg]:w-full"
+                          dangerouslySetInnerHTML={{ __html: c.qrSvg }}
+                          title={s.scanVless}
+                          aria-label={s.scanVless}
+                        />
+                      ) : null}
                     </div>
                   ) : c.protocol === 'vless' ? (
                     <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
