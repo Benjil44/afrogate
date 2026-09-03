@@ -1,12 +1,12 @@
 import { createResellerSalesStats, createResellerSalesTrendOption, createResellerUsageMixOption, isCompletedResellerSaleOrder, resellerCustomerName, type ResellerSalesStats } from '../reseller-charts';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Activity, Bot, CreditCard, Gauge, Gift, Inbox, Plus, ShieldCheck, UserRound, X } from 'lucide-react';
+import { Activity, Bot, Copy, CreditCard, Eye, Gauge, Gift, Inbox, Pencil, Plus, ShieldCheck, UserRound, X } from 'lucide-react';
 import type { AdminBillingSettingsSummary, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
 import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
-import { DashboardTabs, DataStateNotice, DataTable, EmptyState, MetricCard, MetricPill, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
+import { DashboardTabs, DataStateNotice, DataTable, DetailRow, EmptyState, MetricCard, MetricPill, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
 import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import type { BillingTab, DashboardTabItem, DataState, DataTableColumn, MetricCardData, Tone } from '../dashboard-types';
 import { normalizeNullableText, sumNullable, type DashboardFormatters } from '../formatters';
@@ -93,6 +93,10 @@ type ResellerWorkspaceViewState = {
 };
 
 type ResellerWorkspaceController = ResellerWorkspaceViewState & {
+  /** Folds a saved customer-account edit (or a password reset's returned account,
+   *  when the caller has one) into the workspace in place — no reordering, unlike
+   *  the sale/charge folds below, so an inline table edit doesn't jump the row. */
+  applyAccountUpdate: (account: AdminCustomerAccountSummary) => void;
   applyGbChargeResult: (result: AdminResellerGbChargeResponse) => void;
   applyPackageSaleResult: (result: AdminResellerPackageSaleResponse) => void;
 };
@@ -175,7 +179,14 @@ function useResellerWorkspace(sessionToken: string): ResellerWorkspaceController
     }));
   };
 
-  return { ...state, applyGbChargeResult, applyPackageSaleResult };
+  const applyAccountUpdate = (account: AdminCustomerAccountSummary) => {
+    setState((current) => ({
+      ...current,
+      accounts: current.accounts.map((existing) => (existing.id === account.id ? account : existing)),
+    }));
+  };
+
+  return { ...state, applyAccountUpdate, applyGbChargeResult, applyPackageSaleResult };
 }
 
 export function ResellerDashboardPage({
@@ -397,8 +408,10 @@ export function ResellerUsersPage({
         accounts={workspace.accounts}
         actionMessage={isResellerAddUserDialogOpen ? null : resellerSaleMessage}
         format={format}
+        onAccountUpdated={workspace.applyAccountUpdate}
         onAddUser={openResellerAddUserDialog}
         paymentOrders={workspace.paymentOrders}
+        sessionToken={sessionToken}
         t={t}
       />
     </section>
@@ -540,21 +553,165 @@ function ResellerRecentUsersPanel({
   );
 }
 
+/** Fields a reseller may edit on their own customer's account. Quota
+ *  (`quotaLimitBytes`) is deliberately absent — the backend strips it from
+ *  the reseller update path (see `stripResellerManagedQuotaFields`); a
+ *  reseller can only grant volume via a wallet-debiting sale. Per-client cap
+ *  stays editable, matching the existing `CustomerAccountEditorPanel` (the
+ *  Billing → Customers tab), which already ships this same field set. */
+type ResellerCustomerEditForm = {
+  displayName: string;
+  loginEmail: string;
+  notes: string;
+  perClientLimitGb: string;
+  status: CustomerAccountStatus;
+  telegramUsername: string;
+};
+
+function createEmptyResellerCustomerEditForm(): ResellerCustomerEditForm {
+  return { displayName: '', loginEmail: '', notes: '', perClientLimitGb: '', status: 'active', telegramUsername: '' };
+}
+
+function resellerCustomerEditFormFromAccount(account: AdminCustomerAccountSummary): ResellerCustomerEditForm {
+  return {
+    displayName: account.displayName ?? '',
+    loginEmail: account.loginEmail ?? '',
+    notes: account.notes ?? '',
+    perClientLimitGb: formatGbInput(account.perClientLimitBytes ?? null),
+    status: customerAccountStatusOptions.includes(account.status as CustomerAccountStatus)
+      ? account.status as CustomerAccountStatus
+      : 'active',
+    telegramUsername: account.telegramUsername ?? '',
+  };
+}
+
+/** The seller's "my users" table — the same rich, expandable-row DataTable the
+ * superadmin uses on the Customers page (usage bar, status badge, inline
+ * view/edit detail panel), scoped to this reseller's own customers only (the
+ * `accounts` prop already comes pre-scoped from `fetchAdminResellerWorkspace`).
+ * Row actions are reseller-appropriate only: view usage/detail, edit the
+ * customer, and reset their login password — no delete/restore/merge, gems,
+ * device management, reseller reassignment, or egress-tier controls, all of
+ * which stay admin-only on `CustomersPage`. */
 function ResellerUsersTable({
   accounts,
   actionMessage,
   format,
+  onAccountUpdated,
   onAddUser,
   paymentOrders,
+  sessionToken,
   t,
 }: {
   accounts: AdminCustomerAccountSummary[];
   actionMessage?: string | null;
   format: DashboardFormatters;
+  onAccountUpdated: (account: AdminCustomerAccountSummary) => void;
   onAddUser?: () => void;
   paymentOrders: AdminPaymentOrderSummary[];
+  sessionToken: string;
   t: DashboardStrings;
 }) {
+  const s = t.customersPage;
+
+  // Inline detail-row expand state (chevron), and which single row (if any) is
+  // mid-edit — mirrors CustomersPage's controlled-DataTable pattern so the
+  // chevron always opens View mode while the row's own Edit button forces Edit.
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<ResellerCustomerEditForm>(() => createEmptyResellerCustomerEditForm());
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Reset-password mini-flow, scoped to the single row currently in Edit mode
+  // (only one row can be edited at a time, so unkeyed state is safe here too).
+  const [pwBusy, setPwBusy] = useState(false);
+  const [customPw, setCustomPw] = useState('');
+  const [shownPassword, setShownPassword] = useState<string | null>(null);
+  const [pwCopied, setPwCopied] = useState(false);
+
+  const openEdit = (account: AdminCustomerAccountSummary) => {
+    setEditId(account.id);
+    setEditForm(resellerCustomerEditFormFromAccount(account));
+    setSaveError(null);
+    setShownPassword(null);
+    setCustomPw('');
+    setPwCopied(false);
+    setExpandedRows((current) => ({ ...current, [account.id]: true }));
+  };
+
+  const closeEditToView = () => {
+    setEditId(null);
+    setSaveError(null);
+    setShownPassword(null);
+    setCustomPw('');
+    setPwCopied(false);
+  };
+
+  const onToggleRow = (key: string) => {
+    const willOpen = !expandedRows[key];
+    // Reopening via the chevron always reverts to View, matching CustomersPage.
+    if (willOpen && editId === key) setEditId(null);
+    setExpandedRows((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const onSaveEdit = async (accountId: string) => {
+    if (!editForm.displayName.trim()) {
+      setSaveError(s.saveError);
+      return;
+    }
+    const perClientLimitBytes = parseGbLimitInput(editForm.perClientLimitGb);
+    if (perClientLimitBytes === undefined) {
+      setSaveError(s.saveError);
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await updateAdminResellerCustomerAccount(sessionToken, accountId, {
+        displayName: editForm.displayName.trim(),
+        loginEmail: editForm.loginEmail.trim() || null,
+        notes: editForm.notes.trim() || null,
+        perClientLimitBytes,
+        status: editForm.status,
+        telegramUsername: editForm.telegramUsername.trim() || null,
+      });
+      onAccountUpdated(saved);
+      closeEditToView();
+    } catch {
+      setSaveError(s.saveError);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onResetPassword = async (accountId: string) => {
+    setPwBusy(true);
+    setSaveError(null);
+    setShownPassword(null);
+    try {
+      const { generatedPassword } = await resetResellerCustomerAccountPassword(sessionToken, accountId, customPw.trim() || undefined);
+      setShownPassword(generatedPassword);
+      setCustomPw('');
+      setPwCopied(false);
+    } catch {
+      setSaveError(s.saveError);
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
+  const copyPassword = async () => {
+    if (!shownPassword) return;
+    try {
+      await navigator.clipboard.writeText(shownPassword);
+      setPwCopied(true);
+      window.setTimeout(() => setPwCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const soldUserRows = accounts.map((account) => {
     const customerOrders = paymentOrders.filter((order) => order.customerAccountId === account.id && isCompletedResellerSaleOrder(order));
     const soldBytes = customerOrders.reduce((sum, order) => sum + order.volumeBytes, 0);
@@ -569,10 +726,14 @@ function ResellerUsersTable({
       soldBytes,
     };
   });
-  const soldUserColumns: Array<DataTableColumn<(typeof soldUserRows)[number]>> = [
+  type SoldUserRow = (typeof soldUserRows)[number];
+
+  const fitCol = 'w-px whitespace-nowrap';
+  const soldUserColumns: Array<DataTableColumn<SoldUserRow>> = [
     {
       key: 'customer',
       header: t.billing.customer,
+      className: 'min-w-[160px]',
       render: (row) => (
         <>
           <strong className="block text-afro-ink">{resellerCustomerName(row.account)}</strong>
@@ -581,25 +742,244 @@ function ResellerUsersTable({
       ),
     },
     {
-      key: 'clients',
-      header: t.billing.clients,
-      render: (row) => `${format.integer(row.account.activeClientCount)} / ${format.integer(row.account.clientCount)}`,
-    },
-    { key: 'usedQuota', header: t.billing.usedQuota, render: (row) => format.bytes(row.account.usedBytes) },
-    {
-      key: 'remaining',
-      header: t.billing.remaining,
-      render: (row) => row.account.remainingBytes === null || row.account.remainingBytes === undefined ? t.billing.unlimited : format.bytes(row.account.remainingBytes),
-    },
-    { key: 'soldVolume', header: t.reseller.soldVolume, render: (row) => format.bytes(row.soldBytes) },
-    { key: 'orders', header: t.reseller.orders, render: (row) => format.integer(row.orderCount) },
-    { key: 'lastSale', header: t.reseller.lastSale, render: (row) => row.latestSale ? format.dateTime(new Date(row.latestSale)) : '--' },
-    {
       key: 'status',
       header: t.billing.status,
+      className: fitCol,
       render: (row) => <StatusBadge tone={billingStatusTone(row.account.status)}>{customerAccountStatusLabel(row.account.status, t)}</StatusBadge>,
     },
+    {
+      key: 'usage',
+      header: s.colUsed,
+      alignRight: true,
+      className: fitCol,
+      // Same used/limit bar as the superadmin CustomersPage table — quota
+      // itself stays read-only for the seller (granted only via a sale).
+      render: (row) => {
+        const q = row.account.quotaLimitBytes ?? null;
+        const used = row.account.usedBytes;
+        if (q == null || q <= 0) {
+          return <span className="whitespace-nowrap text-afro-ink tabular-nums">{format.bytes(used)} · ∞</span>;
+        }
+        const pct = Math.min(100, Math.round((used / q) * 100));
+        const over = used >= q;
+        const near = pct >= 80;
+        const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-afro-teal';
+        return (
+          <div className="ms-auto flex w-fit min-w-28 flex-col items-end gap-1">
+            <span className={`whitespace-nowrap tabular-nums ${over ? 'font-bold text-red-500' : 'text-afro-ink'}`}>
+              {format.bytes(used)} / {format.bytes(q)}
+            </span>
+            <span className="h-1.5 w-full overflow-hidden rounded-full bg-afro-line">
+              <span className={`block h-full ${barColor}`} style={{ width: `${pct}%` }} />
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'clients',
+      header: t.billing.clients,
+      alignRight: true,
+      className: fitCol,
+      render: (row) => (
+        <span className="whitespace-nowrap tabular-nums">{`${format.integer(row.account.activeClientCount)} / ${format.integer(row.account.clientCount)}`}</span>
+      ),
+    },
+    {
+      key: 'soldVolume',
+      header: t.reseller.soldVolume,
+      alignRight: true,
+      className: fitCol,
+      render: (row) => <span className="whitespace-nowrap tabular-nums">{format.bytes(row.soldBytes)}</span>,
+    },
+    {
+      key: 'orders',
+      header: t.reseller.orders,
+      alignRight: true,
+      className: fitCol,
+      render: (row) => <span className="whitespace-nowrap tabular-nums">{format.integer(row.orderCount)}</span>,
+    },
+    {
+      key: 'lastSale',
+      header: t.reseller.lastSale,
+      className: fitCol,
+      render: (row) => row.latestSale ? <span className="whitespace-nowrap">{format.dateTime(new Date(row.latestSale))}</span> : <span className="text-afro-muted">—</span>,
+    },
   ];
+
+  const renderView = (row: SoldUserRow) => {
+    const a = row.account;
+    const used = a.usedBytes;
+    const limit = a.quotaLimitBytes ?? null;
+    const hasLimit = limit != null && limit > 0;
+    const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : null;
+    const over = hasLimit && used >= limit;
+    const near = pct != null && pct >= 80;
+    const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-afro-teal';
+
+    return (
+      <div className="grid gap-2.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => openEdit(a)}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal md:min-h-9"
+          >
+            <Pencil size={15} />
+            {s.editAction}
+          </button>
+        </div>
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          {a.loginEmail ? <DetailRow label={s.colEmail}>{a.loginEmail}</DetailRow> : null}
+          {a.phone ? <DetailRow label={s.colPhone}><span dir="ltr">{a.phone}</span></DetailRow> : null}
+          {a.expiresAt ? <DetailRow label={s.colExpiry}>{format.time(new Date(a.expiresAt), false)}</DetailRow> : null}
+          {a.tags && a.tags.length > 0 ? <DetailRow label={s.colTags}>{a.tags.join(', ')}</DetailRow> : null}
+          <DetailRow label={t.reseller.soldVolume}>{format.bytes(row.soldBytes)}</DetailRow>
+          <DetailRow label={t.reseller.orders}>{format.integer(row.orderCount)}</DetailRow>
+          {row.latestSale ? <DetailRow label={t.reseller.lastSale}>{format.dateTime(new Date(row.latestSale))}</DetailRow> : null}
+        </div>
+        <div className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+          <span className="text-[13px] font-bold text-afro-muted">{s.usageSection}</span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+            <span className="text-afro-muted">
+              {s.colUsed}: <strong className={`tabular-nums ${over ? 'text-red-600' : 'text-afro-ink'}`}>{format.bytes(used)}</strong>
+            </span>
+            <span className="text-afro-muted">
+              {s.usageLimitLabel}:{' '}
+              <strong className="tabular-nums text-afro-ink">{hasLimit ? format.bytes(limit) : s.usageNoLimit}</strong>
+            </span>
+            {pct != null ? (
+              <span className="text-afro-muted">
+                <strong className={`tabular-nums ${over ? 'text-red-600' : near ? 'text-[#9a5b00]' : 'text-afro-ink'}`}>
+                  {format.percent(pct)}
+                </strong>
+              </span>
+            ) : null}
+            {over ? (
+              <span className="inline-flex whitespace-nowrap rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+                {s.overQuota}
+              </span>
+            ) : null}
+          </div>
+          {pct != null ? (
+            <span aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-afro-line">
+              <span className={`block h-full ${barColor}`} style={{ width: `${pct}%` }} />
+            </span>
+          ) : null}
+          {over ? <span className="text-[12px] font-bold text-red-600">{s.usageOverHint}</span> : null}
+        </div>
+      </div>
+    );
+  };
+
+  const renderEdit = (a: AdminCustomerAccountSummary) => (
+    <div className="grid gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-afro-ink">{s.editTitle}</h3>
+        <button
+          type="button"
+          onClick={closeEditToView}
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+        >
+          <Eye size={15} />
+          {s.viewAction}
+        </button>
+      </div>
+      <div className="grid gap-2.5 rounded-md border border-afro-line bg-white p-2.5 sm:grid-cols-2">
+        <label className="grid gap-1.5">
+          <span className={formLabelClass}>{s.fldName}</span>
+          <input className={inputClass} onChange={(event) => setEditForm((current) => ({ ...current, displayName: event.target.value }))} value={editForm.displayName} />
+        </label>
+        <label className="grid gap-1.5">
+          <span className={formLabelClass}>{s.fldEmail}</span>
+          <input className={inputClass} dir="ltr" onChange={(event) => setEditForm((current) => ({ ...current, loginEmail: event.target.value }))} value={editForm.loginEmail} />
+        </label>
+        <label className="grid gap-1.5">
+          <span className={formLabelClass}>{s.fldTelegram}</span>
+          <input className={inputClass} dir="ltr" onChange={(event) => setEditForm((current) => ({ ...current, telegramUsername: event.target.value }))} value={editForm.telegramUsername} />
+        </label>
+        <label className="grid gap-1.5">
+          <span className={formLabelClass}>{t.billing.perClientLimitGb}</span>
+          <input className={inputClass} dir="ltr" inputMode="numeric" onChange={(event) => setEditForm((current) => ({ ...current, perClientLimitGb: event.target.value }))} value={editForm.perClientLimitGb} />
+        </label>
+        <label className="grid gap-1.5">
+          <span className={formLabelClass}>{t.billing.status}</span>
+          <select className={inputClass} onChange={(event) => setEditForm((current) => ({ ...current, status: event.target.value as CustomerAccountStatus }))} value={editForm.status}>
+            {customerAccountStatusOptions.map((status) => (
+              <option key={status} value={status}>{customerAccountStatusLabel(status, t)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1.5 sm:col-span-2">
+          <span className={formLabelClass}>{s.fldNotes}</span>
+          <input className={inputClass} onChange={(event) => setEditForm((current) => ({ ...current, notes: event.target.value }))} value={editForm.notes} />
+        </label>
+      </div>
+
+      <section className="grid gap-1.5 rounded-md border border-afro-line bg-white p-2.5">
+        <h4 className="text-[11px] font-bold uppercase tracking-wide text-afro-muted">{s.fldLoginPassword}</h4>
+        {shownPassword ? (
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={shownPassword}
+              dir="ltr"
+              className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[13px] outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void copyPassword()}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
+            >
+              <Copy size={13} />
+              {pwCopied ? s.copied : s.copyLink}
+            </button>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={customPw}
+            onChange={(event) => setCustomPw(event.target.value)}
+            dir="ltr"
+            placeholder={s.passwordCustomPlaceholder}
+            className={`${inputClass} min-w-[200px] flex-1`}
+          />
+          <button
+            type="button"
+            disabled={pwBusy}
+            onClick={() => void onResetPassword(a.id)}
+            className="inline-flex min-h-10 items-center gap-1 rounded-md border border-afro-line px-3 text-[12px] font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-60"
+          >
+            {customPw.trim() ? s.setPassword : s.generatePassword}
+          </button>
+        </div>
+        <span className="text-[12px] text-afro-muted">
+          {shownPassword ? s.passwordShownOnce : s.passwordHashedNote}
+        </span>
+      </section>
+
+      {saveError ? <p className="text-[13px] font-bold text-[#b91c1c]">{saveError}</p> : null}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => void onSaveEdit(a.id)}
+          disabled={saving}
+          className="inline-flex min-h-10 items-center rounded-md bg-afro-teal px-4 text-sm font-bold text-white disabled:opacity-60"
+        >
+          {s.save}
+        </button>
+        <button
+          type="button"
+          onClick={closeEditToView}
+          className="inline-flex min-h-10 items-center rounded-md border border-afro-line px-4 text-sm font-bold text-afro-muted"
+        >
+          {s.cancel}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderDetail = (row: SoldUserRow) => (editId === row.account.id ? renderEdit(row.account) : renderView(row));
 
   return (
     <section className={panelClass}>
@@ -618,7 +998,17 @@ function ResellerUsersTable({
       {accounts.length === 0 ? <div className="mt-2"><EmptyState message={t.billing.noCustomerAccounts} /></div> : null}
       {accounts.length > 0 ? (
         <div className="mt-2">
-          <DataTable columns={soldUserColumns} minWidth="880px" rowKey={(row) => row.account.id} rows={soldUserRows} />
+          <DataTable
+            columns={soldUserColumns}
+            detailCollapseLabel={s.detailCollapse}
+            detailExpandLabel={s.detailExpand}
+            expandedRows={expandedRows}
+            minWidth="760px"
+            onToggleRow={onToggleRow}
+            renderDetail={renderDetail}
+            rowKey={(row) => row.account.id}
+            rows={soldUserRows}
+          />
         </div>
       ) : null}
     </section>
