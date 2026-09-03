@@ -1,6 +1,6 @@
 {
   "name": "@afrows/web",
-  "version": "0.115.15",
+  "version": "0.115.16",
   "private": true,
   "type": "module",
   "scripts": {

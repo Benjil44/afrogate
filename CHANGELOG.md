@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.16 - 2026-09-03
+
+- **Sellers page redesign + archive/restore UI.** The scattered top-stacked panels (Top up / Credit limit / Limit / Ledger / Customers — several could be open at once) are replaced by a **per-row expandable sub-row** (one seller at a time, via the DataTable chevron): a **consolidated Edit** (margin %, credit limit, max customers, status — one Save), **Top up** + toggleable **Ledger**, and the seller's **customers list** (name, **remaining GB**, usage bar, status). Row actions are now just **Sign in as seller** + **Archive/Restore** (sticky last column so they're never clipped). Archiving (backend from 0.115.14) is now reachable: a confirm dialog, an **"Archived"** badge, a disabled status switch on archived rows, and a **"Show archived"** toggle (uses the seller list `archived` filter). New API client fns `archiveAdminReseller`/`restoreAdminReseller`. Bilingual.
+
 ## 0.115.15 - 2026-09-03
 
 - **Fix: Telegram bot couldn't reach Telegram (force IPv4 outbound).** The bot's poll cycle was failing every few seconds (`000`): the VPS egresses only over the village WireGuard tunnel (IPv4 — Telegram's `149.154.0.0/16` ranges are routed there) and has no working IPv6 route, but DNS for `api.telegram.org` returns AAAA records (at times a bogus/hijacked one), so Node could pick the unroutable IPv6 and time out. `OutboundHttpService.directRequest` now pins `family: 4`, so all direct outbound (Telegram included) resolves to the routed IPv4. Verified on the box: `curl -4` to api.telegram.org is reachable (302/404) while IPv6 has no route.
