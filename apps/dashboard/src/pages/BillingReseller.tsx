@@ -787,7 +787,16 @@ function ResellerUsersTable({
       className: 'min-w-[160px]',
       render: (row) => (
         <>
-          <strong className="block text-afro-ink">{resellerCustomerName(row.account)}</strong>
+          <strong className="block text-afro-ink">
+            {row.account.online ? (
+              <span
+                title={t.customersPage.onlineNow}
+                aria-label={t.customersPage.onlineNow}
+                className="afro-online-dot me-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500 align-middle"
+              />
+            ) : null}
+            {resellerCustomerName(row.account)}
+          </strong>
           <span className="text-[12px] text-afro-muted">{row.account.telegramUsername ?? row.account.id.slice(0, 8)}</span>
         </>
       ),
@@ -1104,14 +1113,20 @@ function ResellerUsersTable({
     <section className={panelClass}>
       <div className="flex min-h-7 flex-wrap items-center justify-between gap-2 border-b border-afro-line pb-1.5">
         <PanelHeadingContent title={t.reseller.soldUsers} meta={t.billing.accountsLoaded(format.integer(accounts.length))} />
-        <button
-          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white hover:bg-[#1f3138]"
-          onClick={onAddUser}
-          type="button"
-        >
-          <Plus size={16} />
-          {t.reseller.addUser}
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-emerald-600">
+            <span className="afro-online-dot inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+            {t.customersPage.onlineCount(accounts.filter((a) => a.online).length, accounts.length)}
+          </span>
+          <button
+            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-3 text-sm font-bold text-white hover:bg-[#1f3138]"
+            onClick={onAddUser}
+            type="button"
+          >
+            <Plus size={16} />
+            {t.reseller.addUser}
+          </button>
+        </div>
       </div>
       {actionMessage ? <p className={`${mutedTextClass} mt-2`}>{actionMessage}</p> : null}
       {accounts.length === 0 ? <div className="mt-2"><EmptyState message={t.billing.noCustomerAccounts} /></div> : null}

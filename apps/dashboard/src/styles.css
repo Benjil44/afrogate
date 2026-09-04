@@ -61,6 +61,16 @@
   .afro-blink-slow, .afro-blink-fast { animation: none; }
 }
 
+/* Online presence dot: gentle pulse ring so "who's online" reads at a glance. */
+@keyframes afro-online-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0); }
+}
+.afro-online-dot { animation: afro-online-pulse 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .afro-online-dot { animation: none; }
+}
+
 /* Modern thin sidebar scrollbar (dark): subtle overlay thumb, no arrow buttons. */
 .afro-scroll {
   scrollbar-width: thin;

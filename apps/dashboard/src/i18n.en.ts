@@ -87,6 +87,8 @@ export const en = {
       loadError: 'Could not load customer accounts.',
       colCustomer: 'Customer',
       colStatus: 'Status',
+      onlineNow: 'Online now',
+      onlineCount: (online: number, total: number) => `${online} of ${total} online`,
       overQuota: 'over quota',
       activate: 'Activate',
       deactivate: 'Deactivate',

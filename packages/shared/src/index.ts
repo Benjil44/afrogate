@@ -934,6 +934,10 @@ export interface AdminCustomerAccountSummary {
   resellerDisplayName?: string | null;
   /** True when the owning seller is archived (soft-deleted); false when there is no seller. */
   resellerArchived: boolean;
+  /** True when the customer has passed traffic within the online window (recent usage events). */
+  online: boolean;
+  /** ISO timestamp of the customer's most recent traffic (usage event), or null if never. */
+  lastActiveAt?: string | null;
   displayName?: string | null;
   telegramId?: string | null;
   telegramUsername?: string | null;

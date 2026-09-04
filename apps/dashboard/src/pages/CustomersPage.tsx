@@ -1559,6 +1559,13 @@ export function CustomersPage({
       render: (a) => (
         <>
           <strong className="block text-afro-ink">
+            {a.online ? (
+              <span
+                title={s.onlineNow}
+                aria-label={s.onlineNow}
+                className="afro-online-dot me-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500 align-middle"
+              />
+            ) : null}
             {nameOf(a)}
             {isArchived(a) ? (
               <span className="ms-1.5 inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-afro-muted">
@@ -1898,6 +1905,10 @@ export function CustomersPage({
           </label>
         </div>
         <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-emerald-600">
+            <span className="afro-online-dot inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+            {s.onlineCount(filtered.filter((a) => a.online).length, filtered.length)}
+          </span>
           <span className="text-[13px] font-bold text-afro-muted">{s.total.replace('{n}', format.integer(filtered.length))}</span>
           <button
             type="button"

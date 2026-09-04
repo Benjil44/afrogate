@@ -3023,7 +3023,49 @@ export class BillingService {
 
     const summaries = result.rows.map((row) => this.mapCustomerAccount(row));
     await this.attachGatewayRouters(summaries);
+    await this.attachOnlineStatus(summaries);
     return summaries;
+  }
+
+  /**
+   * Marks each customer online if they passed traffic within the online window.
+   * The source of truth is `client_usage_events` (Germany + Ireland + WG metering),
+   * NOT xray's online-IP API — customers egress via Germany, so Ireland's xray
+   * stats don't see them, but every path's usage is metered into these events.
+   * One query for the whole page (mirrors attachGatewayRouters). `lastActiveAt`
+   * carries the newest usage timestamp so the UI can show "last seen".
+   */
+  private async attachOnlineStatus(summaries: AdminCustomerAccountSummary[]): Promise<void> {
+    const ids = summaries.map((s) => s.id);
+    if (ids.length === 0) return;
+    const windowSeconds = this.onlineWindowSeconds();
+    try {
+      const res = await this.database.query<{ customerAccountId: string; lastActiveAt: string | null; online: boolean }>(
+        `
+          SELECT customer_account_id AS "customerAccountId",
+                 max(observed_at) AS "lastActiveAt",
+                 bool_or(observed_at > now() - make_interval(secs => $2) AND used_bytes_delta > 0) AS "online"
+          FROM client_usage_events
+          WHERE customer_account_id = ANY($1::uuid[])
+            AND observed_at > now() - interval '24 hours'
+          GROUP BY customer_account_id
+        `,
+        [ids, windowSeconds],
+      );
+      const byAccount = new Map(res.rows.map((r) => [r.customerAccountId, r]));
+      for (const s of summaries) {
+        const r = byAccount.get(s.id);
+        s.online = r?.online === true;
+        s.lastActiveAt = r?.lastActiveAt ? new Date(r.lastActiveAt).toISOString() : null;
+      }
+    } catch {
+      /* usage events unavailable — leave online=false */
+    }
+  }
+
+  private onlineWindowSeconds(): number {
+    const raw = Number(process.env.AFROWS_ONLINE_WINDOW_SECONDS);
+    return Number.isInteger(raw) && raw >= 60 && raw <= 3600 ? raw : 600;
   }
 
   /** Attaches each account's owned MikroTik gateway (if any) for the Customers view. */
@@ -9334,6 +9376,8 @@ export class BillingService {
       resellerAccountId: row.resellerAccountId,
       resellerDisplayName: row.resellerDisplayName,
       resellerArchived: row.resellerArchived === true,
+      online: false,
+      lastActiveAt: null,
       displayName: row.displayName,
       telegramId: row.telegramId,
       telegramUsername: row.telegramUsername,

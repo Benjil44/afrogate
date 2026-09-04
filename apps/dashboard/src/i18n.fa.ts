@@ -89,6 +89,8 @@ export const fa: DashboardStrings = {
       loadError: 'بارگذاری حساب‌های مشتری ممکن نشد.',
       colCustomer: 'مشتری',
       colStatus: 'وضعیت',
+      onlineNow: 'آنلاین',
+      onlineCount: (online: number, total: number) => `${online} از ${total} آنلاین`,
       overQuota: 'اتمام حجم',
       activate: 'فعال‌سازی',
       deactivate: 'غیرفعال‌سازی',
