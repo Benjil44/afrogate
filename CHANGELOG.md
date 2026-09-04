@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.25 - 2026-09-04
+
+- **Fix: dashboard "Active users" / "Clients online" undercounted.** The overview count read Ireland's local xray stats (`statsgetallonlineusers` + `user>>>` counters), but customers egress via Germany-fronted Cloudflare, which Ireland's xray never sees — so it showed e.g. **1 when 2 were online**. `OperationsOverviewService.onlineUsers()` now counts distinct customer accounts with metered traffic in the online window from `client_usage_events` (the same accurate, path-agnostic source as the Customers-table online status), unioned with recently-handshaking WireGuard peers. The dashboard count now matches the Customers table. Window via `AFROWS_ONLINE_WINDOW_SECONDS` (default 600s).
+
 ## 0.115.24 - 2026-09-04
 
 - **Explicit Online/Offline column (superadmin only).** The All-Customers table now has a dedicated **Online** column showing a clear per-row pill — green **"Online"** (with a pulse dot) when the customer passed traffic in the online window, or a muted **"Offline"** pill (with a "Last seen …" tooltip from `lastActiveAt`) otherwise — replacing the subtle name-cell dot from 0.115.23. The header keeps the "N of M online" count. Per request, the online indicator was **removed from the seller's My-Users table** (the backend still populates `online` on the shared summary; the seller UI just doesn't render it). Bilingual (EN/FA), pulse respects `prefers-reduced-motion`. No backend/schema change.

@@ -169,55 +169,36 @@ export class OperationsOverviewService {
   }
 
   /**
-   * Active users = distinct users currently using a protocol: anyone with an
-   * open connection (statsgetallonlineusers) OR with traffic in the current
-   * metering window (user>>> counters, reset ~every 60s). The union makes the
-   * count reflect real usage even when online-IP tracking hasn't registered.
+   * Active users = distinct customer ACCOUNTS with metered traffic in the online
+   * window. Source of truth is `client_usage_events` (Germany + Ireland + WG
+   * metering), NOT xray's online-IP API — customers egress via Germany-fronted
+   * Cloudflare, so Ireland's local xray stats never see them (they'd undercount,
+   * e.g. show 1 when 2 are online). This matches the per-customer online status
+   * in the Customers table. WireGuard peers with a recent kernel handshake are
+   * unioned in (keyed by account) so gateway-only users still count.
    */
   private async onlineUsers(): Promise<number> {
     const active = new Set<string>();
+    const windowSeconds = this.onlineWindowSeconds();
 
-    // 1) open connections
+    // 1) customers with recently-metered traffic on ANY egress path
     try {
-      const res = await execFileAsync(
-        this.bin(),
-        ['api', 'statsgetallonlineusers', `--server=${this.apiServer()}`],
-        { timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
+      const res = await this.database.query<{ id: string }>(
+        `
+          SELECT DISTINCT customer_account_id AS id
+          FROM client_usage_events
+          WHERE observed_at > now() - make_interval(secs => $1)
+            AND used_bytes_delta > 0
+        `,
+        [windowSeconds],
       );
-      const data = JSON.parse(res.stdout) as { users?: unknown };
-      const users = data.users ?? data;
-      if (Array.isArray(users)) {
-        for (const name of users) {
-          const m = String(name).match(/^user>>>(.+?)>>>online$/);
-          if (m) active.add(m[1]);
-        }
-      } else if (users && typeof users === 'object') {
-        for (const key of Object.keys(users as Record<string, unknown>)) active.add(key);
-      }
+      for (const row of res.rows) active.add(row.id);
     } catch {
-      /* xray/api unavailable */
+      /* DB unavailable */
     }
 
-    // 2) users with traffic in the current window (used the protocol recently)
-    try {
-      const res = await execFileAsync(
-        this.bin(),
-        ['api', 'statsquery', `--server=${this.apiServer()}`, '-pattern', 'user>>>'],
-        { timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
-      );
-      const data = JSON.parse(res.stdout) as { stat?: Array<{ name?: string; value?: string }> };
-      for (const entry of data.stat ?? []) {
-        const m = (entry.name ?? '').match(/^user>>>(.+?)>>>traffic>>>(?:uplink|downlink)$/);
-        if (!m) continue;
-        if (Number(entry.value ?? 0) > 0) active.add(m[1]);
-      }
-    } catch {
-      /* xray/api unavailable */
-    }
-
-    // 3) active WireGuard peers (kernel wg0 isn't in xray stats): a peer with a
-    // handshake in the last ~3 min = an active user. Keyed by account so a
-    // customer isn't double-counted across their WG peers.
+    // 2) active WireGuard peers (kernel wg0 isn't metered as usage events): a
+    // handshake in the last ~3 min = an active user, keyed by account.
     try {
       const res = await this.database.query<{ accountId: string }>(
         `
@@ -229,12 +210,17 @@ export class OperationsOverviewService {
             AND wp.last_handshake_at > now() - interval '180 seconds'
         `,
       );
-      for (const row of res.rows) active.add(`wg:${row.accountId}`);
+      for (const row of res.rows) active.add(row.accountId);
     } catch {
       /* DB unavailable (dev) */
     }
 
     return active.size;
+  }
+
+  private onlineWindowSeconds(): number {
+    const raw = Number(this.config.get<string>('AFROWS_ONLINE_WINDOW_SECONDS'));
+    return Number.isInteger(raw) && raw >= 60 && raw <= 3600 ? raw : 600;
   }
 
   private bin(): string {
