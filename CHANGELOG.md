@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.26 - 2026-09-04
+
+- **Fix: dashboard throughput showed 0 B/s while customers were streaming.** "Download now" and the Live-traffic chart read Ireland's local xray inbound counters, but customers egress via Germany-fronted Cloudflare — Ireland never sees those bytes, so a customer streaming 4K (~19 Mbps) registered as **0**. `OperationsOverviewService` now derives throughput from the real source, `client_usage_events` (the Germany usage metering), via a new `customerTrafficBps()` — it sums each online customer's most-recent metered window (`used_bytes_delta` / window seconds). Two honest constraints from that source: it's **combined** (Germany reports total bytes, no up/down split — so it's surfaced as *download*, which is 90%+ of VPN traffic; upload reads 0), and it's at the **metering cadence (~2 min)**, so the live chart steps rather than flows sub-second. Both `getOverview` and `getThroughput` use it; the old Ireland-inbound delta sampling (and its `lastSample`/`lastThroughputSample` state) is removed. Window/lookback fixed at 4 min to tolerate metering lag.
+
 ## 0.115.25 - 2026-09-04
 
 - **Fix: dashboard "Active users" / "Clients online" undercounted.** The overview count read Ireland's local xray stats (`statsgetallonlineusers` + `user>>>` counters), but customers egress via Germany-fronted Cloudflare, which Ireland's xray never sees — so it showed e.g. **1 when 2 were online**. `OperationsOverviewService.onlineUsers()` now counts distinct customer accounts with metered traffic in the online window from `client_usage_events` (the same accurate, path-agnostic source as the Customers-table online status), unioned with recently-handshaking WireGuard peers. The dashboard count now matches the Customers table. Window via `AFROWS_ONLINE_WINDOW_SECONDS` (default 600s).

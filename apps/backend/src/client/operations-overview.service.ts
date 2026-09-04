@@ -18,10 +18,6 @@ const execFileAsync = promisify(execFile);
 @Injectable()
 export class OperationsOverviewService {
   private readonly logger = new Logger(OperationsOverviewService.name);
-  private lastSample: { ts: number; up: number; down: number } | null = null;
-  /** Separate sample state for the fast live-throughput endpoint, so polling it
-   *  every few seconds does not perturb getOverview's 10s rate. */
-  private lastThroughputSample: { ts: number; up: number; down: number } | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -29,27 +25,14 @@ export class OperationsOverviewService {
   ) {}
 
   async getOverview(): Promise<AdminOperationsOverview> {
-    const [cpu, mem, disk, traffic, activeUsers] = await Promise.all([
+    const [cpu, mem, disk, traffic, activeUsers, downloadBps] = await Promise.all([
       this.cpuPercent(),
       Promise.resolve(this.memPercent()),
       this.diskFreePercent(),
       this.inboundTrafficTotals(),
       this.onlineUsers(),
+      this.customerTrafficBps(),
     ]);
-
-    let downloadBps = 0;
-    let uploadBps = 0;
-    if (traffic) {
-      const now = Date.now();
-      if (this.lastSample) {
-        const elapsed = (now - this.lastSample.ts) / 1000;
-        if (elapsed > 0) {
-          downloadBps = Math.max(0, (traffic.down - this.lastSample.down) / elapsed);
-          uploadBps = Math.max(0, (traffic.up - this.lastSample.up) / elapsed);
-        }
-      }
-      this.lastSample = { ts: now, up: traffic.up, down: traffic.down };
-    }
 
     return {
       available: traffic !== null || disk !== null,
@@ -58,39 +41,57 @@ export class OperationsOverviewService {
       diskFreePercent: disk,
       activeUsers,
       downloadBps,
-      uploadBps,
+      uploadBps: 0,
       downloadTotalBytes: traffic?.down ?? 0,
       uploadTotalBytes: traffic?.up ?? 0,
     };
   }
 
-  /** Fast, light live-throughput sample for the dashboard's real-time chart.
-   *  Inbound counters are monotonic (metering resets only user counters), so the
-   *  delta since the previous call is a clean byte/sec rate. Uses its own sample
-   *  state (lastThroughputSample) so it never perturbs getOverview. */
+  /** Live throughput sample for the dashboard chart — the real customer traffic
+   *  (see customerTrafficBps): customers egress via Germany, so Ireland's own
+   *  inbound counters would read ~0. Combined-only (no up/down split available),
+   *  reported as download since VPN traffic is download-dominant. */
   async getThroughput(): Promise<AdminOperationsThroughput> {
-    const traffic = await this.inboundTrafficTotals();
-    const now = Date.now();
-    let downloadBps = 0;
-    let uploadBps = 0;
-    if (traffic) {
-      if (this.lastThroughputSample) {
-        const elapsed = (now - this.lastThroughputSample.ts) / 1000;
-        if (elapsed > 0) {
-          downloadBps = Math.max(0, (traffic.down - this.lastThroughputSample.down) / elapsed);
-          uploadBps = Math.max(0, (traffic.up - this.lastThroughputSample.up) / elapsed);
-        }
-      }
-      this.lastThroughputSample = { ts: now, up: traffic.up, down: traffic.down };
-    }
+    const [traffic, downloadBps] = await Promise.all([this.inboundTrafficTotals(), this.customerTrafficBps()]);
     return {
-      available: traffic !== null,
+      available: true,
       downloadBps,
-      uploadBps,
+      uploadBps: 0,
       downloadTotalBytes: traffic?.down ?? 0,
       uploadTotalBytes: traffic?.up ?? 0,
-      ts: now,
+      ts: Date.now(),
     };
+  }
+
+  /**
+   * Aggregate live customer throughput in bytes/sec. Customers egress via
+   * Germany-fronted Cloudflare, so Ireland's local xray inbound counters read
+   * ~0 for them; the only real signal is the Germany usage metering in
+   * `client_usage_events`. Each event carries a COMBINED (up+down) byte delta
+   * over its window (Germany reports no direction split), so this is a combined
+   * rate at the metering cadence (~2 min). We take each customer's most-recent
+   * window (within the last 4 min) and sum delta/window-seconds.
+   */
+  private async customerTrafficBps(): Promise<number> {
+    try {
+      const res = await this.database.query<{ bps: string | null }>(
+        `
+          SELECT COALESCE(sum(rate), 0)::bigint AS bps
+          FROM (
+            SELECT DISTINCT ON (customer_account_id)
+                   used_bytes_delta::float8
+                     / NULLIF(GREATEST(extract(epoch FROM (window_end - window_start)), 1), 0) AS rate
+            FROM client_usage_events
+            WHERE observed_at > now() - interval '4 minutes'
+              AND used_bytes_delta > 0
+            ORDER BY customer_account_id, observed_at DESC
+          ) q
+        `,
+      );
+      return Number(res.rows[0]?.bps ?? 0);
+    } catch {
+      return 0;
+    }
   }
 
   private memPercent(): number {
