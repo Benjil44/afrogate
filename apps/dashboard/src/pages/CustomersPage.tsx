@@ -1559,13 +1559,6 @@ export function CustomersPage({
       render: (a) => (
         <>
           <strong className="block text-afro-ink">
-            {a.online ? (
-              <span
-                title={s.onlineNow}
-                aria-label={s.onlineNow}
-                className="afro-online-dot me-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500 align-middle"
-              />
-            ) : null}
             {nameOf(a)}
             {isArchived(a) ? (
               <span className="ms-1.5 inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-afro-muted">
@@ -1613,6 +1606,26 @@ export function CustomersPage({
           </span>
         );
       },
+    },
+    {
+      key: 'presence',
+      header: s.colOnline,
+      className: fitCol,
+      render: (a) =>
+        a.online ? (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
+            <span className="afro-online-dot inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+            {s.onlineLabel}
+          </span>
+        ) : (
+          <span
+            title={a.lastActiveAt ? s.lastSeenAt(format.time(new Date(a.lastActiveAt), true)) : undefined}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-muted"
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-afro-muted opacity-50" aria-hidden />
+            {s.offlineLabel}
+          </span>
+        ),
     },
     {
       key: 'usage',
