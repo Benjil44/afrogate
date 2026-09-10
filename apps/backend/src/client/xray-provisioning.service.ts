@@ -32,8 +32,14 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(XrayProvisioningService.name);
   private timer: NodeJS.Timeout | undefined;
   private running = false;
-  /** Throttle for the full Germany-membership sweep (epoch ms of last run). */
+  /** Throttle for the full Germany-membership re-sync (epoch ms of last run). */
   private lastGermanySweepAt = 0;
+  /** client_config ids confirmed present on Germany's WS inbound (best-effort
+   *  cache). The per-tick fast-path only adu's ids NOT in here, so new/recovered
+   *  users are re-provisioned within ~60s instead of waiting for the full sweep,
+   *  and steady-state SSH churn drops to ~zero. Rebuilt by the periodic full
+   *  re-sync (drift correction) and reset on restart. */
+  private readonly deConfirmed = new Set<string>();
 
   constructor(
     private readonly config: ConfigService,
@@ -166,7 +172,9 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     }
     if (!recovered.rows.length) return;
     for (const row of recovered.rows) {
-      await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id));
+      if (await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id))) {
+        this.deConfirmed.add(row.id); // let the membership fast-path skip the redundant re-adu
+      }
     }
     this.logger.log(
       `Provisioning recovery: un-limited + re-provisioned ${recovered.rows.length} back-under-quota client(s) on Germany`,
@@ -174,24 +182,23 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Throttled full sweep that guarantees EVERY active, under-quota, non-disabled
-   * client is present on Germany's WS inbound. Germany is reachable only over the
-   * SSH mgmt channel (not a direct-API provisioning endpoint), so it isn't covered
-   * by the Ireland reconcile below, and `recoverBackUnderQuota` only catches the
-   * over-quota→top-up transition. Any OTHER way a user returns to good standing
-   * (disabled→re-enabled, a fresh signup, a transient enforcement rmu) would leave
-   * them silently off Germany until this runs. `adu` is idempotent — a still-present
-   * user is a no-op — so this can only ADD missing users, never disconnect anyone.
+   * Keeps EVERY active, under-quota, non-disabled client present on Germany's WS
+   * inbound. Germany is reachable only over the SSH mgmt channel (not a direct-API
+   * provisioning endpoint), so it isn't covered by the Ireland reconcile below,
+   * and any way a user (re)enters good standing — a fresh signup, disabled→enabled,
+   * over-quota→top-up, a transient enforcement rmu — would otherwise leave them
+   * silently off Germany. `adu` is idempotent (a still-present user is a no-op), so
+   * this only ADDS, never disconnects.
    *
-   * Bounded to one run per AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS (default 300s) so the
-   * per-user SSH calls don't run every 60s tick. Best-effort: a link failure logs
-   * and the next window retries; a per-user failure never sinks the rest.
+   * Runs every reconcile tick, but SSH-cheap: a `deConfirmed` cache means the tick
+   * only `adu`s ids we have NOT yet confirmed present — so new/recovered users are
+   * restored within ~60s while steady-state churn is ~zero. A failed adu is left
+   * unconfirmed and retried next tick. A periodic FULL re-sync (every
+   * AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS, default 300s) re-adu's everyone to correct
+   * any drift between the cache and Germany's real state.
    */
   private async ensureGermanyMembership(): Promise<void> {
     if (!this.germanyEnabled()) return;
-    const now = Date.now();
-    if (now - this.lastGermanySweepAt < this.germanySweepIntervalMs()) return;
-    this.lastGermanySweepAt = now;
 
     let rows: { rows: ActiveClientRow[] };
     try {
@@ -212,12 +219,32 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Germany membership query failed: ${error instanceof Error ? error.message : error}`);
       return;
     }
+
+    // Drop cache entries no longer eligible (over-quota / disabled / blocked), so
+    // that when they return to good standing they are re-adu'd, not skipped.
+    const shouldBe = new Set(rows.rows.map((r) => r.id));
+    for (const id of [...this.deConfirmed]) if (!shouldBe.has(id)) this.deConfirmed.delete(id);
+
+    const now = Date.now();
+    const fullResync = now - this.lastGermanySweepAt >= this.germanySweepIntervalMs();
+    if (fullResync) this.lastGermanySweepAt = now;
+
     let ensured = 0;
+    let attempted = 0;
     for (const row of rows.rows) {
-      if (await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id))) ensured += 1;
+      if (!fullResync && this.deConfirmed.has(row.id)) continue; // fast-path: already present
+      attempted += 1;
+      if (await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id))) {
+        this.deConfirmed.add(row.id);
+        ensured += 1;
+      } else {
+        this.deConfirmed.delete(row.id); // failed → retry next tick
+      }
     }
-    if (ensured) {
-      this.logger.log(`Germany membership sweep: ensured ${ensured}/${rows.rows.length} active under-quota client(s) present on Germany`);
+    if (attempted) {
+      this.logger.log(
+        `Germany membership ${fullResync ? 're-sync' : 'fast-path'}: ensured ${ensured}/${attempted} of ${rows.rows.length} active under-quota client(s) on Germany`,
+      );
     }
   }
 
