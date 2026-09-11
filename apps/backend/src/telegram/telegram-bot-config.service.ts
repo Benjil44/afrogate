@@ -32,7 +32,6 @@ interface TelegramBotSettingsRow {
   lastTestErrorCode: string | null;
   lastTestDurationMs: number | null;
   cardToCardInfo: string | null;
-  trialQuotaBytes: string | number | null;
   gemRedeemPerGb: number | string | null;
   gemReferralSignup: number | string | null;
   gemReferralPurchasePct: number | string | null;
@@ -74,8 +73,6 @@ export interface TelegramBotRuntimeConfig {
   commandsEnabled: boolean;
   /** Card-to-card destination shown to users in the charge flow (null if unset). */
   cardToCardInfo: string | null;
-  /** Trial quota for new self-serve accounts in bytes (null -> default 1 GB decimal). */
-  trialQuotaBytes: number | null;
   /** v2 gem economy (resolved, always populated — DB defaults or plan defaults). */
   gemEconomy: TelegramGemEconomy;
 }
@@ -161,7 +158,6 @@ export class TelegramBotConfigService {
       if (dto.alertChatId !== undefined) changedFields.push('alertChatId');
       if (allowedAdminChatIds !== undefined) changedFields.push('allowedAdminChatIds');
       if (dto.cardToCardInfo !== undefined) changedFields.push('cardToCardInfo');
-      if (dto.trialQuotaBytes !== undefined) changedFields.push('trialQuotaBytes');
       if (dto.gemRedeemPerGb !== undefined) changedFields.push('gemRedeemPerGb');
       if (dto.gemReferralSignup !== undefined) changedFields.push('gemReferralSignup');
       if (dto.gemReferralPurchasePct !== undefined) changedFields.push('gemReferralPurchasePct');
@@ -170,10 +166,6 @@ export class TelegramBotConfigService {
 
       const nextCardToCardInfo =
         dto.cardToCardInfo !== undefined ? this.normalizeCardToCardInfo(dto.cardToCardInfo) : current?.cardToCardInfo ?? null;
-      const nextTrialQuotaBytes =
-        dto.trialQuotaBytes !== undefined
-          ? this.normalizeTrialQuotaBytes(dto.trialQuotaBytes)
-          : this.bigintToNumber(current?.trialQuotaBytes);
 
       // Gem economy: DTO overrides where provided, else keep the current (or plan
       // default). The columns are NOT NULL so a value is always written.
@@ -189,11 +181,11 @@ export class TelegramBotConfigService {
           INSERT INTO telegram_bot_settings (
             setting_key, bot_token_secret_ref, webhook_secret_ref, alert_chat_id,
             allowed_admin_chat_ids, alerts_enabled, commands_enabled,
-            card_to_card_info, trial_quota_bytes,
+            card_to_card_info,
             gem_redeem_per_gb, gem_referral_signup, gem_referral_purchase_pct,
             gem_milestone_every, gem_milestone_bonus, updated_by
           )
-          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           ON CONFLICT (setting_key)
           DO UPDATE SET
             bot_token_secret_ref = excluded.bot_token_secret_ref,
@@ -203,7 +195,6 @@ export class TelegramBotConfigService {
             alerts_enabled = excluded.alerts_enabled,
             commands_enabled = excluded.commands_enabled,
             card_to_card_info = excluded.card_to_card_info,
-            trial_quota_bytes = excluded.trial_quota_bytes,
             gem_redeem_per_gb = excluded.gem_redeem_per_gb,
             gem_referral_signup = excluded.gem_referral_signup,
             gem_referral_purchase_pct = excluded.gem_referral_purchase_pct,
@@ -221,7 +212,6 @@ export class TelegramBotConfigService {
           dto.alertsEnabled ?? current?.alertsEnabled ?? false,
           dto.commandsEnabled ?? current?.commandsEnabled ?? false,
           nextCardToCardInfo,
-          nextTrialQuotaBytes,
           nextGemRedeemPerGb,
           nextGemReferralSignup,
           nextGemReferralPurchasePct,
@@ -334,7 +324,6 @@ export class TelegramBotConfigService {
       alertsEnabled: row ? row.alertsEnabled : this.configFlag('AFROWS_TELEGRAM_ALERTS_ENABLED', false),
       commandsEnabled: row ? row.commandsEnabled : this.configFlag('AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED', false),
       cardToCardInfo: row?.cardToCardInfo?.trim() || null,
-      trialQuotaBytes: this.bigintToNumber(row?.trialQuotaBytes),
       gemEconomy: this.resolveGemEconomy(row),
     };
   }
@@ -571,7 +560,6 @@ export class TelegramBotConfigService {
         last_test_error_code AS "lastTestErrorCode",
         last_test_duration_ms AS "lastTestDurationMs",
         card_to_card_info AS "cardToCardInfo",
-        trial_quota_bytes AS "trialQuotaBytes",
         gem_redeem_per_gb AS "gemRedeemPerGb",
         gem_referral_signup AS "gemReferralSignup",
         gem_referral_purchase_pct AS "gemReferralPurchasePct",
@@ -615,7 +603,6 @@ export class TelegramBotConfigService {
       lastTestErrorCode: row?.lastTestErrorCode ?? null,
       lastTestDurationMs: row?.lastTestDurationMs ?? null,
       cardToCardInfo: row?.cardToCardInfo ?? null,
-      trialQuotaBytes: this.bigintToNumber(row?.trialQuotaBytes),
       gemRedeemPerGb: this.resolveGemEconomy(row).gemRedeemPerGb,
       gemReferralSignup: this.resolveGemEconomy(row).gemReferralSignup,
       gemReferralPurchasePct: this.resolveGemEconomy(row).gemReferralPurchasePct,
@@ -636,14 +623,6 @@ export class TelegramBotConfigService {
     const normalized = value.trim();
     if (normalized.length > 500) throw new BadRequestException('cardToCardInfo is too long');
     return normalized || null;
-  }
-
-  private normalizeTrialQuotaBytes(value: number | null | undefined): number | null {
-    if (value === null || value === undefined) return null;
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new BadRequestException('trialQuotaBytes must be a non-negative integer');
-    }
-    return value;
   }
 
   private normalizeOptionalSecret(value: string | undefined): string | null {

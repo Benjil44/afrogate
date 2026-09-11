@@ -96,12 +96,6 @@ export class UpdateTelegramBotSettingsDto {
   @MaxLength(500)
   cardToCardInfo?: string | null;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  trialQuotaBytes?: number | null;
-
   // --- v2 gem economy (admin-configurable; defaults 100/50/20/10/300) ---
   @IsOptional()
   @Type(() => Number)

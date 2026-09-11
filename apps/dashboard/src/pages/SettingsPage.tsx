@@ -73,7 +73,6 @@ export function SettingsPage({
     alertsEnabled: false,
     commandsEnabled: false,
     cardToCardInfo: '',
-    trialQuotaGb: '',
     gemRedeemPerGb: '',
     gemReferralSignup: '',
     gemReferralPurchasePct: '',
@@ -156,8 +155,6 @@ export function SettingsPage({
       alertsEnabled: settings.alertsEnabled,
       commandsEnabled: settings.commandsEnabled,
       cardToCardInfo: settings.cardToCardInfo ?? '',
-      // Stored in bytes; edited in decimal GB (1 GB = 1e9 bytes, matching quota math).
-      trialQuotaGb: settings.trialQuotaBytes != null ? String(Math.round((settings.trialQuotaBytes / 1e9) * 100) / 100) : '',
       // Gem economy (bot v2): blank means "backend default" until a value is saved.
       gemRedeemPerGb: gems.gemRedeemPerGb != null ? String(gems.gemRedeemPerGb) : '',
       gemReferralSignup: gems.gemReferralSignup != null ? String(gems.gemReferralSignup) : '',
@@ -735,13 +732,6 @@ export function SettingsPage({
     setIsTelegramBotSaving(true);
     if (showSuccessMessage) setTelegramBotMessage(null);
 
-    // Trial quota is edited in decimal GB; blank/invalid -> null so the
-    // backend applies its default (1 GB).
-    const trialGb = Number(telegramBotForm.trialQuotaGb.trim());
-    const trialQuotaBytes = telegramBotForm.trialQuotaGb.trim() !== '' && Number.isFinite(trialGb) && trialGb > 0
-      ? Math.round(trialGb * 1e9)
-      : null;
-
     try {
       const payload: UpdateTelegramBotSettingsRequest = {
         botToken: telegramBotForm.botToken.trim() || undefined,
@@ -751,7 +741,6 @@ export function SettingsPage({
         alertsEnabled: telegramBotForm.alertsEnabled,
         commandsEnabled: telegramBotForm.commandsEnabled,
         cardToCardInfo: telegramBotForm.cardToCardInfo.trim() || null,
-        trialQuotaBytes,
         ...gemPayload,
       };
       const response = await updateAdminTelegramBotSettings(sessionToken, payload);
@@ -1169,7 +1158,7 @@ export function SettingsPage({
                 />
               </label>
             </div>
-            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.4fr)]">
+            <div className="grid gap-2">
               <label className="grid content-start gap-1.5">
                 <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramCardToCardInfo}</span>
                 <textarea
@@ -1180,21 +1169,6 @@ export function SettingsPage({
                   value={telegramBotForm.cardToCardInfo}
                 />
                 <span className="text-[12px] text-afro-muted">{t.settings.telegramCardToCardHint}</span>
-              </label>
-              <label className="grid content-start gap-1.5">
-                <span className="text-[13px] font-bold text-afro-muted">{t.settings.telegramTrialQuotaGb}</span>
-                <input
-                  className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 text-sm font-bold text-afro-ink outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-4 disabled:opacity-45"
-                  dir="ltr"
-                  disabled={!canManageTelegramBot}
-                  inputMode="decimal"
-                  min="0"
-                  onChange={(event) => updateTelegramBotForm('trialQuotaGb', event.target.value)}
-                  step="0.5"
-                  type="number"
-                  value={telegramBotForm.trialQuotaGb}
-                />
-                <span className="text-[12px] text-afro-muted">{t.settings.telegramTrialQuotaHint}</span>
               </label>
             </div>
             <div className="grid gap-2 rounded-md border border-afro-line bg-white p-3">

@@ -511,8 +511,6 @@ export interface AdminTelegramBotSettingsSummary {
   lastTestDurationMs?: number | null;
   /** Card-to-card destination shown to bot users in the charge flow. */
   cardToCardInfo?: string | null;
-  /** Trial quota for new self-serve accounts in bytes (null -> default 1e9). */
-  trialQuotaBytes?: number | null;
   // --- v2 gem economy (admin-configurable; defaults per telegram-bot-v2-plan.md) ---
   /** Gems required to redeem 1 GB (default 100). */
   gemRedeemPerGb?: number;
@@ -542,7 +540,6 @@ export interface UpdateTelegramBotSettingsRequest {
   alertsEnabled?: boolean;
   commandsEnabled?: boolean;
   cardToCardInfo?: string | null;
-  trialQuotaBytes?: number | null;
   gemRedeemPerGb?: number;
   gemReferralSignup?: number;
   gemReferralPurchasePct?: number;

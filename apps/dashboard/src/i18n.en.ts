@@ -2192,8 +2192,6 @@ export const en = {
       telegramBotIdentity: 'Telegram bot',
       telegramCardToCardInfo: 'Card-to-card destination',
       telegramCardToCardHint: 'Card number + holder name shown to bot users in the /charge flow.',
-      telegramTrialQuotaGb: 'Trial quota (GB)',
-      telegramTrialQuotaHint: 'Data for new self-serve bot accounts. Blank = default 1 GB.',
       telegramGemSection: 'Referrals & gems (bot economy)',
       telegramGemSectionHint: 'Reward economy for the afroWS bot: invites earn gems, gems redeem to data. Whole numbers ≥ 0; blank keeps the backend default.',
       telegramGemRedeemPerGb: 'Gems per 1 GB (redeem rate)',

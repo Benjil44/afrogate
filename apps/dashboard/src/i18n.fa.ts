@@ -2194,8 +2194,6 @@ export const fa: DashboardStrings = {
       telegramBotIdentity: 'ربات تلگرام',
       telegramCardToCardInfo: 'مقصد کارت‌به‌کارت',
       telegramCardToCardHint: 'شماره کارت و نام دارنده که در جریان ‎/charge‎ به کاربران ربات نمایش داده می‌شود.',
-      telegramTrialQuotaGb: 'سهمیه آزمایشی (گیگ)',
-      telegramTrialQuotaHint: 'حجم حساب‌های سلف‌سرویس جدید ربات. خالی = پیش‌فرض ۱ گیگ.',
       telegramGemSection: 'دعوت‌ها و جم‌ها (اقتصاد ربات)',
       telegramGemSectionHint: 'اقتصاد پاداش ربات afroWS: دعوت جم می‌دهد و جم به حجم تبدیل می‌شود. اعداد صحیح ≥ ۰؛ خالی = پیش‌فرض بک‌اند.',
       telegramGemRedeemPerGb: 'جم برای هر ۱ گیگ (نرخ تبدیل)',
