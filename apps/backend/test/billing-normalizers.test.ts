@@ -9,7 +9,9 @@ import {
   normalizeProtocol,
   normalizeProvider,
   normalizeResellerStatus,
+  normalizeResellerTelegramLinkStatus,
   normalizeSlug,
+  normalizeTelegramNumericId,
   normalizeTelegramUsername,
   normalizeUsageMultiplier,
   stripSurroundingUnderscores,
@@ -109,6 +111,35 @@ describe('normalizeResellerStatus', () => {
   });
   it('rejects anything else', () => {
     assert.throws(() => normalizeResellerStatus('banned'), BadRequestException);
+  });
+});
+
+describe('normalizeResellerTelegramLinkStatus', () => {
+  it('accepts none/pending/approved/rejected', () => {
+    assert.equal(normalizeResellerTelegramLinkStatus('Pending'), 'pending');
+    assert.equal(normalizeResellerTelegramLinkStatus('APPROVED'), 'approved');
+  });
+  it('rejects anything else', () => {
+    assert.throws(() => normalizeResellerTelegramLinkStatus('linked'), BadRequestException);
+  });
+});
+
+describe('normalizeTelegramNumericId', () => {
+  it('accepts digits-only ids of plausible length, stripping whitespace', () => {
+    assert.equal(normalizeTelegramNumericId(' 123456789 '), '123456789');
+    assert.equal(normalizeTelegramNumericId('12345'), '12345');
+  });
+  it('returns null for empty input', () => {
+    assert.equal(normalizeTelegramNumericId(null), null);
+    assert.equal(normalizeTelegramNumericId('   '), null);
+  });
+  it('rejects an @username or non-numeric input', () => {
+    assert.throws(() => normalizeTelegramNumericId('@someuser'), BadRequestException);
+    assert.throws(() => normalizeTelegramNumericId('abc123'), BadRequestException);
+  });
+  it('rejects ids outside the plausible 5-15 digit range', () => {
+    assert.throws(() => normalizeTelegramNumericId('1234'), BadRequestException);
+    assert.throws(() => normalizeTelegramNumericId('1'.repeat(16)), BadRequestException);
   });
 });
 

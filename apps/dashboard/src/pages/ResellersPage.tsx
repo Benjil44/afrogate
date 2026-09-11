@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Archive, ArchiveRestore, Database, Loader2, LogIn, Store } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Check, Database, Loader2, LogIn, MessageCircle, Store, X } from 'lucide-react';
 import type {
   AdminCustomerAccountSummary,
   AdminResellerAccountSummary,
@@ -8,11 +8,13 @@ import type {
   ResellerAccountStatus,
 } from '@afrows/shared';
 import {
+  approveResellerTelegramLink,
   archiveAdminReseller,
   createAdminReseller,
   fetchAdminResellers,
   fetchAdminUsers,
   fetchResellerWalletLedger,
+  rejectResellerTelegramLink,
   restoreAdminReseller,
   topUpResellerWallet,
   updateAdminReseller,
@@ -49,6 +51,7 @@ export function ResellersPage({
   // First-load failure must not look like "no sellers yet".
   const [loadState, setLoadState] = useState<'loading' | 'live' | 'error'>('loading');
   const [showArchived, setShowArchived] = useState(false);
+  const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [adminUserId, setAdminUserId] = useState('');
   // One-step onboarding: link an existing reseller login, or create a fresh one.
@@ -74,7 +77,7 @@ export function ResellersPage({
   const load = async () => {
     try {
       const [res, users] = await Promise.all([
-        fetchAdminResellers(sessionToken, undefined, showArchived ? 'all' : 'active'),
+        fetchAdminResellers(sessionToken, undefined, showArchived ? 'all' : 'active', showPendingOnly ? 'pending' : undefined),
         fetchAdminUsers(sessionToken).catch(() => ({ users: [] as AdminUserSummary[] })),
       ]);
       setRows(res.resellers);
@@ -86,7 +89,7 @@ export function ResellersPage({
   };
   useEffect(() => {
     void load();
-  }, [sessionToken, showArchived]);
+  }, [sessionToken, showArchived, showPendingOnly]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -212,6 +215,12 @@ export function ResellersPage({
                 {s.archivedBadge}
               </span>
             ) : null}
+            {r.telegramLinkStatus === 'pending' ? (
+              <span className="ms-1.5 inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                <MessageCircle size={10} />
+                {s.telegramLinkPending}
+              </span>
+            ) : null}
           </strong>
           <span className="text-[12px] text-afro-muted">{r.contactName || r.telegramUsername || '—'}</span>
         </span>
@@ -327,6 +336,15 @@ export function ResellersPage({
           <label className="inline-flex min-h-11 items-center gap-2 text-[13px] font-bold text-afro-muted md:min-h-9">
             <input
               type="checkbox"
+              checked={showPendingOnly}
+              onChange={(e) => setShowPendingOnly(e.target.checked)}
+              className="h-4 w-4 accent-afro-teal"
+            />
+            {s.showPendingTelegramLinks}
+          </label>
+          <label className="inline-flex min-h-11 items-center gap-2 text-[13px] font-bold text-afro-muted md:min-h-9">
+            <input
+              type="checkbox"
               checked={showArchived}
               onChange={(e) => setShowArchived(e.target.checked)}
               className="h-4 w-4 accent-afro-teal"
@@ -412,7 +430,7 @@ export function ResellersPage({
         columns={columns}
         detailCollapseLabel={s.collapseRow}
         detailExpandLabel={s.expandRow}
-        empty={{ message: s.empty }}
+        empty={{ message: showPendingOnly ? s.pendingTelegramLinksEmpty : s.empty }}
         error={
           loadState === 'error'
             ? {
@@ -476,6 +494,10 @@ function SellerDetailPanel({
   const [topUpBusy, setTopUpBusy] = useState(false);
   const [topUpError, setTopUpError] = useState<string | null>(null);
 
+  // Telegram bot-access link review
+  const [telegramLinkBusy, setTelegramLinkBusy] = useState(false);
+  const [telegramLinkMessage, setTelegramLinkMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
   // Ledger
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [ledger, setLedger] = useState<AdminResellerWalletLedgerEntry[]>([]);
@@ -537,6 +559,32 @@ function SellerDetailPanel({
     }
   };
 
+  const onApproveTelegramLink = async () => {
+    setTelegramLinkBusy(true);
+    setTelegramLinkMessage(null);
+    try {
+      await approveResellerTelegramLink(sessionToken, r.id);
+      await onSaved();
+    } catch (e) {
+      setTelegramLinkMessage({ ok: false, text: e instanceof Error ? e.message : s.telegramLinkApproveFailed });
+    } finally {
+      setTelegramLinkBusy(false);
+    }
+  };
+
+  const onRejectTelegramLink = async () => {
+    setTelegramLinkBusy(true);
+    setTelegramLinkMessage(null);
+    try {
+      await rejectResellerTelegramLink(sessionToken, r.id, {});
+      await onSaved();
+    } catch (e) {
+      setTelegramLinkMessage({ ok: false, text: e instanceof Error ? e.message : s.telegramLinkRejectFailed });
+    } finally {
+      setTelegramLinkBusy(false);
+    }
+  };
+
   const onToggleLedger = () => {
     if (ledgerOpen) {
       setLedgerOpen(false);
@@ -587,6 +635,59 @@ function SellerDetailPanel({
           <span className={`sm:col-span-2 lg:col-span-5 text-[12px] ${editMessage.ok ? 'text-afro-green' : 'text-red-600'}`}>{editMessage.text}</span>
         ) : null}
       </div>
+
+      {/* Telegram bot-access link review (only when the seller has ever submitted one). */}
+      {r.telegramLinkStatus !== 'none' ? (
+        <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[13px] font-bold text-afro-ink">
+              <MessageCircle size={14} />
+              {s.telegramLinkTitle}
+            </span>
+            <StatusBadge
+              tone={
+                r.telegramLinkStatus === 'approved' ? 'good' : r.telegramLinkStatus === 'rejected' ? 'critical' : 'warning'
+              }
+            >
+              {r.telegramLinkStatus === 'approved'
+                ? s.telegramLinkStatusApproved
+                : r.telegramLinkStatus === 'rejected'
+                  ? s.telegramLinkStatusRejected
+                  : s.telegramLinkStatusPending}
+            </StatusBadge>
+          </div>
+          <div className="grid gap-1 text-[12px] text-afro-muted sm:grid-cols-3" dir="ltr">
+            <span><strong className="text-afro-ink">{s.telegramLinkPhone}:</strong> {r.telegramLinkPhone ?? '—'}</span>
+            <span><strong className="text-afro-ink">{s.telegramLinkTelegramId}:</strong> {r.telegramId ?? '—'}</span>
+            <span><strong className="text-afro-ink">{s.telegramLinkCardInfo}:</strong> {r.cardInfo ?? '—'}</span>
+          </div>
+          {r.telegramLinkStatus === 'pending' ? (
+            <div className="flex flex-wrap items-center gap-2 border-t border-afro-line pt-2">
+              <button
+                type="button"
+                disabled={telegramLinkBusy}
+                onClick={() => void onApproveTelegramLink()}
+                className="inline-flex min-h-9 items-center gap-1 rounded-md bg-afro-green px-3 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {telegramLinkBusy ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+                {telegramLinkBusy ? s.telegramLinkApproving : s.telegramLinkApprove}
+              </button>
+              <button
+                type="button"
+                disabled={telegramLinkBusy}
+                onClick={() => void onRejectTelegramLink()}
+                className="inline-flex min-h-9 items-center gap-1 rounded-md border border-afro-line px-3 text-sm font-bold hover:border-red-400 hover:text-red-600 disabled:opacity-50"
+              >
+                {telegramLinkBusy ? <Loader2 className="animate-spin" size={14} /> : <X size={14} />}
+                {telegramLinkBusy ? s.telegramLinkRejecting : s.telegramLinkReject}
+              </button>
+            </div>
+          ) : null}
+          {telegramLinkMessage ? (
+            <span className={`text-[12px] ${telegramLinkMessage.ok ? 'text-afro-green' : 'text-red-600'}`}>{telegramLinkMessage.text}</span>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Top up + ledger. */}
       <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5">

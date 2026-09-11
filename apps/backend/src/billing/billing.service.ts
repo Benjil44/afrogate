@@ -124,7 +124,7 @@ import {
   type ReferralRewardConfig,
 } from './gems';
 import { generateCustomerDisplayName } from './display-name';
-import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
+import { bytesAtMultiplier, normalizeCountryCode, normalizeCurrency, normalizeDetectionSource, normalizeJsonStringArray, normalizeMoneyAmount, normalizeNullableString, normalizePaidNumber, normalizeProtocol, normalizeProvider, normalizePublicEndpointValue, normalizeResellerStatus, normalizeResellerTelegramLinkStatus, normalizeRewardedAdSettingsToken, normalizeRouteGroup, normalizeSlug, normalizeSubscriptionProtocol, normalizeTelegramNumericId, normalizeTelegramUsername, normalizeUsageMultiplier, parseJsonValue, usageMultiplierLabel } from './billing-normalizers';
 import { phoneClearVariants, phoneDigitVariants } from './phone-identity';
 import type { AuditActor, AuthActor, ClientAuthActor } from '../security/auth-request';
 import { assertClientScope, hashClientToken, normalizeScopes } from '../security/client-token';
@@ -186,6 +186,8 @@ import {
   CreateResellerPackageSaleDto,
   CreateResellerTopupRequestDto,
   DebitResellerWalletForPackageDto,
+  RejectResellerTelegramLinkDto,
+  RequestResellerTelegramLinkDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
 } from './dto/reseller.dto';
@@ -568,6 +570,12 @@ interface ResellerAccountRow {
   maxCustomers: number | null;
   notes: string | null;
   archivedAt: Date | string | null;
+  telegramId: string | null;
+  telegramLinkPhone: string | null;
+  cardInfo: string | null;
+  telegramLinkStatus: string;
+  telegramLinkRequestedAt: Date | string | null;
+  telegramLinkedAt: Date | string | null;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date;
@@ -723,6 +731,8 @@ interface ResellerAccountFilters {
   search?: string;
   /** Archived visibility: 'active' (default, live only), 'only' (archived), 'all'. */
   archived?: CustomerAccountArchivedFilter;
+  /** Filter by Telegram-link review state, e.g. 'pending' for the superadmin review queue. */
+  telegramLinkStatus?: string;
   limit: number;
 }
 
@@ -1931,6 +1941,11 @@ export class BillingService {
       )`);
     }
 
+    if (filters.telegramLinkStatus?.trim()) {
+      values.push(normalizeResellerTelegramLinkStatus(filters.telegramLinkStatus));
+      where.push(`ra.telegram_link_status = $${values.length}`);
+    }
+
     values.push(filters.limit);
     const result = await this.database.query<ResellerAccountRow>(
       `
@@ -2090,6 +2105,149 @@ export class BillingService {
     });
 
     return this.getResellerAccount(id);
+  }
+
+  /**
+   * Seller self-service: submit phone + Telegram numeric id + card number to
+   * request bot access. Always lands in 'pending' (even resubmission after a
+   * rejection) — bot access is granted only once a superadmin approves it (see
+   * approveResellerTelegramLink). Does not touch telegram_linked_at.
+   */
+  async requestResellerTelegramLink(
+    dto: RequestResellerTelegramLinkDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerAccountSummary> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    const phone = normalizePaidNumber(dto.phone);
+    const telegramId = normalizeTelegramNumericId(dto.telegramId);
+    const cardInfo = normalizeNullableString(dto.cardInfo);
+    if (!phone) throw new BadRequestException('Phone is required');
+    if (!cardInfo) throw new BadRequestException('Card number is required');
+
+    await this.database.transaction(async (executor) => {
+      await executor.query(
+        `
+          UPDATE reseller_accounts
+             SET telegram_id = $2,
+                 telegram_link_phone = $3,
+                 card_info = $4,
+                 telegram_link_status = 'pending',
+                 telegram_link_requested_at = now(),
+                 updated_at = now()
+           WHERE id = $1
+        `,
+        [reseller.id, telegramId, phone, cardInfo],
+      );
+      await this.audit.record(
+        actor,
+        'reseller_account.telegram_link_request',
+        'reseller_account',
+        reseller.id,
+        {},
+        executor,
+      );
+    });
+
+    return this.getResellerAccount(reseller.id);
+  }
+
+  /**
+   * Superadmin approves a seller's pending Telegram-link request: flips status
+   * to 'approved' and stamps `telegram_linked_at`. From this point the bot's
+   * role resolution (getResellerByTelegramId) grants a seller session for this
+   * Telegram id. Guarded against a race where another seller already holds an
+   * approved link to the same Telegram id (the partial unique index is the
+   * final DB-level backstop).
+   */
+  async approveResellerTelegramLink(id: string, actor: AuthActor | undefined): Promise<AdminResellerAccountSummary> {
+    await this.database.transaction(async (executor) => {
+      const existing = await this.getResellerAccountRowForUpdate(executor, id);
+      if (existing.telegramLinkStatus !== 'pending') {
+        throw new ConflictException('Only a pending Telegram-link request can be approved');
+      }
+      if (!existing.telegramId) {
+        throw new BadRequestException('Reseller has no submitted Telegram id');
+      }
+
+      const collision = await executor.query<{ id: string }>(
+        `
+          SELECT id FROM reseller_accounts
+           WHERE telegram_id = $1 AND telegram_link_status = 'approved' AND id <> $2
+        `,
+        [existing.telegramId, id],
+      );
+      if (collision.rows.length) {
+        throw new ConflictException('This Telegram id is already linked to another approved seller');
+      }
+
+      await executor.query(
+        `
+          UPDATE reseller_accounts
+             SET telegram_link_status = 'approved', telegram_linked_at = now(), updated_by = $2, updated_at = now()
+           WHERE id = $1
+        `,
+        [id, actor?.id ?? null],
+      );
+
+      await this.audit.record(actor, 'reseller_account.telegram_link_approve', 'reseller_account', id, {}, executor);
+    });
+
+    return this.getResellerAccount(id);
+  }
+
+  /** Superadmin rejects a seller's pending Telegram-link request (bot access denied). The seller may resubmit. */
+  async rejectResellerTelegramLink(
+    id: string,
+    dto: RejectResellerTelegramLinkDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerAccountSummary> {
+    await this.database.transaction(async (executor) => {
+      const existing = await this.getResellerAccountRowForUpdate(executor, id);
+      if (existing.telegramLinkStatus !== 'pending') {
+        throw new ConflictException('Only a pending Telegram-link request can be rejected');
+      }
+
+      await executor.query(
+        `
+          UPDATE reseller_accounts
+             SET telegram_link_status = 'rejected', updated_by = $2, updated_at = now()
+           WHERE id = $1
+        `,
+        [id, actor?.id ?? null],
+      );
+
+      await this.audit.record(
+        actor,
+        'reseller_account.telegram_link_reject',
+        'reseller_account',
+        id,
+        { reason: normalizeNullableString(dto.reason) },
+        executor,
+      );
+    });
+
+    return this.getResellerAccount(id);
+  }
+
+  /**
+   * Bot role resolution: resolves an APPROVED seller by their linked Telegram
+   * numeric id, or null. Used by the Telegram bot dispatch to decide whether an
+   * incoming message is from a seller (before falling back to the customer
+   * flow). Deliberately excludes pending/rejected/none — only an approved link
+   * grants a seller bot session; an archived seller is excluded even if still
+   * marked approved.
+   */
+  async getResellerByTelegramId(telegramId: string): Promise<AdminResellerAccountSummary | null> {
+    const result = await this.database.query<ResellerAccountRow>(
+      `
+        ${this.resellerAccountSelectSql()}
+        WHERE ra.telegram_id = $1 AND ra.telegram_link_status = 'approved' AND ra.archived_at IS NULL
+        GROUP BY ra.id
+      `,
+      [telegramId],
+    );
+    const row = result.rows[0];
+    return row ? this.mapResellerAccount(row) : null;
   }
 
   async listResellerWalletLedger(resellerAccountId: string, limit: number): Promise<AdminResellerWalletLedgerEntry[]> {
@@ -6576,6 +6734,12 @@ export class BillingService {
         ra.max_customers AS "maxCustomers",
         ra.notes,
         ra.archived_at AS "archivedAt",
+        ra.telegram_id AS "telegramId",
+        ra.telegram_link_phone AS "telegramLinkPhone",
+        ra.card_info AS "cardInfo",
+        ra.telegram_link_status AS "telegramLinkStatus",
+        ra.telegram_link_requested_at AS "telegramLinkRequestedAt",
+        ra.telegram_linked_at AS "telegramLinkedAt",
         ra.created_by AS "createdBy",
         ra.updated_by AS "updatedBy",
         ra.created_at AS "createdAt",
@@ -6641,7 +6805,15 @@ export class BillingService {
           currency,
           balance_amount AS "balanceAmount",
           credit_limit_amount AS "creditLimitAmount",
+          max_customers AS "maxCustomers",
           notes,
+          archived_at AS "archivedAt",
+          telegram_id AS "telegramId",
+          telegram_link_phone AS "telegramLinkPhone",
+          card_info AS "cardInfo",
+          telegram_link_status AS "telegramLinkStatus",
+          telegram_link_requested_at AS "telegramLinkRequestedAt",
+          telegram_linked_at AS "telegramLinkedAt",
           created_by AS "createdBy",
           updated_by AS "updatedBy",
           created_at AS "createdAt",
@@ -7528,6 +7700,12 @@ export class BillingService {
       ledgerEntryCount: Number(row.ledgerEntryCount ?? 0),
       notes: row.notes,
       archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null,
+      telegramId: row.telegramId,
+      telegramLinkPhone: row.telegramLinkPhone,
+      cardInfo: row.cardInfo,
+      telegramLinkStatus: row.telegramLinkStatus,
+      telegramLinkRequestedAt: row.telegramLinkRequestedAt ? new Date(row.telegramLinkRequestedAt).toISOString() : null,
+      telegramLinkedAt: row.telegramLinkedAt ? new Date(row.telegramLinkedAt).toISOString() : null,
       createdBy: row.createdBy,
       updatedBy: row.updatedBy,
       createdAt: row.createdAt.toISOString(),

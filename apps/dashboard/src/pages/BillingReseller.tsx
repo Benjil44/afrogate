@@ -5,7 +5,7 @@ import type { AdminBillingSettingsSummary, AdminClientConfigExportEntry, AdminCu
 import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, sendResellerCustomerConfigTelegram, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
-import { ResellerGbHero, ResellerGbSellPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
+import { ResellerGbHero, ResellerGbSellPanel, ResellerTelegramLinkPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
 import { DashboardTabs, DataStateNotice, DataTable, DetailRow, EmptyState, MetricCard, MetricPill, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
 import { SettingsInput, SettingsSelect } from '../components/settings-form';
 import type { BillingTab, DashboardTabItem, DataState, DataTableColumn, MetricCardData, Tone } from '../dashboard-types';
@@ -99,6 +99,8 @@ type ResellerWorkspaceController = ResellerWorkspaceViewState & {
   applyAccountUpdate: (account: AdminCustomerAccountSummary) => void;
   applyGbChargeResult: (result: AdminResellerGbChargeResponse) => void;
   applyPackageSaleResult: (result: AdminResellerPackageSaleResponse) => void;
+  /** Folds an updated reseller summary (e.g. after submitting a Telegram-link request) into the workspace. */
+  applyResellerUpdate: (reseller: AdminResellerAccountSummary) => void;
 };
 
 
@@ -186,7 +188,11 @@ function useResellerWorkspace(sessionToken: string): ResellerWorkspaceController
     }));
   };
 
-  return { ...state, applyAccountUpdate, applyGbChargeResult, applyPackageSaleResult };
+  const applyResellerUpdate = (reseller: AdminResellerAccountSummary) => {
+    setState((current) => ({ ...current, reseller }));
+  };
+
+  return { ...state, applyAccountUpdate, applyGbChargeResult, applyPackageSaleResult, applyResellerUpdate };
 }
 
 export function ResellerDashboardPage({
@@ -269,6 +275,13 @@ export function ResellerDashboardPage({
         <ResellerSalesTrendPanel format={format} paymentOrders={workspace.paymentOrders} t={t} />
         <ResellerExperiencePanel accounts={workspace.accounts} format={format} stats={stats} t={t} />
       </section>
+
+      <ResellerTelegramLinkPanel
+        onUpdated={workspace.applyResellerUpdate}
+        reseller={workspace.reseller}
+        sessionToken={sessionToken}
+        t={t}
+      />
 
       <section className="grid gap-3 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]">
         <ResellerSalesSummaryPanel format={format} reseller={workspace.reseller} stats={stats} t={t} />

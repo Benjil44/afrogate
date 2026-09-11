@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Coins, CreditCard, Loader2, ShieldCheck, Upload, UserRound, Wallet } from 'lucide-react';
+import { Coins, CreditCard, Loader2, MessageCircle, ShieldCheck, Upload, UserRound, Wallet } from 'lucide-react';
 import type { AdminCustomerAccountSummary, AdminResellerAccountSummary } from '@afrows/shared';
+import { requestResellerTelegramLink } from '../api/admin';
 import {
   createResellerGbSale,
   createResellerWalletTopupRequest,
@@ -451,6 +452,165 @@ export function ResellerWalletTopupPanel({
           ))}
         </div>
       </div>
+    </section>
+  );
+}
+
+function telegramLinkStatusTone(status: string): Tone {
+  switch (status) {
+    case 'approved':
+      return 'good';
+    case 'rejected':
+      return 'critical';
+    case 'pending':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function telegramLinkStatusLabel(status: string, t: DashboardStrings): string {
+  switch (status) {
+    case 'approved':
+      return t.reseller.telegramLinkStatusApproved;
+    case 'pending':
+      return t.reseller.telegramLinkStatusPending;
+    case 'rejected':
+      return t.reseller.telegramLinkStatusRejected;
+    default:
+      return t.reseller.telegramLinkStatusNone;
+  }
+}
+
+/**
+ * Seller self-service: submit phone + Telegram numeric id + card number to
+ * request Telegram-bot access. Always lands in 'pending' review (even a
+ * resubmission after rejection) — a superadmin must approve
+ * (ResellersPage.tsx) before the bot grants a seller session for this
+ * Telegram id. See docs/telegram-bot-flow-design.md.
+ */
+export function ResellerTelegramLinkPanel({
+  onUpdated,
+  reseller,
+  sessionToken,
+  t,
+}: {
+  onUpdated: (reseller: AdminResellerAccountSummary) => void;
+  reseller: AdminResellerAccountSummary | null;
+  sessionToken: string;
+  t: DashboardStrings;
+}) {
+  const s = t.reseller;
+  const status = reseller?.telegramLinkStatus ?? 'none';
+  const canEdit = status === 'none' || status === 'rejected';
+
+  const [phone, setPhone] = useState(reseller?.telegramLinkPhone ?? '');
+  const [telegramId, setTelegramId] = useState(reseller?.telegramId ?? '');
+  const [cardInfo, setCardInfo] = useState(reseller?.cardInfo ?? '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const phoneValue = normalizeNullableText(phone);
+    const telegramIdValue = normalizeNullableText(telegramId);
+    const cardInfoValue = normalizeNullableText(cardInfo);
+    if (!phoneValue || !telegramIdValue || !cardInfoValue) return;
+
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      const updated = await requestResellerTelegramLink(sessionToken, {
+        cardInfo: cardInfoValue,
+        phone: phoneValue,
+        telegramId: telegramIdValue,
+      });
+      onUpdated(updated);
+      setMessage(s.telegramLinkSubmitted);
+    } catch {
+      setMessage(s.telegramLinkSubmitFailed);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <section className={panelClass} data-reseller-telegram-link="true">
+      <PanelHeading icon={MessageCircle} meta={s.telegramBotAccessHint} title={s.telegramBotAccess} />
+      <div className="mt-2">
+        <StatusBadge tone={telegramLinkStatusTone(status)}>{telegramLinkStatusLabel(status, t)}</StatusBadge>
+      </div>
+
+      {!canEdit && (reseller?.telegramLinkPhone || reseller?.telegramId) ? (
+        <div className="mt-2 grid gap-1.5 rounded-md border border-afro-line bg-white p-3 text-[13px]" dir="ltr">
+          <span>
+            <strong className="text-afro-muted">{s.telegramLinkPhone}: </strong>
+            {reseller?.telegramLinkPhone ?? '--'}
+          </span>
+          <span>
+            <strong className="text-afro-muted">{s.telegramLinkTelegramId}: </strong>
+            {reseller?.telegramId ?? '--'}
+          </span>
+          <span>
+            <strong className="text-afro-muted">{s.telegramLinkCardInfo}: </strong>
+            {reseller?.cardInfo ?? '--'}
+          </span>
+        </div>
+      ) : null}
+
+      {canEdit ? (
+        <form className="mt-2 grid gap-2" onSubmit={handleSubmit}>
+          <div className="grid gap-2 md:grid-cols-3">
+            <label className="grid gap-1.5">
+              <span className={formLabelClass}>{s.telegramLinkPhone}</span>
+              <input
+                className={inputClass}
+                dir="ltr"
+                onChange={(event) => setPhone(event.target.value)}
+                required
+                type="text"
+                value={phone}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className={formLabelClass}>{s.telegramLinkTelegramId}</span>
+              <input
+                className={inputClass}
+                dir="ltr"
+                inputMode="numeric"
+                onChange={(event) => setTelegramId(event.target.value)}
+                required
+                type="text"
+                value={telegramId}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className={formLabelClass}>{s.telegramLinkCardInfo}</span>
+              <input
+                className={inputClass}
+                dir="ltr"
+                onChange={(event) => setCardInfo(event.target.value)}
+                required
+                type="text"
+                value={cardInfo}
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-afro-line pt-2">
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={isSubmitting}
+              type="submit"
+            >
+              {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <MessageCircle size={16} />}
+              {isSubmitting ? t.billing.saving : status === 'rejected' ? s.telegramLinkResubmit : s.telegramLinkSubmit}
+            </button>
+            {message ? <span className={mutedTextClass}>{message}</span> : null}
+          </div>
+        </form>
+      ) : message ? (
+        <p className={`mt-2 ${mutedTextClass}`}>{message}</p>
+      ) : null}
     </section>
   );
 }

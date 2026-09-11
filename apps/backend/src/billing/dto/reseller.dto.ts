@@ -136,6 +136,38 @@ export class UpdateResellerAccountDto {
   notes?: string | null;
 }
 
+/**
+ * Seller self-service submission to link their Telegram account for bot access.
+ * Goes to 'pending' review — a superadmin must approve before the bot grants a
+ * seller session for this Telegram id. See migration 0061.
+ */
+export class RequestResellerTelegramLinkDto {
+  /** The seller's phone number, for the superadmin to verify against WHO they are. */
+  @IsString()
+  @MinLength(5)
+  @MaxLength(32)
+  phone!: string;
+
+  /** Telegram's numeric user id (e.g. via @userinfobot), NOT the @username. */
+  @IsString()
+  @MinLength(5)
+  @MaxLength(20)
+  telegramId!: string;
+
+  /** Card number shown to the seller's customers for card-to-card payment. */
+  @IsString()
+  @MinLength(6)
+  @MaxLength(64)
+  cardInfo!: string;
+}
+
+export class RejectResellerTelegramLinkDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string | null;
+}
+
 export class TopUpResellerWalletDto {
   @Type(() => Number)
   @IsInt()

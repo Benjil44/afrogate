@@ -16,6 +16,8 @@ import type {
   AdminResellerWalletActionResponse,
   CreateResellerAccountRequest,
   UpdateResellerAccountRequest,
+  RequestResellerTelegramLinkRequest,
+  RejectResellerTelegramLinkRequest,
   TopUpResellerWalletRequest,
   AdminClientConfigEntryLinkResponse,
   AdminClientUsageSeriesResponse,
@@ -458,9 +460,11 @@ export async function fetchAdminResellers(
   sessionToken: string,
   signal?: AbortSignal,
   archived?: 'active' | 'only' | 'all',
+  telegramLinkStatus?: 'none' | 'pending' | 'approved' | 'rejected',
 ): Promise<AdminResellerAccountsResponse> {
   const params = new URLSearchParams();
   if (archived === 'only' || archived === 'all') params.set('archived', archived);
+  if (telegramLinkStatus) params.set('telegramLinkStatus', telegramLinkStatus);
   const query = params.toString();
   const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers${query ? `?${query}` : ''}`, {
     headers: createSessionHeaders(sessionToken),
@@ -504,6 +508,45 @@ export async function restoreAdminReseller(sessionToken: string, id: string): Pr
   const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}/restore`, {
     method: 'POST',
     headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+/**
+ * Seller self-service: submit phone + Telegram numeric id + card number to
+ * request Telegram bot access. Lands in 'pending' until a superadmin approves.
+ */
+export async function requestResellerTelegramLink(
+  sessionToken: string,
+  payload: RequestResellerTelegramLinkRequest,
+): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/telegram-link`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+/** Superadmin approves a seller's pending Telegram-link request, granting bot access. */
+export async function approveResellerTelegramLink(sessionToken: string, id: string): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}/telegram-link/approve`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+/** Superadmin rejects a seller's pending Telegram-link request. The seller may resubmit. */
+export async function rejectResellerTelegramLink(
+  sessionToken: string,
+  id: string,
+  payload: RejectResellerTelegramLinkRequest = {},
+): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/resellers/${encodeURIComponent(id)}/telegram-link/reject`, {
+    method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
   });
   return response.json() as Promise<AdminResellerAccountSummary>;
 }

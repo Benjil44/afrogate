@@ -1086,6 +1086,18 @@ export interface AdminResellerAccountSummary {
   notes?: string | null;
   /** When the seller was archived (soft-deleted), or null if live/active. */
   archivedAt: string | null;
+  /** Telegram numeric user id submitted for bot linking (any review state), or null. */
+  telegramId?: string | null;
+  /** Phone submitted alongside the Telegram-link request, or null. */
+  telegramLinkPhone?: string | null;
+  /** Card number the seller shows customers for card-to-card payment, or null. */
+  cardInfo?: string | null;
+  /** Telegram-link review state: 'none' | 'pending' | 'approved' | 'rejected'. */
+  telegramLinkStatus: 'none' | 'pending' | 'approved' | 'rejected' | string;
+  /** When the seller (re)submitted the link request, or null. */
+  telegramLinkRequestedAt?: string | null;
+  /** When a superadmin approved the link (bot access granted), or null. */
+  telegramLinkedAt?: string | null;
   createdBy?: string | null;
   updatedBy?: string | null;
   createdAt: string;
@@ -1262,6 +1274,19 @@ export interface UpdateResellerAccountRequest {
   /** Per-seller customer cap; null clears it (unlimited). */
   maxCustomers?: number | null;
   notes?: string | null;
+}
+
+/** Seller self-service submission to link their Telegram account for bot access (goes to 'pending' review). */
+export interface RequestResellerTelegramLinkRequest {
+  phone: string;
+  /** Telegram's numeric user id (e.g. via @userinfobot), NOT the @username. */
+  telegramId: string;
+  /** Card number shown to the seller's customers for card-to-card payment. */
+  cardInfo: string;
+}
+
+export interface RejectResellerTelegramLinkRequest {
+  reason?: string | null;
 }
 
 export interface TopUpResellerWalletRequest {

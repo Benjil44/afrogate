@@ -110,8 +110,10 @@ import {
   CreateResellerGbChargeDto,
   CreateResellerPackageSaleDto,
   CreateResellerTopupRequestDto,
+  RejectResellerTelegramLinkDto,
   RejectResellerTopupDto,
   DebitResellerWalletForPackageDto,
+  RequestResellerTelegramLinkDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
 } from './dto/reseller.dto';
@@ -482,6 +484,21 @@ export class BillingController {
     });
   }
 
+  /**
+   * Seller self-service: submit phone + Telegram numeric id + card number to
+   * request Telegram bot access. Lands in 'pending' — a superadmin must
+   * approve (see approveResellerTelegramLink below) before the bot grants a
+   * seller session for this Telegram id.
+   */
+  @Post('reseller/telegram-link')
+  @Roles('reseller')
+  requestResellerTelegramLink(
+    @Body() payload: RequestResellerTelegramLinkDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    return this.billingService.requestResellerTelegramLink(payload, request.actor);
+  }
+
   @Patch('reseller/customer-accounts/:id')
   @Roles('reseller')
   @Permissions('customers:write')
@@ -521,12 +538,14 @@ export class BillingController {
     @Query('search') search?: string,
     @Query('limit') limit?: string,
     @Query('archived') archived?: string,
+    @Query('telegramLinkStatus') telegramLinkStatus?: string,
   ): Promise<AdminResellerAccountsResponse> {
     return {
       resellers: await this.billingService.listResellerAccounts({
         status,
         search,
         archived: archived === 'only' || archived === 'all' ? archived : 'active',
+        telegramLinkStatus,
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
     };
@@ -622,6 +641,27 @@ export class BillingController {
       );
     }
     return summary;
+  }
+
+  /** Superadmin approves a seller's pending Telegram-link request, granting bot access. */
+  @Post('resellers/:id/telegram-link/approve')
+  @Roles('superadmin')
+  approveResellerTelegramLink(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    return this.billingService.approveResellerTelegramLink(id, request.actor);
+  }
+
+  /** Superadmin rejects a seller's pending Telegram-link request. The seller may resubmit. */
+  @Post('resellers/:id/telegram-link/reject')
+  @Roles('superadmin')
+  rejectResellerTelegramLink(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() payload: RejectResellerTelegramLinkDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    return this.billingService.rejectResellerTelegramLink(id, payload, request.actor);
   }
 
   @Get('resellers/:id/wallet-ledger')

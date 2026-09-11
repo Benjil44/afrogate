@@ -52,6 +52,20 @@ export function normalizeTelegramUsername(value: string | null | undefined): str
   return normalized || null;
 }
 
+/**
+ * Validated Telegram numeric user id (the id shown by e.g. @userinfobot — NOT
+ * the @username). Digits only, 5-15 chars (Telegram ids fit in an int64).
+ * Used to link a reseller's Telegram account for bot role resolution.
+ */
+export function normalizeTelegramNumericId(value: string | null | undefined): string | null {
+  const normalized = normalizeNullableString(value)?.replace(/\s+/g, '') ?? null;
+  if (!normalized) return null;
+  if (!/^[0-9]{5,15}$/.test(normalized)) {
+    throw new BadRequestException('Telegram ID must be the numeric user id (digits only), not the @username');
+  }
+  return normalized;
+}
+
 /** Lowercased protocol, defaulting to 'custom'. */
 export function normalizeProtocol(value: string | null | undefined): string {
   return normalizeNullableString(value)?.toLowerCase() ?? 'custom';
@@ -71,6 +85,15 @@ export function normalizeResellerStatus(value: string): string {
   const normalized = value.trim().toLowerCase();
   if (!['active', 'suspended', 'disabled'].includes(normalized)) {
     throw new BadRequestException('Invalid reseller account status');
+  }
+  return normalized;
+}
+
+/** Validated reseller Telegram-link review state (see migration 0061). */
+export function normalizeResellerTelegramLinkStatus(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (!['none', 'pending', 'approved', 'rejected'].includes(normalized)) {
+    throw new BadRequestException('Invalid reseller Telegram-link status');
   }
   return normalized;
 }
