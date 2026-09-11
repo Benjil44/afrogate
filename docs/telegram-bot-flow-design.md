@@ -1216,3 +1216,62 @@ has an account). Help (`help.body`) gains a Connect bullet.
   (bot-context audit) alongside the existing `mergeCustomerAccount` / `findCustomerAccountByPhone`.
 - Per-user state gains `connectStage?: boolean` (`telegram-user-store.ts`), mutually exclusive with
   `regStage` (a connect user already has an account).
+
+## Seller role (Phase 1+, role-aware dispatch)
+
+`TelegramBotService.handleUpdate` resolves whether the sender is an
+**approved** reseller (`BillingService.getResellerByTelegramId`, migration
+0061 — `reseller_accounts.telegram_id` + `telegram_link_status = 'approved'`)
+BEFORE falling into the customer flow. Sellers get a completely separate
+dispatch branch (`handleSellerText` / `handleSellerCallback`) with its own
+stateless menu; they never touch the customer registration/connect/receipt
+state machine, and vice versa. A seller's contact/photo/document updates are
+ignored (those are customer-only interactions).
+
+**Becoming a linked seller** (superadmin-gated, NOT self-service): the seller
+submits phone + Telegram numeric id + card number from their dashboard
+("Telegram bot access" panel on the Reseller Dashboard) — this lands in
+`telegram_link_status = 'pending'`. A superadmin reviews and
+Approves/Rejects on the Sellers page (`ResellersPage.tsx`); only `approved`
+grants a bot session. A partial-unique index enforces at most one approved
+seller per Telegram id.
+
+### Seller menu (Phase 1)
+
+- **💼 My panel** (`afws:sell:panel`) — Phase 2: wallet balance + available
+  (incl. credit) + customer count, and a short list of the seller's customers
+  (name, remaining GB, status). Backed by `getResellerByTelegramId` +
+  `listCustomerAccounts({ resellerAccountId })` — both already id-based
+  (no HTTP actor needed), reused as-is from the dashboard's reseller paths.
+- **➕ New customer** (`afws:sell:newcustomer`), **⚡ Charge account**
+  (`afws:sell:charge`), **🧾 Requests** (`afws:sell:requests`) — placeholder
+  ("coming soon") until their respective phases land:
+  - Charge/create: a multi-step chat flow over `createResellerSaleCustomer` /
+    `createResellerGbCharge` (Phase 5).
+  - Requests: the customer→seller card-to-card payment queue — the seller
+    approves/rejects a customer's receipt from the bot, settled via a
+    reseller wallet debit (Phase 4).
+
+### Callback namespace
+
+`afws:sell:*` — kept distinct from the customer `afws:*` namespace so a stale
+button from one role's screen is never misrouted into the other's dispatch.
+
+### New copy ids (bilingual fa/en, in `telegram-i18n.ts`)
+
+`seller.menu.title`, `seller.menu.btn.panel`, `seller.menu.btn.newCustomer`,
+`seller.menu.btn.charge`, `seller.menu.btn.requests`, `seller.panel.card`,
+`seller.panel.customersTitle`, `seller.panel.customerItem`,
+`seller.panel.customersEmpty`, `seller.comingSoon`, `seller.btn.backToMenu`.
+
+### Backend pieces
+
+- `apps/backend/src/telegram/telegram-bot.service.ts` — the "Seller role"
+  section: `findSeller`, `handleSellerText`, `handleSellerCallback`,
+  `screenSellerMenu`, `screenSellerPanel`, `screenSellerComingSoon`,
+  `sellerMenuKeyboard`, `sellerPanelKeyboard`.
+- `billing.getResellerByTelegramId` / `requestResellerTelegramLink` /
+  `approveResellerTelegramLink` / `rejectResellerTelegramLink`
+  (`billing.service.ts`) + migration `0061_reseller_telegram_link.sql`.
+- No new per-user state: seller navigation is stateless like the customer
+  menu (Phase 1/2 has no multi-step seller flow yet).

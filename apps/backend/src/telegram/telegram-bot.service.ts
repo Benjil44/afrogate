@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { telegramWebhookSecretMatches } from './telegram-webhook-secret';
 import type {
+  AdminCustomerAccountSummary,
+  AdminResellerAccountSummary,
   AdminVolumePackageSummary,
   TelegramBotAccountSummary,
   TelegramBotWebhookResponse,
@@ -69,6 +71,7 @@ const AWAITING_RECEIPT_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CONFIGS_SHOWN = 5;
 const MAX_PACKAGES_SHOWN = 8;
 const MAX_GEMS_HISTORY = 5;
+const MAX_SELLER_CUSTOMERS_SHOWN = 15;
 const REDEEM_GB_OPTIONS = [1, 2, 5, 10];
 const DEFAULT_BOT_USERNAME = 'Afrows_bot';
 
@@ -131,7 +134,20 @@ export class TelegramBotService {
     return telegramWebhookSecretMatches(expected, value);
   }
 
-  /** Route an inbound update: button tap → contact → photo/document → text. */
+  /**
+   * Route an inbound update: button tap → contact → photo/document → text.
+   *
+   * Role-aware dispatch (seller role, Phase 1+): before falling into the
+   * customer flow, resolve whether the sender is an APPROVED-linked seller
+   * (see BillingService.getResellerByTelegramId / migration 0061) and, if so,
+   * hand off to the fully separate seller dispatch (handleSellerCallback /
+   * handleSellerText). This runs BEFORE the customer registration gate in
+   * handleText, so a seller's Telegram id is never mistaken for an
+   * unregistered customer. Sellers don't use the contact/photo/document flows
+   * (those are customer-only: phone-share registration/connect, receipt
+   * upload) — an unexpected update type from a seller is ignored, not routed
+   * into the customer handlers.
+   */
   async handleUpdate(payload: unknown): Promise<TelegramBotWebhookResponse> {
     const callback = this.extractCallbackQuery(payload);
     if (callback) {
@@ -142,6 +158,8 @@ export class TelegramBotService {
         messageId: callback.messageId,
         callbackId: callback.id,
       };
+      const seller = await this.findSeller(ctx.fromId);
+      if (seller) return this.guard(ctx, () => this.handleSellerCallback(ctx, seller, callback.data));
       return this.guard(ctx, () => this.handleCallback(ctx, callback.data));
     }
 
@@ -149,6 +167,12 @@ export class TelegramBotService {
     if (!message) return { ok: true, status: 'ignored', reason: 'unsupported_update' };
 
     const ctx: Ctx = { chatId: message.chatId, fromId: message.fromId, username: message.username };
+    const seller = await this.findSeller(ctx.fromId);
+    if (seller) {
+      if (message.text) return this.guard(ctx, () => this.handleSellerText(ctx, seller, message.text!));
+      return { ok: true, status: 'ignored', reason: 'unsupported_update' };
+    }
+
     if (message.contact) return this.guard(ctx, () => this.handleContact(ctx, message.contact!));
     if (message.photoFileId) return this.guard(ctx, () => this.handlePhoto(ctx, message.photoFileId!));
     if (message.hasDocument) return this.guard(ctx, () => this.handleDocument(ctx));
@@ -1689,5 +1713,135 @@ export class TelegramBotService {
     } catch {
       return undefined;
     }
+  }
+
+  // --- Seller role (Phase 1+) ------------------------------------------------
+  //
+  // A completely separate dispatch branch from the customer flow above,
+  // reached only for a Telegram id with an APPROVED reseller link (dashboard
+  // "Telegram bot access" panel → superadmin approval, migration 0061). No
+  // registration/connect/receipt-upload state applies here; navigation is
+  // stateless like the customer menu. Callback namespace is `afws:sell:*` (kept
+  // distinct from the customer `afws:*` namespace so a stale button never
+  // crosses into the other role's screens).
+
+  /** Resolves an APPROVED seller for this Telegram id, or null (not a seller / not approved). */
+  private async findSeller(telegramId: string | undefined): Promise<AdminResellerAccountSummary | null> {
+    if (!telegramId) return null;
+    try {
+      return await this.billing.getResellerByTelegramId(telegramId);
+    } catch {
+      return null; // DB hiccup: fail open to the customer flow rather than 500 the update.
+    }
+  }
+
+  private async handleSellerText(
+    ctx: Ctx,
+    seller: AdminResellerAccountSummary,
+    rawText: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    const language = await this.languageFor(ctx.fromId);
+    // Phase 1: every text message (including /start) opens the seller menu —
+    // there is no seller registration/onboarding flow to interrupt.
+    void rawText;
+    return this.screenSellerMenu(ctx, language);
+  }
+
+  private async handleSellerCallback(
+    ctx: Ctx,
+    seller: AdminResellerAccountSummary,
+    data: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    if (!data.startsWith('afws:sell:')) return this.staleButton(ctx);
+    const language = await this.languageFor(ctx.fromId);
+
+    switch (data) {
+      case 'afws:sell:menu':
+        return this.screenSellerMenu(ctx, language);
+      case 'afws:sell:panel':
+        return this.screenSellerPanel(ctx, language, seller);
+      case 'afws:sell:panel:refresh':
+        return this.screenSellerPanel(ctx, language, seller, renderTelegramCopy('common.toast.refreshed', language));
+      case 'afws:sell:newcustomer':
+      case 'afws:sell:charge':
+      case 'afws:sell:requests':
+        return this.screenSellerComingSoon(ctx, language);
+      default:
+        return this.staleButton(ctx);
+    }
+  }
+
+  private async screenSellerMenu(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    return this.screen('SELLER-MENU', ctx, language, renderTelegramCopy('seller.menu.title', language), this.sellerMenuKeyboard(language));
+  }
+
+  /** "My panel" (پنل من, Phase 2): wallet balance/credit + customer count + a short customer list. */
+  private async screenSellerPanel(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    toast?: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    const customers = await this.billing.listCustomerAccounts({ resellerAccountId: seller.id, limit: MAX_SELLER_CUSTOMERS_SHOWN });
+
+    const card = renderTelegramCopy(
+      'seller.panel.card',
+      language,
+      {},
+      {
+        balance: formatAmount(seller.balanceAmount, seller.currency, language),
+        available: formatAmount(seller.availableBalanceAmount, seller.currency, language),
+        activeCount: formatCount(seller.activeCustomerAccountCount, language),
+        customerCount: formatCount(seller.customerAccountCount, language),
+      },
+    );
+
+    const list = customers.length
+      ? customers.map((c) => this.sellerCustomerLine(c, language)).join('\n')
+      : renderTelegramCopy('seller.panel.customersEmpty', language);
+
+    const text = `${card}\n\n${renderTelegramCopy('seller.panel.customersTitle', language)}\n${list}`;
+    return this.screen('SELLER-PANEL', ctx, language, text, this.sellerPanelKeyboard(language), toast);
+  }
+
+  private sellerCustomerLine(account: AdminCustomerAccountSummary, language: TelegramLanguage): string {
+    const remaining =
+      account.quotaLimitBytes == null
+        ? renderTelegramCopy('usage.unlimited', language, {}, { used: formatDataSize(account.usedBytes, language) })
+        : formatDataSize(Math.max(0, account.quotaLimitBytes - account.usedBytes), language);
+    return renderTelegramCopy(
+      'seller.panel.customerItem',
+      language,
+      {},
+      {
+        name: escapeHtml(account.displayName ?? account.id.slice(0, 8)),
+        remaining,
+        status: renderTelegramCopy(this.statusCopyId(account.status), language),
+      },
+    );
+  }
+
+  /** Placeholder for the not-yet-built seller actions (new customer / charge / requests — later phases). */
+  private async screenSellerComingSoon(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    return this.screen('SELLER-SOON', ctx, language, renderTelegramCopy('seller.comingSoon', language), this.sellerMenuKeyboard(language));
+  }
+
+  private sellerMenuKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [this.btn('seller.menu.btn.panel', language, 'afws:sell:panel')],
+        [this.btn('seller.menu.btn.newCustomer', language, 'afws:sell:newcustomer'), this.btn('seller.menu.btn.charge', language, 'afws:sell:charge')],
+        [this.btn('seller.menu.btn.requests', language, 'afws:sell:requests')],
+      ],
+    };
+  }
+
+  private sellerPanelKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [this.btn('common.btn.refresh', language, 'afws:sell:panel:refresh')],
+        [this.btn('seller.btn.backToMenu', language, 'afws:sell:menu')],
+      ],
+    };
   }
 }

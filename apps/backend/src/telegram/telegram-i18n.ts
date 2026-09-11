@@ -137,7 +137,19 @@ export type TelegramCopyId =
   // --- v2 referral notifications (docs §12 notify.ref*) ---
   | 'notify.refJoined'
   | 'notify.refPurchase'
-  | 'notify.refMilestone';
+  | 'notify.refMilestone'
+  // --- Seller role (Phase 1+: seller.* — role-aware dispatch, docs/telegram-bot-flow-design.md seller section) ---
+  | 'seller.menu.title'
+  | 'seller.menu.btn.panel'
+  | 'seller.menu.btn.newCustomer'
+  | 'seller.menu.btn.charge'
+  | 'seller.menu.btn.requests'
+  | 'seller.panel.card'
+  | 'seller.panel.customersTitle'
+  | 'seller.panel.customerItem'
+  | 'seller.panel.customersEmpty'
+  | 'seller.comingSoon'
+  | 'seller.btn.backToMenu';
 
 type CopyEntry = { en: string; fa: string };
 
@@ -429,6 +441,30 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     en: '🏆 Amazing — <b>{count}</b> friends have joined with your invites!\nMilestone bonus: <b>{gems}</b> gems. Your balance: <b>{gemsBalance}</b>.',
     fa: '🏆 فوق‌العاده — <b>{count}</b> دوست با دعوت شما عضو شده‌اند!\nپاداش ویژه: <b>{gems}</b> جم. موجودی شما: <b>{gemsBalance}</b>.',
   },
+  // --- Seller role ---
+  'seller.menu.title': {
+    en: '🏪 <b>Seller panel</b>\nWhat would you like to do?',
+    fa: '🏪 <b>پنل فروشنده</b>\nچه کاری می‌خواهید انجام دهید؟',
+  },
+  'seller.menu.btn.panel': { en: '💼 My panel', fa: '💼 پنل من' },
+  'seller.menu.btn.newCustomer': { en: '➕ New customer', fa: '➕ مشتری جدید' },
+  'seller.menu.btn.charge': { en: '⚡ Charge account', fa: '⚡ شارژ حساب' },
+  'seller.menu.btn.requests': { en: '🧾 Requests', fa: '🧾 درخواست‌ها' },
+  'seller.panel.card': {
+    en: '💼 <b>My panel</b>\nWallet balance: <b>{balance}</b>\nAvailable (incl. credit): <b>{available}</b>\nCustomers: <b>{activeCount}</b> / {customerCount} active',
+    fa: '💼 <b>پنل من</b>\nموجودی کیف پول: <b>{balance}</b>\nقابل استفاده (با اعتبار): <b>{available}</b>\nمشتریان: <b>{activeCount}</b> از {customerCount} فعال',
+  },
+  'seller.panel.customersTitle': { en: '👥 Your customers', fa: '👥 مشتریان شما' },
+  'seller.panel.customerItem': {
+    en: '• {name} — {remaining} remaining ({status})',
+    fa: '• {name} — {remaining} باقی‌مانده ({status})',
+  },
+  'seller.panel.customersEmpty': { en: 'You have no customers yet.', fa: 'هنوز مشتری‌ای ندارید.' },
+  'seller.comingSoon': {
+    en: '🚧 This feature is coming soon.',
+    fa: '🚧 این قابلیت به‌زودی فعال می‌شود.',
+  },
+  'seller.btn.backToMenu': { en: '⬅️ Menu', fa: '⬅️ منو' },
 };
 
 /**
