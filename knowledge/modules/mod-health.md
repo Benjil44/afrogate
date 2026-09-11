@@ -1,11 +1,11 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `health`
 
 - **Source path:** `apps/backend/src/health/`
-- **Dominant graph community (hint, not authoritative):** app.module.ts
+- **Dominant graph community (hint, not authoritative):** health.controller.ts
 - **High-risk dependencies (DERIVED):** _none among heavily-coupled tables_
 
 ## Services / classes (VERIFIED)

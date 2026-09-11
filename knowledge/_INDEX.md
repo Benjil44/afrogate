@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Afrows Knowledge Index
 
@@ -12,7 +12,7 @@
 - [[_knowledge-status]] — graph stats, provenance rules, limitations
 - `docs/schema-drift-audit.md` — schema-drift program (COMPLETE)
 
-## Modules (18)
+## Modules (20)
 - [[mod-agents]]
 - [[mod-alerts]]
 - [[mod-audit]]
@@ -21,7 +21,9 @@
 - [[mod-billing]]
 - [[mod-branding]]
 - [[mod-client]]
+- [[mod-common]]
 - [[mod-database]]
+- [[mod-edge]]
 - [[mod-health]]
 - [[mod-metrics]]
 - [[mod-notifications]]

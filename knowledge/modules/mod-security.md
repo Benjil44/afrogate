@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `security`
 
@@ -16,6 +16,8 @@
 - [[AuthActor]] — `apps/backend/src/security/auth-request.ts:L10`
 - [[ClientAuthActor]] — `apps/backend/src/security/auth-request.ts:L18`
 - [[ClientTokenGuard]] — `apps/backend/src/security/client-token.guard.ts:L13`
+- [[EdgeAuthResult]] — `apps/backend/src/security/edge-token.ts:L10`
+- [[EdgeTokenGuard]] — `apps/backend/src/security/edge-token.guard.ts:L20`
 - [[HttpRequestLike]] — `apps/backend/src/security/rate-limit.guard.ts:L6`
 - [[HttpResponseLike]] — `apps/backend/src/security/rate-limit.guard.ts:L14`
 - [[RateLimitDecision]] — `apps/backend/src/security/rate-limit-window.ts:L11`
@@ -55,6 +57,7 @@
 - [[mod-billing]]
 - [[mod-branding]]
 - [[mod-client]]
+- [[mod-edge]]
 - [[mod-metrics]]
 - [[mod-operations]]
 - [[mod-routers]]
@@ -78,6 +81,7 @@
 - `apps/backend/test/agent-token.test.ts`
 - `apps/backend/test/bearer-token.test.ts`
 - `apps/backend/test/client-token.test.ts`
+- `apps/backend/test/edge-token-guard.test.ts`
 - `apps/backend/test/generate-password.test.ts`
 - `apps/backend/test/password.test.ts`
 - `apps/backend/test/rate-limit-window.test.ts`
@@ -89,6 +93,7 @@ _none_
 
 ## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/client-token.test.ts`
+- `apps/backend/test/edge-token-guard.test.ts`
 - `apps/backend/test/rate-limit-window.test.ts`
 - `apps/backend/test/rbac.test.ts`
 - `apps/backend/test/reseller-impersonation.test.ts`

@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Table: `client_usage_events`
 
@@ -22,7 +22,7 @@ _Not represented in the current graph/bridge artifacts (bridges cover entity↔t
 _No test imports a production file that this table's bridge marks as a consumer._
 
 ## Related tests (HEURISTIC — textual name reference, not import-verified)
-_No test file references this table by name._
+- `apps/backend/test/germany-usage-db.test.ts`
 
 ---
 _Back to [[_INDEX]] · [[_hotspots]] · [[_domains]]_

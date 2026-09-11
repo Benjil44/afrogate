@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `database`
 
@@ -10,27 +10,27 @@
 
 ## Services / classes (VERIFIED)
 - [[AfrowsDatabase]] — `apps/backend/src/database/database.service.ts:L6`
-- [[ClientDeviceSightingInsert]] — `apps/backend/src/database/schema.ts:L1325`
-- [[ClientDeviceSightingSelect]] — `apps/backend/src/database/schema.ts:L1324`
+- [[ClientDeviceSightingInsert]] — `apps/backend/src/database/schema.ts:L1335`
+- [[ClientDeviceSightingSelect]] — `apps/backend/src/database/schema.ts:L1334`
 - [[DatabaseModule]] — `apps/backend/src/database/database.module.ts:L8`
 - [[DatabaseQueryExecutor]] — `apps/backend/src/database/database.service.ts:L8`
 - [[DatabaseService]] — `apps/backend/src/database/database.service.ts:L16`
-- [[GemsLedgerInsert]] — `apps/backend/src/database/schema.ts:L1210`
-- [[GemsLedgerRow]] — `apps/backend/src/database/schema.ts:L1209`
-- [[MikrotikGatewayUsageCursorInsert]] — `apps/backend/src/database/schema.ts:L1383`
-- [[MikrotikGatewayUsageCursorRow]] — `apps/backend/src/database/schema.ts:L1382`
-- [[MikrotikRouterInsert]] — `apps/backend/src/database/schema.ts:L1362`
-- [[MikrotikRouterRow]] — `apps/backend/src/database/schema.ts:L1361`
-- [[OutboundSubscriptionInsert]] — `apps/backend/src/database/schema.ts:L1270`
-- [[OutboundSubscriptionSelect]] — `apps/backend/src/database/schema.ts:L1269`
-- [[ResellerWalletTopupRequestInsert]] — `apps/backend/src/database/schema.ts:L1242`
-- [[ResellerWalletTopupRequestRow]] — `apps/backend/src/database/schema.ts:L1241`
-- [[TelegramTopupRequestInsert]] — `apps/backend/src/database/schema.ts:L1188`
-- [[TelegramTopupRequestRow]] — `apps/backend/src/database/schema.ts:L1187`
-- [[TelegramUserInsert]] — `apps/backend/src/database/schema.ts:L1401`
-- [[TelegramUserSelect]] — `apps/backend/src/database/schema.ts:L1400`
-- [[WireguardPeerInsert]] — `apps/backend/src/database/schema.ts:L1304`
-- [[WireguardPeerRow]] — `apps/backend/src/database/schema.ts:L1303`
+- [[GemsLedgerInsert]] — `apps/backend/src/database/schema.ts:L1214`
+- [[GemsLedgerRow]] — `apps/backend/src/database/schema.ts:L1213`
+- [[MikrotikGatewayUsageCursorInsert]] — `apps/backend/src/database/schema.ts:L1393`
+- [[MikrotikGatewayUsageCursorRow]] — `apps/backend/src/database/schema.ts:L1392`
+- [[MikrotikRouterInsert]] — `apps/backend/src/database/schema.ts:L1372`
+- [[MikrotikRouterRow]] — `apps/backend/src/database/schema.ts:L1371`
+- [[OutboundSubscriptionInsert]] — `apps/backend/src/database/schema.ts:L1280`
+- [[OutboundSubscriptionSelect]] — `apps/backend/src/database/schema.ts:L1279`
+- [[ResellerWalletTopupRequestInsert]] — `apps/backend/src/database/schema.ts:L1246`
+- [[ResellerWalletTopupRequestRow]] — `apps/backend/src/database/schema.ts:L1245`
+- [[TelegramTopupRequestInsert]] — `apps/backend/src/database/schema.ts:L1192`
+- [[TelegramTopupRequestRow]] — `apps/backend/src/database/schema.ts:L1191`
+- [[TelegramUserInsert]] — `apps/backend/src/database/schema.ts:L1411`
+- [[TelegramUserSelect]] — `apps/backend/src/database/schema.ts:L1410`
+- [[WireguardPeerInsert]] — `apps/backend/src/database/schema.ts:L1314`
+- [[WireguardPeerRow]] — `apps/backend/src/database/schema.ts:L1313`
 
 ## Database tables touched (VERIFIED — evidence-backed)
 _none via bridge provenance_
@@ -49,6 +49,7 @@ _none_
 - [[mod-billing]]
 - [[mod-branding]]
 - [[mod-client]]
+- [[mod-edge]]
 - [[mod-metrics]]
 - [[mod-operations]]
 - [[mod-outbound]]
@@ -58,7 +59,7 @@ _none_
 
 ## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
 - **[[DatabaseService]]** — injects: _none_
-  - injected by: [[AdminTenantBrandingService]], [[AgentTokenGuard]], [[AgentsService]], [[AlertEngineService]], [[AuditService]], [[AuthService]], [[BillingService]], [[ConnectionsService]], [[GatewayBillingService]], [[OperationsOverviewService]], [[OperationsService]], [[OutboundHealthService]], [[OutboundSpeedTestService]], [[PostgresMetricsRepository]], [[RouteQualityAggregationService]], [[RoutersService]], [[TelegramBotConfigService]], [[TelegramBotService]], [[TelegramTopupAdminService]], [[WireguardMeteringService]], [[XrayAccessLogService]], [[XrayProvisioningService]], [[XrayUsageMeteringService]]
+  - injected by: [[AdminTenantBrandingService]], [[AgentTokenGuard]], [[AgentsService]], [[AlertEngineService]], [[AuditService]], [[AuthService]], [[BillingService]], [[ConnectionsService]], [[DeviceLimitService]], [[EdgeService]], [[GatewayBillingService]], [[GermanyUsageMeteringService]], [[OperationsOverviewService]], [[OperationsService]], [[OutboundHealthService]], [[OutboundSpeedTestService]], [[PostgresMetricsRepository]], [[RouteQualityAggregationService]], [[RoutersService]], [[TelegramBotConfigService]], [[TelegramBotService]], [[TelegramTopupAdminService]], [[WireguardMeteringService]], [[XrayAccessLogService]], [[XrayProvisioningService]], [[XrayUsageMeteringService]]
 
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/reseller-ownership.test.ts`

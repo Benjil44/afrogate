@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `billing`
 
@@ -10,60 +10,60 @@
 
 ## Services / classes (VERIFIED)
 - [[AccountClientConfigRow]] — `apps/backend/src/billing/customer-account-deletion.ts:L34`
-- [[AdjustCustomerGemsDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L252`
+- [[AdjustCustomerGemsDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L260`
 - [[AllocatePaymentOrderDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L397`
 - [[ApproveResellerTopupOutcome]] — `apps/backend/src/billing/reseller-topup.ts:L59`
-- [[BillingController]] — `apps/backend/src/billing/billing.controller.ts:L125`
-- [[BillingService]] — `apps/backend/src/billing/billing.service.ts:L747`
-- [[BillingSettingsRow]] — `apps/backend/src/billing/billing.service.ts:L518`
+- [[BillingController]] — `apps/backend/src/billing/billing.controller.ts:L131`
+- [[BillingService]] — `apps/backend/src/billing/billing.service.ts:L795`
+- [[BillingSettingsRow]] — `apps/backend/src/billing/billing.service.ts:L534`
 - [[CapturePayPalOrderInput]] — `apps/backend/src/billing/paypal-payment.service.ts:L27`
 - [[CapturePayPalPaymentOrderDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L442`
-- [[ClientAccessTokenAuthRow]] — `apps/backend/src/billing/billing.service.ts:L372`
-- [[ClientAccessTokenRow]] — `apps/backend/src/billing/billing.service.ts:L361`
-- [[ClientConfigRow]] — `apps/backend/src/billing/billing.service.ts:L278`
-- [[ClientPortalRow]] — `apps/backend/src/billing/billing.service.ts:L398`
-- [[ClientRouteOptionOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L497`
-- [[ClientRoutePreferencePatch]] — `apps/backend/src/billing/billing.service.ts:L346`
-- [[ClientRoutePreferenceRow]] — `apps/backend/src/billing/billing.service.ts:L321`
+- [[ClientAccessTokenAuthRow]] — `apps/backend/src/billing/billing.service.ts:L388`
+- [[ClientAccessTokenRow]] — `apps/backend/src/billing/billing.service.ts:L377`
+- [[ClientConfigRow]] — `apps/backend/src/billing/billing.service.ts:L294`
+- [[ClientPortalRow]] — `apps/backend/src/billing/billing.service.ts:L414`
+- [[ClientRouteOptionOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L513`
+- [[ClientRoutePreferencePatch]] — `apps/backend/src/billing/billing.service.ts:L362`
+- [[ClientRoutePreferenceRow]] — `apps/backend/src/billing/billing.service.ts:L337`
 - [[ClientSubscriptionCredentialRenderResult]] — `apps/backend/src/billing/subscription-sanitizers.ts:L3`
-- [[ClientSubscriptionCredentialRow]] — `apps/backend/src/billing/billing.service.ts:L378`
-- [[ClientUsageEventFilters]] — `apps/backend/src/billing/billing.service.ts:L733`
-- [[ClientUsageEventRow]] — `apps/backend/src/billing/billing.service.ts:L417`
-- [[CreateClientConfigDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L353`
-- [[CreateClientUsageEventDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L522`
+- [[ClientSubscriptionCredentialRow]] — `apps/backend/src/billing/billing.service.ts:L394`
+- [[ClientUsageEventFilters]] — `apps/backend/src/billing/billing.service.ts:L761`
+- [[ClientUsageEventRow]] — `apps/backend/src/billing/billing.service.ts:L433`
+- [[CreateClientConfigDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L361`
+- [[CreateClientUsageEventDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L530`
 - [[CreateCustomerAccountDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L61`
 - [[CreatePayPalCheckoutDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L408`
 - [[CreatePayPalCheckoutInput]] — `apps/backend/src/billing/paypal-payment.service.ts:L11`
 - [[CreatePaymentMethodDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L202`
 - [[CreatePaymentOrderDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L329`
 - [[CreatePaymentProviderCheckoutDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L425`
-- [[CreateResellerAccountDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L11`
-- [[CreateResellerGbChargeDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L163`
-- [[CreateResellerPackageSaleDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L214`
-- [[CreateResellerTopupRequestDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L194`
+- [[CreateResellerAccountDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L12`
+- [[CreateResellerGbChargeDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L230`
+- [[CreateResellerPackageSaleDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L281`
+- [[CreateResellerTopupRequestDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L261`
 - [[CreateVolumePackageDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L82`
-- [[CurrentPanelImportConfigsDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L308`
-- [[CurrentPanelImportPreviewDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L287`
-- [[CurrentPanelUsageSyncDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L313`
-- [[CurrentPanelVolumeChargeClientQuotaChange]] — `apps/backend/src/billing/billing.service.ts:L691`
-- [[CurrentPanelVolumeChargeDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L318`
-- [[CurrentPanelVolumeChargeEventRow]] — `apps/backend/src/billing/billing.service.ts:L674`
+- [[CurrentPanelImportConfigsDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L316`
+- [[CurrentPanelImportPreviewDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L295`
+- [[CurrentPanelUsageSyncDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L321`
+- [[CurrentPanelVolumeChargeClientQuotaChange]] — `apps/backend/src/billing/billing.service.ts:L715`
+- [[CurrentPanelVolumeChargeDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L326`
+- [[CurrentPanelVolumeChargeEventRow]] — `apps/backend/src/billing/billing.service.ts:L698`
 - [[CustomerAccountArchiveOutcome]] — `apps/backend/src/billing/customer-account-deletion.ts:L39`
 - [[CustomerAccountArchivedFilter]] — `apps/backend/src/billing/customer-account-deletion.ts:L50`
-- [[CustomerAccountFilters]] — `apps/backend/src/billing/billing.service.ts:L697`
+- [[CustomerAccountFilters]] — `apps/backend/src/billing/billing.service.ts:L721`
 - [[CustomerAccountMergeOutcome]] — `apps/backend/src/billing/customer-account-merge.ts:L93`
-- [[CustomerAccountPhoneMatch]] — `apps/backend/src/billing/billing.service.ts:L259`
+- [[CustomerAccountPhoneMatch]] — `apps/backend/src/billing/billing.service.ts:L275`
 - [[CustomerAccountRestoreOutcome]] — `apps/backend/src/billing/customer-account-deletion.ts:L128`
-- [[CustomerAccountRow]] — `apps/backend/src/billing/billing.service.ts:L225`
-- [[DebitResellerWalletForPackageDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L131`
+- [[CustomerAccountRow]] — `apps/backend/src/billing/billing.service.ts:L239`
+- [[DebitResellerWalletForPackageDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L198`
 - [[ExistingAllocationDecision]] — `apps/backend/src/billing/allocation-idempotency.ts:L9`
 - [[ExtractedPanelRow]] — `apps/backend/src/billing/current-panel-import.adapters.ts:L74`
 - [[ExtractionResult]] — `apps/backend/src/billing/current-panel-import.adapters.ts:L81`
 - [[GemsReason]] — `apps/backend/src/billing/gems.ts:L49`
 - [[IssueClientAccessTokenDto]] — `apps/backend/src/billing/dto/client-access-token.dto.ts:L3`
 - [[MergeAccountRow]] — `apps/backend/src/billing/customer-account-merge.ts:L82`
-- [[MergeCustomerAccountDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L266`
-- [[NormalizedClientUsageEventInput]] — `apps/backend/src/billing/billing.service.ts:L472`
+- [[MergeCustomerAccountDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L274`
+- [[NormalizedClientUsageEventInput]] — `apps/backend/src/billing/billing.service.ts:L488`
 - [[Outbound]] — `apps/backend/src/billing/subscription-sanitizers.ts:L11`
 - [[PayPalAccessTokenResponse]] — `apps/backend/src/billing/paypal-payment.service.ts:L63`
 - [[PayPalCaptureResult]] — `apps/backend/src/billing/paypal-payment.service.ts:L33`
@@ -76,60 +76,62 @@
 - [[PayPalWebhookSignatureHeaders]] — `apps/backend/src/billing/paypal-payment.service.ts:L40`
 - [[PayPalWebhookSignatureHeaders]] — `apps/backend/src/billing/paypal-webhook-verify.ts:L3`
 - [[PayPalWebhookVerificationResponse]] — `apps/backend/src/billing/paypal-payment.service.ts:L81`
-- [[PaymentMethodFilters]] — `apps/backend/src/billing/billing.service.ts:L717`
-- [[PaymentMethodRow]] — `apps/backend/src/billing/billing.service.ts:L603`
-- [[PaymentOrderAllocationRow]] — `apps/backend/src/billing/billing.service.ts:L660`
-- [[PaymentOrderFilters]] — `apps/backend/src/billing/billing.service.ts:L723`
-- [[PaymentOrderRow]] — `apps/backend/src/billing/billing.service.ts:L622`
-- [[PaymentProviderAdapterMethodInput]] — `apps/backend/src/billing/payment-provider-adapters.ts:L20`
-- [[PaymentProviderAdapterOrderInput]] — `apps/backend/src/billing/payment-provider-adapters.ts:L10`
-- [[PreferredOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L512`
-- [[PreparePaymentProviderCheckoutInput]] — `apps/backend/src/billing/payment-provider-adapters.ts:L30`
-- [[PreparedPaymentProviderCheckout]] — `apps/backend/src/billing/payment-provider-adapters.ts:L38`
-- [[RatedOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L491`
+- [[PaymentMethodFilters]] — `apps/backend/src/billing/billing.service.ts:L745`
+- [[PaymentMethodRow]] — `apps/backend/src/billing/billing.service.ts:L627`
+- [[PaymentOrderAllocationRow]] — `apps/backend/src/billing/billing.service.ts:L684`
+- [[PaymentOrderFilters]] — `apps/backend/src/billing/billing.service.ts:L751`
+- [[PaymentOrderRow]] — `apps/backend/src/billing/billing.service.ts:L646`
+- [[PaymentProviderAdapterMethodInput]] — `apps/backend/src/billing/payment-provider-adapters.ts:L21`
+- [[PaymentProviderAdapterOrderInput]] — `apps/backend/src/billing/payment-provider-adapters.ts:L11`
+- [[PreferredOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L528`
+- [[PreparePaymentProviderCheckoutInput]] — `apps/backend/src/billing/payment-provider-adapters.ts:L31`
+- [[PreparedPaymentProviderCheckout]] — `apps/backend/src/billing/payment-provider-adapters.ts:L39`
+- [[RatedOutboundRow]] — `apps/backend/src/billing/billing.service.ts:L507`
 - [[RedeemGemsResult]] — `apps/backend/src/billing/gems.ts:L105`
 - [[ReferralMilestoneCredit]] — `apps/backend/src/billing/gems.ts:L284`
 - [[ReferralRewardConfig]] — `apps/backend/src/billing/gems.ts:L298`
 - [[ReferralSignupCredit]] — `apps/backend/src/billing/gems.ts:L290`
-- [[RejectResellerTopupDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L207`
+- [[RejectResellerTelegramLinkDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L164`
+- [[RejectResellerTopupDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L274`
 - [[RejectResellerTopupOutcome]] — `apps/backend/src/billing/reseller-topup.ts:L173`
-- [[ResellerAccountFilters]] — `apps/backend/src/billing/billing.service.ts:L706`
-- [[ResellerAccountRow]] — `apps/backend/src/billing/billing.service.ts:L544`
+- [[RequestResellerTelegramLinkDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L144`
+- [[ResellerAccountFilters]] — `apps/backend/src/billing/billing.service.ts:L730`
+- [[ResellerAccountRow]] — `apps/backend/src/billing/billing.service.ts:L560`
 - [[ResellerRow]] — `apps/backend/src/billing/reseller-topup.ts:L42`
 - [[ResellerSaleAmounts]] — `apps/backend/src/billing/reseller-wallet-math.ts:L24`
-- [[ResellerTopupRequestRow]] — `apps/backend/src/billing/billing.service.ts:L565`
+- [[ResellerTopupRequestRow]] — `apps/backend/src/billing/billing.service.ts:L589`
 - [[ResellerTopupRequestStatus]] — `apps/backend/src/billing/reseller-topup.ts:L20`
-- [[ResellerWalletLedgerRow]] — `apps/backend/src/billing/billing.service.ts:L580`
-- [[RewardedAdGrantCreateState]] — `apps/backend/src/billing/billing.service.ts:L738`
-- [[RewardedAdGrantRow]] — `apps/backend/src/billing/billing.service.ts:L453`
+- [[ResellerWalletLedgerRow]] — `apps/backend/src/billing/billing.service.ts:L604`
+- [[RewardedAdGrantCreateState]] — `apps/backend/src/billing/billing.service.ts:L766`
+- [[RewardedAdGrantRow]] — `apps/backend/src/billing/billing.service.ts:L469`
 - [[RewardedAdProviderWebhookDto]] — `apps/backend/src/billing/dto/rewarded-ad-webhook.dto.ts:L4`
-- [[RewardedAdSettingsRow]] — `apps/backend/src/billing/billing.service.ts:L441`
+- [[RewardedAdSettingsRow]] — `apps/backend/src/billing/billing.service.ts:L457`
 - [[RewardedAdWebhookController]] — `apps/backend/src/billing/rewarded-ad-webhook.controller.ts:L9`
 - [[RewardedAdWebhookService]] — `apps/backend/src/billing/rewarded-ad-webhook.service.ts:L27`
 - [[RewardedAdWebhookSignatureHeaders]] — `apps/backend/src/billing/rewarded-ad-webhook.service.ts:L13`
 - [[SetCustomerAccountPasswordDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L52`
-- [[SetEgressTierPriceDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L272`
-- [[TelegramFulfillmentClientRow]] — `apps/backend/src/billing/billing.service.ts:L312`
-- [[TopUpResellerWalletDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L104`
+- [[SetEgressTierPriceDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L280`
+- [[TelegramFulfillmentClientRow]] — `apps/backend/src/billing/billing.service.ts:L328`
+- [[TopUpResellerWalletDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L171`
 - [[TopupRequestRow]] — `apps/backend/src/billing/reseller-topup.ts:L34`
 - [[UpdateBillingSettingsDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L28`
-- [[UpdateClientConfigDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L412`
-- [[UpdateCustomerAccountDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L163`
+- [[UpdateClientConfigDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L420`
+- [[UpdateCustomerAccountDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L167`
 - [[UpdateGbPriceDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L42`
 - [[UpdatePaymentMethodDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L265`
 - [[UpdatePaymentOrderStatusDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L368`
-- [[UpdateResellerAccountDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L59`
+- [[UpdateResellerAccountDto]] — `apps/backend/src/billing/dto/reseller.dto.ts:L86`
 - [[UpdateRewardedAdSettingsDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L52`
 - [[UpdateVolumePackageDto]] — `apps/backend/src/billing/dto/billing.dto.ts:L141`
-- [[UploadedReceiptFile]] — `apps/backend/src/billing/billing.controller.ts:L116`
-- [[UpsertClientRoutePreferenceDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L469`
-- [[UpsertClientSubscriptionCredentialDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L588`
+- [[UploadedReceiptFile]] — `apps/backend/src/billing/billing.controller.ts:L122`
+- [[UpsertClientRoutePreferenceDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L477`
+- [[UpsertClientSubscriptionCredentialDto]] — `apps/backend/src/billing/dto/customer-account.dto.ts:L596`
 - [[VerifiedPayPalWebhook]] — `apps/backend/src/billing/paypal-payment.service.ts:L48`
 - [[VerifiedPayPalWebhook]] — `apps/backend/src/billing/paypal-webhook-verify.ts:L11`
 - [[VerifiedRewardedAdWebhook]] — `apps/backend/src/billing/rewarded-ad-webhook.service.ts:L18`
-- [[VolumePackageFilters]] — `apps/backend/src/billing/billing.service.ts:L712`
-- [[VolumePackageRow]] — `apps/backend/src/billing/billing.service.ts:L527`
-- [[WireguardPeerRecord]] — `apps/backend/src/billing/billing.service.ts:L270`
+- [[VolumePackageFilters]] — `apps/backend/src/billing/billing.service.ts:L740`
+- [[VolumePackageRow]] — `apps/backend/src/billing/billing.service.ts:L543`
+- [[WireguardPeerRecord]] — `apps/backend/src/billing/billing.service.ts:L286`
 - [[payPalWebhookPaymentUpdate]] — `apps/backend/src/billing/paypal-webhook.ts:L21`
 
 ## Database tables touched (VERIFIED — evidence-backed)
@@ -222,6 +224,7 @@
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/date-utils.test.ts`
 - `apps/backend/test/device-sharing.test.ts`
+- `apps/backend/test/display-name.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`
 - `apps/backend/test/gems.test.ts`
 - `apps/backend/test/payment-validators.test.ts`
@@ -230,6 +233,7 @@
 - `apps/backend/test/phone-identity.test.ts`
 - `apps/backend/test/quota-math.test.ts`
 - `apps/backend/test/record-utils.test.ts`
+- `apps/backend/test/reseller-customer-guard.test.ts`
 - `apps/backend/test/reseller-ownership.test.ts`
 - `apps/backend/test/reseller-topup.test.ts`
 - `apps/backend/test/reseller-wallet-math.test.ts`
@@ -246,12 +250,14 @@ _none_
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`
 - `apps/backend/test/gems.test.ts`
+- `apps/backend/test/germany-usage-db.test.ts`
 - `apps/backend/test/outbound-xray-config.test.ts`
 - `apps/backend/test/paypal-webhook.test.ts`
 - `apps/backend/test/rbac.test.ts`
 - `apps/backend/test/reseller-topup.test.ts`
 - `apps/backend/test/telegram-topup-commission.test.ts`
 - `apps/backend/test/telegram-topup.test.ts`
+- `apps/backend/test/usage-accounting.test.ts`
 - `tests/e2e/client-smoke.spec.ts`
 - `tests/e2e/dashboard-visual.spec.ts`
 

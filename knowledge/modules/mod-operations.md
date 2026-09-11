@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `operations`
 
@@ -9,74 +9,81 @@
 - **High-risk dependencies (DERIVED):** [[tbl-outbounds]], [[tbl-servers]]
 
 ## Services / classes (VERIFIED)
-- [[AlertRow]] — `apps/backend/src/operations/operations.service.ts:L281`
-- [[ApplyRouteDecisionPreviewDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L270`
-- [[ClientRouteDecisionPreferenceRow]] — `apps/backend/src/operations/operations.service.ts:L465`
+- [[AlertRow]] — `apps/backend/src/operations/operations.service.ts:L288`
+- [[ApplyRouteDecisionPreviewDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L264`
+- [[ClientRouteDecisionPreferenceRow]] — `apps/backend/src/operations/operations.service.ts:L472`
 - [[CreateOutboundDto]] — `apps/backend/src/operations/dto/outbound.dto.ts:L28`
 - [[CreateOutboundSubscriptionDto]] — `apps/backend/src/operations/dto/outbound.dto.ts:L217`
-- [[CreateProtocolSetupDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L142`
+- [[CreateProtocolSetupDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L136`
 - [[CreateServerCredentialDto]] — `apps/backend/src/operations/dto/server.dto.ts:L165`
 - [[CreateServerDto]] — `apps/backend/src/operations/dto/server.dto.ts:L68`
 - [[CreateServerInterfaceDto]] — `apps/backend/src/operations/dto/tunnel.dto.ts:L7`
 - [[CreateSettingsSecretDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L30`
 - [[CreateTunnelDto]] — `apps/backend/src/operations/dto/tunnel.dto.ts:L85`
+- [[CurrentChild]] — `apps/backend/src/operations/subscription-refresh-safety.ts:L22`
 - [[MoveOutboundDto]] — `apps/backend/src/operations/dto/outbound.dto.ts:L212`
-- [[OperationsController]] — `apps/backend/src/operations/operations.controller.ts:L105`
-- [[OperationsService]] — `apps/backend/src/operations/operations.service.ts:L625`
+- [[OperationsController]] — `apps/backend/src/operations/operations.controller.ts:L106`
+- [[OperationsService]] — `apps/backend/src/operations/operations.service.ts:L632`
 - [[OutboundCandidate]] — `apps/backend/src/operations/outbound-scoring.ts:L7`
-- [[OutboundOrderRow]] — `apps/backend/src/operations/operations.service.ts:L568`
-- [[OutboundRow]] — `apps/backend/src/operations/operations.service.ts:L158`
+- [[OutboundOrderRow]] — `apps/backend/src/operations/operations.service.ts:L575`
+- [[OutboundRow]] — `apps/backend/src/operations/operations.service.ts:L162`
 - [[OutboundSubscriptionRefreshService]] — `apps/backend/src/operations/outbound-subscription-refresh.service.ts:L16`
-- [[OutboundSubscriptionRow]] — `apps/backend/src/operations/operations.service.ts:L192`
+- [[OutboundSubscriptionRow]] — `apps/backend/src/operations/operations.service.ts:L196`
 - [[ParsedSubscription]] — `apps/backend/src/operations/outbound-subscription-parser.ts:L26`
 - [[ParsedSubscriptionConfig]] — `apps/backend/src/operations/outbound-subscription-parser.ts:L18`
 - [[ParsedVless]] — `apps/backend/src/operations/outbound-vless-parser.ts:L1`
-- [[ProtocolApplyEventRow]] — `apps/backend/src/operations/operations.service.ts:L353`
-- [[ProtocolServerApplyCredentialMaterialRow]] — `apps/backend/src/operations/operations.service.ts:L509`
-- [[ProtocolServerApplyExecutionCommandResult]] — `apps/backend/src/operations/operations.service.ts:L542`
-- [[ProtocolServerApplyExecutionSummary]] — `apps/backend/src/operations/operations.service.ts:L552`
-- [[ProtocolServerApplyRemoteAccess]] — `apps/backend/src/operations/operations.service.ts:L528`
-- [[ProtocolServerApplySecretMaterial]] — `apps/backend/src/operations/operations.service.ts:L537`
-- [[ProtocolServerApplySecretMaterialRow]] — `apps/backend/src/operations/operations.service.ts:L518`
-- [[ProtocolServerApplySource]] — `apps/backend/src/operations/operations.service.ts:L328`
-- [[ProtocolSetupRow]] — `apps/backend/src/operations/operations.service.ts:L295`
+- [[ProtocolApplyEventRow]] — `apps/backend/src/operations/operations.service.ts:L360`
+- [[ProtocolServerApplyCredentialMaterialRow]] — `apps/backend/src/operations/operations.service.ts:L516`
+- [[ProtocolServerApplyExecutionCommandResult]] — `apps/backend/src/operations/operations.service.ts:L549`
+- [[ProtocolServerApplyExecutionSummary]] — `apps/backend/src/operations/operations.service.ts:L559`
+- [[ProtocolServerApplyRemoteAccess]] — `apps/backend/src/operations/operations.service.ts:L535`
+- [[ProtocolServerApplySecretMaterial]] — `apps/backend/src/operations/operations.service.ts:L544`
+- [[ProtocolServerApplySecretMaterialRow]] — `apps/backend/src/operations/operations.service.ts:L525`
+- [[ProtocolServerApplySource]] — `apps/backend/src/operations/operations.service.ts:L335`
+- [[ProtocolSetupRow]] — `apps/backend/src/operations/operations.service.ts:L302`
 - [[RankedOutbound]] — `apps/backend/src/operations/outbound-scoring.ts:L16`
-- [[RecordProtocolServerApplyDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L276`
-- [[RecordRouteDecisionPreviewDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L258`
-- [[RequestProtocolServerApplyDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L282`
-- [[RouteAssignmentRow]] — `apps/backend/src/operations/operations.service.ts:L389`
+- [[RecordProtocolServerApplyDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L270`
+- [[RecordRouteDecisionPreviewDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L252`
+- [[RefreshChildQuery]] — `apps/backend/src/operations/subscription-refresh-safety.ts:L158`
+- [[RefreshSafetyCode]] — `apps/backend/src/operations/subscription-refresh-safety.ts:L35`
+- [[RefreshSafetyConfig]] — `apps/backend/src/operations/subscription-refresh-safety.ts:L28`
+- [[RefreshSafetyResult]] — `apps/backend/src/operations/subscription-refresh-safety.ts:L44`
+- [[RequestProtocolServerApplyDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L276`
+- [[RouteAssignmentRow]] — `apps/backend/src/operations/operations.service.ts:L396`
 - [[RouteBufferbloatAssessment]] — `apps/backend/src/operations/route-bufferbloat.ts:L3`
-- [[RouteDecisionEventRow]] — `apps/backend/src/operations/operations.service.ts:L409`
+- [[RouteDecisionEventRow]] — `apps/backend/src/operations/operations.service.ts:L416`
 - [[RouteDecisionTimelineRow]] — `apps/backend/src/operations/timeline-severity.ts:L6`
-- [[RouteFailoverEventRow]] — `apps/backend/src/operations/operations.service.ts:L246`
-- [[RouteHealthHistoryRow]] — `apps/backend/src/operations/operations.service.ts:L276`
-- [[RouteMtuAssessment]] — `apps/backend/src/operations/operations.service.ts:L602`
+- [[RouteFailoverEventRow]] — `apps/backend/src/operations/operations.service.ts:L253`
+- [[RouteHealthHistoryRow]] — `apps/backend/src/operations/operations.service.ts:L283`
+- [[RouteMtuAssessment]] — `apps/backend/src/operations/operations.service.ts:L609`
 - [[RouteQualityAggregationResult]] — `apps/backend/src/operations/route-quality-aggregation.service.ts:L4`
 - [[RouteQualityAggregationService]] — `apps/backend/src/operations/route-quality-aggregation.service.ts:L12`
-- [[RouteQualityWindowRow]] — `apps/backend/src/operations/operations.service.ts:L256`
-- [[RouteScoreResult]] — `apps/backend/src/operations/operations.service.ts:L579`
-- [[RouteScoreSignals]] — `apps/backend/src/operations/operations.service.ts:L586`
-- [[RouteScoringContext]] — `apps/backend/src/operations/operations.service.ts:L573`
-- [[RouteSettingsRow]] — `apps/backend/src/operations/operations.service.ts:L377`
-- [[SecretRecordRow]] — `apps/backend/src/operations/operations.service.ts:L482`
-- [[ServerCredentialRow]] — `apps/backend/src/operations/operations.service.ts:L496`
-- [[ServerInterfaceRow]] — `apps/backend/src/operations/operations.service.ts:L208`
-- [[ServerInventoryRow]] — `apps/backend/src/operations/operations.service.ts:L114`
+- [[RouteQualityWindowRow]] — `apps/backend/src/operations/operations.service.ts:L263`
+- [[RouteScoreResult]] — `apps/backend/src/operations/operations.service.ts:L586`
+- [[RouteScoreSignals]] — `apps/backend/src/operations/operations.service.ts:L593`
+- [[RouteScoringContext]] — `apps/backend/src/operations/operations.service.ts:L580`
+- [[RouteSettingsRow]] — `apps/backend/src/operations/operations.service.ts:L384`
+- [[SecretRecordRow]] — `apps/backend/src/operations/operations.service.ts:L489`
+- [[ServerCredentialRow]] — `apps/backend/src/operations/operations.service.ts:L503`
+- [[ServerInterfaceRow]] — `apps/backend/src/operations/operations.service.ts:L215`
+- [[ServerInventoryRow]] — `apps/backend/src/operations/operations.service.ts:L118`
+- [[SubscriptionAlertLevel]] — `apps/backend/src/operations/subscription-refresh-reason.ts:L67`
 - [[SubscriptionMeta]] — `apps/backend/src/operations/outbound-subscription-parser.ts:L12`
+- [[SubscriptionRefreshReason]] — `apps/backend/src/operations/subscription-refresh-reason.ts:L34`
 - [[SubscriptionUserInfo]] — `apps/backend/src/operations/outbound-subscription-parser.ts:L5`
 - [[TimelineSeverity]] — `apps/backend/src/operations/timeline-severity.ts:L3`
-- [[TunnelRow]] — `apps/backend/src/operations/operations.service.ts:L226`
+- [[TunnelRow]] — `apps/backend/src/operations/operations.service.ts:L233`
 - [[UpdateOutboundDto]] — `apps/backend/src/operations/dto/outbound.dto.ts:L119`
 - [[UpdateServerDto]] — `apps/backend/src/operations/dto/server.dto.ts:L116`
 - [[UpdateServerInterfaceDto]] — `apps/backend/src/operations/dto/tunnel.dto.ts:L45`
 - [[UpdateTelegramBotSettingsDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L53`
 - [[UpdateTunnelDto]] — `apps/backend/src/operations/dto/tunnel.dto.ts:L130`
-- [[UpsertRouteAssignmentDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L203`
-- [[UpsertRouteSettingsDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L178`
+- [[UpsertRouteAssignmentDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L197`
+- [[UpsertRouteSettingsDto]] — `apps/backend/src/operations/dto/settings.dto.ts:L172`
 - [[UpsertServerAccessProfileDto]] — `apps/backend/src/operations/dto/server.dto.ts:L27`
-- [[WireGuardCandidateRow]] — `apps/backend/src/operations/operations.service.ts:L434`
+- [[WireGuardCandidateRow]] — `apps/backend/src/operations/operations.service.ts:L441`
 - [[WireGuardScoreInput]] — `apps/backend/src/operations/route-metrics.ts:L132`
-- [[WireGuardTelemetryRow]] — `apps/backend/src/operations/operations.service.ts:L455`
+- [[WireGuardTelemetryRow]] — `apps/backend/src/operations/operations.service.ts:L462`
 - [[WireGuardTelemetryScoreInput]] — `apps/backend/src/operations/route-metrics.ts:L141`
 
 ## Database tables touched (VERIFIED — evidence-backed)
@@ -119,11 +126,13 @@
 - [[mod-backups]]
 - [[mod-client]]
 - [[mod-database]]
+- [[mod-outbound]]
 - [[mod-reports]]
 - [[mod-security]]
 - [[mod-telegram]]
 
 ## Depended on by — modules (VERIFIED: AST import/call edges)
+- [[mod-alerts]]
 - [[mod-notifications]]
 - [[mod-reports]]
 - [[mod-routers]]
@@ -132,7 +141,7 @@
 ## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
 - **[[OperationsController]]** — injects: [[AdminReportsService]], [[AuditService]], [[AuthService]], [[BackupStatusService]], [[ConnectionsService]], [[InboundsService]], [[OperationsOverviewService]], [[OperationsService]], [[TelegramBotConfigService]]
   - injected by: _none_
-- **[[OperationsService]]** — injects: [[AuditService]], [[DatabaseService]], [[RouteQualityAggregationService]], [[SecretVaultService]]
+- **[[OperationsService]]** — injects: [[AuditService]], [[DatabaseService]], [[OutboundHttpService]], [[RouteQualityAggregationService]], [[SecretVaultService]]
   - injected by: [[AdminReportsService]], [[AlertNotificationService]], [[OperationsController]], [[OutboundSubscriptionRefreshService]], [[VillageFailoverService]]
 - **[[OutboundSubscriptionRefreshService]]** — injects: [[OperationsService]]
   - injected by: _none_
@@ -148,6 +157,8 @@
 - `apps/backend/test/route-metrics.test.ts`
 - `apps/backend/test/route-quality.test.ts`
 - `apps/backend/test/route-scoring.test.ts`
+- `apps/backend/test/subscription-refresh-reason.test.ts`
+- `apps/backend/test/subscription-refresh-safety.test.ts`
 - `apps/backend/test/timeline-severity.test.ts`
 
 ## Tests by filename convention (CONVENTION — not verified coverage)
@@ -156,6 +167,9 @@ _none_
 ## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/outbound-xray-config.test.ts`
 - `apps/backend/test/rbac.test.ts`
+- `apps/backend/test/subscription-fetch-ssrf.test.ts`
+- `apps/backend/test/subscription-refresh-reason.test.ts`
+- `apps/backend/test/subscription-refresh-safety.test.ts`
 - `apps/backend/test/timeline-severity.test.ts`
 - `tests/e2e/client-smoke.spec.ts`
 - `tests/e2e/dashboard-visual.spec.ts`

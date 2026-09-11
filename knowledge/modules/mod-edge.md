@@ -2,26 +2,27 @@
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
 > Graph artifact time: 2026-09-11T23:01:53.278Z
 
-# Module: `branding`
+# Module: `edge`
 
-- **Source path:** `apps/backend/src/branding/`
-- **Dominant graph community (hint, not authoritative):** AdminTenantBrandingService
+- **Source path:** `apps/backend/src/edge/`
+- **Dominant graph community (hint, not authoritative):** xray-usage-metering.service.ts
 - **High-risk dependencies (DERIVED):** _none among heavily-coupled tables_
 
 ## Services / classes (VERIFIED)
-- [[AdminTenantBrandingController]] — `apps/backend/src/branding/admin-tenant-branding.controller.ts:L12`
-- [[AdminTenantBrandingService]] — `apps/backend/src/branding/admin-tenant-branding.service.ts:L29`
-- [[TenantBrandSettingsRow]] — `apps/backend/src/branding/admin-tenant-branding.service.ts:L8`
-- [[UpdateTenantBrandingDto]] — `apps/backend/src/branding/dto/tenant-branding.dto.ts:L4`
+- [[ActiveDeClientRow]] — `apps/backend/src/edge/edge-usage.ts:L28`
+- [[EdgeController]] — `apps/backend/src/edge/edge.controller.ts:L15`
+- [[EdgeModule]] — `apps/backend/src/edge/edge.module.ts:L16`
+- [[EdgeService]] — `apps/backend/src/edge/edge.service.ts:L16`
+- [[EdgeUsageReportDto]] — `apps/backend/src/edge/dto/edge-usage.dto.ts:L12`
 
 ## Database tables touched (VERIFIED — evidence-backed)
-- [[tbl-tenant_brand_settings]] ([[tenant_brand_settings]])
+_none via bridge provenance_
 
 ## Services sharing those tables (VERIFIED)
 _none_
 
 ## Depends on — modules (VERIFIED: AST import/call edges)
-- [[mod-audit]]
+- [[mod-client]]
 - [[mod-database]]
 - [[mod-security]]
 
@@ -29,13 +30,13 @@ _none_
 _none_
 
 ## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
-- **[[AdminTenantBrandingController]]** — injects: [[AdminTenantBrandingService]]
+- **[[EdgeController]]** — injects: [[EdgeService]]
   - injected by: _none_
-- **[[AdminTenantBrandingService]]** — injects: [[AuditService]], [[DatabaseService]]
-  - injected by: [[AdminTenantBrandingController]]
+- **[[EdgeService]]** — injects: [[DatabaseService]]
+  - injected by: [[EdgeController]]
 
 ## Tests importing this module (VERIFIED / EXTRACTED)
-_none — no test imports a file in this module directly_
+- `apps/backend/test/edge-service.test.ts`
 
 ## Tests by filename convention (CONVENTION — not verified coverage)
 _none_

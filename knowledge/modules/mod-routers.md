@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `routers`
 
@@ -60,7 +60,7 @@
 - [[mod-security]]
 
 ## Depended on by — modules (VERIFIED: AST import/call edges)
-- [[mod-telegram]]
+_none_
 
 ## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
 - **[[GatewayBillingRunnerService]]** — injects: [[GatewayBillingService]]
@@ -90,8 +90,10 @@ _none_
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`
 - `apps/backend/test/gems.test.ts`
+- `apps/backend/test/germany-usage-db.test.ts`
 - `apps/backend/test/telegram-topup-commission.test.ts`
 - `apps/backend/test/telegram-topup.test.ts`
+- `apps/backend/test/usage-accounting.test.ts`
 - `tests/e2e/dashboard-visual.spec.ts`
 
 ---

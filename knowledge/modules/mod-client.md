@@ -1,6 +1,6 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `client`
 
@@ -9,7 +9,7 @@
 - **High-risk dependencies (DERIVED):** [[tbl-client_configs]], [[tbl-customer_accounts]], [[tbl-wireguard_peers]]
 
 ## Services / classes (VERIFIED)
-- [[ActiveClientRow]] — `apps/backend/src/client/xray-provisioning.service.ts:L13`
+- [[ActiveClientRow]] — `apps/backend/src/client/xray-provisioning.service.ts:L19`
 - [[AddUserInput]] — `apps/backend/src/client/xray-provisioning.ts:L6`
 - [[AfrowsInboundParams]] — `apps/backend/src/client/afrows-entry-link.ts:L7`
 - [[AfrowsWireguardServer]] — `apps/backend/src/client/afrows-wireguard.ts:L11`
@@ -19,18 +19,30 @@
 - [[ClientController]] — `apps/backend/src/client/client.controller.ts:L22`
 - [[ClientLoginDto]] — `apps/backend/src/client/dto/client-login.dto.ts:L3`
 - [[ConnectionsService]] — `apps/backend/src/client/connections.service.ts:L25`
+- [[DeBaselineRow]] — `apps/backend/src/client/germany-usage-db.ts:L12`
+- [[DeMgmtConfig]] — `apps/backend/src/client/germany-mgmt.ts:L17`
+- [[DeUsageBuffer]] — `apps/backend/src/client/germany-usage.ts:L20`
+- [[DeUsageDeps]] — `apps/backend/src/client/germany-usage-db.ts:L25`
+- [[DeUserCumulative]] — `apps/backend/src/client/germany-usage.ts:L15`
+- [[DeviceLimitService]] — `apps/backend/src/client/device-limit.service.ts:L39`
+- [[GermanyMgmtService]] — `apps/backend/src/client/germany-mgmt.service.ts:L23`
+- [[GermanyUsageMeteringService]] — `apps/backend/src/client/germany-usage-metering.service.ts:L25`
 - [[InboundTraffic]] — `apps/backend/src/client/inbounds.service.ts:L10`
 - [[InboundsService]] — `apps/backend/src/client/inbounds.service.ts:L22`
 - [[OperationsOverviewService]] — `apps/backend/src/client/operations-overview.service.ts:L19`
-- [[OverQuotaRow]] — `apps/backend/src/client/xray-usage-metering.service.ts:L11`
+- [[OverLimitRow]] — `apps/backend/src/client/device-limit.service.ts:L7`
+- [[OverQuotaRow]] — `apps/backend/src/client/xray-usage-metering.service.ts:L13`
+- [[ProvisioningEndpoint]] — `apps/backend/src/client/xray-provisioning.ts:L54`
+- [[ProvisioningTarget]] — `apps/backend/src/client/xray-provisioning.ts:L46`
 - [[SetEgressModeDto]] — `apps/backend/src/client/dto/egress-mode.dto.ts:L4`
 - [[SetGamingModeDto]] — `apps/backend/src/client/dto/gaming-mode.dto.ts:L3`
 - [[UpdateOwnClientRoutePreferenceDto]] — `apps/backend/src/client/dto/client-route-preference.dto.ts:L8`
 - [[UsageDelta]] — `apps/backend/src/client/xray-usage.ts:L7`
+- [[UsageSeriesRow]] — `apps/backend/src/client/germany-usage-db.ts:L169`
 - [[WireguardMeteringService]] — `apps/backend/src/client/wireguard-metering.service.ts:L16`
 - [[XrayAccessLogService]] — `apps/backend/src/client/xray-access-log.service.ts:L15`
-- [[XrayProvisioningService]] — `apps/backend/src/client/xray-provisioning.service.ts:L25`
-- [[XrayUsageMeteringService]] — `apps/backend/src/client/xray-usage-metering.service.ts:L23`
+- [[XrayProvisioningService]] — `apps/backend/src/client/xray-provisioning.service.ts:L31`
+- [[XrayUsageMeteringService]] — `apps/backend/src/client/xray-usage-metering.service.ts:L26`
 
 ## Database tables touched (VERIFIED — evidence-backed)
 - [[tbl-client_configs]] ([[client_configs]])
@@ -55,11 +67,14 @@
 
 ## Depends on — modules (VERIFIED: AST import/call edges)
 - [[mod-billing]]
+- [[mod-common]]
 - [[mod-database]]
 - [[mod-security]]
+- [[mod-telegram]]
 
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 - [[mod-billing]]
+- [[mod-edge]]
 - [[mod-operations]]
 
 ## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
@@ -69,6 +84,12 @@
   - injected by: _none_
 - **[[ConnectionsService]]** — injects: [[DatabaseService]]
   - injected by: [[OperationsController]]
+- **[[DeviceLimitService]]** — injects: [[DatabaseService]], [[XrayProvisioningService]]
+  - injected by: _none_
+- **[[GermanyMgmtService]]** — injects: _none_
+  - injected by: [[GermanyUsageMeteringService]], [[XrayProvisioningService]], [[XrayUsageMeteringService]]
+- **[[GermanyUsageMeteringService]]** — injects: [[DatabaseService]], [[GermanyMgmtService]], [[XrayUsageMeteringService]]
+  - injected by: _none_
 - **[[InboundsService]]** — injects: _none_
   - injected by: [[OperationsController]]
 - **[[OperationsOverviewService]]** — injects: [[DatabaseService]]
@@ -77,14 +98,19 @@
   - injected by: _none_
 - **[[XrayAccessLogService]]** — injects: [[DatabaseService]]
   - injected by: _none_
-- **[[XrayProvisioningService]]** — injects: [[DatabaseService]]
-  - injected by: [[BillingService]]
-- **[[XrayUsageMeteringService]]** — injects: [[DatabaseService]]
-  - injected by: [[BillingService]]
+- **[[XrayProvisioningService]]** — injects: [[DatabaseService]], [[GermanyMgmtService]]
+  - injected by: [[BillingService]], [[DeviceLimitService]]
+- **[[XrayUsageMeteringService]]** — injects: [[DatabaseService]], [[GermanyMgmtService]]
+  - injected by: [[BillingService]], [[GermanyUsageMeteringService]]
 
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/access-log-parse.test.ts`
 - `apps/backend/test/afrows-entry-link.test.ts`
+- `apps/backend/test/edge-service.test.ts`
+- `apps/backend/test/germany-mgmt.test.ts`
+- `apps/backend/test/germany-usage-db.test.ts`
+- `apps/backend/test/germany-usage.test.ts`
+- `apps/backend/test/usage-accounting.test.ts`
 - `apps/backend/test/xray-provisioning.test.ts`
 - `apps/backend/test/xray-usage.test.ts`
 
@@ -96,8 +122,13 @@ _none_
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`
 - `apps/backend/test/gems.test.ts`
+- `apps/backend/test/germany-enforcement.test.ts`
+- `apps/backend/test/germany-usage-db.test.ts`
 - `apps/backend/test/telegram-topup-commission.test.ts`
 - `apps/backend/test/telegram-topup.test.ts`
+- `apps/backend/test/usage-accounting.test.ts`
+- `apps/backend/test/xray-provisioning.test.ts`
+- `tests/e2e/reward-claim-key.spec.ts`
 
 ---
 _Back to [[_INDEX]] · [[_hotspots]] · [[_domains]]_

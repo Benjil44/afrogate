@@ -1,16 +1,16 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `outbound`
 
 - **Source path:** `apps/backend/src/outbound/`
-- **Dominant graph community (hint, not authoritative):** outbound-health.service.ts
+- **Dominant graph community (hint, not authoritative):** OutboundHealthService
 - **High-risk dependencies (DERIVED):** [[tbl-outbounds]]
 
 ## Services / classes (VERIFIED)
 - [[DueOutboundRow]] — `apps/backend/src/outbound/outbound-health.service.ts:L10`
-- [[LatencySample]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L22`
+- [[LatencySample]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L21`
 - [[NormalizedOutboundRequest]] — `apps/backend/src/outbound/outbound-http.service.ts:L37`
 - [[OutboundBinaryResponse]] — `apps/backend/src/outbound/outbound-http.service.ts:L29`
 - [[OutboundCheckStatus]] — `apps/backend/src/outbound/outbound-health.service.ts:L7`
@@ -20,12 +20,12 @@
 - [[OutboundHttpRequestOptions]] — `apps/backend/src/outbound/outbound-http.service.ts:L12`
 - [[OutboundHttpResponse]] — `apps/backend/src/outbound/outbound-http.service.ts:L21`
 - [[OutboundHttpService]] — `apps/backend/src/outbound/outbound-http.service.ts:L46`
-- [[OutboundSpeedTestService]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L44`
+- [[OutboundSpeedTestService]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L43`
 - [[ProbeKind]] — `apps/backend/src/outbound/outbound-health.service.ts:L8`
 - [[ProbeTarget]] — `apps/backend/src/outbound/outbound-health.service.ts:L32`
 - [[RecentHealthCheckRow]] — `apps/backend/src/outbound/outbound-health.service.ts:L21`
-- [[RequestedOutboundRow]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L15`
-- [[ThroughputResult]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L29`
+- [[RequestedOutboundRow]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L14`
+- [[ThroughputResult]] — `apps/backend/src/outbound/outbound-speed-test.service.ts:L28`
 
 ## Database tables touched (VERIFIED — evidence-backed)
 - [[tbl-outbound_health_checks]] ([[outbound_health_checks]])
@@ -42,30 +42,34 @@
 - [[subscription-sanitizers.ts]]
 
 ## Depends on — modules (VERIFIED: AST import/call edges)
+- [[mod-common]]
 - [[mod-database]]
 
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 - [[mod-billing]]
 - [[mod-notifications]]
+- [[mod-operations]]
 - [[mod-telegram]]
 
 ## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
 - **[[OutboundHealthService]]** — injects: [[DatabaseService]], [[OutboundHttpService]]
   - injected by: _none_
 - **[[OutboundHttpService]]** — injects: _none_
-  - injected by: [[OutboundHealthService]], [[PayPalPaymentService]], [[TelegramAlertService]], [[TelegramBotConfigService]], [[TelegramPollingService]], [[TelegramProfileService]], [[TelegramTopupAdminService]]
+  - injected by: [[OperationsService]], [[OutboundHealthService]], [[PayPalPaymentService]], [[TelegramAlertService]], [[TelegramBotConfigService]], [[TelegramPollingService]], [[TelegramProfileService]], [[TelegramTopupAdminService]]
 - **[[OutboundSpeedTestService]]** — injects: [[DatabaseService]]
   - injected by: _none_
 
 ## Tests importing this module (VERIFIED / EXTRACTED)
 - `apps/backend/test/outbound-url-policy.test.ts`
 - `apps/backend/test/outbound-xray-config.test.ts`
+- `apps/backend/test/subscription-fetch-ssrf.test.ts`
 
 ## Tests by filename convention (CONVENTION — not verified coverage)
 _none_
 
 ## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/outbound-xray-config.test.ts`
+- `apps/backend/test/subscription-fetch-ssrf.test.ts`
 - `tests/e2e/client-smoke.spec.ts`
 - `tests/e2e/dashboard-visual.spec.ts`
 

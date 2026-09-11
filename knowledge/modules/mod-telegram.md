@@ -1,24 +1,24 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `telegram`
 
 - **Source path:** `apps/backend/src/telegram/`
-- **Dominant graph community (hint, not authoritative):** database.service.ts
+- **Dominant graph community (hint, not authoritative):** telegram-topup-admin.service.ts
 - **High-risk dependencies (DERIVED):** [[tbl-client_configs]], [[tbl-customer_accounts]]
 
 ## Services / classes (VERIFIED)
 - [[AccountRow]] — `apps/backend/src/telegram/telegram-topup.ts:L75`
-- [[ApproveTopupOutcome]] — `apps/backend/src/telegram/telegram-topup.ts:L155`
+- [[ApproveTopupOutcome]] — `apps/backend/src/telegram/telegram-topup.ts:L164`
 - [[BotApiAccess]] — `apps/backend/src/telegram/telegram-profile.service.ts:L18`
 - [[ComputeQuotaAfter]] — `apps/backend/src/telegram/telegram-topup.ts:L50`
 - [[ConnectDecision]] — `apps/backend/src/telegram/telegram-connect.ts:L32`
 - [[ConnectDeps]] — `apps/backend/src/telegram/telegram-connect.ts:L94`
 - [[ConnectInput]] — `apps/backend/src/telegram/telegram-connect.ts:L83`
 - [[ConnectOutcome]] — `apps/backend/src/telegram/telegram-connect.ts:L76`
-- [[CopyEntry]] — `apps/backend/src/telegram/telegram-i18n.ts:L142`
-- [[Ctx]] — `apps/backend/src/telegram/telegram-bot.service.ts:L95`
+- [[CopyEntry]] — `apps/backend/src/telegram/telegram-i18n.ts:L181`
+- [[Ctx]] — `apps/backend/src/telegram/telegram-bot.service.ts:L101`
 - [[InviterRow]] — `apps/backend/src/telegram/telegram-topup.ts:L81`
 - [[LinkAccountByPhoneInput]] — `apps/backend/src/telegram/telegram-self-service.ts:L75`
 - [[PhoneMatchAccount]] — `apps/backend/src/telegram/telegram-self-service.ts:L28`
@@ -27,23 +27,23 @@
 - [[RegisterInput]] — `apps/backend/src/telegram/telegram-self-service.ts:L52`
 - [[RegisterResult]] — `apps/backend/src/telegram/telegram-self-service.ts:L64`
 - [[RejectTelegramTopupDto]] — `apps/backend/src/telegram/dto/telegram-topup.dto.ts:L3`
-- [[RejectTopupOutcome]] — `apps/backend/src/telegram/telegram-topup.ts:L307`
+- [[RejectTopupOutcome]] — `apps/backend/src/telegram/telegram-topup.ts:L316`
 - [[SelfServiceAccount]] — `apps/backend/src/telegram/telegram-self-service.ts:L19`
 - [[TelegramApiError]] — `apps/backend/src/telegram/telegram-profile.ts:L156`
-- [[TelegramBotConfigService]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L94`
+- [[TelegramBotConfigService]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L91`
 - [[TelegramBotController]] — `apps/backend/src/telegram/telegram-bot.controller.ts:L18`
 - [[TelegramBotProfile]] — `apps/backend/src/telegram/telegram-profile.ts:L23`
 - [[TelegramBotProfileState]] — `apps/backend/src/telegram/telegram-profile.ts:L37`
 - [[TelegramBotProfileUpdate]] — `apps/backend/src/telegram/telegram-profile.ts:L30`
-- [[TelegramBotRuntimeConfig]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L69`
-- [[TelegramBotService]] — `apps/backend/src/telegram/telegram-bot.service.ts:L104`
+- [[TelegramBotRuntimeConfig]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L68`
+- [[TelegramBotService]] — `apps/backend/src/telegram/telegram-bot.service.ts:L110`
 - [[TelegramBotSettingsRow]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L19`
-- [[TelegramCallbackQuery]] — `apps/backend/src/telegram/telegram-bot.service.ts:L85`
+- [[TelegramCallbackQuery]] — `apps/backend/src/telegram/telegram-bot.service.ts:L91`
 - [[TelegramConnectResolver]] — `apps/backend/src/telegram/telegram-connect.ts:L110`
 - [[TelegramCopyId]] — `apps/backend/src/telegram/telegram-i18n.ts:L33`
 - [[TelegramEnvelope]] — `apps/backend/src/telegram/telegram-profile.ts:L193`
-- [[TelegramGemEconomy]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L54`
-- [[TelegramGetMeResponse]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L83`
+- [[TelegramGemEconomy]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L53`
+- [[TelegramGetMeResponse]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L80`
 - [[TelegramGetterMethod]] — `apps/backend/src/telegram/telegram-profile.ts:L57`
 - [[TelegramLanguage]] — `apps/backend/src/telegram/telegram-i18n.ts:L15`
 - [[TelegramPollingService]] — `apps/backend/src/telegram/telegram-polling.service.ts:L23`
@@ -53,19 +53,19 @@
 - [[TelegramProfileSetterCall]] — `apps/backend/src/telegram/telegram-profile.ts:L91`
 - [[TelegramResultField]] — `apps/backend/src/telegram/telegram-profile.ts:L60`
 - [[TelegramSecretKind]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L17`
-- [[TelegramSecretRow]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L62`
+- [[TelegramSecretRow]] — `apps/backend/src/telegram/telegram-bot-config.service.ts:L61`
 - [[TelegramSelfServiceDeps]] — `apps/backend/src/telegram/telegram-self-service.ts:L84`
 - [[TelegramSelfServiceProvisioner]] — `apps/backend/src/telegram/telegram-self-service.ts:L137`
 - [[TelegramSetterMethod]] — `apps/backend/src/telegram/telegram-profile.ts:L59`
 - [[TelegramTopupAdminController]] — `apps/backend/src/telegram/telegram-topup-admin.controller.ts:L32`
-- [[TelegramTopupAdminService]] — `apps/backend/src/telegram/telegram-topup-admin.service.ts:L65`
+- [[TelegramTopupAdminService]] — `apps/backend/src/telegram/telegram-topup-admin.service.ts:L70`
 - [[TelegramTopupListStatus]] — `apps/backend/src/telegram/telegram-topup-admin.service.ts:L18`
 - [[TelegramTopupStatus]] — `apps/backend/src/telegram/telegram-topup.ts:L40`
-- [[TelegramUserRecord]] — `apps/backend/src/telegram/telegram-user-store.ts:L40`
-- [[TelegramUserRow]] — `apps/backend/src/telegram/telegram-user-store.ts:L48`
+- [[TelegramUserRecord]] — `apps/backend/src/telegram/telegram-user-store.ts:L58`
+- [[TelegramUserRow]] — `apps/backend/src/telegram/telegram-user-store.ts:L66`
 - [[TelegramUserState]] — `apps/backend/src/telegram/telegram-user-store.ts:L16`
-- [[TelegramWebhookMessage]] — `apps/backend/src/telegram/telegram-bot.service.ts:L75`
-- [[TopupGemEconomy]] — `apps/backend/src/telegram/telegram-topup.ts:L172`
+- [[TelegramWebhookMessage]] — `apps/backend/src/telegram/telegram-bot.service.ts:L81`
+- [[TopupGemEconomy]] — `apps/backend/src/telegram/telegram-topup.ts:L181`
 - [[TopupListRow]] — `apps/backend/src/telegram/telegram-topup-admin.service.ts:L20`
 - [[TopupReferralCommission]] — `apps/backend/src/telegram/telegram-topup.ts:L87`
 - [[TopupRequestRow]] — `apps/backend/src/telegram/telegram-topup.ts:L64`
@@ -106,11 +106,11 @@
 - [[mod-notifications]]
 - [[mod-operations]]
 - [[mod-outbound]]
-- [[mod-routers]]
 - [[mod-security]]
 
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 - [[mod-billing]]
+- [[mod-client]]
 - [[mod-notifications]]
 - [[mod-operations]]
 
@@ -148,11 +148,13 @@ _none_
 - `apps/backend/test/customer-account-merge.test.ts`
 - `apps/backend/test/fake-db-harness.test.ts`
 - `apps/backend/test/gems.test.ts`
+- `apps/backend/test/germany-usage-db.test.ts`
 - `apps/backend/test/telegram-connect.test.ts`
 - `apps/backend/test/telegram-profile.test.ts`
 - `apps/backend/test/telegram-self-service.test.ts`
 - `apps/backend/test/telegram-topup-commission.test.ts`
 - `apps/backend/test/telegram-topup.test.ts`
+- `apps/backend/test/usage-accounting.test.ts`
 
 ---
 _Back to [[_INDEX]] · [[_hotspots]] · [[_domains]]_

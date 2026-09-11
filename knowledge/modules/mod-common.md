@@ -2,15 +2,14 @@
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
 > Graph artifact time: 2026-09-11T23:01:53.278Z
 
-# Module: `backups`
+# Module: `common`
 
-- **Source path:** `apps/backend/src/backups/`
-- **Dominant graph community (hint, not authoritative):** AdminReportsService
+- **Source path:** `apps/backend/src/common/`
+- **Dominant graph community (hint, not authoritative):** outbound-speed-test.service.ts
 - **High-risk dependencies (DERIVED):** _none among heavily-coupled tables_
 
 ## Services / classes (VERIFIED)
-- [[BackupStatusPayload]] — `apps/backend/src/backups/backup-status.service.ts:L15`
-- [[BackupStatusService]] — `apps/backend/src/backups/backup-status.service.ts:L28`
+- [[SecureTempFile]] — `apps/backend/src/common/secure-temp-file.ts:L5`
 
 ## Database tables touched (VERIFIED — evidence-backed)
 _none via bridge provenance_
@@ -22,15 +21,14 @@ _none_
 _none_
 
 ## Depended on by — modules (VERIFIED: AST import/call edges)
-- [[mod-operations]]
-- [[mod-reports]]
+- [[mod-client]]
+- [[mod-outbound]]
 
 ## Service dependency injection (VERIFIED / EXTRACTED — NestJS constructor DI)
-- **[[BackupStatusService]]** — injects: _none_
-  - injected by: [[AdminReportsService]], [[OperationsController]]
+_No injectable services with DI edges in this module._
 
 ## Tests importing this module (VERIFIED / EXTRACTED)
-_none — no test imports a file in this module directly_
+- `apps/backend/test/secure-temp-file.test.ts`
 
 ## Tests by filename convention (CONVENTION — not verified coverage)
 _none_

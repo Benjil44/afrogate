@@ -1,19 +1,20 @@
 > [!info] AUTO-GENERATED — DO NOT EDIT. Regenerate: `node scripts/knowledge/build-mocs.mjs`
 > Source: Graphify artifacts (graph.json, bridges.json, schema_map.json, bridge_analysis.json).
-> Graph artifact time: 2026-08-20T16:27:17.978Z
+> Graph artifact time: 2026-09-11T23:01:53.278Z
 
 # Module: `alerts`
 
 - **Source path:** `apps/backend/src/alerts/`
-- **Dominant graph community (hint, not authoritative):** app.module.ts
+- **Dominant graph community (hint, not authoritative):** AlertEngineService
 - **High-risk dependencies (DERIVED):** [[tbl-outbounds]], [[tbl-servers]]
 
 ## Services / classes (VERIFIED)
-- [[AlertCondition]] — `apps/backend/src/alerts/alert-engine.service.ts:L33`
-- [[AlertEngineService]] — `apps/backend/src/alerts/alert-engine.service.ts:L43`
-- [[AlertSeverity]] — `apps/backend/src/alerts/alert-engine.service.ts:L5`
-- [[OutboundAlertSignalRow]] — `apps/backend/src/alerts/alert-engine.service.ts:L23`
-- [[ServerAlertSignalRow]] — `apps/backend/src/alerts/alert-engine.service.ts:L7`
+- [[AlertCondition]] — `apps/backend/src/alerts/alert-engine.service.ts:L44`
+- [[AlertEngineService]] — `apps/backend/src/alerts/alert-engine.service.ts:L54`
+- [[AlertSeverity]] — `apps/backend/src/alerts/alert-engine.service.ts:L6`
+- [[OutboundAlertSignalRow]] — `apps/backend/src/alerts/alert-engine.service.ts:L24`
+- [[ServerAlertSignalRow]] — `apps/backend/src/alerts/alert-engine.service.ts:L8`
+- [[SubscriptionAlertSignalRow]] — `apps/backend/src/alerts/alert-engine.service.ts:L34`
 
 ## Database tables touched (VERIFIED — evidence-backed)
 - [[tbl-alerts]] ([[alerts]])
@@ -36,6 +37,7 @@
 
 ## Depends on — modules (VERIFIED: AST import/call edges)
 - [[mod-database]]
+- [[mod-operations]]
 
 ## Depended on by — modules (VERIFIED: AST import/call edges)
 _none_
@@ -53,6 +55,7 @@ _none_
 ## Related tests (HEURISTIC — textual name reference)
 - `apps/backend/test/outbound-xray-config.test.ts`
 - `apps/backend/test/rbac.test.ts`
+- `apps/backend/test/subscription-refresh-reason.test.ts`
 - `tests/e2e/client-smoke.spec.ts`
 - `tests/e2e/dashboard-visual.spec.ts`
 
