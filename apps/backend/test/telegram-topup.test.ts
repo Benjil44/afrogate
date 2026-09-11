@@ -48,9 +48,28 @@ describe('createPendingTopupInTransaction (photo -> pending topup row)', () => {
     const insert = executor.calls[0];
     assert.match(insert.text, /INSERT INTO telegram_topup_requests/);
     assert.match(insert.text, /'pending'/);
-    // receipt_file_id is bound as the 7th parameter.
+    // receipt_file_id is bound as the 7th parameter; resellerAccountId defaults to null (8th).
     assert.equal(insert.values[6], 'PHOTO_ID');
-    assert.deepEqual(insert.values, ['acct-1', '555', 'chat-1', 'pkg-1', 90_000, 'toman', 'PHOTO_ID']);
+    assert.deepEqual(insert.values, ['acct-1', '555', 'chat-1', 'pkg-1', 90_000, 'toman', 'PHOTO_ID', null]);
+  });
+
+  it('stamps resellerAccountId (Phase 4: routes a seller-owned customer\'s receipt to their seller)', async () => {
+    const executor = createFakeExecutor([{ rows: [{ id: 'abc123def456' }] }]);
+
+    await createPendingTopupInTransaction(executor, {
+      customerAccountId: 'acct-1',
+      telegramId: '555',
+      telegramChatId: 'chat-1',
+      volumePackageId: 'pkg-1',
+      amountMinor: 90_000,
+      currency: 'toman',
+      receiptFileId: 'PHOTO_ID',
+      resellerAccountId: 'reseller-1',
+    });
+
+    const insert = executor.calls[0];
+    assert.match(insert.text, /reseller_account_id/);
+    assert.equal(insert.values[7], 'reseller-1');
   });
 });
 

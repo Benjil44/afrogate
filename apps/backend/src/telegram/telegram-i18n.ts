@@ -152,7 +152,15 @@ export type TelegramCopyId =
   | 'seller.panel.customerItem'
   | 'seller.panel.customersEmpty'
   | 'seller.comingSoon'
-  | 'seller.btn.backToMenu';
+  | 'seller.btn.backToMenu'
+  | 'seller.req.empty'
+  | 'seller.req.receiptCaption'
+  | 'seller.req.btn.approve'
+  | 'seller.req.btn.reject'
+  | 'seller.req.approved'
+  | 'seller.req.approveFailed'
+  | 'seller.req.rejected'
+  | 'seller.req.rejectFailed';
 
 type CopyEntry = { en: string; fa: string };
 
@@ -471,6 +479,20 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: '🚧 این قابلیت به‌زودی فعال می‌شود.',
   },
   'seller.btn.backToMenu': { en: '⬅️ Menu', fa: '⬅️ منو' },
+  'seller.req.empty': { en: 'No pending requests right now.', fa: 'در حال حاضر درخواستی در انتظار نیست.' },
+  'seller.req.receiptCaption': {
+    en: '🧾 New receipt\nCustomer: {customerName}\nPackage: {packageSize} — {amount}\nRequest: #{requestId}',
+    fa: '🧾 رسید جدید\nمشتری: {customerName}\nبسته: {packageSize} — {amount}\nدرخواست: #{requestId}',
+  },
+  'seller.req.btn.approve': { en: '✅ Approve', fa: '✅ تأیید' },
+  'seller.req.btn.reject': { en: '❌ Reject', fa: '❌ رد' },
+  'seller.req.approved': { en: 'Approved — the customer has been notified.', fa: 'تأیید شد — به مشتری اطلاع داده شد.' },
+  'seller.req.approveFailed': {
+    en: 'Could not approve this request (check your wallet balance) — try again.',
+    fa: 'تأیید این درخواست ممکن نشد (موجودی کیف‌پول را بررسی کنید) — دوباره تلاش کنید.',
+  },
+  'seller.req.rejected': { en: 'Rejected — the customer has been notified.', fa: 'رد شد — به مشتری اطلاع داده شد.' },
+  'seller.req.rejectFailed': { en: 'Could not reject this request — try again.', fa: 'رد این درخواست ممکن نشد — دوباره تلاش کنید.' },
 };
 
 /**

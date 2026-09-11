@@ -46,7 +46,7 @@ import {
   type SelfServiceAccount,
 } from './telegram-self-service';
 import { TelegramConnectResolver, type ConnectOutcome } from './telegram-connect';
-import { createPendingTopupInTransaction } from './telegram-topup';
+import { createPendingTopupInTransaction, topupReference } from './telegram-topup';
 import {
   getTelegramUser,
   setTelegramUserLanguage,
@@ -1042,8 +1042,9 @@ export class TelegramBotService {
       return this.screen('E1', ctx, language, renderTelegramCopy('error.noPackages', language), this.menuOnlyKeyboard(language));
     }
 
-    const runtime = await this.telegramConfig.getRuntimeConfig();
-    if (!runtime.cardToCardInfo) {
+    const account = await this.findAccount(ctx);
+    const cardInfo = await this.resolveCardToCardInfo(account);
+    if (!cardInfo) {
       return this.screen('E2', ctx, language, renderTelegramCopy('error.cardUnset', language), this.menuOnlyKeyboard(language));
     }
 
@@ -1054,7 +1055,7 @@ export class TelegramBotService {
         const pkg = packages.find((entry) => entry.id === pending.pendingPackageId);
         if (pkg) {
           const note = renderTelegramCopy('buy.resumeNote', language);
-          return this.screen('S6', ctx, language, `${note}\n\n${this.paymentText(pkg, language, runtime.cardToCardInfo)}`, this.paymentKeyboard(language));
+          return this.screen('S6', ctx, language, `${note}\n\n${this.paymentText(pkg, language, cardInfo)}`, this.paymentKeyboard(language));
         }
         await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
       }
@@ -1086,8 +1087,9 @@ export class TelegramBotService {
   private async handleBuyPick(ctx: Ctx, language: TelegramLanguage, packageId: string): Promise<TelegramBotWebhookResponse> {
     if (!ctx.fromId || !packageId) return this.screenBuy(ctx, language);
 
-    const runtime = await this.telegramConfig.getRuntimeConfig();
-    if (!runtime.cardToCardInfo) {
+    const account = await this.findAccount(ctx);
+    const cardInfo = await this.resolveCardToCardInfo(account);
+    if (!cardInfo) {
       return this.screen('E2', ctx, language, renderTelegramCopy('error.cardUnset', language), this.menuOnlyKeyboard(language));
     }
 
@@ -1106,7 +1108,27 @@ export class TelegramBotService {
       },
     });
 
-    return this.screen('S6', ctx, language, this.paymentText(pkg, language, runtime.cardToCardInfo), this.paymentKeyboard(language));
+    return this.screen('S6', ctx, language, this.paymentText(pkg, language, cardInfo), this.paymentKeyboard(language));
+  }
+
+  /**
+   * Which card-to-card info to show for a purchase (Phase 4): the customer's
+   * OWN seller's card when they have one (so payment goes to the seller who
+   * actually provisions their service), else the platform's global card. A
+   * seller account with no card on file yields null -> the caller shows
+   * error.cardUnset rather than silently falling back to the wrong entity's card.
+   */
+  private async resolveCardToCardInfo(account: TelegramBotAccountSummary | null): Promise<string | null> {
+    if (account?.resellerAccountId) {
+      try {
+        const reseller = await this.billing.getResellerAccount(account.resellerAccountId);
+        return reseller.cardInfo?.trim() || null;
+      } catch {
+        return null;
+      }
+    }
+    const runtime = await this.telegramConfig.getRuntimeConfig();
+    return runtime.cardToCardInfo?.trim() || null;
   }
 
   private paymentText(pkg: AdminVolumePackageSummary, language: TelegramLanguage, cardInfo: string): string {
@@ -1162,9 +1184,26 @@ export class TelegramBotService {
         amountMinor: pending.pendingAmountMinor ?? null,
         currency: pending.pendingCurrency ?? null,
         receiptFileId: photoFileId,
+        resellerAccountId: account.resellerAccountId ?? null,
       }),
     );
     await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
+
+    // Phase 4: a seller-owned customer's receipt goes to the seller's bot chat
+    // for approve/reject (settled via their wallet), instead of the superadmin
+    // dashboard queue. Best-effort — the customer's submission already
+    // succeeded above even if this push fails (they can also see it via the
+    // seller's "🧾 Requests" list).
+    if (account.resellerAccountId) {
+      await this.pushSellerReceiptRequest(account.resellerAccountId, {
+        id: created.id,
+        receiptFileId: photoFileId,
+        customerDisplayName: account.displayName ?? null,
+        volumePackageId: pending.pendingPackageId ?? null,
+        amountMinor: pending.pendingAmountMinor ?? null,
+        currency: pending.pendingCurrency ?? null,
+      });
+    }
 
     return this.sendNew(
       ctx,
@@ -1807,6 +1846,13 @@ export class TelegramBotService {
     if (!data.startsWith('afws:sell:')) return this.staleButton(ctx);
     const language = await this.languageFor(ctx.fromId);
 
+    if (data.startsWith('afws:sell:req:approve:')) {
+      return this.handleSellerApproveReceipt(ctx, language, seller, data.slice('afws:sell:req:approve:'.length));
+    }
+    if (data.startsWith('afws:sell:req:reject:')) {
+      return this.handleSellerRejectReceipt(ctx, language, seller, data.slice('afws:sell:req:reject:'.length));
+    }
+
     switch (data) {
       case 'afws:sell:menu':
         return this.screenSellerMenu(ctx, language);
@@ -1814,9 +1860,10 @@ export class TelegramBotService {
         return this.screenSellerPanel(ctx, language, seller);
       case 'afws:sell:panel:refresh':
         return this.screenSellerPanel(ctx, language, seller, renderTelegramCopy('common.toast.refreshed', language));
+      case 'afws:sell:requests':
+        return this.screenSellerRequests(ctx, language, seller);
       case 'afws:sell:newcustomer':
       case 'afws:sell:charge':
-      case 'afws:sell:requests':
         return this.screenSellerComingSoon(ctx, language);
       default:
         return this.staleButton(ctx);
@@ -1895,5 +1942,204 @@ export class TelegramBotService {
         [this.btn('seller.btn.backToMenu', language, 'afws:sell:menu')],
       ],
     };
+  }
+
+  // --- Seller role: customer → seller payment (Phase 4) ----------------------
+  //
+  // A customer whose account has a reseller pays THAT seller's card (see
+  // resolveCardToCardInfo) and uploads the receipt exactly like the direct
+  // flow (handlePhoto) — the only difference is the request is tagged with
+  // reseller_account_id and routed here instead of the superadmin dashboard.
+  // Settlement is an ORDINARY reseller package sale (wallet debit at cost),
+  // never a free grant — see billing.approveTelegramTopupViaReseller.
+
+  /** "🧾 Requests": re-pushes every still-pending receipt for this seller (in case the original push was missed). */
+  private async screenSellerRequests(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+  ): Promise<TelegramBotWebhookResponse> {
+    const pending = await this.billing.listPendingTelegramTopupsForReseller(seller.id);
+    if (!pending.length) {
+      return this.screen('SELLER-REQ', ctx, language, renderTelegramCopy('seller.req.empty', language), this.sellerMenuKeyboard(language));
+    }
+    await this.answer(ctx);
+    for (const request of pending) {
+      await this.pushSellerReceiptRequestRow(seller.id, request, language);
+    }
+    return { ok: true, status: 'sent' };
+  }
+
+  /** Push one pending receipt (photo + approve/reject) to the seller's chat, right after a customer submits it (Phase 4). Best-effort — never throws into the caller. */
+  private async pushSellerReceiptRequest(
+    resellerAccountId: string,
+    request: {
+      id: string;
+      receiptFileId: string;
+      customerDisplayName: string | null;
+      volumePackageId: string | null;
+      amountMinor: number | null;
+      currency: string | null;
+    },
+  ): Promise<void> {
+    try {
+      const reseller = await this.billing.getResellerAccount(resellerAccountId);
+      if (!reseller.telegramId) return; // not (yet) bot-linked — shouldn't happen once approved, but never throw
+      const user = await getTelegramUser(this.database, reseller.telegramId);
+      if (!user?.chatId) return;
+      const language = normalizeTelegramLanguage(user.language);
+
+      let packageLabel: string | null = null;
+      let packageVolumeBytes: number | null = null;
+      if (request.volumePackageId) {
+        try {
+          const pkg = await this.billing.getVolumePackage(request.volumePackageId);
+          packageLabel = pkg.name;
+          packageVolumeBytes = pkg.volumeBytes;
+        } catch {
+          // package lookup failed (e.g. deactivated meanwhile) — caption falls back below
+        }
+      }
+
+      await this.pushSellerReceiptMessage(
+        user.chatId,
+        language,
+        {
+          id: request.id,
+          receiptFileId: request.receiptFileId,
+          customerDisplayName: request.customerDisplayName,
+          packageLabel,
+          packageVolumeBytes,
+          amountMinor: request.amountMinor,
+          currency: request.currency,
+        },
+      );
+    } catch {
+      // best-effort: the customer's submission already succeeded regardless
+    }
+  }
+
+  /** Re-push variant for screenSellerRequests, where the request row comes from listPendingTelegramTopupsForReseller (no receiptFileId there — read it directly). */
+  private async pushSellerReceiptRequestRow(
+    resellerAccountId: string,
+    request: {
+      id: string;
+      customerDisplayName: string | null;
+      packageLabel: string | null;
+      packageVolumeBytes: number | null;
+      amountMinor: number | null;
+      currency: string | null;
+    },
+    language: TelegramLanguage,
+  ): Promise<void> {
+    try {
+      const reseller = await this.billing.getResellerAccount(resellerAccountId);
+      if (!reseller.telegramId) return;
+      const user = await getTelegramUser(this.database, reseller.telegramId);
+      if (!user?.chatId) return;
+
+      const receiptFileId = await this.database.query<{ receiptFileId: string | null }>(
+        `SELECT receipt_file_id AS "receiptFileId" FROM telegram_topup_requests WHERE id = $1`,
+        [request.id],
+      );
+      const fileId = receiptFileId.rows[0]?.receiptFileId;
+      if (!fileId) return;
+
+      await this.pushSellerReceiptMessage(user.chatId, language, { ...request, id: request.id, receiptFileId: fileId });
+    } catch {
+      // best-effort — the seller can still see this request next time
+    }
+  }
+
+  private async pushSellerReceiptMessage(
+    chatId: string,
+    language: TelegramLanguage,
+    request: {
+      id: string;
+      receiptFileId: string;
+      customerDisplayName: string | null;
+      packageLabel: string | null;
+      packageVolumeBytes: number | null;
+      amountMinor: number | null;
+      currency: string | null;
+    },
+  ): Promise<void> {
+    const caption = renderTelegramCopy(
+      'seller.req.receiptCaption',
+      language,
+      {},
+      {
+        customerName: request.customerDisplayName ?? '-',
+        packageSize: formatDataSize(request.packageVolumeBytes ?? 0, language),
+        amount: formatAmount(request.amountMinor, request.currency, language),
+        requestId: topupReference(request.id),
+      },
+    );
+    await this.telegram.sendPhotoByFileId(chatId, request.receiptFileId, {
+      caption,
+      replyMarkup: {
+        inline_keyboard: [
+          [
+            { text: renderTelegramCopy('seller.req.btn.approve', language), callback_data: `afws:sell:req:approve:${request.id}` },
+            { text: renderTelegramCopy('seller.req.btn.reject', language), callback_data: `afws:sell:req:reject:${request.id}` },
+          ],
+        ],
+      },
+    });
+  }
+
+  /** Seller taps "✅ Approve" — settles via an ordinary reseller package sale (wallet debit + quota credit), then notifies the customer. */
+  private async handleSellerApproveReceipt(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    requestId: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    try {
+      const { saleResult, telegramChatId, telegramId } = await this.billing.approveTelegramTopupViaReseller(requestId, seller.id, undefined);
+      await this.answer(ctx, renderTelegramCopy('seller.req.approved', language));
+
+      if (telegramChatId) {
+        const customerLanguage = await this.languageFor(telegramId ?? undefined);
+        const text = renderTelegramCopy(
+          'notify.approved',
+          customerLanguage,
+          { requestId: topupReference(requestId) },
+          { packageSize: formatDataSize(saleResult.allocation.volumeBytesDelta, customerLanguage) },
+        );
+        await this.pushNotification(telegramChatId, customerLanguage, text, this.menuOnlyKeyboard(customerLanguage));
+      }
+      return { ok: true, status: 'sent' };
+    } catch (error) {
+      await this.answer(ctx, renderTelegramCopy('seller.req.approveFailed', language));
+      return { ok: false, status: 'failed', reason: error instanceof Error ? error.message : 'approve_failed' };
+    }
+  }
+
+  /** Seller taps "❌ Reject" — never moves money; notifies the customer so they can resubmit. */
+  private async handleSellerRejectReceipt(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    requestId: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    try {
+      const { telegramChatId, telegramId } = await this.billing.rejectTelegramTopupViaReseller(requestId, seller.id, null, undefined);
+      await this.answer(ctx, renderTelegramCopy('seller.req.rejected', language));
+
+      if (telegramChatId) {
+        const customerLanguage = await this.languageFor(telegramId ?? undefined);
+        const reasonText = renderTelegramCopy('notify.noReason', customerLanguage);
+        const text = renderTelegramCopy('notify.rejected', customerLanguage, {
+          requestId: topupReference(requestId),
+          reason: reasonText,
+        });
+        await this.pushNotification(telegramChatId, customerLanguage, text, this.menuOnlyKeyboard(customerLanguage));
+      }
+      return { ok: true, status: 'sent' };
+    } catch (error) {
+      await this.answer(ctx, renderTelegramCopy('seller.req.rejectFailed', language));
+      return { ok: false, status: 'failed', reason: error instanceof Error ? error.message : 'reject_failed' };
+    }
   }
 }

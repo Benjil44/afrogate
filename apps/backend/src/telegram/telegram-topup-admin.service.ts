@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { AdminTelegramTopupRequest, TelegramTopupStatus } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -35,6 +35,8 @@ interface TopupListRow {
   telegramUsername: string | null;
   packageLabel: string | null;
   packageVolumeBytes: string | number | null;
+  resellerAccountId: string | null;
+  resellerDisplayName: string | null;
 }
 
 const LIST_SELECT = `
@@ -55,10 +57,13 @@ const LIST_SELECT = `
     ca.display_name AS "customerDisplayName",
     ca.telegram_username AS "telegramUsername",
     vp.name AS "packageLabel",
-    vp.volume_bytes AS "packageVolumeBytes"
+    vp.volume_bytes AS "packageVolumeBytes",
+    t.reseller_account_id AS "resellerAccountId",
+    ra.display_name AS "resellerDisplayName"
   FROM telegram_topup_requests t
   LEFT JOIN customer_accounts ca ON ca.id = t.customer_account_id
   LEFT JOIN volume_packages vp ON vp.id = t.volume_package_id
+  LEFT JOIN reseller_accounts ra ON ra.id = t.reseller_account_id
 `;
 
 @Injectable()
@@ -95,6 +100,23 @@ export class TelegramTopupAdminService {
   }
 
   async approve(id: string, actor: AuthActor | undefined): Promise<AdminTelegramTopupRequest> {
+    // Phase 4 (seller-role plan): a request tagged with a seller must be
+    // approved/rejected BY THAT SELLER (via their bot chat — see
+    // billing.approveTelegramTopupViaReseller), which settles it as a real
+    // wallet-debiting sale. This path is the superadmin's FREE quota grant —
+    // approving a seller-owned request here would credit the customer without
+    // ever debiting the seller, a revenue leak. Reject belongs are unaffected
+    // (it moves no money either way).
+    const owner = await this.database.query<{ resellerAccountId: string | null }>(
+      `SELECT reseller_account_id AS "resellerAccountId" FROM telegram_topup_requests WHERE id = $1`,
+      [id],
+    );
+    if (owner.rows[0]?.resellerAccountId) {
+      throw new BadRequestException(
+        'This request belongs to a seller\'s customer — it must be approved by that seller from their Telegram bot chat, not the admin dashboard.',
+      );
+    }
+
     const reviewer = actor?.username ?? actor?.id ?? null;
     const runtime = await this.telegramConfig.getRuntimeConfig();
     const outcome = await this.database.transaction((executor) =>
@@ -312,6 +334,8 @@ export class TelegramTopupAdminService {
       reviewedBy: row.reviewedBy,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
       reviewNote: row.reviewNote,
+      resellerAccountId: row.resellerAccountId,
+      resellerDisplayName: row.resellerDisplayName,
     };
   }
 

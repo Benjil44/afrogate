@@ -2901,6 +2901,185 @@ export class BillingService {
     actor: AuthActor | undefined,
   ): Promise<AdminResellerPackageSaleResponse> {
     const currentReseller = await this.getResellerAccountRowForActor(actor);
+    return this.executeResellerPackageSale(currentReseller.id, dto, actor);
+  }
+
+  /**
+   * Reseller-id-based entry point for the exact same package-sale orchestration
+   * as `createResellerPackageSale`, for callers with no HTTP actor/session (the
+   * Telegram bot settling a seller-approved customer receipt — Phase 4 of the
+   * seller-role plan). Identical money/quota logic; the only difference is how
+   * the target reseller is identified (a plain id here vs. `actor.role` there).
+   * `actor` may be omitted — it is used only for the audit trail.
+   */
+  async createResellerPackageSaleForReseller(
+    resellerAccountId: string,
+    dto: CreateResellerPackageSaleDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerPackageSaleResponse> {
+    return this.executeResellerPackageSale(resellerAccountId, dto, actor);
+  }
+
+  /**
+   * Seller approves a customer's card-to-card receipt from the Telegram bot
+   * (Phase 4 of the seller-role plan). Settles it as an ORDINARY reseller
+   * package sale — the seller's wallet is debited at cost, same as any other
+   * seller-initiated sale — rather than a free superadmin-granted credit
+   * (that path stays `TelegramTopupAdminService.approve`, unchanged, for
+   * direct/no-seller customers). IDOR-guarded: the request must be `pending`
+   * AND already tagged with THIS seller's id (stamped at receipt-submission
+   * time from the buyer's own `reseller_account_id` — never settable by the
+   * approving call). Idempotent: `executeResellerPackageSale`'s idempotency-key
+   * handling (a real DB unique index, not just an app-level check) means a
+   * double-tap or retry can never double-debit the seller's wallet — the
+   * status flip below only happens after that succeeds, so a failed sale
+   * (e.g. insufficient wallet balance) leaves the request `pending` for retry.
+   */
+  async approveTelegramTopupViaReseller(
+    requestId: string,
+    resellerAccountId: string,
+    actor: AuthActor | undefined,
+  ): Promise<{
+    saleResult: AdminResellerPackageSaleResponse;
+    telegramChatId: string | null;
+    telegramId: string | null;
+  }> {
+    const result = await this.database.query<{
+      status: string;
+      resellerAccountId: string | null;
+      customerAccountId: string;
+      volumePackageId: string | null;
+      telegramId: string | null;
+      telegramChatId: string | null;
+    }>(
+      `
+        SELECT status, reseller_account_id AS "resellerAccountId",
+               customer_account_id AS "customerAccountId",
+               volume_package_id AS "volumePackageId",
+               telegram_id AS "telegramId", telegram_chat_id AS "telegramChatId"
+        FROM telegram_topup_requests
+        WHERE id = $1
+      `,
+      [requestId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Top-up request not found');
+    if (row.resellerAccountId !== resellerAccountId) {
+      throw new ForbiddenException('This top-up request does not belong to your account');
+    }
+    if (row.status !== 'pending') {
+      throw new ConflictException('Only a pending top-up request can be approved');
+    }
+    if (!row.volumePackageId) throw new BadRequestException('Top-up request has no volume package');
+
+    const saleResult = await this.executeResellerPackageSale(
+      resellerAccountId,
+      { volumePackageId: row.volumePackageId, customerAccountId: row.customerAccountId, idempotencyKey: `telegram_topup:${requestId}` },
+      actor,
+    );
+
+    await this.database.query(
+      `UPDATE telegram_topup_requests SET status = 'approved', reviewed_by = $2, reviewed_at = now() WHERE id = $1 AND status = 'pending'`,
+      [requestId, actor?.id ?? `reseller:${resellerAccountId}`],
+    );
+
+    await this.audit.record(actor, 'telegram.topup.approve_via_reseller', 'telegram_topup_request', requestId, {
+      resellerAccountId,
+      customerAccountId: row.customerAccountId,
+      paymentOrderId: saleResult.paymentOrder.id,
+      duplicate: saleResult.duplicate,
+    });
+
+    return { saleResult, telegramChatId: row.telegramChatId, telegramId: row.telegramId };
+  }
+
+  /**
+   * Seller rejects a customer's card-to-card receipt (Phase 4). Never moves
+   * money — a single IDOR+status-guarded UPDATE (must be `pending` AND belong
+   * to this seller), so there is no race to reason about. The buyer may
+   * resubmit (a fresh receipt photo creates a new pending request).
+   */
+  async rejectTelegramTopupViaReseller(
+    requestId: string,
+    resellerAccountId: string,
+    reason: string | null,
+    actor: AuthActor | undefined,
+  ): Promise<{ telegramChatId: string | null; telegramId: string | null }> {
+    const normalizedReason = reason?.trim() || null;
+    const result = await this.database.query<{ telegramId: string | null; telegramChatId: string | null }>(
+      `
+        UPDATE telegram_topup_requests
+           SET status = 'rejected', reviewed_by = $2, reviewed_at = now(), review_note = $3
+         WHERE id = $1 AND reseller_account_id = $4 AND status = 'pending'
+        RETURNING telegram_id AS "telegramId", telegram_chat_id AS "telegramChatId"
+      `,
+      [requestId, actor?.id ?? `reseller:${resellerAccountId}`, normalizedReason, resellerAccountId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new ConflictException('Only a pending top-up request belonging to you can be rejected');
+
+    await this.audit.record(actor, 'telegram.topup.reject_via_reseller', 'telegram_topup_request', requestId, {
+      resellerAccountId,
+      reason: normalizedReason,
+    });
+
+    return row;
+  }
+
+  /** The seller's own pending customer receipts — the bot's "🧾 Requests" list (Phase 4). */
+  async listPendingTelegramTopupsForReseller(resellerAccountId: string): Promise<
+    Array<{
+      id: string;
+      customerDisplayName: string | null;
+      packageLabel: string | null;
+      packageVolumeBytes: number | null;
+      amountMinor: number | null;
+      currency: string | null;
+      createdAt: string;
+    }>
+  > {
+    const result = await this.database.query<{
+      id: string;
+      customerDisplayName: string | null;
+      packageLabel: string | null;
+      packageVolumeBytes: string | number | null;
+      amountMinor: string | number | null;
+      currency: string | null;
+      createdAt: Date;
+    }>(
+      `
+        SELECT t.id,
+               ca.display_name AS "customerDisplayName",
+               vp.name AS "packageLabel",
+               vp.volume_bytes AS "packageVolumeBytes",
+               t.amount_minor AS "amountMinor",
+               t.currency,
+               t.created_at AS "createdAt"
+        FROM telegram_topup_requests t
+        LEFT JOIN customer_accounts ca ON ca.id = t.customer_account_id
+        LEFT JOIN volume_packages vp ON vp.id = t.volume_package_id
+        WHERE t.reseller_account_id = $1 AND t.status = 'pending'
+        ORDER BY t.created_at ASC
+        LIMIT 20
+      `,
+      [resellerAccountId],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      customerDisplayName: row.customerDisplayName,
+      packageLabel: row.packageLabel,
+      packageVolumeBytes: numberFromBigInt(row.packageVolumeBytes),
+      amountMinor: numberFromBigInt(row.amountMinor),
+      currency: row.currency,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  private async executeResellerPackageSale(
+    resellerAccountId: string,
+    dto: CreateResellerPackageSaleDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerPackageSaleResponse> {
     const requestedCustomerAccountId = normalizeNullableString(dto.customerAccountId);
     const idempotencyKey = normalizeNullableString(dto.idempotencyKey);
     try {
@@ -2909,7 +3088,7 @@ export class BillingService {
         const existingLedger = await this.getResellerWalletLedgerByIdempotencyForUpdate(executor, idempotencyKey);
         if (existingLedger) {
           if (
-            existingLedger.resellerAccountId !== currentReseller.id ||
+            existingLedger.resellerAccountId !== resellerAccountId ||
             existingLedger.entryType !== 'sale_debit' ||
             existingLedger.source !== 'client_sale' ||
             existingLedger.volumePackageId !== dto.volumePackageId ||
@@ -2923,7 +3102,7 @@ export class BillingService {
           const paymentOrder = await this.getPaymentOrderRowForUpdate(executor, existingLedger.sourceId);
           const allocation = await this.getPaymentOrderAllocationByOrderIdForUpdate(executor, paymentOrder.id);
           if (!allocation) throw new ConflictException('Reseller package sale allocation is missing');
-          const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+          const reseller = await this.getResellerAccountRowForUpdate(executor, resellerAccountId);
           const volumePackage = await this.getVolumePackageRowForUpdate(executor, dto.volumePackageId);
 
           return {
@@ -2937,7 +3116,7 @@ export class BillingService {
         }
       }
 
-      const reseller = await this.getResellerAccountRowForUpdate(executor, currentReseller.id);
+      const reseller = await this.getResellerAccountRowForUpdate(executor, resellerAccountId);
       if (reseller.status !== 'active') throw new BadRequestException('Reseller account is not active');
       const volumePackage = await this.getVolumePackageRowForUpdate(executor, dto.volumePackageId);
       if (volumePackage.status !== 'active') throw new BadRequestException('Volume package is not active');
@@ -3059,7 +3238,7 @@ export class BillingService {
         ledgerEntry: this.mapResellerWalletLedger(saleState.ledgerEntry),
         paymentOrder: await this.getPaymentOrder(saleState.paymentOrderId),
         quote: saleState.quote,
-        reseller: await this.getResellerAccount(currentReseller.id),
+        reseller: await this.getResellerAccount(resellerAccountId),
       };
     } catch (error) {
       throwConflictIfUniqueViolation(error, 'Reseller package sale already exists');
@@ -9625,6 +9804,7 @@ export class BillingService {
       referralCode: row.referralCode,
       referralCount: Number(row.referralCount ?? 0),
       expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : null,
+      resellerAccountId: row.resellerAccountId,
       resellerTelegramUsername: row.resellerTelegramUsername,
     };
   }

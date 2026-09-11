@@ -468,6 +468,8 @@ export interface TelegramBotAccountSummary {
   phone?: string | null;
   /** ISO timestamp the account expires, or null/absent = never expires. */
   expiresAt?: string | null;
+  /** The owning seller's account id, or null for a direct (no-seller) customer. */
+  resellerAccountId?: string | null;
   /** The owning seller's Telegram @username (for a "contact seller" bot button), or null when direct / seller has none set. */
   resellerTelegramUsername?: string | null;
 }
@@ -611,6 +613,9 @@ export interface AdminTelegramTopupRequest {
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   reviewNote?: string | null;
+  /** Set when this request belongs to a seller's customer — it must be approved/rejected by that seller in their own bot chat, not the admin dashboard (see BillingService.approveTelegramTopupViaReseller). */
+  resellerAccountId?: string | null;
+  resellerDisplayName?: string | null;
 }
 
 export interface AdminTelegramTopupRequestsResponse {

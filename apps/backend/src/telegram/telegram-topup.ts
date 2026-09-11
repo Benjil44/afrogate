@@ -116,6 +116,12 @@ const REQUEST_SELECT = `
  * file_id. Per docs §5, the in-progress charge lives in the per-user state
  * (telegram_users); when the receipt photo arrives the row is created here in one
  * step (there is no intermediate 'awaiting_receipt' row). Returns id + reference.
+ *
+ * `resellerAccountId` (Phase 4 of the seller-role plan): stamped from the buyer's
+ * `customer_accounts.reseller_account_id` at creation. NULL keeps the existing
+ * superadmin-approval path; non-NULL routes the request to that seller's bot
+ * chat for approve/reject, settled via a reseller wallet debit instead of a
+ * free superadmin grant.
  */
 export async function createPendingTopupInTransaction(
   executor: DatabaseQueryExecutor,
@@ -127,15 +133,17 @@ export async function createPendingTopupInTransaction(
     amountMinor: number | null;
     currency: string | null;
     receiptFileId: string;
+    resellerAccountId?: string | null;
   },
 ): Promise<{ id: string; reference: string }> {
   const result = await executor.query<{ id: string }>(
     `
       INSERT INTO telegram_topup_requests (
         customer_account_id, telegram_id, telegram_chat_id,
-        volume_package_id, amount_minor, currency, receipt_file_id, status
+        volume_package_id, amount_minor, currency, receipt_file_id, status,
+        reseller_account_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
       RETURNING id
     `,
     [
@@ -146,6 +154,7 @@ export async function createPendingTopupInTransaction(
       input.amountMinor,
       input.currency,
       input.receiptFileId,
+      input.resellerAccountId ?? null,
     ],
   );
   const id = result.rows[0].id;

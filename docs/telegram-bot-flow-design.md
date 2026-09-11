@@ -1299,3 +1299,90 @@ Three small additions to the existing customer screens, no new state:
   reseller JOIN the query already had, just one more column. New type field
   `TelegramBotAccountSummary.resellerTelegramUsername`, new copy id
   `acct.btn.contactSeller`.
+
+## Customer → Seller payment (Phase 4)
+
+The headline feature: a customer whose account belongs to a seller pays THAT
+seller's card, and the seller approves/rejects from their own bot chat — no
+dashboard needed, no superadmin in the loop. Settlement is an ORDINARY
+reseller package sale (wallet debit at cost), never a free grant.
+
+### Customer side (existing screens, minimally extended)
+
+- `resolveCardToCardInfo(account)`: when `account.resellerAccountId` is set,
+  shows that seller's `reseller_accounts.card_info` (via `getResellerAccount`)
+  instead of the platform's global `telegram_bot_settings.card_to_card_info`.
+  A seller with no card on file yields `error.cardUnset` — never silently
+  falls back to the wrong entity's card.
+- `handlePhoto` (receipt upload) is otherwise unchanged: it still calls
+  `createPendingTopupInTransaction`, now also stamping
+  `resellerAccountId: account.resellerAccountId`. When set, it additionally
+  calls `pushSellerReceiptRequest` to forward the receipt to the seller (see
+  below). The customer's own confirmation message (`buy.submitted`) is
+  identical either way.
+
+### Seller side (new)
+
+- **On submission**: `pushSellerReceiptRequest` resolves the seller's bot chat
+  (`reseller_accounts.telegram_id` → `telegram_users.chat_id`) and sends the
+  receipt photo BY TELEGRAM'S OWN `file_id` (new
+  `TelegramAlertService.sendPhotoByFileId` — a plain JSON `sendPhoto` call, no
+  re-download/re-upload of the image bytes) with a caption (customer, package,
+  amount, request #) and inline **✅ Approve** / **❌ Reject** buttons
+  (`afws:sell:req:approve:<id>` / `afws:sell:req:reject:<id>`). Best-effort:
+  a push failure never blocks the customer's already-successful submission.
+- **🧾 Requests** (`screenSellerRequests`, `afws:sell:requests`): re-sends the
+  same push for every still-`pending` request tagged to this seller, in case
+  the original push was missed (seller offline, bot restart, etc.).
+- **Approve** (`handleSellerApproveReceipt` → `billing.approveTelegramTopupViaReseller`):
+  IDOR-guarded (request must be `pending` AND already tagged with this
+  seller's id — sellers can never approve a request that isn't already
+  theirs) then settles via `executeResellerPackageSale` — the SAME
+  transaction `createResellerPackageSale` (the dashboard's endpoint) uses,
+  refactored to take a `resellerAccountId` directly instead of resolving one
+  via `actor.role`. That function's existing idempotency-key handling (a real
+  Postgres unique index on `reseller_wallet_ledger.idempotency_key`, not just
+  an app-level check) means a double-tap or retry can never double-debit the
+  seller's wallet; the topup request only flips to `'approved'` AFTER the
+  sale succeeds, so a failed sale (e.g. insufficient wallet balance) leaves it
+  `pending` for the seller to retry once topped up. On success, the customer
+  is pushed the EXISTING `notify.approved` copy (entity-agnostic wording —
+  reused verbatim, no new customer-facing copy needed for this half).
+- **Reject** (`handleSellerRejectReceipt` → `billing.rejectTelegramTopupViaReseller`):
+  a single atomic IDOR+status-guarded `UPDATE ... WHERE status='pending' AND
+  reseller_account_id=$seller`; never moves money. Customer gets the existing
+  `notify.rejected` copy.
+
+### Closed gap: the superadmin dashboard's free-grant path
+
+`TelegramTopupAdminService.approve()` (the dashboard's OWN topup-approval
+endpoint, pre-existing) had no concept of seller-owned requests — approving
+one there would have credited the customer for free WITHOUT ever debiting the
+seller, a revenue leak. It now refuses (400) any request carrying a
+`reseller_account_id`, pointing the admin at the seller's own bot instead.
+`reject()` is left open (rejecting moves no money either way).
+`AdminTelegramTopupRequest` gained `resellerAccountId`/`resellerDisplayName`
+for dashboard visibility into why a given request can't be approved there.
+
+### New copy ids
+
+`seller.req.empty`, `seller.req.receiptCaption`, `seller.req.btn.approve`,
+`seller.req.btn.reject`, `seller.req.approved`, `seller.req.approveFailed`,
+`seller.req.rejected`, `seller.req.rejectFailed`. The customer-facing outcome
+messages reuse the existing `notify.approved` / `notify.rejected` /
+`notify.noReason` ids verbatim.
+
+### Backend pieces
+
+- Migration `0062_telegram_topup_reseller.sql`.
+- `telegram-topup.ts`: `createPendingTopupInTransaction` gains an optional
+  `resellerAccountId`.
+- `billing.service.ts`: `executeResellerPackageSale` (private, extracted from
+  `createResellerPackageSale`) + its two public entry points
+  (`createResellerPackageSale` for the actor-based dashboard call,
+  `createResellerPackageSaleForReseller` for a bare id); new
+  `approveTelegramTopupViaReseller` / `rejectTelegramTopupViaReseller` /
+  `listPendingTelegramTopupsForReseller`; `getPrimaryVlessEntryLinkForAccount`
+  (Phase 3, reused nowhere in Phase 4 but same module).
+- `telegram-alert.service.ts`: `sendPhotoByFileId`.
+- `telegram-topup-admin.service.ts`: the seller-owned guard on `approve()`.

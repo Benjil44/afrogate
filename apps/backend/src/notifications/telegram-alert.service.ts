@@ -240,6 +240,70 @@ export class TelegramAlertService {
   }
 
   /**
+   * Send a photo Telegram ALREADY has by its `file_id` (e.g. forwarding a
+   * customer's card-to-card receipt to their seller for approval — Phase 4 of
+   * the seller-role plan) — a plain JSON POST, no re-download/re-upload of the
+   * image bytes through our own outbound path. Supports an inline keyboard
+   * (e.g. Approve/Reject) in the same message, unlike `sendPhoto` (which only
+   * takes fresh bytes and has no reply_markup use case today).
+   */
+  async sendPhotoByFileId(
+    chatId: string | number,
+    fileId: string,
+    options: { caption?: string; botToken?: string; replyMarkup?: TelegramReplyMarkup } = {},
+  ): Promise<TelegramMessageSendResult> {
+    const runtime = await this.safeRuntimeConfig();
+    const token = options.botToken ?? runtime?.botToken;
+    const normalizedChatId = String(chatId).trim();
+    if (!token || !normalizedChatId) {
+      return { status: 'skipped', reason: 'missing_config' };
+    }
+
+    try {
+      const response = await this.outboundHttp.postJson(
+        `${this.apiBaseUrl()}/bot${token}/sendPhoto`,
+        {
+          chat_id: normalizedChatId,
+          photo: fileId,
+          ...(options.caption ? { caption: this.truncate(options.caption, 1000) } : {}),
+          ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {}),
+        },
+        { timeoutMs: this.timeoutMs() },
+      );
+
+      if (!response.ok) {
+        return {
+          status: 'failed',
+          statusCode: response.statusCode,
+          reason: `telegram_status_${response.statusCode}`,
+          durationMs: response.durationMs,
+        };
+      }
+
+      const parsed = this.parseTelegramResponse(response.body);
+      if (parsed.ok === false) {
+        return {
+          status: 'failed',
+          statusCode: response.statusCode,
+          reason: parsed.description ? this.truncate(parsed.description, 120) : 'telegram_rejected_photo',
+          durationMs: response.durationMs,
+        };
+      }
+
+      return {
+        status: 'sent',
+        statusCode: response.statusCode,
+        durationMs: response.durationMs,
+      };
+    } catch (error) {
+      return {
+        status: 'failed',
+        reason: error instanceof Error ? this.truncate(error.message, 120) : 'telegram_request_failed',
+      };
+    }
+  }
+
+  /**
    * Acknowledge an inline-keyboard button tap so Telegram stops the loading
    * spinner. Best-effort: failures are swallowed (the flow already replied).
    */
