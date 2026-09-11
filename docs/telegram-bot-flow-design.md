@@ -1243,14 +1243,12 @@ seller per Telegram id.
   (name, remaining GB, status). Backed by `getResellerByTelegramId` +
   `listCustomerAccounts({ resellerAccountId })` — both already id-based
   (no HTTP actor needed), reused as-is from the dashboard's reseller paths.
-- **➕ New customer** (`afws:sell:newcustomer`), **⚡ Charge account**
-  (`afws:sell:charge`), **🧾 Requests** (`afws:sell:requests`) — placeholder
-  ("coming soon") until their respective phases land:
-  - Charge/create: a multi-step chat flow over `createResellerSaleCustomer` /
-    `createResellerGbCharge` (Phase 5).
-  - Requests: the customer→seller card-to-card payment queue — the seller
-    approves/rejects a customer's receipt from the bot, settled via a
-    reseller wallet debit (Phase 4).
+- **➕ New customer** (`afws:sell:newcustomer`) / **⚡ Charge account**
+  (`afws:sell:charge`) — multi-step chat flows over
+  `createResellerPackageSaleForReseller` (Phase 5, see below).
+- **🧾 Requests** (`afws:sell:requests`) — the customer→seller card-to-card
+  payment queue — the seller approves/rejects a customer's receipt from the
+  bot, settled via a reseller wallet debit (Phase 4).
 
 ### Callback namespace
 
@@ -1262,14 +1260,14 @@ button from one role's screen is never misrouted into the other's dispatch.
 `seller.menu.title`, `seller.menu.btn.panel`, `seller.menu.btn.newCustomer`,
 `seller.menu.btn.charge`, `seller.menu.btn.requests`, `seller.panel.card`,
 `seller.panel.customersTitle`, `seller.panel.customerItem`,
-`seller.panel.customersEmpty`, `seller.comingSoon`, `seller.btn.backToMenu`.
+`seller.panel.customersEmpty`, `seller.btn.backToMenu`.
 
 ### Backend pieces
 
 - `apps/backend/src/telegram/telegram-bot.service.ts` — the "Seller role"
   section: `findSeller`, `handleSellerText`, `handleSellerCallback`,
-  `screenSellerMenu`, `screenSellerPanel`, `screenSellerComingSoon`,
-  `sellerMenuKeyboard`, `sellerPanelKeyboard`.
+  `screenSellerMenu`, `screenSellerPanel`, `sellerMenuKeyboard`,
+  `sellerPanelKeyboard`.
 - `billing.getResellerByTelegramId` / `requestResellerTelegramLink` /
   `approveResellerTelegramLink` / `rejectResellerTelegramLink`
   (`billing.service.ts`) + migration `0061_reseller_telegram_link.sql`.
@@ -1386,3 +1384,107 @@ messages reuse the existing `notify.approved` / `notify.rejected` /
   (Phase 3, reused nowhere in Phase 4 but same module).
 - `telegram-alert.service.ts`: `sendPhotoByFileId`.
 - `telegram-topup-admin.service.ts`: the seller-owned guard on `approve()`.
+
+## Seller create / charge actions (Phase 5)
+
+Both remaining "coming soon" buttons become real multi-step chat flows.
+Both close with the SAME orchestration Phase 4's receipt-approval uses
+(`billing.createResellerPackageSaleForReseller` → the private
+`executeResellerPackageSale`): an ordinary wallet-debit + quota-credit sale.
+The wallet debit for a given package is always `volume_packages.total_price`
+(the cost-based model — see `reseller-wallet-math.ts`), so no separate quote
+call is needed before showing a package's price; the sale call itself is the
+single source of truth and its `BadRequestException` (insufficient balance,
+inactive package, over the customer cap, …) is caught and shown as a generic
+"try again" failure screen with a retry button.
+
+Session state (`telegram_users.state`, new fields on `TelegramUserState`):
+`sellerChargeStage`/`sellerChargeCustomerId`/`sellerChargePackageId`/
+`sellerChargeIdempotencyKey` for the charge flow;
+`sellerNewCustomerStage`/`sellerNewCustomerName`/`sellerNewCustomerPackageId`/
+`sellerNewCustomerIdempotencyKey` for the new-customer flow. Both idempotency
+keys are generated once entering the `'confirm'` step and are backed by the
+real DB-unique `reseller_wallet_ledger.idempotency_key` index — a double-tap
+on "✅ Confirm", or a retry after a failed attempt, can never double-charge.
+State is cleared only AFTER the sale succeeds, so a failed attempt leaves the
+same key in place for a safe retry (same "confirm" screen, same buttons).
+
+### ⚡ Charge account
+
+1. `afws:sell:charge` → `screenSellerChargePickCustomer`: lists the seller's
+   own customers (`listCustomerAccounts({ resellerAccountId })`, reused as-is)
+   as buttons `afws:sell:charge:cust:<id>`. Empty list → `seller.charge.noCustomers`.
+2. `afws:sell:charge:cust:<id>` → stores `sellerChargeCustomerId`, shows the
+   active package list (`afws:sell:charge:pkg:<id>` buttons, reusing the
+   customer-buy screen's `buy.pkgBtn` copy — price shown is the seller's own
+   wallet cost, not the customer's retail price).
+3. `afws:sell:charge:pkg:<id>` → generates the idempotency key, stores
+   `sellerChargePackageId`, shows `seller.charge.confirm` (customer name,
+   package size, cost) with Confirm/Cancel.
+4. `afws:sell:charge:confirm` → `createResellerPackageSaleForReseller(seller.id,
+   { volumePackageId, customerAccountId, idempotencyKey }, undefined)`. IDOR is
+   guarded by the SAME downstream check Phase 4 relies on
+   (`prepareExistingResellerSaleCustomer` → `ensureCustomerAccountBelongsToReseller`)
+   — a tampered `customerAccountId` in the callback data fails cleanly inside
+   the sale call rather than needing a duplicate check here. On success: clears
+   state, shows `seller.charge.success`, and best-effort pushes
+   `notify.sellerCharged` to the customer's own chat (resolved via
+   `saleResult.customerAccount.telegramId` → `telegram_users.chat_id`).
+   `afws:sell:charge:cancel` clears state at any step.
+
+### ➕ New customer
+
+1. `afws:sell:newcustomer` → `screenSellerNewCustomerAskName`: sets
+   `sellerNewCustomerStage:'awaiting_name'` and asks for a name. This step
+   OWNS the next text message (checked at the top of `handleSellerText`,
+   mirroring how customer registration owns `regStage:'awaiting_name'`) —
+   any text while in this stage is treated as the name, not a menu tap.
+2. Name validated with the SAME rule as customer registration (`length 2-40`,
+   contains a letter, doesn't start with `/`) → `seller.newcust.pickPackage`
+   (a fresh message, since this step is reached from typed text, not a
+   callback) with `afws:sell:newcust:pkg:<id>` buttons.
+3. `afws:sell:newcust:pkg:<id>` → generates the idempotency key, shows
+   `seller.newcust.confirm` (name, package size, cost) with Confirm/Cancel.
+4. `afws:sell:newcust:confirm` → ONE `createResellerPackageSaleForReseller`
+   call with `customerAccount: { displayName: name }` instead of
+   `customerAccountId` — `executeResellerPackageSale` creates the customer
+   (`createResellerSaleCustomer`, which itself enforces
+   `assertResellerUnderCustomerCap`) AND sells the package in the SAME
+   transaction, so there is no window where a customer exists without their
+   starting quota (or vice versa). On success: a VLESS `client_configs` row is
+   provisioned as a SEPARATE, best-effort step (`createClientConfig(...,
+   { protocol: 'vless' }, undefined)` — the sale itself never rolls back if
+   this fails) and its entry link is fetched
+   (`getPrimaryVlessEntryLinkForAccount`, the same Phase 3 self-service QR
+   resolver) for display; if the link isn't ready yet, `seller.newcust.successNoConfig`
+   is shown instead, pointing the seller at "💼 My panel" to check back
+   shortly (actual provisioning happens automatically via
+   `XrayProvisioningService.reconcile()`, ~60s cycle — no manual trigger
+   needed). `afws:sell:newcust:cancel` clears state at any step.
+
+### New copy ids
+
+`seller.btn.confirm`, `seller.btn.cancel`, `seller.charge.pickCustomer`,
+`seller.charge.noCustomers`, `seller.charge.pickPackage`,
+`seller.charge.confirm`, `seller.charge.success`, `seller.charge.failed`,
+`seller.charge.cancelled`, `seller.newcust.askName`,
+`seller.newcust.pickPackage`, `seller.newcust.confirm`,
+`seller.newcust.success`, `seller.newcust.successNoConfig`,
+`seller.newcust.failed`, `seller.newcust.cancelled`, `notify.sellerCharged`.
+(`seller.comingSoon` and `screenSellerComingSoon` were removed — both
+placeholder buttons now route to real flows.)
+
+### Backend pieces
+
+- `telegram-user-store.ts`: 8 new `TelegramUserState` fields (see above).
+- `telegram-bot.service.ts`: the new "Seller role: create / charge actions"
+  section — `screenSellerChargePickCustomer`, `handleSellerChargePickCustomer`,
+  `screenSellerChargePickPackage`, `handleSellerChargePickPackage`,
+  `handleSellerChargeConfirm`, `handleSellerChargeCancel`,
+  `notifySellerCharged`, `screenSellerNewCustomerAskName`,
+  `handleSellerNewCustomerName`, `screenSellerNewCustomerPickPackage`,
+  `handleSellerNewCustomerPickPackage`, `handleSellerNewCustomerConfirm`,
+  `handleSellerNewCustomerCancel`.
+- No new billing/backend methods were needed — `createResellerPackageSaleForReseller`,
+  `createClientConfig`, and `getPrimaryVlessEntryLinkForAccount` (all
+  pre-existing, from Phases 3-4) cover the whole flow.

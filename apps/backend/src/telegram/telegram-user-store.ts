@@ -35,6 +35,24 @@ export interface TelegramUserState {
    * an account, so is never mid-registration).
    */
   connectStage?: boolean;
+  // --- Seller flows (Phase 5) — stored on the SAME telegram_id row a seller
+  // uses, but never coexist with the customer fields above: role resolution
+  // (findSeller) decides customer vs seller BEFORE state is ever read, so a
+  // given identity is always routed to exactly one side. ---
+  /** "⚡ Charge account": which step. Absent = not in this flow. */
+  sellerChargeStage?: 'pick_package' | 'confirm';
+  /** The customer chosen in step 1, held through package pick + confirm. */
+  sellerChargeCustomerId?: string;
+  /** The package chosen in step 2, held until confirm. */
+  sellerChargePackageId?: string;
+  /** Generated once entering 'confirm', so a double-tap can't double-charge (idempotency key). */
+  sellerChargeIdempotencyKey?: string;
+  /** "➕ New customer": which step. */
+  sellerNewCustomerStage?: 'awaiting_name' | 'pick_package' | 'confirm';
+  /** The name typed in step 1, held until package selection + confirm. */
+  sellerNewCustomerName?: string;
+  sellerNewCustomerPackageId?: string;
+  sellerNewCustomerIdempotencyKey?: string;
 }
 
 export interface TelegramUserRecord {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import { telegramWebhookSecretMatches } from './telegram-webhook-secret';
 import type {
@@ -1832,9 +1833,18 @@ export class TelegramBotService {
     rawText: string,
   ): Promise<TelegramBotWebhookResponse> {
     const language = await this.languageFor(ctx.fromId);
-    // Phase 1: every text message (including /start) opens the seller menu —
-    // there is no seller registration/onboarding flow to interrupt.
-    void rawText;
+
+    // "➕ New customer" (Phase 5) owns the session while awaiting the typed
+    // name — any text belongs to that step, same convention as customer
+    // registration's awaiting_name.
+    if (ctx.fromId) {
+      const user = await getTelegramUser(this.database, ctx.fromId);
+      if (user?.state?.sellerNewCustomerStage === 'awaiting_name') {
+        return this.handleSellerNewCustomerName(ctx, language, user, rawText);
+      }
+    }
+
+    // Otherwise every text message (including /start) opens the seller menu.
     return this.screenSellerMenu(ctx, language);
   }
 
@@ -1845,12 +1855,38 @@ export class TelegramBotService {
   ): Promise<TelegramBotWebhookResponse> {
     if (!data.startsWith('afws:sell:')) return this.staleButton(ctx);
     const language = await this.languageFor(ctx.fromId);
+    const user = ctx.fromId ? await getTelegramUser(this.database, ctx.fromId) : null;
 
     if (data.startsWith('afws:sell:req:approve:')) {
       return this.handleSellerApproveReceipt(ctx, language, seller, data.slice('afws:sell:req:approve:'.length));
     }
     if (data.startsWith('afws:sell:req:reject:')) {
       return this.handleSellerRejectReceipt(ctx, language, seller, data.slice('afws:sell:req:reject:'.length));
+    }
+
+    // "⚡ Charge account" (Phase 5)
+    if (data.startsWith('afws:sell:charge:cust:')) {
+      return this.handleSellerChargePickCustomer(ctx, language, seller, data.slice('afws:sell:charge:cust:'.length));
+    }
+    if (data.startsWith('afws:sell:charge:pkg:')) {
+      return this.handleSellerChargePickPackage(ctx, language, seller, user, data.slice('afws:sell:charge:pkg:'.length));
+    }
+    if (data === 'afws:sell:charge:confirm') {
+      return this.handleSellerChargeConfirm(ctx, language, seller, user);
+    }
+    if (data === 'afws:sell:charge:cancel') {
+      return this.handleSellerChargeCancel(ctx, language);
+    }
+
+    // "➕ New customer" (Phase 5)
+    if (data.startsWith('afws:sell:newcust:pkg:')) {
+      return this.handleSellerNewCustomerPickPackage(ctx, language, seller, user, data.slice('afws:sell:newcust:pkg:'.length));
+    }
+    if (data === 'afws:sell:newcust:confirm') {
+      return this.handleSellerNewCustomerConfirm(ctx, language, seller, user);
+    }
+    if (data === 'afws:sell:newcust:cancel') {
+      return this.handleSellerNewCustomerCancel(ctx, language);
     }
 
     switch (data) {
@@ -1863,8 +1899,9 @@ export class TelegramBotService {
       case 'afws:sell:requests':
         return this.screenSellerRequests(ctx, language, seller);
       case 'afws:sell:newcustomer':
+        return this.screenSellerNewCustomerAskName(ctx, language);
       case 'afws:sell:charge':
-        return this.screenSellerComingSoon(ctx, language);
+        return this.screenSellerChargePickCustomer(ctx, language, seller);
       default:
         return this.staleButton(ctx);
     }
@@ -1918,11 +1955,6 @@ export class TelegramBotService {
         status: renderTelegramCopy(this.statusCopyId(account.status), language),
       },
     );
-  }
-
-  /** Placeholder for the not-yet-built seller actions (new customer / charge / requests — later phases). */
-  private async screenSellerComingSoon(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
-    return this.screen('SELLER-SOON', ctx, language, renderTelegramCopy('seller.comingSoon', language), this.sellerMenuKeyboard(language));
   }
 
   private sellerMenuKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
@@ -2141,5 +2173,358 @@ export class TelegramBotService {
       await this.answer(ctx, renderTelegramCopy('seller.req.rejectFailed', language));
       return { ok: false, status: 'failed', reason: error instanceof Error ? error.message : 'reject_failed' };
     }
+  }
+
+  // --- Seller role: create / charge actions (Phase 5) -------------------------
+  //
+  // Both flows close with the SAME orchestration Phase 4's receipt-approval uses
+  // (createResellerPackageSaleForReseller -> executeResellerPackageSale): an
+  // ordinary wallet-debit + quota-credit sale, idempotent via a per-flow key
+  // generated once entering 'confirm', so a double-tap (or a retry after a
+  // failed attempt) can never double-charge. State is cleared only AFTER the
+  // sale succeeds, so a failed attempt (e.g. insufficient balance) leaves the
+  // same key in place for a safe retry.
+
+  private sellerRetryOrCancelKeyboard(language: TelegramLanguage, confirmData: string, cancelData: string): TelegramInlineKeyboardMarkup {
+    return { inline_keyboard: [[this.btn('seller.btn.confirm', language, confirmData), this.btn('seller.btn.cancel', language, cancelData)]] };
+  }
+
+  // --- ⚡ Charge account -------------------------------------------------------
+
+  /** Step 1 — pick which of the seller's own customers to charge. */
+  private async screenSellerChargePickCustomer(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+  ): Promise<TelegramBotWebhookResponse> {
+    const customers = await this.billing.listCustomerAccounts({ resellerAccountId: seller.id, limit: MAX_SELLER_CUSTOMERS_SHOWN });
+    if (!customers.length) {
+      return this.screen('SELLER-CHG-EMPTY', ctx, language, renderTelegramCopy('seller.charge.noCustomers', language), this.sellerMenuKeyboard(language));
+    }
+    const rows: TelegramInlineKeyboardMarkup['inline_keyboard'] = customers.map((c) => [
+      { text: c.displayName ?? c.id.slice(0, 8), callback_data: `afws:sell:charge:cust:${c.id}` },
+    ]);
+    rows.push([this.btn('seller.btn.backToMenu', language, 'afws:sell:menu')]);
+    return this.screen('SELLER-CHG-CUST', ctx, language, renderTelegramCopy('seller.charge.pickCustomer', language), { inline_keyboard: rows });
+  }
+
+  /** Step 2 — customer chosen; move to package selection. */
+  private async handleSellerChargePickCustomer(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    customerId: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    if (!ctx.fromId || !customerId) return this.screenSellerChargePickCustomer(ctx, language, seller);
+    await setTelegramUserState(this.database, {
+      telegramId: ctx.fromId,
+      chatId: ctx.chatId,
+      state: { sellerChargeStage: 'pick_package', sellerChargeCustomerId: customerId },
+    });
+    return this.screenSellerChargePickPackage(ctx, language);
+  }
+
+  private async screenSellerChargePickPackage(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    const packages = await this.listActivePackages();
+    if (!packages.length) {
+      return this.screen('SELLER-CHG-NOPKG', ctx, language, renderTelegramCopy('error.noPackages', language), this.sellerMenuKeyboard(language));
+    }
+    const rows: TelegramInlineKeyboardMarkup['inline_keyboard'] = packages.slice(0, MAX_PACKAGES_SHOWN).map((pkg) => [
+      {
+        text: renderTelegramCopy(
+          'buy.pkgBtn',
+          language,
+          {},
+          { size: formatDataSize(pkg.volumeBytes, language), price: formatAmount(pkg.totalPrice, pkg.currency, language) },
+        ),
+        callback_data: `afws:sell:charge:pkg:${pkg.id}`,
+      },
+    ]);
+    rows.push([this.btn('seller.btn.cancel', language, 'afws:sell:charge:cancel')]);
+    return this.screen('SELLER-CHG-PKG', ctx, language, renderTelegramCopy('seller.charge.pickPackage', language), { inline_keyboard: rows });
+  }
+
+  /** Step 3 — package chosen; generate the idempotency key now and show the confirm screen. */
+  private async handleSellerChargePickPackage(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    user: TelegramUserRecord | null,
+    packageId: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    const customerId = user?.state?.sellerChargeCustomerId;
+    if (!ctx.fromId || !customerId || !packageId) return this.screenSellerChargePickCustomer(ctx, language, seller);
+
+    const packages = await this.listActivePackages();
+    const pkg = packages.find((entry) => entry.id === packageId);
+    if (!pkg) return this.screenSellerChargePickPackage(ctx, language);
+
+    let customerName = customerId.slice(0, 8);
+    try {
+      const account = await this.billing.getCustomerAccount(customerId);
+      customerName = account.displayName ?? customerName;
+    } catch {
+      return this.screenSellerChargePickCustomer(ctx, language, seller);
+    }
+
+    await setTelegramUserState(this.database, {
+      telegramId: ctx.fromId,
+      chatId: ctx.chatId,
+      state: {
+        sellerChargeStage: 'confirm',
+        sellerChargeCustomerId: customerId,
+        sellerChargePackageId: packageId,
+        sellerChargeIdempotencyKey: randomUUID(),
+      },
+    });
+
+    const text = renderTelegramCopy(
+      'seller.charge.confirm',
+      language,
+      { customerName },
+      { packageSize: formatDataSize(pkg.volumeBytes, language), cost: formatAmount(pkg.totalPrice, pkg.currency, language) },
+    );
+    return this.screen(
+      'SELLER-CHG-CONFIRM',
+      ctx,
+      language,
+      text,
+      this.sellerRetryOrCancelKeyboard(language, 'afws:sell:charge:confirm', 'afws:sell:charge:cancel'),
+    );
+  }
+
+  /** Step 4 — execute the sale, then notify the customer. */
+  private async handleSellerChargeConfirm(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    user: TelegramUserRecord | null,
+  ): Promise<TelegramBotWebhookResponse> {
+    const state = user?.state;
+    if (
+      state?.sellerChargeStage !== 'confirm' ||
+      !state.sellerChargeCustomerId ||
+      !state.sellerChargePackageId ||
+      !state.sellerChargeIdempotencyKey
+    ) {
+      return this.screenSellerChargePickCustomer(ctx, language, seller);
+    }
+
+    try {
+      const saleResult = await this.billing.createResellerPackageSaleForReseller(
+        seller.id,
+        {
+          volumePackageId: state.sellerChargePackageId,
+          customerAccountId: state.sellerChargeCustomerId,
+          idempotencyKey: state.sellerChargeIdempotencyKey,
+        },
+        undefined,
+      );
+      if (ctx.fromId) await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
+
+      const customerName = saleResult.customerAccount.displayName ?? saleResult.customerAccount.id.slice(0, 8);
+      const packageSize = formatDataSize(saleResult.allocation.volumeBytesDelta, language);
+      await this.notifySellerCharged(saleResult.customerAccount.telegramId, saleResult.allocation.volumeBytesDelta);
+
+      return this.screen(
+        'SELLER-CHG-DONE',
+        ctx,
+        language,
+        renderTelegramCopy('seller.charge.success', language, { customerName }, { packageSize }),
+        this.sellerMenuKeyboard(language),
+      );
+    } catch {
+      return this.screen(
+        'SELLER-CHG-FAILED',
+        ctx,
+        language,
+        renderTelegramCopy('seller.charge.failed', language),
+        this.sellerRetryOrCancelKeyboard(language, 'afws:sell:charge:confirm', 'afws:sell:charge:cancel'),
+      );
+    }
+  }
+
+  private async handleSellerChargeCancel(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    if (ctx.fromId) await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
+    return this.screen('SELLER-CHG-CANCEL', ctx, language, renderTelegramCopy('seller.charge.cancelled', language), this.sellerMenuKeyboard(language));
+  }
+
+  /** Best-effort push of `notify.sellerCharged` to the customer's own chat (never throws). */
+  private async notifySellerCharged(customerTelegramId: string | null | undefined, volumeBytesDelta: number): Promise<void> {
+    if (!customerTelegramId) return;
+    try {
+      const customerUser = await getTelegramUser(this.database, customerTelegramId);
+      if (!customerUser?.chatId) return;
+      const customerLanguage = normalizeTelegramLanguage(customerUser.language);
+      const text = renderTelegramCopy(
+        'notify.sellerCharged',
+        customerLanguage,
+        {},
+        { packageSize: formatDataSize(volumeBytesDelta, customerLanguage) },
+      );
+      await this.pushNotification(customerUser.chatId, customerLanguage, text, this.menuOnlyKeyboard(customerLanguage));
+    } catch {
+      // best-effort — the sale already succeeded regardless
+    }
+  }
+
+  // --- ➕ New customer ---------------------------------------------------------
+
+  /** Step 1 — ask for the new customer's name. */
+  private async screenSellerNewCustomerAskName(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    if (!ctx.fromId) return this.staleButton(ctx);
+    await setTelegramUserState(this.database, {
+      telegramId: ctx.fromId,
+      chatId: ctx.chatId,
+      state: { sellerNewCustomerStage: 'awaiting_name' },
+    });
+    const keyboard: TelegramInlineKeyboardMarkup = { inline_keyboard: [[this.btn('seller.btn.cancel', language, 'afws:sell:newcust:cancel')]] };
+    return this.screen('SELLER-NEW-NAME', ctx, language, renderTelegramCopy('seller.newcust.askName', language), keyboard);
+  }
+
+  /** Step 1b — name typed; validate (same rule as customer registration) and move to package selection. */
+  private async handleSellerNewCustomerName(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    user: TelegramUserRecord,
+    rawText: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    const name = rawText.trim();
+    const valid = name.length >= 2 && name.length <= 40 && /\p{L}/u.test(name) && !name.startsWith('/');
+    if (!valid) {
+      await this.sendNew(ctx, language, renderTelegramCopy('reg.nameInvalid', language));
+      return this.screenSellerNewCustomerAskName(ctx, language);
+    }
+    await this.mergeState(ctx, user, { sellerNewCustomerStage: 'pick_package', sellerNewCustomerName: name });
+    return this.screenSellerNewCustomerPickPackage(ctx, language);
+  }
+
+  private async screenSellerNewCustomerPickPackage(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    const packages = await this.listActivePackages();
+    if (!packages.length) {
+      return this.sendNew(ctx, language, renderTelegramCopy('error.noPackages', language), this.sellerMenuKeyboard(language));
+    }
+    const rows: TelegramInlineKeyboardMarkup['inline_keyboard'] = packages.slice(0, MAX_PACKAGES_SHOWN).map((pkg) => [
+      {
+        text: renderTelegramCopy(
+          'buy.pkgBtn',
+          language,
+          {},
+          { size: formatDataSize(pkg.volumeBytes, language), price: formatAmount(pkg.totalPrice, pkg.currency, language) },
+        ),
+        callback_data: `afws:sell:newcust:pkg:${pkg.id}`,
+      },
+    ]);
+    rows.push([this.btn('seller.btn.cancel', language, 'afws:sell:newcust:cancel')]);
+    // A fresh message (not an edit): this step is reached from a typed name, not a callback.
+    return this.sendNew(ctx, language, renderTelegramCopy('seller.newcust.pickPackage', language), { inline_keyboard: rows });
+  }
+
+  /** Step 2 — package chosen; generate the idempotency key now and show the confirm screen. */
+  private async handleSellerNewCustomerPickPackage(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    user: TelegramUserRecord | null,
+    packageId: string,
+  ): Promise<TelegramBotWebhookResponse> {
+    const name = user?.state?.sellerNewCustomerName;
+    if (!ctx.fromId || !name || !packageId) return this.screenSellerNewCustomerAskName(ctx, language);
+
+    const packages = await this.listActivePackages();
+    const pkg = packages.find((entry) => entry.id === packageId);
+    if (!pkg) return this.screenSellerNewCustomerPickPackage(ctx, language);
+
+    await setTelegramUserState(this.database, {
+      telegramId: ctx.fromId,
+      chatId: ctx.chatId,
+      state: {
+        sellerNewCustomerStage: 'confirm',
+        sellerNewCustomerName: name,
+        sellerNewCustomerPackageId: packageId,
+        sellerNewCustomerIdempotencyKey: randomUUID(),
+      },
+    });
+
+    const text = renderTelegramCopy(
+      'seller.newcust.confirm',
+      language,
+      { customerName: name },
+      { packageSize: formatDataSize(pkg.volumeBytes, language), cost: formatAmount(pkg.totalPrice, pkg.currency, language) },
+    );
+    return this.screen(
+      'SELLER-NEW-CONFIRM',
+      ctx,
+      language,
+      text,
+      this.sellerRetryOrCancelKeyboard(language, 'afws:sell:newcust:confirm', 'afws:sell:newcust:cancel'),
+    );
+  }
+
+  /** Step 3 — create the customer + sell the package (one transaction), then provision a VLESS config. */
+  private async handleSellerNewCustomerConfirm(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    seller: AdminResellerAccountSummary,
+    user: TelegramUserRecord | null,
+  ): Promise<TelegramBotWebhookResponse> {
+    const state = user?.state;
+    if (
+      state?.sellerNewCustomerStage !== 'confirm' ||
+      !state.sellerNewCustomerName ||
+      !state.sellerNewCustomerPackageId ||
+      !state.sellerNewCustomerIdempotencyKey
+    ) {
+      return this.screenSellerNewCustomerAskName(ctx, language);
+    }
+
+    try {
+      const saleResult = await this.billing.createResellerPackageSaleForReseller(
+        seller.id,
+        {
+          volumePackageId: state.sellerNewCustomerPackageId,
+          customerAccount: { displayName: state.sellerNewCustomerName },
+          idempotencyKey: state.sellerNewCustomerIdempotencyKey,
+        },
+        undefined,
+      );
+      if (ctx.fromId) await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
+
+      const customerName = saleResult.customerAccount.displayName ?? state.sellerNewCustomerName;
+      const packageSize = formatDataSize(saleResult.allocation.volumeBytesDelta, language);
+
+      let configLink: string | null = null;
+      try {
+        await this.billing.createClientConfig(saleResult.customerAccount.id, { protocol: 'vless' }, undefined);
+        const primary = await this.billing.getPrimaryVlessEntryLinkForAccount(saleResult.customerAccount.id);
+        configLink = primary?.uri ?? null;
+      } catch {
+        // the sale already succeeded — config provisioning can be retried from the dashboard
+      }
+
+      const text = configLink
+        ? renderTelegramCopy(
+            'seller.newcust.success',
+            language,
+            { customerName },
+            { packageSize, configLink: escapeHtml(configLink) },
+          )
+        : renderTelegramCopy('seller.newcust.successNoConfig', language, { customerName }, { packageSize });
+
+      return this.screen('SELLER-NEW-DONE', ctx, language, text, this.sellerMenuKeyboard(language));
+    } catch {
+      return this.screen(
+        'SELLER-NEW-FAILED',
+        ctx,
+        language,
+        renderTelegramCopy('seller.newcust.failed', language),
+        this.sellerRetryOrCancelKeyboard(language, 'afws:sell:newcust:confirm', 'afws:sell:newcust:cancel'),
+      );
+    }
+  }
+
+  private async handleSellerNewCustomerCancel(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    if (ctx.fromId) await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
+    return this.screen('SELLER-NEW-CANCEL', ctx, language, renderTelegramCopy('seller.newcust.cancelled', language), this.sellerMenuKeyboard(language));
   }
 }

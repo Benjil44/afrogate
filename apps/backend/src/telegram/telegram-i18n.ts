@@ -151,7 +151,6 @@ export type TelegramCopyId =
   | 'seller.panel.customersTitle'
   | 'seller.panel.customerItem'
   | 'seller.panel.customersEmpty'
-  | 'seller.comingSoon'
   | 'seller.btn.backToMenu'
   | 'seller.req.empty'
   | 'seller.req.receiptCaption'
@@ -160,7 +159,24 @@ export type TelegramCopyId =
   | 'seller.req.approved'
   | 'seller.req.approveFailed'
   | 'seller.req.rejected'
-  | 'seller.req.rejectFailed';
+  | 'seller.req.rejectFailed'
+  | 'seller.btn.confirm'
+  | 'seller.btn.cancel'
+  | 'seller.charge.pickCustomer'
+  | 'seller.charge.noCustomers'
+  | 'seller.charge.pickPackage'
+  | 'seller.charge.confirm'
+  | 'seller.charge.success'
+  | 'seller.charge.failed'
+  | 'seller.charge.cancelled'
+  | 'seller.newcust.askName'
+  | 'seller.newcust.pickPackage'
+  | 'seller.newcust.confirm'
+  | 'seller.newcust.success'
+  | 'seller.newcust.successNoConfig'
+  | 'seller.newcust.failed'
+  | 'seller.newcust.cancelled'
+  | 'notify.sellerCharged';
 
 type CopyEntry = { en: string; fa: string };
 
@@ -474,10 +490,6 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: '• {name} — {remaining} باقی‌مانده ({status})',
   },
   'seller.panel.customersEmpty': { en: 'You have no customers yet.', fa: 'هنوز مشتری‌ای ندارید.' },
-  'seller.comingSoon': {
-    en: '🚧 This feature is coming soon.',
-    fa: '🚧 این قابلیت به‌زودی فعال می‌شود.',
-  },
   'seller.btn.backToMenu': { en: '⬅️ Menu', fa: '⬅️ منو' },
   'seller.req.empty': { en: 'No pending requests right now.', fa: 'در حال حاضر درخواستی در انتظار نیست.' },
   'seller.req.receiptCaption': {
@@ -493,6 +505,50 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   },
   'seller.req.rejected': { en: 'Rejected — the customer has been notified.', fa: 'رد شد — به مشتری اطلاع داده شد.' },
   'seller.req.rejectFailed': { en: 'Could not reject this request — try again.', fa: 'رد این درخواست ممکن نشد — دوباره تلاش کنید.' },
+  'seller.btn.confirm': { en: '✅ Confirm', fa: '✅ تأیید' },
+  'seller.btn.cancel': { en: '❌ Cancel', fa: '❌ انصراف' },
+  'seller.charge.pickCustomer': { en: '⚡ Charge account\nPick a customer:', fa: '⚡ شارژ حساب\nیک مشتری را انتخاب کنید:' },
+  'seller.charge.noCustomers': {
+    en: 'You have no customers yet — create one first with "➕ New customer".',
+    fa: 'هنوز مشتری‌ای ندارید — اول با «➕ مشتری جدید» یکی بسازید.',
+  },
+  'seller.charge.pickPackage': { en: '⚡ Pick a package to charge:', fa: '⚡ یک بسته برای شارژ انتخاب کنید:' },
+  'seller.charge.confirm': {
+    en: '⚡ <b>Confirm charge</b>\nCustomer: {customerName}\nPackage: {packageSize}\nYour wallet will be debited: <b>{cost}</b>',
+    fa: '⚡ <b>تأیید شارژ</b>\nمشتری: {customerName}\nبسته: {packageSize}\nمبلغ کسر از کیف‌پول شما: <b>{cost}</b>',
+  },
+  'seller.charge.success': {
+    en: '✅ Done — {packageSize} added to {customerName}\'s account. The customer has been notified.',
+    fa: '✅ انجام شد — {packageSize} به حساب {customerName} اضافه شد. به مشتری اطلاع داده شد.',
+  },
+  'seller.charge.failed': {
+    en: 'Could not complete this charge (check your wallet balance) — try again.',
+    fa: 'انجام این شارژ ممکن نشد (موجودی کیف‌پول را بررسی کنید) — دوباره تلاش کنید.',
+  },
+  'seller.charge.cancelled': { en: 'Charge cancelled.', fa: 'شارژ لغو شد.' },
+  'seller.newcust.askName': { en: '➕ <b>New customer</b>\nWhat is the customer\'s name?', fa: '➕ <b>مشتری جدید</b>\nنام مشتری چیست؟' },
+  'seller.newcust.pickPackage': { en: '➕ Pick a starting package:', fa: '➕ یک بستهٔ شروع انتخاب کنید:' },
+  'seller.newcust.confirm': {
+    en: '➕ <b>Confirm new customer</b>\nName: {customerName}\nPackage: {packageSize}\nYour wallet will be debited: <b>{cost}</b>',
+    fa: '➕ <b>تأیید مشتری جدید</b>\nنام: {customerName}\nبسته: {packageSize}\nمبلغ کسر از کیف‌پول شما: <b>{cost}</b>',
+  },
+  'seller.newcust.success': {
+    en: '✅ <b>{customerName}</b> is set up with {packageSize}. Their config:\n<code>{configLink}</code>',
+    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد. کانفیگ او:\n<code>{configLink}</code>',
+  },
+  'seller.newcust.successNoConfig': {
+    en: '✅ <b>{customerName}</b> is set up with {packageSize}. Their config is being prepared — check "💼 My panel" shortly.',
+    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد. کانفیگ او در حال آماده‌سازی است — کمی بعد از «💼 پنل من» بررسی کنید.',
+  },
+  'seller.newcust.failed': {
+    en: 'Could not create this customer (check your wallet balance and customer limit) — try again.',
+    fa: 'ساخت این مشتری ممکن نشد (موجودی کیف‌پول و سقف تعداد مشتری را بررسی کنید) — دوباره تلاش کنید.',
+  },
+  'seller.newcust.cancelled': { en: 'Cancelled.', fa: 'لغو شد.' },
+  'notify.sellerCharged': {
+    en: '🎉 Your seller added <b>{packageSize}</b> to your account. Enjoy!',
+    fa: '🎉 فروشندهٔ شما <b>{packageSize}</b> به حساب شما اضافه کرد. نوش جان!',
+  },
 };
 
 /**
