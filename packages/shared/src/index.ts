@@ -466,6 +466,10 @@ export interface TelegramBotAccountSummary {
   referralCount?: number;
   /** v2: phone captured at registration (clear). */
   phone?: string | null;
+  /** ISO timestamp the account expires, or null/absent = never expires. */
+  expiresAt?: string | null;
+  /** The owning seller's Telegram @username (for a "contact seller" bot button), or null when direct / seller has none set. */
+  resellerTelegramUsername?: string | null;
 }
 
 export type TelegramBotAccountLookup =

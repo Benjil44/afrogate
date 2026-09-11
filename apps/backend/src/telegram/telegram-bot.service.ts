@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import * as QRCode from 'qrcode';
 import { telegramWebhookSecretMatches } from './telegram-webhook-secret';
 import type {
   AdminCustomerAccountSummary,
@@ -11,6 +12,7 @@ import { BillingService } from '../billing/billing.service';
 import { DatabaseService } from '../database/database.service';
 import {
   TelegramAlertService,
+  type TelegramInlineKeyboardButton,
   type TelegramInlineKeyboardMarkup,
   type TelegramReplyKeyboardMarkup,
   type TelegramReplyMarkup,
@@ -298,6 +300,8 @@ export class TelegramBotService {
         return this.screenConfigs(ctx, language);
       case 'afws:cfg:refresh':
         return this.screenConfigs(ctx, language, renderTelegramCopy('common.toast.refreshed', language));
+      case 'afws:cfg:qr':
+        return this.handleShowConfigQr(ctx, language);
       case 'afws:buy':
         return this.screenBuy(ctx, language);
       case 'afws:buy:cancel':
@@ -520,13 +524,13 @@ export class TelegramBotService {
         if (!merged) {
           return this.sendNew(ctx, language, renderTelegramCopy('connect.merged', language, { name: displayName }), this.mainMenuKeyboard(language));
         }
-        return this.sendNew(ctx, language, await this.accountCardText(merged, language), this.accountKeyboard(language));
+        return this.sendNew(ctx, language, await this.accountCardText(merged, language), this.accountKeyboard(language, merged));
       }
       case 'alreadySynced':
       case 'noMatch': {
         const copyId: TelegramCopyId = outcome.kind === 'alreadySynced' ? 'connect.alreadySynced' : 'connect.noMatch';
         await this.sendRemoveKeyboard(ctx, language, renderTelegramCopy(copyId, language));
-        return this.sendNew(ctx, language, await this.accountCardText(account, language), this.accountKeyboard(language));
+        return this.sendNew(ctx, language, await this.accountCardText(account, language), this.accountKeyboard(language, account));
       }
       case 'ownedByOther':
       case 'ambiguous': {
@@ -585,7 +589,7 @@ export class TelegramBotService {
       return this.sendNew(ctx, language, intro, this.mainMenuKeyboard(language));
     }
     const card = await this.accountCardText(account, language);
-    return this.sendNew(ctx, language, `${intro}\n\n${card}`, this.accountKeyboard(language));
+    return this.sendNew(ctx, language, `${intro}\n\n${card}`, this.accountKeyboard(language, account));
   }
 
   private async renderWelcomeRegistered(
@@ -633,7 +637,7 @@ export class TelegramBotService {
   private async screenHome(ctx: Ctx, language: TelegramLanguage, account: TelegramBotAccountSummary): Promise<TelegramBotWebhookResponse> {
     const card = await this.accountCardText(account, language);
     const text = `${renderTelegramCopy('welcome.back', language)}\n\n${card}`;
-    return this.screen('S3h', ctx, language, text, this.accountKeyboard(language));
+    return this.screen('S3h', ctx, language, text, this.accountKeyboard(language, account));
   }
 
   private async screenAccount(ctx: Ctx, language: TelegramLanguage, toast?: string): Promise<TelegramBotWebhookResponse> {
@@ -641,7 +645,7 @@ export class TelegramBotService {
     if (!account) {
       return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
     }
-    return this.screen('S3v2', ctx, language, await this.accountCardText(account, language), this.accountKeyboard(language), toast);
+    return this.screen('S3v2', ctx, language, await this.accountCardText(account, language), this.accountKeyboard(language, account), toast);
   }
 
   private async accountCardText(account: TelegramBotAccountSummary, language: TelegramLanguage): Promise<string> {
@@ -649,6 +653,11 @@ export class TelegramBotService {
     const status = renderTelegramCopy(this.statusCopyId(account.status), language);
     const used = account.usedBytes;
     const quota = account.quotaLimitBytes;
+
+    // null/absent expiresAt = never expires -> no line (most accounts).
+    const expiryLine = account.expiresAt
+      ? `\n${renderTelegramCopy('acct.expiryLine', language, {}, { expiresAt: formatShortDate(new Date(account.expiresAt), language) })}`
+      : '';
 
     let usageBlock: string;
     if (quota === null || quota === undefined) {
@@ -685,6 +694,7 @@ export class TelegramBotService {
       { name: account.displayName ?? '' },
       {
         status,
+        expiryLine,
         usageBlock,
         gemsLine,
         activeClients: formatCount(account.activeClientCount, language),
@@ -962,6 +972,7 @@ export class TelegramBotService {
     const keyboard: TelegramInlineKeyboardMarkup = {
       inline_keyboard: [
         [this.btn('common.btn.refresh', language, 'afws:cfg:refresh')],
+        ...(configs.items.length ? [[this.btn('cfg.btn.qr', language, 'afws:cfg:qr')]] : []),
         [this.btn('common.btn.menu', language, 'afws:menu')],
       ],
     };
@@ -989,6 +1000,38 @@ export class TelegramBotService {
       if (link) linked.push({ protocol: config.protocol, label: config.label, link });
     }
     return { items: linked.slice(0, MAX_CONFIGS_SHOWN), truncated: linked.length > MAX_CONFIGS_SHOWN };
+  }
+
+  /**
+   * "📷 QR code" — self-service: generates + sends the customer's OWN primary
+   * VLESS config as a QR photo, straight to the chat they're already in. Same
+   * QR generation as the admin-push path (billing.sendCustomerConfigToTelegram),
+   * just without any admin/chat-id resolution — the bot already has ctx.chatId.
+   */
+  private async handleShowConfigQr(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    const account = await this.findAccount(ctx);
+    if (!account) {
+      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+    }
+
+    const primary = await this.billing.getPrimaryVlessEntryLinkForAccount(account.id);
+    if (!primary) {
+      await this.answer(ctx, renderTelegramCopy('cfg.empty', language));
+      return this.screenConfigs(ctx, language);
+    }
+
+    await this.answer(ctx);
+    try {
+      const qrPng = await QRCode.toBuffer(primary.uri, { type: 'png', margin: 1, width: 512 });
+      const result = await this.telegram.sendPhoto(ctx.chatId, qrPng, {
+        caption: renderTelegramCopy('cfg.qrCaption', language, {}, { label: primary.label }),
+        filename: 'afrows-vless-qr.png',
+      });
+      if (result.status === 'sent') return { ok: true, status: 'sent' };
+      return { ok: false, status: 'failed', reason: result.reason };
+    } catch {
+      return { ok: false, status: 'failed', reason: 'qr_generation_failed' };
+    }
   }
 
   // --- S5 Buy / E1 / E2 -----------------------------------------------------
@@ -1390,11 +1433,20 @@ export class TelegramBotService {
     };
   }
 
-  private accountKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
+  private accountKeyboard(language: TelegramLanguage, account: TelegramBotAccountSummary): TelegramInlineKeyboardMarkup {
+    // "Contact seller" is a direct t.me link (no round trip) shown only for a
+    // customer whose seller has a Telegram @username on file; direct (no
+    // seller) or seller-without-username accounts simply don't get the row.
+    const sellerUsername = account.resellerTelegramUsername?.trim();
+    const sellerRow: TelegramInlineKeyboardButton[][] = sellerUsername
+      ? [[{ text: renderTelegramCopy('acct.btn.contactSeller', language), url: `https://t.me/${sellerUsername}` }]]
+      : [];
+
     return {
       inline_keyboard: [
         [this.btn('common.btn.refresh', language, 'afws:acct:refresh')],
         [this.btn('menu.btn.buy', language, 'afws:buy'), this.btn('menu.btn.gems', language, 'afws:gems')],
+        ...sellerRow,
         [this.btn('common.btn.menu', language, 'afws:menu')],
       ],
     };

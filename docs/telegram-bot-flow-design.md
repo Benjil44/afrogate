@@ -1275,3 +1275,27 @@ button from one role's screen is never misrouted into the other's dispatch.
   (`billing.service.ts`) + migration `0061_reseller_telegram_link.sql`.
 - No new per-user state: seller navigation is stateless like the customer
   menu (Phase 1/2 has no multi-step seller flow yet).
+
+## Customer self-service polish (Phase 3)
+
+Three small additions to the existing customer screens, no new state:
+
+- **Expiry on the account card** (S3v2/S3h): `TelegramBotAccountSummary.expiresAt`
+  (ISO, from `customer_accounts.expires_at` — already selected by
+  `customerAccountSelectSql`) renders as a new `{expiryLine}` slot in
+  `acct.cardV2`, right after status. Blank when the account never expires
+  (the common case). New copy id `acct.expiryLine` (was defined but unused
+  before this phase).
+- **"📷 QR code" on My Configs** (S4, `afws:cfg:qr`): sends the customer's own
+  primary VLESS config as a QR photo directly to their chat — self-service,
+  no admin involved. Backed by a new public wrapper,
+  `billing.getPrimaryVlessEntryLinkForAccount(accountId)`, around the same
+  `resolvePrimaryVlessEntryLink` the admin-push QR (`sendCustomerConfigToTelegram`)
+  already uses. New copy ids `cfg.btn.qr`, `cfg.qrCaption`.
+- **"💬 Contact seller"** (S3v2/S3h, `accountKeyboard`): a direct `t.me/<username>`
+  URL button (no callback round-trip) shown only when the customer's seller
+  has a Telegram `@username` on file. `customerAccountSelectSql` now also
+  selects `ra.telegram_username AS "resellerTelegramUsername"` — the same
+  reseller JOIN the query already had, just one more column. New type field
+  `TelegramBotAccountSummary.resellerTelegramUsername`, new copy id
+  `acct.btn.contactSeller`.

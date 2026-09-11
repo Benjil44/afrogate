@@ -240,6 +240,7 @@ interface CustomerAccountRow {
   id: string;
   resellerAccountId: string | null;
   resellerDisplayName: string | null;
+  resellerTelegramUsername: string | null;
   resellerArchived: boolean | null;
   displayName: string | null;
   telegramId: string | null;
@@ -3857,6 +3858,19 @@ export class BillingService {
       }
     }
     return null;
+  }
+
+  /**
+   * Public wrapper for self-service callers (the bot's "show my QR" button):
+   * the account's own primary active VLESS entry link, or null when the
+   * account has no config yet. Same resolution `sendCustomerConfigToTelegram`
+   * uses for the admin-push QR, just without the admin/chat-id plumbing.
+   */
+  async getPrimaryVlessEntryLinkForAccount(
+    accountId: string,
+  ): Promise<{ configId: string; label: string; uri: string } | null> {
+    const account = await this.getCustomerAccount(accountId);
+    return this.resolvePrimaryVlessEntryLink(account);
   }
 
   /**
@@ -8072,6 +8086,7 @@ export class BillingService {
         ca.id,
         ca.reseller_account_id AS "resellerAccountId",
         ra.display_name AS "resellerDisplayName",
+        ra.telegram_username AS "resellerTelegramUsername",
         (ra.archived_at IS NOT NULL) AS "resellerArchived",
         ca.display_name AS "displayName",
         ca.telegram_id AS "telegramId",
@@ -9609,6 +9624,8 @@ export class BillingService {
       gemsBalance: numberFromBigInt(row.gemsBalance) ?? 0,
       referralCode: row.referralCode,
       referralCount: Number(row.referralCount ?? 0),
+      expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : null,
+      resellerTelegramUsername: row.resellerTelegramUsername,
     };
   }
 

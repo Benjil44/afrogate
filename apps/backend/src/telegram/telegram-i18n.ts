@@ -52,6 +52,7 @@ export type TelegramCopyId =
   | 'acct.cardV2'
   | 'acct.gemsLine'
   | 'acct.expiryLine'
+  | 'acct.btn.contactSeller'
   | 'usage.line'
   | 'usage.zeroData'
   | 'usage.unlimited'
@@ -65,6 +66,8 @@ export type TelegramCopyId =
   | 'cfg.truncated'
   | 'cfg.empty'
   | 'cfg.btn.open'
+  | 'cfg.btn.qr'
+  | 'cfg.qrCaption'
   | 'buy.btn.open'
   | 'buy.pickPackage'
   | 'buy.pkgBtn'
@@ -195,14 +198,15 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'menu.btn.lang': { en: '🌐 Language', fa: '🌐 زبان' },
   'menu.btn.help': { en: '❓ Help', fa: '❓ راهنما' },
   'acct.cardV2': {
-    en: '👤 <b>{name}</b>\nStatus: {status}\n\n{usageBlock}\n\n{gemsLine}\n🔗 Active configs: {activeClients}/{clientCount}',
-    fa: '👤 <b>{name}</b>\nوضعیت: {status}\n\n{usageBlock}\n\n{gemsLine}\n🔗 کانفیگ‌های فعال: {activeClients} از {clientCount}',
+    en: '👤 <b>{name}</b>\nStatus: {status}{expiryLine}\n\n{usageBlock}\n\n{gemsLine}\n🔗 Active configs: {activeClients}/{clientCount}',
+    fa: '👤 <b>{name}</b>\nوضعیت: {status}{expiryLine}\n\n{usageBlock}\n\n{gemsLine}\n🔗 کانفیگ‌های فعال: {activeClients} از {clientCount}',
   },
   'acct.gemsLine': {
     en: '💎 Gems: <b>{gems}</b> (≈ {gemsGb} GB)',
     fa: '💎 جم: <b>{gems}</b> (حدود {gemsGb} گیگابایت)',
   },
   'acct.expiryLine': { en: 'Expires: {expiresAt}', fa: 'تاریخ انقضا: {expiresAt}' },
+  'acct.btn.contactSeller': { en: '💬 Contact seller', fa: '💬 تماس با فروشنده' },
   'usage.line': {
     en: '📊 <code>{bar}</code> <b>{percent}%</b> used\n{used} of {total} — <b>{remaining}</b> left',
     fa: '📊 <code>{bar}</code> <b>{percent}٪</b> مصرف شده\n{used} از {total} — <b>{remaining}</b> باقی‌مانده',
@@ -237,6 +241,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: 'هنوز کانفیگی ندارید. 🙈\nیک بستهٔ حجمی بخرید تا بلافاصله برایتان بسازیم.',
   },
   'cfg.btn.open': { en: '🔗 My Configs', fa: '🔗 کانفیگ‌های من' },
+  'cfg.btn.qr': { en: '📷 QR code', fa: '📷 کد QR' },
+  'cfg.qrCaption': { en: 'Afrows config QR — {label}', fa: 'کد QR کانفیگ افروز — {label}' },
   'buy.btn.open': { en: '🛒 Buy Data', fa: '🛒 خرید حجم' },
   'buy.pickPackage': {
     en: "🛒 <b>Buy Data</b>\nPick a package — you'll get the payment details next:",
