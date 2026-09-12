@@ -8,8 +8,27 @@
 -- per_client_limit_bytes, and used_bytes are deliberately left untouched, and
 -- immutable payment/allocation/charge audit rows are never rewritten. Only the
 -- sellable CATALOG (volume_packages) is rebased to decimal so future sales made
--- from these templates match their GB labels. Run-once (migration-tracked); the
--- exact integer-GB transform is old_bytes * 1e9 / 2^30 (e.g. 21,474,836,480 -> 20e9).
-UPDATE volume_packages
-SET volume_bytes = round(volume_bytes::numeric * 1000000000 / 1073741824)::bigint
-WHERE volume_bytes > 0;
+-- from these templates match their GB labels. The exact integer-GB transform is
+-- old_bytes * 1e9 / 2^30 (e.g. 21,474,836,480 -> 20e9).
+--
+-- RETIRED 2026-09-12 — DO NOT RE-ENABLE. The original body was an UNGUARDED
+-- `UPDATE volume_packages SET volume_bytes = round(volume_bytes * 1e9 / 2^30)`,
+-- written on the assumption (stated above as "run-once, migration-tracked")
+-- that the runner tracks applied migrations. It does NOT:
+-- apps/backend/scripts/migrate.mjs re-executes EVERY .sql file on EVERY deploy.
+-- Every other migration tolerates that because it is idempotent (IF NOT EXISTS);
+-- this one was not, so it silently shrank the whole sellable catalog by 7.4%
+-- (1000^3/1024^3) on each deploy. A "10 GB" package had decayed to 8.08 GB and a
+-- "100 GB" to 93.1 GB before it was caught — customers were being under-delivered
+-- and sellers were charged full price for it.
+--
+-- The one-time rebase it existed to perform completed on 2026-07-24. It is now a
+-- no-op: on an existing database the catalog is already decimal, and on a fresh
+-- database volume_packages is empty at this point (rows are created later through
+-- the app, which already writes decimal via quota-math BYTES_PER_GB = 1e9), so
+-- there is nothing to convert in either case.
+--
+-- Any FUTURE data-rewriting migration must be written idempotently (guard on a
+-- sentinel/marker or a condition that is false on re-run) until the runner grows
+-- a schema_migrations table.
+SELECT 1;
