@@ -1738,6 +1738,7 @@ export function BillingPage({
           paymentMethods={paymentMethods}
           paymentProviderAdapters={paymentProviderAdapters}
           packages={packages}
+          resellerMarginBps={isResellerSession ? reseller?.sellerMarginBps ?? null : null}
           settings={settings}
           t={t}
         />
@@ -2230,6 +2231,7 @@ function BillingCatalogPanel({
   paymentMethods,
   paymentProviderAdapters,
   packages,
+  resellerMarginBps,
   settings,
   t,
 }: {
@@ -2239,6 +2241,8 @@ function BillingCatalogPanel({
   paymentMethods: AdminPaymentMethodSummary[];
   paymentProviderAdapters: AdminPaymentProviderAdapterSummary[];
   packages: AdminVolumePackageSummary[];
+  /** Seller's margin in bps when a seller is viewing; null for superadmin (no resale price to show). */
+  resellerMarginBps: number | null;
   settings: AdminBillingSettingsSummary | null;
   t: DashboardStrings;
 }) {
@@ -2255,7 +2259,32 @@ function BillingCatalogPanel({
       ),
     },
     { key: 'volume', header: t.billing.volume, render: (item) => format.bytes(item.volumeBytes) },
-    { key: 'price', header: t.billing.price, render: (item) => `${format.integer(item.totalPrice)} ${format.label(item.currency)}` },
+    {
+      key: 'price',
+      // For a seller this column is their COST (what the wallet is debited), not
+      // what they charge — labelled as such so nobody resells at cost by mistake.
+      header: resellerMarginBps === null ? t.billing.price : t.billing.yourCost,
+      render: (item) => `${format.integer(item.totalPrice)} ${format.label(item.currency)}`,
+    },
+    ...(resellerMarginBps === null
+      ? []
+      : [
+          {
+            key: 'sellFor',
+            header: t.billing.sellFor,
+            render: (item: AdminVolumePackageSummary) => {
+              const sellPrice = item.totalPrice + Math.round((item.totalPrice * resellerMarginBps) / 10000);
+              return (
+                <>
+                  <strong className="block text-afro-ink">{`${format.integer(sellPrice)} ${format.label(item.currency)}`}</strong>
+                  <span className="text-[12px] text-afro-muted">
+                    {t.billing.youKeep(format.integer(sellPrice - item.totalPrice))}
+                  </span>
+                </>
+              );
+            },
+          } satisfies DataTableColumn<AdminVolumePackageSummary>,
+        ]),
     { key: 'duration', header: t.billing.duration, render: (item) => item.durationDays ? t.billing.days(format.integer(item.durationDays)) : t.billing.noExpiry },
     {
       key: 'status',
