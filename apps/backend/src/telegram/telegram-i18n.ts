@@ -176,7 +176,18 @@ export type TelegramCopyId =
   | 'seller.newcust.successNoConfig'
   | 'seller.newcust.failed'
   | 'seller.newcust.cancelled'
-  | 'notify.sellerCharged';
+  | 'notify.sellerCharged'
+  | 'admin.menu.title'
+  | 'admin.menu.btn.newUser'
+  | 'admin.btn.backToMenu'
+  | 'admin.newuser.askName'
+  | 'admin.newuser.pickPackage'
+  | 'admin.newuser.confirm'
+  | 'admin.newuser.success'
+  | 'admin.newuser.successNoConfig'
+  | 'admin.newuser.failed'
+  | 'admin.newuser.cancelled'
+  | 'admin.qrCaption';
 
 type CopyEntry = { en: string; fa: string };
 
@@ -549,6 +560,26 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     en: '🎉 Your seller added <b>{packageSize}</b> to your account. Enjoy!',
     fa: '🎉 فروشندهٔ شما <b>{packageSize}</b> به حساب شما اضافه کرد. نوش جان!',
   },
+  'admin.menu.title': { en: '🛠 <b>Admin panel</b>\nWhat would you like to do?', fa: '🛠 <b>پنل مدیریت</b>\nچه کاری می‌خواهید انجام دهید؟' },
+  'admin.menu.btn.newUser': { en: '➕ New user', fa: '➕ کاربر جدید' },
+  'admin.btn.backToMenu': { en: '⬅️ Menu', fa: '⬅️ منو' },
+  'admin.newuser.askName': { en: '➕ <b>New user</b>\nWhat name should this user have?', fa: '➕ <b>کاربر جدید</b>\nنام این کاربر چه باشد؟' },
+  'admin.newuser.pickPackage': { en: '➕ Pick the data package:', fa: '➕ بستهٔ حجم را انتخاب کنید:' },
+  'admin.newuser.confirm': {
+    en: '➕ <b>Confirm new user</b>\nName: {customerName}\nData: {packageSize}',
+    fa: '➕ <b>تأیید کاربر جدید</b>\nنام: {customerName}\nحجم: {packageSize}',
+  },
+  'admin.newuser.success': {
+    en: '✅ <b>{customerName}</b> created with {packageSize}.\n\n<code>{configLink}</code>',
+    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد.\n\n<code>{configLink}</code>',
+  },
+  'admin.newuser.successNoConfig': {
+    en: '✅ <b>{customerName}</b> created with {packageSize}. The config is still being prepared — it will be ready shortly.',
+    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد. کانفیگ در حال آماده‌سازی است — به‌زودی آماده می‌شود.',
+  },
+  'admin.newuser.failed': { en: 'Could not create this user — try again.', fa: 'ساخت این کاربر ممکن نشد — دوباره تلاش کنید.' },
+  'admin.newuser.cancelled': { en: 'Cancelled.', fa: 'لغو شد.' },
+  'admin.qrCaption': { en: 'QR — {customerName}', fa: 'کد QR — {customerName}' },
 };
 
 /**

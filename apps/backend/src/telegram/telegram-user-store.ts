@@ -53,6 +53,14 @@ export interface TelegramUserState {
   sellerNewCustomerName?: string;
   sellerNewCustomerPackageId?: string;
   sellerNewCustomerIdempotencyKey?: string;
+  // --- Superadmin flows — same mutual-exclusion reasoning as the seller block
+  // above: role resolution (findAdmin) runs BEFORE state is read, so an admin
+  // identity is never routed into the customer or seller state machines. ---
+  /** "➕ New user": which step. Absent = not in this flow. */
+  adminNewUserStage?: 'awaiting_name' | 'pick_package' | 'confirm';
+  /** The name typed in step 1, held until package selection + confirm. */
+  adminNewUserName?: string;
+  adminNewUserPackageId?: string;
 }
 
 export interface TelegramUserRecord {
