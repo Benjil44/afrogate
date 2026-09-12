@@ -190,6 +190,7 @@ import {
   RequestResellerTelegramLinkDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
+  UpdateResellerCardInfoDto,
 } from './dto/reseller.dto';
 import { PayPalPaymentService, type PayPalWebhookSignatureHeaders } from './paypal-payment.service';
 import { buildCurrentPanelImportPreview } from './current-panel-import.adapters';
@@ -2142,6 +2143,46 @@ export class BillingService {
       await this.audit.record(
         actor,
         'reseller_account.telegram_link_request',
+        'reseller_account',
+        reseller.id,
+        {},
+        executor,
+      );
+    });
+
+    return this.getResellerAccount(reseller.id);
+  }
+
+  /**
+   * Seller self-service: change ONLY the card their customers pay, leaving
+   * `telegram_link_status` untouched. Deliberately separate from
+   * `requestResellerTelegramLink`, which always re-enters 'pending' review —
+   * an approved seller rotating a card (new bank, lost card) must not lose bot
+   * access and need re-approval to do it. The card is not an identity claim
+   * (unlike phone/telegram id, which is what the superadmin actually vets), so
+   * no re-review is warranted.
+   */
+  async updateResellerCardInfo(
+    dto: UpdateResellerCardInfoDto,
+    actor: AuthActor | undefined,
+  ): Promise<AdminResellerAccountSummary> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    const cardInfo = normalizeNullableString(dto.cardInfo);
+    if (!cardInfo) throw new BadRequestException('Card number is required');
+
+    await this.database.transaction(async (executor) => {
+      await executor.query(
+        `
+          UPDATE reseller_accounts
+             SET card_info = $2,
+                 updated_at = now()
+           WHERE id = $1
+        `,
+        [reseller.id, cardInfo],
+      );
+      await this.audit.record(
+        actor,
+        'reseller_account.card_info_update',
         'reseller_account',
         reseller.id,
         {},

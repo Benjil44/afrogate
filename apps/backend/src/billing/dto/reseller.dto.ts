@@ -161,6 +161,20 @@ export class RequestResellerTelegramLinkDto {
   cardInfo!: string;
 }
 
+/**
+ * Seller self-service card update, decoupled from the Telegram-link request.
+ * Changing the card a seller's customers pay must NOT cost them bot access, so
+ * this never touches telegram_link_status (unlike RequestResellerTelegramLinkDto,
+ * which always re-enters 'pending' review).
+ */
+export class UpdateResellerCardInfoDto {
+  /** Card number (optionally "number | holder name") shown to the seller's customers. */
+  @IsString()
+  @MinLength(6)
+  @MaxLength(64)
+  cardInfo!: string;
+}
+
 export class RejectResellerTelegramLinkDto {
   @IsOptional()
   @IsString()

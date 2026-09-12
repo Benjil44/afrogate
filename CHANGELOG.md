@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.34 - 2026-09-12
+
+- **Sellers can now rotate their own card without losing bot access.** A seller's card number (the one their customers pay card-to-card) could only ever be set as part of the Telegram-link request — and that request always forces `telegram_link_status` back to `'pending'`. So an already-approved seller who changed banks or lost a card had no way to update it: the edit form is hidden once approved, and going through the link flow again would have revoked their bot access until a superadmin re-approved. New seller self-service endpoint `PATCH /admin/reseller/card-info` (`@Roles('reseller')`) updates **only** `card_info` and never touches the link status — a card is not an identity claim (phone + Telegram id are what the superadmin actually vets), so it warrants no re-review. The Reseller Dashboard's "Telegram bot access" panel now shows a standalone card editor exactly where the link form used to disappear, so it is available in the `pending`/`approved` states. Bilingual; audit-logged as `reseller_account.card_info_update`. No schema change (reuses `reseller_accounts.card_info` from migration 0061).
+
 ## 0.115.33 - 2026-09-11
 
 - **Cleanup: removed the dead `trial_quota_bytes` Telegram bot setting.** It was fully plumbed through the DB column, settings API, and dashboard ("Trial quota (GB)" field on Settings → Telegram bot), but never actually consumed anywhere — v2 self-serve registration replaced the old "instant 1 GB trial" with the gems/referral economy back when it shipped, and always creates new accounts at 0 quota regardless of this setting. Migration `0063_drop_telegram_trial_quota.sql` drops the column + its CHECK constraint; removed from the backend DTO/service, shared types, and the dashboard form/UI. No behavior change (the setting did nothing), pure dead-code removal.

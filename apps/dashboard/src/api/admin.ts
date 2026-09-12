@@ -17,6 +17,7 @@ import type {
   CreateResellerAccountRequest,
   UpdateResellerAccountRequest,
   RequestResellerTelegramLinkRequest,
+  UpdateResellerCardInfoRequest,
   RejectResellerTelegramLinkRequest,
   TopUpResellerWalletRequest,
   AdminClientConfigEntryLinkResponse,
@@ -522,6 +523,19 @@ export async function requestResellerTelegramLink(
 ): Promise<AdminResellerAccountSummary> {
   const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/telegram-link`, {
     method: 'POST',
+    headers: createSessionHeaders(sessionToken),
+    body: JSON.stringify(payload),
+  });
+  return response.json() as Promise<AdminResellerAccountSummary>;
+}
+
+/** Seller rotates their own card without re-entering Telegram-link review. */
+export async function updateResellerCardInfo(
+  sessionToken: string,
+  payload: UpdateResellerCardInfoRequest,
+): Promise<AdminResellerAccountSummary> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/card-info`, {
+    method: 'PATCH',
     headers: createSessionHeaders(sessionToken),
     body: JSON.stringify(payload),
   });

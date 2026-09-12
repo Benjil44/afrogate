@@ -116,6 +116,7 @@ import {
   RequestResellerTelegramLinkDto,
   TopUpResellerWalletDto,
   UpdateResellerAccountDto,
+  UpdateResellerCardInfoDto,
 } from './dto/reseller.dto';
 
 /** Multer-populated upload; typed locally to avoid a @types/multer dependency. */
@@ -497,6 +498,20 @@ export class BillingController {
     @Req() request: RequestWithAuth,
   ): Promise<AdminResellerAccountSummary> {
     return this.billingService.requestResellerTelegramLink(payload, request.actor);
+  }
+
+  /**
+   * Seller self-service: rotate the card their own customers pay, WITHOUT
+   * re-entering Telegram-link review (a card change is not an identity change,
+   * so it must not cost an approved seller their bot access).
+   */
+  @Patch('reseller/card-info')
+  @Roles('reseller')
+  updateResellerCardInfo(
+    @Body() payload: UpdateResellerCardInfoDto,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminResellerAccountSummary> {
+    return this.billingService.updateResellerCardInfo(payload, request.actor);
   }
 
   @Patch('reseller/customer-accounts/:id')

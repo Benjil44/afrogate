@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Coins, CreditCard, Loader2, MessageCircle, ShieldCheck, Upload, UserRound, Wallet } from 'lucide-react';
 import type { AdminCustomerAccountSummary, AdminResellerAccountSummary } from '@afrows/shared';
-import { requestResellerTelegramLink } from '../api/admin';
+import { requestResellerTelegramLink, updateResellerCardInfo } from '../api/admin';
 import {
   createResellerGbSale,
   createResellerWalletTopupRequest,
@@ -510,6 +510,30 @@ export function ResellerTelegramLinkPanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Card rotation stays available AFTER approval (the link form does not) — a
+  // new bank card must never cost a seller their bot access.
+  const [cardOnly, setCardOnly] = useState(reseller?.cardInfo ?? '');
+  const [isSavingCard, setIsSavingCard] = useState(false);
+  const [cardMessage, setCardMessage] = useState<string | null>(null);
+
+  const handleCardSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = normalizeNullableText(cardOnly);
+    if (!value) return;
+
+    setIsSavingCard(true);
+    setCardMessage(null);
+    try {
+      const updated = await updateResellerCardInfo(sessionToken, { cardInfo: value });
+      onUpdated(updated);
+      setCardMessage(s.cardInfoSaved);
+    } catch {
+      setCardMessage(s.cardInfoSaveFailed);
+    } finally {
+      setIsSavingCard(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const phoneValue = normalizeNullableText(phone);
@@ -556,6 +580,35 @@ export function ResellerTelegramLinkPanel({
             {reseller?.cardInfo ?? '--'}
           </span>
         </div>
+      ) : null}
+
+      {!canEdit ? (
+        <form className="mt-2 grid gap-2 border-t border-afro-line pt-2" onSubmit={handleCardSubmit}>
+          <label className="grid gap-1.5">
+            <span className={formLabelClass}>{s.cardInfoUpdate}</span>
+            <input
+              className={inputClass}
+              dir="ltr"
+              onChange={(event) => setCardOnly(event.target.value)}
+              placeholder={s.cardInfoHint}
+              required
+              type="text"
+              value={cardOnly}
+            />
+            <span className={mutedTextClass}>{s.cardInfoHint}</span>
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-afro-sidebar px-4 text-sm font-bold text-white hover:bg-[#1f3138] disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={isSavingCard}
+              type="submit"
+            >
+              {isSavingCard ? <Loader2 className="animate-spin" size={16} /> : <CreditCard size={16} />}
+              {isSavingCard ? t.billing.saving : s.cardInfoSave}
+            </button>
+            {cardMessage ? <span className={mutedTextClass}>{cardMessage}</span> : null}
+          </div>
+        </form>
       ) : null}
 
       {canEdit ? (

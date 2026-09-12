@@ -1291,6 +1291,16 @@ export interface RequestResellerTelegramLinkRequest {
   cardInfo: string;
 }
 
+/**
+ * Seller self-service card rotation. Separate from the Telegram-link request
+ * on purpose: changing the card never re-enters superadmin review, so an
+ * approved seller does not lose bot access just to update a card number.
+ */
+export interface UpdateResellerCardInfoRequest {
+  /** Card number, optionally "number | holder name". */
+  cardInfo: string;
+}
+
 export interface RejectResellerTelegramLinkRequest {
   reason?: string | null;
 }
