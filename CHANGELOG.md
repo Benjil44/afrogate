@@ -3,6 +3,7 @@
 ## 0.115.39 - 2026-10-04
 
 - **Customer links can carry TLS ECH so they work on Shatel.** Investigation 2026-10-04: Shatel (FTTH) freezes any TLS flow whose SNI is in the `afrows.com` zone after ~64 KB (same Cloudflare IP with SNI `www.cloudflare.com` completes), so the Germany VLESS-WS link (and any afrows.com transport, incl. XHTTP) carried 0 bytes on Shatel while working on Irancell/MCI. With Encrypted ClientHello the visible SNI becomes `cloudflare-ech.com`; measured on Shatel: 53–56 Mbps down / 18–19 Mbps up via the existing WS entry. New optional env `AFROWS_DE_ENTRY_ECH` (and `AFROWS_INBOUND_ECH` for the Ireland WS entry) adds `ech=<value>` to WS links; recommended `crypto.cloudflare.com+udp://1.1.1.1` (fetches the rotating Cloudflare ECH config; DoH is blocked on Shatel, so use a `udp://` resolver; `udp://8.8.8.8` is the fallback). Unset = links unchanged; Reality links never carry it. Clients need a recent Xray core (v2rayN reads `ech=`); older clients ignore it and behave as before.
+- **CI green again: QR codes render as images, not raw HTML.** The customer and seller VLESS QR codes were injected with `dangerouslySetInnerHTML`, which the dashboard XSS-sink guard rejects — CI has failed on every push since 2026-09-12 because of it. They now render as `<img src="data:image/svg+xml,…">` (same pattern as the WireGuard QR), so no markup is ever parsed into the page.
 
 ## 0.115.38 - 2026-10-03
 

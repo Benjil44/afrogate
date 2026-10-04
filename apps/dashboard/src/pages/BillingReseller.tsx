@@ -945,11 +945,11 @@ function ResellerUsersTable({
                     </button>
                   </div>
                   {qrOpenId === a.id ? (
-                    <div
-                      className="mx-auto h-48 w-48 rounded-md bg-white p-2 [&_svg]:h-full [&_svg]:w-full"
-                      dangerouslySetInnerHTML={{ __html: vless.qrSvg }}
+                    <img
+                      className="mx-auto h-48 w-48 rounded-md bg-white p-2"
+                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(vless.qrSvg)}`}
                       title={s.scanVless}
-                      aria-label={s.scanVless}
+                      alt={s.scanVless}
                     />
                   ) : null}
                 </div>
