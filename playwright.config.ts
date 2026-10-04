@@ -24,6 +24,10 @@ export default defineConfig({
   webServer: [
     {
       command: 'npm run dev:dashboard',
+      // Hermetic: a developer's apps/dashboard/.env.local may enable
+      // VITE_DEV_SKIP_AUTH (superadmin bypass), which ignores the mocked
+      // /api/admin/session and breaks role-scoped specs (e.g. reseller).
+      env: { VITE_DEV_SKIP_AUTH: 'false' },
       url: 'http://127.0.0.1:4000',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

@@ -299,7 +299,9 @@ test('reseller session shows scoped seller dashboard, users, and billing', async
   await expect(customerPanel).toBeVisible();
   await customerPanel.getByLabel('Display name').fill('Mobile shop customer');
   await customerPanel.getByLabel('Telegram username').fill('mobile_customer');
-  await customerPanel.getByLabel('Account quota GB').fill('50');
+  // Resellers grant quota only through wallet-debiting sales; the field is
+  // read-only for them (backend strips quota on the reseller create path).
+  await expect(customerPanel.getByLabel('Account quota GB')).toBeDisabled();
   await customerPanel.getByRole('button', { name: 'Create customer' }).click();
   await expect(page.getByText('Customer account saved.')).toBeVisible();
   await expect(page.getByRole('cell', { name: /Mobile shop customer/ })).toBeVisible();

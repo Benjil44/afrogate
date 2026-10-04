@@ -169,7 +169,7 @@ async function mockTopupApi(page: Page, state: TopupMockState): Promise<void> {
 
     if (pathname === '/api/admin/settings/telegram-bot') {
       const patchPayload = request.method() === 'PATCH'
-        ? request.postDataJSON() as { cardToCardInfo?: string | null; trialQuotaBytes?: number | null }
+        ? request.postDataJSON() as { cardToCardInfo?: string | null }
         : null;
       await fulfillJson(route, {
         telegramBot: {
@@ -192,7 +192,6 @@ async function mockTopupApi(page: Page, state: TopupMockState): Promise<void> {
           lastTestStatus: 'ok',
           lastTestedAt: fixedNow,
           outboundProxyConfigured: true,
-          trialQuotaBytes: patchPayload ? patchPayload.trialQuotaBytes ?? null : 1_000_000_000,
           updatedAt: fixedNow,
           updatedBy: 'superadmin',
           webhookSecretSource: 'database',
@@ -338,11 +337,11 @@ test('reject requires a reason before any reject call is sent', async ({ page })
   await expect(page.locator('article').filter({ hasText: 'TG-1042' })).toHaveCount(0);
 });
 
-test('settings telegram panel exposes card-to-card destination and trial quota fields', async ({ page }) => {
+test('settings telegram panel exposes card-to-card destination (trial quota feature removed)', async ({ page }) => {
   const state: TopupMockState = { approveCalls: [], rejectCalls: [], requests: createTopupRequests() };
   await openTopupsPage(page, { width: 1280, height: 800 }, 'en', state);
 
-  let patchPayload: { cardToCardInfo?: string | null; trialQuotaBytes?: number | null } | null = null;
+  let patchPayload: { cardToCardInfo?: string | null } | null = null;
   page.on('request', (request) => {
     if (request.url().endsWith('/api/admin/settings/telegram-bot') && request.method() === 'PATCH') {
       patchPayload = request.postDataJSON() as typeof patchPayload;
@@ -354,19 +353,18 @@ test('settings telegram panel exposes card-to-card destination and trial quota f
   await expect(page.getByRole('heading', { name: 'Telegram Bot Setup' })).toBeVisible();
 
   const cardField = page.getByLabel('Card-to-card destination');
-  const trialField = page.getByLabel('Trial quota (GB)');
   await expect(cardField).toHaveValue(/6037-9911-2233-4455/);
-  await expect(trialField).toHaveValue('1');
+  // Migration 0063 dropped the Telegram trial quota; the field must stay gone.
+  await expect(page.getByLabel('Trial quota (GB)')).toHaveCount(0);
   await page.screenshot({ fullPage: true, path: `${shotDir}/settings-telegram-en-1280.png` });
 
   await cardField.fill('5041-7211-9988-7766\nOmid Karimi (Bank Resalat)');
-  await trialField.fill('2');
   await page.getByRole('button', { name: 'Save Telegram settings' }).click();
 
   await expect(page.getByText('Telegram bot settings saved.')).toBeVisible();
   expect(patchPayload).not.toBeNull();
   expect(patchPayload!.cardToCardInfo).toContain('5041-7211-9988-7766');
-  expect(patchPayload!.trialQuotaBytes).toBe(2_000_000_000);
+  expect(patchPayload!).not.toHaveProperty('trialQuotaBytes');
 });
 
 test('fa settings telegram panel capture', async ({ page }) => {
@@ -377,6 +375,6 @@ test('fa settings telegram panel capture', async ({ page }) => {
   await page.locator('[data-view="settings"]').click();
   await page.getByRole('tab', { name: /تلگرام/ }).click();
   await expect(page.getByLabel('مقصد کارت‌به‌کارت')).toBeVisible();
-  await expect(page.getByLabel('سهمیه آزمایشی (گیگ)')).toBeVisible();
+  await expect(page.getByLabel('سهمیه آزمایشی (گیگ)')).toHaveCount(0);
   await page.screenshot({ fullPage: true, path: `${shotDir}/settings-telegram-fa-1280.png` });
 });

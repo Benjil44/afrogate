@@ -91,7 +91,6 @@ function telegramBotSettings(patch: Record<string, unknown> | null): Record<stri
     lastTestStatus: 'ok',
     lastTestedAt: fixedNow,
     outboundProxyConfigured: true,
-    trialQuotaBytes: 1_000_000_000,
     updatedAt: fixedNow,
     updatedBy: 'superadmin',
     webhookSecretSource: 'database',
@@ -195,6 +194,8 @@ function createState(): GemsMockState {
   return { accounts: createAccounts(), gemsCalls: [], settingsPatches: [] };
 }
 
+const editAction = { en: 'Edit', fa: 'ویرایش' } as const;
+const gemsAdjustTitle = { en: 'Adjust gems', fa: 'تنظیم جم' } as const;
 const detailExpand = { en: 'Show details and actions', fa: 'نمایش جزئیات و عملیات' } as const;
 const gemRedeemLabel = { en: 'Gems per 1 GB (redeem rate)', fa: 'جم برای هر ۱ گیگ (نرخ تبدیل)' } as const;
 const gemSignupLabel = { en: 'Referral signup bonus (gems)', fa: 'پاداش ثبت‌نام دعوتی (جم)' } as const;
@@ -222,7 +223,10 @@ test.describe('customers detail row shows bot v2 fields (phone / gems / referral
         // New bot-v2 fields surfaced in the expandable detail panel.
         await expect(page.getByText('+98 912 000 1122')).toBeVisible();
         await expect(page.getByText('HANI-4821')).toBeVisible();
-        await expect(page.getByText(language === 'fa' ? '۴۵۰' : '450', { exact: true }).first()).toBeVisible();
+        // The wallet adjuster (with the current balance) lives in Edit mode,
+        // not the read-only detail panel.
+        await page.getByRole('button', { name: editAction[language], exact: true }).first().click();
+        await expect(page.getByText(`${gemsAdjustTitle[language]} · ${language === 'fa' ? '۴۵۰' : '450'}`)).toBeVisible();
         if (language === 'fa') {
           await expect(page.locator('main[dir="rtl"]')).toBeVisible();
         }
@@ -252,6 +256,8 @@ test('adjust gems validates, confirms once, posts once, and shows the new balanc
   });
 
   await page.getByRole('button', { name: detailExpand.en }).first().click();
+  // Gems adjustment lives in the Edit panel.
+  await page.getByRole('button', { name: editAction.en, exact: true }).first().click();
   const deltaInput = page.getByPlaceholder('+/- gems, e.g. 50 or -20');
   const reasonInput = page.getByPlaceholder('Reason (audited), e.g. support credit');
 

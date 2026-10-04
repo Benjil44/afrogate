@@ -207,8 +207,8 @@ test.describe('volume packages management panel', () => {
         const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: panelTitle[language], exact: true }) }).last();
         await expect(panel.getByRole('heading', { name: panelTitle[language], exact: true })).toBeVisible();
         // Both seeded packages listed with their status and actions reachable.
-        await expect(panel.getByText('25 GB', { exact: true })).toBeVisible();
-        await expect(panel.getByText('100 GB', { exact: true })).toBeVisible();
+        await expect(panel.getByRole('cell', { name: '25 GB', exact: true })).toBeVisible();
+        await expect(panel.getByRole('cell', { name: '100 GB', exact: true })).toBeVisible();
         const firstRow = panel.locator('tbody tr').first();
         const actionButton = firstRow.getByRole('button').first();
         await expect(actionButton).toBeVisible();

@@ -432,12 +432,14 @@ test.describe('reseller per-GB pricing surfaces', () => {
     await expect(page.getByRole('heading', { name: 'Sellers' }).first()).toBeVisible();
     await expect(page.getByText('Hanie Store').first()).toBeVisible();
 
-    // Drill-down: the seller's customers with used/quota usage.
-    await page.locator('[data-seller-customers-toggle]').click();
-    const drilldown = page.locator('[data-seller-customers]');
-    await expect(drilldown.getByText('Customers of Hanie Store')).toBeVisible();
+    // Drill-down: expanding the seller row reveals its customers with
+    // remaining quota + usage (the drill-down lives in the row's detail panel).
+    await page.getByRole('button', { name: 'Expand seller details' }).first().click();
+    const drilldown = page.getByRole('cell').filter({ hasText: 'Customers of Hanie Store' });
+    await expect(drilldown.getByText('Customers of Hanie Store', { exact: true })).toBeVisible();
     await expect(drilldown.getByText('Omid Karimi')).toBeVisible();
-    await expect(drilldown.getByText(/Used \/ quota/).first()).toBeVisible();
+    await expect(drilldown.getByLabel('Remaining 30 GB')).toBeVisible();
+    await expect(drilldown.getByLabel('Remaining 2 GB')).toBeVisible();
     await page.screenshot({ fullPage: true, path: `${shotDir}/sellers-drilldown.png` });
 
     // Sign in as seller: reseller-scoped session + a clearly reversible banner.
