@@ -187,7 +187,13 @@ export type TelegramCopyId =
   | 'admin.newuser.successNoConfig'
   | 'admin.newuser.failed'
   | 'admin.newuser.cancelled'
-  | 'admin.qrCaption';
+  | 'admin.qrCaption'
+  | 'ops.village.down'
+  | 'ops.village.reminder'
+  | 'ops.village.recovered'
+  | 'ops.village.undeliveredNote'
+  | 'ops.village.reserveNone'
+  | 'ops.village.reserveSome';
 
 type CopyEntry = { en: string; fa: string };
 
@@ -580,6 +586,31 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'admin.newuser.failed': { en: 'Could not create this user — try again.', fa: 'ساخت این کاربر ممکن نشد — دوباره تلاش کنید.' },
   'admin.newuser.cancelled': { en: 'Cancelled.', fa: 'لغو شد.' },
   'admin.qrCaption': { en: 'QR — {customerName}', fa: 'کد QR — {customerName}' },
+  // Operator-only URGENT egress notices (bot admins / alert chat). {reserveLine} is raw sub-copy.
+  'ops.village.down': {
+    en: '🚨 <b>URGENT — customer egress DOWN</b>\nThe village MikroTik (carries all customer egress via Germany) is unreachable since {startedAt}.\n{reserveLine}\nCheck village power and the WireGuard tunnel now.',
+    fa: '🚨 <b>فوری — خروجی مشتریان قطع است</b>\nمیکروتیک روستا (حامل کل خروجی مشتریان از مسیر آلمان) از {startedAt} در دسترس نیست.\n{reserveLine}\nهمین حالا برق روستا و تونل WireGuard را بررسی کنید.',
+  },
+  'ops.village.reminder': {
+    en: '🚨 <b>STILL DOWN — customer egress</b>\nThe village MikroTik has been unreachable for {duration} (since {startedAt}).\n{reserveLine}',
+    fa: '🚨 <b>هنوز قطع است — خروجی مشتریان</b>\nمیکروتیک روستا {duration} است که در دسترس نیست (از {startedAt}).\n{reserveLine}',
+  },
+  'ops.village.recovered': {
+    en: '✅ <b>Customer egress restored</b>\nThe village MikroTik is reachable again after {duration} offline ({startedAt} → {resolvedAt}).',
+    fa: '✅ <b>خروجی مشتریان برقرار شد</b>\nمیکروتیک روستا پس از {duration} قطعی دوباره در دسترس است ({startedAt} → {resolvedAt}).',
+  },
+  'ops.village.undeliveredNote': {
+    en: 'ℹ️ The outage alert could not be delivered while the link was down.',
+    fa: 'ℹ️ هشدار قطعی در زمان قطع ارتباط قابل ارسال نبود.',
+  },
+  'ops.village.reserveNone': {
+    en: '⛔ No enabled reserve subscription — customers have NO egress.',
+    fa: '⛔ هیچ اشتراک رزرو فعالی وجود ندارد — مشتریان هیچ خروجی ندارند.',
+  },
+  'ops.village.reserveSome': {
+    en: '↪️ Failing over to {count} enabled reserve subscription(s).',
+    fa: '↪️ جابه‌جایی به {count} اشتراک رزرو فعال.',
+  },
 };
 
 /**

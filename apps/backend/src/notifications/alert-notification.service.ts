@@ -4,6 +4,7 @@ import type { AdminAlertSummary } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { OperationsService } from '../operations/operations.service';
 import { TelegramAlertService } from './telegram-alert.service';
+import { VILLAGE_EGRESS_ALERT_KEY } from './village-egress-alert';
 
 @Injectable()
 export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
@@ -81,6 +82,12 @@ export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
   }
 
   private shouldAttempt(alert: AdminAlertSummary): boolean {
+    // The village-egress outage has its own deduped notifier (down / reminder /
+    // recovery to the bot operators); relaying it here too would re-send it to
+    // the alert chat every cooldown for the whole outage.
+    if (alert.sourceType === VILLAGE_EGRESS_ALERT_KEY.sourceType && alert.sourceId === VILLAGE_EGRESS_ALERT_KEY.sourceId) {
+      return false;
+    }
     const lastAttempt = this.lastAttemptByAlert.get(alert.id);
     return lastAttempt === undefined || Date.now() - lastAttempt >= this.cooldownMs();
   }

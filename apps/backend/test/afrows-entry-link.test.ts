@@ -123,3 +123,29 @@ test('subscription entry order: DE omitted when flag off, Ireland stays primary'
   assert.equal(ordered.length, 1);
   assert.equal(ordered[0]?.host, '1.2.3.4'); // Ireland only
 });
+
+test('DE ws entry carries ech= when AFROWS_DE_ENTRY_ECH is set (Shatel SNI workaround)', () => {
+  const ech = 'crypto.cloudflare.com+udp://1.1.1.1';
+  const de = readAfrowsDeEntryEnv({ ...DE_ENV, AFROWS_DE_ENTRY_ECH: ech });
+  assert.equal(de?.ech, ech);
+  const uri = buildAfrowsEntryUri(de!, '00000000-0000-0000-0000-000000000001', 'DE');
+  const params = new URL(uri.replace('vless://', 'http://')).searchParams;
+  assert.equal(params.get('ech'), ech);
+  assert.equal(params.get('type'), 'ws');
+});
+
+test('ech is omitted when unset, so existing links are unchanged', () => {
+  const de = readAfrowsDeEntryEnv(DE_ENV);
+  assert.equal(de?.ech, undefined);
+  const uri = buildAfrowsEntryUri(de!, '00000000-0000-0000-0000-000000000001', 'DE');
+  assert.ok(!uri.includes('ech='));
+});
+
+test('reality links never carry ech even if set on params', () => {
+  const uri = buildAfrowsEntryUri(
+    { mode: 'reality', host: '1.2.3.4', port: 443, serverName: 'x.com', fingerprint: 'chrome', publicKey: 'P', shortId: 'S', ech: 'x' },
+    '00000000-0000-0000-0000-000000000001',
+    'R',
+  );
+  assert.ok(!uri.includes('ech='));
+});

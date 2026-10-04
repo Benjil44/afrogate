@@ -13,6 +13,10 @@ export interface AfrowsInboundParams {
   // ws:
   wsPath?: string;
   wsHost?: string;
+  /** TLS Encrypted ClientHello config source (xray `ech=`), e.g.
+   *  `crypto.cloudflare.com+udp://1.1.1.1`. Hides the afrows SNI from ISP DPI
+   *  (Shatel freezes afrows.com-SNI flows); clients without ECH ignore it. */
+  ech?: string;
   // reality:
   publicKey?: string;
   shortId?: string;
@@ -30,6 +34,7 @@ export function buildAfrowsEntryUri(
     q.set('type', 'ws');
     q.set('host', params.wsHost || params.serverName);
     q.set('path', params.wsPath || '/');
+    if (params.ech) q.set('ech', params.ech);
   } else {
     q.set('security', 'reality');
     q.set('type', 'tcp');
@@ -64,6 +69,7 @@ export function readAfrowsInboundEnv(env: Record<string, string | undefined>): A
       fingerprint,
       wsPath: env.AFROWS_INBOUND_WS_PATH?.trim() || '/',
       wsHost: env.AFROWS_INBOUND_WS_HOST?.trim() || serverName,
+      ech: env.AFROWS_INBOUND_ECH?.trim() || undefined,
     };
   }
 
@@ -141,6 +147,7 @@ export function readAfrowsDeEntryEnv(env: Record<string, string | undefined>): A
       fingerprint,
       wsPath: env.AFROWS_DE_ENTRY_WS_PATH?.trim() || '/afrowsws',
       wsHost: env.AFROWS_DE_ENTRY_WS_HOST?.trim() || serverName,
+      ech: env.AFROWS_DE_ENTRY_ECH?.trim() || undefined,
     };
   }
 

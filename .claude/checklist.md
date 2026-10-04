@@ -452,3 +452,7 @@ Sidebar is a flat list of 11 items; operator finds it confusing. Regroup by the 
 - [ ] Regenerate knowledge manifest at current HEAD when convenient (trails by docs/test-only commits).
 - [ ] Version bump + CHANGELOG entries for this session's sections (ritual not yet run).
 - [ ] D-track: live 12–14 blackout failover verification + UPS on village MikroTik/modem.
+- [x] **Urgent village-egress-down Telegram page** (0.115.38): DOWN / 6 h reminder / RECOVERED (with duration) to bot operators; restart-safe via `alerts` + `audit_logs`; retry-until-delivered without log spam.
+- [x] **Germany mgmt SSH circuit breaker** (0.115.38): exponential backoff (cap 300 s) on link failures only; argv no longer logged.
+- [ ] Deploy 0.115.38 and verify the page lands, which needs a Telegram path that doesn't go through the village. Set `allowed_admin_chat_ids` to the superadmin's numeric chat id.
+- [ ] Network: give control-plane Telegram egress a village-independent route so outage pages land *during* the outage.

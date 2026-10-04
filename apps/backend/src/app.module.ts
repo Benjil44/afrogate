@@ -33,6 +33,7 @@ import { MetricsService } from './metrics/metrics.service';
 import { PostgresMetricsRepository } from './metrics/postgres-metrics.repository';
 import { AlertNotificationService } from './notifications/alert-notification.service';
 import { TelegramAlertService } from './notifications/telegram-alert.service';
+import { VillageEgressAlertService } from './notifications/village-egress-alert.service';
 import { AuditService } from './audit/audit.service';
 import { BackupStatusService } from './backups/backup-status.service';
 import { AdminTenantBrandingController } from './branding/admin-tenant-branding.controller';
@@ -130,6 +131,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     RoutersService,
     RouterUsageSamplerService,
     VillageFailoverService,
+    VillageEgressAlertService,
     GatewayBillingService,
     GatewayBillingRunnerService,
     MikroTikClientService,

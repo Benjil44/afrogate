@@ -1,5 +1,24 @@
 # Afrows Progress
 
+## 2026-10-04
+
+### ECH in customer links for Shatel (0.115.39) + outage recovery infra
+
+- **ECH.** Shatel freezes TLS flows with an `afrows.com`-zone SNI after ~64 KB. New optional `AFROWS_DE_ENTRY_ECH` / `AFROWS_INBOUND_ECH` add `ech=` to WS links (`afrows-entry-link.ts`); 3 new tests, 13/13 pass, typecheck green. Measured on Shatel with ECH: 53–56 Mbps down.
+- **Infra done live today (not in repo code):** village ax3 factory-reset + rebuilt (LTE on ether2 primary), village WG peers re-keyed, Germany fail2ban allowlist + MaxStartups/MaxSessions drop-ins, XHTTP inbound `/afrowsx` on Germany, Germany mgmt SSH relay Afrows→Borjino→USA→Germany (`afrows-de-relay`, village fallback), website via USA `afrows-cf` + Afrows `afrows-web-tunnel` (reverse SSH via Borjino). Details in agent memory `village-outage-2026-09-12`.
+- **Remains.** Capture the live host changes under `infra/`; dashboard on Shatel needs a non-afrows.com domain (browsers can't use ECH there); XHTTP links not yet emitted by the backend.
+
+## 2026-10-03
+
+### Urgent village-egress-down Telegram page + Germany mgmt SSH backoff (0.115.38, committed with 0.115.39)
+
+- **Why.** On 2026-09-12 15:00 UTC the village WireGuard (`wg-village-de`) died, taking all customer egress (xray `via-germany`) with it. It stayed down 21 days unnoticed: `VillageFailoverService` logged "no enabled reserve subscription" every 10 min and Germany mgmt ssh failed ~16k times/day, but nobody was paged.
+- **What.** New `notifications/village-egress-alert.ts` holds the pure policy: transition, dedupe, reminder, recovery, duration format and bilingual message builder. New `notifications/village-egress-alert.service.ts` handles I/O. `VillageFailoverService.tick` still runs reserve sync on the raw probe first, unchanged. It then re-probes after 30 s if the result would flip the persisted state, and calls `observe(offline, {enabledReserveCount})`. If the village router can't be identified, `isVillageDown` now returns `null` and nothing happens, where it used to return `false`. State is persisted with no migration: the `alerts` row is the outage marker and `audit_logs` (`egress.village.alert.sent`) is the delivery log. Recipients are the bot `allowed_admin_chat_ids` plus the alert chat if alerts are enabled. Copy ids `ops.village.*` are in `telegram-i18n.ts`. `AlertNotificationService` skips the `egress`/`village` alert so the alert chat isn't sent duplicates every 5 min.
+- **Germany backoff.** New `client/germany-mgmt-backoff.ts` (`DeMgmtBackoff`, `isDeLinkFailure`), wired into `GermanyMgmtService.run()`. The ssh error log no longer includes the argv (it leaked the client_config uuid).
+- **New env.** `AFROWS_VILLAGE_ALERT_ENABLED` (default on), `AFROWS_VILLAGE_ALERT_REMINDER_MINUTES` (default 360), `AFROWS_DE_MGMT_BACKOFF_MAX_SECONDS` (default 300).
+- **Verified.** New `test/village-egress-alert.test.ts` and `test/germany-mgmt-backoff.test.ts` pass (28/28). The full backend suite matches the baseline except for the new tests. The one remaining failure is the pre-existing dashboard XSS-sink guard on the QR `dangerouslySetInnerHTML`, which was already failing before this change. Typecheck is green and `version:check` passes.
+- **Remains / deploy notes.** (1) While the village is down, the page can only land if the backend has a non-village path to api.telegram.org. Today Telegram goes over the village tunnel, so the DOWN page is queued and shows up with the recovery. A village-independent control-plane egress for Telegram, such as the reserve relay or a direct route, is a network task and isn't in this change. (2) Make sure `allowed_admin_chat_ids` holds the superadmin's numeric chat id (see the operator Telegram admin memory). (3) Not deployed, not committed.
+
 ## 2026-09-03
 
 ### VLESS QR + Telegram config delivery — backend (0.115.19, commit only)

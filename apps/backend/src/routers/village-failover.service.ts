@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 
+import { VillageEgressAlertService } from '../notifications/village-egress-alert.service';
+import { isVillageTransition } from '../notifications/village-egress-alert';
 import { OperationsService } from '../operations/operations.service';
 import { RoutersService } from './routers.service';
 
@@ -13,6 +15,12 @@ import { RoutersService } from './routers.service';
  * sees the router gone it **force-re-syncs the reserve subscriptions** so they
  * hold the provider's current servers to fail over to. Throttled + non-fatal.
  *
+ * Each check also feeds VillageEgressAlertService, which pages the bot operators
+ * (URGENT, bilingual) on online->offline, reminds while it stays down, and sends
+ * a recovery notice with the outage duration. A probe result that would flip the
+ * persisted state is re-probed once after ~30s before it is committed, so one
+ * dropped MikroTik probe cannot page anyone or send a false "recovered".
+ *
  * Config: `AFROWS_VILLAGE_FAILOVER=false` disables it; `AFROWS_VILLAGE_CHECK_MINUTES`
  * (default 10) sets the cadence; `AFROWS_VILLAGE_ROUTER_LABEL` pins which router
  * counts as the village (else role `transport` / a label containing "village").
@@ -25,10 +33,12 @@ export class VillageFailoverService implements OnModuleInit, OnApplicationShutdo
   private lastSyncAt = 0;
 
   private static readonly MIN_SYNC_GAP_MS = 8 * 60 * 1000; // don't re-sync more than ~every 8 min
+  private static readonly TRANSITION_CONFIRM_MS = 30 * 1000; // re-probe before committing a state flip
 
   constructor(
     private readonly routers: RoutersService,
     private readonly operations: OperationsService,
+    private readonly egressAlert: VillageEgressAlertService,
   ) {}
 
   onModuleInit(): void {
@@ -49,26 +59,20 @@ export class VillageFailoverService implements OnModuleInit, OnApplicationShutdo
     if (this.running) return;
     this.running = true;
     try {
-      if (!(await this.isVillageDown())) return;
+      const offline = await this.isVillageDown();
+      if (offline === null) return; // village router not identifiable -> never act or alert
 
-      const now = Date.now();
-      if (now - this.lastSyncAt < VillageFailoverService.MIN_SYNC_GAP_MS) return;
-      this.lastSyncAt = now;
+      // Failover first, unchanged: acts on the raw probe, never delayed by alerting.
+      const enabledReserveCount = offline ? await this.syncReserve() : 0;
 
-      const subs = (await this.operations.listOutboundSubscriptions()).filter((s) => s.enabled);
-      if (!subs.length) {
-        this.logger.warn('Village MikroTik offline but no enabled reserve subscription to sync');
-        return;
+      if (!this.egressAlert.isEnabled()) return;
+      if (isVillageTransition(offline, await this.egressAlert.hasOpenOutage())) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, VillageFailoverService.TRANSITION_CONFIRM_MS).unref?.(); // never hold shutdown
+        });
+        if ((await this.isVillageDown()) !== offline) return; // flapping/unknown: keep the persisted state
       }
-      this.logger.warn(`Village MikroTik offline — syncing ${subs.length} reserve subscription(s) for failover`);
-      for (const sub of subs) {
-        try {
-          await this.operations.refreshOutboundSubscription(sub.id, undefined);
-          this.logger.log(`Reserve subscription ${sub.id} re-synced (village failover)`);
-        } catch (error) {
-          this.logger.warn(`Reserve sync failed for ${sub.id}: ${error instanceof Error ? error.message : error}`);
-        }
-      }
+      await this.egressAlert.observe(offline, { enabledReserveCount });
     } catch (error) {
       this.logger.warn(`Village failover tick failed: ${error instanceof Error ? error.message : error}`);
     } finally {
@@ -76,11 +80,37 @@ export class VillageFailoverService implements OnModuleInit, OnApplicationShutdo
     }
   }
 
-  /** True when every village egress-hub router is offline (unreachable). */
-  private async isVillageDown(): Promise<boolean> {
+  /** Force-re-sync enabled reserve subscriptions (throttled). Returns how many are enabled. */
+  private async syncReserve(): Promise<number> {
+    const subs = (await this.operations.listOutboundSubscriptions()).filter((s) => s.enabled);
+    const now = Date.now();
+    if (now - this.lastSyncAt < VillageFailoverService.MIN_SYNC_GAP_MS) return subs.length;
+    this.lastSyncAt = now;
+
+    if (!subs.length) {
+      this.logger.warn('Village MikroTik offline but no enabled reserve subscription to sync');
+      return 0;
+    }
+    this.logger.warn(`Village MikroTik offline — syncing ${subs.length} reserve subscription(s) for failover`);
+    for (const sub of subs) {
+      try {
+        await this.operations.refreshOutboundSubscription(sub.id, undefined);
+        this.logger.log(`Reserve subscription ${sub.id} re-synced (village failover)`);
+      } catch (error) {
+        this.logger.warn(`Reserve sync failed for ${sub.id}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+    return subs.length;
+  }
+
+  /**
+   * True when every village egress-hub router is offline (unreachable), false
+   * when at least one answers, null when no village router can be identified.
+   */
+  private async isVillageDown(): Promise<boolean | null> {
     const { routers } = await this.routers.listRouters();
     const village = routers.filter((r) => this.isVillageRouter(r));
-    if (!village.length) return false; // couldn't identify the village router → never act
+    if (!village.length) return null; // couldn't identify the village router → never act
     for (const r of village) {
       try {
         const { status } = await this.routers.getStatus(r.id);
