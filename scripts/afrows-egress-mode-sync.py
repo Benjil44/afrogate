@@ -93,14 +93,35 @@ GEOSITE_DIRECT = {"type": "field", "domain": ["geosite:category-ir"], "outboundT
 # catch-all and work. Domestic .ir sites still resolve to Irelandian IPs (and
 # geosite:category-ir matches them by domain first, before any IP resolution), so
 # geoip:ir -> direct keeps working for genuine domestic traffic.
+# The DNS "tag" makes the xray DNS client lookups routable (the DoH/8.8.8.8 servers
+# below are foreign and unreachable on the filtered uplink): a system rule sends
+# DNS_TAG to the current foreign catch-all, so lookups ride the same working path
+# as customer traffic instead of silently falling to the first outbound.
+DNS_TAG = "dns-internal"
 DNS_TRUSTED = {"servers": ["https://1.1.1.1/dns-query", "8.8.8.8", "https://dns.google/dns-query"],
-               "queryStrategy": "UseIP"}
+               "queryStrategy": "UseIP", "tag": DNS_TAG}
 VIA_VILLAGE_OUT = {"protocol": "freedom", "tag": "via-village",
                    "streamSettings": {"sockopt": {"interface": "wg-village"}}}
-# Normal egress -> Germany: a 2nd tunnel to the village (wg-village-de over the
-# Irelandian modems) that the village routes out wg-germany. Gaming -> via-village (Starlink).
+# Legacy Germany egress: freedom bound to wg-village-de. Only correct while the
+# village MikroTik forwards that tunnel to Germany; since the 2026-10-04 village
+# rebuild it NATs out Irancell instead (customers exit in Iran), so when the CF
+# chain below is configured it is kept only as the manual fallback
+# "via-village-legacy".
 VIA_GERMANY_OUT = {"protocol": "freedom", "tag": "via-germany",
                    "streamSettings": {"sockopt": {"interface": "wg-village-de"}}}
+VIA_VILLAGE_LEGACY_OUT = dict(VIA_GERMANY_OUT, tag="via-village-legacy")
+# Village-independent Germany egress (2026-10-05): VLESS-WS-TLS to the Germany
+# afrows-xray-de through Cloudflare (de.afrows.com /afrowsws) as ONE dedicated
+# system user (email afrows-chain@afrows: ignored by the Germany cc_-only usage
+# recorder and never touched by the backend cc_-only adu/rmu). No sockopt binding
+# on purpose: the kernel route to the CF ranges is owned by afrows-cf-route (eth0
+# when the DC lets CF through, else wg-village-de, else wg-home), so the chain
+# follows whichever path currently reaches Cloudflare. Enabled only when
+# AFROWS_DE_CHAIN_UUID is set in the env file (the uuid is a credential, never in
+# the repo); unset -> legacy behavior, nothing changes.
+CHAIN_PROBE_TAG = "chain-probe"
+CHAIN_PROBE_SVC = "afrows-xray"  # engine that hosts the local chain probe inbound
+SYSTEM_INBOUND_TAGS = {"api", CHAIN_PROBE_TAG, DNS_TAG}
 # Self-healing foreign egress: probe the relay pool (socks); when it can't carry
 # traffic, send the normal foreign catch-all to via-village (owned Germany/Starlink)
 # instead of the dead pool, and flip back when the pool recovers.
@@ -138,6 +159,48 @@ def file_env(key, default=""):
     except Exception:
         pass
     return os.environ.get(key, default)
+
+
+def chain_cfg():
+    """Germany CF-chain settings from the env file, or None when not configured."""
+    uuid = file_env("AFROWS_DE_CHAIN_UUID")
+    if not uuid:
+        return None
+    host, _, port = file_env("AFROWS_CHAIN_PROBE_SOCKS", "127.0.0.1:10812").partition(":")
+    return {
+        "uuid": uuid,
+        "address": file_env("AFROWS_DE_CHAIN_ADDRESS", "172.64.34.62"),
+        "host": file_env("AFROWS_DE_CHAIN_HOST", "de.afrows.com"),
+        "path": file_env("AFROWS_DE_CHAIN_PATH", "/afrowsws"),
+        "probe_host": host or "127.0.0.1",
+        "probe_port": int(port or "10812"),
+    }
+
+
+def chain_outbound(c):
+    """The via-germany outbound for the CF chain (deterministic for a given env)."""
+    return {
+        "tag": "via-germany", "protocol": "vless",
+        "settings": {"vnext": [{"address": c["address"], "port": 443,
+                                "users": [{"id": c["uuid"], "encryption": "none", "level": 0}]}]},
+        "streamSettings": {
+            "network": "ws", "security": "tls",
+            "tlsSettings": {"serverName": c["host"], "fingerprint": "chrome", "alpn": ["http/1.1"]},
+            "wsSettings": {"path": c["path"], "host": c["host"]},
+        },
+        # Mux: every customer shares this one chain, and each new stream otherwise
+        # pays a fresh TCP+TLS+WS setup over LTE+CF (~1.3s TTFB measured vs ~0.5s
+        # muxed). UDP/443 (QUIC) is rejected so apps fall back to TCP, which this
+        # TCP-carried tunnel serves better.
+        "mux": {"enabled": True, "concurrency": 8, "xudpConcurrency": 16, "xudpProxyUDP443": "reject"},
+    }
+
+
+def chain_probe_inbound(c):
+    """Loopback-only socks inbound routed to via-germany, used solely to health-probe
+    the chain end-to-end (exit really in Germany), not just the first-hop interface."""
+    return {"tag": CHAIN_PROBE_TAG, "listen": c["probe_host"], "port": c["probe_port"],
+            "protocol": "socks", "settings": {"auth": "noauth", "udp": False}}
 
 
 def db_url():
@@ -283,6 +346,39 @@ def iface_alive(iface):
     return False
 
 
+def socks_alive(socks):
+    """True if a foreign 204 endpoint is reachable through the given local socks."""
+    for url in POOL_PROBE_URLS:
+        try:
+            r = subprocess.run(
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", "10",
+                 "--socks5-hostname", socks, url],
+                capture_output=True, text=True, timeout=14,
+            )
+            if r.stdout.strip() in ("200", "204"):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+_GERMANY_ALIVE = None
+
+
+def germany_alive():
+    """Health of the via-germany path, probed once per run. CF chain configured ->
+    a real fetch THROUGH the chain (probe inbound -> via-germany); otherwise the
+    legacy wg-village-de interface probe."""
+    global _GERMANY_ALIVE
+    if _GERMANY_ALIVE is None:
+        c = chain_cfg()
+        if c:
+            _GERMANY_ALIVE = socks_alive("%s:%d" % (c["probe_host"], c["probe_port"]))
+        else:
+            _GERMANY_ALIVE = iface_alive("wg-village-de")
+    return _GERMANY_ALIVE
+
+
 def hysteresis_cfg():
     """Env-tunable asymmetric-hysteresis + circuit-breaker config (falls back to the
     egress_state DEFAULTS). k_out preserves today's 2-strike fail-OUT exactly; only
@@ -369,7 +465,7 @@ def decide_gaming():
     village-independent relay pool (the operator's added Exit-page exits) so gaming users
     survive even a full village power loss. Persists hysteresis state."""
     village = iface_alive("wg-village")
-    germany = True if village else iface_alive("wg-village-de")  # only probe reserve when needed
+    germany = True if village else germany_alive()  # only probe reserve when needed
     pool = False if (village or germany) else pool_alive()       # last reserve: probe only when both down
     try:
         st = json.load(open(GAMING_STATE_FILE))
@@ -396,7 +492,7 @@ def decide_catchall(egress):
     if egress == "village":
         log("foreign-egress=village -> catch-all=via-village (Starlink)")
         return "via-village"
-    vg = iface_alive("wg-village-de")
+    vg = germany_alive()
     pool = False if vg else pool_alive()  # only probe the reserve when the primary is down
     try:
         st = json.load(open(STATE_FILE))
@@ -419,17 +515,23 @@ def client_inbound_tags(rules):
     # egress (either the relay pool 'proxy' or the owned 'via-village').
     for r in rules:
         if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village", "via-germany", "direct"):
+            if set(r["inboundTag"]) <= SYSTEM_INBOUND_TAGS:
+                continue  # chain probe / internal DNS rule, not the client catch-all
             return list(r["inboundTag"])
     return None
 
 
-def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village"):
+def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", system_rules=None):
     # All list members are SORTED so the desired config is deterministic: the DB
     # aggregates (string_agg) can return rows in any order run-to-run, and an
     # order-sensitive `rules == want` compare would otherwise see a phantom change
     # and restart the engine (~every 1-2 min), freezing every user. Dict equality
     # is order-independent in Python, so only these list orders matter.
     rules = [{"type": "field", "inboundTag": ["api"], "outboundTag": "api"}]
+    # System inbounds (chain probe, xray internal DNS) are matched by their own
+    # inboundTag, disjoint from the client tags, so placement cannot shadow clients.
+    for sr in (system_rules or []):
+        rules.append({"type": "field", "inboundTag": list(sr["inboundTag"]), "outboundTag": sr["outboundTag"]})
     if mode == "smart":
         rules.append(dict(GEOIP_DIRECT))
         rules.append(dict(GEOSITE_DIRECT))
@@ -494,10 +596,35 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
     # would leave the engine pinned to a dead primary path — the "all VPN gone on power
     # loss" symptom). Only ADD when missing; never overwrite an existing outbound.
     outs = cfg.setdefault("outbounds", [])
-    for spec in (VIA_VILLAGE_OUT, VIA_GERMANY_OUT, PROXY_OUT):
+    chain = chain_cfg()
+    if chain:
+        # CF chain configured: via-germany MUST be the chain (replace a legacy/stale
+        # definition in place, keeping its position), and the old village freedom
+        # stays available as via-village-legacy for manual fallback.
+        want_de = chain_outbound(chain)
+        for i, o in enumerate(outs):
+            if o.get("tag") == "via-germany" and o != want_de:
+                outs[i] = want_de
+                changed_out = True
+        specs = (VIA_VILLAGE_OUT, want_de, VIA_VILLAGE_LEGACY_OUT, PROXY_OUT)
+    else:
+        specs = (VIA_VILLAGE_OUT, VIA_GERMANY_OUT, PROXY_OUT)
+    for spec in specs:
         if not any(o.get("tag") == spec["tag"] for o in outs):
             outs.append(dict(spec))
             changed_out = True
+    system_rules = [{"inboundTag": [DNS_TAG], "outboundTag": catch_outbound}]
+    if chain and svc == CHAIN_PROBE_SVC:
+        ins = cfg.setdefault("inbounds", [])
+        want_in = chain_probe_inbound(chain)
+        cur = [i for i, x in enumerate(ins) if x.get("tag") == CHAIN_PROBE_TAG]
+        if not cur:
+            ins.append(want_in)
+            changed_out = True
+        elif ins[cur[0]] != want_in:
+            ins[cur[0]] = want_in
+            changed_out = True
+        system_rules.insert(0, {"inboundTag": [CHAIN_PROBE_TAG], "outboundTag": "via-germany"})
 
     # Drop any fixed rule (D2 pin / bypass) whose outbound does not exist — `xray -test`
     # would NOT reject a dangling outboundTag, so an unknown target must be caught here.
@@ -505,7 +632,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
     for dr in dropped_rules:
         log("%s: dropping fixed rule -> unknown outbound '%s' (create it before routing to it)" % (svc, dr.get("outboundTag")))
 
-    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound)
+    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound, system_rules)
     # Include the trusted DNS block in the change gate so an already-converged
     # config that predates the DNS fix still gets it written once, and so a config
     # that already has it does NOT get needlessly rewritten/restarted. Dict equality
@@ -605,7 +732,7 @@ def main():
     # is down. Written every run (cheap: 2 extra probes ~once/min).
     write_health(
         starlink_up=iface_alive("wg-village"),
-        germany_up=iface_alive("wg-village-de"),
+        germany_up=germany_alive(),
         catch_all=catch,
         gaming_out=gaming_out,
         mode=mode,

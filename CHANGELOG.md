@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.47 - 2026-10-05
+
+- **Server-entry customers exit in Germany again.** After the village MikroTik factory reset, `via-germany` (a freedom outbound bound to `wg-village-de`) exited from the village's Irancell LTE (5.126.234.36), so WireGuard and Ireland-entry VLESS customers got Iranian-filtered internet (YouTube blocked). `afrows-egress-mode-sync.py` now — when `AFROWS_DE_CHAIN_UUID` is set — renders `via-germany` as VLESS-WS-TLS through Cloudflare (de.afrows.com /afrowsws, mux on) to the Germany xray as a dedicated non-customer user `afrows-chain@afrows` (ignored by metering: only `cc_*@afrows` emails count). The old freedom outbound is kept as `via-village-legacy`; xray's own DNS is routed through the chain; the Germany health check fetches through a loopback-only `chain-probe` socks inbound instead of an interface check. Measured: exit 162.19.253.235 (Germany), YouTube 200, ~9–10 Mbit/s down / 6–7 up. Unset env = previous behaviour.
+
 ## 0.115.46 - 2026-10-05
 
 - **Fix: deleting a VLESS config (or archiving a customer) now really revokes it.** `deleteClientConfig` only removed the database row, and archiving an account only cut WireGuard peers; nothing removed the uuid from the xray inbounds, and the Germany exit only drops users that go over quota — so a "deleted" link kept working. New `XrayProvisioningService.revokeClientConfig` removes the user from the local inbounds and from Germany (`rmu`); config delete calls it for VLESS, and archive calls it for each of the account's VLESS configs (they are retained for restore, which re-provisions through the normal sync). Germany failures are logged as warnings.
