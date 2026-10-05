@@ -4,8 +4,8 @@ import * as http from 'node:http';
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http';
 import * as https from 'node:https';
 import * as net from 'node:net';
-import * as tls from 'node:tls';
 import { assertAllowedOutboundUrl } from './outbound-url-policy';
+import { tunnelAgent } from './tunnel-agent';
 
 export type OutboundHttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -226,8 +226,9 @@ export class OutboundHttpService {
         method: request.method,
         path: this.targetPath(target),
         headers: { ...request.headers, Host: target.host },
-        agent: false,
-        createConnection: () => (isHttps ? tls.connect({ socket, servername: target.hostname }) : socket),
+        // A real Agent bound to the tunnel socket — `agent: false` + createConnection
+        // silently dials the target directly (see tunnel-agent.ts).
+        agent: tunnelAgent(isHttps, socket, target.hostname),
       },
       (response) => this.collectResponse(response, startedAt, request.maxResponseBytes, resolve, reject),
     );
@@ -339,12 +340,7 @@ export class OutboundHttpService {
               ...request.headers,
               Host: target.host,
             },
-            agent: false,
-            createConnection: () =>
-              tls.connect({
-                socket,
-                servername: target.hostname,
-              }),
+            agent: tunnelAgent(true, socket, target.hostname),
           },
           (response) => this.collectResponse(response, startedAt, request.maxResponseBytes, resolve, reject),
         );

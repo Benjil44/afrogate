@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.42 - 2026-10-05
+
+- **Fix: outbound proxy was never actually used (Telegram bot dead).** `OutboundHttpService` opened the SOCKS5 (and HTTP CONNECT) tunnel correctly, then passed `{ agent: false, createConnection }` to `http(s).request`. With `agent: false` Node builds a fresh default Agent, which always dials via its own `createConnection` — so the tunnel sat unused and every request went straight to the target. On the Afrows box (foreign IPs filtered) every Telegram poll timed out against 149.154.x.x even with `AFROWS_OUTBOUND_PROXY_URL` set. New `outbound/tunnel-agent.ts` returns a single-use Agent bound to the tunnel socket; both proxy paths use it. Regression test `outbound-socks-proxy.test.ts` proves the request rides the tunnel (unresolvable host) and documents the old form's failure.
+
 ## 0.115.41 - 2026-10-05
 
 - **Customers table shows remaining GB.** The Used column now adds a line under the bar: "Remaining <n>" ("باقی‌مانده"), or "over quota" when exhausted. Operators answer "how many GB do I have left?" by screenshot, and a top-up is done by raising the quota (used + new GB) instead of wiping usage — lifetime usage history stays intact (e.g. used 107 GB, quota 157 GB → "Remaining 50 GB"). Display-only; existing i18n keys (`colRemaining`, `overQuota`).
