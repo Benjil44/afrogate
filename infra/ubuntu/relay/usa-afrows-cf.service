@@ -1,0 +1,13 @@
+[Unit]
+Description=Afrows Cloudflare connector (afrows.com) -> 127.0.0.1:443 -> reverse tunnel :18444 from Afrows server via Borjino
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=/bin/sh -c "iptables -t nat -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport 443 -m comment --comment afrows-cf-temp-borjino -j REDIRECT --to-ports 18444 2>/dev/null || iptables -t nat -A OUTPUT -o lo -p tcp -d 127.0.0.1 --dport 443 -m comment --comment afrows-cf-temp-borjino -j REDIRECT --to-ports 18444"
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate --edge-ip-version 4 run --token-file /etc/cloudflared/afrows.token
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

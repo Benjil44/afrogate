@@ -1,0 +1,21 @@
+[Unit]
+Description=Afrows Germany-mgmt SSH relay master (Ireland->Borjino->USA->Germany)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=afrows
+Group=afrows
+ExecStartPre=-/bin/rm -f /run/afrows/de-relay.sock
+ExecStart=/usr/bin/ssh -F /etc/afrows/de_relay_ssh_config -M -N -o ControlPersist=no 162.19.253.235
+Restart=always
+RestartSec=15
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/afrows
+ProtectHome=read-only
+PrivateTmp=yes
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Afrows website reverse tunnel: USA 127.0.0.1:18444 -> local nginx :443 (via Borjino)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=afrows
+ExecStart=/usr/bin/ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/afrows/de_relay_known_hosts -o "ProxyCommand=/usr/bin/ssh -F none -o BatchMode=yes -o IdentitiesOnly=yes -i /etc/afrows/de_relay_key -o UserKnownHostsFile=/etc/afrows/de_relay_known_hosts -W %%h:%%p afrows-relay@185.252.30.127" -i /etc/afrows/web_tunnel_key -R 127.0.0.1:18444:127.0.0.1:443 afrows-relay@93.127.140.50
+Restart=always
+RestartSec=10
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

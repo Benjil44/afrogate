@@ -1,0 +1,4 @@
+#!/bin/sh
+# Exit 0 iff the relay ControlMaster to Germany is alive (authenticated end to end).
+# -F none: never re-read ssh_config (this runs from a Match exec in it).
+exec /usr/bin/ssh -F none -o ControlPath=/run/afrows/de-relay.sock -O check 162.19.253.235 >/dev/null 2>&1

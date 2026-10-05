@@ -1,0 +1,25 @@
+# Afrows Germany-mgmt relay chain: Ireland -> Borjino -> USA -> Germany.
+# Used ONLY by afrows-de-relay.service (ssh -F) to hold one authenticated
+# ControlMaster to Germany. Relay hops accept only TCP forward to the next hop.
+Host 185.252.30.127 93.127.140.50
+  User afrows-relay
+  IdentityFile /etc/afrows/de_relay_key
+  IdentitiesOnly yes
+  UserKnownHostsFile /etc/afrows/de_relay_known_hosts
+  StrictHostKeyChecking yes
+  BatchMode yes
+  ConnectTimeout 8
+  ServerAliveInterval 15
+  ServerAliveCountMax 3
+Host 162.19.253.235
+  User root
+  ProxyJump 185.252.30.127,93.127.140.50
+  IdentityFile /opt/afrogate/.de_mgmt_key
+  IdentitiesOnly yes
+  UserKnownHostsFile /opt/afrogate/.ssh/known_hosts
+  StrictHostKeyChecking yes
+  BatchMode yes
+  ConnectTimeout 15
+  ServerAliveInterval 15
+  ServerAliveCountMax 3
+  ControlPath /run/afrows/de-relay.sock

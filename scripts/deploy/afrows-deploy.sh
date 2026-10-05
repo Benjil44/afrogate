@@ -8,6 +8,8 @@
 #
 #   bash scripts/deploy/afrows-deploy.sh            # deploy HEAD
 #   bash scripts/deploy/afrows-deploy.sh --check     # only test which paths are reachable
+#   bash scripts/deploy/afrows-deploy.sh --deps      # also reinstall node_modules (package-lock changed;
+#                                                     # staged + offline cache; live tree untouched on failure)
 #
 # SECURITY / BOUNDARIES:
 #   * No secrets, IPs, or credentials live in this file. Targets are SSH
@@ -87,7 +89,9 @@ scp "${SSH_OPTS[@]}" "$TARBALL" "$CHOSEN:$SRC_REMOTE"
 say "Running remote update (build -> migrations -> restart -> reconcilers)"
 # update-afrows.sh is the operator-local on-box script; it extracts $SRC_REMOTE
 # into $REMOTE_DIR, rebuilds, runs migrations, restarts, and copies the reconcilers.
-ssh "${SSH_OPTS[@]}" "$CHOSEN" "cd $REMOTE_DIR && bash update-afrows.sh"
+UPDATE_ARGS=""
+[ "${1:-}" = "--deps" ] && UPDATE_ARGS="--deps"
+ssh "${SSH_OPTS[@]}" "$CHOSEN" "cd $REMOTE_DIR && bash update-afrows.sh $UPDATE_ARGS"
 
 # ---- verify -------------------------------------------------------------------
 say "Verify backend health (on-box)"
