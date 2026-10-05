@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, AdminResellerAccountSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import {
   adjustCustomerGems,
@@ -1560,6 +1560,18 @@ export function CustomersPage({
         <>
           <strong className="block text-afro-ink">
             {nameOf(a)}
+            {a.telegramId ? (
+              // Linked = the customer started the bot and shared their contact, so
+              // bot pushes (config, low-data alerts) can reach them.
+              <span
+                className="ms-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 align-middle text-white"
+                title={s.telegramLinkedBadge}
+                aria-label={s.telegramLinkedBadge}
+                role="img"
+              >
+                <Send className="h-3 w-3" aria-hidden />
+              </span>
+            ) : null}
             {isArchived(a) ? (
               <span className="ms-1.5 inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-afro-muted">
                 {s.archivedBadge}

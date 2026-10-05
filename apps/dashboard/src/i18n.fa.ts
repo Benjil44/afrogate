@@ -200,6 +200,7 @@ export const fa: DashboardStrings = {
       sendingToTelegram: 'در حال ارسال…',
       telegramSent: 'به تلگرام مشتری ارسال شد',
       telegramNoLink: 'مشتری تلگرام متصلی ندارد',
+      telegramLinkedBadge: 'ربات تلگرام را استارت کرده (متصل)',
       telegramSendFailed: 'ارسال ممکن نشد — دوباره تلاش کنید',
       deleteConfig: 'حذف کانفیگ',
       deleteConfigConfirm: (label: string) => `کانفیگ «${label}» حذف شود؟ اتصال قطع می‌شود و قابل بازگشت نیست.`,

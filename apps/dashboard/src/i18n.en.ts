@@ -198,6 +198,7 @@ export const en = {
       sendingToTelegram: 'Sending…',
       telegramSent: "Sent to the customer's Telegram",
       telegramNoLink: 'Customer has no linked Telegram',
+      telegramLinkedBadge: 'Started the Telegram bot (linked)',
       telegramSendFailed: "Couldn't send — try again",
       deleteConfig: 'Delete config',
       deleteConfigConfirm: (label: string) => `Delete config "${label}"? This disconnects it and can't be undone.`,

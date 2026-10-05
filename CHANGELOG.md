@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.44 - 2026-10-05
+
+- **Customers table marks who started the Telegram bot.** A small blue Telegram badge appears next to the customer name when the account is linked to the afroWS bot (`telegramId` set — they pressed Start and shared their contact), i.e. bot pushes such as "Send to Telegram" and the low-data alerts can reach them. Tooltip/aria label in English and Persian (`telegramLinkedBadge`). Display-only; the field was already in the list payload.
+
 ## 0.115.43 - 2026-10-05
 
 - **Customer low-data Telegram alert.** Linked customers (account `telegram_id` plus a bot chat in `telegram_users`) now get an afroWS bot message when their remaining data, `quota_limit_bytes - used_bytes`, falls to `AFROWS_LOW_QUOTA_ALERT_GB` or less. The threshold is in decimal GB (1 GB = 1e9 bytes), defaults to 5 and is clamped to 1..1000. The message gives the exact amount left, formatted the way the bot formats sizes elsewhere ("4.5 GB" / "۴٫۵ گیگابایت"), and has 🛒 Buy Data and 👤 My Account buttons. Buy Data works for direct customers and seller-owned ones, using the seller's card. A second notice, "data finished, recharge to reconnect", is sent when remaining reaches 0 (the same point quota enforcement cuts the connection, `used >= quota`). Both follow the bot's push rule: the customer's chosen bot language, or Persian first then English if they never chose one. Turn it off with `AFROWS_LOW_QUOTA_ALERT_ENABLED=false`.
