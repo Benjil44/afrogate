@@ -1,5 +1,17 @@
 # Afrows Progress
 
+## 2026-10-05
+
+### Customer low-data Telegram alert (0.115.43)
+
+- **Why.** A customer asked to be told on Telegram when about 5 GB is left, so they can recharge in time.
+- **What.** Policy lives in `apps/backend/src/notifications/low-quota-alert.ts`: env resolution, the low/exhausted classification, dedupe per quota value, and the message builder. I/O lives in `low-quota-alert.service.ts`, which runs every 5 min (setInterval + unref + running guard). Copy ids `notify.lowQuota` and `notify.quotaExhausted` are in `telegram-i18n.ts`. The keyboard is Buy Data (`afws:buy`) plus My Account (`afws:acct`). Language follows the bot's push rule: the stored language, or bilingual with Persian first when the customer never picked one.
+- **Units.** remaining = `quota_limit_bytes - used_bytes`. A low notice fires at `0 < remaining <= threshold`, where the threshold is decimal GB from `AFROWS_LOW_QUOTA_ALERT_GB` (default 5, clamp 1..1000). The exhausted notice fires at `remaining <= 0`, which matches the enforcement cut at `used >= quota`. Worst-case latency is the 5 min tick plus about 60 s of metering. The alert never changes enforcement.
+- **State.** No migration. Each notice is an `audit_logs` row (`customer.low_quota.notified` / `customer.quota_exhausted.notified`, target `customer_account`, metadata `quotaLimitBytes` / `remainingBytes` / `delivered`). Each kind goes out once per (account, quota value), and a top-up raises the quota, which re-arms both. A 400/403 is recorded as `delivered:false` so it is not retried. A transient failure stops the tick and is retried next tick. Max 25 sends per tick. The exhausted notice is skipped when the account has had no activity for 24 h or more (protects the rollout).
+- **New env.** `AFROWS_LOW_QUOTA_ALERT_ENABLED` (default on) and `AFROWS_LOW_QUOTA_ALERT_GB` (default 5), documented in `.env.example` and `infra/ubuntu/afrows.env.sample`.
+- **Verified.** New `test/low-quota-alert.test.ts`: 21/21 pass. Full backend suite: 775/775 (baseline 754 plus 21). `npm run typecheck` is green. `version:check` passes.
+- **Remains.** Deploy. After deploy, confirm the requesting customer's account has `telegram_id` and a `telegram_users.chat_id`; without both they get nothing. Watch the first rollout tick, which sends a one-time low notice to every linked account that is already at 5 GB or less.
+
 ## 2026-10-04
 
 ### ECH in customer links for Shatel (0.115.39) + outage recovery infra

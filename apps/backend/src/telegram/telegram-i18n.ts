@@ -177,6 +177,8 @@ export type TelegramCopyId =
   | 'seller.newcust.failed'
   | 'seller.newcust.cancelled'
   | 'notify.sellerCharged'
+  | 'notify.lowQuota'
+  | 'notify.quotaExhausted'
   | 'admin.menu.title'
   | 'admin.menu.btn.newUser'
   | 'admin.btn.backToMenu'
@@ -565,6 +567,15 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'notify.sellerCharged': {
     en: '🎉 Your seller added <b>{packageSize}</b> to your account. Enjoy!',
     fa: '🎉 فروشندهٔ شما <b>{packageSize}</b> به حساب شما اضافه کرد. نوش جان!',
+  },
+  // Customer low-data pushes (notifications/low-quota-alert.ts). {remaining} is raw (pre-formatted size).
+  'notify.lowQuota': {
+    en: '⚠️ <b>Your data is running low</b>\nOnly <b>{remaining}</b> is left on your account.\nRecharge now with 🛒 <b>Buy Data</b> so your connection is not interrupted.',
+    fa: '⚠️ <b>حجم شما رو به اتمام است</b>\nفقط <b>{remaining}</b> از حجم حساب شما باقی مانده است.\nهمین حالا از 🛒 <b>خرید حجم</b> شارژ کنید تا اتصالتان قطع نشود.',
+  },
+  'notify.quotaExhausted': {
+    en: '⛔ <b>Your data is finished</b>\nYour account has no data left, so your connection is paused.\nRecharge with 🛒 <b>Buy Data</b> — you reconnect automatically as soon as the data is added.',
+    fa: '⛔ <b>حجم شما تمام شد</b>\nحجمی در حساب شما باقی نمانده و اتصالتان متوقف شده است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض اضافه‌شدن حجم، اتصال خودکار برقرار می‌شود.',
   },
   'admin.menu.title': { en: '🛠 <b>Admin panel</b>\nWhat would you like to do?', fa: '🛠 <b>پنل مدیریت</b>\nچه کاری می‌خواهید انجام دهید؟' },
   'admin.menu.btn.newUser': { en: '➕ New user', fa: '➕ کاربر جدید' },
