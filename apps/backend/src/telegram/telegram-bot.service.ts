@@ -49,6 +49,15 @@ import {
 import { TelegramConnectResolver, type ConnectOutcome } from './telegram-connect';
 import { createPendingTopupInTransaction, topupReference } from './telegram-topup';
 import {
+  adminCallbackAbandonsFlow,
+  adminHomeLayout,
+  CUSTOMER_MAIN_MENU_LAYOUT,
+  routeAdminCallback,
+  routeAdminText,
+  type TelegramBotCommand,
+  type TelegramMenuLayout,
+} from './telegram-admin-routing';
+import {
   getTelegramUser,
   setTelegramUserLanguage,
   setTelegramUserState,
@@ -104,6 +113,8 @@ interface Ctx {
   username?: string;
   messageId?: number;
   callbackId?: string;
+  /** Sender is a superadmin (allowed_admin_chat_ids): "menu" means the admin home. */
+  isAdmin?: boolean;
 }
 
 @Injectable()
@@ -162,7 +173,8 @@ export class TelegramBotService {
         callbackId: callback.id,
       };
       if (await this.findAdmin(ctx.fromId)) {
-        return this.guard(ctx, () => this.handleAdminCallback(ctx, callback.data));
+        const adminCtx: Ctx = { ...ctx, isAdmin: true };
+        return this.guard(adminCtx, () => this.handleAdminCallback(adminCtx, callback.data));
       }
       const seller = await this.findSeller(ctx.fromId);
       if (seller) return this.guard(ctx, () => this.handleSellerCallback(ctx, seller, callback.data));
@@ -176,8 +188,9 @@ export class TelegramBotService {
     // Superadmin resolves FIRST: an operator identity must never fall into the
     // customer registration or seller state machines.
     if (await this.findAdmin(ctx.fromId)) {
-      if (message.text) return this.guard(ctx, () => this.handleAdminText(ctx, message.text!));
-      return { ok: true, status: 'ignored', reason: 'unsupported_update' };
+      const adminCtx: Ctx = { ...ctx, isAdmin: true };
+      if (message.text) return this.guard(adminCtx, () => this.handleAdminText(adminCtx, message.text!));
+      return this.guard(adminCtx, () => this.handleAdminNonText(adminCtx, message));
     }
 
     const seller = await this.findSeller(ctx.fromId);
@@ -337,6 +350,10 @@ export class TelegramBotService {
   /** E7 — unknown/retired callback data: stale-button toast + a fresh main menu. */
   private async staleButton(ctx: Ctx): Promise<TelegramBotWebhookResponse> {
     const language = await this.languageFor(ctx.fromId);
+    if (ctx.isAdmin) {
+      const keyboard = await this.adminHomeKeyboard(ctx, language);
+      return this.sendNew(ctx, language, renderTelegramCopy('admin.menu.title', language), keyboard, renderTelegramCopy('error.staleButton', language));
+    }
     await this.answer(ctx, renderTelegramCopy('error.staleButton', language));
     return this.sendNew(ctx, language, renderTelegramCopy('menu.title', language), this.mainMenuKeyboard(language));
   }
@@ -1471,16 +1488,12 @@ export class TelegramBotService {
     return { text: renderTelegramCopy(id, language), callback_data: data };
   }
 
+  private layoutKeyboard(layout: TelegramMenuLayout, language: TelegramLanguage): TelegramInlineKeyboardMarkup {
+    return { inline_keyboard: layout.map((row) => row.map((spec) => this.btn(spec.copyId, language, spec.data))) };
+  }
+
   private mainMenuKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
-    return {
-      inline_keyboard: [
-        [this.btn('menu.btn.account', language, 'afws:acct'), this.btn('menu.btn.buy', language, 'afws:buy')],
-        [this.btn('menu.btn.configs', language, 'afws:cfg')],
-        [this.btn('menu.btn.invite', language, 'afws:invite'), this.btn('menu.btn.gems', language, 'afws:gems')],
-        [this.btn('menu.btn.connect', language, 'afws:connect')],
-        [this.btn('menu.btn.lang', language, 'afws:lang'), this.btn('menu.btn.help', language, 'afws:help')],
-      ],
-    };
+    return this.layoutKeyboard(CUSTOMER_MAIN_MENU_LAYOUT, language);
   }
 
   private accountKeyboard(language: TelegramLanguage, account: TelegramBotAccountSummary): TelegramInlineKeyboardMarkup {
@@ -1695,7 +1708,7 @@ export class TelegramBotService {
   // --- Parsing --------------------------------------------------------------
 
   private parseCommand(text: string): {
-    command: 'start' | 'menu' | 'status' | 'charge' | 'invite' | 'gems' | 'connect' | 'help' | 'language' | 'unknown' | null;
+    command: TelegramBotCommand;
     payload: string | null;
   } {
     if (!text.startsWith('/')) return { command: null, payload: null };
@@ -2544,6 +2557,12 @@ export class TelegramBotService {
   // link + QR from the phone. Unlike the seller flows this debits NO wallet and
   // sets no reseller_account_id — an admin-created account is a DIRECT customer,
   // exactly as if it had been created from the Customers page.
+  //
+  // Routing (telegram-admin-routing.ts): `afws:adm:*` drives admin actions;
+  // "menu" is the superadmin home (admin actions + the full customer menu when
+  // this Telegram id is linked to a customer account); customer buttons and
+  // commands are delegated to the ordinary customer handlers for a linked admin.
+  // Anything that is not the next step of the new-user flow abandons it.
 
   /** An operator is an approved bot admin iff their Telegram id is in telegram_bot_settings.allowed_admin_chat_ids. */
   private async findAdmin(telegramId: string | undefined): Promise<boolean> {
@@ -2558,23 +2577,81 @@ export class TelegramBotService {
 
   private async handleAdminText(ctx: Ctx, rawText: string): Promise<TelegramBotWebhookResponse> {
     const language = await this.languageFor(ctx.fromId);
+    const user = ctx.fromId ? await getTelegramUser(this.database, ctx.fromId) : null;
+    const { command } = this.parseCommand(rawText);
+    const stage = user?.state?.adminNewUserStage;
+    // Account lookup only matters for customer commands; skip it on the hot name step.
+    const needsAccount = !(stage === 'awaiting_name' && command === null);
+    const hasCustomerAccount = needsAccount ? (await this.findAccount(ctx)) !== null : false;
+    const { route, abandonFlow } = routeAdminText(command, { stage, hasCustomerAccount });
 
-    // The name step owns the session while awaiting typed input — same
-    // convention as customer registration and the seller's new-customer flow.
-    if (ctx.fromId) {
-      const user = await getTelegramUser(this.database, ctx.fromId);
-      if (user?.state?.adminNewUserStage === 'awaiting_name') {
-        return this.handleAdminNewUserName(ctx, language, user, rawText);
-      }
+    if (route === 'new-user-name' && user) return this.handleAdminNewUserName(ctx, language, user, rawText);
+    if (abandonFlow) await this.clearAdminFlow(ctx);
+
+    switch (route) {
+      case 'language-settings':
+        return this.screenLanguageSettings(ctx, language);
+      case 'customer':
+        await this.ensureLanguageRow(ctx, user, language);
+        return this.handleText(ctx, rawText);
+      case 'no-customer-account':
+        return this.screenAdminMenu(ctx, language, { notice: renderTelegramCopy('admin.noCustomerAccount', language) });
+      default:
+        return this.screenAdminMenu(ctx, language);
     }
-    return this.screenAdminMenu(ctx, language);
+  }
+
+  /**
+   * Photo / document / contact from an admin. Only meaningful when the admin is
+   * also a linked customer (receipt upload, connect-by-phone); an unlinked admin
+   * must never fall into customer self-registration, so it is ignored there.
+   */
+  private async handleAdminNonText(ctx: Ctx, message: TelegramWebhookMessage): Promise<TelegramBotWebhookResponse> {
+    if (!(await this.findAccount(ctx))) return { ok: true, status: 'ignored', reason: 'unsupported_update' };
+    if (message.contact) return this.handleContact(ctx, message.contact);
+    if (message.photoFileId) return this.handlePhoto(ctx, message.photoFileId);
+    if (message.hasDocument) return this.handleDocument(ctx);
+    return { ok: true, status: 'ignored', reason: 'unsupported_update' };
   }
 
   private async handleAdminCallback(ctx: Ctx, data: string): Promise<TelegramBotWebhookResponse> {
-    if (!data.startsWith('afws:adm:')) return this.staleButton(ctx);
     const language = await this.languageFor(ctx.fromId);
     const user = ctx.fromId ? await getTelegramUser(this.database, ctx.fromId) : null;
 
+    // Leaving the new-user flow by any other button abandons it, so its state
+    // can never swallow a later tap or typed text.
+    if (user?.state?.adminNewUserStage && adminCallbackAbandonsFlow(data)) await this.clearAdminFlow(ctx);
+
+    const needsAccount = data.startsWith('afws:') && !data.startsWith('afws:adm:') && !data.startsWith('afws:lang') && data !== 'afws:menu' && data !== 'afws:retry';
+    const hasCustomerAccount = needsAccount ? (await this.findAccount(ctx)) !== null : false;
+    const route = routeAdminCallback(data, { hasCustomerAccount });
+
+    switch (route.kind) {
+      case 'admin':
+        return this.handleAdminAction(ctx, language, user, data);
+      case 'home':
+        return this.screenAdminMenu(ctx, language);
+      case 'language-pick':
+        if (ctx.fromId) await setTelegramUserLanguage(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, language: route.language });
+        return this.screenAdminMenu(ctx, route.language, { toast: renderTelegramCopy('lang.toast', route.language) });
+      case 'language-settings':
+        return this.screenLanguageSettings(ctx, language);
+      case 'customer':
+        await this.ensureLanguageRow(ctx, user, language);
+        return this.handleCallback(ctx, data);
+      case 'no-customer-account':
+        return this.screenAdminMenu(ctx, language, { toast: renderTelegramCopy('admin.noCustomerAccount', language) });
+      default:
+        return this.staleButton(ctx);
+    }
+  }
+
+  private async handleAdminAction(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    user: TelegramUserRecord | null,
+    data: string,
+  ): Promise<TelegramBotWebhookResponse> {
     if (data.startsWith('afws:adm:newuser:pkg:')) {
       return this.handleAdminNewUserPickPackage(ctx, language, user, data.slice('afws:adm:newuser:pkg:'.length));
     }
@@ -2592,25 +2669,58 @@ export class TelegramBotService {
     }
   }
 
-  private adminMenuKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
-    return { inline_keyboard: [[this.btn('admin.menu.btn.newUser', language, 'afws:adm:newuser')]] };
+  /** Superadmin home keyboard: admin actions + (if linked) the full customer menu. */
+  private async adminHomeKeyboard(ctx: Ctx, language: TelegramLanguage): Promise<TelegramInlineKeyboardMarkup> {
+    const hasCustomerAccount = (await this.findAccount(ctx)) !== null;
+    return this.layoutKeyboard(adminHomeLayout({ hasCustomerAccount }), language);
   }
 
-  private async screenAdminMenu(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
-    return this.screen('ADMIN-MENU', ctx, language, renderTelegramCopy('admin.menu.title', language), this.adminMenuKeyboard(language));
+  private async screenAdminMenu(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    options: { toast?: string; notice?: string } = {},
+  ): Promise<TelegramBotWebhookResponse> {
+    const title = renderTelegramCopy('admin.menu.title', language);
+    const text = options.notice ? `${options.notice}\n\n${title}` : title;
+    return this.screen('ADMIN-MENU', ctx, language, text, await this.adminHomeKeyboard(ctx, language), options.toast);
+  }
+
+  /** Drop only the admin new-user fields; any customer-side state (e.g. a pending charge) survives. */
+  private async clearAdminFlow(ctx: Ctx): Promise<void> {
+    await this.patchState(ctx, { adminNewUserStage: undefined, adminNewUserName: undefined, adminNewUserPackageId: undefined });
+  }
+
+  private async patchState(ctx: Ctx, patch: Partial<TelegramUserState>): Promise<void> {
+    if (!ctx.fromId) return;
+    const user = await getTelegramUser(this.database, ctx.fromId);
+    await this.mergeState(ctx, user ?? { telegramId: ctx.fromId, chatId: ctx.chatId, language: null, state: null }, patch);
+  }
+
+  /**
+   * The customer handlers require a chosen language (they re-show the picker /
+   * stale-button otherwise). An admin may never have picked one — the admin
+   * panel renders in the default — so persist that before delegating.
+   */
+  private async ensureLanguageRow(ctx: Ctx, user: TelegramUserRecord | null, language: TelegramLanguage): Promise<void> {
+    if (!ctx.fromId || user?.language) return;
+    await setTelegramUserLanguage(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, language });
+  }
+
+  private adminNewUserCancelKeyboard(language: TelegramLanguage): TelegramInlineKeyboardMarkup {
+    return { inline_keyboard: [[this.btn('seller.btn.cancel', language, 'afws:adm:newuser:cancel')]] };
   }
 
   private async screenAdminNewUserAskName(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
     if (!ctx.fromId) return this.staleButton(ctx);
-    await setTelegramUserState(this.database, {
-      telegramId: ctx.fromId,
-      chatId: ctx.chatId,
-      state: { adminNewUserStage: 'awaiting_name' },
-    });
-    const keyboard: TelegramInlineKeyboardMarkup = {
-      inline_keyboard: [[this.btn('seller.btn.cancel', language, 'afws:adm:newuser:cancel')]],
-    };
-    return this.screen('ADMIN-NEW-NAME', ctx, language, renderTelegramCopy('admin.newuser.askName', language), keyboard);
+    // A fresh start: drop any half-finished name/package from an earlier attempt.
+    await this.patchState(ctx, { adminNewUserStage: 'awaiting_name', adminNewUserName: undefined, adminNewUserPackageId: undefined });
+    return this.screen(
+      'ADMIN-NEW-NAME',
+      ctx,
+      language,
+      renderTelegramCopy('admin.newuser.askName', language),
+      this.adminNewUserCancelKeyboard(language),
+    );
   }
 
   private async handleAdminNewUserName(
@@ -2632,7 +2742,8 @@ export class TelegramBotService {
   private async screenAdminNewUserPickPackage(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
     const packages = await this.listActivePackages();
     if (!packages.length) {
-      return this.sendNew(ctx, language, renderTelegramCopy('error.noPackages', language), this.adminMenuKeyboard(language));
+      await this.clearAdminFlow(ctx);
+      return this.sendNew(ctx, language, renderTelegramCopy('error.noPackages', language), await this.adminHomeKeyboard(ctx, language));
     }
     const rows: TelegramInlineKeyboardMarkup['inline_keyboard'] = packages.slice(0, MAX_PACKAGES_SHOWN).map((pkg) => [
       {
@@ -2640,7 +2751,7 @@ export class TelegramBotService {
         callback_data: `afws:adm:newuser:pkg:${pkg.id}`,
       },
     ]);
-    rows.push([this.btn('seller.btn.cancel', language, 'afws:adm:newuser:cancel')]);
+    rows.push(...this.adminNewUserCancelKeyboard(language).inline_keyboard);
     // Fresh message: this step is reached from typed text, not a callback.
     return this.sendNew(ctx, language, renderTelegramCopy('admin.newuser.pickPackage', language), { inline_keyboard: rows });
   }
@@ -2658,11 +2769,7 @@ export class TelegramBotService {
     const pkg = packages.find((entry) => entry.id === packageId);
     if (!pkg) return this.screenAdminNewUserPickPackage(ctx, language);
 
-    await setTelegramUserState(this.database, {
-      telegramId: ctx.fromId,
-      chatId: ctx.chatId,
-      state: { adminNewUserStage: 'confirm', adminNewUserName: name, adminNewUserPackageId: packageId },
-    });
+    await this.patchState(ctx, { adminNewUserStage: 'confirm', adminNewUserName: name, adminNewUserPackageId: packageId });
 
     const text = renderTelegramCopy(
       'admin.newuser.confirm',
@@ -2699,7 +2806,7 @@ export class TelegramBotService {
         { displayName: state.adminNewUserName, quotaLimitBytes: pkg.volumeBytes, status: 'active' },
         undefined,
       );
-      if (ctx.fromId) await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
+      await this.clearAdminFlow(ctx);
 
       let configLink: string | null = null;
       try {
@@ -2716,7 +2823,7 @@ export class TelegramBotService {
         ? renderTelegramCopy('admin.newuser.success', language, { customerName }, { packageSize, configLink: escapeHtml(configLink) })
         : renderTelegramCopy('admin.newuser.successNoConfig', language, { customerName }, { packageSize });
 
-      const result = await this.screen('ADMIN-NEW-DONE', ctx, language, text, this.adminMenuKeyboard(language));
+      const result = await this.screen('ADMIN-NEW-DONE', ctx, language, text, await this.adminHomeKeyboard(ctx, language));
 
       // QR as a separate photo so it can be scanned directly from the chat.
       if (configLink) {
@@ -2743,7 +2850,8 @@ export class TelegramBotService {
   }
 
   private async handleAdminNewUserCancel(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
-    if (ctx.fromId) await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
-    return this.screen('ADMIN-NEW-CANCEL', ctx, language, renderTelegramCopy('admin.newuser.cancelled', language), this.adminMenuKeyboard(language));
+    await this.clearAdminFlow(ctx);
+    const text = `${renderTelegramCopy('admin.newuser.cancelled', language)}\n\n${renderTelegramCopy('admin.menu.title', language)}`;
+    return this.screen('ADMIN-NEW-CANCEL', ctx, language, text, await this.adminHomeKeyboard(ctx, language));
   }
 }

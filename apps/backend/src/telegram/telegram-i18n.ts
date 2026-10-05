@@ -190,6 +190,7 @@ export type TelegramCopyId =
   | 'admin.newuser.failed'
   | 'admin.newuser.cancelled'
   | 'admin.qrCaption'
+  | 'admin.noCustomerAccount'
   | 'ops.village.down'
   | 'ops.village.reminder'
   | 'ops.village.recovered'
@@ -597,6 +598,10 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'admin.newuser.failed': { en: 'Could not create this user — try again.', fa: 'ساخت این کاربر ممکن نشد — دوباره تلاش کنید.' },
   'admin.newuser.cancelled': { en: 'Cancelled.', fa: 'لغو شد.' },
   'admin.qrCaption': { en: 'QR — {customerName}', fa: 'کد QR — {customerName}' },
+  'admin.noCustomerAccount': {
+    en: 'ℹ️ This Telegram account is not linked to a customer account, so customer actions (account, buy, configs…) are not available here.',
+    fa: 'ℹ️ این حساب تلگرام به هیچ حساب مشتری متصل نیست، پس امکانات مشتری (حساب، خرید، کانفیگ‌ها…) اینجا در دسترس نیست.',
+  },
   // Operator-only URGENT egress notices (bot admins / alert chat). {reserveLine} is raw sub-copy.
   'ops.village.down': {
     en: '🚨 <b>URGENT — customer egress DOWN</b>\nThe village MikroTik (carries all customer egress via Germany) is unreachable since {startedAt}.\n{reserveLine}\nCheck village power and the WireGuard tunnel now.',

@@ -2,6 +2,13 @@
 
 ## 2026-10-05
 
+### Superadmin bot routing fix (0.115.45)
+
+- **Bug.** The operator, a superadmin in `allowed_admin_chat_ids`, saw many buttons in the bot, but every one of them led to "➕ New user". In `handleUpdate`, all text from an admin went to `handleAdminText`, which showed the admin panel (one button, New user) or, with a leftover `adminNewUserStage: 'awaiting_name'`, took the text as the name. All non-`afws:adm:*` callbacks went to `staleButton`, which re-sent the customer main menu, so those buttons looped. The ☰ command menu (`setMyCommands`) is the "many buttons".
+- **Fix.** New pure `telegram/telegram-admin-routing.ts` (`routeAdminCallback`, `routeAdminText`, `adminHomeLayout`, `CUSTOMER_MAIN_MENU_LAYOUT`). The superadmin home is New user plus the full customer menu when the admin is a linked customer (New user plus Language otherwise). Customer callbacks and commands are delegated to `handleCallback`/`handleText` for a linked admin. An unlinked admin gets the `admin.noCustomerAccount` notice, never self-registration. Any input that isn't the next flow step clears the `adminNewUser*` fields; other state is kept. `staleButton` for an admin shows the admin home.
+- **Verified.** `telegram-admin-routing.test.ts` 13/13. `telegram-bot-superadmin.test.ts` 10/10: it runs the real `handleUpdate` (esbuild in-memory bundle, skipped if esbuild isn't resolvable). 9 of its 10 tests fail against the old service. Full backend suite 798/798 (775 + 23). `npm run typecheck` is green. `version:check` passes.
+- **Remains.** Not committed or deployed. Seller dispatch has the same pattern: `staleButton` sends sellers the customer main menu, and seller plain text always opens the seller menu. That is unchanged and is a candidate follow-up. An admin who is also a seller still can't reach the seller menu from the bot.
+
 ### Customer low-data Telegram alert (0.115.43)
 
 - **Why.** A customer asked to be told on Telegram when about 5 GB is left, so they can recharge in time.
