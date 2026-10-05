@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.41 - 2026-10-05
+
+- **Customers table shows remaining GB.** The Used column now adds a line under the bar: "Remaining <n>" ("باقی‌مانده"), or "over quota" when exhausted. Operators answer "how many GB do I have left?" by screenshot, and a top-up is done by raising the quota (used + new GB) instead of wiping usage — lifetime usage history stays intact (e.g. used 107 GB, quota 157 GB → "Remaining 50 GB"). Display-only; existing i18n keys (`colRemaining`, `overQuota`).
+
 ## 0.115.40 - 2026-10-05
 
 - **Safe dependency deploys.** The on-box `update-afrows.sh` (operator-local and gitignored; fixed copy installed at `/opt/afrows/update-afrows.sh`, previous kept as `/root/update-afrows.sh.bak-20261005`) used to `rm -rf` the offline npm cache and run `npm ci` in place; on 2026-10-04 that wiped hand-seeded tarballs, `npm ci` failed **after** deleting the live `node_modules`, and the backend survived only because it was already running. `--deps` now merges a shipped cache without overwriting newer index entries, installs into a staging copy, and swaps it in only on success (previous tree kept as `node_modules.prev`). `afrows-deploy.sh --deps` passes the flag through. The on-box offline cache was re-seeded (112 missing tarballs) and its snapshot refreshed.

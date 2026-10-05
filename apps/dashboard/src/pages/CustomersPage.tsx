@@ -1652,6 +1652,11 @@ export function CustomersPage({
             <span className="h-1.5 w-full overflow-hidden rounded-full bg-afro-line">
               <span className={`block h-full ${barColor}`} style={{ width: `${pct}%` }} />
             </span>
+            {/* What customers actually ask ("how many GB left?"): shown directly so an
+                operator screenshot answers it without exposing lifetime usage maths. */}
+            <span className={`whitespace-nowrap text-xs font-semibold tabular-nums ${over ? 'text-red-500' : 'text-afro-teal'}`}>
+              {over ? s.overQuota : `${s.colRemaining} ${format.bytes(q - used)}`}
+            </span>
           </div>
         );
       },
