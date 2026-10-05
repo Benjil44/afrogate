@@ -4374,6 +4374,16 @@ export class BillingService {
       ),
     );
     if (outcome.wgPeersMarkedAbsent > 0) this.triggerWgReconcile(); // remove the peers from wg0 now
+    // The VLESS configs are retained for restore, but must stop authenticating now:
+    // nothing else removes them from xray (Germany only drops over-quota users).
+    // Restore re-provisions them through the normal reconcile/membership sync.
+    if (!outcome.alreadyArchived) {
+      const vless = await this.database.query<{ id: string }>(
+        `SELECT id FROM client_configs WHERE customer_account_id = $1 AND lower(protocol) = 'vless'`,
+        [id],
+      );
+      for (const config of vless.rows) await this.xrayProvisioning.revokeClientConfig(config.id);
+    }
     return { deleted: true };
   }
 
@@ -4915,7 +4925,7 @@ export class BillingService {
    * the row is gone before it runs.
    */
   async deleteClientConfig(id: string, actor: AuthActor | undefined): Promise<{ deleted: boolean }> {
-    const isWireguard = await this.database.transaction(async (executor) => {
+    const protocol = await this.database.transaction(async (executor) => {
       const existing = await this.getClientConfigRowForUpdate(executor, id);
       const wg = (existing.protocol ?? '').toLowerCase() === 'wireguard';
       if (wg) {
@@ -4933,9 +4943,15 @@ export class BillingService {
         { customerAccountId: existing.customerAccountId, protocol: existing.protocol },
         executor,
       );
-      return wg;
+      return (existing.protocol ?? '').toLowerCase();
     });
-    if (isWireguard) this.triggerWgReconcile(); // remove the peer from wg0 now
+    if (protocol === 'wireguard') {
+      this.triggerWgReconcile(); // remove the peer from wg0 now
+    } else if (protocol === 'vless') {
+      // Deleting the row alone left the uuid live on xray (Germany never re-syncs
+      // removals) — revoke it on every endpoint now.
+      await this.xrayProvisioning.revokeClientConfig(id);
+    }
     return { deleted: true };
   }
 
@@ -10429,4 +10445,4 @@ function stableStringifyRecord(value: Record<string, unknown>): string {
     }, {});
   return JSON.stringify(ordered);
 }
-
+

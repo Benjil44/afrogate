@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.115.46 - 2026-10-05
+
+- **Fix: deleting a VLESS config (or archiving a customer) now really revokes it.** `deleteClientConfig` only removed the database row, and archiving an account only cut WireGuard peers; nothing removed the uuid from the xray inbounds, and the Germany exit only drops users that go over quota — so a "deleted" link kept working. New `XrayProvisioningService.revokeClientConfig` removes the user from the local inbounds and from Germany (`rmu`); config delete calls it for VLESS, and archive calls it for each of the account's VLESS configs (they are retained for restore, which re-provisions through the normal sync). Germany failures are logged as warnings.
+
 ## 0.115.45 - 2026-10-05
 
 - **Fix: every superadmin button in the afroWS bot led to "➕ New user".** Since 0.115.37 the superadmin branch in `TelegramBotService.handleUpdate` swallowed every update from an `allowed_admin_chat_ids` identity: any typed text or ☰ command (`/status`, `/charge`, `/invite`, …) rendered the admin panel, whose only button was ➕ New user; any non-`afws:adm:*` callback (the customer buttons) went to the stale-button fallback, which re-sent the customer main menu, so those buttons looped. After one tap on New user, `adminNewUserStage: 'awaiting_name'` was never cleared, and every later text, including commands, was treated as the new user's name. The ☰ commands then showed only "invalid name, what name should this user have?".

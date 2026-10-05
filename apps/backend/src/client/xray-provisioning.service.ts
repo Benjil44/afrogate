@@ -98,6 +98,21 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     return okByEndpoint.get(this.localApiServer()) ?? false;
   }
 
+  /**
+   * Revoke a DELETED client config everywhere it can still authenticate: the local
+   * xray inbounds AND the Germany exit. Germany otherwise only drops users that go
+   * over quota, so a config deleted in the dashboard kept working there (found
+   * 2026-10-05). Best-effort and not retried: failures are logged, and a
+   * `germany: false` result means the revocation must be verified by hand.
+   */
+  async revokeClientConfig(clientConfigId: string): Promise<{ local: boolean; germany: boolean }> {
+    const email = provisioningEmail(clientConfigId);
+    const local = await this.removeUser(email);
+    const germany = await this.germanyMgmt.removeUser(email);
+    if (!germany) this.logger.warn(`Germany rmu for deleted client config ${clientConfigId} failed; it may still authenticate there`);
+    return { local, germany };
+  }
+
   /** Sync Postgres active client_configs → xray inbound users. */
   async reconcile(): Promise<void> {
     if (this.running) return;
