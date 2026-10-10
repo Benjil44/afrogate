@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, AdminResellerAccountSummary, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, AdminResellerAccountSummary, ClientEntryLinkKind, CustomerServerAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import { CUSTOMER_SERVER_KINDS } from '@afrows/shared';
 import {
   adjustCustomerGems,
   createAdminClientConfig,
@@ -31,11 +32,16 @@ import {
 } from '../api/admin';
 import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
+import type { DataTableColumnDef } from '../components/primitives';
+import { ALL_SERVERS_ON, ServerAccessControls, ServerAccessSummary, effectiveServerAccess } from '../components/ServerAccessControls';
 import { UsageChart } from '../components/UsageChart';
 import { MicrotiksPage } from './MicrotiksPage';
 import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
+import { usePhoneViewport } from '../use-media-query';
+
+type CustomerSortKey = 'customer' | 'usage' | 'expiry' | 'lastSeen';
 
 const POLL_MS = 30000;
 // Decimal GB (1 GB = 1,000,000,000 bytes) — matches how usage is displayed (bytes / 1e9)
@@ -231,6 +237,10 @@ export function CustomersPage({
   t: DashboardStrings;
 }) {
   const s = t.customersPage;
+  // On phones the table scrolls inside its panel with the actions column
+  // pinned, which leaves ~130px of scroll window: a 3-checkbox Servers cell
+  // can never be fully visible there, so it moves into the row's detail panel.
+  const isPhone = usePhoneViewport();
   const [accounts, setAccounts] = useState<AdminCustomerAccountSummary[]>([]);
   const [overview, setOverview] = useState<AdminNetworkOverviewResponse | null>(null);
   const [query, setQuery] = useState('');
@@ -290,6 +300,10 @@ export function CustomersPage({
   const [status, setStatus] = useState<Status>('active');
   const [egressTier, setEgressTier] = useState<'normal' | 'gaming'>('normal');
   const [gamingEntitled, setGamingEntitled] = useState(false);
+  // Create-panel draft of which servers the NEW customer may use (all on by
+  // default). Existing rows toggle live via toggleServerAccess, not this draft.
+  const [serverAccessDraft, setServerAccessDraft] = useState<CustomerServerAccess>(ALL_SERVERS_ON);
+  const [configuredServers, setConfiguredServers] = useState<CustomerServerAccess | undefined>(undefined);
   const [expiresAt, setExpiresAt] = useState(''); // YYYY-MM-DD for the date input ('' = never)
   const [tagsInput, setTagsInput] = useState(''); // comma-separated
   const [notes, setNotes] = useState('');
@@ -319,6 +333,8 @@ export function CustomersPage({
   const [devicesNetworks, setDevicesNetworks] = useState(0);
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
   const [egressBusy, setEgressBusy] = useState<string | null>(null);
+  // A set, so saving row B never clears row A's lock (or vice versa).
+  const [serversBusy, setServersBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [newConfigProto, setNewConfigProto] = useState('vless');
   const [addProtoBusy, setAddProtoBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
@@ -358,6 +374,7 @@ export function CustomersPage({
     try {
       const res = await fetchAdminCustomerAccounts(sessionToken, undefined, showArchived ? 'all' : 'active');
       setAccounts(res.accounts);
+      setConfiguredServers(res.configuredServers);
       setLoadError(false);
     } catch {
       /* keep last rows; surface the failure instead of an empty list */
@@ -427,6 +444,7 @@ export function CustomersPage({
     setStatus('active');
     setEgressTier('normal');
     setGamingEntitled(false);
+    setServerAccessDraft(ALL_SERVERS_ON);
     setExpiresAt('');
     setTagsInput('');
     setNotes('');
@@ -603,6 +621,37 @@ export function CustomersPage({
     }
   };
 
+  // Per-customer server access (Germany / Shatel / USA): flip one server on or
+  // off straight from the row or the Edit panel. Optimistic like toggleBypass;
+  // on failure the row is restored to its previous value first (so a failed
+  // reload can't leave the optimistic state behind) and the backend's message is
+  // shown — e.g. its 400 when a change would turn every server off. The UI
+  // already disables the last remaining box, so that 400 is only a safety net.
+  const toggleServerAccess = async (a: AdminCustomerAccountSummary, kind: ClientEntryLinkKind) => {
+    const current = effectiveServerAccess(a.serverAccess);
+    const next: CustomerServerAccess = { ...current, [kind]: !current[kind] };
+    if (!CUSTOMER_SERVER_KINDS.some((k) => next[k])) return;
+    setServersBusy((prev) => new Set(prev).add(a.id));
+    setError(null);
+    setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, serverAccess: next } : row)));
+    try {
+      // Only the box that changed: a full object from a stale row could revert
+      // another admin's (or the Edit panel's) concurrent change.
+      await updateAdminCustomerAccount(sessionToken, a.id, { serverAccess: { [kind]: next[kind] } });
+      await load();
+    } catch (e) {
+      setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, serverAccess: a.serverAccess } : row)));
+      setError(e instanceof Error ? e.message : String(e));
+      await load();
+    } finally {
+      setServersBusy((prev) => {
+        const rest = new Set(prev);
+        rest.delete(a.id);
+        return rest;
+      });
+    }
+  };
+
   const assignGatewayInEdit = async (routerId: string) => {
     if (!editId || !routerId) return;
     setError(null);
@@ -727,9 +776,12 @@ export function CustomersPage({
         await load();
         closeEditToView();
       } else {
+        // Server access is written in the same create transaction (atomic: a
+        // rejected set fails the whole create instead of leaving all servers on).
         const created = await createAdminCustomerAccount(sessionToken, {
           ...payload,
           password: customPw.trim() || null,
+          ...(CUSTOMER_SERVER_KINDS.some((k) => !serverAccessDraft[k]) ? { serverAccess: serverAccessDraft } : {}),
         });
         const protos = [protoVless ? 'vless' : '', protoWg ? 'wireguard' : ''].filter(Boolean);
         for (const p of protos) {
@@ -1032,6 +1084,50 @@ export function CustomersPage({
     );
   }, [accounts, query]);
 
+  // Header sort. "Used" sorts by GB LEFT (fewest first = about to run out),
+  // unlimited and archived accounts last; no sort keeps the server order.
+  const [sort, setSort] = useState<{ key: CustomerSortKey; dir: 'asc' | 'desc' } | null>(null);
+  const sorted = useMemo(() => {
+    if (!sort) return filtered;
+    const value = (a: AdminCustomerAccountSummary): number | string | null => {
+      switch (sort.key) {
+        case 'customer':
+          return nameOf(a).toLowerCase();
+        case 'usage':
+          if (isArchived(a) || a.quotaLimitBytes == null || a.quotaLimitBytes <= 0) return null;
+          return a.quotaLimitBytes - a.usedBytes;
+        case 'expiry':
+          return a.expiresAt ? new Date(a.expiresAt).getTime() : null;
+        case 'lastSeen':
+          return a.lastConnectedAt ? new Date(a.lastConnectedAt).getTime() : null;
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const va = value(a);
+      const vb = value(b);
+      if (va == null || vb == null) return va == null && vb == null ? 0 : va == null ? 1 : -1; // empty last
+      const base = typeof va === 'string' ? va.localeCompare(vb as string) : (va as number) - (vb as number);
+      return sort.dir === 'asc' ? base : -base;
+    });
+  }, [filtered, sort]);
+  const onSort = (key: CustomerSortKey) =>
+    setSort((prev) =>
+      prev?.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'lastSeen' ? 'desc' : 'asc' },
+    );
+  const sortHeader = (key: CustomerSortKey, label: string) => (
+    <button
+      className="inline-flex items-center gap-1 font-bold hover:text-afro-teal focus-visible:text-afro-teal"
+      onClick={() => onSort(key)}
+      title={s.sortHint}
+      type="button"
+    >
+      {label}
+      <span aria-hidden="true">{sort?.key === key ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}</span>
+    </button>
+  );
+
   // Per-egress-path usage + billing (path is decided by tier: gaming->Starlink, normal->Germany).
   const pathSummary = useMemo(() => {
     const rows = [
@@ -1163,7 +1259,26 @@ export function CustomersPage({
           {price > 0 ? (
             <DetailRow label={s.colCost}>{`${Math.round((a.usedBytes / BYTES_PER_GB) * price).toLocaleString()} ${currency}`}</DetailRow>
           ) : null}
+          {isPhone ? null : (
+            <DetailRow label={s.colServers}>
+              <ServerAccessSummary t={t} value={effectiveServerAccess(a.serverAccess)} />
+            </DetailRow>
+          )}
         </div>
+        {/* Phones: the Servers column is hidden from the table (see `columns`),
+            so the live checkboxes live here in the View panel instead. */}
+        {isPhone ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-afro-line bg-white px-2.5 py-1">
+            <span className="text-[13px] font-bold text-afro-muted">{s.colServers}</span>
+            <ServerAccessControls
+              configured={configuredServers}
+              disabled={serversBusy.has(a.id)}
+              onToggle={(kind) => void toggleServerAccess(a, kind)}
+              t={t}
+              value={effectiveServerAccess(a.serverAccess)}
+            />
+          </div>
+        ) : null}
         {configs.length > 0 ? (
           <CustomerUsageSection account={a} configs={configs} format={format} sessionToken={sessionToken} t={t} />
         ) : rowConfigsLoading[a.id] ? (
@@ -1348,6 +1463,18 @@ export function CustomersPage({
               />
               {s.egBypass}
             </label>
+          </div>
+          {/* Which servers this customer may use. Persists immediately (same
+              PATCH as the row's Servers column) rather than waiting for Save. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[13px] font-bold text-afro-muted">{s.colServers}</span>
+            <ServerAccessControls
+              configured={configuredServers}
+              disabled={serversBusy.has(a.id)}
+              onToggle={(kind) => void toggleServerAccess(a, kind)}
+              t={t}
+              value={effectiveServerAccess(a.serverAccess)}
+            />
           </div>
         </section>
 
@@ -1560,10 +1687,26 @@ export function CustomersPage({
   // between every column into a dense grid packed after the name column.
   const fitCol = 'w-px whitespace-nowrap';
 
-  const columns: Array<DataTableColumn<AdminCustomerAccountSummary>> = [
+  const presencePill = (a: AdminCustomerAccountSummary) =>
+    a.online ? (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
+        <span className="afro-online-dot inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+        {s.onlineLabel}
+      </span>
+    ) : (
+      <span
+        title={a.lastActiveAt ? s.lastSeenAt(format.time(new Date(a.lastActiveAt), true)) : undefined}
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-muted"
+      >
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-afro-muted opacity-50" aria-hidden />
+        {s.offlineLabel}
+      </span>
+    );
+
+  const columns: Array<DataTableColumnDef<AdminCustomerAccountSummary>> = [
     {
       key: 'customer',
-      header: s.colCustomer,
+      header: sortHeader('customer', s.colCustomer),
       className: 'min-w-[160px]',
       render: (a) => (
         <>
@@ -1603,7 +1746,6 @@ export function CustomersPage({
       header: s.colStatus,
       className: fitCol,
       render: (a) => {
-        const over = a.quotaLimitBytes != null && a.usedBytes >= a.quotaLimitBytes;
         const isActive = a.status === 'active';
         return (
           <span className="inline-flex items-center gap-2">
@@ -1619,11 +1761,6 @@ export function CustomersPage({
               <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${isActive ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
             </button>
             <span className="text-[12px] text-afro-muted">{String(a.status)}</span>
-            {over ? (
-              <span className="inline-flex whitespace-nowrap rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
-                {s.overQuota}
-              </span>
-            ) : null}
           </span>
         );
       },
@@ -1632,25 +1769,21 @@ export function CustomersPage({
       key: 'presence',
       header: s.colOnline,
       className: fitCol,
-      render: (a) =>
-        a.online ? (
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">
-            <span className="afro-online-dot inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-            {s.onlineLabel}
-          </span>
-        ) : (
-          <span
-            title={a.lastActiveAt ? s.lastSeenAt(format.time(new Date(a.lastActiveAt), true)) : undefined}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-2 py-0.5 text-[11px] font-bold text-afro-muted"
-          >
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-afro-muted opacity-50" aria-hidden />
-            {s.offlineLabel}
-          </span>
-        ),
+      // Over-quota sits under the online pill so the Status column stays narrow.
+      render: (a) => (
+        <span className="inline-flex flex-col items-start gap-1">
+          {presencePill(a)}
+          {a.quotaLimitBytes != null && a.usedBytes >= a.quotaLimitBytes ? (
+            <span className="inline-flex whitespace-nowrap rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+              {s.overQuota}
+            </span>
+          ) : null}
+        </span>
+      ),
     },
     {
       key: 'usage',
-      header: s.colUsed,
+      header: sortHeader('usage', s.colUsed),
       alignRight: true,
       className: fitCol,
       render: (a) => {
@@ -1699,10 +1832,9 @@ export function CustomersPage({
       key: 'internet',
       header: s.colInternet,
       className: fitCol,
-      // Quick inline controls: a Germany⇄Starlink switch (persists egress tier; the
-      // reconciler re-routes within ~1 min) and a Bypass opt-in (allow-lists this
-      // customer to fail over to village/Starlink automatically during a blackout).
-      // Both are interactive, so the DataTable's row-tap won't toggle the detail.
+      // Quick inline Germany⇄Starlink switch (persists egress tier; the reconciler
+      // re-routes within ~1 min). Bypass lives in the Edit panel. Interactive, so
+      // the DataTable's row-tap won't toggle the detail.
       render: (a) => {
         const e = egressFor(a);
         const gaming = a.egressTier === 'gaming';
@@ -1723,26 +1855,30 @@ export function CustomersPage({
             <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${e.cls}`}>
               {e.failover ? '⚠ ' : ''}{e.label}
             </span>
-            <label
-              className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-bold text-afro-muted"
-              title={s.egBypassHint}
-            >
-              <input
-                type="checkbox"
-                checked={Boolean(a.egressBypassEnabled)}
-                disabled={egressBusy === a.id}
-                onChange={() => void toggleBypass(a)}
-                className="h-3.5 w-3.5 accent-afro-teal disabled:opacity-50"
-              />
-              {s.egBypass}
-            </label>
           </div>
         );
       },
     },
     {
+      // Per-customer server access: three live checkboxes (Germany / Shatel /
+      // USA). Interactive, so the DataTable's row-tap ignores clicks here.
+      key: 'servers',
+      header: s.colServers,
+      className: fitCol,
+      render: (a) => (
+        <ServerAccessControls
+          configured={configuredServers}
+          dense
+          disabled={serversBusy.has(a.id)}
+          onToggle={(kind) => void toggleServerAccess(a, kind)}
+          t={t}
+          value={effectiveServerAccess(a.serverAccess)}
+        />
+      ),
+    },
+    {
       key: 'expiry',
-      header: s.colExpiry,
+      header: sortHeader('expiry', s.colExpiry),
       className: fitCol,
       render: (a) => {
         if (!a.expiresAt) return <span className="text-afro-muted">—</span>;
@@ -1757,7 +1893,7 @@ export function CustomersPage({
     },
     {
       key: 'lastSeen',
-      header: s.colLastConnected,
+      header: sortHeader('lastSeen', s.colLastConnected),
       className: fitCol,
       render: (a) =>
         a.lastConnectedAt ? (
@@ -1868,8 +2004,10 @@ export function CustomersPage({
   ];
 
   // Hide optional columns that are empty for every visible row (auto-reappear when data shows up).
-  const optionalCols = new Set(['expiry', 'lastSeen', 'cost', 'tags', 'seller']);
+  // `servers` is desktop-only: on phones its checkboxes render in the row's detail panel.
+  const optionalCols = new Set(['servers', 'expiry', 'lastSeen', 'cost', 'tags', 'seller']);
   const colHasData: Record<string, boolean> = {
+    servers: !isPhone,
     expiry: filtered.some((a) => Boolean(a.expiresAt)),
     lastSeen: filtered.some((a) => Boolean(a.lastConnectedAt)),
     cost: tierPrices.some((p) => p.price > 0),
@@ -2063,6 +2201,15 @@ export function CustomersPage({
               </select>
               <span className="text-[11px] text-afro-muted">{s.assignRouterHint}</span>
             </label>
+            <div className="grid gap-1.5 md:col-span-2">
+              <span className="text-[13px] font-bold text-afro-muted">{s.colServers}</span>
+              <ServerAccessControls
+                configured={configuredServers}
+                onToggle={(kind) => setServerAccessDraft((cur) => ({ ...cur, [kind]: !cur[kind] }))}
+                t={t}
+                value={serverAccessDraft}
+              />
+            </div>
             <div className="grid gap-1.5 md:col-span-2">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldProtocols}</span>
               <div className="flex flex-wrap gap-4">
@@ -2401,7 +2548,7 @@ export function CustomersPage({
               // cell still fully occludes cells scrolling beneath it.
               rowClassName={(a) => (isArchived(a) ? 'opacity-60' : undefined)}
               rowKey={(a) => a.id}
-              rows={filtered}
+              rows={sorted}
               stickyLastColumn
             />
           </div>

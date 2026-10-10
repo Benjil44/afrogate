@@ -141,3 +141,54 @@ export async function applyAcrossEndpoints(
   }
   return okByEndpoint;
 }
+
+/** Which servers an account may be provisioned onto (subset of CustomerServerAccess). */
+export interface EndpointAccess {
+  germany: boolean;
+  iran: boolean;
+}
+
+/** Local inbound tags that ARE the Iran/"Shatel" server (default: afrows-in, afrows-in-tcp). */
+export function parseIranInboundTags(raw: string | undefined): Set<string> {
+  const tags = (raw ?? '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  // Both Iran-entry inbounds on the Afrows box: afrows-in (WS+TLS, the Shatel link) and
+  // afrows-in-tcp (direct VLESS :8080 used by older links), so Shatel-off cuts both.
+  return new Set(tags.length ? tags : ['afrows-in', 'afrows-in-tcp']);
+}
+
+/**
+ * Per-customer server access (0.118.0): split the provisioning endpoints into the
+ * targets an account may be on (`allowed`, adu) and the ones it must NOT be on
+ * (`denied`, rmu). Only two gates apply:
+ *  - the local endpoint's Iran tags (afrows-in, the Shatel link) follow `iran`;
+ *  - the pushed remote Germany endpoint (label 'de', AFROWS_XRAY_DE_API_SERVER,
+ *    afrows-de-in) follows `germany`.
+ * Every other local inbound (afrows-reality, ...) is untouched. WireGuard is not
+ * an xray inbound at all and is never affected. Endpoints left with no targets
+ * are dropped.
+ */
+export function partitionEndpointsByAccess(
+  endpoints: readonly ProvisioningEndpoint[],
+  access: EndpointAccess,
+  iranTags: ReadonlySet<string>,
+): { allowed: ProvisioningEndpoint[]; denied: ProvisioningEndpoint[] } {
+  const allowed: ProvisioningEndpoint[] = [];
+  const denied: ProvisioningEndpoint[] = [];
+  for (const endpoint of endpoints) {
+    const isAllowed = (target: ProvisioningTarget) =>
+      endpoint.label === 'de' ? access.germany : !iranTags.has(target.tag) || access.iran;
+    const ok = endpoint.targets.filter(isAllowed);
+    const no = endpoint.targets.filter((target) => !isAllowed(target));
+    if (ok.length) allowed.push({ ...endpoint, targets: ok });
+    if (no.length) denied.push({ ...endpoint, targets: no });
+  }
+  return { allowed, denied };
+}
+
+/** Local access-gate cache key: one per (config, xray API endpoint, inbound tag). */
+export function localGateKey(clientConfigId: string, apiServer: string, tag: string): string {
+  return `${clientConfigId}|${apiServer}|${tag}`;
+}

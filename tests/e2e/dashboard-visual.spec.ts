@@ -239,6 +239,89 @@ test('billing page shows catalog and saves reward settings', async ({ page }) =>
   await expect(page.getByRole('heading', { name: 'Payment Orders' })).toBeVisible();
 });
 
+test.describe('customers page per-customer server access', () => {
+  for (const viewport of [
+    { name: 'mobile', size: { width: 390, height: 844 } },
+    { name: 'desktop', size: { width: 1440, height: 900 } },
+  ]) {
+    test(`${viewport.name} customers table toggles Germany / Shatel / USA per row`, async ({ page }, testInfo) => {
+      await loadSignedInDashboard(page, viewport.size);
+      await gotoView(page, 'customers');
+      await expect(page.getByRole('heading', { name: 'Customers' })).toBeVisible();
+
+      // Desktop: the row's Servers cell. Phone: the table hides that column
+      // (it would sit behind the pinned actions column), and the same three
+      // checkboxes live in the row's expandable detail panel instead.
+      if (viewport.name === 'mobile') {
+        await expect(page.getByRole('columnheader', { name: 'Servers' })).toHaveCount(0);
+        await page.getByRole('button', { name: 'Show details and actions' }).first().click();
+      } else {
+        await expect(page.getByRole('columnheader', { name: 'Servers' })).toBeVisible();
+      }
+      const servers = page.getByRole('group', { name: 'Servers' }).first();
+      await expect(servers).toBeVisible();
+      const germany = servers.getByRole('checkbox', { name: 'Germany' });
+      const shatel = servers.getByRole('checkbox', { name: 'Shatel' });
+      const usa = servers.getByRole('checkbox', { name: 'USA' });
+      await expect(germany).toBeChecked();
+      await expect(shatel).toBeChecked();
+      await expect(usa).not.toBeChecked();
+      await expect(germany).toBeEnabled();
+      await expect(shatel).toBeEnabled();
+
+      if (viewport.name === 'mobile') {
+        // 44px tap target on phones (the label is the hit area).
+        const box = await servers.locator('label').first().boundingBox();
+        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      }
+      await expectNoDocumentHorizontalOverflow(page);
+
+      const shot = testInfo.outputPath(`customers-servers-${viewport.name}.png`);
+      await page.screenshot({ path: shot, fullPage: true });
+      await testInfo.attach(`customers-servers-${viewport.name}`, { path: shot, contentType: 'image/png' });
+
+      if (viewport.name === 'mobile') {
+        // The detail panel's checkboxes must be fully inside the phone viewport
+        // (never behind the pinned actions column), also in the Edit panel.
+        await servers.scrollIntoViewIfNeeded();
+        await expect(servers).toBeInViewport({ ratio: 1 });
+        const panelShot = testInfo.outputPath('customers-servers-mobile-panel.png');
+        await page.screenshot({ path: panelShot });
+        await testInfo.attach('customers-servers-mobile-panel', { path: panelShot, contentType: 'image/png' });
+
+        await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
+        const editServers = page.getByRole('group', { name: 'Servers' }).first();
+        await expect(editServers).toBeVisible();
+        const editBox = await editServers.locator('label').first().boundingBox();
+        expect(editBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+        await expectNoDocumentHorizontalOverflow(page);
+        await editServers.scrollIntoViewIfNeeded();
+        await expect(editServers).toBeInViewport({ ratio: 1 });
+        const editShot = testInfo.outputPath('customers-servers-mobile-edit.png');
+        await page.screenshot({ path: editShot });
+        await testInfo.attach('customers-servers-mobile-edit', { path: editShot, contentType: 'image/png' });
+        // Back to View mode so the toggle steps below exercise the panel controls.
+        await page.getByRole('button', { name: 'View', exact: true }).click();
+        await expect(servers).toBeVisible();
+      }
+
+      // Turning Shatel off leaves Germany as the only server: it must lock
+      // (cannot uncheck the last one) and say why.
+      await shatel.click();
+      await expect(shatel).not.toBeChecked();
+      await expect(germany).toBeDisabled();
+      await expect(germany).toBeChecked();
+      await expect(servers.locator('label').filter({ hasText: 'Germany' })).toHaveAttribute('title', /At least one server must stay on/);
+
+      // Turning USA back on unlocks Germany again.
+      await usa.click();
+      await expect(usa).toBeChecked();
+      await expect(germany).toBeEnabled();
+      await expectNoDocumentHorizontalOverflow(page);
+    });
+  }
+});
+
 test('reseller session shows scoped seller dashboard, users, and billing', async ({ page }) => {
   await loadSignedInDashboard(page, { width: 1440, height: 900 }, { sessionRole: 'reseller' });
 
@@ -433,11 +516,25 @@ async function gotoView(page: Page, view: string): Promise<void> {
 
 async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}): Promise<void> {
   const sessionRole = options.sessionRole ?? 'superadmin';
+  // Stateful per-page: the Customers page's Servers checkboxes PATCH this and
+  // then re-fetch the list, so the GET must reflect the last PATCH.
+  let visualServerAccess: Record<'germany' | 'iran' | 'usa', boolean> = { germany: true, iran: true, usa: false };
 
   await page.route('http://127.0.0.1:7000/api/**', async (route) => {
     const url = new URL(route.request().url());
 
     switch (url.pathname) {
+      case '/api/admin/customer-accounts/account-visual':
+        if (route.request().method() === 'PATCH') {
+          const payload = route.request().postDataJSON() as {
+            serverAccess?: Partial<Record<'germany' | 'iran' | 'usa', boolean>>;
+          };
+          visualServerAccess = { ...visualServerAccess, ...(payload.serverAccess ?? {}) };
+          await fulfillJson(route, { ...visualCustomerAccount(visualServerAccess), clientConfigs: [] });
+          return;
+        }
+        await fulfillJson(route, { error: 'Unsupported customer-account method' }, 405);
+        return;
       case '/api/admin/session':
         await fulfillJson(route, {
           actor: {
@@ -873,28 +970,7 @@ async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}
           return;
         }
 
-        await fulfillJson(route, {
-          accounts: [
-            {
-              activeClientCount: 1,
-              clientCount: 2,
-              createdAt: fixedNow,
-              displayName: 'Gaming customer',
-              hasPaidNumberHash: true,
-              id: 'account-visual',
-              notes: null,
-              perClientLimitBytes: null,
-              quotaLimitBytes: 53_687_091_200,
-              quotaScope: 'account_shared',
-              remainingBytes: 32_212_254_720,
-              status: 'active',
-              telegramId: null,
-              telegramUsername: 'player_one',
-              updatedAt: fixedNow,
-              usedBytes: 21_474_836_480,
-            },
-          ],
-        });
+        await fulfillJson(route, { accounts: [visualCustomerAccount(visualServerAccess)] });
         return;
       case '/api/admin/settings/telegram-bot':
         await fulfillJson(route, {
@@ -1138,6 +1214,29 @@ async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}
   });
 }
 
+/** The single admin-visible customer row; `serverAccess` is the mock's live state. */
+function visualCustomerAccount(serverAccess: Record<'germany' | 'iran' | 'usa', boolean>) {
+  return {
+    activeClientCount: 1,
+    clientCount: 2,
+    createdAt: fixedNow,
+    displayName: 'Gaming customer',
+    hasPaidNumberHash: true,
+    id: 'account-visual',
+    notes: null,
+    perClientLimitBytes: null,
+    quotaLimitBytes: 53_687_091_200,
+    quotaScope: 'account_shared',
+    remainingBytes: 32_212_254_720,
+    serverAccess,
+    status: 'active',
+    telegramId: null,
+    telegramUsername: 'player_one',
+    updatedAt: fixedNow,
+    usedBytes: 21_474_836_480,
+  };
+}
+
 function resellerWorkspaceResponse() {
   return {
     accounts: [
@@ -1155,6 +1254,7 @@ function resellerWorkspaceResponse() {
         remainingBytes: 48_318_382_080,
         resellerAccountId: 'reseller-visual',
         resellerDisplayName: 'Mobile Shop Tehran',
+        serverAccess: { germany: true, iran: true, usa: true },
         status: 'active',
         telegramId: null,
         telegramUsername: 'reseller_player',

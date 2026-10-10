@@ -597,6 +597,11 @@ export const customerAccounts = pgTable(
     // When VLESS/foreign egress is down, only customers with this set may fall over
     // to the MikroTik-direct internet (activation is Part B).
     egressBypassEnabled: boolean('egress_bypass_enabled').notNull().default(false),
+    // Per-customer server access (migration 0066). OFF = that server's link is hidden
+    // AND the customer's configs are removed from that server's inbound.
+    accessGermany: boolean('access_germany').notNull().default(true),
+    accessIran: boolean('access_iran').notNull().default(true),
+    accessUsa: boolean('access_usa').notNull().default(true),
     // Auth credentials for mobile-app account login (migration 0030). password_hash is a
     // hash, never plaintext; login_email is unique case-insensitively (see loginEmailIdx).
     loginEmail: text('login_email'),

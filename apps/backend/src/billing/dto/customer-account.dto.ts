@@ -16,6 +16,8 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
 export const CUSTOMER_ACCOUNT_STATUSES = ['active', 'suspended', 'disabled'] as const;
@@ -56,6 +58,25 @@ export class SetCustomerAccountPasswordDto {
   @MinLength(6)
   @MaxLength(128)
   password?: string | null;
+}
+
+/**
+ * Per-customer server access (0.118.0). Every key optional (partial update, e.g.
+ * `{ usa: false }`); unknown keys are stripped by the global whitelist pipe. The
+ * service rejects a result with all three off.
+ */
+export class CustomerServerAccessDto {
+  @IsOptional()
+  @IsBoolean()
+  germany?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  iran?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  usa?: boolean;
 }
 
 export class CreateCustomerAccountDto {
@@ -147,6 +168,13 @@ export class CreateCustomerAccountDto {
   @IsOptional()
   @IsBoolean()
   egressBypassEnabled?: boolean;
+
+  /** Partial server access at creation (missing keys = on); null / non-object rejected. */
+  @ValidateIf((_, value) => value !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => CustomerServerAccessDto)
+  serverAccess?: CustomerServerAccessDto;
 
   @IsOptional()
   @IsBoolean()
@@ -240,6 +268,13 @@ export class UpdateCustomerAccountDto {
   @IsOptional()
   @IsBoolean()
   egressBypassEnabled?: boolean;
+
+  /** Absent = unchanged; null or a non-object is rejected (400). */
+  @ValidateIf((_, value) => value !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => CustomerServerAccessDto)
+  serverAccess?: CustomerServerAccessDto;
 
   @IsOptional()
   @IsBoolean()

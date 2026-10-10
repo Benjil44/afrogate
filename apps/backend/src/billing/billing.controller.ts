@@ -756,7 +756,10 @@ export class BillingController {
   async listResellerCustomers(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<AdminCustomerAccountsResponse> {
-    return { accounts: await this.billingService.listResellerCustomerAccountsForAdmin(id) };
+    return {
+      accounts: await this.billingService.listResellerCustomerAccountsForAdmin(id),
+      configuredServers: this.billingService.getConfiguredServers(),
+    };
   }
 
   /**
@@ -836,6 +839,7 @@ export class BillingController {
         archived: archived === 'only' || archived === 'all' ? archived : 'active',
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
+      configuredServers: this.billingService.getConfiguredServers(),
     };
   }
 

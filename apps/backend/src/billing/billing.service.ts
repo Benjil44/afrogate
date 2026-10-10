@@ -10,6 +10,7 @@ import {
 import { createHmac, randomBytes, randomUUID } from 'crypto';
 import { execFile } from 'node:child_process';
 import * as QRCode from 'qrcode';
+import { CUSTOMER_SERVER_KINDS } from '@afrows/shared';
 import type {
   AdminClientSubscriptionCredentialSummary,
   AdminBillingCatalogResponse,
@@ -34,6 +35,7 @@ import type {
   AdminClientConfigExportEntry,
   AdminRotateSubscriptionTokenResponse,
   ClientEntryLink,
+  CustomerServerAccess,
   AdminClientConfigsExportResponse,
   AdminSendConfigTelegramResponse,
   AdminClientRoutePreferenceSummary,
@@ -143,6 +145,19 @@ import {
   readAfrowsUsEntryEnv,
   type AfrowsInboundParams,
 } from '../client/afrows-entry-link';
+import { isUsMgmtEnabled } from '../client/germany-mgmt';
+import {
+  ALL_SERVERS_ALLOWED,
+  changedServerKinds,
+  filterLinksByServerAccess,
+  hasAnyServerAllowed,
+  mergeServerAccess,
+  serverAccessProblem,
+  SERVER_ACCESS_COLUMNS,
+  serverAccessFromRow,
+  serverAccessSelectSql,
+  type ServerAccessColumns,
+} from '../client/customer-server-access';
 import {
   buildSubscriptionPayload,
   buildSubscriptionUrl,
@@ -263,7 +278,7 @@ const CLIENT_SUBSCRIPTION_PUBLIC_METADATA_KEYS = new Set([
   'type',
 ]);
 
-interface CustomerAccountRow {
+interface CustomerAccountRow extends ServerAccessColumns {
   id: string;
   resellerAccountId: string | null;
   resellerDisplayName: string | null;
@@ -4059,17 +4074,22 @@ export class BillingService {
     return Promise.all(links.map(async (link) => ({ ...link, qrSvg: await renderQrSvg(link.uri) })));
   }
 
-  /** Same links as `resolveEntryLinks`, without QR rendering (Telegram text paths). */
+  /** Same links as `resolveEntryLinks`, without QR rendering (Telegram text paths).
+   *  Only servers the customer may use (customer_accounts.access_*): a disallowed
+   *  server is never substituted, so the result may be empty. */
   private async resolveEntryLinkUris(
     clientConfigId: string,
     displayName?: string | null,
   ): Promise<Array<Omit<ClientEntryLink, 'qrSvg'>>> {
-    const result = await this.database.query<{
-      entryUuid: string | null;
-      label: string | null;
-      displayName: string | null;
-    }>(
-      `SELECT cc.entry_uuid AS "entryUuid", cc.label AS "label", ca.display_name AS "displayName"
+    const result = await this.database.query<
+      {
+        entryUuid: string | null;
+        label: string | null;
+        displayName: string | null;
+      } & ServerAccessColumns
+    >(
+      `SELECT cc.entry_uuid AS "entryUuid", cc.label AS "label", ca.display_name AS "displayName",
+              ${serverAccessSelectSql('ca')}
          FROM client_configs cc
          LEFT JOIN customer_accounts ca ON ca.id = cc.customer_account_id
         WHERE cc.id = $1`,
@@ -4078,7 +4098,10 @@ export class BillingService {
     const row = result.rows[0];
     if (!row?.entryUuid) return [];
     const name = displayName?.trim() || row.displayName?.trim() || row.label || 'Afrows';
-    return buildEntryLinkSet(process.env, row.entryUuid, customerEntryLinkRemarks(name));
+    return filterLinksByServerAccess(
+      buildEntryLinkSet(process.env, row.entryUuid, customerEntryLinkRemarks(name)),
+      serverAccessFromRow(row),
+    );
   }
 
   /** Links + subscription URL for one config, as the Telegram builders consume them. */
@@ -4203,14 +4226,15 @@ export class BillingService {
       accountUsedBytes: string | number | null;
       accountQuotaLimitBytes: string | number | null;
       perClientLimitBytes: string | number | null;
-    }>(
+    } & ServerAccessColumns>(
       `SELECT cc.id, cc.subscription_token_version AS "version", cc.entry_uuid AS "entryUuid",
               cc.status AS "configStatus", cc.used_bytes AS "clientUsedBytes",
               cc.quota_limit_bytes AS "clientQuotaLimitBytes",
               ca.status AS "accountStatus", ca.deleted_at AS "accountDeletedAt",
               ca.expires_at AS "accountExpiresAt", ca.used_bytes AS "accountUsedBytes",
               ca.quota_limit_bytes AS "accountQuotaLimitBytes",
-              ca.per_client_limit_bytes AS "perClientLimitBytes"
+              ca.per_client_limit_bytes AS "perClientLimitBytes",
+              ${serverAccessSelectSql('ca')}
          FROM client_configs cc
          JOIN customer_accounts ca ON ca.id = cc.customer_account_id
         WHERE cc.subscription_token_hash = $1
@@ -4223,7 +4247,11 @@ export class BillingService {
     if (!['active', 'limited'].includes(row.configStatus)) return null;
     if (row.accountStatus !== 'active' || row.accountDeletedAt !== null) return null;
 
-    const uris = buildEntryLinkSet(process.env, row.entryUuid, PUBLIC_ENTRY_LINK_REMARKS).map((link) => link.uri);
+    // Only the servers this customer may use; nothing allowed+configured -> the uniform 404.
+    const uris = filterLinksByServerAccess(
+      buildEntryLinkSet(process.env, row.entryUuid, PUBLIC_ENTRY_LINK_REMARKS),
+      serverAccessFromRow(row),
+    ).map((link) => link.uri);
     if (!uris.length) return null;
     const usage = pickSubscriptionUsage({
       accountUsedBytes: numberFromBigInt(row.accountUsedBytes) ?? 0,
@@ -4471,6 +4499,10 @@ export class BillingService {
         generatedPassword = custom.length >= 6 ? custom : generatePassword(16);
         passwordHash = hashPassword(generatedPassword);
       }
+      // Server access is written in the same INSERT (missing keys = on). A set that
+      // differs from the all-on default is validated like an update.
+      const serverAccess = mergeServerAccess(ALL_SERVERS_ALLOWED, dto.serverAccess);
+      if (changedServerKinds(ALL_SERVERS_ALLOWED, serverAccess).length) this.assertServerAccessUsable(serverAccess);
       const result = await this.database.transaction(async (executor) => {
         const resellerAccountId = normalizeNullableString(dto.resellerAccountId);
         if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
@@ -4482,9 +4514,11 @@ export class BillingService {
               phone, referral_code,
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
               used_bytes, notes, login_email, password_hash, password_set_at,
-              egress_tier, gaming_entitled, expires_at, tags
+              egress_tier, gaming_entitled, expires_at, tags,
+              access_germany, access_iran, access_usa
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                    $21, $22, $23)
             RETURNING id
           `,
           [
@@ -4508,6 +4542,9 @@ export class BillingService {
             dto.gamingEntitled ?? false,
             dto.expiresAt ?? null,
             dto.tags ?? [],
+            serverAccess.germany,
+            serverAccess.iran,
+            serverAccess.usa,
           ],
         );
         const id = insertResult.rows[0].id;
@@ -4524,6 +4561,7 @@ export class BillingService {
             quotaLimitBytes: dto.quotaLimitBytes ?? null,
             perClientLimitBytes: dto.perClientLimitBytes ?? null,
             resellerAccountId,
+            serverAccess,
           },
           executor,
         );
@@ -4549,10 +4587,13 @@ export class BillingService {
     }
 
     let changedFields: string[] = [];
+    let serverAccessChanged = false;
     try {
       await this.database.transaction(async (executor) => {
         await this.ensureCustomerAccountExists(executor, id);
-        changedFields = await this.updateCustomerAccountFields(executor, id, dto);
+        const serverAccess = await this.resolveServerAccessUpdate(executor, id, dto.serverAccess);
+        changedFields = await this.updateCustomerAccountFields(executor, id, dto, serverAccess?.after);
+        serverAccessChanged = Boolean(serverAccess && changedServerKinds(serverAccess.before, serverAccess.after).length);
 
         await this.audit.record(
           actor,
@@ -4562,6 +4603,9 @@ export class BillingService {
           {
             changedFields,
             paidNumberChanged: changedFields.includes('paidNumberHash'),
+            ...(serverAccessChanged && serverAccess
+              ? { serverAccessBefore: serverAccess.before, serverAccessAfter: serverAccess.after }
+              : {}),
           },
           executor,
         );
@@ -4583,6 +4627,9 @@ export class BillingService {
       if (changedFields.includes('egressTier') || changedFields.includes('egressBypassEnabled')) {
         this.triggerEgressModeSync();
       }
+      // Server access change: rmu from a revoked server / re-adu on a re-granted one
+      // now (or right after the pass in flight) instead of at the next 60s tick.
+      if (serverAccessChanged) this.xrayProvisioning.requestReconcile();
 
       return this.getCustomerAccount(id);
     } catch (error) {
@@ -6451,14 +6498,26 @@ export class BillingService {
     // without an entry. Each link is still omitted until configured via env.
     // The USA entry (alternative remote exit, AFROWS_US_ENTRY_*) is added for EVERYONE
     // when enabled, right after the Germany/Shatel (and fallback) entries.
+    // Per-customer server access (0.118.0): the Germany, Shatel (afrows-in) and USA
+    // entries are dropped when that server's flag is off. The Starlink fallback still
+    // keys on the Germany ENTRY ENV being unavailable, not on the access flag, so
+    // switching Germany off for one customer never opts them into the fallback.
     const id = actor.clientConfigId;
-    const deEntryLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsDeEntryEnv(process.env), 'afrows-de-in', PUBLIC_ENTRY_LINK_REMARKS.germany);
+    const { bypassEnabled, access } = await this.getClientEntryPolicy(id);
+    const deEntryEnv = readAfrowsDeEntryEnv(process.env);
+    const deEntryLink = access.germany
+      ? await this.buildNativeVlessConfigLink(id, routeGroup, deEntryEnv, 'afrows-de-in', PUBLIC_ENTRY_LINK_REMARKS.germany)
+      : null;
     const wireguardLink = await this.buildNativeWireguardConfigLink(id, routeGroup);
-    const nativeLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsInboundEnv(process.env), 'afrows-in', PUBLIC_ENTRY_LINK_REMARKS.iran);
+    const nativeLink = access.iran
+      ? await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsInboundEnv(process.env), 'afrows-in', PUBLIC_ENTRY_LINK_REMARKS.iran)
+      : null;
     const realityLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsRealityEnv(process.env), 'afrows-reality', 'Afrows Reality');
-    const usEntryLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsUsEntryEnv(process.env), 'afrows-us-in', PUBLIC_ENTRY_LINK_REMARKS.usa);
-    const bypassEnabled = await this.getClientEgressBypassEnabled(id);
-    const includeStarlinkFallback = bypassEnabled || deEntryLink === null;
+    const usEntryLink = access.usa
+      ? await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsUsEntryEnv(process.env), 'afrows-us-in', PUBLIC_ENTRY_LINK_REMARKS.usa)
+      : null;
+    const germanyEntryUnavailable = access.germany ? deEntryLink === null : deEntryEnv === null;
+    const includeStarlinkFallback = bypassEnabled || germanyEntryUnavailable;
     // Fallback customers keep the exact previous order (wireguard, afrows-in, reality).
     const secondaryLinks = includeStarlinkFallback ? [wireguardLink, nativeLink, realityLink] : [nativeLink];
     const configLinks = [deEntryLink, ...secondaryLinks, usEntryLink, ...baseConfigLinks].filter(
@@ -6479,18 +6538,21 @@ export class BillingService {
     };
   }
 
-  /** Whether the customer's egress-bypass flag (customer_accounts.egress_bypass_enabled) is
-   *  ON. ON = opt this customer into the Starlink/village fallback entries; OFF = Germany-only.
-   *  Defaults to false on any miss (a missing customer gets no Starlink fallback). */
-  private async getClientEgressBypassEnabled(clientConfigId: string): Promise<boolean> {
-    const result = await this.database.query<{ bypass: boolean | null }>(
-      `SELECT ca.egress_bypass_enabled AS bypass
+  /** The customer's egress-bypass flag (customer_accounts.egress_bypass_enabled) and server
+   *  access. Bypass ON = opt this customer into the Starlink/village fallback entries; OFF =
+   *  Germany-only; false on any miss (a missing customer gets no Starlink fallback). */
+  private async getClientEntryPolicy(
+    clientConfigId: string,
+  ): Promise<{ bypassEnabled: boolean; access: CustomerServerAccess }> {
+    const result = await this.database.query<{ bypass: boolean | null } & ServerAccessColumns>(
+      `SELECT ca.egress_bypass_enabled AS bypass, ${serverAccessSelectSql('ca')}
          FROM client_configs cc
          JOIN customer_accounts ca ON ca.id = cc.customer_account_id
         WHERE cc.id = $1`,
       [clientConfigId],
     );
-    return result.rows[0]?.bypass === true;
+    const row = result.rows[0];
+    return { bypassEnabled: row?.bypass === true, access: serverAccessFromRow(row) };
   }
 
   /**
@@ -8527,6 +8589,7 @@ export class BillingService {
         (ca.password_hash IS NOT NULL) AS "hasPassword",
         ca.egress_tier AS "egressTier",
         ca.egress_bypass_enabled AS "egressBypassEnabled",
+        ${serverAccessSelectSql('ca')},
         ca.gaming_entitled AS "gamingEntitled",
         ca.expires_at AS "expiresAt",
         ca.tags AS "tags",
@@ -9872,10 +9935,59 @@ export class BillingService {
     return null;
   }
 
+  /**
+   * Validate a (partial) server-access update against the stored flags, row-locked.
+   * Returns null when the request carries none. Rejects (400) a result with every
+   * server off: a customer must keep at least one entry.
+   */
+  private async resolveServerAccessUpdate(
+    executor: DatabaseQueryExecutor,
+    id: string,
+    patch: Partial<CustomerServerAccess> | null | undefined,
+  ): Promise<{ before: CustomerServerAccess; after: CustomerServerAccess } | null> {
+    if (!patch || !CUSTOMER_SERVER_KINDS.some((kind) => typeof patch[kind] === 'boolean')) return null;
+    const result = await executor.query<ServerAccessColumns>(
+      `SELECT ${serverAccessSelectSql('ca')}
+         FROM customer_accounts ca
+        WHERE ca.id = $1
+          FOR UPDATE`,
+      [id],
+    );
+    if (!result.rows.length) throw new NotFoundException('Customer account not found');
+    const before = serverAccessFromRow(result.rows[0]);
+    const after = mergeServerAccess(before, patch);
+    // Only a real change is checked against the configured servers, so re-saving an
+    // unchanged set never fails on a deployment where a server is switched off.
+    if (changedServerKinds(before, after).length || !hasAnyServerAllowed(after)) this.assertServerAccessUsable(after);
+    return { before, after };
+  }
+
+  /** 400 unless `access` keeps at least one server that is configured here. */
+  private assertServerAccessUsable(access: CustomerServerAccess): void {
+    const problem = serverAccessProblem(access, this.getConfiguredServers());
+    if (problem) throw new BadRequestException(problem);
+  }
+
+  /**
+   * Which servers this deployment can actually serve: germany = the DE entry env
+   * resolves, iran = the afrows-in entry env resolves, usa = the USA entry is
+   * enabled AND USA management is on (UsaMgmtService.isEnabled() reads the same
+   * AFROWS_US_MGMT_ENABLED flag). Returned to the dashboard as `configuredServers`.
+   */
+  getConfiguredServers(): CustomerServerAccess {
+    const env = process.env;
+    return {
+      germany: readAfrowsDeEntryEnv(env) !== null,
+      iran: readAfrowsInboundEnv(env) !== null,
+      usa: readAfrowsUsEntryEnv(env) !== null && isUsMgmtEnabled(env),
+    };
+  }
+
   private async updateCustomerAccountFields(
     executor: DatabaseQueryExecutor,
     id: string,
     dto: UpdateCustomerAccountDto,
+    serverAccess?: CustomerServerAccess,
   ): Promise<string[]> {
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -9910,6 +10022,13 @@ export class BillingService {
     if (dto.notes !== undefined) add('notes', 'notes', normalizeNullableString(dto.notes));
     if (dto.egressTier !== undefined) add('egressTier', 'egress_tier', dto.egressTier);
     if (dto.egressBypassEnabled !== undefined) add('egressBypassEnabled', 'egress_bypass_enabled', dto.egressBypassEnabled);
+    if (serverAccess) {
+      for (const kind of CUSTOMER_SERVER_KINDS) {
+        if (typeof dto.serverAccess?.[kind] === 'boolean') {
+          add(`serverAccess.${kind}`, SERVER_ACCESS_COLUMNS[kind], serverAccess[kind]);
+        }
+      }
+    }
     if (dto.gamingEntitled !== undefined) add('gamingEntitled', 'gaming_entitled', dto.gamingEntitled);
     if (dto.expiresAt !== undefined) add('expiresAt', 'expires_at', dto.expiresAt);
     if (dto.tags !== undefined) add('tags', 'tags', dto.tags);
@@ -10012,6 +10131,7 @@ export class BillingService {
       loginEmail: row.loginEmail,
       hasPassword: Boolean(row.hasPassword),
       egressTier: row.egressTier ?? null,
+      serverAccess: serverAccessFromRow(row),
       gamingEntitled: Boolean(row.gamingEntitled),
       expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
       tags: row.tags ?? [],
@@ -10466,6 +10586,10 @@ export class BillingService {
   }
 
   private assertResellerCustomerPayload(dto: CreateCustomerAccountDto | UpdateCustomerAccountDto): void {
+    // Server access is operator-only: the seller view shows it read-only.
+    if (dto.serverAccess !== undefined) {
+      throw new ForbiddenException('Sellers cannot change server access; ask an Afrows admin');
+    }
     if (normalizeNullableString(dto.paidNumber)) {
       throw new BadRequestException('Reseller customer flows cannot store paid numbers');
     }

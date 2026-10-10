@@ -972,6 +972,12 @@ export interface AdminCustomerAccountSummary {
   egressTier?: EgressTier | string | null;
   /** Egress P4 Part A: opt-in MikroTik-direct bypass allow-list (activation is Part B). */
   egressBypassEnabled?: boolean;
+  /**
+   * Per-customer server access (0.118.0). Off = that server's link is hidden
+   * (dashboard, Telegram, subscription) AND the customer is removed from that
+   * server, so an old link stops working too. At least one stays on.
+   */
+  serverAccess?: CustomerServerAccess;
   gamingEntitled?: boolean;
   expiresAt?: string | null;
   tags?: string[];
@@ -1352,6 +1358,10 @@ export interface AdminClientConfigEntryLinkResponse {
  */
 export type ClientEntryLinkKind = 'germany' | 'iran' | 'usa';
 
+/** Which servers a customer may use; keys are the entry-link kinds. */
+export type CustomerServerAccess = Record<ClientEntryLinkKind, boolean>;
+export const CUSTOMER_SERVER_KINDS: readonly ClientEntryLinkKind[] = ['germany', 'iran', 'usa'];
+
 export interface ClientEntryLink {
   kind: ClientEntryLinkKind;
   uri: string;
@@ -1556,6 +1566,11 @@ export interface CreateCustomerAccountRequest {
   notes?: string | null;
   loginEmail?: string | null;
   password?: string | null;
+  /**
+   * Per-customer server access at creation (0.118.0). Missing keys = on. Same
+   * validation as an update: not all off, and at least one configured server.
+   */
+  serverAccess?: Partial<CustomerServerAccess>;
 }
 
 export interface UpdateCustomerAccountRequest {
@@ -1576,6 +1591,12 @@ export interface UpdateCustomerAccountRequest {
   egressTier?: EgressTier;
   /** Egress P4 Part A: opt-in MikroTik-direct bypass allow-list. */
   egressBypassEnabled?: boolean;
+  /**
+   * Per-customer server access (0.118.0). Off = that server's link is hidden
+   * (dashboard, Telegram, subscription) AND the customer is removed from that
+   * server, so an old link stops working too. At least one stays on.
+   */
+  serverAccess?: Partial<CustomerServerAccess>;
   gamingEntitled?: boolean;
   expiresAt?: string | null;
   tags?: string[];
@@ -4183,6 +4204,13 @@ export interface AdminServersResponse {
 
 export interface AdminCustomerAccountsResponse {
   accounts: AdminCustomerAccountSummary[];
+  /**
+   * Which servers are configured on this deployment (0.118.0): germany = the DE
+   * entry env resolves, iran = the afrows-in entry env resolves, usa = the USA
+   * entry is enabled AND USA management is on. The UI disables unconfigured
+   * server-access checkboxes; the API rejects an access set with none of them.
+   */
+  configuredServers?: CustomerServerAccess;
 }
 
 export interface AdminResellerAccountsResponse {

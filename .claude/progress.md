@@ -9,6 +9,12 @@
 - Verified live: `/sub/<token>` 200, 844 B, 3 links (Germany / Shatel / USA) + userinfo; unknown token and `/api/sub/` 404; USA membership re-sync ensured 31/31; a customer USA link exits at 93.127.140.50 and is metered (`USA metered 1 user(s)`).
 - Fixed live on the USA: mirror `xray -test` needed `-format json` (config.json was never updated). Saved users now follow the live set.
 
+### Per-customer server access, backend (0.118.0)
+
+- **What.** Migration 0066 (`customer_accounts.access_germany/iran/usa`, NOT NULL DEFAULT true). `serverAccess` on the admin customer row, the update DTO and (0.118.0 review) the create DTO/INSERT; all-off -> 400; a change whose allowed set has no CONFIGURED server -> 400 (`getConfiguredServers`, also returned as `configuredServers` on `AdminCustomerAccountsResponse`); seller create/update with `serverAccess` -> 403 (read-only); audit `serverAccessBefore/After`. Link filtering in `resolveEntryLinkUris` (dashboard export, copy-link, Telegram), `/sub/<token>`, `getClientSubscription`. Enforcement in `XrayProvisioningService`: per-site eligibility + tracked rmu per denied config on Germany/USA (`remote-exit-membership.ts` `removed`, cleared on each full re-sync), recovery never re-adds a denied site; local reconcile skips + rmu's the Iran tags (`AFROWS_XRAY_IRAN_INBOUND_TAGS`, default `afrows-in,afrows-in-tcp`) when `access_iran` is off, cache keyed per (config, endpoint, tag), cleared every `AFROWS_LOCAL_ACCESS_SWEEP_SECONDS` (300 s); `afrows-reality`/WireGuard untouched. Toggle calls `requestReconcile()`. Pure helpers in `client/customer-server-access.ts`.
+- **Verified.** New tests: `customer-server-access.test.ts` (16), `server-access-provisioning.test.ts` (8, real service via esbuild), `server-access-billing.test.ts` (10, real BillingService). Typecheck clean; `version:check` 0.118.0. Env samples document `AFROWS_XRAY_IRAN_INBOUND_TAGS` and `AFROWS_LOCAL_ACCESS_SWEEP_SECONDS`.
+- **Remains.** Dashboard checkboxes (parallel, other engineer). Not committed or deployed; deploy needs migration 0066. Optional: add `AFROWS_XRAY_IRAN_INBOUND_TAGS` to the env samples if afrows-in is ever renamed.
+
 ## 2026-10-08
 
 ### USA VPS as second remote exit/entry (0.117.0)

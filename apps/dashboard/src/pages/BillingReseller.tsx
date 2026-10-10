@@ -4,6 +4,7 @@ import { Activity, Bot, Copy, CreditCard, Eye, Gauge, Gift, Inbox, Pencil, Plus,
 import type { AdminBillingSettingsSummary, AdminClientConfigExportEntry, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
 import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportResellerCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, rotateResellerClientConfigSubscriptionToken, sendResellerCustomerConfigTelegram, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
+import { ServerAccessSummary, effectiveServerAccess } from '../components/ServerAccessControls';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerTelegramLinkPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
@@ -848,6 +849,14 @@ function ResellerUsersTable({
       ),
     },
     {
+      // Read-only for the seller: which servers the admin enabled for this
+      // customer. Editing stays on the superadmin Customers page.
+      key: 'servers',
+      header: s.colServers,
+      className: fitCol,
+      render: (row) => <ServerAccessSummary t={t} value={effectiveServerAccess(row.account.serverAccess)} />,
+    },
+    {
       key: 'soldVolume',
       header: t.reseller.soldVolume,
       alignRight: true,
@@ -932,6 +941,9 @@ function ResellerUsersTable({
           {a.phone ? <DetailRow label={s.colPhone}><span dir="ltr">{a.phone}</span></DetailRow> : null}
           {a.expiresAt ? <DetailRow label={s.colExpiry}>{format.time(new Date(a.expiresAt), false)}</DetailRow> : null}
           {a.tags && a.tags.length > 0 ? <DetailRow label={s.colTags}>{a.tags.join(', ')}</DetailRow> : null}
+          <DetailRow label={s.colServers}>
+            <ServerAccessSummary t={t} value={effectiveServerAccess(a.serverAccess)} />
+          </DetailRow>
           <DetailRow label={t.reseller.soldVolume}>{format.bytes(row.soldBytes)}</DetailRow>
           <DetailRow label={t.reseller.orders}>{format.integer(row.orderCount)}</DetailRow>
           {row.latestSale ? <DetailRow label={t.reseller.lastSale}>{format.dateTime(new Date(row.latestSale))}</DetailRow> : null}
