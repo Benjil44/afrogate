@@ -24,10 +24,12 @@ import {
   setEgressTierPrice,
   resetCustomerAccountPassword,
   restoreAdminCustomerAccount,
+  rotateAdminClientConfigSubscriptionToken,
   updateAdminClientRoutePreference,
   updateAdminCustomerAccount,
   updateRouter,
 } from '../api/admin';
+import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import { UsageChart } from '../components/UsageChart';
 import { MicrotiksPage } from './MicrotiksPage';
@@ -348,8 +350,7 @@ export function CustomersPage({
   const [configBusy, setConfigBusy] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  // VLESS QR reveal (toggle only, no fetch — qrSvg already came with the export) + Send-to-Telegram outcome.
-  const [qrOpenId, setQrOpenId] = useState<string | null>(null);
+  // Send-to-Telegram outcome (VLESS link/QR reveal lives in ConfigLinksList).
   const [telegramBusy, setTelegramBusy] = useState(false);
   const [telegramResult, setTelegramResult] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -794,7 +795,6 @@ export function CustomersPage({
     setLinkMap({});
     setWgConfigMap({});
     setWgQrMap({});
-    setQrOpenId(null);
     setTelegramResult(null);
     void loadConfigs(a.id);
   };
@@ -819,6 +819,15 @@ export function CustomersPage({
     } finally {
       setTelegramBusy(false);
     }
+  };
+
+  // Rotate a config's subscription token (old /sub URL dies at once), then
+  // re-export so the new URL + its QR replace the stale ones in the panel.
+  // Throws on failure so the link list can show its own inline error.
+  const onRotateSubscription = async (configId: string) => {
+    if (!configsFor) return;
+    await rotateAdminClientConfigSubscriptionToken(sessionToken, configId);
+    await loadConfigs(configsFor.id);
   };
 
   // Fetch + reveal a WireGuard config's .conf text (provisions the peer if needed).
@@ -2244,42 +2253,13 @@ export function CustomersPage({
                       </button>
                     </span>
                   </div>
-                  {linkMap[c.id] ? (
-                    <div className="grid gap-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          readOnly
-                          value={linkMap[c.id]}
-                          dir="ltr"
-                          className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[11px] outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void copyLink(c.id, linkMap[c.id])}
-                          className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
-                        >
-                          <Copy size={13} />
-                          {copiedId === c.id ? s.copied : s.copyLink}
-                        </button>
-                        {c.qrSvg ? (
-                          <button
-                            type="button"
-                            onClick={() => setQrOpenId((cur) => (cur === c.id ? null : c.id))}
-                            className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
-                          >
-                            {qrOpenId === c.id ? s.hideQr : s.showQr}
-                          </button>
-                        ) : null}
-                      </div>
-                      {qrOpenId === c.id && c.qrSvg ? (
-                        <img
-                          className="mx-auto h-48 w-48 rounded-md bg-white p-2"
-                          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(c.qrSvg)}`}
-                          title={s.scanVless}
-                          alt={s.scanVless}
-                        />
-                      ) : null}
-                    </div>
+                  {hasConfigLinks(c) || linkMap[c.id] ? (
+                    <ConfigLinksList
+                      config={c}
+                      t={t}
+                      fallbackUri={linkMap[c.id] ?? null}
+                      onRotateSubscription={() => onRotateSubscription(c.id)}
+                    />
                   ) : c.protocol === 'vless' ? (
                     <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
                   ) : c.protocol === 'wireguard' ? (

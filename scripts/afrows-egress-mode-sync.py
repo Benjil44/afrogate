@@ -121,7 +121,17 @@ VIA_VILLAGE_LEGACY_OUT = dict(VIA_GERMANY_OUT, tag="via-village-legacy")
 # the repo); unset -> legacy behavior, nothing changes.
 CHAIN_PROBE_TAG = "chain-probe"
 CHAIN_PROBE_SVC = "afrows-xray"  # engine that hosts the local chain probe inbound
-SYSTEM_INBOUND_TAGS = {"api", CHAIN_PROBE_TAG, DNS_TAG}
+# USA exit management path (2026-10-08, infra/usa/README.md): VLESS-WS-TLS through
+# Cloudflare (us.afrows.com /afrowsus) to the USA xray as the system user
+# afrows-chain@afrows, whose ONLY private-address exception on the USA is
+# 127.0.0.1:22. A loopback-only socks inbound us-mgmt-socks -> via-usa carries the
+# backend's forced-command mgmt SSH (adu/rmu/read-usage); no customer traffic is
+# routed to via-usa here (CATCHALL_ORDER is unchanged). Enabled only when
+# AFROWS_US_CHAIN_UUID is set in the env file; unset -> neither object exists (a
+# previously rendered pair is removed, so unsetting is the rollback).
+US_MGMT_TAG = "us-mgmt-socks"
+US_CHAIN_TAG = "via-usa"
+SYSTEM_INBOUND_TAGS = {"api", CHAIN_PROBE_TAG, DNS_TAG, US_MGMT_TAG}
 # Self-healing foreign egress: probe the relay pool (socks); when it can't carry
 # traffic, send the normal foreign catch-all to via-village (owned Germany/Starlink)
 # instead of the dead pool, and flip back when the pool recovers.
@@ -177,10 +187,53 @@ def chain_cfg():
     }
 
 
-def chain_outbound(c):
-    """The via-germany outbound for the CF chain (deterministic for a given env)."""
+def us_chain_cfg():
+    """USA CF-chain (mgmt path) settings from the env file, or None when not configured."""
+    uuid = file_env("AFROWS_US_CHAIN_UUID")
+    if not uuid:
+        return None
+    host, _, port = file_env("AFROWS_US_MGMT_SOCKS", "127.0.0.1:1083").partition(":")
     return {
-        "tag": "via-germany", "protocol": "vless",
+        "uuid": uuid,
+        "address": file_env("AFROWS_US_CHAIN_ADDRESS", "172.64.34.62"),
+        "host": file_env("AFROWS_US_CHAIN_HOST", "us.afrows.com"),
+        "path": file_env("AFROWS_US_CHAIN_PATH", "/afrowsus"),
+        "socks_host": host or "127.0.0.1",
+        "socks_port": int(port or "1083"),
+    }
+
+
+def us_mgmt_inbound(c):
+    """Loopback-only socks inbound routed to via-usa: the mgmt SSH ProxyCommand target."""
+    return {"tag": US_MGMT_TAG, "listen": c["socks_host"], "port": c["socks_port"],
+            "protocol": "socks", "settings": {"auth": "noauth", "udp": False}}
+
+
+def upsert_tagged(items, want):
+    """Insert `want` into a list of tagged xray objects, or replace the same-tag entry in
+    place when it differs. Returns True when the list changed."""
+    for i, x in enumerate(items):
+        if x.get("tag") == want["tag"]:
+            if x == want:
+                return False
+            items[i] = want
+            return True
+    items.append(want)
+    return True
+
+
+def drop_tagged(items, tag):
+    """Remove every entry with the given tag. Returns True when the list changed."""
+    keep = [x for x in items if x.get("tag") != tag]
+    changed = len(keep) != len(items)
+    items[:] = keep
+    return changed
+
+
+def chain_outbound(c, tag="via-germany"):
+    """A VLESS-WS-TLS CF-chain outbound (via-germany, or via-usa); deterministic per env."""
+    return {
+        "tag": tag, "protocol": "vless",
         "settings": {"vnext": [{"address": c["address"], "port": 443,
                                 "users": [{"id": c["uuid"], "encryption": "none", "level": 0}]}]},
         "streamSettings": {
@@ -615,16 +668,19 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
             changed_out = True
     system_rules = [{"inboundTag": [DNS_TAG], "outboundTag": catch_outbound}]
     if chain and svc == CHAIN_PROBE_SVC:
-        ins = cfg.setdefault("inbounds", [])
-        want_in = chain_probe_inbound(chain)
-        cur = [i for i, x in enumerate(ins) if x.get("tag") == CHAIN_PROBE_TAG]
-        if not cur:
-            ins.append(want_in)
-            changed_out = True
-        elif ins[cur[0]] != want_in:
-            ins[cur[0]] = want_in
-            changed_out = True
+        changed_out |= upsert_tagged(cfg.setdefault("inbounds", []), chain_probe_inbound(chain))
         system_rules.insert(0, {"inboundTag": [CHAIN_PROBE_TAG], "outboundTag": "via-germany"})
+    if svc == CHAIN_PROBE_SVC:
+        # USA mgmt path: via-usa + us-mgmt-socks + their rule, only on the chain engine.
+        us = us_chain_cfg()
+        ins = cfg.setdefault("inbounds", [])
+        if us:
+            changed_out |= upsert_tagged(outs, chain_outbound(us, US_CHAIN_TAG))
+            changed_out |= upsert_tagged(ins, us_mgmt_inbound(us))
+            system_rules.insert(0, {"inboundTag": [US_MGMT_TAG], "outboundTag": US_CHAIN_TAG})
+        else:
+            changed_out |= drop_tagged(ins, US_MGMT_TAG)
+            changed_out |= drop_tagged(outs, US_CHAIN_TAG)
 
     # Drop any fixed rule (D2 pin / bypass) whose outbound does not exist — `xray -test`
     # would NOT reject a dangling outboundTag, so an unknown target must be caught here.

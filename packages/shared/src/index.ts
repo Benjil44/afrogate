@@ -1344,9 +1344,35 @@ export interface AdminClientConfigEntryLinkResponse {
  * or the config has no entry uuid); `qrSvg` is that link rendered as an inline
  * SVG QR (empty string when there is no link to encode).
  */
+/**
+ * Which entry a VLESS link connects through. `germany` = de.afrows.com via
+ * Cloudflare (fast, but frozen on Shatel). `iran` = the Afrows server entry
+ * (afrows-in, works on Shatel); both exit in Germany. `usa` = the alternative
+ * remote exit (us.afrows.com via Cloudflare), which exits in the USA.
+ */
+export type ClientEntryLinkKind = 'germany' | 'iran' | 'usa';
+
+export interface ClientEntryLink {
+  kind: ClientEntryLinkKind;
+  uri: string;
+  qrSvg: string;
+}
+
 export interface AdminClientConfigExportEntry extends AdminClientConfigSummary {
+  /** Primary link (first of `entryLinks`), kept for older dashboard code. */
   entryUri: string | null;
   qrSvg: string;
+  /** Every VLESS link for this config: Germany, Iran (Shatel), then USA; empty when none resolve. */
+  entryLinks: ClientEntryLink[];
+  /** Refreshable subscription URL (https://<host>/sub/<token>) carrying all entryLinks, or null. */
+  subscriptionUrl: string | null;
+  subscriptionQrSvg: string;
+}
+
+/** Result of rotating a config's subscription token: the old URL stops working at once. */
+export interface AdminRotateSubscriptionTokenResponse {
+  clientConfigId: string;
+  subscriptionUrl: string;
 }
 
 export interface AdminClientConfigsExportResponse {

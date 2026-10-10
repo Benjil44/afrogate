@@ -32,6 +32,8 @@ import type {
   TelegramBotAccountSummary,
   AdminClientConfigSummary,
   AdminClientConfigExportEntry,
+  AdminRotateSubscriptionTokenResponse,
+  ClientEntryLink,
   AdminClientConfigsExportResponse,
   AdminSendConfigTelegramResponse,
   AdminClientRoutePreferenceSummary,
@@ -132,10 +134,34 @@ import { hashPassword, verifyScryptPassword } from '../security/password';
 import { generatePassword, normalizeLoginIdentifier } from '../security/generate-password';
 import {
   buildAfrowsEntryUri,
+  buildEntryLinkSet,
+  customerEntryLinkRemarks,
+  PUBLIC_ENTRY_LINK_REMARKS,
   readAfrowsDeEntryEnv,
   readAfrowsInboundEnv,
   readAfrowsRealityEnv,
+  readAfrowsUsEntryEnv,
+  type AfrowsInboundParams,
 } from '../client/afrows-entry-link';
+import {
+  buildSubscriptionPayload,
+  buildSubscriptionUrl,
+  deriveSubscriptionToken,
+  hashSubscriptionToken,
+  isWellFormedSubscriptionToken,
+  pickSubscriptionUsage,
+  readSubscriptionSettings,
+  subscriptionTokenMatches,
+  type SubscriptionPayload,
+} from '../client/subscription-token';
+import {
+  buildConfigLinksMessage,
+  configLinksQrCaptionId,
+  configLinksQrPayload,
+  normalizeTelegramLanguage,
+  renderTelegramCopy,
+  type ConfigLinkBundle,
+} from '../telegram/telegram-i18n';
 import {
   buildWireguardConf,
   generateWireguardKeypair,
@@ -772,6 +798,20 @@ interface RewardedAdGrantCreateState {
   provider: string;
 }
 
+/** A customer's primary VLESS config with every entry link + its subscription URL. */
+export interface PrimaryVlessEntryLinks {
+  configId: string;
+  label: string;
+  /** First entry link (back-compat for single-link callers). */
+  uri: string;
+  bundle: ConfigLinkBundle;
+}
+
+/** Inline SVG QR used by the dashboard export (same size for links and subscription URLs). */
+function renderQrSvg(value: string): Promise<string> {
+  return QRCode.toString(value, { type: 'svg', margin: 1, width: 240 });
+}
+
 /**
  * SQL WHERE fragment (on alias `ra`) for the reseller-accounts listing archived
  * visibility. Mirrors `customerAccountArchivedWhereClause`. Returns null for
@@ -791,6 +831,9 @@ function resellerAccountArchivedWhereClause(
       return 'ra.archived_at IS NULL';
   }
 }
+
+/** Roles that may see (and hand out) a config's public subscription URL in the export. */
+const SUBSCRIPTION_URL_ROLES: ReadonlySet<string> = new Set(['superadmin', 'owner', 'admin', 'supervisor', 'reseller']);
 
 @Injectable()
 export class BillingService {
@@ -3963,18 +4006,23 @@ export class BillingService {
     actor: AuthActor | undefined,
   ): Promise<AdminClientConfigsExportResponse> {
     const account = await this.getCustomerAccount(id);
+    // The subscription URL is a live bearer credential: only roles that may hand it to
+    // the customer (and rotate it) see it. Read-only roles (support/auditor) get the
+    // entry links but no URL, which also keeps the lazy hash backfill off their path.
+    const includeSubscription = SUBSCRIPTION_URL_ROLES.has(actor?.role ?? '');
     await this.audit.record(actor, 'client_configs.export', 'customer_account', id, {
       configCount: account.clientConfigs.length,
       exportFormat: 'afrows_client_configs_export_v1',
       hasExternalPanelRefs: account.clientConfigs.some((config) => Boolean(config.externalPanel)),
       subscriptionCredentialsIncluded: false,
+      subscriptionUrlsIncluded: includeSubscription && readSubscriptionSettings(process.env) !== null,
     });
 
-    // Enrich each config with its native VLESS entry link + an inline SVG QR of
-    // that link, so the dashboard's "Show QR" panel needs no extra round-trip.
-    // Config generation is untouched — this only reads the existing entry link.
+    // Enrich each config with its native VLESS entry links (Germany, Shatel, USA), the
+    // public subscription URL, and inline SVG QRs, so the dashboard's "Show QR" panel
+    // needs no extra round-trip. Config generation is untouched.
     const configs = await Promise.all(
-      account.clientConfigs.map((config) => this.decorateExportedClientConfig(config)),
+      account.clientConfigs.map((config) => this.decorateExportedClientConfig(config, includeSubscription)),
     );
 
     return {
@@ -3991,14 +4039,31 @@ export class BillingService {
     };
   }
 
-  /** The native VLESS entry link for a client config (admin-only), used by the
-   *  dashboard "copy link" button. Prefers the fast Germany entry (Cloudflare-fronted
-   *  WS+TLS) when AFROWS_DE_ENTRY_* is enabled, falling back to the Ireland afrows-in
-   *  inbound. The link's display name (remark in the client app) is the customer's
-   *  display name (e.g. "ben"), falling back to the config label then "Afrows". */
+  /** The primary native VLESS entry link for a client config (admin-only), used by the
+   *  dashboard "copy link" button: the first of `resolveEntryLinks` (Germany when
+   *  AFROWS_DE_ENTRY_* is enabled, else the Iran afrows-in entry, else the USA one). */
   async getClientConfigEntryLink(clientConfigId: string): Promise<{ link: string | null }> {
-    const inbound = readAfrowsDeEntryEnv(process.env) ?? readAfrowsInboundEnv(process.env);
-    if (!inbound) return { link: null };
+    const [first] = await this.resolveEntryLinkUris(clientConfigId);
+    return { link: first?.uri ?? null };
+  }
+
+  /**
+   * Every VLESS entry link for a client config: Germany, Iran (afrows-in, the one
+   * that works on Shatel), then USA (alternative exit), each with an inline SVG QR.
+   * Remarks are "<name> · Germany" / "<name> · Shatel" / "<name> · USA", the name
+   * being `displayName` when given,
+   * else the customer's display name, the config label, then "Afrows".
+   */
+  async resolveEntryLinks(clientConfigId: string, displayName?: string | null): Promise<ClientEntryLink[]> {
+    const links = await this.resolveEntryLinkUris(clientConfigId, displayName);
+    return Promise.all(links.map(async (link) => ({ ...link, qrSvg: await renderQrSvg(link.uri) })));
+  }
+
+  /** Same links as `resolveEntryLinks`, without QR rendering (Telegram text paths). */
+  private async resolveEntryLinkUris(
+    clientConfigId: string,
+    displayName?: string | null,
+  ): Promise<Array<Omit<ClientEntryLink, 'qrSvg'>>> {
     const result = await this.database.query<{
       entryUuid: string | null;
       label: string | null;
@@ -4011,25 +4076,192 @@ export class BillingService {
       [clientConfigId],
     );
     const row = result.rows[0];
-    if (!row?.entryUuid) return { link: null };
-    const name = row.displayName?.trim() || row.label || 'Afrows';
-    return { link: buildAfrowsEntryUri(inbound, row.entryUuid, name) };
+    if (!row?.entryUuid) return [];
+    const name = displayName?.trim() || row.displayName?.trim() || row.label || 'Afrows';
+    return buildEntryLinkSet(process.env, row.entryUuid, customerEntryLinkRemarks(name));
+  }
+
+  /** Links + subscription URL for one config, as the Telegram builders consume them. */
+  async getClientConfigLinkBundle(clientConfigId: string): Promise<ConfigLinkBundle> {
+    const [links, subscriptionUrl] = await Promise.all([
+      this.resolveEntryLinkUris(clientConfigId),
+      this.getClientConfigSubscriptionUrl(clientConfigId),
+    ]);
+    return { links, subscriptionUrl };
   }
 
   /**
-   * Attach the VLESS entry link + inline SVG QR to one exported config. The QR
-   * encodes the exact `vless://…` import link (same one the "copy link" button
-   * uses); when no inbound is configured or the config has no entry uuid the
-   * link is null and the QR is an empty string.
+   * The config's public subscription URL, or null when the feature is off
+   * (AFROWS_SUBSCRIPTION_SECRET unset/short) or the config does not exist. The
+   * token is re-derived (never stored); its sha256 is (re)written when missing or
+   * stale (first export after migration 0064, or after a secret change). The
+   * version guard keeps a concurrent rotation from being overwritten.
+   */
+  async getClientConfigSubscriptionUrl(clientConfigId: string): Promise<string | null> {
+    const settings = readSubscriptionSettings(process.env);
+    if (!settings) return null;
+    const result = await this.database.query<{ version: number; tokenHash: string | null }>(
+      `SELECT subscription_token_version AS "version", subscription_token_hash AS "tokenHash"
+         FROM client_configs WHERE id = $1`,
+      [clientConfigId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    const version = Number(row.version);
+    const token = deriveSubscriptionToken(settings.secret, clientConfigId, version);
+    const tokenHash = hashSubscriptionToken(token);
+    if (row.tokenHash !== tokenHash) {
+      await this.database.query(
+        `UPDATE client_configs SET subscription_token_hash = $2
+          WHERE id = $1 AND subscription_token_version = $3`,
+        [clientConfigId, tokenHash, version],
+      );
+    }
+    return buildSubscriptionUrl(settings.baseUrl, token);
+  }
+
+  /**
+   * Rotate a config's subscription token: bump the version and store the new
+   * hash in one UPDATE (row-locked), so the old URL 404s immediately. Throws
+   * 503 when the feature is off.
+   */
+  async rotateClientConfigSubscriptionToken(
+    clientConfigId: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminRotateSubscriptionTokenResponse> {
+    const settings = readSubscriptionSettings(process.env);
+    if (!settings) throw new ServiceUnavailableException('Subscription URLs are not configured');
+    const token = await this.database.transaction(async (executor) => {
+      const current = await executor.query<{ version: number; customerAccountId: string }>(
+        `SELECT subscription_token_version AS "version", customer_account_id AS "customerAccountId"
+           FROM client_configs WHERE id = $1 FOR UPDATE`,
+        [clientConfigId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new NotFoundException('Client config not found');
+      const nextVersion = Number(row.version) + 1;
+      const nextToken = deriveSubscriptionToken(settings.secret, clientConfigId, nextVersion);
+      await executor.query(
+        `UPDATE client_configs
+            SET subscription_token_version = $2, subscription_token_hash = $3, updated_at = now()
+          WHERE id = $1`,
+        [clientConfigId, nextVersion, hashSubscriptionToken(nextToken)],
+      );
+      await this.audit.record(
+        actor,
+        'client_config.subscription_token.rotated',
+        'client_config',
+        clientConfigId,
+        { customerAccountId: row.customerAccountId, version: nextVersion },
+        executor,
+      );
+      return nextToken;
+    });
+    return { clientConfigId, subscriptionUrl: buildSubscriptionUrl(settings.baseUrl, token) };
+  }
+
+  /** Reseller variant: IDOR-guarded so a seller can only rotate their own customers' configs. */
+  async rotateResellerClientConfigSubscriptionToken(
+    clientConfigId: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminRotateSubscriptionTokenResponse> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    await ensureClientConfigBelongsToReseller(this.database, clientConfigId, reseller.id, null);
+    return this.rotateClientConfigSubscriptionToken(clientConfigId, actor);
+  }
+
+  /** Reseller variant of the config export: IDOR-guarded to the seller's own customers. */
+  async exportResellerCustomerClientConfigs(
+    id: string,
+    actor: AuthActor | undefined,
+  ): Promise<AdminClientConfigsExportResponse> {
+    const reseller = await this.getResellerAccountRowForActor(actor);
+    await ensureCustomerAccountBelongsToReseller(this.database, id, reseller.id);
+    return this.exportCustomerClientConfigs(id, actor);
+  }
+
+  /**
+   * Public `GET /sub/:token` resolution. Returns null (the route answers a uniform
+   * 404) when the feature is off, the token is malformed/unknown, the config is
+   * disabled/expired/deleted, or the account is archived or not active. An
+   * over-quota ('limited') config still gets its links: the app shows usage from
+   * the header and xray enforces the cutoff. The body carries no customer PII.
+   */
+  async resolvePublicSubscription(token: string): Promise<SubscriptionPayload | null> {
+    const settings = readSubscriptionSettings(process.env);
+    if (!settings || !isWellFormedSubscriptionToken(token)) return null;
+    const result = await this.database.query<{
+      id: string;
+      version: number;
+      entryUuid: string | null;
+      configStatus: string;
+      clientUsedBytes: string | number | null;
+      clientQuotaLimitBytes: string | number | null;
+      accountStatus: string;
+      accountDeletedAt: Date | string | null;
+      accountExpiresAt: Date | string | null;
+      accountUsedBytes: string | number | null;
+      accountQuotaLimitBytes: string | number | null;
+      perClientLimitBytes: string | number | null;
+    }>(
+      `SELECT cc.id, cc.subscription_token_version AS "version", cc.entry_uuid AS "entryUuid",
+              cc.status AS "configStatus", cc.used_bytes AS "clientUsedBytes",
+              cc.quota_limit_bytes AS "clientQuotaLimitBytes",
+              ca.status AS "accountStatus", ca.deleted_at AS "accountDeletedAt",
+              ca.expires_at AS "accountExpiresAt", ca.used_bytes AS "accountUsedBytes",
+              ca.quota_limit_bytes AS "accountQuotaLimitBytes",
+              ca.per_client_limit_bytes AS "perClientLimitBytes"
+         FROM client_configs cc
+         JOIN customer_accounts ca ON ca.id = cc.customer_account_id
+        WHERE cc.subscription_token_hash = $1
+        LIMIT 1`,
+      [hashSubscriptionToken(token)],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    if (!subscriptionTokenMatches(settings.secret, row.id, Number(row.version), token)) return null;
+    if (!['active', 'limited'].includes(row.configStatus)) return null;
+    if (row.accountStatus !== 'active' || row.accountDeletedAt !== null) return null;
+
+    const uris = buildEntryLinkSet(process.env, row.entryUuid, PUBLIC_ENTRY_LINK_REMARKS).map((link) => link.uri);
+    if (!uris.length) return null;
+    const usage = pickSubscriptionUsage({
+      accountUsedBytes: numberFromBigInt(row.accountUsedBytes) ?? 0,
+      accountQuotaLimitBytes: numberFromBigInt(row.accountQuotaLimitBytes),
+      clientUsedBytes: numberFromBigInt(row.clientUsedBytes) ?? 0,
+      clientQuotaLimitBytes: numberFromBigInt(row.clientQuotaLimitBytes) ?? numberFromBigInt(row.perClientLimitBytes),
+    });
+    return buildSubscriptionPayload({
+      uris,
+      usedBytes: usage.usedBytes,
+      totalBytes: usage.totalBytes,
+      expiresAt: row.accountExpiresAt ? new Date(row.accountExpiresAt) : null,
+    });
+  }
+
+  /**
+   * Attach every VLESS entry link (+ inline SVG QRs) and the subscription URL (+ QR)
+   * to one exported config. `entryUri`/`qrSvg` mirror the first link for older
+   * dashboard code; empty/null when no inbound is configured or there is no uuid.
    */
   private async decorateExportedClientConfig(
     config: AdminClientConfigSummary,
+    includeSubscription: boolean,
   ): Promise<AdminClientConfigExportEntry> {
-    const { link } = await this.getClientConfigEntryLink(config.id);
-    const qrSvg = link
-      ? await QRCode.toString(link, { type: 'svg', margin: 1, width: 240 })
-      : '';
-    return { ...config, entryUri: link, qrSvg };
+    const [entryLinks, subscriptionUrl] = await Promise.all([
+      this.resolveEntryLinks(config.id),
+      includeSubscription ? this.getClientConfigSubscriptionUrl(config.id) : Promise.resolve(null),
+    ]);
+    const subscriptionQrSvg = subscriptionUrl ? await renderQrSvg(subscriptionUrl) : '';
+    const [first] = entryLinks;
+    return {
+      ...config,
+      entryUri: first?.uri ?? null,
+      qrSvg: first?.qrSvg ?? '',
+      entryLinks,
+      subscriptionUrl,
+      subscriptionQrSvg,
+    };
   }
 
   /**
@@ -4038,10 +4270,12 @@ export class BillingService {
    * null when the customer has no linked chat — the caller then reports
    * `no_telegram` rather than attempting a send.
    */
-  private async resolveCustomerTelegramChatId(customerAccountId: string): Promise<string | null> {
-    const result = await this.database.query<{ chatId: string | null }>(
+  private async resolveCustomerTelegramChat(
+    customerAccountId: string,
+  ): Promise<{ chatId: string; language: 'en' | 'fa' } | null> {
+    const result = await this.database.query<{ chatId: string | null; language: string | null }>(
       `
-        SELECT tu.chat_id AS "chatId"
+        SELECT tu.chat_id AS "chatId", tu.language AS "language"
         FROM customer_accounts ca
         LEFT JOIN telegram_users tu ON tu.telegram_id = ca.telegram_id
         WHERE ca.id = $1
@@ -4049,18 +4283,21 @@ export class BillingService {
       `,
       [customerAccountId],
     );
-    return normalizeNullableString(result.rows[0]?.chatId);
+    const chatId = normalizeNullableString(result.rows[0]?.chatId);
+    if (!chatId) return null;
+    return { chatId, language: normalizeTelegramLanguage(result.rows[0]?.language) };
   }
 
   /**
-   * Pick the customer's primary VLESS config and resolve its entry link. Prefers
+   * Pick the customer's primary VLESS config and resolve its entry links. Prefers
    * an active config, then any non-disabled one, taking the first (newest-first
-   * ordering from `listClientConfigs`) whose native entry link resolves. Returns
-   * null when the account has no VLESS config with a usable entry link.
+   * ordering from `listClientConfigs`) whose native entry links resolve. `uri` is
+   * the first link (back-compat); `bundle` carries every link + the subscription
+   * URL. Returns null when the account has no VLESS config with a usable link.
    */
   private async resolvePrimaryVlessEntryLink(
     account: AdminCustomerAccountDetail,
-  ): Promise<{ configId: string; label: string; uri: string } | null> {
+  ): Promise<PrimaryVlessEntryLinks | null> {
     const vlessConfigs = account.clientConfigs.filter(
       (config) =>
         typeof config.protocol === 'string' &&
@@ -4072,9 +4309,10 @@ export class BillingService {
       ...vlessConfigs.filter((config) => config.status !== 'active'),
     ];
     for (const config of ordered) {
-      const { link } = await this.getClientConfigEntryLink(config.id);
-      if (link) {
-        return { configId: config.id, label: config.label, uri: link };
+      const links = await this.resolveEntryLinkUris(config.id);
+      if (links.length) {
+        const subscriptionUrl = await this.getClientConfigSubscriptionUrl(config.id);
+        return { configId: config.id, label: config.label, uri: links[0].uri, bundle: { links, subscriptionUrl } };
       }
     }
     return null;
@@ -4086,9 +4324,7 @@ export class BillingService {
    * account has no config yet. Same resolution `sendCustomerConfigToTelegram`
    * uses for the admin-push QR, just without the admin/chat-id plumbing.
    */
-  async getPrimaryVlessEntryLinkForAccount(
-    accountId: string,
-  ): Promise<{ configId: string; label: string; uri: string } | null> {
+  async getPrimaryVlessEntryLinkForAccount(accountId: string): Promise<PrimaryVlessEntryLinks | null> {
     const account = await this.getCustomerAccount(accountId);
     return this.resolvePrimaryVlessEntryLink(account);
   }
@@ -4106,8 +4342,8 @@ export class BillingService {
   ): Promise<AdminSendConfigTelegramResponse> {
     const account = await this.getCustomerAccount(id);
 
-    const chatId = await this.resolveCustomerTelegramChatId(id);
-    if (!chatId) {
+    const chat = await this.resolveCustomerTelegramChat(id);
+    if (!chat) {
       await this.recordConfigSentTelegram(actor, id, { sent: false, reason: 'no_telegram' });
       return { sent: false, reason: 'no_telegram' };
     }
@@ -4122,19 +4358,16 @@ export class BillingService {
       return { sent: false, reason: 'no_config' };
     }
 
-    const accountName = account.displayName?.trim() || 'Afrows account';
-    const messageText = [
-      'Afrows VLESS config',
-      `Account: ${accountName}`,
-      `Client: ${primary.label}`,
-      '',
-      primary.uri,
-      '',
-      'Keep this config private. Support will never ask for your full config.',
-    ].join('\n');
+    const { chatId, language } = chat;
+    // Every entry link (Germany, Shatel, USA) and the subscription URL, labelled in the
+    // customer's bot language. The single QR encodes the subscription URL when
+    // available (one scan adds every link), else the first link.
+    const messageText = buildConfigLinksMessage(primary.bundle, language);
+    const qrPayload = configLinksQrPayload(primary.bundle) ?? primary.uri;
 
     try {
       const messageResult = await this.telegram.sendMessage(chatId, messageText, {
+        parseMode: 'HTML',
         disableWebPagePreview: true,
       });
 
@@ -4142,9 +4375,9 @@ export class BillingService {
       // only the image cannot be produced/delivered — the config text already went.
       let photoStatus: TelegramMessageSendResult['status'] | 'not_attempted' = 'not_attempted';
       try {
-        const qrPng = await QRCode.toBuffer(primary.uri, { type: 'png', margin: 1, width: 512 });
+        const qrPng = await QRCode.toBuffer(qrPayload, { type: 'png', margin: 1, width: 512 });
         const photoResult = await this.telegram.sendPhoto(chatId, qrPng, {
-          caption: `Afrows config QR — ${primary.label}`,
+          caption: renderTelegramCopy(configLinksQrCaptionId(primary.bundle), language, {}, { label: primary.label }),
           filename: 'afrows-vless-qr.png',
         });
         photoStatus = photoResult.status;
@@ -6207,22 +6440,28 @@ export class BillingService {
       const credential = credentialsByOutboundProtocol.get(`${outbound.id}:${protocol}`) ?? null;
       return this.subscriptionConfigLink(outbound, credential);
     });
-    // Native links first so the app connects to our own engine by default. The remote
-    // Germany entry is PRIMARY (Cloudflare-fronted WS+TLS, fast) and leads the list for
-    // EVERY customer. The Ireland/village entries (WireGuard, afrows-in WS, afrows-reality)
-    // route out via the village Starlink and are the FALLBACK — included only for customers
-    // with the egress-bypass flag ON (per the operator's "bypass list"), so only they fall
-    // back to Starlink when the main path is gone. Safety: if the Germany entry is not
-    // available (env off / no uuid), the Ireland fallback is included for everyone so no one
-    // is left without an entry. Each link is still omitted until configured via env.
-    const deEntryLink = await this.buildNativeDeEntryConfigLink(actor.clientConfigId, routeGroup);
-    const wireguardLink = await this.buildNativeWireguardConfigLink(actor.clientConfigId, routeGroup);
-    const nativeLink = await this.buildNativeEntryConfigLink(actor.clientConfigId, routeGroup);
-    const realityLink = await this.buildNativeRealityConfigLink(actor.clientConfigId, routeGroup);
-    const bypassEnabled = await this.getClientEgressBypassEnabled(actor.clientConfigId);
+    // Native links first so the app connects to our own engine by default. Every customer
+    // gets TWO VLESS entries: the remote Germany entry (Cloudflare-fronted WS+TLS, fast) as
+    // PRIMARY, then the Iran afrows-in entry (WS on app.afrows.com), which works on Shatel
+    // (Shatel freezes the afrows.com-SNI Cloudflare flow) and, since the afrows-in catch-all
+    // routes to via-germany, also exits in Germany. The WireGuard and afrows-reality entries
+    // still route out via the village Starlink and stay the FALLBACK, included only for
+    // customers with the egress-bypass flag ON (the operator's "bypass list"), or for
+    // everyone when the Germany entry is unavailable (env off / no uuid) so no one is left
+    // without an entry. Each link is still omitted until configured via env.
+    // The USA entry (alternative remote exit, AFROWS_US_ENTRY_*) is added for EVERYONE
+    // when enabled, right after the Germany/Shatel (and fallback) entries.
+    const id = actor.clientConfigId;
+    const deEntryLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsDeEntryEnv(process.env), 'afrows-de-in', PUBLIC_ENTRY_LINK_REMARKS.germany);
+    const wireguardLink = await this.buildNativeWireguardConfigLink(id, routeGroup);
+    const nativeLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsInboundEnv(process.env), 'afrows-in', PUBLIC_ENTRY_LINK_REMARKS.iran);
+    const realityLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsRealityEnv(process.env), 'afrows-reality', 'Afrows Reality');
+    const usEntryLink = await this.buildNativeVlessConfigLink(id, routeGroup, readAfrowsUsEntryEnv(process.env), 'afrows-us-in', PUBLIC_ENTRY_LINK_REMARKS.usa);
+    const bypassEnabled = await this.getClientEgressBypassEnabled(id);
     const includeStarlinkFallback = bypassEnabled || deEntryLink === null;
-    const starlinkFallback = includeStarlinkFallback ? [wireguardLink, nativeLink, realityLink] : [];
-    const configLinks = [deEntryLink, ...starlinkFallback, ...baseConfigLinks].filter(
+    // Fallback customers keep the exact previous order (wireguard, afrows-in, reality).
+    const secondaryLinks = includeStarlinkFallback ? [wireguardLink, nativeLink, realityLink] : [nativeLink];
+    const configLinks = [deEntryLink, ...secondaryLinks, usEntryLink, ...baseConfigLinks].filter(
       (link): link is ClientSubscriptionConfigLinkSummary => link !== null,
     );
 
@@ -6254,14 +6493,20 @@ export class BillingService {
     return result.rows[0]?.bypass === true;
   }
 
-  /** Builds the PRIMARY remote Germany entry link (Cloudflare-fronted WS+TLS, fast), or null
-   *  when AFROWS_DE_ENTRY_* env isn't enabled/configured. This is an entry only (no exit
-   *  creds), so per-user metering on the Germany xray is preserved. */
-  private async buildNativeDeEntryConfigLink(
+  /**
+   * Builds one native VLESS subscription link (Germany entry `afrows-de-in`, Iran
+   * `afrows-in` "Shatel", `afrows-reality`, or the USA entry `afrows-us-in`) for a
+   * client from already-read inbound params, or null when that inbound's env isn't
+   * enabled/configured or the client has no entry uuid. Entries only (no exit
+   * creds), so per-user metering on the serving xray is preserved.
+   */
+  private async buildNativeVlessConfigLink(
     clientConfigId: string,
     routeGroup: string,
+    inbound: AfrowsInboundParams | null,
+    outboundId: string,
+    name: string,
   ): Promise<ClientSubscriptionConfigLinkSummary | null> {
-    const inbound = readAfrowsDeEntryEnv(process.env);
     if (!inbound) return null;
     const result = await this.database.query<{ entryUuid: string | null }>(
       `SELECT entry_uuid AS "entryUuid" FROM client_configs WHERE id = $1`,
@@ -6270,80 +6515,16 @@ export class BillingService {
     const entryUuid = result.rows[0]?.entryUuid;
     if (!entryUuid) return null;
 
-    const uri = buildAfrowsEntryUri(inbound, entryUuid, 'Afrows Germany');
     return {
-      outboundId: 'afrows-de-in',
-      name: 'Afrows Germany',
+      outboundId,
+      name,
       type: 'vless',
       routeGroup,
       usageMultiplier: 1,
       chargeLabel: 'standard',
       format: 'vless-uri',
       renderStatus: 'rendered',
-      uri,
-      missingFields: [],
-      warnings: [],
-      requiresClientSecret: false,
-    };
-  }
-
-  /** Builds the native afrows-in Reality config link for a client (or null). */
-  private async buildNativeEntryConfigLink(
-    clientConfigId: string,
-    routeGroup: string,
-  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
-    const inbound = readAfrowsInboundEnv(process.env);
-    if (!inbound) return null;
-    const result = await this.database.query<{ entryUuid: string | null }>(
-      `SELECT entry_uuid AS "entryUuid" FROM client_configs WHERE id = $1`,
-      [clientConfigId],
-    );
-    const entryUuid = result.rows[0]?.entryUuid;
-    if (!entryUuid) return null;
-
-    const uri = buildAfrowsEntryUri(inbound, entryUuid, 'Afrows');
-    return {
-      outboundId: 'afrows-in',
-      name: 'Afrows',
-      type: 'vless',
-      routeGroup,
-      usageMultiplier: 1,
-      chargeLabel: 'standard',
-      format: 'vless-uri',
-      renderStatus: 'rendered',
-      uri,
-      missingFields: [],
-      warnings: [],
-      requiresClientSecret: false,
-    };
-  }
-
-  /** Builds the block-resistant VLESS+Reality config link (delivered alongside
-   *  the WS link), or null when AFROWS_REALITY_* env isn't configured. */
-  private async buildNativeRealityConfigLink(
-    clientConfigId: string,
-    routeGroup: string,
-  ): Promise<ClientSubscriptionConfigLinkSummary | null> {
-    const inbound = readAfrowsRealityEnv(process.env);
-    if (!inbound) return null;
-    const result = await this.database.query<{ entryUuid: string | null }>(
-      `SELECT entry_uuid AS "entryUuid" FROM client_configs WHERE id = $1`,
-      [clientConfigId],
-    );
-    const entryUuid = result.rows[0]?.entryUuid;
-    if (!entryUuid) return null;
-
-    const uri = buildAfrowsEntryUri(inbound, entryUuid, 'Afrows Reality');
-    return {
-      outboundId: 'afrows-reality',
-      name: 'Afrows Reality',
-      type: 'vless',
-      routeGroup,
-      usageMultiplier: 1,
-      chargeLabel: 'standard',
-      format: 'vless-uri',
-      renderStatus: 'rendered',
-      uri,
+      uri: buildAfrowsEntryUri(inbound, entryUuid, name),
       missingFields: [],
       warnings: [],
       requiresClientSecret: false,

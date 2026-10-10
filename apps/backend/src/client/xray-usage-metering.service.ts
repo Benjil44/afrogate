@@ -7,6 +7,7 @@ import { parseUserStats } from './xray-usage';
 import { applyUsageDelta } from './usage-accounting';
 import { provisioningEmail } from './xray-provisioning';
 import { GermanyMgmtService } from './germany-mgmt.service';
+import { UsaMgmtService } from './usa-mgmt.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +33,7 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly database: DatabaseService,
     private readonly germanyMgmt: GermanyMgmtService,
+    private readonly usaMgmt: UsaMgmtService,
   ) {}
 
   onModuleInit(): void {
@@ -124,9 +126,9 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
           /* best-effort; next tick retries */
         }
       }
-      // Also cut the Germany WS entry (best-effort; flaky village link never blocks).
-      // Retried every tick (see above) until the removal actually sticks.
-      await this.germanyMgmt.removeUser(provisioningEmail(row.clientConfigId));
+      // Also cut the remote exits (Germany, USA). Best-effort, each behind its own
+      // breaker; retried every tick (see above) until the removal actually sticks.
+      await this.removeFromRemoteExits(row.clientConfigId);
     }
     if (newlyLimited) {
       this.logger.log(`Quota enforced: limited ${newlyLimited} newly over-quota client(s)`);
@@ -186,12 +188,22 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
           /* best-effort; next tick retries */
         }
       }
-      // Also cut the Germany WS entry (best-effort; flaky village link never blocks).
-      await this.germanyMgmt.removeUser(provisioningEmail(row.clientConfigId));
+      // Also cut the remote exits (Germany, USA) (best-effort; a flaky link never blocks).
+      await this.removeFromRemoteExits(row.clientConfigId);
     }
     if (result.rows.length) {
       this.logger.log(`Account status enforced: disconnected ${result.rows.length} inactive-account client(s)`);
     }
+  }
+
+  /**
+   * rmu on Germany AND the USA, in parallel so a down site (bounded by its ssh
+   * timeout, then skipped by its breaker) never delays the other's cut. The USA
+   * call is a no-op unless AFROWS_US_MGMT_ENABLED. Never throws.
+   */
+  private async removeFromRemoteExits(clientConfigId: string): Promise<void> {
+    const email = provisioningEmail(clientConfigId);
+    await Promise.all([this.germanyMgmt.removeUser(email), this.usaMgmt.removeUser(email)]);
   }
 
   private bin(): string {

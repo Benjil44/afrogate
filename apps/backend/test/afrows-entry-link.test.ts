@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildAfrowsEntryUri,
+  buildEntryLinkSet,
+  customerEntryLinkRemarks,
+  PUBLIC_ENTRY_LINK_REMARKS,
   readAfrowsDeEntryEnv,
   readAfrowsInboundEnv,
   readAfrowsRealityEnv,
@@ -148,4 +151,46 @@ test('reality links never carry ech even if set on params', () => {
     'R',
   );
   assert.ok(!uri.includes('ech='));
+});
+
+const BOTH_ENTRIES_ENV = {
+  AFROWS_DE_ENTRY_ENABLED: 'true',
+  AFROWS_DE_ENTRY_HOST: 'de.afrows.com',
+  AFROWS_DE_ENTRY_SNI: 'de.afrows.com',
+  AFROWS_INBOUND_MODE: 'ws',
+  AFROWS_INBOUND_HOST: '94.74.145.199',
+  AFROWS_INBOUND_SNI: 'app.afrows.com',
+  AFROWS_INBOUND_WS_PATH: '/afrowsws',
+};
+const UUID = '00113fad-42da-4be7-ae1e-cce226baf47e';
+
+test('buildEntryLinkSet: Germany first, then Iran, with per-customer remarks', () => {
+  const links = buildEntryLinkSet(BOTH_ENTRIES_ENV, UUID, customerEntryLinkRemarks('ben'));
+  assert.deepEqual(links.map((link) => link.kind), ['germany', 'iran']);
+  assert.ok(links[0].uri.startsWith(`vless://${UUID}@de.afrows.com:443?`));
+  assert.ok(links[1].uri.startsWith(`vless://${UUID}@94.74.145.199:443?`));
+  assert.match(links[1].uri, /sni=app\.afrows\.com/);
+  assert.match(links[1].uri, /path=%2Fafrowsws/);
+  assert.ok(links[0].uri.endsWith(`#${encodeURIComponent('ben · Germany')}`));
+  assert.ok(links[1].uri.endsWith(`#${encodeURIComponent('ben · Shatel')}`));
+});
+
+test('buildEntryLinkSet: public remarks are fixed ASCII with no customer name', () => {
+  const links = buildEntryLinkSet(BOTH_ENTRIES_ENV, UUID, PUBLIC_ENTRY_LINK_REMARKS);
+  assert.ok(links[0].uri.endsWith('#Afrows%20Germany'));
+  assert.ok(links[1].uri.endsWith('#Afrows%20Shatel'));
+  assert.ok(links.every((link) => /^[!-~]+$/.test(link.uri)));
+});
+
+test('buildEntryLinkSet: each link only when its env is configured; none without a uuid', () => {
+  const { AFROWS_DE_ENTRY_ENABLED: _off, ...iranOnly } = BOTH_ENTRIES_ENV;
+  assert.deepEqual(buildEntryLinkSet(iranOnly, UUID, PUBLIC_ENTRY_LINK_REMARKS).map((l) => l.kind), ['iran']);
+  const { AFROWS_INBOUND_HOST: _h, ...germanyOnly } = BOTH_ENTRIES_ENV;
+  assert.deepEqual(buildEntryLinkSet(germanyOnly, UUID, PUBLIC_ENTRY_LINK_REMARKS).map((l) => l.kind), ['germany']);
+  assert.deepEqual(buildEntryLinkSet(BOTH_ENTRIES_ENV, null, PUBLIC_ENTRY_LINK_REMARKS), []);
+  assert.deepEqual(buildEntryLinkSet({}, UUID, PUBLIC_ENTRY_LINK_REMARKS), []);
+});
+
+test('customerEntryLinkRemarks falls back to Afrows for a blank name', () => {
+  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA' });
 });

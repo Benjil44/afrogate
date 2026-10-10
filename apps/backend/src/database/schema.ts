@@ -657,11 +657,18 @@ export const clientConfigs = pgTable(
     usedBytes: bigint('used_bytes', { mode: 'number' }).notNull().default(0),
     status: text('status').notNull().default('active'),
     notes: text('notes'),
+    // Public subscription URL (migration 0064): the token is HMAC-derived in the backend and
+    // never stored; only its sha256 hex is kept for lookup. Rotation bumps the version.
+    subscriptionTokenVersion: integer('subscription_token_version').notNull().default(1),
+    subscriptionTokenHash: text('subscription_token_hash'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     accountIdx: index('client_configs_customer_account_idx').on(table.customerAccountId),
+    subscriptionTokenHashIdx: uniqueIndex('client_configs_subscription_token_hash_key')
+      .on(table.subscriptionTokenHash)
+      .where(sql`subscription_token_hash IS NOT NULL`),
     statusIdx: index('client_configs_status_idx').on(table.status),
     protocolIdx: index('client_configs_protocol_idx').on(table.protocol),
     externalPanelIdx: index('client_configs_external_panel_idx').on(table.externalPanel, table.externalPanelUserId),

@@ -145,7 +145,8 @@ Rules:
 Required protections:
 
 - Rate limiting at Nginx and API layer.
-- The backend API rate-limit guard is enabled by default for sensitive public endpoints first: `/api/auth/login`, `/api/payments/paypal/webhook`, and `/api/telegram/webhook`. It uses bounded in-memory fixed-window counters for low-resource VPS deployments, can be disabled with `AFROWS_RATE_LIMIT_ENABLED=false`, and trusts `x-forwarded-for`/`x-real-ip` only when `AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS=true` behind a trusted reverse proxy.
+- The backend API rate-limit guard is enabled by default for sensitive public endpoints first: `/api/auth/login`, `/api/payments/paypal/webhook`, `/api/telegram/webhook`, and the public subscription `/api/sub/:token` (served only as nginx `/sub/`; `/api/sub/` returns 404 at nginx). It uses bounded in-memory fixed-window counters for low-resource VPS deployments, can be disabled with `AFROWS_RATE_LIMIT_ENABLED=false`, and trusts `x-forwarded-for`/`x-real-ip` only when `AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS=true` behind a trusted reverse proxy.
+- Public subscription URL (`/sub/<token>`, 0.116.0): unauthenticated by design. Token = HMAC-SHA256(`AFROWS_SUBSCRIPTION_SECRET`, `id:version`) truncated to 192 bits, only its sha256 stored; strict format check before any DB access, timing-safe compare, one uniform 404 for every miss, nginx access log off, per-visitor-IP limit (CF-Connecting-IP), no customer name/id in body, headers or logs. Rotation kills the old URL at once. Only admin/supervisor/owner/superadmin and the owning seller see the URL; support/auditor exports omit it.
 - Request body size limits.
 - Strict CORS.
 - Helmet/security headers before production.

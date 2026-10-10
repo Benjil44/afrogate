@@ -1,0 +1,27 @@
+# Afrows USA usage recorder: the SAME script as Germany (scripts/afrows-de-usage-recorder.py,
+# installed as /usr/local/lib/afrows/afrows-usage-recorder.py), pointed at the USA xray API and
+# buffer. Same semantics: every 30s `xray api statsquery -pattern user>>> -reset`, add the
+# cc_<id>@afrows deltas into a durable cumulative per-user total. Afrows pulls it with
+# `ssh afrows-us-mgmt read-usage` and computes its own delta.
+[Unit]
+Description=Afrows USA usage recorder (/var/lib/afrows/us-usage.json)
+After=xray.service
+Wants=xray.service
+
+[Service]
+Environment=AFROWS_DE_XRAY_API=127.0.0.1:10086
+Environment=AFROWS_DE_XRAY_BIN=/usr/local/bin/xray
+Environment=AFROWS_DE_RECORD_INTERVAL=30
+Environment=AFROWS_DE_USAGE_FILE=/var/lib/afrows/us-usage.json
+ExecStart=/usr/bin/python3 -I /usr/local/lib/afrows/afrows-usage-recorder.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/afrows
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,8 @@ import { createResellerSalesStats, createResellerSalesTrendOption, createReselle
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Activity, Bot, Copy, CreditCard, Eye, Gauge, Gift, Inbox, Pencil, Plus, ShieldCheck, UserRound, X } from 'lucide-react';
 import type { AdminBillingSettingsSummary, AdminClientConfigExportEntry, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
-import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportAdminCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, sendResellerCustomerConfigTelegram, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
+import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportResellerCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, rotateResellerClientConfigSubscriptionToken, sendResellerCustomerConfigTelegram, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
+import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
 import { EChart, type AfroChartOption } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerTelegramLinkPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
@@ -647,14 +648,13 @@ function ResellerUsersTable({
   // as its row is expanded, mirroring CustomersPage's ensureRowConfigs pattern.
   const [configsByAccount, setConfigsByAccount] = useState<Record<string, AdminClientConfigExportEntry[]>>({});
   const [configsLoading, setConfigsLoading] = useState<Record<string, boolean>>({});
-  const [qrOpenId, setQrOpenId] = useState<string | null>(null);
   const [telegramBusy, setTelegramBusy] = useState<string | null>(null);
   const [telegramResult, setTelegramResult] = useState<{ id: string; ok: boolean; text: string } | null>(null);
 
   const ensureConfigs = (accountId: string) => {
     if (configsByAccount[accountId] || configsLoading[accountId]) return;
     setConfigsLoading((cur) => ({ ...cur, [accountId]: true }));
-    void exportAdminCustomerClientConfigs(sessionToken, accountId)
+    void exportResellerCustomerClientConfigs(sessionToken, accountId)
       .then((res) => setConfigsByAccount((cur) => ({ ...cur, [accountId]: res.configs })))
       .catch(() => undefined)
       .finally(() => setConfigsLoading((cur) => ({ ...cur, [accountId]: false })));
@@ -765,15 +765,13 @@ function ResellerUsersTable({
     }
   };
 
-  const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
-  const copyEntryLink = async (accountId: string, link: string) => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopiedEntryId(accountId);
-      window.setTimeout(() => setCopiedEntryId(null), 1500);
-    } catch {
-      /* ignore */
-    }
+  // Rotate the subscription token of one of this seller's customer configs and
+  // re-export so the panel shows the new URL + QR. Throws on failure so the
+  // link list renders its own inline error.
+  const onRotateSubscription = async (accountId: string, configId: string) => {
+    await rotateResellerClientConfigSubscriptionToken(sessionToken, configId);
+    const res = await exportResellerCustomerClientConfigs(sessionToken, accountId);
+    setConfigsByAccount((cur) => ({ ...cur, [accountId]: res.configs }));
   };
 
   const soldUserRows = accounts.map((account) => {
@@ -895,7 +893,7 @@ function ResellerUsersTable({
         </div>
         {(() => {
           const configs = configsByAccount[a.id] ?? [];
-          const vless = configs.find((c) => (c.protocol ?? '').toLowerCase() === 'vless' && c.qrSvg);
+          const vless = configs.find((c) => (c.protocol ?? '').toLowerCase() === 'vless' && hasConfigLinks(c));
           const busy = configsLoading[a.id];
           return (
             <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5">
@@ -916,43 +914,11 @@ function ResellerUsersTable({
                 </p>
               ) : null}
               {vless ? (
-                <div className="grid gap-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {vless.entryUri ? (
-                      <input
-                        readOnly
-                        value={vless.entryUri}
-                        dir="ltr"
-                        className="min-w-0 flex-1 truncate rounded-md border border-afro-line bg-afro-page px-2 py-1 font-mono text-[11px] outline-none"
-                      />
-                    ) : null}
-                    {vless.entryUri ? (
-                      <button
-                        type="button"
-                        onClick={() => void copyEntryLink(a.id, vless.entryUri as string)}
-                        className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
-                      >
-                        <Copy size={13} />
-                        {copiedEntryId === a.id ? s.copied : s.copyLink}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setQrOpenId((cur) => (cur === a.id ? null : a.id))}
-                      className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal"
-                    >
-                      {qrOpenId === a.id ? s.hideQr : s.showQr}
-                    </button>
-                  </div>
-                  {qrOpenId === a.id ? (
-                    <img
-                      className="mx-auto h-48 w-48 rounded-md bg-white p-2"
-                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(vless.qrSvg)}`}
-                      title={s.scanVless}
-                      alt={s.scanVless}
-                    />
-                  ) : null}
-                </div>
+                <ConfigLinksList
+                  config={vless}
+                  t={t}
+                  onRotateSubscription={() => onRotateSubscription(a.id, vless.id)}
+                />
               ) : busy ? (
                 <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
               ) : (

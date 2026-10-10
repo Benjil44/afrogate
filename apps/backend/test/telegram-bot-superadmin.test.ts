@@ -138,9 +138,23 @@ function makeHarness(options: { linkedCustomer: boolean; language?: 'fa' | 'en' 
       return { id: 'new-acct', displayName: (input as { displayName: string }).displayName };
     },
     createClientConfig: () => ({ id: 'cfg-1' }),
-    getPrimaryVlessEntryLinkForAccount: () => ({ uri: 'vless://uuid@entry.example:443?security=reality#new' }),
+    getPrimaryVlessEntryLinkForAccount: () => ({
+      configId: 'cfg-1',
+      label: 'Sara',
+      uri: 'vless://uuid@entry.example:443?security=reality#new',
+      bundle: {
+        links: [
+          { kind: 'germany', uri: 'vless://uuid@entry.example:443?security=reality#new' },
+          { kind: 'iran', uri: 'vless://uuid@iran.example:443?security=tls#shatel' },
+        ],
+        subscriptionUrl: 'https://app.example/sub/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      },
+    }),
     getCustomerAccount: () => ({ ...account, clientConfigs: [{ id: 'cfg-ben', protocol: 'vless', label: 'Ben', status: 'active' }] }),
-    getClientConfigEntryLink: () => ({ link: 'vless://ben@entry.example:443#ben' }),
+    getClientConfigLinkBundle: () => ({
+      links: [{ kind: 'germany', uri: 'vless://ben@entry.example:443#ben' }],
+      subscriptionUrl: null,
+    }),
     ensureAccountReferralCode: () => 'BEN123',
     getReferralGemsEarned: () => 0,
     getCustomerGemsLedger: () => [],
@@ -344,6 +358,8 @@ describe('superadmin via handleUpdate', { skip: skipReason }, () => {
     assert.deepEqual(h.created, [{ displayName: 'Sara', quotaLimitBytes: 10_000_000_000, status: 'active' }]);
     const done = h.sent.find((s) => s.text.includes('vless://uuid@entry.example'));
     assert.ok(done, 'success message carries the vless link');
+    assert.ok(done.text.includes('vless://uuid@iran.example'), 'success message carries the Shatel link too');
+    assert.ok(done.text.includes('https://app.example/sub/'), 'success message carries the subscription URL');
     assert.ok(buttons(done).includes('afws:adm:newuser'), 'success returns to the superadmin home keyboard');
     assert.equal(h.last()!.kind, 'photo');
     assert.equal(h.state()?.adminNewUserStage, undefined);

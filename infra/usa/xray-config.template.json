@@ -1,0 +1,46 @@
+{
+  "log": { "loglevel": "warning", "access": "none" },
+  "api": { "tag": "api", "services": ["HandlerService", "StatsService"] },
+  "stats": {},
+  "policy": {
+    "levels": { "0": { "statsUserUplink": true, "statsUserDownlink": true } },
+    "system": {}
+  },
+  "inbounds": [
+    {
+      "tag": "afrows-us-ws",
+      "listen": "127.0.0.1",
+      "port": 10085,
+      "protocol": "vless",
+      "settings": {
+        "decryption": "none",
+        "clients": [
+          { "id": "__AFROWS_US_CHAIN_UUID__", "email": "afrows-chain@afrows", "level": 0 }
+        ]
+      },
+      "streamSettings": { "network": "ws", "security": "none", "wsSettings": { "path": "/afrowsus" } },
+      "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"], "routeOnly": true }
+    },
+    {
+      "tag": "api",
+      "listen": "127.0.0.1",
+      "port": 10086,
+      "protocol": "dokodemo-door",
+      "settings": { "address": "127.0.0.1" }
+    }
+  ],
+  "outbounds": [
+    { "tag": "direct", "protocol": "freedom", "settings": { "domainStrategy": "UseIP" } },
+    { "tag": "block", "protocol": "blackhole" }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      { "type": "field", "inboundTag": ["api"], "outboundTag": "api" },
+      { "type": "field", "user": ["afrows-chain@afrows"], "ip": ["127.0.0.1/32"], "port": "22", "outboundTag": "direct" },
+      { "type": "field", "user": ["afrows-chain@afrows"], "outboundTag": "block" },
+      { "type": "field", "protocol": ["bittorrent"], "outboundTag": "block" },
+      { "type": "field", "ip": ["geoip:private", "93.127.140.50/32"], "outboundTag": "block" }
+    ]
+  }
+}

@@ -1,49 +1,65 @@
 /**
- * Pure builders for the locked-down Ireland->Germany SSH management channel.
- * Germany->Ireland is impossible on this topology, so Ireland reaches Germany
- * over a single-purpose key that maps to fixed remote sub-commands:
+ * Pure builders for the locked-down REMOTE-EXIT SSH management channels (Germany
+ * and USA). Each remote exit is reached over a single-purpose key that maps to
+ * fixed remote sub-commands (a forced-command wrapper on the remote box):
  *
- *   read-usage            -> prints /var/lib/afrows/de-usage.json
- *   rmu <email>           -> removes the user from Germany's WS inbound afrows-de-ws
- *   adu   (JSON on stdin) -> provisions a user onto afrows-de-ws (port 8090, no flow)
+ *   read-usage            -> prints the site's durable usage buffer
+ *                            (/var/lib/afrows/de-usage.json | us-usage.json, same format)
+ *   rmu <email>           -> removes the user from the site's WS inbound
+ *   adu   (JSON on stdin) -> provisions a user onto the site's WS inbound (VLESS, no flow)
  *
- * Host/key are env-configurable. The channel is FLAKY (village blackout ~2h/day),
- * so every real call must be best-effort + time-bounded (ConnectTimeout + a hard
- * process timeout) and NEVER block Ireland's local metering/provisioning.
+ *   Germany: inbound afrows-de-ws :8090, target `root@<ip>` + explicit `-i <key>`.
+ *   USA:     inbound afrows-us-ws :10085, target an ssh_config Host alias
+ *            (default `afrows-us-mgmt`; the alias carries hostname, key and the
+ *            ProxyCommand), so no `-i` unless AFROWS_US_MGMT_KEY is set.
+ *
+ * The channels are FLAKY, so every real call must be best-effort + time-bounded
+ * (ConnectTimeout + a hard process timeout) and NEVER block Ireland's local
+ * metering/provisioning or the other site. The file keeps its historical name;
+ * the Germany exports below are unchanged wrappers over the generic builders.
  *
  * No I/O, no decorators — loadable by the `node --test` type-stripping runner.
  */
 
-export interface DeMgmtConfig {
-  /** `user@host` passed as the ssh destination. */
+/** ssh destination + optional key for one remote exit. */
+export interface RemoteExitMgmtConfig {
+  /** `user@host` or an ssh_config Host alias, passed as the ssh destination. */
   sshTarget: string;
-  /** Path to the single-purpose private key on the Ireland box. */
+  /** Path to the single-purpose private key; '' = let ssh_config pick it (no `-i`). */
   keyPath: string;
-  /** ssh ConnectTimeout in seconds (bounds a hang on the flaky link). */
+  /** ssh ConnectTimeout in seconds (bounds a hang on a flaky link). */
   connectTimeoutSeconds: number;
 }
 
+/** Germany's config always carries an explicit key (back-compat alias). */
+export type DeMgmtConfig = RemoteExitMgmtConfig;
+
+export const REMOTE_EXIT_DEFAULT_CONNECT_TIMEOUT = 10;
+
 export const DE_MGMT_DEFAULT_SSH = 'root@162.19.253.235';
 export const DE_MGMT_DEFAULT_KEY = '/etc/afrows/de_mgmt_key';
-export const DE_MGMT_DEFAULT_CONNECT_TIMEOUT = 10;
+export const DE_MGMT_DEFAULT_CONNECT_TIMEOUT = REMOTE_EXIT_DEFAULT_CONNECT_TIMEOUT;
 
 /** Germany's WS inbound the mgmt channel provisions onto (tag + port). The wrapper
  *  hard-codes the same tag for `rmu`; adu carries it in the JSON below. */
 export const DE_INBOUND_TAG = 'afrows-de-ws';
 export const DE_INBOUND_PORT = 8090;
 
+/** USA mgmt target: an ssh_config Host alias (key + ProxyCommand + hostname live there). */
+export const US_MGMT_DEFAULT_SSH = 'afrows-us-mgmt';
+/** USA WS inbound (contract with the USA host's forced-command wrapper). */
+export const US_INBOUND_TAG = 'afrows-us-ws';
+export const US_INBOUND_PORT = 10085;
+
+const TRUTHY = ['1', 'true', 'yes', 'on'];
+
 /**
- * Build the `xray api adu` JSON for one user on Germany's WS inbound. VLESS with
- * NO flow — the WS/TLS transport rejects xtls-rprx-vision, unlike the reality
- * inbound. The inbound descriptor MUST carry tag+port+protocol+settings or xray
- * rejects the call. One client per call (adu is idempotent per user).
+ * Build the `xray api adu` JSON for one user on a remote WS inbound. VLESS with
+ * NO flow — the WS/TLS transport rejects xtls-rprx-vision. The inbound descriptor
+ * MUST carry tag+port+protocol+settings or xray rejects the call. One client per
+ * call (adu is idempotent per user).
  */
-export function buildDeAduJson(
-  uuid: string,
-  email: string,
-  tag: string = DE_INBOUND_TAG,
-  port: number = DE_INBOUND_PORT,
-): string {
+export function buildRemoteAduJson(uuid: string, email: string, tag: string, port: number): string {
   return JSON.stringify({
     inbounds: [
       {
@@ -56,6 +72,26 @@ export function buildDeAduJson(
   });
 }
 
+/** Germany adu payload (defaults: afrows-de-ws:8090). */
+export function buildDeAduJson(
+  uuid: string,
+  email: string,
+  tag: string = DE_INBOUND_TAG,
+  port: number = DE_INBOUND_PORT,
+): string {
+  return buildRemoteAduJson(uuid, email, tag, port);
+}
+
+/** USA adu payload (defaults: afrows-us-ws:10085). */
+export function buildUsAduJson(
+  uuid: string,
+  email: string,
+  tag: string = US_INBOUND_TAG,
+  port: number = US_INBOUND_PORT,
+): string {
+  return buildRemoteAduJson(uuid, email, tag, port);
+}
+
 export function resolveDeMgmtConfig(env: Record<string, string | undefined>): DeMgmtConfig {
   return {
     sshTarget: env.AFROWS_DE_MGMT_SSH?.trim() || DE_MGMT_DEFAULT_SSH,
@@ -64,30 +100,45 @@ export function resolveDeMgmtConfig(env: Record<string, string | undefined>): De
   };
 }
 
-/** Shared ssh flags: batch mode (never prompt), fixed key, bounded connect. */
-function baseSshArgs(cfg: DeMgmtConfig): string[] {
-  return [
-    '-o',
-    'BatchMode=yes',
-    '-o',
-    `ConnectTimeout=${cfg.connectTimeoutSeconds}`,
-    '-i',
-    cfg.keyPath,
-    cfg.sshTarget,
-  ];
+/** USA: `AFROWS_US_MGMT_SSH` (default the `afrows-us-mgmt` alias), optional `AFROWS_US_MGMT_KEY`
+ *  (default '' = no `-i`, the alias's IdentityFile is used). */
+export function resolveUsMgmtConfig(env: Record<string, string | undefined>): RemoteExitMgmtConfig {
+  return {
+    sshTarget: env.AFROWS_US_MGMT_SSH?.trim() || US_MGMT_DEFAULT_SSH,
+    keyPath: env.AFROWS_US_MGMT_KEY?.trim() || '',
+    connectTimeoutSeconds: REMOTE_EXIT_DEFAULT_CONNECT_TIMEOUT,
+  };
 }
 
-/** `ssh ... root@... read-usage` -> the durable buffer JSON on stdout. */
-export function deReadUsageArgs(cfg: DeMgmtConfig): string[] {
+/** USA mgmt (provisioning + metering) is OFF unless AFROWS_US_MGMT_ENABLED is truthy. */
+export function isUsMgmtEnabled(env: Record<string, string | undefined>): boolean {
+  return TRUTHY.includes(env.AFROWS_US_MGMT_ENABLED?.trim().toLowerCase() ?? '');
+}
+
+/** Shared ssh flags: batch mode (never prompt), optional fixed key, bounded connect. */
+function baseSshArgs(cfg: RemoteExitMgmtConfig): string[] {
+  const args = ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${cfg.connectTimeoutSeconds}`];
+  if (cfg.keyPath) args.push('-i', cfg.keyPath);
+  args.push(cfg.sshTarget);
+  return args;
+}
+
+/** `ssh ... <target> read-usage` -> the durable buffer JSON on stdout. */
+export function remoteReadUsageArgs(cfg: RemoteExitMgmtConfig): string[] {
   return [...baseSshArgs(cfg), 'read-usage'];
 }
 
-/** `ssh ... root@... rmu <email>` -> removes the user from afrows-de-ws. */
-export function deRemoveUserArgs(cfg: DeMgmtConfig, email: string): string[] {
+/** `ssh ... <target> rmu <email>` -> removes the user from the site's WS inbound. */
+export function remoteRemoveUserArgs(cfg: RemoteExitMgmtConfig, email: string): string[] {
   return [...baseSshArgs(cfg), 'rmu', email];
 }
 
-/** `ssh ... root@... adu` -> provisions the user; the adu JSON is passed on stdin. */
-export function deAddUserArgs(cfg: DeMgmtConfig): string[] {
+/** `ssh ... <target> adu` -> provisions the user; the adu JSON is passed on stdin. */
+export function remoteAddUserArgs(cfg: RemoteExitMgmtConfig): string[] {
   return [...baseSshArgs(cfg), 'adu'];
 }
+
+// Historical Germany names (same argv).
+export const deReadUsageArgs = remoteReadUsageArgs;
+export const deRemoveUserArgs = remoteRemoveUserArgs;
+export const deAddUserArgs = remoteAddUserArgs;

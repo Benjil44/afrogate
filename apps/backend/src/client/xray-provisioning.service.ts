@@ -6,6 +6,14 @@ import * as fs from 'node:fs/promises';
 import { DatabaseService } from '../database/database.service';
 import { createSecureTempFile } from '../common/secure-temp-file';
 import { GermanyMgmtService } from './germany-mgmt.service';
+import { UsaMgmtService } from './usa-mgmt.service';
+import type { RemoteExitMgmt } from './remote-exit-mgmt';
+import {
+  createRemoteMembershipState,
+  planRemoteMembership,
+  recordRemoteMembership,
+  type RemoteMembershipState,
+} from './remote-exit-membership';
 import {
   applyAcrossEndpoints,
   buildAddUserConfig,
@@ -21,6 +29,23 @@ interface ActiveClientRow {
   entryUuid: string;
 }
 
+/** A remote exit (Germany, USA) kept in sync over its SSH mgmt channel. */
+interface RemoteExitSite {
+  mgmt: RemoteExitMgmt;
+  /** Whether the membership sweep runs for this site. */
+  membershipEnabled(): boolean;
+  sweepIntervalMs(): number;
+  /** Ids confirmed present on the site + last full re-sync (per site, never shared). */
+  membership: RemoteMembershipState;
+}
+
+/** Outcome of revoking one config everywhere. `usa: null` = USA mgmt is off (nothing to revoke). */
+export interface RevokeClientConfigResult {
+  local: boolean;
+  germany: boolean;
+  usa: boolean | null;
+}
+
 /**
  * Keeps the native Afrows xray inbound (afrows-in) in sync with Postgres:
  * active client_configs get a user (their entry_uuid) provisioned via the xray
@@ -32,20 +57,34 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(XrayProvisioningService.name);
   private timer: NodeJS.Timeout | undefined;
   private running = false;
-  /** Throttle for the full Germany-membership re-sync (epoch ms of last run). */
-  private lastGermanySweepAt = 0;
-  /** client_config ids confirmed present on Germany's WS inbound (best-effort
-   *  cache). The per-tick fast-path only adu's ids NOT in here, so new/recovered
-   *  users are re-provisioned within ~60s instead of waiting for the full sweep,
-   *  and steady-state SSH churn drops to ~zero. Rebuilt by the periodic full
-   *  re-sync (drift correction) and reset on restart. */
-  private readonly deConfirmed = new Set<string>();
+  /** Remote exits, Germany first. Each has its own membership cache (ids confirmed
+   *  present on its WS inbound; the per-tick fast-path only adu's ids NOT in it, so
+   *  new/recovered users are re-provisioned within ~60s while steady-state SSH churn
+   *  is ~zero; rebuilt by the periodic full re-sync and reset on restart) and its
+   *  own SSH breaker, so one site being down never delays the other. */
+  private readonly remoteExits: RemoteExitSite[];
 
   constructor(
     private readonly config: ConfigService,
     private readonly database: DatabaseService,
     private readonly germanyMgmt: GermanyMgmtService,
-  ) {}
+    private readonly usaMgmt: UsaMgmtService,
+  ) {
+    this.remoteExits = [
+      {
+        mgmt: germanyMgmt,
+        membershipEnabled: () => this.germanyEnabled(),
+        sweepIntervalMs: () => this.sweepIntervalMs('AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS'),
+        membership: createRemoteMembershipState(),
+      },
+      {
+        mgmt: usaMgmt,
+        membershipEnabled: () => usaMgmt.isEnabled(),
+        sweepIntervalMs: () => this.sweepIntervalMs('AFROWS_US_MEMBERSHIP_SWEEP_SECONDS'),
+        membership: createRemoteMembershipState(),
+      },
+    ];
+  }
 
   onModuleInit(): void {
     if (!process.env.DATABASE_URL) return;
@@ -100,17 +139,24 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Revoke a DELETED client config everywhere it can still authenticate: the local
-   * xray inbounds AND the Germany exit. Germany otherwise only drops users that go
-   * over quota, so a config deleted in the dashboard kept working there (found
-   * 2026-10-05). Best-effort and not retried: failures are logged, and a
-   * `germany: false` result means the revocation must be verified by hand.
+   * xray inbounds AND every remote exit (Germany, USA). The remote exits otherwise
+   * only drop users that go over quota, so a config deleted in the dashboard kept
+   * working there (found 2026-10-05). Best-effort and not retried: failures are
+   * logged, and a `false` site result means the revocation must be verified by
+   * hand. Germany and the USA run in parallel (one down site never delays the other).
    */
-  async revokeClientConfig(clientConfigId: string): Promise<{ local: boolean; germany: boolean }> {
+  async revokeClientConfig(clientConfigId: string): Promise<RevokeClientConfigResult> {
     const email = provisioningEmail(clientConfigId);
     const local = await this.removeUser(email);
-    const germany = await this.germanyMgmt.removeUser(email);
+    const [germany, usa] = await Promise.all([
+      this.germanyMgmt.removeUser(email),
+      this.usaMgmt.isEnabled() ? this.usaMgmt.removeUser(email) : Promise.resolve(null),
+    ]);
     if (!germany) this.logger.warn(`Germany rmu for deleted client config ${clientConfigId} failed; it may still authenticate there`);
-    return { local, germany };
+    if (usa === false) this.logger.warn(`USA rmu for deleted client config ${clientConfigId} failed; it may still authenticate there`);
+    // Forget it in every membership cache so a later restore re-adu's it.
+    for (const site of this.remoteExits) site.membership.confirmed.delete(clientConfigId);
+    return { local, germany, usa };
   }
 
   /** Sync Postgres active client_configs → xray inbound users. */
@@ -119,7 +165,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       await this.recoverBackUnderQuota();
-      await this.ensureGermanyMembership();
+      await this.ensureRemoteExitMembership();
       const result = await this.database.query<ActiveClientRow>(
         `
           SELECT cc.id, cc.entry_uuid AS "entryUuid"
@@ -186,34 +232,42 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (!recovered.rows.length) return;
-    for (const row of recovered.rows) {
-      if (await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id))) {
-        this.deConfirmed.add(row.id); // let the membership fast-path skip the redundant re-adu
-      }
-    }
+    const sites = this.remoteExits.filter((site) => site.mgmt.isEnabled());
+    await Promise.all(
+      sites.map(async (site) => {
+        for (const row of recovered.rows) {
+          if (await site.mgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id))) {
+            site.membership.confirmed.add(row.id); // let the membership fast-path skip the redundant re-adu
+          }
+        }
+      }),
+    );
     this.logger.log(
-      `Provisioning recovery: un-limited + re-provisioned ${recovered.rows.length} back-under-quota client(s) on Germany`,
+      `Provisioning recovery: un-limited + re-provisioned ${recovered.rows.length} back-under-quota client(s) on ${sites
+        .map((site) => site.mgmt.label)
+        .join(', ')}`,
     );
   }
 
   /**
-   * Keeps EVERY active, under-quota, non-disabled client present on Germany's WS
-   * inbound. Germany is reachable only over the SSH mgmt channel (not a direct-API
-   * provisioning endpoint), so it isn't covered by the Ireland reconcile below,
-   * and any way a user (re)enters good standing — a fresh signup, disabled→enabled,
-   * over-quota→top-up, a transient enforcement rmu — would otherwise leave them
-   * silently off Germany. `adu` is idempotent (a still-present user is a no-op), so
-   * this only ADDS, never disconnects.
+   * Keeps EVERY active, under-quota, non-disabled VLESS client present on each
+   * remote exit's WS inbound (Germany, USA). They are reachable only over their
+   * SSH mgmt channels (not direct-API provisioning endpoints), so they aren't
+   * covered by the Ireland reconcile below, and any way a user (re)enters good
+   * standing (a fresh signup, disabled->enabled, over-quota->top-up, a transient
+   * enforcement rmu) would otherwise leave them silently off that exit. `adu` is
+   * idempotent (a still-present user is a no-op), so this only ADDS, never
+   * disconnects.
    *
-   * Runs every reconcile tick, but SSH-cheap: a `deConfirmed` cache means the tick
-   * only `adu`s ids we have NOT yet confirmed present — so new/recovered users are
-   * restored within ~60s while steady-state churn is ~zero. A failed adu is left
-   * unconfirmed and retried next tick. A periodic FULL re-sync (every
-   * AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS, default 300s) re-adu's everyone to correct
-   * any drift between the cache and Germany's real state.
+   * Runs every reconcile tick, but SSH-cheap (see remote-exit-membership.ts):
+   * fast-path ticks adu only unconfirmed ids; a periodic FULL re-sync (every
+   * AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS / AFROWS_US_MEMBERSHIP_SWEEP_SECONDS,
+   * default 300 s) re-adu's everyone. One eligibility query is shared; the sites
+   * then run in parallel with their own caches and breakers.
    */
-  private async ensureGermanyMembership(): Promise<void> {
-    if (!this.germanyEnabled()) return;
+  private async ensureRemoteExitMembership(): Promise<void> {
+    const sites = this.remoteExits.filter((site) => site.membershipEnabled());
+    if (!sites.length) return;
 
     let rows: { rows: ActiveClientRow[] };
     try {
@@ -231,34 +285,27 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
         `,
       );
     } catch (error) {
-      this.logger.warn(`Germany membership query failed: ${error instanceof Error ? error.message : error}`);
+      this.logger.warn(`Remote-exit membership query failed: ${error instanceof Error ? error.message : error}`);
       return;
     }
+    await Promise.all(sites.map((site) => this.ensureSiteMembership(site, rows.rows)));
+  }
 
-    // Drop cache entries no longer eligible (over-quota / disabled / blocked), so
-    // that when they return to good standing they are re-adu'd, not skipped.
-    const shouldBe = new Set(rows.rows.map((r) => r.id));
-    for (const id of [...this.deConfirmed]) if (!shouldBe.has(id)) this.deConfirmed.delete(id);
-
-    const now = Date.now();
-    const fullResync = now - this.lastGermanySweepAt >= this.germanySweepIntervalMs();
-    if (fullResync) this.lastGermanySweepAt = now;
-
+  private async ensureSiteMembership(site: RemoteExitSite, rows: ActiveClientRow[]): Promise<void> {
+    const byId = new Map(rows.map((row) => [row.id, row] as const));
+    const { toAdd, fullResync } = planRemoteMembership(site.membership, [...byId.keys()], Date.now(), site.sweepIntervalMs());
     let ensured = 0;
-    let attempted = 0;
-    for (const row of rows.rows) {
-      if (!fullResync && this.deConfirmed.has(row.id)) continue; // fast-path: already present
-      attempted += 1;
-      if (await this.germanyMgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id))) {
-        this.deConfirmed.add(row.id);
-        ensured += 1;
-      } else {
-        this.deConfirmed.delete(row.id); // failed → retry next tick
-      }
+    for (const id of toAdd) {
+      const row = byId.get(id);
+      if (!row) continue;
+      const ok = await site.mgmt.addUserByIdentity(row.entryUuid, provisioningEmail(row.id));
+      recordRemoteMembership(site.membership, row.id, ok); // failed -> retried next tick
+      if (ok) ensured += 1;
     }
-    if (attempted) {
+    if (toAdd.length) {
+      const label = site.mgmt.label;
       this.logger.log(
-        `Germany membership ${fullResync ? 're-sync' : 'fast-path'}: ensured ${ensured}/${attempted} of ${rows.rows.length} active under-quota client(s) on Germany`,
+        `${label} membership ${fullResync ? 're-sync' : 'fast-path'}: ensured ${ensured}/${toAdd.length} of ${rows.length} active under-quota client(s) on ${label}`,
       );
     }
   }
@@ -266,8 +313,8 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   private germanyEnabled(): boolean {
     return Boolean((this.config.get<string>('AFROWS_DE_MGMT_SSH') ?? process.env.AFROWS_DE_MGMT_SSH)?.trim());
   }
-  private germanySweepIntervalMs(): number {
-    return this.intFromValue(this.config.get<string>('AFROWS_DE_MEMBERSHIP_SWEEP_SECONDS'), 300, 60, 3600) * 1000;
+  private sweepIntervalMs(key: string): number {
+    return this.intFromValue(this.config.get<string>(key), 300, 60, 3600) * 1000;
   }
 
   private async xray(args: string[]): Promise<void> {

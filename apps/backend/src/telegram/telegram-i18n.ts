@@ -12,6 +12,8 @@
  * {status}/{quotaLine} is passed via the `raw` channel).
  */
 
+import type { ClientEntryLinkKind } from '@afrows/shared';
+
 export type TelegramLanguage = 'en' | 'fa';
 
 /** Escape HTML-significant characters before interpolating into an HTML message. */
@@ -68,6 +70,13 @@ export type TelegramCopyId =
   | 'cfg.btn.open'
   | 'cfg.btn.qr'
   | 'cfg.qrCaption'
+  | 'cfg.qrCaptionSubscription'
+  | 'cfg.link.germany'
+  | 'cfg.link.shatel'
+  | 'cfg.link.usa'
+  | 'cfg.subscription'
+  | 'cfg.pushTitle'
+  | 'cfg.privateNote'
   | 'buy.btn.open'
   | 'buy.pickPackage'
   | 'buy.pkgBtn'
@@ -287,6 +296,37 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'cfg.btn.open': { en: '🔗 My Configs', fa: '🔗 کانفیگ‌های من' },
   'cfg.btn.qr': { en: '📷 QR code', fa: '📷 کد QR' },
   'cfg.qrCaption': { en: 'Afrows config QR — {label}', fa: 'کد QR کانفیگ افروز — {label}' },
+  'cfg.qrCaptionSubscription': {
+    en: 'Afrows subscription QR — scan it in your app to add all configs',
+    fa: 'کد QR اشتراک افروز — در اپ خود اسکن کنید تا همهٔ کانفیگ‌ها اضافه شوند',
+  },
+  // Two entries per config (backend telegram-config-links.ts): Germany = de.afrows.com via
+  // Cloudflare (fast); Shatel = the Iran entry, which works where Shatel freezes the first.
+  'cfg.link.germany': {
+    en: '🇩🇪 <b>Germany</b> — fast, try this first:',
+    fa: '🇩🇪 <b>آلمان</b> — سریع، اول این را امتحان کنید:',
+  },
+  'cfg.link.shatel': {
+    en: '🏠 <b>Shatel</b> — use this on Shatel / home fibre:',
+    fa: '🏠 <b>شاتل</b> — روی اینترنت شاتل / فیبر خانگی از این استفاده کنید:',
+  },
+  // Third entry (when AFROWS_US_ENTRY_* is on): us.afrows.com via Cloudflare, exits in the USA.
+  'cfg.link.usa': {
+    en: '🇺🇸 <b>USA</b> — alternative exit (USA):',
+    fa: '🇺🇸 <b>آمریکا</b> — خروجی جایگزین (آمریکا):',
+  },
+  'cfg.subscription': {
+    en: '🔄 <b>Subscription link</b> — add this URL as a subscription in your app to get updates:',
+    fa: '🔄 <b>لینک اشتراک</b> — این آدرس را در اپ خود به‌عنوان اشتراک (Subscription) اضافه کنید تا به‌روزرسانی‌ها را بگیرید:',
+  },
+  'cfg.pushTitle': {
+    en: '🔗 <b>Your Afrows configs</b>\nTap a link once to copy it:',
+    fa: '🔗 <b>کانفیگ‌های افروز شما</b>\nروی هر لینک یک بار بزنید تا کپی شود:',
+  },
+  'cfg.privateNote': {
+    en: 'Keep these links private. Support will never ask for them.',
+    fa: 'این لینک‌ها را برای خودتان نگه دارید. پشتیبانی هرگز آن‌ها را از شما نمی‌خواهد.',
+  },
   'buy.btn.open': { en: '🛒 Buy Data', fa: '🛒 خرید حجم' },
   'buy.pickPackage': {
     en: "🛒 <b>Buy Data</b>\nPick a package — you'll get the payment details next:",
@@ -553,8 +593,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: '➕ <b>تأیید مشتری جدید</b>\nنام: {customerName}\nبسته: {packageSize}\nمبلغ کسر از کیف‌پول شما: <b>{cost}</b>',
   },
   'seller.newcust.success': {
-    en: '✅ <b>{customerName}</b> is set up with {packageSize}. Their config:\n<code>{configLink}</code>',
-    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد. کانفیگ او:\n<code>{configLink}</code>',
+    en: '✅ <b>{customerName}</b> is set up with {packageSize}. Their configs:\n\n{configBlock}',
+    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد. کانفیگ‌های او:\n\n{configBlock}',
   },
   'seller.newcust.successNoConfig': {
     en: '✅ <b>{customerName}</b> is set up with {packageSize}. Their config is being prepared — check "💼 My panel" shortly.',
@@ -588,8 +628,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: '➕ <b>تأیید کاربر جدید</b>\nنام: {customerName}\nحجم: {packageSize}',
   },
   'admin.newuser.success': {
-    en: '✅ <b>{customerName}</b> created with {packageSize}.\n\n<code>{configLink}</code>',
-    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد.\n\n<code>{configLink}</code>',
+    en: '✅ <b>{customerName}</b> created with {packageSize}.\n\n{configBlock}',
+    fa: '✅ <b>{customerName}</b> با {packageSize} ساخته شد.\n\n{configBlock}',
   },
   'admin.newuser.successNoConfig': {
     en: '✅ <b>{customerName}</b> created with {packageSize}. The config is still being prepared — it will be ready shortly.',
@@ -647,4 +687,75 @@ export function renderTelegramCopy(
     if (key in vars) return escapeHtml(String(vars[key]));
     return match;
   });
+}
+
+// --- Config links (Germany + Shatel + USA + subscription URL) -----------------
+//
+// Telegram rendering of a customer's config links: the Germany link (fast), the
+// Shatel link (Iran entry, works on Shatel / home fibre) and the refreshable
+// subscription URL. Lives here (not in its own module) so it needs no runtime
+// import under the node:test type-stripping runner. Used by the admin push, the reseller
+// push and the bot screens. Output is parse_mode HTML; URLs are escaped in <code>.
+
+export interface ConfigLinkBundle {
+  /** Germany, Iran (Shatel), then USA (as resolved by BillingService). */
+  links: Array<{ kind: ClientEntryLinkKind; uri: string }>;
+  subscriptionUrl: string | null;
+}
+
+const LINK_LABEL: Record<ClientEntryLinkKind, TelegramCopyId> = {
+  germany: 'cfg.link.germany',
+  iran: 'cfg.link.shatel',
+  usa: 'cfg.link.usa',
+};
+
+/** Telegram rejects messages over 4096 chars; keep a margin for headers/footers. */
+export const TELEGRAM_CONFIG_TEXT_BUDGET = 3500;
+
+/** The labelled links + subscription URL for ONE config, as an HTML block. */
+export function renderConfigLinksBlock(bundle: ConfigLinkBundle, language: TelegramLanguage): string {
+  const parts: string[] = [];
+  for (const link of bundle.links) {
+    parts.push(`${renderTelegramCopy(LINK_LABEL[link.kind], language)}\n<code>${escapeHtml(link.uri)}</code>`);
+  }
+  if (bundle.subscriptionUrl) {
+    parts.push(`${renderTelegramCopy('cfg.subscription', language)}\n<code>${escapeHtml(bundle.subscriptionUrl)}</code>`);
+  }
+  return parts.join('\n\n');
+}
+
+/** What the single QR photo encodes: the subscription URL when available, else the first link. */
+export function configLinksQrPayload(bundle: ConfigLinkBundle): string | null {
+  return bundle.subscriptionUrl ?? bundle.links[0]?.uri ?? null;
+}
+
+/** Caption copy matching `configLinksQrPayload`. */
+export function configLinksQrCaptionId(bundle: ConfigLinkBundle): TelegramCopyId {
+  return bundle.subscriptionUrl ? 'cfg.qrCaptionSubscription' : 'cfg.qrCaption';
+}
+
+/** The admin/reseller "send config to Telegram" message (HTML). */
+export function buildConfigLinksMessage(bundle: ConfigLinkBundle, language: TelegramLanguage): string {
+  return [
+    renderTelegramCopy('cfg.pushTitle', language),
+    renderConfigLinksBlock(bundle, language),
+    renderTelegramCopy('cfg.privateNote', language),
+  ].join('\n\n');
+}
+
+/**
+ * Appends per-config blocks while the text stays under the Telegram budget.
+ * Returns the blocks that fit and whether any were dropped. The first block is
+ * always kept so a customer never gets an empty screen.
+ */
+export function fitConfigBlocks(blocks: string[], budget = TELEGRAM_CONFIG_TEXT_BUDGET): { kept: string[]; truncated: boolean } {
+  const kept: string[] = [];
+  let length = 0;
+  for (const block of blocks) {
+    const next = length + block.length + 2;
+    if (kept.length > 0 && next > budget) return { kept, truncated: true };
+    kept.push(block);
+    length = next;
+  }
+  return { kept, truncated: false };
 }

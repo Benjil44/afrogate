@@ -1,5 +1,6 @@
 /**
- * Circuit breaker for the Ireland->Germany SSH management channel.
+ * Circuit breaker for a remote-exit SSH management channel (Germany, USA). Each
+ * site owns its OWN instance, so one site being down never skips the other's calls.
  *
  * That channel rides the village tunnel; when the village is down every call
  * (read-usage each metering tick, adu per active user each membership tick,
@@ -41,7 +42,16 @@ export const DE_MGMT_BACKOFF_DEFAULTS: DeMgmtBackoffConfig = {
 
 /** `AFROWS_DE_MGMT_BACKOFF_MAX_SECONDS` (default 300, clamp 30..3600). */
 export function resolveDeMgmtBackoffConfig(env: Record<string, string | undefined>): DeMgmtBackoffConfig {
-  const raw = env.AFROWS_DE_MGMT_BACKOFF_MAX_SECONDS?.trim();
+  return resolveMgmtBackoffConfig(env.AFROWS_DE_MGMT_BACKOFF_MAX_SECONDS);
+}
+
+/**
+ * Site-agnostic variant: one breaker per remote exit (Germany reads
+ * AFROWS_DE_MGMT_BACKOFF_MAX_SECONDS, USA AFROWS_US_MGMT_BACKOFF_MAX_SECONDS).
+ * Default 300 s, clamp 30..3600 s.
+ */
+export function resolveMgmtBackoffConfig(maxSecondsRaw: string | undefined): DeMgmtBackoffConfig {
+  const raw = maxSecondsRaw?.trim();
   const seconds = raw ? Number(raw) : NaN;
   const maxMs = Number.isFinite(seconds)
     ? Math.min(Math.max(Math.round(seconds), 30), 3600) * 1000

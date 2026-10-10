@@ -20,8 +20,13 @@ import {
 } from '../notifications/telegram-alert.service';
 import { TelegramBotConfigService, GEM_ECONOMY_DEFAULTS, type TelegramGemEconomy } from './telegram-bot-config.service';
 import {
+  configLinksQrCaptionId,
+  configLinksQrPayload,
+  fitConfigBlocks,
   normalizeTelegramLanguage,
+  renderConfigLinksBlock,
   renderTelegramCopy,
+  type ConfigLinkBundle,
   type TelegramCopyId,
   type TelegramLanguage,
 } from './telegram-i18n';
@@ -1009,23 +1014,29 @@ export class TelegramBotService {
       return this.screen('S4', ctx, language, renderTelegramCopy('cfg.empty', language), keyboard, toast);
     }
 
-    const lines = [renderTelegramCopy('cfg.title', language)];
-    for (const config of configs.items) {
-      lines.push(renderTelegramCopy('cfg.itemHeader', language, { protocol: config.protocol, label: config.label }));
-      lines.push(`<code>${escapeHtml(config.link)}</code>`);
-    }
-    if (configs.truncated) lines.push(renderTelegramCopy('cfg.truncated', language));
+    // Each config shows EVERY entry link (Germany, Shatel, USA) and its subscription URL;
+    // blocks are added while the message stays under Telegram's length limit.
+    const blocks = configs.items.map((config) =>
+      [
+        renderTelegramCopy('cfg.itemHeader', language, { protocol: config.protocol, label: config.label }),
+        renderConfigLinksBlock(config.bundle, language),
+      ].join('\n'),
+    );
+    const fitted = fitConfigBlocks(blocks);
+    const lines = [renderTelegramCopy('cfg.title', language), ...fitted.kept];
+    if (configs.truncated || fitted.truncated) lines.push(renderTelegramCopy('cfg.truncated', language));
     lines.push(renderTelegramCopy('cfg.importHint', language));
-    return this.screen('S4', ctx, language, lines.join('\n'), keyboard, toast);
+    return this.screen('S4', ctx, language, lines.join('\n\n'), keyboard, toast);
   }
 
-  private async loadConfigs(accountId: string): Promise<{ items: Array<{ protocol: string; label: string; link: string }>; truncated: boolean }> {
+  private async loadConfigs(accountId: string): Promise<{ items: Array<{ protocol: string; label: string; bundle: ConfigLinkBundle }>; truncated: boolean }> {
     const detail = await this.billing.getCustomerAccount(accountId);
     const active = detail.clientConfigs.filter((config) => config.status === 'active');
-    const linked: Array<{ protocol: string; label: string; link: string }> = [];
+    const linked: Array<{ protocol: string; label: string; bundle: ConfigLinkBundle }> = [];
     for (const config of active) {
-      const { link } = await this.billing.getClientConfigEntryLink(config.id);
-      if (link) linked.push({ protocol: config.protocol, label: config.label, link });
+      if (linked.length > MAX_CONFIGS_SHOWN) break;
+      const bundle = await this.billing.getClientConfigLinkBundle(config.id);
+      if (bundle.links.length) linked.push({ protocol: config.protocol, label: config.label, bundle });
     }
     return { items: linked.slice(0, MAX_CONFIGS_SHOWN), truncated: linked.length > MAX_CONFIGS_SHOWN };
   }
@@ -1050,9 +1061,11 @@ export class TelegramBotService {
 
     await this.answer(ctx);
     try {
-      const qrPng = await QRCode.toBuffer(primary.uri, { type: 'png', margin: 1, width: 512 });
+      // One QR: the subscription URL when available (adds every link), else the first link.
+      const qrPayload = configLinksQrPayload(primary.bundle) ?? primary.uri;
+      const qrPng = await QRCode.toBuffer(qrPayload, { type: 'png', margin: 1, width: 512 });
       const result = await this.telegram.sendPhoto(ctx.chatId, qrPng, {
-        caption: renderTelegramCopy('cfg.qrCaption', language, {}, { label: primary.label }),
+        caption: renderTelegramCopy(configLinksQrCaptionId(primary.bundle), language, {}, { label: primary.label }),
         filename: 'afrows-vless-qr.png',
       });
       if (result.status === 'sent') return { ok: true, status: 'sent' };
@@ -2516,21 +2529,21 @@ export class TelegramBotService {
       const customerName = saleResult.customerAccount.displayName ?? state.sellerNewCustomerName;
       const packageSize = formatDataSize(saleResult.allocation.volumeBytesDelta, language);
 
-      let configLink: string | null = null;
+      let bundle: ConfigLinkBundle | null = null;
       try {
         await this.billing.createClientConfig(saleResult.customerAccount.id, { protocol: 'vless' }, undefined);
         const primary = await this.billing.getPrimaryVlessEntryLinkForAccount(saleResult.customerAccount.id);
-        configLink = primary?.uri ?? null;
+        bundle = primary?.bundle ?? null;
       } catch {
         // the sale already succeeded — config provisioning can be retried from the dashboard
       }
 
-      const text = configLink
+      const text = bundle
         ? renderTelegramCopy(
             'seller.newcust.success',
             language,
             { customerName },
-            { packageSize, configLink: escapeHtml(configLink) },
+            { packageSize, configBlock: renderConfigLinksBlock(bundle, language) },
           )
         : renderTelegramCopy('seller.newcust.successNoConfig', language, { customerName }, { packageSize });
 
@@ -2808,27 +2821,29 @@ export class TelegramBotService {
       );
       await this.clearAdminFlow(ctx);
 
-      let configLink: string | null = null;
+      let bundle: ConfigLinkBundle | null = null;
       try {
         await this.billing.createClientConfig(account.id, { protocol: 'vless' }, undefined);
         const primary = await this.billing.getPrimaryVlessEntryLinkForAccount(account.id);
-        configLink = primary?.uri ?? null;
+        bundle = primary?.bundle ?? null;
       } catch {
         // account already exists; provisioning is retryable from the dashboard
       }
 
       const customerName = account.displayName ?? state.adminNewUserName;
       const packageSize = formatDataSize(pkg.volumeBytes, language);
-      const text = configLink
-        ? renderTelegramCopy('admin.newuser.success', language, { customerName }, { packageSize, configLink: escapeHtml(configLink) })
+      const text = bundle
+        ? renderTelegramCopy('admin.newuser.success', language, { customerName }, { packageSize, configBlock: renderConfigLinksBlock(bundle, language) })
         : renderTelegramCopy('admin.newuser.successNoConfig', language, { customerName }, { packageSize });
 
       const result = await this.screen('ADMIN-NEW-DONE', ctx, language, text, await this.adminHomeKeyboard(ctx, language));
 
-      // QR as a separate photo so it can be scanned directly from the chat.
-      if (configLink) {
+      // ONE QR as a separate photo so it can be scanned directly from the chat: the
+      // subscription URL when available (adds every link), else the first link.
+      const qrPayload = bundle ? configLinksQrPayload(bundle) : null;
+      if (qrPayload) {
         try {
-          const qrPng = await QRCode.toBuffer(configLink, { type: 'png', margin: 1, width: 512 });
+          const qrPng = await QRCode.toBuffer(qrPayload, { type: 'png', margin: 1, width: 512 });
           await this.telegram.sendPhoto(ctx.chatId, qrPng, {
             caption: renderTelegramCopy('admin.qrCaption', language, { customerName }),
             filename: 'afrows-vless-qr.png',

@@ -6,6 +6,7 @@ import type {
   AdminBillingCatalogResponse,
   AdminClientConfigsExportResponse,
   AdminClientConfigSummary,
+  AdminRotateSubscriptionTokenResponse,
   AdminSendConfigTelegramResponse,
   AdminClientRoutePreferenceResponse,
   AdminCustomerDevicesResponse,
@@ -1346,6 +1347,43 @@ export async function exportAdminCustomerClientConfigs(
   });
 
   return response.json() as Promise<AdminClientConfigsExportResponse>;
+}
+
+/** Seller: export one of the seller's own customers' configs (ownership enforced server-side). */
+export async function exportResellerCustomerClientConfigs(
+  sessionToken: string,
+  accountId: string,
+): Promise<AdminClientConfigsExportResponse> {
+  const response = await requestAdminAuth(`${getApiBaseUrl()}/admin/reseller/customer-accounts/${encodeURIComponent(accountId)}/client-configs/export`, {
+    headers: createSessionHeaders(sessionToken),
+    method: 'GET',
+  });
+
+  return response.json() as Promise<AdminClientConfigsExportResponse>;
+}
+
+/** Admin: issues a new subscription token for a config — the old /sub/<token> URL stops working at once. */
+export async function rotateAdminClientConfigSubscriptionToken(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<AdminRotateSubscriptionTokenResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/client-configs/${encodeURIComponent(clientConfigId)}/subscription-token/rotate`,
+    { headers: createSessionHeaders(sessionToken), method: 'POST' },
+  );
+  return response.json() as Promise<AdminRotateSubscriptionTokenResponse>;
+}
+
+/** Reseller: same rotation for a config of THEIR OWN customer (IDOR-guarded server-side). */
+export async function rotateResellerClientConfigSubscriptionToken(
+  sessionToken: string,
+  clientConfigId: string,
+): Promise<AdminRotateSubscriptionTokenResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/reseller/client-configs/${encodeURIComponent(clientConfigId)}/subscription-token/rotate`,
+    { headers: createSessionHeaders(sessionToken), method: 'POST' },
+  );
+  return response.json() as Promise<AdminRotateSubscriptionTokenResponse>;
 }
 
 /** Superadmin: sends the customer's VLESS config (QR + import link) to their linked Telegram. */

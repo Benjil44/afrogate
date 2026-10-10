@@ -1,5 +1,35 @@
 # Afrows Progress
 
+## 2026-10-10
+
+- Village "STILL DOWN" alert was false (REST 401 after the 10-04 rebuild): new `claude` REST password stored encrypted in `mikrotik_routers` (operator ran it); the 17:20 UTC probe no longer logged "offline".
+- USA live end-to-end on the infra side: own Cloudflare tunnel `afrows-us` (`cloudflared-us.service`, us.afrows.com -> 127.0.0.1:10085; no Zero Trust/card) -> `/afrowsus` returns 400. Afrows runbook applied (backups `*.bak-us-20261010-173813`): chain UUID, `us_mgmt_key` (forced command, from=127.0.0.1), pinned host key, `afrows-us-mgmt` alias, `AFROWS_US_CHAIN_*`/`MGMT_*` env, egress script, `via-usa` + `us-mgmt-socks` rendered. Verified: `read-usage` returns JSON, `id` -> denied, chain cannot browse (blocked).
+- Bug found + fixed: `execSsh` now sets `SHELL=/bin/sh` (afrows' nologin shell broke the ProxyCommand hop). 867/867 backend tests, typecheck clean.
+- Remaining: commit + deploy 0.116.0/0.117.0 (when asked), then backend env `AFROWS_US_MGMT_ENABLED` / `AFROWS_US_ENTRY_*` (HOST = Cloudflare IP, SNI us.afrows.com) and restart.
+
+## 2026-10-08
+
+### USA VPS as second remote exit/entry (0.117.0)
+
+- **Live on the USA (93.127.140.50):** Xray v26.3.27 (`infra/usa/`), `afrows-us-ws` 127.0.0.1:10085 (/afrowsus), API 127.0.0.1:10086, usage recorder, forced-command `afrows-us-mgmt-cmd`. CTO review fixes applied live: `direct` freedom `UseIP` (DNS-rebinding), own public IP blocked, chain user limited to 127.0.0.1:22, adu payload validated before xray (`bad-payload` rc 2), mirror runs `xray -test` before replacing config.json. Verified: config OK, loopback-only, wrapper rejections.
+- **Repo:** backend `RemoteExitMgmt` + `UsaMgmtService` + per-site metering (ledger `usa-xray`, migration 0065, 0057 source list), third link "USA", `afrows-egress-mode-sync.py` `via-usa` + `us-mgmt-socks` (gated on `AFROWS_US_CHAIN_UUID`). Backend 867/867, egress-mode-sync tests OK, dashboard typecheck OK, version 0.117.0.
+- **Home ac3 remote mgmt:** SSH allowed from 10.40.0.1 (USA end of wg-home) for `claude` only; `ssh home-ac3` works from anywhere (ProxyJump usa-vps, curve25519 kex).
+- **Remains:** operator adds Cloudflare hostname `us.afrows.com` -> HTTP localhost:10085; then the Afrows runbook in `infra/usa/README.md` (mgmt key, chain UUID env, ssh_config, egress-mode-sync, verify), then backend env (`AFROWS_US_MGMT_ENABLED`, `AFROWS_US_ENTRY_*`) with deploy. Follow-ups from review: per-site "cut confirmed" set + serialized enforcement (#4), comment in 0018/0057 about the shared source list (#5), rebinding probe test. `resume1.txt` (personal file at repo root) must not be committed.
+
+## 2026-10-06
+
+### Two VLESS links + public subscription URL (0.116.0)
+
+- **Why.** Shatel freezes the Germany Cloudflare link (afrows.com SNI); the old Iran-entry link works there. Operator decision: every customer gets both links plus a refreshable subscription URL on app.afrows.com, delivered in the dashboard, the bot and the subscription itself.
+- **What.** Backend: `resolveEntryLinks`, `GET /api/sub/:token` (`client/subscription.controller.ts`, `client/subscription-token.ts`), admin/seller rotate endpoints, new seller export endpoint (the seller page used the admin-only export and got a swallowed 403), migration 0064, Telegram send/My Configs/new-user flows send both links + the URL. Dashboard: `components/ConfigLinksList.tsx` on Customers and the seller page. CTO review fixes: support/auditor exports omit the URL, nginx `/api/sub/` 404, nginx sub limit keyed on CF-Connecting-IP, Nest limit 120/min, `AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS=true` in the prod env sample, security policy updated.
+- **Verified.** Backend typecheck + suite (840/840 before the review fixes), dashboard typecheck/build/contrast, Playwright 28 passed / 3 skipped. `version:check` 0.116.0.
+- **Remains / deploy notes.** Not committed or deployed. On deploy: set `AFROWS_SUBSCRIPTION_SECRET` (>= 32 random chars), `AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS=true`, apply the nginx `/sub/` + `/api/sub/` blocks and the `map`, run migration 0064. Welcome message after self-registration still shows one link. Other nginx zones (`afrows_api`, `afrows_login`) have the same loopback-key issue behind the tunnel; not changed here.
+
+### Home hAP ac3 rebuild + USA WireGuard (in progress, operator-driven)
+
+- Home ac3 factory-reset (RouterOS 7.24.3). `scripts/mikrotik/home-ac3-rebuild.{rsc,md}` written: ether5 Shatel, ether2 village link (192.168.51.0/29, isolated), home LAN 192.168.50.0/24, foreign traffic via `wg-home` to the USA VPS, Iranian prefixes direct, fail-open. USA side live: `wg-home` 10.40.0.1:51820 (+ UDP 443 redirect) on enp21s0, server pubkey `T5F+ci9+OWGqQ+YW/aLaO+BEBBH0c1BryQKUIq4JDCs=`. Done 2026-10-07: handshake over Shatel OK (51820, ~214 ms), device-mode advanced, full script applied (log `afr-import-log.txt` on the router), Iran list 1,747 prefixes, foreign via USA (8.8.8.8 ~222 ms), Iranian direct (ArvanCloud ~13 ms), Wi-Fi `fi2.4`/`fi5`. Village ether4 is still a bridge port on the village, so the home `afr-village` DHCP server is disabled. Open: decide whether to make village ether4 a separate port, and whether to allow key-only SSH from the village link for remote management.
+- **Village alert fixed (false alarm).** The backend's village probe got 401 since the 2026-10-04 rebuild changed the village `claude` REST password; the code counts any failed probe as offline, so the bot paged "customers have NO egress" while via-germany was up. Set a new village `claude` password (REST now 200); the operator must store it in Dashboard -> Microtiks -> village. Follow-up candidate: treat auth failures as "unknown" and base the "no egress" line on Germany health.
+
 ## 2026-10-05
 
 ### Superadmin bot routing fix (0.115.45)

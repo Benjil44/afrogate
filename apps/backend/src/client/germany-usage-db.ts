@@ -1,5 +1,5 @@
 /**
- * DB-touching helpers for the Germany usage meter, kept decorator-free and
+ * DB-touching helpers for the remote-exit (Germany, USA) usage meter, kept decorator-free and
  * executor-based (like usage-accounting.ts / edge-usage.ts) so the `node --test`
  * type-stripping runner can exercise the SQL-shaping, idempotency, and
  * baseline-advance decisions against a fake executor. The @Injectable service is
@@ -8,6 +8,32 @@
 import type { DatabaseQueryExecutor } from '../database/database.service';
 import type { ClientUsageSeriesPoint, ClientUsageSeriesWindow } from '@afrows/shared';
 import type { DeUserCumulative } from './germany-usage';
+
+/**
+ * One remote exit's ledger identity. `source` tags the append-only event, so the
+ * (source, idempotency_key) unique index keeps the two sites' identical
+ * `<clientConfigId>:<cumulative>` keys from ever colliding; each site keeps its
+ * own cumulative high-water-mark in its own baseline table (their counters are
+ * independent). Closed literal unions: these are interpolated as SQL
+ * identifiers/literals and must never come from input.
+ */
+export interface RemoteUsageSite {
+  source: 'germany-xray' | 'usa-xray';
+  createdBy: 'germany-usage-meter' | 'usa-usage-meter';
+  baselineTable: 'client_usage_de_baseline' | 'client_usage_us_baseline';
+}
+
+export const DE_USAGE_SITE: RemoteUsageSite = {
+  source: 'germany-xray',
+  createdBy: 'germany-usage-meter',
+  baselineTable: 'client_usage_de_baseline',
+};
+
+export const US_USAGE_SITE: RemoteUsageSite = {
+  source: 'usa-xray',
+  createdBy: 'usa-usage-meter',
+  baselineTable: 'client_usage_us_baseline',
+};
 
 export interface DeBaselineRow {
   clientConfigId: string;
@@ -27,13 +53,21 @@ export interface DeUsageDeps {
   applyDelta(ex: DatabaseQueryExecutor, clientConfigId: string, bytes: number): Promise<number>;
 }
 
-/** Load every last-seen cumulative baseline into a map keyed by client_config id. */
-export async function loadDeBaselines(db: DatabaseQueryExecutor): Promise<Map<string, DeBaselineRow>> {
+/** Load every last-seen Germany cumulative baseline into a map keyed by client_config id. */
+export function loadDeBaselines(db: DatabaseQueryExecutor): Promise<Map<string, DeBaselineRow>> {
+  return loadRemoteBaselines(db, DE_USAGE_SITE);
+}
+
+/** Load one site's last-seen cumulative baselines, keyed by client_config id. */
+export async function loadRemoteBaselines(
+  db: DatabaseQueryExecutor,
+  site: RemoteUsageSite,
+): Promise<Map<string, DeBaselineRow>> {
   const result = await db.query<DeBaselineRow>(
     `SELECT client_config_id AS "clientConfigId",
             cumulative_bytes AS "cumulativeBytes",
             observed_at AS "observedAt"
-     FROM client_usage_de_baseline`,
+     FROM ${site.baselineTable}`,
   );
   // cumulative_bytes is a bigint → node-postgres hands it back as a STRING. Coerce
   // to a real number here so every consumer (computeUsageDelta) subtracts a number,
@@ -57,12 +91,24 @@ export async function loadDeBaselines(db: DatabaseQueryExecutor): Promise<Map<st
  * recorded). An unknown client creates NO baseline row so it catches up from 0
  * once it appears in Postgres.
  */
-export async function applyDeUserUsage(
+export function applyDeUserUsage(
   ex: DatabaseQueryExecutor,
   user: DeUserCumulative,
   baseline: DeBaselineRow | undefined,
   observedAtIso: string,
   deps: DeUsageDeps,
+): Promise<number> {
+  return applyRemoteUserUsage(ex, user, baseline, observedAtIso, deps, DE_USAGE_SITE);
+}
+
+/** Site-generic body of `applyDeUserUsage` (same contract; see above). */
+export async function applyRemoteUserUsage(
+  ex: DatabaseQueryExecutor,
+  user: DeUserCumulative,
+  baseline: DeBaselineRow | undefined,
+  observedAtIso: string,
+  deps: DeUsageDeps,
+  site: RemoteUsageSite,
 ): Promise<number> {
   const acct = await ex.query<{ customerAccountId: string }>(
     `SELECT customer_account_id AS "customerAccountId" FROM client_configs WHERE id = $1`,
@@ -73,7 +119,7 @@ export async function applyDeUserUsage(
 
   const delta = deps.computeDelta(user.cumulativeBytes, baseline?.cumulativeBytes);
   if (delta <= 0) {
-    await upsertDeBaseline(ex, user, customerAccountId, observedAtIso);
+    await upsertRemoteBaseline(ex, site, user, customerAccountId, observedAtIso);
     return 0;
   }
 
@@ -82,7 +128,10 @@ export async function applyDeUserUsage(
     `INSERT INTO client_usage_events
        (customer_account_id, client_config_id, source, direction, used_bytes_delta, raw_used_bytes_delta, usage_multiplier,
         observed_at, window_start, window_end, idempotency_key, metadata, created_by)
-     VALUES ($1, $2, 'germany-xray', 'combined', $3, $3, 1, $4::timestamptz, $5, $4::timestamptz, $6, '{}'::jsonb, 'germany-usage-meter')
+     VALUES ($1, $2,
+             '${site.source}',
+             'combined', $3, $3, 1, $4::timestamptz, $5, $4::timestamptz, $6, '{}'::jsonb,
+             '${site.createdBy}')
      ON CONFLICT (source, idempotency_key)
        WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''
        DO NOTHING
@@ -98,7 +147,7 @@ export async function applyDeUserUsage(
   );
   if ((inserted.rowCount ?? 0) === 0) {
     // this exact cumulative was already recorded (race) — advance baseline, no double count
-    await upsertDeBaseline(ex, user, customerAccountId, observedAtIso);
+    await upsertRemoteBaseline(ex, site, user, customerAccountId, observedAtIso);
     return 0;
   }
 
@@ -110,7 +159,8 @@ export async function applyDeUserUsage(
   await ex.query(
     `INSERT INTO client_usage_hourly
        (client_config_id, customer_account_id, bucket_start, used_bytes, rx_bytes, tx_bytes, source, updated_at)
-     VALUES ($1, $2, date_trunc('hour', $4::timestamptz), $3, 0, 0, 'germany-xray', now())
+     VALUES ($1, $2, date_trunc('hour', $4::timestamptz), $3, 0, 0,
+             '${site.source}', now())
      ON CONFLICT (client_config_id, bucket_start) DO UPDATE SET
        used_bytes = client_usage_hourly.used_bytes + excluded.used_bytes,
        customer_account_id = excluded.customer_account_id,
@@ -120,25 +170,27 @@ export async function applyDeUserUsage(
   await ex.query(
     `INSERT INTO client_usage_daily
        (client_config_id, customer_account_id, bucket_start, used_bytes, rx_bytes, tx_bytes, source, updated_at)
-     VALUES ($1, $2, date_trunc('day', $4::timestamptz), $3, 0, 0, 'germany-xray', now())
+     VALUES ($1, $2, date_trunc('day', $4::timestamptz), $3, 0, 0,
+             '${site.source}', now())
      ON CONFLICT (client_config_id, bucket_start) DO UPDATE SET
        used_bytes = client_usage_daily.used_bytes + excluded.used_bytes,
        customer_account_id = excluded.customer_account_id,
        updated_at = now()`,
     rollupValues,
   );
-  await upsertDeBaseline(ex, user, customerAccountId, observedAtIso);
+  await upsertRemoteBaseline(ex, site, user, customerAccountId, observedAtIso);
   return delta;
 }
 
-async function upsertDeBaseline(
+async function upsertRemoteBaseline(
   ex: DatabaseQueryExecutor,
+  site: RemoteUsageSite,
   user: DeUserCumulative,
   customerAccountId: string,
   observedAtIso: string,
 ): Promise<void> {
   await ex.query(
-    `INSERT INTO client_usage_de_baseline
+    `INSERT INTO ${site.baselineTable}
        (client_config_id, customer_account_id, cumulative_bytes, observed_at, updated_at)
      VALUES ($1, $2, $3, $4::timestamptz, now())
      ON CONFLICT (client_config_id) DO UPDATE SET

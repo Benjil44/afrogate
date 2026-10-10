@@ -16,14 +16,16 @@ import { RewardedAdWebhookController } from './billing/rewarded-ad-webhook.contr
 import { RewardedAdWebhookService } from './billing/rewarded-ad-webhook.service';
 import { ClientController } from './client/client.controller';
 import { ClientAuthController } from './client/client-auth.controller';
+import { SubscriptionController } from './client/subscription.controller';
 import { XrayProvisioningService } from './client/xray-provisioning.service';
 import { DeviceLimitService } from './client/device-limit.service';
 import { InboundsService } from './client/inbounds.service';
 import { ConnectionsService } from './client/connections.service';
 import { OperationsOverviewService } from './client/operations-overview.service';
 import { XrayUsageMeteringService } from './client/xray-usage-metering.service';
-import { GermanyUsageMeteringService } from './client/germany-usage-metering.service';
+import { RemoteExitUsageMeteringService } from './client/remote-exit-usage-metering.service';
 import { GermanyMgmtService } from './client/germany-mgmt.service';
+import { UsaMgmtService } from './client/usa-mgmt.service';
 import { WireguardMeteringService } from './client/wireguard-metering.service';
 import { XrayAccessLogService } from './client/xray-access-log.service';
 import { HealthController } from './health/health.controller';
@@ -92,6 +94,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     RoutersController,
     PayPalWebhookController,
     RewardedAdWebhookController,
+    SubscriptionController,
     TelegramBotController,
     TelegramTopupAdminController,
   ],
@@ -117,7 +120,8 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     XrayUsageMeteringService,
     DeviceLimitService,
     GermanyMgmtService,
-    GermanyUsageMeteringService,
+    UsaMgmtService,
+    RemoteExitUsageMeteringService,
     WireguardMeteringService,
     XrayAccessLogService,
     InboundsService,

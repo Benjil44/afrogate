@@ -35,6 +35,7 @@ import type {
   AdminClientConfigSummary,
   AdminClientConfigsExportResponse,
   AdminSendConfigTelegramResponse,
+  AdminRotateSubscriptionTokenResponse,
   AdminClientRoutePreferenceResponse,
   AdminClientSubscriptionCredentialResponse,
   AdminClientSubscriptionCredentialsResponse,
@@ -546,6 +547,28 @@ export class BillingController {
     return this.billingService.sendResellerCustomerConfigToTelegram(id, request.actor);
   }
 
+  /** Reseller config export (links, QRs, subscription URL), IDOR-guarded to own customers. */
+  @Get('reseller/customer-accounts/:id/client-configs/export')
+  @Roles('reseller')
+  @Permissions('customers:read')
+  exportResellerCustomerClientConfigs(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminClientConfigsExportResponse> {
+    return this.billingService.exportResellerCustomerClientConfigs(id, request.actor);
+  }
+
+  /** Rotate a config's public subscription URL; IDOR-guarded to the seller's own customers. */
+  @Post('reseller/client-configs/:id/subscription-token/rotate')
+  @Roles('reseller')
+  @Permissions('customers:write')
+  rotateResellerClientConfigSubscriptionToken(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminRotateSubscriptionTokenResponse> {
+    return this.billingService.rotateResellerClientConfigSubscriptionToken(id, request.actor);
+  }
+
   @Get('resellers')
   @Roles('admin', 'supervisor', 'support')
   async listResellers(
@@ -1004,6 +1027,16 @@ export class BillingController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<{ link: string | null }> {
     return this.billingService.getClientConfigEntryLink(id);
+  }
+
+  /** Rotate a config's public subscription URL: the old URL stops working at once. */
+  @Post('client-configs/:id/subscription-token/rotate')
+  @Roles('admin')
+  rotateClientConfigSubscriptionToken(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithAuth,
+  ): Promise<AdminRotateSubscriptionTokenResponse> {
+    return this.billingService.rotateClientConfigSubscriptionToken(id, request.actor);
   }
 
   @Get('client-configs/:id/wireguard-config')

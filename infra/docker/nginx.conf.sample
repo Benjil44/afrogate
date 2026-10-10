@@ -1,5 +1,14 @@
 limit_req_zone $binary_remote_addr zone=afrows_api:10m rate=10r/s;
 limit_req_zone $binary_remote_addr zone=afrows_login:10m rate=3r/m;
+# Public subscription URLs (/sub/<token>): VPN apps refresh every ~12h, so a low per-IP rate.
+# app.afrows.com arrives through the Cloudflare tunnel (remote_addr is loopback), so key
+# subscription refreshes on the visitor IP Cloudflare reports; direct hits fall back to
+# the TCP peer. A spoofed header only buys the sender their own bucket (tokens are 192-bit).
+map $http_cf_connecting_ip $afrows_sub_client {
+    ""      $binary_remote_addr;
+    default $http_cf_connecting_ip;
+}
+limit_req_zone $afrows_sub_client zone=afrows_sub:10m rate=30r/m;
 
 upstream afrows_backend {
     server backend:7000;
@@ -44,6 +53,32 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 30s;
+    }
+
+    # Public, unauthenticated subscription endpoint for VPN apps (GET only, never cached;
+    # the backend sends Cache-Control: no-store. No add_header here: it would drop the
+    # server-level security headers for this location).
+    # `^~` keeps the regex locations below (and the SPA fallback) from taking it; access_log
+    # off keeps live tokens out of the nginx logs.
+    # Single public path for subscriptions: /api/sub/ would bypass the /sub/ limits
+    # and log tokens via the generic /api/ block.
+    location ^~ /api/sub/ {
+        return 404;
+    }
+
+    location ^~ /sub/ {
+        limit_except GET { deny all; }
+        limit_req zone=afrows_sub burst=10 nodelay;
+        proxy_pass http://afrows_backend/api/sub/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_no_cache 1;
+        proxy_cache_bypass 1;
+        access_log off;
+        proxy_read_timeout 15s;
     }
 
     location ~ /\.(?!well-known) {

@@ -1077,6 +1077,7 @@ async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}
           warnings: ['external_panel_write_not_executed', 'local_quota_charge_recorded'],
         });
         return;
+      case '/api/admin/reseller/customer-accounts/account-created/client-configs/export':
       case '/api/admin/customer-accounts/account-created/client-configs/export':
         await fulfillJson(route, {
           configCount: 1,
@@ -1086,6 +1087,14 @@ async function mockDashboardApi(page: Page, options: VisualDashboardOptions = {}
               customerAccountId: 'account-created',
               deviceLimit: null,
               effectiveQuotaLimitBytes: 26_843_545_600,
+              entryLinks: [
+                { kind: 'germany', qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>', uri: 'vless://visual-germany@de.example.test:443?type=ws#Afrows-Germany' },
+                { kind: 'iran', qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>', uri: 'vless://visual-iran@ir.example.test:443?type=ws#Afrows-Shatel' },
+              ],
+              entryUri: 'vless://visual-germany@de.example.test:443?type=ws#Afrows-Germany',
+              qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>',
+              subscriptionQrSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>',
+              subscriptionUrl: 'https://panel.example.test/sub/visual-token',
               externalPanel: 'marzban',
               externalPanelConfigId: 'vip_gamer',
               externalPanelUserId: 'vip_gamer',
