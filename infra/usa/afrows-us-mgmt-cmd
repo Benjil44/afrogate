@@ -61,7 +61,7 @@ os.chmod(tmp, st.st_mode & 0o777)
 os.chown(tmp, st.st_uid, st.st_gid)
 # Never persist a config xray would refuse at the next restart (that would keep the
 # USA exit down across reboots).
-if subprocess.run([xr, "run", "-test", "-config", tmp], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+if subprocess.run([xr, "run", "-test", "-format", "json", "-config", tmp], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
     os.remove(tmp)
     sys.exit(1)
 os.replace(tmp, cfg_path)

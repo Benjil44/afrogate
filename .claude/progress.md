@@ -5,7 +5,9 @@
 - Village "STILL DOWN" alert was false (REST 401 after the 10-04 rebuild): new `claude` REST password stored encrypted in `mikrotik_routers` (operator ran it); the 17:20 UTC probe no longer logged "offline".
 - USA live end-to-end on the infra side: own Cloudflare tunnel `afrows-us` (`cloudflared-us.service`, us.afrows.com -> 127.0.0.1:10085; no Zero Trust/card) -> `/afrowsus` returns 400. Afrows runbook applied (backups `*.bak-us-20261010-173813`): chain UUID, `us_mgmt_key` (forced command, from=127.0.0.1), pinned host key, `afrows-us-mgmt` alias, `AFROWS_US_CHAIN_*`/`MGMT_*` env, egress script, `via-usa` + `us-mgmt-socks` rendered. Verified: `read-usage` returns JSON, `id` -> denied, chain cannot browse (blocked).
 - Bug found + fixed: `execSsh` now sets `SHELL=/bin/sh` (afrows' nologin shell broke the ProxyCommand hop). 867/867 backend tests, typecheck clean.
-- Remaining: commit + deploy 0.116.0/0.117.0 (when asked), then backend env `AFROWS_US_MGMT_ENABLED` / `AFROWS_US_ENTRY_*` (HOST = Cloudflare IP, SNI us.afrows.com) and restart.
+- DEPLOYED 0.116.0 + 0.117.0 (13fad3d, 18:06 UTC): migrations 0064/0065, nginx `/sub/` + `afrows_sub` zone (backup `/root/nginx-afrows.bak-sub-20261010-180008`), `AFROWS_SUBSCRIPTION_SECRET` (generated on-box) + `AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS=true`. Then `AFROWS_US_MGMT_ENABLED=true` and `AFROWS_US_ENTRY_*` (172.64.34.62, SNI/host us.afrows.com, /afrowsus, ECH as DE).
+- Verified live: `/sub/<token>` 200, 844 B, 3 links (Germany / Shatel / USA) + userinfo; unknown token and `/api/sub/` 404; USA membership re-sync ensured 31/31; a customer USA link exits at 93.127.140.50 and is metered (`USA metered 1 user(s)`).
+- Fixed live on the USA: mirror `xray -test` needed `-format json` (config.json was never updated). Saved users now follow the live set.
 
 ## 2026-10-08
 
