@@ -16,6 +16,7 @@ import {
   type VillageAlertDelivery,
   type VillageAlertKind,
   type VillageOutage,
+  type VillageAlertContext,
 } from './village-egress-alert';
 
 interface OutageRow {
@@ -77,7 +78,7 @@ export class VillageEgressAlertService {
    * Commit a (confirmed) village probe result to the outage marker, then send
    * whichever notice is due. Never throws.
    */
-  async observe(offline: boolean, context: { enabledReserveCount: number }): Promise<void> {
+  async observe(offline: boolean, context: VillageAlertContext): Promise<void> {
     if (!this.isEnabled()) return;
     try {
       await this.syncMarker(offline);
@@ -169,7 +170,7 @@ export class VillageEgressAlertService {
     return deliveries;
   }
 
-  private async deliver(decision: VillageAlertDecision, context: { enabledReserveCount: number }): Promise<void> {
+  private async deliver(decision: VillageAlertDecision, context: VillageAlertContext): Promise<void> {
     const key = `${decision.outage.id}:${decision.kind}`;
     const recipients = await this.recipients();
     if (!recipients.length) {
@@ -205,6 +206,7 @@ export class VillageEgressAlertService {
       outageStartedAt: decision.outage.startedAt.toISOString(),
       durationSeconds: Math.floor(decision.durationMs / 1000),
       enabledReserveCount: context.enabledReserveCount,
+      germanyUp: context.germanyUp ?? null,
       delivered,
       recipients: recipients.length,
     });

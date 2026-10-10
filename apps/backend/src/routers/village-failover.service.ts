@@ -1,7 +1,9 @@
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
 
 import { VillageEgressAlertService } from '../notifications/village-egress-alert.service';
 import { isVillageTransition } from '../notifications/village-egress-alert';
+import { isRouterAuthRejection, readGermanyUp } from './village-probe';
 import { OperationsService } from '../operations/operations.service';
 import { RoutersService } from './routers.service';
 
@@ -31,6 +33,7 @@ export class VillageFailoverService implements OnModuleInit, OnApplicationShutdo
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
   private lastSyncAt = 0;
+  private lastAuthWarnAt = 0;
 
   private static readonly MIN_SYNC_GAP_MS = 8 * 60 * 1000; // don't re-sync more than ~every 8 min
   private static readonly TRANSITION_CONFIRM_MS = 30 * 1000; // re-probe before committing a state flip
@@ -72,7 +75,8 @@ export class VillageFailoverService implements OnModuleInit, OnApplicationShutdo
         });
         if ((await this.isVillageDown()) !== offline) return; // flapping/unknown: keep the persisted state
       }
-      await this.egressAlert.observe(offline, { enabledReserveCount });
+      const germanyUp = offline ? await readGermanyUp(readFile, process.env, Date.now()) : null;
+      await this.egressAlert.observe(offline, { enabledReserveCount, germanyUp });
     } catch (error) {
       this.logger.warn(`Village failover tick failed: ${error instanceof Error ? error.message : error}`);
     } finally {
@@ -115,11 +119,27 @@ export class VillageFailoverService implements OnModuleInit, OnApplicationShutdo
       try {
         const { status } = await this.routers.getStatus(r.id);
         if (status.online) return false; // at least one village router is reachable
+        // A rejected login (401/403) means the router ANSWERED: it's up, only the
+        // stored REST password is stale (e.g. after a router rebuild). Treat it as
+        // reachable so it never pages "village down"; warn so the operator fixes it.
+        if (isRouterAuthRejection(status.error)) {
+          this.warnAuthRejected(r.label);
+          return false;
+        }
       } catch {
         // treat a failed status probe as unreachable
       }
     }
     return true;
+  }
+
+  private warnAuthRejected(label: string): void {
+    const now = Date.now();
+    if (now - this.lastAuthWarnAt < 6 * 60 * 60 * 1000) return; // once per ~6h
+    this.lastAuthWarnAt = now;
+    this.logger.warn(
+      `Village router "${label}" answered but rejected the stored REST login; update its password in Dashboard -> Microtiks (counted as reachable)`,
+    );
   }
 
   private isVillageRouter(router: { id: string; label: string; role?: string }): boolean {

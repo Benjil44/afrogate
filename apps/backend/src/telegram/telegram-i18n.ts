@@ -204,6 +204,7 @@ export type TelegramCopyId =
   | 'ops.village.reminder'
   | 'ops.village.recovered'
   | 'ops.village.undeliveredNote'
+  | 'ops.village.germanyOk'
   | 'ops.village.reserveNone'
   | 'ops.village.reserveSome';
 
@@ -658,6 +659,10 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'ops.village.undeliveredNote': {
     en: 'ℹ️ The outage alert could not be delivered while the link was down.',
     fa: 'ℹ️ هشدار قطعی در زمان قطع ارتباط قابل ارسال نبود.',
+  },
+  'ops.village.germanyOk': {
+    en: '✅ Customers still have internet via Germany; the village is only the backup path.',
+    fa: '✅ مشتریان همچنان از طریق آلمان اینترنت دارند؛ روستا فقط مسیر پشتیبان است.',
   },
   'ops.village.reserveNone': {
     en: '⛔ No enabled reserve subscription — customers have NO egress.',

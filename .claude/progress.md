@@ -2,6 +2,10 @@
 
 ## 2026-10-10
 
+- 0.118.1 (not deployed yet): village probe counts a 401/403 REST login as reachable (no false outage); alert says "still have internet via Germany" when egress-health germanyUp is fresh+true; remote quota/inactive cuts cached per site (re-sent every 300 s, failures every tick) — measured before: 304 USA mgmt SSH logins / 10 min for 8 inactive + 2 over-quota configs. 907/907 tests.
+
+- DEPLOYED 0.118.0 (ff38162, 19:20 UTC): migration 0066 applied, 40/40 accounts all-on, Germany re-sync 31/31 under the new build, `/sub/` still returns Germany | Shatel | USA.
+
 - Village "STILL DOWN" alert was false (REST 401 after the 10-04 rebuild): new `claude` REST password stored encrypted in `mikrotik_routers` (operator ran it); the 17:20 UTC probe no longer logged "offline".
 - USA live end-to-end on the infra side: own Cloudflare tunnel `afrows-us` (`cloudflared-us.service`, us.afrows.com -> 127.0.0.1:10085; no Zero Trust/card) -> `/afrowsus` returns 400. Afrows runbook applied (backups `*.bak-us-20261010-173813`): chain UUID, `us_mgmt_key` (forced command, from=127.0.0.1), pinned host key, `afrows-us-mgmt` alias, `AFROWS_US_CHAIN_*`/`MGMT_*` env, egress script, `via-usa` + `us-mgmt-socks` rendered. Verified: `read-usage` returns JSON, `id` -> denied, chain cannot browse (blocked).
 - Bug found + fixed: `execSsh` now sets `SHELL=/bin/sh` (afrows' nologin shell broke the ProxyCommand hop). 867/867 backend tests, typecheck clean.

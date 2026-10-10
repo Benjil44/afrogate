@@ -8,6 +8,13 @@ import { applyUsageDelta } from './usage-accounting';
 import { provisioningEmail } from './xray-provisioning';
 import { GermanyMgmtService } from './germany-mgmt.service';
 import { UsaMgmtService } from './usa-mgmt.service';
+import {
+  createRemoteMembershipState,
+  expireRemoteRevocations,
+  planRemoteRevocations,
+  recordRemoteRevocation,
+  type RemoteMembershipState,
+} from './remote-exit-membership';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +35,18 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(XrayUsageMeteringService.name);
   private timer: NodeJS.Timeout | undefined;
   private running = false;
+  /**
+   * Remote (SSH) cuts already confirmed, per reason and site. Without this every
+   * 15 s tick re-sent rmu over SSH for every long-cut user (~30 logins/min on
+   * the USA for 10 users). A confirmed cut is re-sent once per
+   * AFROWS_REMOTE_CUT_RECHECK_SECONDS (default 300) as the self-heal net; a
+   * failed one is retried next tick; a user that leaves the set is forgotten, so
+   * a later cut goes out immediately. The local rmu stays every tick (cheap).
+   */
+  private readonly remoteCuts = {
+    quota: { germany: createRemoteMembershipState(), usa: createRemoteMembershipState() },
+    status: { germany: createRemoteMembershipState(), usa: createRemoteMembershipState() },
+  };
 
   constructor(
     private readonly config: ConfigService,
@@ -126,10 +145,10 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
           /* best-effort; next tick retries */
         }
       }
-      // Also cut the remote exits (Germany, USA). Best-effort, each behind its own
-      // breaker; retried every tick (see above) until the removal actually sticks.
-      await this.removeFromRemoteExits(row.clientConfigId);
     }
+    // Also cut the remote exits (Germany, USA): retried every tick until the
+    // removal sticks, then re-checked every few minutes (see remoteCuts).
+    await this.removeFromRemoteExits(this.remoteCuts.quota, result.rows.map((r) => r.clientConfigId));
     if (newlyLimited) {
       this.logger.log(`Quota enforced: limited ${newlyLimited} newly over-quota client(s)`);
     }
@@ -188,9 +207,9 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
           /* best-effort; next tick retries */
         }
       }
-      // Also cut the remote exits (Germany, USA) (best-effort; a flaky link never blocks).
-      await this.removeFromRemoteExits(row.clientConfigId);
     }
+    // Also cut the remote exits (Germany, USA) (best-effort; a flaky link never blocks).
+    await this.removeFromRemoteExits(this.remoteCuts.status, result.rows.map((r) => r.clientConfigId));
     if (result.rows.length) {
       this.logger.log(`Account status enforced: disconnected ${result.rows.length} inactive-account client(s)`);
     }
@@ -201,9 +220,27 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
    * timeout, then skipped by its breaker) never delays the other's cut. The USA
    * call is a no-op unless AFROWS_US_MGMT_ENABLED. Never throws.
    */
-  private async removeFromRemoteExits(clientConfigId: string): Promise<void> {
-    const email = provisioningEmail(clientConfigId);
-    await Promise.all([this.germanyMgmt.removeUser(email), this.usaMgmt.removeUser(email)]);
+  private async removeFromRemoteExits(
+    cuts: { germany: RemoteMembershipState; usa: RemoteMembershipState },
+    clientConfigIds: readonly string[],
+  ): Promise<void> {
+    const now = Date.now();
+    const recheckMs = this.remoteCutRecheckMs();
+    const site = async (state: RemoteMembershipState, removeUser: (email: string) => Promise<boolean>): Promise<void> => {
+      expireRemoteRevocations(state, now, recheckMs);
+      for (const id of planRemoteRevocations(state, clientConfigIds)) {
+        recordRemoteRevocation(state, id, await removeUser(provisioningEmail(id)));
+      }
+    };
+    await Promise.all([
+      site(cuts.germany, (email) => this.germanyMgmt.removeUser(email)),
+      site(cuts.usa, (email) => this.usaMgmt.removeUser(email)),
+    ]);
+  }
+
+  private remoteCutRecheckMs(): number {
+    const n = Number(this.config.get<string>('AFROWS_REMOTE_CUT_RECHECK_SECONDS'));
+    return (Number.isFinite(n) && n >= 60 && n <= 3600 ? Math.floor(n) : 300) * 1000;
   }
 
   private bin(): string {

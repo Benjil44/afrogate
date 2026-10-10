@@ -155,6 +155,12 @@ export interface VillageAlertCopyDeps {
   digits: (value: string) => string;
 }
 
+export interface VillageAlertContext {
+  enabledReserveCount: number;
+  /** Germany exit health from egress-health.json; null = unknown/stale. */
+  germanyUp?: boolean | null;
+}
+
 /**
  * One bilingual HTML message (Persian first, then English) so every recipient
  * reads it regardless of their bot language. Operational metadata only — no
@@ -162,15 +168,19 @@ export interface VillageAlertCopyDeps {
  */
 export function buildVillageAlertMessage(
   decision: VillageAlertDecision,
-  context: { enabledReserveCount: number },
+  context: VillageAlertContext,
   deps: VillageAlertCopyDeps,
 ): string {
   const startedAt = formatUtcMinute(decision.outage.startedAt);
   const resolvedAt = decision.outage.resolvedAt ? formatUtcMinute(decision.outage.resolvedAt) : '';
   const render = (language: TelegramLanguage): string => {
     const duration = formatOutageDuration(decision.durationMs, language, deps.digits);
-    const reserveLine =
-      context.enabledReserveCount > 0
+    // Customers exit via the Germany chain (Cloudflare), not the village, so a
+    // healthy Germany means they still have internet; only say "NO egress" when
+    // Germany is down (or unknown) and there is no reserve either.
+    const reserveLine = context.germanyUp
+      ? deps.render('ops.village.germanyOk', language)
+      : context.enabledReserveCount > 0
         ? deps.render('ops.village.reserveSome', language, {
             count: language === 'fa' ? deps.digits(String(context.enabledReserveCount)) : context.enabledReserveCount,
           })

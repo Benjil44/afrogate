@@ -178,6 +178,22 @@ describe('buildVillageAlertMessage (bilingual, typed copy layer)', () => {
     assert.match(text, /۲ اشتراک رزرو/);
   });
 
+  it('DOWN while Germany is healthy says customers still have internet, never "NO egress"', () => {
+    const d = decideVillageAlert(input({ open, now: at(MIN) }))!;
+    const text = buildVillageAlertMessage(d, { enabledReserveCount: 0, germanyUp: true }, deps);
+    assert.match(text, /still have internet via Germany/);
+    assert.match(text, /از طریق آلمان/);
+    assert.doesNotMatch(text, /NO egress/);
+  });
+
+  it('DOWN with Germany down or unknown keeps the reserve wording', () => {
+    const d = decideVillageAlert(input({ open, now: at(MIN) }))!;
+    for (const germanyUp of [false, null]) {
+      const text = buildVillageAlertMessage(d, { enabledReserveCount: 0, germanyUp }, deps);
+      assert.match(text, /NO egress/);
+    }
+  });
+
   it('RECOVERY carries the duration and the undelivered note when DOWN never landed', () => {
     const d = decideVillageAlert(input({ lastResolved: resolved(21 * 24 * HOUR), now: at(21 * 24 * HOUR + MIN) }))!;
     const text = buildVillageAlertMessage(d, { enabledReserveCount: 0 }, deps);
