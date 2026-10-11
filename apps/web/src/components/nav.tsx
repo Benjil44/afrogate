@@ -1,26 +1,28 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import { Bell, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { LangToggle } from '@/components/lang-toggle';
+import { Equalizer } from '@/components/equalizer';
 import { useLang } from '@/i18n';
+import { usePlayer } from '@/lib/player';
 
 function Logo() {
+  const { t } = useLang();
+  const { playing } = usePlayer();
   return (
-    <a href="/" className="flex items-center gap-2 text-lg font-black tracking-tight">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#0a0a0f] font-black">
-        <span className="bg-[linear-gradient(135deg,var(--primary),var(--secondary))] bg-clip-text text-transparent">A</span>
+    <a href="#top" aria-label={t.nav.home} className="flex items-center gap-2.5 text-lg font-black tracking-tight">
+      <span className="grid h-9 w-9 place-items-center rounded-xl bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white">
+        <Equalizer active={playing} bars={4} className="h-4 text-white" />
       </span>
-      <span className="bg-[linear-gradient(180deg,var(--foreground),color-mix(in_oklch,var(--foreground)_55%,transparent))] bg-clip-text text-transparent">
-        Afrows
-      </span>
+      <span>{t.brand}</span>
     </a>
   );
 }
 
 export function Nav() {
-  const { t, appHref } = useLang();
+  const { t } = useLang();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -32,9 +34,10 @@ export function Nav() {
   }, []);
 
   const links = [
+    { href: '#radio', label: t.nav.radio },
     { href: '#features', label: t.nav.features },
-    { href: '#gaming', label: t.nav.gaming },
     { href: '#pricing', label: t.nav.pricing },
+    { href: '#faq', label: t.nav.faq },
   ];
 
   return (
@@ -42,32 +45,31 @@ export function Nav() {
       className={cn(
         'w-full transition-all duration-300',
         scrolled
-          ? 'border-b border-[var(--border)] bg-[color-mix(in_oklch,var(--background)_70%,transparent)] backdrop-blur-xl'
+          ? 'border-b border-[var(--border)] bg-[color-mix(in_oklch,var(--background)_75%,transparent)] backdrop-blur-xl'
           : 'border-b border-transparent bg-[color-mix(in_oklch,var(--background)_40%,transparent)] backdrop-blur-md',
       )}
     >
-      <nav className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5">
+      <nav aria-label={t.nav.menu} className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-5">
         <Logo />
 
-        <div className="hidden items-center gap-8 md:flex">
+        <ul className="hidden items-center gap-7 md:flex">
           {links.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="text-sm font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-            >
-              {l.label}
-            </a>
+            <li key={l.href}>
+              <a
+                href={l.href}
+                className="inline-flex min-h-11 items-center text-sm font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                {l.label}
+              </a>
+            </li>
           ))}
-        </div>
+        </ul>
 
         <div className="hidden items-center gap-3 md:flex">
           <LangToggle />
-          <Button as="a" href={appHref} variant="ghost" size="sm">
-            {t.nav.login}
-          </Button>
-          <Button as="a" href={appHref} variant="primary" size="sm">
-            {t.nav.getStarted}
+          <Button as="a" href="#pricing" variant="primary" size="md">
+            <Bell className="h-4 w-4" aria-hidden="true" />
+            {t.nav.cta}
           </Button>
         </div>
 
@@ -75,11 +77,13 @@ export function Nav() {
           <LangToggle />
           <button
             type="button"
-            aria-label={t.nav.menu}
+            aria-label={open ? t.nav.closeMenu : t.nav.menu}
+            aria-expanded={open}
+            aria-controls="mobile-menu"
             onClick={() => setOpen((o) => !o)}
-            className="grid h-9 w-9 place-items-center rounded-full border border-[var(--border)] text-[var(--foreground)]"
+            className="grid h-11 w-11 place-items-center rounded-full border border-[var(--border)] text-[var(--foreground)]"
           >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {open ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
           </button>
         </div>
       </nav>
@@ -87,31 +91,31 @@ export function Nav() {
       <AnimatePresence>
         {open && (
           <motion.div
+            id="mobile-menu"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden border-t border-[var(--border)] bg-[color-mix(in_oklch,var(--background)_88%,transparent)] backdrop-blur-xl md:hidden"
+            className="overflow-hidden border-t border-[var(--border)] bg-[color-mix(in_oklch,var(--background)_92%,transparent)] backdrop-blur-xl md:hidden"
           >
-            <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-4">
+            <ul className="mx-auto flex max-w-6xl flex-col px-4 py-3">
               {links.map((l) => (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setOpen(false)}
-                  className="py-1 text-sm font-medium text-[var(--muted-foreground)]"
-                >
-                  {l.label}
-                </a>
+                <li key={l.href}>
+                  <a
+                    href={l.href}
+                    onClick={() => setOpen(false)}
+                    className="flex min-h-12 items-center text-base font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  >
+                    {l.label}
+                  </a>
+                </li>
               ))}
-              <div className="mt-2 flex gap-3">
-                <Button as="a" href={appHref} variant="glass" size="sm" className="flex-1">
-                  {t.nav.login}
+              <li className="mt-2 pb-2">
+                <Button as="a" href="#pricing" onClick={() => setOpen(false)} variant="primary" size="md" className="w-full">
+                  <Bell className="h-4 w-4" aria-hidden="true" />
+                  {t.nav.cta}
                 </Button>
-                <Button as="a" href={appHref} variant="primary" size="sm" className="flex-1">
-                  {t.nav.getStarted}
-                </Button>
-              </div>
-            </div>
+              </li>
+            </ul>
           </motion.div>
         )}
       </AnimatePresence>

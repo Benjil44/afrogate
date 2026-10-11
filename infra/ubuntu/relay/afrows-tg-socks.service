@@ -1,11 +1,15 @@
 [Unit]
-Description=Afrows Telegram SOCKS proxy 127.0.0.1:1081 -> api.telegram.org:443 only (via Borjino -> USA)
-After=network-online.target
+Description=Afrows Telegram SOCKS proxy 127.0.0.1:1081 -> api.telegram.org:443 only (via USA over Cloudflare)
+After=network-online.target xray.service
 Wants=network-online.target
 
 [Service]
 User=afrows
-ExecStart=/usr/bin/ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/afrows/de_relay_known_hosts -o "ProxyCommand=/usr/bin/ssh -F none -o BatchMode=yes -o IdentitiesOnly=yes -i /etc/afrows/de_relay_key -o UserKnownHostsFile=/etc/afrows/de_relay_known_hosts -W %%h:%%p afrows-relay@185.252.30.127" -i /etc/afrows/tg_socks_key -D 127.0.0.1:1081 afrows-relay@93.127.140.50
+# ssh starts ProxyCommand through $SHELL; afrows has a nologin shell.
+Environment=SHELL=/bin/sh
+# USA sshd (127.0.0.1:22 on the USA) over the Afrows xray loopback socks
+# us-mgmt-socks (127.0.0.1:1083) -> via-usa (Cloudflare). No Borjino.
+ExecStart=/usr/bin/ssh -F none -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=20 -o IdentitiesOnly=yes -o HostKeyAlias=afrows-us-mgmt -o UserKnownHostsFile=/etc/afrows/us_mgmt_known_hosts -o StrictHostKeyChecking=yes -o "ProxyCommand=/usr/bin/nc -X 5 -x 127.0.0.1:1083 %%h %%p" -i /etc/afrows/tg_socks_key -D 127.0.0.1:1081 afrows-relay@127.0.0.1
 Restart=always
 RestartSec=10
 MemoryMax=64M

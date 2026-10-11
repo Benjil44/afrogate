@@ -1,11 +1,13 @@
 [Unit]
-Description=Afrows Germany-mgmt SSH relay master (Ireland->Borjino->USA->Germany)
-After=network-online.target
+Description=Afrows Germany-mgmt SSH relay master (Afrows -> USA over Cloudflare -> Germany)
+After=network-online.target xray.service
 Wants=network-online.target
 
 [Service]
 User=afrows
 Group=afrows
+# The USA hop's ProxyCommand runs through $SHELL; afrows has a nologin shell.
+Environment=SHELL=/bin/sh
 ExecStartPre=-/bin/rm -f /run/afrows/de-relay.sock
 ExecStart=/usr/bin/ssh -F /etc/afrows/de_relay_ssh_config -M -N -o ControlPersist=no 162.19.253.235
 Restart=always

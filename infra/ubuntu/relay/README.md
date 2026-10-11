@@ -1,49 +1,54 @@
-# Afrows relay chain (live since 2026-10-04)
+# Afrows relay chain (Borjino-free since 2026-10-11)
 
 The Afrows server (94.74.145.199) sits in a Mashhad datacenter whose uplink drops
 **every** packet to foreign IPs (both directions). Only Cloudflare and Iranian
-addresses pass. So everything foreign the server needs goes over SSH through two
-hops that *can* reach abroad:
+addresses pass. So everything foreign the server needs goes over SSH to the USA
+VPS, and that SSH itself rides Cloudflare:
 
 ```
-Afrows (Mashhad)  ──SSH──▶  Borjino 185.252.30.127 (other Iranian DC, reaches USA)
-                  ──SSH──▶  USA VPS 93.127.140.50 (open internet)  ──▶  target
+Afrows ──nc──▶ xray loopback socks us-mgmt-socks 127.0.0.1:1083
+       ──▶ via-usa (VLESS-WS-TLS, us.afrows.com, Cloudflare)
+       ──▶ USA xray ──▶ USA sshd 127.0.0.1:22 (user afrows-relay)  ──▶  target
 ```
 
-WireGuard is **not** used on these hops: Irancell DPI blocks real WireGuard
-handshakes to foreign IPs. Plain SSH/TCP passes.
+The USA xray only lets the Afrows chain user reach 127.0.0.1:22 (see
+`infra/usa/README.md`). **No Borjino.** Afrows must never depend on Borjino
+(185.252.30.127) again — not as a hop, a fallback, a fail2ban allow-list entry or
+an authorized_keys `from=`. Until 2026-10-11 these units hopped through it; it
+went dark at 09:10 UTC that day and took afrows.com down.
 
 ## What rides the chain
 
 | Purpose | Unit on Afrows | USA-side restriction (authorized_keys of `afrows-relay`) |
 |---|---|---|
-| Germany mgmt SSH (adu / rmu / read-usage) | `afrows-de-relay.service` (master) + `60-afrows-de-relay.conf` | `permitopen="162.19.253.235:22"` |
+| Germany mgmt SSH (adu / rmu / read-usage) | `afrows-de-relay.service` (master, `ssh -F de_relay_ssh_config`) + `60-afrows-de-relay.conf` | `permitopen="162.19.253.235:22"` |
 | Website reverse tunnel | `afrows-web-tunnel.service` (`-R 127.0.0.1:18444:127.0.0.1:443`) | `permitlisten="127.0.0.1:18444"` |
 | Telegram Bot API | `afrows-tg-socks.service` (`-D 127.0.0.1:1081`; backend `AFROWS_OUTBOUND_PROXY_URL=socks5://127.0.0.1:1081`) | `permitopen="api.telegram.org:443"` |
 
-Borjino's `afrows-relay` user (nologin, password locked) only allows
-`permitopen="93.127.140.50:22"` (and, for USA→Afrows management,
-`permitopen="94.74.145.199:22"`). Nothing else on Borjino is touched — it hosts a
-separate app and must stay decoupled from Afrows (no shared domains).
+All three set `SHELL=/bin/sh`: ssh starts ProxyCommand through `$SHELL`, and the
+`afrows` user has a nologin shell. The USA host key is pinned as
+`afrows-us-mgmt` in `/etc/afrows/us_mgmt_known_hosts` (same key the backend's
+`ssh afrows-us-mgmt` uses).
 
 Website path: visitor → Cloudflare → `afrows-cf.service` on the USA VPS
 (`usa-afrows-cf.service`; its `ExecStartPre` adds an iptables nat OUTPUT redirect
-`127.0.0.1:443 → 18444`) → reverse tunnel → Afrows nginx `:443`.
+`127.0.0.1:443 → 18444`, comment `afrows-cf-web`) → reverse tunnel → Afrows nginx `:443`.
 
 Germany mgmt falls back automatically to the village tunnel (`wg-village-de`)
 when `afrows-de-relay-up` fails (it checks the authenticated master socket).
 
 ## Files here (no keys)
 
-- `afrows-de-relay.service`, `de_relay_ssh_config`, `60-afrows-de-relay.conf`
-  (→ `/etc/ssh/ssh_config.d/`), `afrows-de-relay-up` (→ `/usr/local/libexec/`),
-  `tmpfiles-afrows-de-relay.conf` (→ `/etc/tmpfiles.d/afrows-de-relay.conf`)
+- `afrows-de-relay.service`, `de_relay_ssh_config` (→ `/etc/afrows/`),
+  `60-afrows-de-relay.conf` (→ `/etc/ssh/ssh_config.d/`), `afrows-de-relay-up`
+  (→ `/usr/local/libexec/`), `tmpfiles-afrows-de-relay.conf`
+  (→ `/etc/tmpfiles.d/afrows-de-relay.conf`)
 - `afrows-web-tunnel.service`, `afrows-tg-socks.service`
 - `usa-afrows-cf.service` (→ USA `/etc/systemd/system/afrows-cf.service`)
 
 Keys live only on the hosts: `/etc/afrows/{de_relay_key,web_tunnel_key,tg_socks_key}`
-(owner `afrows`, 0600), pinned host keys in `/etc/afrows/de_relay_known_hosts`,
-the Cloudflare tunnel token in USA `/etc/cloudflared/afrows.token` (root 0600).
+(owner `afrows`, 0600), the Cloudflare tunnel token in USA
+`/etc/cloudflared/afrows.token` (root 0600).
 
 ## Germany-side additions (Afrows-owned, additive)
 
@@ -60,7 +65,7 @@ the Cloudflare tunnel token in USA `/etc/cloudflared/afrows.token` (root 0600).
 systemctl disable --now afrows-de-relay afrows-web-tunnel afrows-tg-socks
 rm /etc/ssh/ssh_config.d/60-afrows-de-relay.conf      # Germany mgmt → village path
 sed -i 's|^AFROWS_OUTBOUND_PROXY_URL=.*|AFROWS_OUTBOUND_PROXY_URL=|' /etc/afrows/afrows.env
-# Borjino / USA
+# USA
 userdel -r afrows-relay
 ```
 

@@ -214,7 +214,7 @@ Shatel might block WireGuard the way Irancell's DPI does, so prove the tunnel wo
 5. **If neither 51820 nor 443 handshakes:**
    - Check that the server side is healthy: `wg show wg-home` shows the peer, `ss -ulpn | grep 51820` shows the socket, `ufw status` lists 51820/udp and 443/udp if ufw is active, and `iptables -t nat -S | grep -E '10.40|443'` shows both NAT rules.
    - Confirm that `rx` stays at 0 on the router.
-   - Then **STOP**. Do not run the full script. Report back "Shatel blocks WireGuard to the USA". The fallback path (through Borjino) will be designed separately.
+   - Then **STOP**. Do not run the full script. Report back "Shatel blocks WireGuard to the USA". A fallback path will be designed separately (never through Borjino).
    - Leave the router as it is (defconf with plain Shatel), or roll back as in section 7.
 
 ## 5. Cabling (for the full run)

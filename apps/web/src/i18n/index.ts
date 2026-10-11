@@ -6,47 +6,60 @@ export type Lang = 'fa' | 'en';
 export type { Dict };
 
 const DICTS: Record<Lang, Dict> = { en, fa };
+const STORAGE_KEY = 'afrows.lang';
 
-/** Where Login / Get-started send the user (the panel). Override with VITE_APP_URL. */
-export const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined) ?? 'https://app.afrows.com';
+/** Persian-first: fa is the default when nothing is stored. */
+const DEFAULT_LANG: Lang = 'fa';
+
+/** Language toggle is live (fa + en). */
+export const WEB_LANGUAGE_TOGGLE_ENABLED = true;
 
 interface LangContextValue {
   lang: Lang;
   dir: 'rtl' | 'ltr';
   t: Dict;
-  /** Link to the panel that carries the current language (?lang=). */
-  appHref: string;
   setLang: (lang: Lang) => void;
   toggle: () => void;
 }
 
 const LangContext = createContext<LangContextValue | null>(null);
 
-function readInitialLang(): Lang {
-  if (typeof localStorage === 'undefined') return 'en';
-  const stored = localStorage.getItem('afrows.lang');
-  return stored === 'en' || stored === 'fa' ? stored : 'en';
+function isLang(v: string | null): v is Lang {
+  return v === 'en' || v === 'fa';
 }
 
-// Persian temporarily disabled: flip to true to restore the fa toggle.
-export const WEB_LANGUAGE_TOGGLE_ENABLED = false;
+/** `?lang=en|fa` in the URL wins (shareable links), then the stored choice, then Persian. */
+function readInitialLang(): Lang {
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('lang');
+    if (isLang(fromUrl)) return fromUrl;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return isLang(stored) ? stored : DEFAULT_LANG;
+  } catch {
+    return DEFAULT_LANG;
+  }
+}
 
 export function LangProvider({ children }: { children: ReactNode }) {
   const [stored, setLang] = useState<Lang>(readInitialLang);
-  const lang: Lang = WEB_LANGUAGE_TOGGLE_ENABLED ? stored : 'en';
+  const lang: Lang = WEB_LANGUAGE_TOGGLE_ENABLED ? stored : DEFAULT_LANG;
   const dir: 'rtl' | 'ltr' = lang === 'fa' ? 'rtl' : 'ltr';
 
   useEffect(() => {
-    localStorage.setItem('afrows.lang', lang);
+    try {
+      localStorage.setItem(STORAGE_KEY, lang);
+    } catch {
+      /* private mode / blocked storage — the page still works */
+    }
     document.documentElement.lang = lang;
     document.documentElement.dir = dir;
+    document.title = lang === 'fa' ? 'افروز — موسیقی فارسی و رادیو زنده' : 'Afrows — Persian music & live radio';
   }, [lang, dir]);
 
   const value: LangContextValue = {
     lang,
     dir,
     t: DICTS[lang],
-    appHref: `${APP_URL}?lang=${lang}`,
     setLang,
     toggle: () => setLang(lang === 'fa' ? 'en' : 'fa'),
   };

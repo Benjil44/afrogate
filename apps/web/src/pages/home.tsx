@@ -1,14 +1,15 @@
 import { ScrollProgress } from '@/components/scroll-progress';
 import { PromoBar } from '@/components/promo-bar';
 import { Nav } from '@/components/nav';
+import { MiniPlayer } from '@/components/mini-player';
 import { Hero } from '@/sections/hero';
-import { Metrics } from '@/sections/metrics';
+import { Radio } from '@/sections/radio';
 import { Features } from '@/sections/features';
-import { Gaming } from '@/sections/gaming';
-import { AudienceSplit } from '@/sections/audience-split';
 import { Pricing } from '@/sections/pricing';
+import { Apps } from '@/sections/apps';
+import { Faq } from '@/sections/faq';
 import { Cta } from '@/sections/cta';
-import { CinematicFooter } from '@/components/ui/motion-footer';
+import { Footer } from '@/components/ui/motion-footer';
 
 export function Home() {
   return (
@@ -20,18 +21,18 @@ export function Home() {
         <Nav />
       </div>
 
-      {/* Content scrolls over the fixed footer (curtain reveal). */}
-      <main className="relative z-10 rounded-b-3xl border-b border-[var(--border)] bg-background shadow-2xl">
+      <main id="main">
         <Hero />
-        <Metrics />
+        <Radio />
         <Features />
-        <Gaming />
-        <AudienceSplit />
         <Pricing />
+        <Apps />
+        <Faq />
         <Cta />
       </main>
 
-      <CinematicFooter />
+      <Footer />
+      <MiniPlayer />
     </div>
   );
 }

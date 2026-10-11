@@ -1,5 +1,11 @@
 # Afrows Progress
 
+## 2026-10-11
+
+- Outage: Borjino dark from 09:10 UTC -> afrows.com 502 (web reverse tunnel via Borjino) and tg-socks down. Fixed live with drop-ins `/etc/systemd/system/{afrows-web-tunnel,afrows-tg-socks}.service.d/10-via-usa-mgmt.conf` (ssh to afrows-relay@127.0.0.1 via nc -> us-mgmt socks 1083, HostKeyAlias afrows-us-mgmt). Verified afrows.com 200, app 200, tg 302, USA listens 18444. Then (operator request) Afrows fully cut from Borjino: units rewritten (drop-ins removed), de-relay now Afrows->USA(CF)->Germany (master UP, Germany sync 31/31 + metering OK), Borjino-only root key + de_relay_known_hosts removed, USA fail2ban/afrows-cf label/administrator ssh config cleaned; 0 Borjino refs in /etc on both hosts. Backups /root/noborjino-*.
+- 0.119.0 (not committed/deployed): apps/web landing rebuilt as Persian music streaming / live radio "coming soon" (fa default, no VPN content). Build green; no overflow / 0 console errors at 1440/768/390 fa+en. Pending: real prices + brand name; actual radio product not started.
+- 0.118.1 deployed (82831ea): USA mgmt logins 304/10 min -> 45/5 min.
+
 ## 2026-10-10
 
 - 0.118.1 (not deployed yet): village probe counts a 401/403 REST login as reachable (no false outage); alert says "still have internet via Germany" when egress-health germanyUp is fresh+true; remote quota/inactive cuts cached per site (re-sent every 300 s, failures every tick) — measured before: 304 USA mgmt SSH logins / 10 min for 8 inactive + 2 over-quota configs. 907/907 tests.
