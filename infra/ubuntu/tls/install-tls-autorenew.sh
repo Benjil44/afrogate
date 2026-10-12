@@ -5,8 +5,11 @@
 # See infra/ubuntu/tls/README.md.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# The file nginx actually loads (on the Afrows box sites-enabled/afrows is a real
+# file, not a symlink, and sites-available/afrows is a stale copy).
+SITE="$(readlink -f /etc/nginx/sites-enabled/afrows)"
 B=/root/tls-autorenew-$(date +%Y%m%d-%H%M%S); mkdir -p "$B"; chmod 700 "$B"
-cp -a /etc/nginx/sites-available/afrows /etc/afrows/tls "$B"/
+cp -a "$SITE" /etc/afrows/tls "$B"/
 
 echo "== certbot"
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q certbot >/dev/null
@@ -14,9 +17,9 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -q certbot >/dev/null
 echo "== nginx acme snippet"
 mkdir -p /var/www/acme/.well-known/acme-challenge /etc/nginx/snippets
 install -m 644 "$HERE/afrows-acme.conf" /etc/nginx/snippets/afrows-acme.conf
-python3 - <<'AFROWS_PY'
-import re
-p = "/etc/nginx/sites-available/afrows"
+python3 - "$SITE" <<'AFROWS_PY'
+import re, sys
+p = sys.argv[1]
 s = open(p).read()
 inc = "    include /etc/nginx/snippets/afrows-acme.conf;\n"
 if inc in s:

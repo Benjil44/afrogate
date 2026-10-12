@@ -16,7 +16,7 @@ export interface AfrowsInboundParams {
   wsPath?: string;
   wsHost?: string;
   /** TLS Encrypted ClientHello config source (xray `ech=`), e.g.
-   *  `crypto.cloudflare.com+udp://1.1.1.1`. Hides the afrows SNI from ISP DPI
+   *  `crypto.cloudflare.com+udp://8.8.8.8` (not 1.1.1.1: Iranian ISPs block that lookup since 2026-10). Hides the afrows SNI from ISP DPI
    *  (Shatel freezes afrows.com-SNI flows); clients without ECH ignore it. */
   ech?: string;
   // reality:

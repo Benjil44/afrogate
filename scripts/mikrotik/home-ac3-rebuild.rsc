@@ -158,12 +158,12 @@
 
 # ---- 7. WireGuard to the USA (router initiates) --------------------------------
 # Created only if missing -> re-running keeps the private key. RouterOS makes
-# the key itself; it never leaves the router. MTU 1380 under PPPoE (1492), 1420
-# otherwise. allowed-address=0.0.0.0/0 adds NO routes in RouterOS (section 8 does).
+# the key itself; it never leaves the router. MTU 1380 always: on the Shatel DHCP
+# path 1420 blackholes above 1408 (measured 2026-10-12; broke the Germany link).
+# allowed-address=0.0.0.0/0 adds NO routes in RouterOS (section 8 does).
 {
   :global afrWanMode; :global afrUsaIp; :global afrUsaPub; :global afrUsaPort
-  :local mtu 1420
-  :if ($afrWanMode = "pppoe") do={ :set mtu 1380 }
+  :local mtu 1380
   :if ([:len [/interface wireguard find name=wg-home]] = 0) do={
     /interface wireguard add name=wg-home listen-port=51830 mtu=$mtu comment="afr: home -> USA 93.127.140.50 wg-home"
   }
@@ -262,7 +262,7 @@ add chain=srcnat out-interface=wg-home action=masquerade comment="afr:nat masque
   /ip firewall mangle add chain=prerouting in-interface=bridge connection-mark=afr-usa action=mark-routing new-routing-mark=to-usa passthrough=no comment="afr:mangle route afr-usa via to-usa"
   /ip firewall mangle add chain=output dst-address-list=afr-dns-tunnel protocol=udp dst-port=53 action=mark-routing new-routing-mark=to-usa passthrough=no comment="afr:mangle router DNS udp via to-usa"
   /ip firewall mangle add chain=output dst-address-list=afr-dns-tunnel protocol=tcp dst-port=53 action=mark-routing new-routing-mark=to-usa passthrough=no comment="afr:mangle router DNS tcp via to-usa"
-  /ip firewall mangle add chain=forward protocol=tcp tcp-flags=syn action=change-mss new-mss=clamp-to-pmtu passthrough=yes comment="afr:mss clamp (wg-home 1420/1380, PPPoE 1492)"
+  /ip firewall mangle add chain=forward protocol=tcp tcp-flags=syn action=change-mss new-mss=clamp-to-pmtu passthrough=yes comment="afr:mss clamp (wg-home 1380, PPPoE 1492)"
 }
 
 # ---- 11. DNS + NTP + tunnel netwatch --------------------------------------------

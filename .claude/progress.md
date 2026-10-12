@@ -2,6 +2,7 @@
 
 ## 2026-10-12
 
+- Germany/USA "fail on Shatel" resolved as: (a) ECH key lookup via 1.1.1.1 now blocked in Iran -> AFROWS_{DE,US}_ENTRY_ECH switched live to udp://8.8.8.8 (env samples updated); (b) Irancell (and apparently Shatel) now block the ECH outer SNI cloudflare-ech.com, so on DIRECT Shatel (modem Wi-Fi) only the Shatel link works; on 4G all three work (ECH via retries); (c) wg-home (home ac3 <-> USA) blackholed packets >1408 at MTU 1420 -> set 1380 live on both ends (+ USA wg-home.conf MTU line, home-ac3-rebuild.rsc). Operator confirmed all three links work on fi5 (home MikroTik Wi-Fi, egress via USA). Next: a neutral non-afrows.com domain on Cloudflare for the DE/US entries (no ECH); needs operator domain + Germany tunnel access.
 - Links broken report: Shatel link = expired app.afrows.com LE cert (2026-09-03, no renewal); USA link of a WireGuard config = remote membership filtered protocol=vless (uuid never on USA); Germany link works end to end (tested with xray client from USA). Fixes in 0.119.1 (not deployed): protocol filter removed (907/907 tests), infra/ubuntu/tls certbot webroot + deploy hook + daily expiry Telegram alert. After deploy run install-tls-autorenew.sh on the box.
 
 ## 2026-10-11

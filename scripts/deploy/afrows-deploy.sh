@@ -79,7 +79,9 @@ fi
 say "Packaging source ($(git -C "$REPO_ROOT" rev-parse --short HEAD))"
 TARBALL="$(mktemp -t afrows-src.XXXXXX.tar.gz)"
 trap 'rm -f "$TARBALL"' EXIT
-git -C "$REPO_ROOT" archive --format=tar.gz -o "$TARBALL" HEAD
+# core.autocrlf=false: with autocrlf=true (Windows) git archive writes CRLF, and the
+# box's bash scripts then fail ("set: pipefail: invalid option name").
+git -C "$REPO_ROOT" -c core.autocrlf=false archive --format=tar.gz -o "$TARBALL" HEAD
 echo "  $(du -h "$TARBALL" | cut -f1) -> $CHOSEN:$SRC_REMOTE"
 
 # ---- ship + run the on-box update ---------------------------------------------

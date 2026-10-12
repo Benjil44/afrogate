@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.119.2 - 2026-10-12
+
+- **ECH key lookup via 8.8.8.8.** Iranian ISPs now block the ECH config lookup through 1.1.1.1 / 1.0.0.1 / Cloudflare DoH, so ECH links failed outright; udp://8.8.8.8, 8.8.4.4 and 9.9.9.9 work. `.env.example` / `afrows.env.sample` now default `AFROWS_DE_ENTRY_ECH` to `crypto.cloudflare.com+udp://8.8.8.8` (live env switched 2026-10-12 for DE and US). Note: Irancell and direct Shatel now also block the ECH outer SNI `cloudflare-ech.com`, so on direct Shatel only the Iran-entry "Shatel" link works; a neutral non-afrows.com entry domain is the planned fix.
+- **Deploy ships LF files.** `afrows-deploy.sh` runs `git -c core.autocrlf=false archive`; on Windows with autocrlf the box received CRLF scripts (`set: pipefail: invalid option name`).
+- **TLS installer edits the nginx file that is loaded** (`readlink -f sites-enabled/afrows`; on the box sites-enabled is a real file and sites-available a stale copy). Live: Let's Encrypt cert for afrows.com / www / app valid to 2027-01-10, certbot.timer + afrows-tls-check.timer enabled, renewal dry-run OK.
+- **Home ac3 wg-home MTU 1380** (`home-ac3-rebuild.rsc`): at 1420 the home -> USA tunnel blackholed packets over 1408 bytes. Live on both ends (USA `wg-home.conf` has `MTU = 1380`).
+
 ## 0.119.1 - 2026-10-12
 
 - **USA link works for every config, WireGuard ones included.** Each config gets Germany / Shatel / USA VLESS links (dashboard, bot, `/sub/`), and the local reconcile provisions every config's `entry_uuid`, but the Germany/USA membership sweep only took `protocol = 'vless'` configs. A WireGuard config's USA link was therefore dead: the USA never learned its uuid (Germany still had it from older code). The remote membership query no longer filters by protocol.
