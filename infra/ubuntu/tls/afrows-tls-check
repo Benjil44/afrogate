@@ -1,0 +1,22 @@
+#!/bin/bash
+# Daily: alert the ops Telegram chat when the certificate nginx serves for
+# afrows.com / app.afrows.com (the Shatel links verify it) is close to expiry.
+# certbot renews at 30 days left, so < AFROWS_TLS_WARN_DAYS (21) means renewal
+# has been failing for over a week.
+set -u
+CRT=/etc/afrows/tls/afrows.crt
+WARN_DAYS=${AFROWS_TLS_WARN_DAYS:-21}
+end=$(openssl x509 -enddate -noout -in "$CRT" | cut -d= -f2)
+left=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+echo "afrows TLS: $left day(s) left (until $end)"
+[ "$left" -ge "$WARN_DAYS" ] && exit 0
+
+set -a; . /etc/afrows/afrows.env; set +a
+msg="⚠️ Afrows TLS certificate (afrows.com / app.afrows.com, used by the Shatel links) expires in $left day(s): $end. Auto-renewal is failing: check 'systemctl status certbot.timer' and 'journalctl -u certbot' on the Afrows server."
+proxy=()
+# socks5h: the tg socks only permits api.telegram.org by NAME.
+[ -n "${AFROWS_OUTBOUND_PROXY_URL:-}" ] && proxy=(--proxy "${AFROWS_OUTBOUND_PROXY_URL/socks5:/socks5h:}")
+curl -sS -m 20 "${proxy[@]}" -o /dev/null \
+  --data-urlencode "chat_id=${AFROWS_TELEGRAM_ALERT_CHAT_ID}" --data-urlencode "text=$msg" \
+  "https://api.telegram.org/bot${AFROWS_TELEGRAM_BOT_TOKEN}/sendMessage"
+exit 1

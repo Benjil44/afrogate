@@ -1,0 +1,8 @@
+#!/bin/sh
+# certbot --deploy-hook: install a renewed cert where nginx reads it and reload.
+# Runs only after a successful issue/renewal (cert-name "afrows").
+set -eu
+L=/etc/letsencrypt/live/afrows
+install -m 644 -o root -g root "$L/fullchain.pem" /etc/afrows/tls/afrows.crt
+install -m 600 -o root -g root "$L/privkey.pem" /etc/afrows/tls/afrows.key
+nginx -t -q && systemctl reload nginx

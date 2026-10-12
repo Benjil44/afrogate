@@ -377,7 +377,10 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
           WHERE cc.status <> 'disabled'
             AND ca.status = 'active'
             AND ca.deleted_at IS NULL
-            AND lower(cc.protocol) = 'vless'
+            -- Every config (WireGuard ones too) is handed VLESS links for Germany /
+            -- Shatel / USA, and the local reconcile provisions all of them, so the
+            -- remote exits must too (a protocol filter here left WG configs' USA
+            -- link dead while Germany still had them from older code).
             AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
             AND (cc.blocked_until IS NULL OR cc.blocked_until <= now())
         `,

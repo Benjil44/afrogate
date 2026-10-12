@@ -1,0 +1,7 @@
+[Unit]
+Description=Afrows TLS certificate expiry check (Telegram alert)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/afrows-tls-check

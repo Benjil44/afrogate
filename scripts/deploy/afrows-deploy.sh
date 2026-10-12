@@ -86,6 +86,27 @@ echo "  $(du -h "$TARBALL" | cut -f1) -> $CHOSEN:$SRC_REMOTE"
 say "Uploading to VPS"
 scp "${SSH_OPTS[@]}" "$TARBALL" "$CHOSEN:$SRC_REMOTE"
 
+# ---- prune source files deleted in git -----------------------------------------
+# update-afrows.sh extracts the tarball OVER the live tree, so a file deleted in
+# git stays on the box and can break the build (0.119.0: removed web sections
+# still imported dropped i18n keys). Delete only files under the app source dirs
+# that are neither tracked at HEAD nor git-ignored (ignored files such as the
+# dashboard's YekanBakh fonts are placed on the box by hand and must stay).
+say "Pruning source files deleted in git"
+PRUNE_SPECS=('apps/*/src/*' 'apps/*/public/*' 'apps/*/test/*' 'packages/*/src/*')
+TRACKED="$(git -C "$REPO_ROOT" ls-files -- "${PRUNE_SPECS[@]}" | LC_ALL=C sort)"
+[ -n "$TRACKED" ] || die "git ls-files returned no source files; refusing to prune"
+ON_BOX="$(ssh "${SSH_OPTS[@]}" "$CHOSEN" \
+  "cd $REMOTE_DIR && find apps/*/src apps/*/public apps/*/test packages/*/src -type f 2>/dev/null | LC_ALL=C sort")"
+STALE="$(LC_ALL=C comm -23 <(printf '%s\n' "$ON_BOX") <(printf '%s\n' "$TRACKED") | sed '/^$/d' \
+  | { git -C "$REPO_ROOT" check-ignore --stdin -n -v || true; } | awk -F'\t' '$1 == "::" { print $2 }')"
+if [ -n "$STALE" ]; then
+  printf '%s\n' "$STALE" | sed 's/^/  pruned /'
+  printf '%s\n' "$STALE" | ssh "${SSH_OPTS[@]}" "$CHOSEN" "cd $REMOTE_DIR && xargs -r -d '\n' rm -f --"
+else
+  echo "  nothing to prune"
+fi
+
 say "Running remote update (build -> migrations -> restart -> reconcilers)"
 # update-afrows.sh is the operator-local on-box script; it extracts $SRC_REMOTE
 # into $REMOTE_DIR, rebuilds, runs migrations, restarts, and copies the reconcilers.

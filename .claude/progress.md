@@ -1,7 +1,12 @@
 # Afrows Progress
 
+## 2026-10-12
+
+- Links broken report: Shatel link = expired app.afrows.com LE cert (2026-09-03, no renewal); USA link of a WireGuard config = remote membership filtered protocol=vless (uuid never on USA); Germany link works end to end (tested with xray client from USA). Fixes in 0.119.1 (not deployed): protocol filter removed (907/907 tests), infra/ubuntu/tls certbot webroot + deploy hook + daily expiry Telegram alert. After deploy run install-tls-autorenew.sh on the box.
+
 ## 2026-10-11
 
+- 0.119.0 deployed (8ac73fa; first run failed on stale web sections left on the box). 0.119.1 (not committed): afrows-deploy.sh prunes untracked, non-ignored files under apps/*/{src,public,test} + packages/*/src before the on-box update; dry run lists 6 stale files, YekanBakh fonts kept.
 - Outage: Borjino dark from 09:10 UTC -> afrows.com 502 (web reverse tunnel via Borjino) and tg-socks down. Fixed live with drop-ins `/etc/systemd/system/{afrows-web-tunnel,afrows-tg-socks}.service.d/10-via-usa-mgmt.conf` (ssh to afrows-relay@127.0.0.1 via nc -> us-mgmt socks 1083, HostKeyAlias afrows-us-mgmt). Verified afrows.com 200, app 200, tg 302, USA listens 18444. Then (operator request) Afrows fully cut from Borjino: units rewritten (drop-ins removed), de-relay now Afrows->USA(CF)->Germany (master UP, Germany sync 31/31 + metering OK), Borjino-only root key + de_relay_known_hosts removed, USA fail2ban/afrows-cf label/administrator ssh config cleaned; 0 Borjino refs in /etc on both hosts. Backups /root/noborjino-*.
 - 0.119.0 (not committed/deployed): apps/web landing rebuilt as Persian music streaming / live radio "coming soon" (fa default, no VPN content). Build green; no overflow / 0 console errors at 1440/768/390 fa+en. Pending: real prices + brand name; actual radio product not started.
 - 0.118.1 deployed (82831ea): USA mgmt logins 304/10 min -> 45/5 min.
