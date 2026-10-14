@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
 /* Dark music-app palette. --primary (magenta) and --secondary (violet) are the brand gradient;
-   --accent (warm amber) is a high-contrast text/badge color on dark surfaces. */
+   --accent (warm amber) is a high-contrast text/badge color on dark surfaces.
+   "Kindle" tokens (docs/landing-wave-station-motion.md §3.1): --ember, --glow, --wave-dim, --line
+   are decorative only — never used for text. --beat is the shared tempo (120 BPM). */
 :root {
   --background: oklch(0.12 0.02 300);
   --foreground: oklch(0.97 0.01 300);
@@ -14,6 +16,13 @@
   --destructive: oklch(0.62 0.22 25);
   --border: oklch(0.30 0.02 300);
   --card-foreground: var(--foreground);
+  --ember: oklch(0.72 0.19 45);
+  --glow: oklch(0.93 0.10 85);
+  --wave-dim: oklch(0.38 0.05 300);
+  --line: oklch(0.30 0.03 300);
+  --beat: 500ms;
+  /* Live analyser band levels (0–1), written by the player once per frame while playing. */
+  --lv0: 0; --lv1: 0; --lv2: 0; --lv3: 0; --lv4: 0; --lv5: 0; --lv6: 0; --lv7: 0; --level: 0;
 }
 
 /* Expose the dark tokens as Tailwind color utilities (text-primary, bg-background,
@@ -30,7 +39,19 @@
   --color-accent: var(--accent);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-ember: var(--ember);
+  --color-glow: var(--glow);
 }
+
+/* Registered custom properties: let CSS transition / animate them and give GSAP typed start values. */
+@property --beat-mult { syntax: '<number>'; inherits: false; initial-value: 1; }
+@property --amp { syntax: '<number>'; inherits: true; initial-value: 0.03; }
+@property --kindle { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --lit { syntax: '<number>'; inherits: false; initial-value: 1; }
+@property --plan-glow { syntax: '<number>'; inherits: true; initial-value: 1; }
+@property --wm-glow { syntax: '<number>'; inherits: true; initial-value: 0.6; }
+@property --flare { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --row-lit { syntax: '<number>'; inherits: false; initial-value: 0; }
 
 html {
   background: var(--background);
@@ -38,8 +59,9 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 120px;
 }
-html[dir="rtl"] body { font-family: 'Vazirmatn', sans-serif; }
-html[dir="ltr"] body { font-family: 'Plus Jakarta Sans', sans-serif; }
+/* Self-hosted variable fonts (@fontsource-variable, bundled by Vite). */
+html[dir="rtl"] body { font-family: 'Vazirmatn Variable', 'Vazirmatn', Tahoma, sans-serif; }
+html[dir="ltr"] body { font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', system-ui, sans-serif; }
 
 body {
   margin: 0;
@@ -57,15 +79,254 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
-  border-radius: 6px;
 }
 
-/* ---- Landing animations ---- */
+/* ---- Lenis (desktop smooth scroll, full tier only) ---- */
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-stopped { overflow: hidden; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+
+/* ---- Collapse (replaces AnimatePresence height animations) ---- */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+.fold.is-open { grid-template-rows: 1fr; opacity: 1; }
+.fold-inner { overflow: hidden; min-height: 0; }
+
+/* ---- Mini player: stays mounted, slides in while playing past the hero ---- */
+.mini-player {
+  transform: translateY(120%);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+.mini-player.is-visible { transform: none; opacity: 1; visibility: visible; transition-delay: 0s; }
+
+/* ---- Reading progress: CSS scroll-driven where supported, JS scaleX otherwise ---- */
+.scroll-progress { transform: scaleX(0); transform-origin: var(--origin-x, left) center; }
+html[dir="rtl"] .scroll-progress { --origin-x: right; }
+@supports (animation-timeline: scroll()) {
+  .scroll-progress { animation: progress-grow linear both; animation-timeline: scroll(root); }
+  @keyframes progress-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+}
+
+/* ---- Seek bar (native range input over a styled track) ---- */
+.seek-input { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; }
+.seek-input::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.seek-input::-moz-range-track { height: 100%; background: transparent; }
+.seek-input::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; margin-top: 4px; border-radius: 999px; border: 2px solid var(--background);
+  background: var(--glow); box-shadow: 0 0 8px color-mix(in oklch, var(--ember) 60%, transparent);
+  transition: transform 0.2s ease;
+}
+.seek-input::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 999px; border: 2px solid var(--background);
+  background: var(--glow); box-shadow: 0 0 8px color-mix(in oklch, var(--ember) 60%, transparent);
+}
+.seek-input:hover::-webkit-slider-thumb, .seek-input:focus-visible::-webkit-slider-thumb { transform: scale(1.2); }
+.seek-input:disabled { cursor: default; }
+.seek-input:disabled::-webkit-slider-thumb { opacity: 0.5; }
+.seek-input:disabled::-moz-range-thumb { opacity: 0.5; }
+
+/* ---- Hero: CSS entrance (no JS needed for first paint) ---- */
+@keyframes hero-rise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+@keyframes hero-rise-card { from { opacity: 0; transform: translateY(40px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes hero-word { from { opacity: 0; transform: translateY(0.35em); } to { opacity: 1; transform: none; } }
+.hero-in > * {
+  animation: hero-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--n, 0) * 90ms);
+}
+.hero-card { animation: hero-rise-card 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: 360ms; }
+/* Title words land one by one (split in React — words only, never characters). */
+.hero-word {
+  display: inline-block;
+  background-image: linear-gradient(110deg, var(--foreground), var(--primary), var(--accent), var(--secondary), var(--foreground));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: hero-word 0.7s cubic-bezier(0.16, 1, 0.3, 1) both, gradient-pan 6s linear infinite;
+  animation-delay: calc(250ms + var(--w, 0) * 80ms), calc(var(--w, 0) * -700ms);
+}
+
+/* Signal status: searching (pulsing dim dot) -> locked (ember dot, brighter copy). */
+.hero-signal { color: var(--muted-foreground); transition: color 0.5s ease; }
+.signal-dot {
+  width: 0.5rem; height: 0.5rem; border-radius: 999px;
+  background: var(--wave-dim);
+  animation: signal-search calc(var(--beat) * 2) ease-in-out infinite;
+  transition: background 0.4s ease, box-shadow 0.6s ease;
+}
+@keyframes signal-search { 50% { opacity: 0.35; } }
+.signal-locked .hero-signal { color: var(--foreground); }
+.signal-locked .signal-dot { background: var(--ember); box-shadow: 0 0 12px var(--ember); animation: none; }
+.signal-freq { animation: hero-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Wordmark: Afro · WS -> Afrooz (to kindle) · Wave Station, revealed on lock. */
+.wm-part { display: inline-flex; align-items: baseline; gap: 0.4rem; }
+.wm-key { font-weight: 900; color: var(--foreground); }
+.wm-meaning {
+  opacity: 0;
+  translate: 0 6px;
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.35s, translate 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.35s;
+}
+.wm-part:last-child .wm-meaning { transition-delay: 0.55s; }
+.signal-locked .wm-meaning { opacity: 1; translate: 0 0; }
+
+/* Aurora kindles with the signal; the Waves canvas fades in on mount so lazy load never pops. */
+.hero-aurora { opacity: 0.4; transition: opacity 1.2s ease-out; }
+.signal-locked .hero-aurora { opacity: 1; }
+.waves-wrap { opacity: 0; animation: waves-in 0.8s ease-out 0.1s forwards; }
+@keyframes waves-in { to { opacity: 0.9; } }
+html[dir="rtl"] .waves-wrap { transform: scaleX(-1); }
+
+/* ---- Waveform strip (§3.4): --amp rises the bars, --kindle sweeps the ember from inline-start ---- */
+.wave-strip {
+  --amp: 0.03;
+  --kindle: 0;
+  position: relative;
+  height: clamp(120px, 22vh, 220px);
+  margin-inline: -1rem;
+  margin-bottom: -40px;
+  transition: --amp 1s cubic-bezier(0.16, 1, 0.3, 1), --kindle 1.1s ease-in 0.15s;
+}
+@media (min-width: 640px) { .wave-strip { margin-inline: -1.25rem; } }
+.signal-locked .wave-strip { --amp: 1; --kindle: 1; }
+.waveform { display: block; width: 100%; height: 100%; overflow: visible; }
+.wave-bar {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transform: scaleY(calc(var(--amp) * var(--env, 1) * var(--beat-mult)));
+}
+.wave-bars .wave-bar { fill: url(#wave-grad); }
+.wave-ember .wave-bar { fill: var(--ember); mix-blend-mode: screen; opacity: 0.7; }
+.wave-clip { transform-box: fill-box; transform: scaleX(var(--kindle)); }
+.wave-glow { filter: blur(10px); opacity: calc(var(--kindle) * 0.55); }
+.wave-glow .wave-bar { fill: var(--ember); }
+.wave-halo {
+  position: absolute; inset: -30% 0;
+  background: radial-gradient(ellipse at 50% 60%, color-mix(in oklch, var(--ember) 35%, transparent), transparent 65%);
+  opacity: calc(var(--kindle) * 0.8);
+}
+/* Beat pulse travels along the strip while playing (registered property, so no flicker without @property support). */
+.has-prop.is-playing .wave-bar {
+  animation: wave-beat calc(var(--beat) * 2) ease-in-out infinite alternate;
+  animation-delay: calc(var(--i, 0) * -41ms);
+}
+@keyframes wave-beat { from { --beat-mult: 0.85; } to { --beat-mult: 1.3; } }
+/* Real analyser: each bar follows its band level instead of the beat loop. */
+html.is-live .wave-bar { animation: none; }
+html.is-live .wave-bar.b0 { --beat-mult: calc(0.55 + var(--lv0) * 1.1); }
+html.is-live .wave-bar.b1 { --beat-mult: calc(0.55 + var(--lv1) * 1.1); }
+html.is-live .wave-bar.b2 { --beat-mult: calc(0.55 + var(--lv2) * 1.1); }
+html.is-live .wave-bar.b3 { --beat-mult: calc(0.55 + var(--lv3) * 1.1); }
+html.is-live .wave-bar.b4 { --beat-mult: calc(0.55 + var(--lv4) * 1.1); }
+html.is-live .wave-bar.b5 { --beat-mult: calc(0.55 + var(--lv5) * 1.1); }
+html.is-live .wave-bar.b6 { --beat-mult: calc(0.55 + var(--lv6) * 1.1); }
+html.is-live .wave-bar.b7 { --beat-mult: calc(0.55 + var(--lv7) * 1.1); }
+
+/* Section eyebrow mini wave: pulses only while playing. */
+.heading-wave { width: 14px; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--accent)); }
+html.is-playing .heading-wave { animation: heading-wave calc(var(--beat) * 2) ease-in-out infinite alternate; }
+@keyframes heading-wave { from { transform: scaleX(0.6); } to { transform: scaleX(1.2); } }
+
+/* ---- Radio dial ---- */
+.dial-tick { stroke: var(--wave-dim); stroke-width: 1; transform-box: fill-box; transform-origin: 50% 100%; }
+.dial-needle { top: 0; height: 2.75rem; }
+.dial-compact .dial-needle { height: 1.4rem; width: 1.5rem; }
+.dial-pin { background: var(--glow); box-shadow: 0 0 8px var(--ember), 0 0 2px var(--glow); border-radius: 2px; }
+.dial-halo {
+  background: radial-gradient(ellipse at 50% 50%, color-mix(in oklch, var(--ember) 55%, transparent), transparent 70%);
+  opacity: 0.6;
+}
+.station-tile.is-active { box-shadow: 0 0 0 1px var(--primary), 0 0 32px color-mix(in oklch, var(--primary) 35%, transparent); }
+
+/* ---- Features: icon tile kindles after its card lands ---- */
+.feat-icon {
+  --lit: 1;
+  color: color-mix(in oklch, var(--foreground), var(--accent) calc(var(--lit) * 60%));
+  box-shadow: 0 0 calc(var(--lit) * 24px) color-mix(in oklch, var(--ember) 45%, transparent);
+}
+
+/* ---- Pricing: the featured plan lights ---- */
+.plan-featured {
+  --plan-glow: 1;
+  box-shadow: 0 24px 80px -24px color-mix(in oklch, var(--primary) calc(var(--plan-glow) * 45%), transparent);
+}
+.crown-halo {
+  position: absolute; inset: -6px; border-radius: 999px;
+  background: radial-gradient(circle, color-mix(in oklch, var(--ember) 60%, transparent), transparent 70%);
+  filter: blur(6px);
+  opacity: calc(var(--plan-glow) * 0.9);
+}
+
+/* ---- Apps: phone screens + platform rows ---- */
+.phone-stage { perspective: 1200px; }
+.phone-screen { position: absolute; inset: 0; opacity: 0; }
+.phone-screen.is-on { opacity: 1; }
+html.motion-lite .phone-screen { translate: 0 6px; transition: opacity 0.4s ease, translate 0.4s ease; }
+html.motion-lite .phone-screen.is-on { translate: 0 0; }
+.app-row { --row-lit: 0; border-color: color-mix(in oklch, var(--border), var(--primary) calc(var(--row-lit) * 70%)); }
+.app-row.is-lit { --row-lit: 1; }
+.app-row::before {
+  content: ''; position: absolute; inset-inline-start: 0; top: 22%; bottom: 22%; width: 2px; border-radius: 2px;
+  background: var(--ember); opacity: var(--row-lit);
+}
+
+/* ---- CTA: sound rings on the beat, one-shot flare, wave line behind ---- */
+.cta-wave { background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--ember) 55%, transparent), transparent); }
+.cta-button { --flare: 0; }
+.cta-flare { background: radial-gradient(circle, color-mix(in oklch, var(--glow) 45%, transparent), transparent 70%); opacity: var(--flare); }
+.ring { position: absolute; inset: 0; border-radius: 9999px; border: 1px solid; opacity: 0.25; transform: scale(1.2); }
+.ring-1 { border-color: color-mix(in oklch, var(--primary) 60%, transparent); box-shadow: 0 0 24px color-mix(in oklch, var(--primary) 30%, transparent); }
+.ring-2 { border-color: color-mix(in oklch, var(--ember) 45%, transparent); opacity: 0.15; transform: scale(1.7); }
+.ring-3 { border-color: color-mix(in oklch, var(--accent) 30%, transparent); opacity: 0.08; transform: scale(2.2); }
+@keyframes ring-out { from { transform: scale(0.55); opacity: 0.8; } to { transform: scale(2.6); opacity: 0; } }
+html.is-playing .ring { animation: ring-out calc(var(--beat) * 4) ease-out infinite; }
+html.is-playing .ring-2 { animation-delay: var(--beat); }
+html.is-playing .ring-3 { animation-delay: calc(var(--beat) * 2); }
+.is-offscreen .ring, .is-offscreen .animate-marquee { animation-play-state: paused; }
+
+/* ---- Footer: the name glows from the ground ---- */
+footer { --wm-glow: 0.6; }
+.footer-watermark {
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--ember) calc(var(--wm-glow) * 35%), color-mix(in oklch, var(--foreground) 9%, transparent)),
+    color-mix(in oklch, var(--primary) calc(var(--wm-glow) * 18%), transparent) 55%,
+    transparent 80%
+  );
+  transform: translateY(20%);
+}
+.footer-ember {
+  background: radial-gradient(ellipse at 50% 100%, color-mix(in oklch, var(--ember) 22%, transparent), transparent 70%);
+  opacity: var(--wm-glow);
+}
+.footer-ready {
+  background-image: linear-gradient(110deg, var(--foreground), var(--primary), var(--accent), var(--foreground));
+  background-size: 200% auto;
+  animation: gradient-pan 6s linear infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ---- Landing animations (beat loops run only while playing) ---- */
 @keyframes blink-glow {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
-.animate-blink { animation: blink-glow 1.4s ease-in-out infinite; }
+.animate-blink { animation: blink-glow calc(var(--beat) * 3) ease-in-out infinite; }
 
 @keyframes float-slow {
   0%, 100% { transform: translateY(0); }
@@ -91,30 +352,16 @@ body {
   animation: gradient-pan 5s linear infinite;
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.6); opacity: 0.7; }
-  100% { transform: scale(2.2); opacity: 0; }
-}
-.animate-pulse-ring { animation: pulse-ring 3s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
-
-/* Vinyl disc spin (hero player art) */
+/* Vinyl disc spin (hero player art): 16 beats per turn */
 @keyframes spin-slow { to { transform: rotate(360deg); } }
 .animate-spin-slow {
-  animation: spin-slow 8s linear infinite;
+  animation: spin-slow calc(var(--beat) * 16) linear infinite;
   animation-play-state: paused;
 }
 .is-playing .animate-spin-slow { animation-play-state: running; }
 
-/* Fake progress bar: only moves while playing */
-@keyframes progress-fill { from { transform: scaleX(0.37); } to { transform: scaleX(1); } }
-.progress-fill {
-  transform-origin: left center;
-  transform: scaleX(0.37);
-}
-html[dir="rtl"] .progress-fill { transform-origin: right center; }
-.is-playing .progress-fill { animation: progress-fill 140s linear forwards; }
-
-/* Equalizer bars — resting height when idle, dancing when `.eq-active` */
+/* Equalizer bars — resting height when idle, dancing on the beat when `.eq-active`,
+   following the analyser bands while `html.is-live`. */
 @keyframes eq-dance {
   0%, 100% { transform: scaleY(0.3); }
   25% { transform: scaleY(1); }
@@ -132,18 +379,38 @@ html[dir="rtl"] .progress-fill { transform-origin: right center; }
   transform: scaleY(0.25);
   transition: transform 0.4s ease;
 }
-.eq-active .eq-bar { animation: eq-dance 0.9s ease-in-out infinite; }
+.eq-active .eq-bar { animation: eq-dance calc(var(--beat) * 2) ease-in-out infinite; }
+html.is-live .eq-active .eq-bar { animation: none; transition: transform 0.06s linear; }
+html.is-live .eq-active .eq-b0 { transform: scaleY(calc(0.15 + var(--lv0) * 0.85)); }
+html.is-live .eq-active .eq-b1 { transform: scaleY(calc(0.15 + var(--lv1) * 0.85)); }
+html.is-live .eq-active .eq-b2 { transform: scaleY(calc(0.15 + var(--lv2) * 0.85)); }
+html.is-live .eq-active .eq-b3 { transform: scaleY(calc(0.15 + var(--lv3) * 0.85)); }
+html.is-live .eq-active .eq-b4 { transform: scaleY(calc(0.15 + var(--lv4) * 0.85)); }
+html.is-live .eq-active .eq-b5 { transform: scaleY(calc(0.15 + var(--lv5) * 0.85)); }
+html.is-live .eq-active .eq-b6 { transform: scaleY(calc(0.15 + var(--lv6) * 0.85)); }
+html.is-live .eq-active .eq-b7 { transform: scaleY(calc(0.15 + var(--lv7) * 0.85)); }
 
 /* Footer marquee — always LTR so the translate direction is stable in RTL pages */
 @keyframes marquee-x { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .animate-marquee { animation: marquee-x 36s linear infinite; }
 
+/* ---- Static tier (reduced motion, Save-Data, low memory): resting, fully lit states ---- */
+html.motion-static .hero-in > *, html.motion-static .hero-card, html.motion-static .hero-word { animation: hero-word 0s both, gradient-pan 6s linear infinite; }
+html.motion-static .hero-in > *, html.motion-static .hero-card { animation: none; }
+html.motion-static .wave-strip { --amp: 0.55; --kindle: 1; transition: none; }
+html.motion-static .wm-meaning, html.motion-static .hero-aurora, html.motion-static .fold { transition: none; }
+html.motion-static .signal-dot { animation: none; }
+
 /* Motion safety: freeze decorative animation for users who ask for less motion. */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .animate-blink, .animate-float-slow, .animate-gradient-text, .animate-gradient-bg, .animate-pulse-ring,
-  .animate-spin-slow, .animate-marquee, .progress-fill, .eq-active .eq-bar {
+  .animate-blink, .animate-float-slow, .animate-gradient-text, .animate-gradient-bg, .footer-ready,
+  .animate-spin-slow, .animate-marquee, .eq-active .eq-bar, .hero-in > *, .hero-card, .hero-word,
+  .signal-dot, .signal-freq, .ring, .wave-bar, .heading-wave, .waves-wrap {
     animation: none !important;
   }
+  .hero-word { animation: none !important; opacity: 1; }
+  .waves-wrap { opacity: 0.9; }
+  .fold, .mini-player, .wm-meaning, .hero-aurora, .wave-strip, .phone-screen, .eq-bar { transition: none !important; }
   .eq-active .eq-bar { transform: scaleY(0.7); }
 }

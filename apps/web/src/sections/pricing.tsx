@@ -1,11 +1,14 @@
+import { useRef } from 'react';
 import { Check, Crown } from 'lucide-react';
-import { Reveal } from '@/components/reveal';
 import { SectionHeading } from '@/components/section-heading';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/i18n';
+import { useFx } from '@/motion/use-fx';
 
+/** Act 5 — "Your frequency": the featured yearly card lands last and highest, and its glow is scrubbed in. */
 export function Pricing() {
   const { t } = useLang();
+  const ref = useRef<HTMLElement>(null);
   // Prices are i18n PLACEHOLDERS (see en.ts / fa.ts) until the billing catalogue exists.
   const plans = [
     { key: 'free', featured: false },
@@ -13,30 +16,37 @@ export function Pricing() {
     { key: 'yearly', featured: true },
   ] as const;
 
+  useFx(ref, ({ gsap, scrub }) => {
+    const card = ref.current!.querySelector('.plan-featured');
+    if (!card) return;
+    gsap.fromTo(card, { '--plan-glow': 0 }, { '--plan-glow': 1, ease: 'none', scrollTrigger: { trigger: card, start: 'top 85%', end: 'top 45%', scrub } });
+  });
+
   return (
-    <section id="pricing" className="relative mx-auto w-full max-w-6xl scroll-mt-24 px-4 py-20 sm:px-5">
+    <section id="pricing" ref={ref} className="relative mx-auto w-full max-w-6xl px-4 py-20 sm:px-5">
       <SectionHeading tag={t.pricing.tag} title={t.pricing.title} subtitle={t.pricing.subtitle} />
 
       <div className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3">
-        {plans.map(({ key, featured }, i) => {
+        {plans.map(({ key, featured }) => {
           const p = t.pricing.plans[key];
           const isFree = key === 'free';
           const wasPrice = 'wasPrice' in p ? p.wasPrice : undefined;
           return (
-            <Reveal key={key} delay={i * 0.08} className="h-full">
+            <div key={key} data-fx="rise" data-fx-y={featured ? 52 : undefined} className="h-full">
               <article
                 aria-labelledby={`plan-${key}`}
                 className={cn(
                   'relative flex h-full flex-col rounded-3xl border p-6 backdrop-blur-md lg:p-7',
                   featured
-                    ? 'border-[var(--primary)] bg-[linear-gradient(160deg,color-mix(in_oklch,var(--primary)_16%,transparent),color-mix(in_oklch,var(--secondary)_12%,transparent))] shadow-2xl shadow-[color-mix(in_oklch,var(--primary)_25%,transparent)] md:-translate-y-3'
+                    ? 'plan-featured border-[var(--primary)] bg-[linear-gradient(160deg,color-mix(in_oklch,var(--primary)_16%,transparent),color-mix(in_oklch,var(--secondary)_12%,transparent))] md:-translate-y-3'
                     : 'border-[var(--border)] bg-[color-mix(in_oklch,var(--foreground)_3%,transparent)]',
                 )}
               >
                 {featured && (
                   <span className="absolute -top-3.5 start-6 inline-flex items-center gap-1 rounded-full bg-[linear-gradient(135deg,var(--primary),var(--secondary))] px-3 py-1 text-xs font-bold text-white">
-                    <Crown className="h-3.5 w-3.5" aria-hidden="true" />
-                    {t.pricing.mostPopular}
+                    <span aria-hidden="true" className="crown-halo" />
+                    <Crown className="relative h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="relative">{t.pricing.mostPopular}</span>
                   </span>
                 )}
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -92,7 +102,7 @@ export function Pricing() {
                 </button>
                 <p className="mt-3 text-center text-xs text-[var(--muted-foreground)]">{t.pricing.notifyHint}</p>
               </article>
-            </Reveal>
+            </div>
           );
         })}
       </div>

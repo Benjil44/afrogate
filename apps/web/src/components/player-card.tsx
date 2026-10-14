@@ -1,18 +1,18 @@
-import { Heart, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
+import { Heart, Loader2, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Equalizer } from '@/components/equalizer';
+import { SeekBar } from '@/components/seek-bar';
 import { useLang } from '@/i18n';
-import { CHANNEL_ART, usePlayer } from '@/lib/player';
+import { trackArt, usePlayer } from '@/lib/player';
 
 /**
- * Visual "now playing" card. Play/pause only animates the vinyl, progress and equalizer —
- * there is no audio and nothing is fetched.
+ * Hero "receiver": the real player's now-playing card (vinyl, seek bar, transport).
+ * Audio is streamed on demand through the shared player; nothing loads before play.
  */
 export function PlayerCard({ className }: { className?: string }) {
   const { t, dir } = useLang();
-  const { channel, playing, toggle, step } = usePlayer();
+  const { track, index, playing, loading, error, toggle, step } = usePlayer();
   const p = t.hero.player;
-  const ch = t.radio.channels[channel];
   // In RTL the "previous" arrow points right, so swap the icons rather than the semantics.
   const PrevIcon = dir === 'rtl' ? SkipForward : SkipBack;
   const NextIcon = dir === 'rtl' ? SkipBack : SkipForward;
@@ -20,8 +20,7 @@ export function PlayerCard({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'relative w-full max-w-md rounded-3xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--card)_80%,transparent)] p-5 shadow-2xl shadow-[color-mix(in_oklch,var(--primary)_25%,transparent)] backdrop-blur-xl sm:p-6',
-        playing && 'is-playing',
+        'player-card relative w-full max-w-md rounded-3xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--card)_80%,transparent)] p-5 shadow-2xl shadow-[color-mix(in_oklch,var(--primary)_25%,transparent)] backdrop-blur-xl sm:p-6',
         className,
       )}
     >
@@ -31,9 +30,9 @@ export function PlayerCard({ className }: { className?: string }) {
           <Equalizer active={playing} bars={4} className="h-3.5 text-[var(--primary)]" />
           {p.title}
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklch,var(--destructive)_18%,transparent)] px-2.5 py-1 text-[var(--foreground)]">
-          <span className={cn('h-1.5 w-1.5 rounded-full bg-[var(--destructive)]', playing && 'animate-blink')} />
-          {p.liveBadge} · {ch.name}
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklch,var(--primary)_16%,transparent)] px-2.5 py-1 text-[var(--foreground)]">
+          <span className={cn('h-1.5 w-1.5 rounded-full bg-[var(--primary)]', playing && 'animate-blink')} />
+          {t.deck.mix} {index + 1}
         </span>
       </div>
 
@@ -42,7 +41,7 @@ export function PlayerCard({ className }: { className?: string }) {
         <div className="relative h-44 w-44 sm:h-52 sm:w-52">
           <div
             className="animate-spin-slow absolute inset-0 rounded-full shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]"
-            style={{ background: CHANNEL_ART[channel] }}
+            style={{ background: trackArt(index) }}
           >
             {/* grooves */}
             <div
@@ -63,9 +62,11 @@ export function PlayerCard({ className }: { className?: string }) {
       {/* Track info */}
       <div className="mt-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-lg font-bold">{p.track}</p>
+          <p className="truncate text-lg font-bold">
+            <bdi>{track.title}</bdi>
+          </p>
           <p className="truncate text-sm text-[var(--muted-foreground)]">
-            {p.artist} · {ch.name}
+            <bdi>{track.artist}</bdi>
           </p>
         </div>
         <button
@@ -77,16 +78,7 @@ export function PlayerCard({ className }: { className?: string }) {
         </button>
       </div>
 
-      {/* Progress */}
-      <div className="mt-3">
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
-          <div className="progress-fill h-full w-full rounded-full bg-[linear-gradient(90deg,var(--primary),var(--secondary))]" />
-        </div>
-        <div className="mt-1.5 flex justify-between text-[11px] font-semibold text-[var(--muted-foreground)]">
-          <span>{p.elapsed}</span>
-          <span>{p.total}</span>
-        </div>
-      </div>
+      <SeekBar className="mt-3" />
 
       {/* Controls */}
       <div className="mt-3 flex items-center justify-center gap-4">
@@ -102,10 +94,17 @@ export function PlayerCard({ className }: { className?: string }) {
           type="button"
           aria-label={playing ? p.pause : p.play}
           aria-pressed={playing}
-          onClick={toggle}
+          aria-busy={loading}
+          onClick={() => toggle()}
           className="grid h-16 w-16 place-items-center rounded-full bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white shadow-lg shadow-[color-mix(in_oklch,var(--primary)_45%,transparent)] transition-transform hover:scale-105 active:scale-95"
         >
-          {playing ? <Pause className="h-7 w-7" fill="currentColor" aria-hidden="true" /> : <Play className="ms-1 h-7 w-7" fill="currentColor" aria-hidden="true" />}
+          {loading ? (
+            <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
+          ) : playing ? (
+            <Pause className="h-7 w-7" fill="currentColor" aria-hidden="true" />
+          ) : (
+            <Play className="ms-1 h-7 w-7" fill="currentColor" aria-hidden="true" />
+          )}
         </button>
         <button
           type="button"
@@ -117,7 +116,9 @@ export function PlayerCard({ className }: { className?: string }) {
         </button>
       </div>
 
-      <p className="mt-4 text-center text-[11px] text-[var(--muted-foreground)]">{p.offlineHint}</p>
+      <p role="status" className={cn('mt-4 text-center text-[11px]', error ? 'font-semibold text-[var(--accent)]' : 'text-[var(--muted-foreground)]')}>
+        {error ? t.deck.error : p.hint}
+      </p>
     </div>
   );
 }

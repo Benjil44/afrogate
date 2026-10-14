@@ -14,6 +14,20 @@ const DEFAULT_LANG: Lang = 'fa';
 /** Language toggle is live (fa + en). */
 export const WEB_LANGUAGE_TOGGLE_ENABLED = true;
 
+/** Number locale per language — Persian digits and the `٬` thousands separator in fa. */
+export const NUMBER_LOCALE: Record<Lang, string> = { fa: 'fa-IR', en: 'en-US' };
+
+/** `m:ss` playback clock in the current language's digits. */
+export function formatTime(seconds: number, lang: Lang): string {
+  const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  const two = new Intl.NumberFormat(NUMBER_LOCALE[lang], { minimumIntegerDigits: 2, useGrouping: false });
+  const one = new Intl.NumberFormat(NUMBER_LOCALE[lang], { useGrouping: false });
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${one.format(h)}:${two.format(m)}:${two.format(s)}` : `${one.format(m)}:${two.format(s)}`;
+}
+
 interface LangContextValue {
   lang: Lang;
   dir: 'rtl' | 'ltr';
@@ -53,7 +67,7 @@ export function LangProvider({ children }: { children: ReactNode }) {
     }
     document.documentElement.lang = lang;
     document.documentElement.dir = dir;
-    document.title = lang === 'fa' ? 'افروز — موسیقی فارسی و رادیو زنده' : 'Afrows — Persian music & live radio';
+    document.title = DICTS[lang].documentTitle;
   }, [lang, dir]);
 
   const value: LangContextValue = {

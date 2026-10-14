@@ -86,3 +86,6 @@ afrows-bot-icon.png
 
 # Operator-local deploy paths (SSH destinations); template is deploy.env.example
 scripts/deploy/deploy.env
+
+# Landing audio (large media, deployed separately — never commit)
+apps/web/public/Podcast/
