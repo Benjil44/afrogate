@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Upload landing mixes to the VPS and publish the deck manifest (`tracks.json`).
+ * Build the local dev deck manifest (`tracks.json`) for apps/web/public/Podcast/ (`--local-only`).
+ * The VPS upload mode below is RETIRED (0.120.1): mixes are served by https://media.borjino.com/music/.
  *
  *   node scripts/media/sync-mixes.mjs              # build manifest, upload new/changed files + manifest
  *   node scripts/media/sync-mixes.mjs --dry-run    # show what would happen, change nothing
@@ -99,6 +100,9 @@ function main() {
     console.log(`Wrote ${localManifest}`);
   }
   if (localOnly) return;
+  // Retired 2026-10-15 (0.120.1): mixes are served by the Borjino share (media.borjino.com) and the Afrows
+  // /Podcast/ path returns 410. Never upload media to the Afrows VPS again (it streams through the web tunnel).
+  throw new Error('Upload to the Afrows VPS is retired; mixes live on https://media.borjino.com/music/ (Borjino deploy/media-share.sh upload). Use --local-only for the dev manifest.');
 
   const target = sshTarget(args);
   console.log(`\nVPS: ${target}:${REMOTE_DIR}`);
