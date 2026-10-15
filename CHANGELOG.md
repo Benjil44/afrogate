@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.120.1 - 2026-10-15
+
+- **Mixes now stream from the Borjino music share, not the Afrows server.** The landing deck reads its playlist at runtime from `https://media.borjino.com/music/tracks.json` (JSON array of `{id,title,artist,file}`; validated, rendered as text only; bad entries are skipped) and plays the files from the same share. Borjino is the music source of truth (its DJ role will manage the library later); afrows.com only consumes the public share. Cross-origin audio is requested with `crossOrigin="anonymous"` so the real-music visualizer keeps working (the share sends CORS for afrows.com and www only). Loading placeholder, an empty state and an error state with retry; the credit line is built from the artists in the list. `VITE_MEDIA_BASE` / `VITE_TRACKS_URL` override the source (local dev: `apps/web/.env.development.local` with `VITE_MEDIA_BASE=/Podcast/`).
+- **Why:** on 2026-10-15 streaming the 50 MB mixes through the single Afrows web reverse tunnel (Afrows VPS -> USA over Cloudflare) hung it and afrows.com returned Cloudflare 502 (twice). Mixes were paused (nginx 503) until this release. Live ops the same day: `/Podcast/` capped (3 streams, 64 KB/s), USA sshd `ClientAliveInterval 15` for `afrows-relay` so a dead tunnel frees its port in ~45 s.
+- **English brand fixed:** "Afro" is the music genre (Afro house), so English copy is now "Afro Wave Station" / "Tune in to the Afro wave" / "On the Afro wave."; Persian keeps «افروز».
+- **`scripts/media/sync-mixes.mjs`** (stop-gap uploader to the old `/Podcast/` path; kept for local dev manifests) and `openspec/config.yaml` YAML fix (a quoted list item broke every `openspec` command).
+- afrows.com CSP gains `media-src` / `connect-src https://media.borjino.com` at deploy. The VPN system, tunnels and backend are unchanged.
+
 ## 0.120.0 - 2026-10-14
 
 - **afrows.com becomes "Afrooz Wave Station" (ایستگاه موج افروز).** Afro is the Latin spelling of افروز ("to kindle"); WS = Wave Station. The landing is a scroll story about tuning in: the hero's flat line rises into a waveform as the signal locks and the light kindles, then Stations → Mixes → Clean signal → Receivers → Your frequency → FAQ → "Go on air". New tagline "On the Afrooz wave." / «روی موج افروز.»; Apps now comes before Pricing. Specs: `docs/landing-wave-station-story.md`, `docs/landing-wave-station-motion.md`.

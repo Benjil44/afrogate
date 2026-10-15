@@ -32,7 +32,7 @@ operations:
   apply:
     guidance:
       - Size with scripts/orchestration/route.mjs; run the cto-architect adversarial review on risky diffs
-      - "Done" means verified with evidence (green tests / CI), not "code written"
+      - '"Done" means verified with evidence (green tests / CI), not "code written"'
   archive:
     guidance:
       - Fold durable decisions into docs/adr + invariants; regenerate graphify if structure changed

@@ -46,7 +46,7 @@ function PhoneMock({ screen }: { screen: number }) {
               <div className="flex h-full flex-col justify-between text-white">
                 <Equalizer active={playing} bars={6} className="h-5" />
                 <p className="truncate text-xs font-bold drop-shadow">
-                  <bdi>{track.title}</bdi>
+                  <bdi>{track.title || t.deck.noTrack}</bdi>
                 </p>
               </div>
             </div>
@@ -76,7 +76,7 @@ function PhoneMock({ screen }: { screen: number }) {
             </div>
             <div className="mt-4 rounded-2xl p-3 text-white" style={{ background: trackArt(index) }}>
               <p className="truncate text-xs font-bold">
-                <bdi>{track.title}</bdi>
+                <bdi>{track.title || t.deck.noTrack}</bdi>
               </p>
               <p className="truncate text-[10px] opacity-85">
                 <bdi>{track.artist}</bdi>

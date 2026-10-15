@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMotionTier } from '@/motion/provider';
-import { TRACKS, isSameOrigin, type Track } from './tracks';
+import { isSameOrigin, loadTracks, type Track } from './tracks';
 
 /**
  * Real audio player shared by the hero PlayerCard, the Deck, the MiniPlayer and the Nav/Footer
@@ -32,9 +32,19 @@ export function trackArt(index: number): string {
   return CHANNEL_ART[CHANNEL_KEYS[index % CHANNEL_KEYS.length]];
 }
 
+/** Manifest load state of the mix list. */
+export type TracksStatus = 'loading' | 'ready' | 'empty' | 'error';
+
+/** Stand-in while the manifest loads or when it is empty, so consumers always have a `track`. */
+const NO_TRACK: Track = { id: 'none', title: '', artist: '', src: '' };
+
 interface PlayerState {
   tracks: readonly Track[];
+  tracksStatus: TracksStatus;
+  /** Fetch the manifest again (after an error). */
+  reloadTracks: () => void;
   index: number;
+  /** Current track, or a blank stand-in when `tracksStatus` is not `ready`. */
   track: Track;
   playing: boolean;
   loading: boolean;
@@ -104,6 +114,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const tier = useMotionTier();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const analysisRef = useRef<Analysis | null>(null);
+  const [tracks, setTracks] = useState<readonly Track[]>([]);
+  const [tracksStatus, setTracksStatus] = useState<TracksStatus>('loading');
+  const [tracksAttempt, setTracksAttempt] = useState(0);
+  const tracksRef = useRef(tracks);
+  tracksRef.current = tracks;
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -113,6 +128,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [channel, setChannel] = useState<ChannelKey>('pop');
   const indexRef = useRef(index);
   indexRef.current = index;
+
+  // The mix list is read from the manifest at runtime (one small JSON request, no audio).
+  useEffect(() => {
+    const controller = new AbortController();
+    setTracksStatus('loading');
+    loadTracks(controller.signal)
+      .then((list) => {
+        setTracks(list);
+        setTracksStatus(list.length ? 'ready' : 'empty');
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTracksStatus('error');
+      });
+    return () => controller.abort();
+  }, [tracksAttempt]);
+
+  const reloadTracks = useCallback(() => setTracksAttempt((n) => n + 1), []);
 
   const getAudio = useCallback(() => {
     if (!audioRef.current) {
@@ -125,17 +157,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const startTrack = useCallback(
     (next: number) => {
+      const track = tracksRef.current[next];
+      if (!track) return;
       const audio = getAudio();
-      const track = TRACKS[next];
       setError(false);
       if (next !== indexRef.current || !audio.currentSrc) {
         indexRef.current = next;
         setIndex(next);
         setProgress({ currentTime: 0, duration: durations[track.id] ?? 0 });
+        // Cross-origin media (the Borjino share) is fetched in CORS mode so Web Audio may read it;
+        // the media host must send Access-Control-Allow-Origin for afrows.com.
+        audio.crossOrigin = isSameOrigin(track.src) ? null : 'anonymous';
         audio.src = track.src;
       }
       // Analyser is created on the first user tap (autoplay policy) and only when the engine tier runs motion.
-      if (!analysisRef.current && tier !== 'static' && isSameOrigin(track.src)) analysisRef.current = createAnalysis(audio);
+      if (!analysisRef.current && tier !== 'static') analysisRef.current = createAnalysis(audio);
       const ctx = analysisRef.current?.context;
       if (ctx && ctx.state === 'suspended') void ctx.resume();
       setLoading(true);
@@ -161,7 +197,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const step = useCallback(
-    (delta: 1 | -1) => startTrack((indexRef.current + delta + TRACKS.length) % TRACKS.length),
+    (delta: 1 | -1) => {
+      const count = tracksRef.current.length;
+      if (count) startTrack((indexRef.current + delta + count) % count);
+    },
     [startTrack],
   );
 
@@ -183,13 +222,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const onWaiting = () => setLoading(true);
     const onPlaying = () => setLoading(false);
     const onMeta = () => {
-      const id = TRACKS[indexRef.current].id;
+      const id = tracksRef.current[indexRef.current]?.id;
+      if (!id) return;
       setDurations((d) => (d[id] === audio.duration ? d : { ...d, [id]: audio.duration }));
       setProgress({ currentTime: audio.currentTime, duration: audio.duration });
     };
     const onTime = () => setProgress({ currentTime: audio.currentTime, duration: audio.duration || 0 });
     const onEnded = () => {
-      if (indexRef.current < TRACKS.length - 1) startTrack(indexRef.current + 1);
+      if (indexRef.current < tracksRef.current.length - 1) startTrack(indexRef.current + 1);
       else setPlaying(false);
     };
     const onError = () => {
@@ -262,10 +302,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const session = navigator.mediaSession;
     if (!session) return;
-    const track = TRACKS[index];
+    const track = tracks[index];
+    if (!track) return;
     session.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: 'Afrows' });
     session.playbackState = playing ? 'playing' : 'paused';
-  }, [index, playing]);
+  }, [tracks, index, playing]);
 
   useEffect(() => {
     const session = navigator.mediaSession;
@@ -296,9 +337,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PlayerState>(
     () => ({
-      tracks: TRACKS,
+      tracks,
+      tracksStatus,
+      reloadTracks,
       index,
-      track: TRACKS[index],
+      track: tracks[index] ?? NO_TRACK,
       playing,
       loading,
       error,
@@ -310,7 +353,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       channel,
       selectChannel: setChannel,
     }),
-    [index, playing, loading, error, durations, toggle, pause, step, seek, channel],
+    [tracks, tracksStatus, reloadTracks, index, playing, loading, error, durations, toggle, pause, step, seek, channel],
   );
 
   return (

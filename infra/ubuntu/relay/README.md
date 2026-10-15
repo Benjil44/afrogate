@@ -76,3 +76,17 @@ systemctl is-active afrows-de-relay afrows-web-tunnel afrows-tg-socks   # Afrows
 sudo -u afrows /usr/local/libexec/afrows-de-relay-up && echo relay-up      # Afrows
 systemctl is-active afrows-cf                                            # USA
 ```
+
+## USA sshd keepalive for relay sessions
+
+`/etc/ssh/sshd_config.d/60-afrows-relay-keepalive.conf` on the USA VPS:
+
+```
+Match User afrows-relay
+    ClientAliveInterval 15
+    ClientAliveCountMax 3
+```
+
+Without it (`ClientAliveInterval 0`) a dead reverse tunnel kept `127.0.0.1:18444` bound on the USA for minutes, so the
+reconnecting `afrows-web-tunnel` failed with "remote port forwarding failed" and afrows.com returned Cloudflare 502
+(2026-10-15). Root and other logins are unaffected.

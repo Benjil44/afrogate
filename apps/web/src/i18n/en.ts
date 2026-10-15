@@ -1,20 +1,21 @@
 /**
- * English copy for the afrows.com landing page — Afrows = Afrooz Wave Station
+ * English copy for the afrows.com landing page — Afrows = Afro Wave Station (Afro as in Afro house;
+ * the Persian copy keeps the name افروز)
  * (Persian music + live radio). `fa.ts` must mirror this exact shape — TypeScript enforces it
  * through `Dict`. Narrative and wording: docs/landing-wave-station-story.md.
  *
  * Content rules:
  *  - No artist names, song titles or album art for the radio stations (copyright). The deck's
- *    mixes are licensed data in `lib/tracks.ts`, not UI copy.
+ *    mixes are licensed data from the runtime manifest (`lib/tracks.ts`), not UI copy.
  *  - Prices are PLACEHOLDERS until the billing catalogue exists (see `pricing.plans`).
  */
 export const en = {
   /** Wordmark — change the brand in one place. */
   brand: 'Afrows',
-  brandFull: 'Afrooz Wave Station',
-  brandMeaning: 'Afro is Afrooz — to kindle a light. WS is Wave Station.',
-  tagline: 'On the Afrooz wave.',
-  documentTitle: 'Afrows — Afrooz Wave Station · Persian music & live radio',
+  brandFull: 'Afro Wave Station',
+  brandMeaning: 'Afro as in Afro house: deep, warm and rhythmic. WS is Wave Station.',
+  tagline: 'On the Afro wave.',
+  documentTitle: 'Afrows — Afro Wave Station · Persian music & live radio',
   dirLabel: 'EN',
   langToggle: 'Switch language to Persian',
   nav: {
@@ -35,22 +36,22 @@ export const en = {
     dismiss: 'Dismiss',
   },
   hero: {
-    badge: 'Afrooz Wave Station · Persian music · Live radio',
-    title: 'Tune in to Afrooz',
+    badge: 'Afro Wave Station · Persian music · Live radio',
+    title: 'Tune in to the Afro wave',
     subtitle:
       'A station that kindles the night: Persian music, live channels and your own playlists — studio quality, no ads, on every device.',
     ctaPrimary: 'Tell me when we go on air',
     ctaSecondary: 'Turn the dial',
-    srIntro: 'Afrows, the Afrooz Wave Station: Persian music and live radio.',
+    srIntro: 'Afrows, the Afro Wave Station: Persian music and live radio.',
     signal: {
       searching: 'Searching for a signal…',
       locked: 'Signal locked',
-      frequency: 'Afrooz · live',
+      frequency: 'Afro · live',
     },
     wordmark: {
       afro: 'Afro',
       ws: 'WS',
-      afroMeaning: 'Afrooz — to kindle',
+      afroMeaning: 'Afro house · deep house',
       wsMeaning: 'Wave Station',
     },
     stats: {
@@ -88,13 +89,18 @@ export const en = {
   deck: {
     tag: 'Music deck',
     title: 'Real sound, on air now',
-    subtitle: 'Five full mixes, streamed on demand. Nothing downloads until you press play.',
-    credit: 'Mixes by DJ Rokoshaa',
+    subtitle: 'Full mixes, streamed on demand. Nothing downloads until you press play.',
+    creditPrefix: 'Mixes by',
     nowPlaying: 'Now playing',
     mix: 'Mix',
     loading: 'Loading…',
     seek: 'Seek',
     error: 'Playback failed. Check your connection and try again.',
+    listLoading: 'Loading the mixes…',
+    empty: 'No mixes yet. New ones are on the way.',
+    listError: 'Could not load the mixes.',
+    retry: 'Try again',
+    noTrack: 'Pick a mix',
   },
   features: {
     tag: 'Clean signal',
@@ -216,13 +222,13 @@ export const en = {
     button: 'Tell me when we go on air',
   },
   footer: {
-    tagline: 'Afrooz Wave Station — Persian music, live radio and playlists. Ad-free, everywhere.',
+    tagline: 'Afro Wave Station — Persian music, live radio and playlists. Ad-free, everywhere.',
     ready: 'Stay on the wave.',
-    signoff: 'This was Afrooz Wave Station. Stay on the wave.',
+    signoff: 'This was Afro Wave Station. Stay on the wave.',
     links: 'Explore',
     rights: 'All rights reserved.',
     backToTop: 'Back to top',
-    marquee: ['Pop', 'Traditional', 'Rap & Hip-hop', '60s & 70s', 'Chill & Lo-fi', 'Podcasts', 'Live radio', 'Ad-free', 'Afrooz Wave Station'],
+    marquee: ['Pop', 'Traditional', 'Rap & Hip-hop', '60s & 70s', 'Chill & Lo-fi', 'Podcasts', 'Live radio', 'Ad-free', 'Afro Wave Station'],
   },
 };
 

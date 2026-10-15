@@ -21,7 +21,7 @@ export function MiniPlayer() {
         <span className="h-11 w-11 shrink-0 rounded-xl" style={{ background: trackArt(index) }} aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-bold">
-            <bdi>{track.title}</bdi>
+            <bdi>{track.title || t.deck.noTrack}</bdi>
           </span>
           <span className="block truncate text-xs text-[var(--muted-foreground)]">
             <bdi>{track.artist}</bdi>

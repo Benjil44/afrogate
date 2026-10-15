@@ -168,7 +168,7 @@ html[dir="rtl"] .scroll-progress { --origin-x: right; }
 .signal-locked .signal-dot { background: var(--ember); box-shadow: 0 0 12px var(--ember); animation: none; }
 .signal-freq { animation: hero-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-/* Wordmark: Afro · WS -> Afrooz (to kindle) · Wave Station, revealed on lock. */
+/* Wordmark: Afro · WS -> meanings (en: Afro house; fa: افروز) · Wave Station, revealed on lock. */
 .wm-part { display: inline-flex; align-items: baseline; gap: 0.4rem; }
 .wm-key { font-weight: 900; color: var(--foreground); }
 .wm-meaning {

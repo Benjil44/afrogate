@@ -63,7 +63,7 @@ export function PlayerCard({ className }: { className?: string }) {
       <div className="mt-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-lg font-bold">
-            <bdi>{track.title}</bdi>
+            <bdi>{track.title || t.deck.noTrack}</bdi>
           </p>
           <p className="truncate text-sm text-[var(--muted-foreground)]">
             <bdi>{track.artist}</bdi>
