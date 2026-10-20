@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.121.0 - 2026-10-21
+
+Ships together with the unreleased 0.120.2 below.
+
+- **Monthly data packages.** A package with a validity (`duration_days`, 30 for the new 25 GB / 50 GB packages) opens a billing month on the account: the first purchase starts a 30-day month (an account that never had a month keeps its current data); buying again during the month adds the GB and keeps the end date; when the month ends the unused data is lost (the quota is cut to what was used, so the connection pauses) and the customer buys again. Packages without a validity keep the old open-ended behaviour, and unlimited accounts or accounts without an end date are never touched. One rule (`billing/monthly-period.ts`) is shared by the Telegram approval and the seller-sale paths.
+- **"Your monthly account ends tomorrow" reminder** in Telegram 24 h before the end, and a **"month ended"** notice after it, both with the 🛒 Buy Data button (once per month each; `MonthlyExpiryService`, every 10 min, `AFROWS_MONTHLY_EXPIRY_ENABLED`).
+- **Receipts reach the admin in Telegram.** A direct customer's payment-receipt photo is sent to the bot admin chat(s) with ✅ Approve / ❌ Reject buttons; a tap charges the account (and applies the month) or rejects it, and notifies the customer, through the same service as the dashboard Top-ups page (which still lists every request).
+- **USA usage is billed 2x.** Traffic on a customer's dedicated USA config counts double (`AFROWS_US_USAGE_MULTIPLIER`, default 2); the raw bytes and the multiplier are kept on each usage event. Normal configs that exit via the USA behind the scenes still count 1x.
+
+## 0.120.2 - 2026-10-15
+
+- **Music keeps playing when the phone locks.** On phones and tablets the deck no longer routes the audio through Web Audio (the real-music visualizer): mobile browsers (iOS Safari, some Android) suspend the AudioContext when the screen locks or the tab is hidden, so playback stopped on lock and resumed on unlock. Phones now play through a plain `<audio>` element (background and lock-screen playback; the equalizers follow the 120 BPM CSS beat). Desktop (wide screen + mouse/trackpad, `full` motion tier) keeps the visualizer that reacts to the real music.
+- **Lock-screen seek controls**: Media Session `seekto` (scrub bar) and `seekbackward` / `seekforward` (±10 s) next to play/pause/previous/next.
+
 ## 0.120.1 - 2026-10-15
 
 - **Mixes now stream from the Borjino music share, not the Afrows server.** The landing deck reads its playlist at runtime from `https://media.borjino.com/music/tracks.json` (JSON array of `{id,title,artist,file}`; validated, rendered as text only; bad entries are skipped) and plays the files from the same share. Borjino is the music source of truth (its DJ role will manage the library later); afrows.com only consumes the public share. Cross-origin audio is requested with `crossOrigin="anonymous"` so the real-music visualizer keeps working (the share sends CORS for afrows.com and www only). Loading placeholder, an empty state and an error state with retry; the credit line is built from the artists in the list. `VITE_MEDIA_BASE` / `VITE_TRACKS_URL` override the source (local dev: `apps/web/.env.development.local` with `VITE_MEDIA_BASE=/Podcast/`).

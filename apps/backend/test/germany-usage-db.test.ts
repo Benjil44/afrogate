@@ -40,7 +40,7 @@ describe('applyDeUserUsage (per-user transaction body, mock db)', () => {
     assert.match(ex.calls[1].text, /'germany-xray'/);
     assert.match(ex.calls[1].text, /ON CONFLICT \(source, idempotency_key\)/);
     // account, client, delta, observedAt, windowStart, idempotency key
-    assert.deepEqual(ex.calls[1].values, ['acct-1', 'cc-1', 2000, OBS, '2026-08-25T09:00:00.000Z', 'cc-1:5000']);
+    assert.deepEqual(ex.calls[1].values, ['acct-1', 'cc-1', 2000, OBS, '2026-08-25T09:00:00.000Z', 'cc-1:5000', 2000, 1]);
 
     assert.match(ex.calls[2].text, /UPDATE client_configs/);
     assert.match(ex.calls[2].text, /UPDATE customer_accounts/);

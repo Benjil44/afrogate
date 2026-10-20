@@ -278,12 +278,34 @@ describe('USA metering (per-site source + baseline; same quota)', () => {
     assert.match(ex.calls[1].text, /'usa-xray'/);
     assert.match(ex.calls[1].text, /'usa-usage-meter'/);
     assert.doesNotMatch(ex.calls[1].text, /germany/);
-    assert.deepEqual(ex.calls[1].values, ['acct-1', 'cc-1', 2_000_000_000, OBS, '2026-10-08T09:59:00.000Z', 'cc-1:5000000000']);
+    assert.deepEqual(ex.calls[1].values, ['acct-1', 'cc-1', 2_000_000_000, OBS, '2026-10-08T09:59:00.000Z', 'cc-1:5000000000', 2_000_000_000, 1]);
     assert.match(ex.calls[2].text, /UPDATE customer_accounts/, 'shared quota write');
     assert.match(ex.calls[3].text, /'usa-xray'/);
     assert.match(ex.calls[4].text, /'usa-xray'/);
     assert.match(ex.calls[5].text, /INSERT INTO client_usage_us_baseline/);
     assert.doesNotMatch(ex.calls[5].text, /client_usage_de_baseline/);
+  });
+
+  it('a site multiplier bills raw x multiplier (USA 2x) and keeps the raw bytes on the event', async () => {
+    const ex = createFakeExecutor([
+      { rows: [{ customerAccountId: 'acct-1' }] },
+      { rows: [{ id: 'evt-1' }], rowCount: 1 },
+      { rows: [{}] },
+      { rows: [{}] },
+      { rows: [{}] },
+      { rows: [{}] },
+    ]);
+    const applied = await applyRemoteUserUsage(
+      ex,
+      { clientConfigId: 'cc-1', cumulativeBytes: 5_000_000_000 },
+      { clientConfigId: 'cc-1', cumulativeBytes: 3_000_000_000, observedAt: '2026-10-08T09:59:00.000Z' },
+      OBS,
+      deps,
+      { ...US_USAGE_SITE, multiplier: 2 },
+    );
+    assert.equal(applied, 4_000_000_000, '2 GB used on the USA entry is billed as 4 GB');
+    assert.deepEqual(ex.calls[1].values, ['acct-1', 'cc-1', 4_000_000_000, OBS, '2026-10-08T09:59:00.000Z', 'cc-1:5000000000', 2_000_000_000, 2]);
+    assert.deepEqual(ex.calls[4].values?.[2], 4_000_000_000, 'daily rollup carries the billed bytes');
   });
 
   it('same idempotency key on both sites cannot collide: the ledger source differs', async () => {

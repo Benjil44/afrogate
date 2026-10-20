@@ -79,12 +79,18 @@ export class RemoteExitUsageMeteringService implements OnModuleInit, OnModuleDes
       {
         label: 'USA',
         mgmt: usaMgmt,
-        usage: US_USAGE_SITE,
+        // The USA entry is billed 2x by default (AFROWS_US_USAGE_MULTIPLIER, 1..10).
+        usage: { ...US_USAGE_SITE, multiplier: this.usMultiplier() },
         enabled: () => usaMgmt.isEnabled(),
         intervalKey: 'AFROWS_US_USAGE_INTERVAL_SECONDS',
         running: false,
       },
     ];
+  }
+
+  private usMultiplier(): number {
+    const raw = Number((this.config.get<string>('AFROWS_US_USAGE_MULTIPLIER') ?? '').trim() || '2');
+    return Number.isFinite(raw) && raw >= 1 && raw <= 10 ? raw : 2;
   }
 
   onModuleInit(): void {

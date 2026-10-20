@@ -117,6 +117,7 @@ import {
   resellerTopupReference,
 } from './reseller-topup';
 import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, gbToBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
+import { computePeriodCredit } from './monthly-period';
 import {
   attributeReferral,
   creditReferralSignup,
@@ -3174,6 +3175,28 @@ export class BillingService {
     }));
   }
 
+  /**
+   * Quota + end date for a package sale (seller path). Reads the locked account's
+   * expires_at (the shared account row select does not carry it) and applies the
+   * shared monthly rule; a non-monthly package keeps the old open-ended credit.
+   */
+  private async computeSalePeriod(
+    executor: DatabaseQueryExecutor,
+    customerAccountId: string,
+    input: { quotaLimitBeforeBytes: number | null; usedBytes: number; volumeBytes: number; durationDays: number | null },
+  ): Promise<{ quotaLimitAfterBytes: number; expiresAt: Date | null }> {
+    const row = await executor.query<{ expiresAt: Date | null }>(
+      `SELECT expires_at AS "expiresAt" FROM customer_accounts WHERE id = $1`,
+      [customerAccountId],
+    );
+    const expiresAt = row.rows[0]?.expiresAt ? new Date(row.rows[0].expiresAt) : null;
+    try {
+      return computePeriodCredit({ ...input, expiresAt, now: new Date() });
+    } catch {
+      throw new BadRequestException('Reseller sale quota would exceed the safe byte limit');
+    }
+  }
+
   private async executeResellerPackageSale(
     resellerAccountId: string,
     dto: CreateResellerPackageSaleDto,
@@ -3237,11 +3260,14 @@ export class BillingService {
       if (volumeBytes <= 0) throw new BadRequestException('Package volume must be positive');
       const quotaLimitBeforeBytes = numberFromBigInt(account.quotaLimitBytes);
       const usedBytes = numberFromBigInt(account.usedBytes) ?? 0;
-      const quotaLimitAfterBytes = addPositiveBytes(
-        quotaLimitBeforeBytes ?? usedBytes,
+      // Monthly packages (duration_days) open or extend the account month (billing/monthly-period.ts).
+      const period = await this.computeSalePeriod(executor, customerAccountId, {
+        quotaLimitBeforeBytes,
+        usedBytes,
         volumeBytes,
-        'Reseller sale quota would exceed the safe byte limit',
-      );
+        durationDays: numberFromBigInt(volumePackage.durationDays ?? null),
+      });
+      const quotaLimitAfterBytes = period.quotaLimitAfterBytes;
 
       const paymentOrderId = await this.insertResellerWalletPaymentOrder(executor, {
         actor,
@@ -3275,10 +3301,11 @@ export class BillingService {
         `
           UPDATE customer_accounts
           SET quota_limit_bytes = $1,
+              expires_at = $3,
               updated_at = now()
           WHERE id = $2
         `,
-        [quotaLimitAfterBytes, customerAccountId],
+        [quotaLimitAfterBytes, customerAccountId, period.expiresAt],
       );
 
       const ledgerEntry = await this.insertResellerWalletLedgerEntry(executor, reseller, {

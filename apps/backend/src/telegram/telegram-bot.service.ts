@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import { telegramWebhookSecretMatches } from './telegram-webhook-secret';
@@ -53,6 +53,8 @@ import {
 } from './telegram-self-service';
 import { TelegramConnectResolver, type ConnectOutcome } from './telegram-connect';
 import { createPendingTopupInTransaction, topupReference } from './telegram-topup';
+import { TelegramTopupAdminService } from './telegram-topup-admin.service';
+import type { AuthActor } from '../security/auth-request';
 import {
   adminCallbackAbandonsFlow,
   adminHomeLayout,
@@ -129,6 +131,9 @@ export class TelegramBotService {
     private readonly telegram: TelegramAlertService,
     private readonly telegramConfig: TelegramBotConfigService,
     private readonly database: DatabaseService,
+    // Optional so harnesses that build the bot with the four core deps keep working;
+    // Nest always injects it (it backs the admin's Telegram receipt approve/reject).
+    @Optional() private readonly topupAdmin?: TelegramTopupAdminService,
   ) {}
 
   async isWebhookEnabled(): Promise<boolean> {
@@ -1244,6 +1249,18 @@ export class TelegramBotService {
         amountMinor: pending.pendingAmountMinor ?? null,
         currency: pending.pendingCurrency ?? null,
       });
+    } else {
+      // A direct customer's receipt goes to the superadmin chat(s) with Approve/Reject
+      // buttons (2026-10-21). Best-effort: the request is already saved and is also
+      // visible in the dashboard Top-ups page.
+      await this.pushAdminReceiptRequest({
+        id: created.id,
+        receiptFileId: photoFileId,
+        customerDisplayName: account.displayName ?? null,
+        volumePackageId: pending.pendingPackageId ?? null,
+        amountMinor: pending.pendingAmountMinor ?? null,
+        currency: pending.pendingCurrency ?? null,
+      });
     }
 
     return this.sendNew(
@@ -2119,6 +2136,83 @@ export class TelegramBotService {
     }
   }
 
+  /** Send a direct customer's receipt photo to every superadmin chat with Approve/Reject buttons. */
+  private async pushAdminReceiptRequest(request: {
+    id: string;
+    receiptFileId: string;
+    customerDisplayName: string | null;
+    volumePackageId: string | null;
+    amountMinor: number | null;
+    currency: string | null;
+  }): Promise<void> {
+    try {
+      const summary = await this.telegramConfig.getSettingsSummary();
+      const adminChatIds = (Array.isArray(summary.allowedAdminChatIds) ? summary.allowedAdminChatIds : [])
+        .map((id) => String(id).trim())
+        .filter(Boolean);
+      if (!adminChatIds.length) return;
+      const pkg = request.volumePackageId
+        ? await this.database.query<{ volumeBytes: string | number }>(
+            `SELECT volume_bytes AS "volumeBytes" FROM volume_packages WHERE id = $1`,
+            [request.volumePackageId],
+          )
+        : null;
+      const volumeBytes = Number(pkg?.rows[0]?.volumeBytes ?? 0);
+      for (const chatId of adminChatIds) {
+        const language = await this.languageFor(chatId);
+        // Photo captions are plain text (no parse_mode), so nothing is HTML-escaped here.
+        const caption = renderTelegramCopy('admin.receipt.new', language, {}, {
+          customerName: request.customerDisplayName ?? '-',
+          packageSize: formatDataSize(volumeBytes, language),
+          amount: formatAmount(request.amountMinor, request.currency, language),
+          reference: topupReference(request.id),
+        });
+        await this.telegram.sendPhotoByFileId(chatId, request.receiptFileId, {
+          caption,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: renderTelegramCopy('admin.receipt.btn.approve', language), callback_data: `afws:adm:topup:approve:${request.id}` },
+                { text: renderTelegramCopy('admin.receipt.btn.reject', language), callback_data: `afws:adm:topup:reject:${request.id}` },
+              ],
+            ],
+          },
+        });
+      }
+    } catch {
+      // best-effort: the dashboard Top-ups page still lists the request
+    }
+  }
+
+  /** Superadmin taps Approve/Reject on a receipt photo: settles through TelegramTopupAdminService (credit + month + customer notice + audit). */
+  private async handleAdminTopupDecision(
+    ctx: Ctx,
+    language: TelegramLanguage,
+    requestId: string,
+    decision: 'approve' | 'reject',
+  ): Promise<TelegramBotWebhookResponse> {
+    const reference = topupReference(requestId);
+    const actor: AuthActor = {
+      id: `telegram:${ctx.fromId ?? 'unknown'}`,
+      username: `telegram-admin:${ctx.fromId ?? 'unknown'}`,
+      role: 'admin',
+      type: 'admin',
+    };
+    try {
+      if (!this.topupAdmin) throw new Error('top-up service unavailable');
+      if (decision === 'approve') await this.topupAdmin.approve(requestId, actor);
+      else await this.topupAdmin.reject(requestId, null, actor);
+      const text = renderTelegramCopy(decision === 'approve' ? 'admin.receipt.approved' : 'admin.receipt.rejected', language, {}, { reference });
+      await this.answer(ctx, text);
+      await this.telegram.sendMessage(ctx.chatId, text, {});
+      return { ok: true, status: 'sent' };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'failed';
+      await this.answer(ctx, renderTelegramCopy('admin.receipt.failed', language, {}, { reference, reason }));
+      return { ok: false, status: 'failed', reason };
+    }
+  }
+
   private async pushSellerReceiptMessage(
     chatId: string,
     language: TelegramLanguage,
@@ -2665,6 +2759,12 @@ export class TelegramBotService {
     user: TelegramUserRecord | null,
     data: string,
   ): Promise<TelegramBotWebhookResponse> {
+    if (data.startsWith('afws:adm:topup:approve:')) {
+      return this.handleAdminTopupDecision(ctx, language, data.slice('afws:adm:topup:approve:'.length), 'approve');
+    }
+    if (data.startsWith('afws:adm:topup:reject:')) {
+      return this.handleAdminTopupDecision(ctx, language, data.slice('afws:adm:topup:reject:'.length), 'reject');
+    }
     if (data.startsWith('afws:adm:newuser:pkg:')) {
       return this.handleAdminNewUserPickPackage(ctx, language, user, data.slice('afws:adm:newuser:pkg:'.length));
     }

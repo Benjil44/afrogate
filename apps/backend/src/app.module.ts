@@ -37,6 +37,7 @@ import { AlertNotificationService } from './notifications/alert-notification.ser
 import { TelegramAlertService } from './notifications/telegram-alert.service';
 import { VillageEgressAlertService } from './notifications/village-egress-alert.service';
 import { LowQuotaAlertService } from './notifications/low-quota-alert.service';
+import { MonthlyExpiryService } from './notifications/monthly-expiry.service';
 import { AuditService } from './audit/audit.service';
 import { BackupStatusService } from './backups/backup-status.service';
 import { AdminTenantBrandingController } from './branding/admin-tenant-branding.controller';
@@ -138,6 +139,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     VillageFailoverService,
     VillageEgressAlertService,
     LowQuotaAlertService,
+    MonthlyExpiryService,
     GatewayBillingService,
     GatewayBillingRunnerService,
     MikroTikClientService,

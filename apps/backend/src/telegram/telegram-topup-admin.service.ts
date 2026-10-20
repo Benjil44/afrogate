@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { numberFromBigInt } from '../billing/billing-math';
 import { computeAllocatedQuotaLimitBytes } from '../billing/quota-math';
+import { computePeriodCredit } from '../billing/monthly-period';
 import { OutboundHttpService } from '../outbound/outbound-http.service';
 import type { AuthActor } from '../security/auth-request';
 import {
@@ -126,6 +127,8 @@ export class TelegramTopupAdminService {
       approveTopupInTransaction(executor, id, {
         reviewer,
         computeQuotaAfter: computeAllocatedQuotaLimitBytes,
+        // Monthly packages (duration_days) open or extend the account month.
+        computePeriod: computePeriodCredit,
         gemEconomy: {
           referralPurchasePct: runtime.gemEconomy.gemReferralPurchasePct,
           gemRedeemPerGb: runtime.gemEconomy.gemRedeemPerGb,
@@ -138,6 +141,7 @@ export class TelegramTopupAdminService {
       volumeBytes: outcome.volumeBytes,
       quotaLimitBeforeBytes: outcome.quotaLimitBeforeBytes,
       quotaLimitAfterBytes: outcome.quotaLimitAfterBytes,
+      expiresAt: outcome.expiresAt ? outcome.expiresAt.toISOString() : null,
       packageName: outcome.packageName,
       referralCommissionGems: outcome.commission?.gems ?? 0,
       referralInviterAccountId: outcome.commission?.inviterAccountId ?? null,

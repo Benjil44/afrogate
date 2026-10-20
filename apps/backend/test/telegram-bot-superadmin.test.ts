@@ -86,6 +86,8 @@ function makeHarness(options: { linkedCustomer: boolean; language?: 'fa' | 'en' 
   const billingCalls: string[] = [];
   const created: Array<{ displayName: string; quotaLimitBytes: number }> = [];
   const topups: Array<{ receiptFileId: string; customerAccountId: string }> = [];
+  const receipts: Array<{ chatId: string; fileId: string; caption: string; callbacks: string[] }> = [];
+  const decisions: Array<{ kind: 'approve' | 'reject'; id: string; actor: string }> = [];
 
   const database = {
     async query(text: string, values: unknown[] = []) {
@@ -104,6 +106,9 @@ function makeHarness(options: { linkedCustomer: boolean; language?: 'fa' | 'en' 
         const row = users.get(id) ?? { telegramId: id, chatId, language: null, state: null };
         users.set(id, { ...row, chatId, state: state === null ? null : JSON.parse(state) });
         return { rows: [], rowCount: 1 };
+      }
+      if (/FROM volume_packages WHERE id = \$1/.test(text)) {
+        return { rows: [{ volumeBytes: PACKAGE.volumeBytes }], rowCount: 1 };
       }
       if (/INSERT INTO telegram_topup_requests/.test(text)) {
         topups.push({ receiptFileId: String(values[6]), customerAccountId: String(values[0]) });
@@ -187,6 +192,22 @@ function makeHarness(options: { linkedCustomer: boolean; language?: 'fa' | 'en' 
       sent.push({ kind: 'photo', text: opts.caption ?? '' });
       return { status: 'sent' };
     },
+    async sendPhotoByFileId(chatId: string, fileId: string, opts: { caption?: string; replyMarkup?: Sent['keyboard'] } = {}) {
+      const callbacks = (opts.replyMarkup?.inline_keyboard ?? []).flat().map((b) => b.callback_data ?? '');
+      receipts.push({ chatId, fileId, caption: opts.caption ?? '', callbacks });
+      return { status: 'sent' };
+    },
+  };
+
+  const topupAdmin = {
+    async approve(id: string, actor: { id: string }) {
+      decisions.push({ kind: 'approve', id, actor: actor.id });
+      return {};
+    },
+    async reject(id: string, _reason: string | null, actor: { id: string }) {
+      decisions.push({ kind: 'reject', id, actor: actor.id });
+      return {};
+    },
   };
 
   const config = {
@@ -202,7 +223,7 @@ function makeHarness(options: { linkedCustomer: boolean; language?: 'fa' | 'en' 
     },
   };
 
-  const service = new TelegramBotService!(billing, telegram, config, database);
+  const service = new TelegramBotService!(billing, telegram, config, database, topupAdmin);
   let callbackSeq = 0;
   return {
     sent,
@@ -210,6 +231,8 @@ function makeHarness(options: { linkedCustomer: boolean; language?: 'fa' | 'en' 
     billingCalls,
     created,
     topups,
+    receipts,
+    decisions,
     users,
     last: () => sent[sent.length - 1],
     tap: (data: string) =>
@@ -398,6 +421,33 @@ describe('superadmin via handleUpdate', { skip: skipReason }, () => {
     await h.photo('file-abc');
     assert.deepEqual(h.topups, [{ receiptFileId: 'file-abc', customerAccountId: 'acct-ben' }]);
     assert.equal(h.state()?.pendingPackageId, undefined);
+  });
+
+  it('a direct customer receipt is pushed to the admin chat with Approve/Reject buttons', async () => {
+    const h = makeHarness({ linkedCustomer: true });
+    await h.tap('afws:buy:pkg:pkg-10');
+    await h.photo('file-receipt');
+    assert.equal(h.receipts.length, 1, 'one admin chat configured');
+    const r = h.receipts[0];
+    assert.equal(r.chatId, ADMIN_ID);
+    assert.equal(r.fileId, 'file-receipt');
+    assert.match(r.caption, /10 GB/);
+    assert.deepEqual(r.callbacks, [
+      'afws:adm:topup:approve:00000000-0000-0000-0000-000000000001',
+      'afws:adm:topup:reject:00000000-0000-0000-0000-000000000001',
+    ]);
+    assert.doesNotMatch(r.caption, /<b>|<code>/, 'photo captions are plain text');
+  });
+
+  it('admin Approve / Reject taps settle the request through the top-up service', async () => {
+    const h = makeHarness({ linkedCustomer: true });
+    await h.tap('afws:adm:topup:approve:req-1');
+    await h.tap('afws:adm:topup:reject:req-2');
+    assert.deepEqual(h.decisions, [
+      { kind: 'approve', id: 'req-1', actor: `telegram:${ADMIN_ID}` },
+      { kind: 'reject', id: 'req-2', actor: `telegram:${ADMIN_ID}` },
+    ]);
+    assert.ok(h.toasts.some((t) => t.includes('REQ1')), 'approve toast carries the reference');
   });
 
   it('linked admin: a photo with no pending charge gets the customer "no charge" reply, not the new-user flow', async () => {

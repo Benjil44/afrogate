@@ -21,6 +21,8 @@ export interface RemoteUsageSite {
   source: 'germany-xray' | 'usa-xray';
   createdBy: 'germany-usage-meter' | 'usa-usage-meter';
   baselineTable: 'client_usage_de_baseline' | 'client_usage_us_baseline';
+  /** Billing multiplier for this site's bytes (default 1). The USA entry is billed 2x (2026-10-21 pricing). */
+  multiplier?: number;
 }
 
 export const DE_USAGE_SITE: RemoteUsageSite = {
@@ -124,13 +126,16 @@ export async function applyRemoteUserUsage(
   }
 
   const windowStart = baseline?.observedAt ?? null;
+  // Billed bytes = raw bytes x site multiplier; the raw bytes and multiplier stay on the event.
+  const multiplier = site.multiplier && site.multiplier > 0 ? site.multiplier : 1;
+  const billed = Math.round(delta * multiplier);
   const inserted = await ex.query(
     `INSERT INTO client_usage_events
        (customer_account_id, client_config_id, source, direction, used_bytes_delta, raw_used_bytes_delta, usage_multiplier,
         observed_at, window_start, window_end, idempotency_key, metadata, created_by)
      VALUES ($1, $2,
              '${site.source}',
-             'combined', $3, $3, 1, $4::timestamptz, $5, $4::timestamptz, $6, '{}'::jsonb,
+             'combined', $3, $7, $8, $4::timestamptz, $5, $4::timestamptz, $6, '{}'::jsonb,
              '${site.createdBy}')
      ON CONFLICT (source, idempotency_key)
        WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''
@@ -139,10 +144,12 @@ export async function applyRemoteUserUsage(
     [
       customerAccountId,
       user.clientConfigId,
-      delta,
+      billed,
       observedAtIso,
       windowStart,
       `${user.clientConfigId}:${user.cumulativeBytes}`,
+      delta,
+      multiplier,
     ],
   );
   if ((inserted.rowCount ?? 0) === 0) {
@@ -151,11 +158,11 @@ export async function applyRemoteUserUsage(
     return 0;
   }
 
-  await deps.applyDelta(ex, user.clientConfigId, delta);
+  await deps.applyDelta(ex, user.clientConfigId, billed);
   // ON CONFLICT adds the delta into the existing bucket, so re-applying accumulates
   // rather than overwrites (idempotent per-delta via the event key above; additive
   // per-bucket here). Literal SQL per table/unit — no identifier interpolation.
-  const rollupValues = [user.clientConfigId, customerAccountId, delta, observedAtIso];
+  const rollupValues = [user.clientConfigId, customerAccountId, billed, observedAtIso];
   await ex.query(
     `INSERT INTO client_usage_hourly
        (client_config_id, customer_account_id, bucket_start, used_bytes, rx_bytes, tx_bytes, source, updated_at)
@@ -179,7 +186,7 @@ export async function applyRemoteUserUsage(
     rollupValues,
   );
   await upsertRemoteBaseline(ex, site, user, customerAccountId, observedAtIso);
-  return delta;
+  return billed;
 }
 
 async function upsertRemoteBaseline(

@@ -170,8 +170,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audio.crossOrigin = isSameOrigin(track.src) ? null : 'anonymous';
         audio.src = track.src;
       }
-      // Analyser is created on the first user tap (autoplay policy) and only when the engine tier runs motion.
-      if (!analysisRef.current && tier !== 'static') analysisRef.current = createAnalysis(audio);
+      // Analyser is created on the first user tap (autoplay policy), and ONLY on desktop (`full` tier: wide screen +
+      // fine pointer). Routing the element through Web Audio ties playback to the AudioContext, which mobile browsers
+      // (iOS Safari, some Android) suspend when the screen locks or the tab is hidden, so the music stopped on lock.
+      // Phones/tablets keep a plain <audio> element (background + lock-screen playback; equalizers use the CSS beat).
+      if (!analysisRef.current && tier === 'full') analysisRef.current = createAnalysis(audio);
       const ctx = analysisRef.current?.context;
       if (ctx && ctx.state === 'suspended') void ctx.resume();
       setLoading(true);
@@ -316,6 +319,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ['pause', pause],
       ['previoustrack', () => step(-1)],
       ['nexttrack', () => step(1)],
+      // Lock-screen scrubbing and ±10 s buttons (the audio keeps playing in the background on phones).
+      ['seekto', (details) => { if (typeof details.seekTime === 'number') seek(details.seekTime); }],
+      ['seekbackward', (details) => seek((audioRef.current?.currentTime ?? 0) - (details.seekOffset ?? 10))],
+      ['seekforward', (details) => seek((audioRef.current?.currentTime ?? 0) + (details.seekOffset ?? 10))],
     ];
     for (const [action, handler] of handlers) {
       try {
@@ -333,7 +340,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-  }, [startTrack, pause, step]);
+  }, [startTrack, pause, step, seek]);
 
   const value = useMemo<PlayerState>(
     () => ({

@@ -49,6 +49,16 @@ function toFiniteNumber(value: string | number | null | undefined): number | nul
 /** Signature of the injected quota-credit calculator (quota-math.computeAllocatedQuotaLimitBytes). */
 export type ComputeQuotaAfter = (quotaLimitBeforeBytes: number | null, usedBytes: number, volumeBytes: number) => number;
 
+/** Signature of the injected monthly-period calculator (billing/monthly-period.computePeriodCredit). */
+export type ComputePeriodCredit = (input: {
+  quotaLimitBeforeBytes: number | null;
+  usedBytes: number;
+  volumeBytes: number;
+  expiresAt: Date | null;
+  durationDays: number | null;
+  now: Date;
+}) => { quotaLimitAfterBytes: number; expiresAt: Date | null; periodStarted: boolean };
+
 /** Resolve the configured trial quota, falling back to 1 GB decimal when unset. */
 export function resolveTrialQuotaBytes(configured: number | null | undefined): number {
   if (configured === null || configured === undefined) return TELEGRAM_TRIAL_QUOTA_BYTES;
@@ -76,6 +86,7 @@ interface AccountRow {
   quotaLimitBytes: string | number | null;
   usedBytes: string | number | null;
   referredBy: string | null;
+  expiresAt?: Date | string | null;
 }
 
 interface InviterRow {
@@ -96,6 +107,7 @@ export interface TopupReferralCommission {
 interface VolumePackageRow {
   name: string;
   volumeBytes: string | number;
+  durationDays?: string | number | null;
 }
 
 const REQUEST_SELECT = `
@@ -171,6 +183,8 @@ export interface ApproveTopupOutcome {
   volumeBytes: number;
   quotaLimitBeforeBytes: number | null;
   quotaLimitAfterBytes: number;
+  /** Account end date after the credit (monthly packages), else the unchanged value. */
+  expiresAt: Date | null;
   amountMinor: number | null;
   currency: string | null;
   /** Referral commission credited to the inviter (buyer had `referred_by`), else null. */
@@ -199,6 +213,9 @@ export async function approveTopupInTransaction(
     reviewer: string | null;
     note?: string | null;
     computeQuotaAfter: ComputeQuotaAfter;
+    /** When set, monthly packages (duration_days) open/extend the account month. */
+    computePeriod?: ComputePeriodCredit;
+    now?: Date;
     gemEconomy?: TopupGemEconomy | null;
   },
 ): Promise<ApproveTopupOutcome> {
@@ -216,7 +233,7 @@ export async function approveTopupInTransaction(
   if (!request.volumePackageId) throw new BadRequestException('Top-up request has no volume package');
 
   const packageResult = await executor.query<VolumePackageRow>(
-    `SELECT name, volume_bytes AS "volumeBytes" FROM volume_packages WHERE id = $1 FOR UPDATE`,
+    `SELECT name, volume_bytes AS "volumeBytes", duration_days AS "durationDays" FROM volume_packages WHERE id = $1 FOR UPDATE`,
     [request.volumePackageId],
   );
   const volumePackage = packageResult.rows[0];
@@ -226,7 +243,8 @@ export async function approveTopupInTransaction(
 
   const accountResult = await executor.query<AccountRow>(
     `
-      SELECT quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes", referred_by AS "referredBy"
+      SELECT quota_limit_bytes AS "quotaLimitBytes", used_bytes AS "usedBytes", referred_by AS "referredBy",
+             expires_at AS "expiresAt"
       FROM customer_accounts
       WHERE id = $1
       FOR UPDATE
@@ -238,12 +256,40 @@ export async function approveTopupInTransaction(
 
   const quotaLimitBeforeBytes = toFiniteNumber(account.quotaLimitBytes);
   const usedBytes = toFiniteNumber(account.usedBytes) ?? 0;
-  const quotaLimitAfterBytes = input.computeQuotaAfter(quotaLimitBeforeBytes, usedBytes, volumeBytes);
+  const expiresBefore = account.expiresAt ? new Date(account.expiresAt) : null;
+  let quotaLimitAfterBytes: number;
+  let expiresAt: Date | null = expiresBefore;
+  if (input.computePeriod) {
+    let credit;
+    try {
+      credit = input.computePeriod({
+        quotaLimitBeforeBytes,
+        usedBytes,
+        volumeBytes,
+        expiresAt: expiresBefore,
+        durationDays: toFiniteNumber(volumePackage.durationDays ?? null),
+        now: input.now ?? new Date(),
+      });
+    } catch {
+      throw new BadRequestException('Allocated quota would exceed the safe byte limit');
+    }
+    quotaLimitAfterBytes = credit.quotaLimitAfterBytes;
+    expiresAt = credit.expiresAt;
+  } else {
+    quotaLimitAfterBytes = input.computeQuotaAfter(quotaLimitBeforeBytes, usedBytes, volumeBytes);
+  }
 
-  await executor.query(
-    `UPDATE customer_accounts SET quota_limit_bytes = $1, updated_at = now() WHERE id = $2`,
-    [quotaLimitAfterBytes, request.customerAccountId],
-  );
+  if (input.computePeriod) {
+    await executor.query(
+      `UPDATE customer_accounts SET quota_limit_bytes = $1, expires_at = $3, updated_at = now() WHERE id = $2`,
+      [quotaLimitAfterBytes, request.customerAccountId, expiresAt],
+    );
+  } else {
+    await executor.query(
+      `UPDATE customer_accounts SET quota_limit_bytes = $1, updated_at = now() WHERE id = $2`,
+      [quotaLimitAfterBytes, request.customerAccountId],
+    );
+  }
 
   // Referral commission: if the buyer was invited by someone, credit that inviter
   // pct% of the purchased GB in gems (docs §14/plan §E). Audited via the ledger,
@@ -307,6 +353,7 @@ export async function approveTopupInTransaction(
     volumeBytes,
     quotaLimitBeforeBytes,
     quotaLimitAfterBytes,
+    expiresAt,
     amountMinor: toFiniteNumber(request.amountMinor),
     currency: request.currency,
     commission,

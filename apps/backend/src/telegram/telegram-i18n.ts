@@ -188,6 +188,14 @@ export type TelegramCopyId =
   | 'notify.sellerCharged'
   | 'notify.lowQuota'
   | 'notify.quotaExhausted'
+  | 'notify.monthEndingSoon'
+  | 'notify.monthEnded'
+  | 'admin.receipt.new'
+  | 'admin.receipt.btn.approve'
+  | 'admin.receipt.btn.reject'
+  | 'admin.receipt.approved'
+  | 'admin.receipt.rejected'
+  | 'admin.receipt.failed'
   | 'admin.menu.title'
   | 'admin.menu.btn.newUser'
   | 'admin.btn.backToMenu'
@@ -619,6 +627,23 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     en: '⛔ <b>Your data is finished</b>\nYour account has no data left, so your connection is paused.\nRecharge with 🛒 <b>Buy Data</b> — you reconnect automatically as soon as the data is added.',
     fa: '⛔ <b>حجم شما تمام شد</b>\nحجمی در حساب شما باقی نمانده و اتصالتان متوقف شده است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض اضافه‌شدن حجم، اتصال خودکار برقرار می‌شود.',
   },
+  'notify.monthEndingSoon': {
+    en: '⏳ <b>Your monthly account ends tomorrow</b>\n<b>{remaining}</b> of data is still unused. Unused data is not carried over: when the month ends it expires.\nRecharge with 🛒 <b>Buy Data</b> to keep your connection for the next month.',
+    fa: '⏳ <b>اشتراک ماهانهٔ شما فردا به پایان می‌رسد</b>\n<b>{remaining}</b> از حجم شما هنوز استفاده نشده است. حجم استفاده‌نشده به ماه بعد منتقل نمی‌شود و با پایان ماه از بین می‌رود.\nبرای ادامهٔ اتصال در ماه بعد، از 🛒 <b>خرید حجم</b> شارژ کنید.',
+  },
+  'notify.monthEnded': {
+    en: '📅 <b>Your monthly account has ended</b>\nYour connection is paused until you buy data for the new month.\nRecharge with 🛒 <b>Buy Data</b> — you reconnect automatically as soon as it is approved.',
+    fa: '📅 <b>اشتراک ماهانهٔ شما به پایان رسید</b>\nاتصال شما تا خرید حجم برای ماه جدید متوقف است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض تأیید، اتصال خودکار برقرار می‌شود.',
+  },
+  'admin.receipt.new': {
+    en: '🧾 New payment receipt\nCustomer: {customerName}\nPackage: {packageSize}\nAmount: {amount}\nRef: {reference}',
+    fa: '🧾 رسید پرداخت جدید\nمشتری: {customerName}\nبسته: {packageSize}\nمبلغ: {amount}\nکد پیگیری: {reference}',
+  },
+  'admin.receipt.btn.approve': { en: '✅ Approve', fa: '✅ تأیید' },
+  'admin.receipt.btn.reject': { en: '❌ Reject', fa: '❌ رد' },
+  'admin.receipt.approved': { en: '✅ Approved {reference}: the account was charged.', fa: '✅ رسید {reference} تأیید شد و حساب شارژ شد.' },
+  'admin.receipt.rejected': { en: '❌ Rejected {reference}.', fa: '❌ رسید {reference} رد شد.' },
+  'admin.receipt.failed': { en: '⚠️ Could not update {reference}: {reason}', fa: '⚠️ به‌روزرسانی {reference} انجام نشد: {reason}' },
   'admin.menu.title': { en: '🛠 <b>Admin panel</b>\nWhat would you like to do?', fa: '🛠 <b>پنل مدیریت</b>\nچه کاری می‌خواهید انجام دهید؟' },
   'admin.menu.btn.newUser': { en: '➕ New user', fa: '➕ کاربر جدید' },
   'admin.btn.backToMenu': { en: '⬅️ Menu', fa: '⬅️ منو' },
