@@ -13,7 +13,7 @@ export interface AfrowsWireguardServer {
   interface: string;
   /** Server (peer) public key. */
   serverPublicKey: string;
-  /** Public endpoint `host:port` (e.g. 94.74.145.199:51822). */
+  /** Public endpoint `host:port` (e.g. 185.252.30.123:51822). */
   endpoint: string;
   /** DNS pushed to the client. */
   dns: string;

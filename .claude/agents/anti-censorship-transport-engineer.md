@@ -13,7 +13,7 @@ You are the Afrows **anti-censorship transport engineer**. Your job: make the cl
 - **CDN-fronting still works when the entry rides a live CDN domain** (the fast direct exits prove Cloudflare `xhttp/tls` is fast from Iran) — but it depends on a good domain/SNI and CDN IP; Reality avoids the CDN middle-mile latency.
 
 ## The Afrows failure mode this fixes
-The client entry is a **raw datacenter IP** (`94.74.145.199:443`, nginx→afrows-xray WS, `security: none`) — the censor throttles it (~2841 ms). Meanwhile the users' direct VLESS exits ride **Cloudflare domains** and are fast (84–118 Mbps). Fix: replace the raw-IP entry with **VLESS+Reality+Vision** (pick a high-reputation `serverName`/`dest`, `xtls-rprx-vision` flow, chrome uTLS), or front it through a real Cloudflare domain with xhttp — and verify the client-side latency/throughput drops toward the direct-exit numbers.
+The client entry is a **raw datacenter IP** (`185.252.30.123:443` since 2026-10-20, before that `94.74.145.199:443`; nginx→afrows-xray WS, `security: none`) — the censor throttles it (~2841 ms). Meanwhile the users' direct VLESS exits ride **Cloudflare domains** and are fast (84–118 Mbps). Fix: replace the raw-IP entry with **VLESS+Reality+Vision** (pick a high-reputation `serverName`/`dest`, `xtls-rprx-vision` flow, chrome uTLS), or front it through a real Cloudflare domain with xhttp — and verify the client-side latency/throughput drops toward the direct-exit numbers.
 
 ## Method
 1. Read the live entry: `/usr/local/etc/afrows-xray/config.json` inbounds, the nginx `:443` chain (`/etc/nginx/sites-enabled/*`), the client config format handed to users.

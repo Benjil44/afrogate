@@ -1,0 +1,18 @@
+# Afrows: direct routes to the Germany/USA exits with a clamped advertised MSS.
+# The USA -> زیرساخت مشهد return path silently drops packets over ~1480 bytes (no
+# ICMP frag-needed), which stalled the chain's REALITY handshake (2026-10-20). An
+# advmss of 1400 makes the exits send segments that fit. Also keeps Germany on eth0
+# (direct), not pinned to wg-village-de as on the old مخابرات server.
+[Unit]
+Description=Afrows direct exit routes (Germany, USA) with advmss 1400
+After=network-online.target wg-quick@wg-village-de.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'GW=$(ip -4 route show default | awk "/^default/{print \\$3; exit}"); DEV=$(ip -4 route show default | awk "/^default/{print \\$5; exit}"); for ip in 162.19.253.235 93.127.140.50; do ip route replace $ip/32 via $GW dev $DEV advmss 1400; done'
+ExecStop=/bin/sh -c 'for ip in 162.19.253.235 93.127.140.50; do ip route del $ip/32 2>/dev/null || true; done'
+
+[Install]
+WantedBy=multi-user.target

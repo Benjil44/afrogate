@@ -248,7 +248,7 @@ export class RoutersService {
 
   async connectConfig(id: string): Promise<AdminRouterConnectConfigResponse> {
     const row = await this.requireRow(id);
-    const endpoint = (process.env.AFROWS_ROUTER_WG_ENDPOINT || '94.74.145.199').trim();
+    const endpoint = (process.env.AFROWS_ROUTER_WG_ENDPOINT || '185.252.30.123').trim();
     const port = (process.env.AFROWS_ROUTER_WG_PORT || '51902').trim();
     const subnet = (process.env.AFROWS_ROUTER_WG_SUBNET || '10.22.0.0/24').trim();
     const pubkey = (process.env.AFROWS_ROUTER_WG_PUBKEY || '<set AFROWS_ROUTER_WG_PUBKEY>').trim();

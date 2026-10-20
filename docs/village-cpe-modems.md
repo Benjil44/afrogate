@@ -38,7 +38,7 @@
 ```
 ssh -i ~/.ssh/afrogate_deploy \
   -L 9128:192.168.8.1:80 -L 9129:192.168.9.1:80 -L 9132:192.168.12.1:80 \
-  root@94.74.145.199
+  root@185.252.30.123
 ```
 then browse `http://localhost:9128` (mobinnet), `:9129` (Irelandcell-228), `:9132` (Irelandcell-227).
 The modem web UI has the **Restart/Reboot** button (a real power-cycle, unlike the panel's

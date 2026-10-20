@@ -55,7 +55,7 @@
 # 51820, or 443 if only 443 handshook in the runbook's test (the server answers on both)
 :global afrUsaPort 51820
 # Afrows server: always direct (Iranian DC, never via the USA)
-:global afrAfrowsIp "94.74.145.199"
+:global afrAfrowsIp "185.252.30.123"
 # Shatel resolvers, used by the router ONLY while the tunnel is down (netwatch,
 # section 11). Confirm with the Shatel DHCP lease / support. "" = never use them.
 :global afrShatelDns "85.15.1.14,85.15.1.15"

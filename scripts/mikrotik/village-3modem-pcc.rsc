@@ -15,7 +15,7 @@
 #   m2  Irelandcell-228 ether2  gw <VERIFY>  tunnel wg-afr2 (udp 51902)  BEST latency -> gaming pin
 #   m3  Irelandcell-229 ether5  gw <VERIFY>  tunnel wg-afr3 (udp 51903)  BACKUP
 #   ether3 = LAN 192.168.88.1/24 (diag) ; ether4 = Starlink (untouched)
-#   Afrows VPS = 94.74.145.199 ; gw placeholders below use the OLD doc values —
+#   Afrows VPS = 185.252.30.123 ; gw placeholders below use the OLD doc values —
 #   replace after reading the live dhcp-client gateways.
 #
 # PREREQUISITES (do these FIRST — this script assumes they exist):
@@ -58,9 +58,9 @@ add chain=srcnat out-interface=ether5 action=masquerade comment="afrows-3modem n
 # forced out its modem, so the 3 tunnels ride 3 modems. Afrows ECMPs users across
 # them, giving ~3x aggregate uplink. output chain = router-originated (the tunnels).
 /ip firewall mangle
-add chain=output protocol=udp dst-address=94.74.145.199 dst-port=51900 action=mark-routing new-routing-mark=to-m1 passthrough=no comment="afrows-3modem pin wg-afr1->m1"
-add chain=output protocol=udp dst-address=94.74.145.199 dst-port=51902 action=mark-routing new-routing-mark=to-m2 passthrough=no comment="afrows-3modem pin wg-afr2->m2"
-add chain=output protocol=udp dst-address=94.74.145.199 dst-port=51903 action=mark-routing new-routing-mark=to-m3 passthrough=no comment="afrows-3modem pin wg-afr3->m3"
+add chain=output protocol=udp dst-address=185.252.30.123 dst-port=51900 action=mark-routing new-routing-mark=to-m1 passthrough=no comment="afrows-3modem pin wg-afr1->m1"
+add chain=output protocol=udp dst-address=185.252.30.123 dst-port=51902 action=mark-routing new-routing-mark=to-m2 passthrough=no comment="afrows-3modem pin wg-afr2->m2"
+add chain=output protocol=udp dst-address=185.252.30.123 dst-port=51903 action=mark-routing new-routing-mark=to-m3 passthrough=no comment="afrows-3modem pin wg-afr3->m3"
 
 # ---- 5. GAMING pins to the best modem (Irelandcell-228/m2), bypasses the LB -----
 # PCC adds jitter/reordering; keep latency-sensitive gaming on one low-ping modem.

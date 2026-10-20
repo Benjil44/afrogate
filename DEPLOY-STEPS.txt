@@ -4,7 +4,7 @@
 
 This laptop already has everything needed (the code, the deploy
 script, and the SSH key). You just need to be at a location where
-the Afrows server (94.74.145.199) is reachable, then run the deploy.
+the Afrows server (185.252.30.123) is reachable, then run the deploy.
 
 --------------------------------------------------------
 STEP 1.  Make sure the laptop has internet at a place where
@@ -18,7 +18,7 @@ STEP 2.  Open a terminal.
 
 STEP 3.  (Optional) Check the server is reachable. Paste and Enter:
 
-             powershell -Command "Test-NetConnection 94.74.145.199 -Port 22"
+             powershell -Command "Test-NetConnection 185.252.30.123 -Port 22"
 
          Look for:   TcpTestSucceeded : True
            - True  -> good, continue to Step 5.
@@ -37,7 +37,7 @@ STEP 7.  Wait about 1 to 3 minutes. It will print stages:
              Running remote update (build -> migrations -> restart)
 
 STEP 8.  SUCCESS looks like this at the end:
-             Done. https://94.74.145.199/
+             Done. https://185.252.30.123/
          -> Take a screenshot of the last ~15 lines and send it to Ben.
 
 --------------------------------------------------------

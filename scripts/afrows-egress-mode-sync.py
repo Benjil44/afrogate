@@ -171,36 +171,52 @@ def file_env(key, default=""):
     return os.environ.get(key, default)
 
 
+def reality_cfg(prefix):
+    """Optional direct (non-Cloudflare) VLESS+REALITY entry for a chain, from
+    <prefix>_MODE=reality + _PORT/_REALITY_PBK/_REALITY_SID/_REALITY_SNI (2026-10-20:
+    the زیرساخت DC throttles Cloudflare but reaches the exits directly). Mode unset ->
+    {} and the chain stays VLESS-WS-TLS via Cloudflare."""
+    if file_env(prefix + "_MODE") != "reality":
+        return {}
+    return {
+        "mode": "reality",
+        "port": int(file_env(prefix + "_PORT", "8443")),
+        "pbk": file_env(prefix + "_REALITY_PBK"),
+        "sid": file_env(prefix + "_REALITY_SID"),
+        "sni": file_env(prefix + "_REALITY_SNI", "dl.google.com"),
+    }
+
+
 def chain_cfg():
-    """Germany CF-chain settings from the env file, or None when not configured."""
+    """Germany chain settings from the env file, or None when not configured."""
     uuid = file_env("AFROWS_DE_CHAIN_UUID")
     if not uuid:
         return None
     host, _, port = file_env("AFROWS_CHAIN_PROBE_SOCKS", "127.0.0.1:10812").partition(":")
-    return {
+    return dict({
         "uuid": uuid,
         "address": file_env("AFROWS_DE_CHAIN_ADDRESS", "172.64.34.62"),
         "host": file_env("AFROWS_DE_CHAIN_HOST", "de.afrows.com"),
         "path": file_env("AFROWS_DE_CHAIN_PATH", "/afrowsws"),
         "probe_host": host or "127.0.0.1",
         "probe_port": int(port or "10812"),
-    }
+    }, **reality_cfg("AFROWS_DE_CHAIN"))
 
 
 def us_chain_cfg():
-    """USA CF-chain (mgmt path) settings from the env file, or None when not configured."""
+    """USA chain (mgmt path) settings from the env file, or None when not configured."""
     uuid = file_env("AFROWS_US_CHAIN_UUID")
     if not uuid:
         return None
     host, _, port = file_env("AFROWS_US_MGMT_SOCKS", "127.0.0.1:1083").partition(":")
-    return {
+    return dict({
         "uuid": uuid,
         "address": file_env("AFROWS_US_CHAIN_ADDRESS", "172.64.34.62"),
         "host": file_env("AFROWS_US_CHAIN_HOST", "us.afrows.com"),
         "path": file_env("AFROWS_US_CHAIN_PATH", "/afrowsus"),
         "socks_host": host or "127.0.0.1",
         "socks_port": int(port or "1083"),
-    }
+    }, **reality_cfg("AFROWS_US_CHAIN"))
 
 
 def us_mgmt_inbound(c):
@@ -231,16 +247,28 @@ def drop_tagged(items, tag):
 
 
 def chain_outbound(c, tag="via-germany"):
-    """A VLESS-WS-TLS CF-chain outbound (via-germany, or via-usa); deterministic per env."""
-    return {
-        "tag": tag, "protocol": "vless",
-        "settings": {"vnext": [{"address": c["address"], "port": 443,
-                                "users": [{"id": c["uuid"], "encryption": "none", "level": 0}]}]},
-        "streamSettings": {
+    """A chain outbound (via-germany, or via-usa); deterministic per env. VLESS-WS-TLS
+    through Cloudflare by default; VLESS+REALITY straight to the exit (address = the
+    exit's own IP) when the chain's mode is "reality"."""
+    if c.get("mode") == "reality":
+        port = c["port"]
+        stream = {
+            "network": "tcp", "security": "reality",
+            "realitySettings": {"serverName": c["sni"], "fingerprint": "chrome",
+                                "publicKey": c["pbk"], "shortId": c["sid"]},
+        }
+    else:
+        port = 443
+        stream = {
             "network": "ws", "security": "tls",
             "tlsSettings": {"serverName": c["host"], "fingerprint": "chrome", "alpn": ["http/1.1"]},
             "wsSettings": {"path": c["path"], "host": c["host"]},
-        },
+        }
+    return {
+        "tag": tag, "protocol": "vless",
+        "settings": {"vnext": [{"address": c["address"], "port": port,
+                                "users": [{"id": c["uuid"], "encryption": "none", "level": 0}]}]},
+        "streamSettings": stream,
         # Mux: every customer shares this one chain, and each new stream otherwise
         # pays a fresh TCP+TLS+WS setup over LTE+CF (~1.3s TTFB measured vs ~0.5s
         # muxed). UDP/443 (QUIC) is rejected so apps fall back to TCP, which this

@@ -2,7 +2,7 @@
 
 nginx on the Afrows server serves `afrows.com`, `www.afrows.com` and
 `app.afrows.com` with `/etc/afrows/tls/afrows.{crt,key}`. The **Shatel link**
-(`94.74.145.199:443`, SNI `app.afrows.com`, WS `/afrowsws`) connects to this nginx
+(`185.252.30.123:443`, SNI `app.afrows.com`, WS `/afrowsws`) connects to this nginx
 directly, not through Cloudflare, so clients verify this certificate. If it expires,
 every Shatel link with `allowInsecure=0` stops working. That happened on
 2026-09-03: a hand-issued wildcard cert expired with no renewal set up. (New xray
@@ -39,7 +39,7 @@ certificate.
 ## Health
 
 ```
-echo | openssl s_client -connect 94.74.145.199:443 -servername app.afrows.com 2>/dev/null | openssl x509 -noout -enddate
+echo | openssl s_client -connect 185.252.30.123:443 -servername app.afrows.com 2>/dev/null | openssl x509 -noout -enddate
 systemctl list-timers certbot.timer afrows-tls-check.timer
 journalctl -u certbot -n 20
 ```

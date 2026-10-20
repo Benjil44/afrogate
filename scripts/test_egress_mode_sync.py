@@ -155,6 +155,13 @@ assert _vo["tag"] == "via-usa" and _vo["protocol"] == "vless" and _vo["mux"]["en
 assert _vo["streamSettings"]["tlsSettings"]["serverName"] == "us.afrows.com"
 assert _vo["streamSettings"]["wsSettings"] == {"path": "/afrowsus", "host": "us.afrows.com"}
 assert mod.chain_outbound(_us)["tag"] == "via-germany", "default tag stays via-germany (back-compat)"
+# direct REALITY mode (zirsakht DC throttles Cloudflare): exit IP + port, no ws/tls, mux kept
+_re = dict(_us, address="162.19.253.235", mode="reality", port=8443, pbk="PBK", sid="ab12", sni="dl.google.com")
+_ro = mod.chain_outbound(_re)
+assert _ro["settings"]["vnext"][0]["address"] == "162.19.253.235" and _ro["settings"]["vnext"][0]["port"] == 8443
+assert _ro["streamSettings"] == {"network": "tcp", "security": "reality", "realitySettings": {
+    "serverName": "dl.google.com", "fingerprint": "chrome", "publicKey": "PBK", "shortId": "ab12"}}
+assert _ro["mux"]["enabled"] is True and "flow" not in _ro["settings"]["vnext"][0]["users"][0]
 _mi = mod.us_mgmt_inbound(_us)
 assert _mi["listen"] == "127.0.0.1" and _mi["port"] == 1083 and _mi["protocol"] == "socks"
 # client_inbound_tags skips the system rule even if it is listed first
@@ -222,3 +229,17 @@ finally:
 _wg = _json.load(open(_cp))
 assert not any(o["tag"] == "via-usa" for o in _wg["outbounds"]) and not any(i["tag"] == "us-mgmt-socks" for i in _wg["inbounds"])
 print("OK: USA mgmt path via-usa + us-mgmt-socks (gated, idempotent, removable, afrows-xray only)")
+
+# --- direct REALITY chain mode via env (AFROWS_US_CHAIN_MODE=reality) ---
+_onr = _on + ["AFROWS_US_CHAIN_ADDRESS=93.127.140.50", "AFROWS_US_CHAIN_MODE=reality", "AFROWS_US_CHAIN_PORT=8443",
+              "AFROWS_US_CHAIN_REALITY_PBK=PBK", "AFROWS_US_CHAIN_REALITY_SID=ab12"]
+_c, _cfg = _apply(_onr, _base)
+_vu = [o for o in _cfg["outbounds"] if o["tag"] == "via-usa"][0]
+assert _vu["settings"]["vnext"][0]["address"] == "93.127.140.50" and _vu["settings"]["vnext"][0]["port"] == 8443
+assert _vu["streamSettings"]["security"] == "reality" and _vu["streamSettings"]["realitySettings"]["serverName"] == "dl.google.com"
+assert _apply(_onr, _cfg)[0] is False, "reality render is idempotent"
+# mode unset again -> back to the Cloudflare WS chain
+_c, _cfg = _apply(_on, _cfg)
+_vu = [o for o in _cfg["outbounds"] if o["tag"] == "via-usa"][0]
+assert _c is True and _vu["streamSettings"]["network"] == "ws" and _vu["settings"]["vnext"][0]["port"] == 443
+print("OK: chain REALITY mode (env-gated, idempotent, reversible)")

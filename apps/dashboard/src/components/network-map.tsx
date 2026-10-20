@@ -94,7 +94,7 @@ export function NetworkMap({
           <div className="text-[11px] font-bold uppercase tracking-wide text-afro-muted">&nbsp;</div>
           <div className={`${card} text-center`}>
             <strong className="block text-[13px] text-afro-ink">{m.server}</strong>
-            <span className="block text-[11px] text-afro-muted" dir="ltr">94.74.145.199</span>
+            <span className="block text-[11px] text-afro-muted" dir="ltr">185.252.30.123</span>
             <span className="mt-1 inline-block text-[11px] text-afro-muted">xray · wg0 → {applied ?? '—'}</span>
           </div>
         </div>

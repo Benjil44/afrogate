@@ -38,7 +38,6 @@
     "rules": [
       { "type": "field", "inboundTag": ["api"], "outboundTag": "api" },
       { "type": "field", "user": ["afrows-chain@afrows"], "ip": ["127.0.0.1/32"], "port": "22", "outboundTag": "direct" },
-      { "type": "field", "user": ["afrows-chain@afrows"], "outboundTag": "block" },
       { "type": "field", "protocol": ["bittorrent"], "outboundTag": "block" },
       { "type": "field", "ip": ["geoip:private", "93.127.140.50/32"], "outboundTag": "block" }
     ]

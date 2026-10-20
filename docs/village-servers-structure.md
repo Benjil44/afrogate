@@ -37,7 +37,7 @@ Sections 1–6 below are the pre-removal discovery snapshot (kept for history).
 ## 1. Topology overview
 
 ```
-                         Afrows VPS (94.74.145.199, Ireland)
+                         Afrows VPS (185.252.30.123, زیرساخت مشهد)
                                    │  wg-afrows (Afrows 10.20.0.1 ↔ village 10.20.0.2)
                                    ▼
                     Village MikroTik hAP ax³  (LAN 192.168.88.1/24)
@@ -77,8 +77,8 @@ use `?.proplist=...` projections. Writes: `POST /rest/{path}/{add|set|remove}` (
 | wg-Ireland      | 51821 | 91.243.114.71:51821  | 10.10.0.2/32 | Ireland node | live |
 | wg-Ireland-2    | 51824 | 185.252.31.129:51824 | 10.13.0.2/32 | Ireland node (ether2) | live |
 | wg-Ireland-5    | 51825 | 185.126.9.184:51825  | 10.14.0.2/32 | Ireland node (ether5) | live |
-| wg-afrows    | 51901 | 94.74.145.199:51900  | 10.20.0.1/32 | **Afrows mgmt + egress** | live |
-| *10, *11     | —     | 94.74.145.199:51911/12 | 10.20.1.1, 10.20.2.1 | leftover 3-modem aggregation (ours) | never — cleanup candidate |
+| wg-afrows    | 51901 | 185.252.30.123:51900  | 10.20.0.1/32 | **Afrows mgmt + egress** | live |
+| *10, *11     | —     | 185.252.30.123:51911/12 | 10.20.1.1, 10.20.2.1 | leftover 3-modem aggregation (ours) | never — cleanup candidate |
 
 Village interface addresses: wg-germany 10.9.0.2 · wg-foreign-2 10.88.0.2 · wg-foreign-hz 10.9.3.2 ·
 wg-Ireland 10.10.0.1 · wg-Ireland-2 10.13.0.1 · wg-Ireland-5 10.14.0.1 · wg-afrows 10.20.0.2.

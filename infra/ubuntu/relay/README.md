@@ -1,15 +1,22 @@
 # Afrows relay chain (Borjino-free since 2026-10-11)
 
-The Afrows server (94.74.145.199) sits in a Mashhad datacenter whose uplink drops
-**every** packet to foreign IPs (both directions). Only Cloudflare and Iranian
-addresses pass. So everything foreign the server needs goes over SSH to the USA
-VPS, and that SSH itself rides Cloudflare:
+Since 2026-10-20 the Afrows server is 185.252.30.123 (زیرساخت مشهد). Everything
+foreign the server needs goes over SSH to the USA VPS. From this datacenter Iranian
+DPI blackholes tunnels to foreign IPs on every port except 443, and Cloudflare is
+throttled, so the SSH rides a direct VLESS+REALITY chain on 443 (the USA NAT-redirects
+only the Afrows servers' :443 to its xray :8443; `afrows-reality-fw` on the USA):
 
 ```
 Afrows ──nc──▶ xray loopback socks us-mgmt-socks 127.0.0.1:1083
-       ──▶ via-usa (VLESS-WS-TLS, us.afrows.com, Cloudflare)
+       ──▶ via-usa (VLESS+REALITY, 93.127.140.50:443, SNI dl.google.com)
        ──▶ USA xray ──▶ USA sshd 127.0.0.1:22 (user afrows-relay)  ──▶  target
 ```
+
+`afrows-exit-mss.service` (repo `scripts/systemd/`) must run on the Afrows server: the
+USA → زیرساخت path drops packets over ~1480 bytes without ICMP, which stalls the
+REALITY handshake unless the advertised MSS is 1400. The old server (94.74.145.199,
+مخابرات مشهد) used the Cloudflare WS chain below; its env keeps those values as
+`#pre-zirsakht#` lines.
 
 The USA xray only lets the Afrows chain user reach 127.0.0.1:22 (see
 `infra/usa/README.md`). **No Borjino.** Afrows must never depend on Borjino

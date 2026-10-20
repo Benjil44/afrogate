@@ -39,6 +39,26 @@ There is deliberately **no** explicit catch-all rule. With one in place, `IPIfNo
 resolves domains, so `localhost:22` or `127.0.0.1.nip.io` would slip past rule 4. This was
 verified as a real leak during install and then fixed. Access log is `none` (privacy).
 
+### Direct REALITY entry for the Afrows chain (2026-10-20)
+
+After the move to the زیرساخت مشهد server (185.252.30.123) the chain no longer goes
+through Cloudflare (throttled there) and must use port 443 (Iranian DPI blackholes
+tunnels to foreign IPs on other ports):
+
+- Inbound `afrows-us-reality` (VLESS+REALITY, tcp **8443**, SNI/dest `dl.google.com`,
+  only the `afrows-chain@afrows` client), added live with `xray api adi` and persisted by
+  `scripts/afrows-chain-reality-add.py` (run under `/run/afrows-us-mgmt.lock`). The public
+  key is in `config.json.afrows-us-reality.pbk`; the private key only in `config.json`.
+- `afrows-reality-fw.service`: tcp/8443 only from the Afrows servers (185.252.30.123,
+  94.74.145.199) and loopback, and a NAT redirect of **their** tcp/443 to 8443 (xray runs as
+  `nobody` and cannot bind 443). Everyone else's 443 is untouched.
+- The live rule "chain user -> block" was removed, so the chain may browse (private IPs and
+  bittorrent stay blocked): until Germany has its own 443, the Afrows customer catch-all
+  `via-germany` is pointed at this USA entry (`AFROWS_DE_CHAIN_*` = the USA values on the
+  Afrows server). Backup `config.json.bak-chain-egress-20261020-*`.
+- Rollback: `systemctl disable --now afrows-reality-fw`, `xray api rmi afrows-us-reality`,
+  restore the config backup under the lock.
+
 ## USA: apply / verify / rollback (already applied 2026-10-08)
 
 Apply (idempotent; it never overwrites an existing config.json or chain UUID):
@@ -113,7 +133,7 @@ cp -a /usr/local/bin/afrows-egress-mode-sync.py /usr/local/bin/afrows-egress-mod
 1. **Chain UUID.** Copy it USA -> Afrows from the operator's workstation. It is piped, never printed or written to the repo:
    ```bash
    ssh root@93.127.140.50 "jq -r '.inbounds[]|select(.tag==\"afrows-us-ws\").settings.clients[]|select(.email==\"afrows-chain@afrows\").id' /usr/local/etc/xray/config.json" \
-     | ssh root@94.74.145.199 'umask 077; cat > /etc/afrows/us-chain-uuid; chown root:root /etc/afrows/us-chain-uuid; wc -c /etc/afrows/us-chain-uuid'   # expect 37
+     | ssh root@185.252.30.123 'umask 077; cat > /etc/afrows/us-chain-uuid; chown root:root /etc/afrows/us-chain-uuid; wc -c /etc/afrows/us-chain-uuid'   # expect 37
    ```
 2. **Management key** (on Afrows; the private key never leaves the box; owned by `afrows`, the backend's user):
    ```bash
@@ -123,13 +143,13 @@ cp -a /usr/local/bin/afrows-egress-mode-sync.py /usr/local/bin/afrows-egress-mod
    ```
 3. **Authorize it on the USA** (from the workstation; the key is pinned to the forced command and to loopback):
    ```bash
-   ssh root@94.74.145.199 'cat /etc/afrows/us_mgmt_key.pub' | ssh root@93.127.140.50 \
+   ssh root@185.252.30.123 'cat /etc/afrows/us_mgmt_key.pub' | ssh root@93.127.140.50 \
      'read -r k; grep -qF "$k" /root/.ssh/authorized_keys || { cp -a /root/.ssh/authorized_keys /root/.ssh/authorized_keys.bak-us-$(date +%s); echo "command=\"/usr/local/sbin/afrows-us-mgmt-cmd\",from=\"127.0.0.1\",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding $k" >> /root/.ssh/authorized_keys; }; grep -c afrows-us-mgmt-cmd /root/.ssh/authorized_keys'
    ```
 4. **Pin the USA host key** (on Afrows). Its fingerprint is `SHA256:eouBK8jUEWHod+SnCxLO/DOKl6sdbUgUgOhPI8Ic7Wg` (ED25519):
    ```bash
    ssh root@93.127.140.50 'cat /etc/ssh/ssh_host_ed25519_key.pub' | awk '{print "afrows-us-mgmt", $1, $2}' \
-     | ssh root@94.74.145.199 'cat > /etc/afrows/us_mgmt_known_hosts; chown afrows:afrows /etc/afrows/us_mgmt_known_hosts; chmod 644 /etc/afrows/us_mgmt_known_hosts; ssh-keygen -lf /etc/afrows/us_mgmt_known_hosts'
+     | ssh root@185.252.30.123 'cat > /etc/afrows/us_mgmt_known_hosts; chown afrows:afrows /etc/afrows/us_mgmt_known_hosts; chmod 644 /etc/afrows/us_mgmt_known_hosts; ssh-keygen -lf /etc/afrows/us_mgmt_known_hosts'
    ```
 5. **ssh alias** (on Afrows): install `infra/usa/61-afrows-us-mgmt.conf` as
    `/etc/ssh/ssh_config.d/61-afrows-us-mgmt.conf` (root 0644), then run `ssh -G afrows-us-mgmt | grep -E '^(hostname|proxycommand|identityfile) '`.
