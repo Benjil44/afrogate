@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.121.3 - 2026-10-21
+
+- **Every customer-facing GB figure now uses decimal GB.** The customer web panel (`apps/client` `formatBytes`) and the Telegram charge notices ("Added: …", "Account remaining: … of …") still divided by 1024, so a 25 GB charge read "23.3 GB" there too. Both now use 1 GB = 1,000,000,000 bytes, matching the bot menus, the admin panel and (since 0.121.2) the VPN apps.
+
 ## 0.121.2 - 2026-10-21
 
 - **VPN apps now show the charged GB exactly.** v2rayNG / Hiddify / Happ divide the subscription usage header by 1024³, so a 25 GB charge (25,000,000,000 bytes) appeared as "23.3 GB". The `subscription-userinfo` header now reports used/total in the apps' unit (25 GB → 25 GiB), so the app shows 25 GB. Display only: billing, quotas and enforcement still count 1 GB = 1,000,000,000 bytes.

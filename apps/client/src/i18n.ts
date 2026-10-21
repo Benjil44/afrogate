@@ -294,8 +294,9 @@ export function formatBytes(value: number | null | undefined, language: Language
   let size = Math.max(value, 0);
   let unitIndex = 0;
 
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
+  // Decimal units (1 GB = 1,000,000,000 bytes), matching how Afrows sells data.
+  while (size >= 1000 && unitIndex < units.length - 1) {
+    size /= 1000;
     unitIndex += 1;
   }
 

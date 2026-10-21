@@ -6254,8 +6254,9 @@ export class BillingService {
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let amount = value;
     let unitIndex = 0;
-    while (amount >= 1024 && unitIndex < units.length - 1) {
-      amount /= 1024;
+    // Decimal units (1 GB = 1,000,000,000 bytes), matching how Afrows sells data.
+    while (amount >= 1000 && unitIndex < units.length - 1) {
+      amount /= 1000;
       unitIndex += 1;
     }
 
