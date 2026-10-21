@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.121.1 - 2026-10-21
+
+- **Telegram messages sent while the bot's link was down are no longer deleted.** Every poll failure (e.g. the Telegram proxy timing out) re-cleared the webhook with `drop_pending_updates`, wiping what users had sent in the meantime, so sign-ups vanished. The backlog is now dropped only once, when the backend starts; later re-clears keep it and the messages are answered when the link returns.
+
 ## 0.121.0 - 2026-10-21
 
 Ships together with the unreleased 0.120.2 below.

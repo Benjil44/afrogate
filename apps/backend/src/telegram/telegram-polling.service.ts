@@ -49,6 +49,7 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
     if (this.started) return;
     this.started = true;
     let webhookCleared = false;
+    let backlogDropped = false;
     let menuPublished = false;
 
     while (!this.stopped) {
@@ -61,11 +62,14 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        // getUpdates refuses to run while a webhook is registered; clear it once
-        // (dropping the pending backlog so stale /start messages aren't replayed).
+        // getUpdates refuses to run while a webhook is registered; clear it. The
+        // pending backlog is dropped only on the first clear after start (stale
+        // /start spam); re-clears after a network failure keep it, or messages
+        // users sent while the Telegram link was down are lost.
         if (!webhookCleared) {
-          await this.telegramApi(runtime.botToken, 'deleteWebhook', { drop_pending_updates: true });
+          await this.telegramApi(runtime.botToken, 'deleteWebhook', { drop_pending_updates: !backlogDropped });
           webhookCleared = true;
+          backlogDropped = true;
           this.logger.log('Telegram webhook cleared; long-polling active');
         }
 
