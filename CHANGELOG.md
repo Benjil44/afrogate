@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.121.2 - 2026-10-21
+
+- **VPN apps now show the charged GB exactly.** v2rayNG / Hiddify / Happ divide the subscription usage header by 1024³, so a 25 GB charge (25,000,000,000 bytes) appeared as "23.3 GB". The `subscription-userinfo` header now reports used/total in the apps' unit (25 GB → 25 GiB), so the app shows 25 GB. Display only: billing, quotas and enforcement still count 1 GB = 1,000,000,000 bytes.
+
 ## 0.121.1 - 2026-10-21
 
 - **Telegram messages sent while the bot's link was down are no longer deleted.** Every poll failure (e.g. the Telegram proxy timing out) re-cleared the webhook with `drop_pending_updates`, wiping what users had sent in the meantime, so sign-ups vanished. The backlog is now dropped only once, when the backend starts; later re-clears keep it and the messages are answered when the link returns.

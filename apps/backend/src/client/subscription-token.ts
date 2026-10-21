@@ -117,6 +117,18 @@ export interface SubscriptionPayload {
   headers: Record<string, string>;
 }
 
+/**
+ * Afrows sells decimal GB (1 GB = 1,000,000,000 bytes) but v2rayNG / Hiddify / Happ
+ * divide the subscription-userinfo bytes by 1024³, so a 25 GB charge showed as
+ * "23.3 GB". The header is display-only, so its byte counts are scaled to the apps'
+ * unit: 25 Afrows GB is reported as 25 GiB and the app shows "25 GB".
+ */
+const APP_GB_DISPLAY_SCALE = 1024 ** 3 / 1_000_000_000;
+
+export function toAppDisplayBytes(bytes: number): number {
+  return clampBytes(Math.round(clampBytes(bytes) * APP_GB_DISPLAY_SCALE));
+}
+
 /** Body = base64 of the URIs joined by "\n"; headers per the v2rayN/Hiddify convention. */
 export function buildSubscriptionPayload(input: SubscriptionPayloadInput): SubscriptionPayload {
   const expire = input.expiresAt && Number.isFinite(input.expiresAt.getTime())
@@ -131,7 +143,7 @@ export function buildSubscriptionPayload(input: SubscriptionPayloadInput): Subsc
       'profile-title': `base64:${Buffer.from(SUBSCRIPTION_PROFILE_TITLE, 'utf8').toString('base64')}`,
       'profile-update-interval': String(SUBSCRIPTION_UPDATE_INTERVAL_HOURS),
       'subscription-userinfo':
-        `upload=0; download=${clampBytes(input.usedBytes)}; total=${clampBytes(input.totalBytes)}; expire=${expire}`,
+        `upload=0; download=${toAppDisplayBytes(input.usedBytes)}; total=${toAppDisplayBytes(input.totalBytes)}; expire=${expire}`,
     },
   };
 }

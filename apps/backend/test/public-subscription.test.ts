@@ -169,7 +169,7 @@ describe('public subscription (BillingService)', { skip: skipReason }, () => {
     assert.ok(uris[0].startsWith(`vless://${ENTRY_UUID}@de.afrows.com:443?`) && uris[0].endsWith('#Afrows%20Germany'));
     assert.ok(uris[1].startsWith(`vless://${ENTRY_UUID}@94.74.145.199:443?`) && uris[1].endsWith('#Afrows%20Shatel'));
     assert.ok(!payload.body.includes('ben') && !Buffer.from(payload.body, 'base64').toString().includes('ben'));
-    assert.equal(payload.headers['subscription-userinfo'], 'upload=0; download=2500000000; total=20000000000; expire=1796083200');
+    assert.equal(payload.headers['subscription-userinfo'], 'upload=0; download=2684354560; total=21474836480; expire=1796083200');
   });
 
   it('rotation bumps the version, audits, and kills the old URL at once', async () => {

@@ -13,6 +13,7 @@ import {
   SUBSCRIPTION_TOKEN_LENGTH,
   subscriptionLogTag,
   subscriptionTokenMatches,
+  toAppDisplayBytes,
 } from '../src/client/subscription-token.ts';
 
 const SECRET = 'x'.repeat(40);
@@ -117,7 +118,7 @@ describe('subscription payload', () => {
     assert.equal(headers['profile-title'], `base64:${Buffer.from('Afrows').toString('base64')}`);
     assert.equal(
       headers['subscription-userinfo'],
-      'upload=0; download=1500000000; total=20000000000; expire=1796083200',
+      'upload=0; download=1610612736; total=21474836480; expire=1796083200',
     );
   });
 
@@ -158,5 +159,19 @@ describe('pickSubscriptionUsage', () => {
       pickSubscriptionUsage({ accountUsedBytes: 12e9, accountQuotaLimitBytes: 10e9, clientUsedBytes: 0, clientQuotaLimitBytes: null }),
       { usedBytes: 12e9, totalBytes: 10e9 },
     );
+  });
+});
+
+describe('app display bytes (decimal GB shown as GB in 1024-based apps)', () => {
+  it('reports a 25 GB charge so v2rayNG/Hiddify show 25 GB, not 23.3', () => {
+    const total = toAppDisplayBytes(25_000_000_000);
+    assert.equal(total, 25 * 1024 ** 3);
+    assert.equal((total / 1024 ** 3).toFixed(1), '25.0');
+  });
+
+  it('keeps 0 and bad input at 0', () => {
+    assert.equal(toAppDisplayBytes(0), 0);
+    assert.equal(toAppDisplayBytes(-5), 0);
+    assert.equal(toAppDisplayBytes(Number.NaN), 0);
   });
 });
