@@ -29,7 +29,7 @@ went dark at 09:10 UTC that day and took afrows.com down.
 | Purpose | Unit on Afrows | USA-side restriction (authorized_keys of `afrows-relay`) |
 |---|---|---|
 | Germany mgmt SSH (adu / rmu / read-usage) | `afrows-de-relay.service` (master, `ssh -F de_relay_ssh_config`) + `60-afrows-de-relay.conf` | `permitopen="162.19.253.235:22"` |
-| Website reverse tunnel | `afrows-web-tunnel.service` (`-R 127.0.0.1:18444:127.0.0.1:443`) | `permitlisten="127.0.0.1:18444"` |
+| Website reverse tunnel (**retired 2026-10-25**, see below) | `afrows-web-tunnel.service` (`-R 127.0.0.1:18444:127.0.0.1:443`) | `permitlisten="127.0.0.1:18444"` |
 | Telegram Bot API | `afrows-tg-socks.service` (`-D 127.0.0.1:1081`; backend `AFROWS_OUTBOUND_PROXY_URL=socks5://127.0.0.1:1081`) | `permitopen="api.telegram.org:443"` |
 
 All three set `SHELL=/bin/sh`: ssh starts ProxyCommand through `$SHELL`, and the
@@ -37,9 +37,18 @@ All three set `SHELL=/bin/sh`: ssh starts ProxyCommand through `$SHELL`, and the
 `afrows-us-mgmt` in `/etc/afrows/us_mgmt_known_hosts` (same key the backend's
 `ssh afrows-us-mgmt` uses).
 
-Website path: visitor → Cloudflare → `afrows-cf.service` on the USA VPS
+Website path (since 2026-10-25): visitor → Cloudflare → `afrows-cf.service` on the USA VPS
 (`usa-afrows-cf.service`; its `ExecStartPre` adds an iptables nat OUTPUT redirect
-`127.0.0.1:443 → 18444`, comment `afrows-cf-web`) → reverse tunnel → Afrows nginx `:443`.
+`127.0.0.1:443 → 18444`, comment `afrows-cf-web`) → `afrows-web-origin.socket` on
+`127.0.0.1:18444` (`usa-afrows-web-origin.{socket,service}`, `systemd-socket-proxyd`)
+→ **directly** to the Afrows server `185.252.30.123:443` (nginx).
+
+The `afrows-web-tunnel` reverse tunnel is **retired and disabled**: it rode the
+Afrows → USA REALITY chain, which Iranian DPI freezes intermittently, and the site
+went 502 every time (959 tunnel restarts by 2026-10-25). Plain HTTPS from the USA
+to the Afrows server is not interfered with. Do not re-enable it; if the direct path
+ever fails, `systemctl disable --now afrows-web-origin.socket` on the USA and
+`systemctl enable --now afrows-web-tunnel` on Afrows restores the old path.
 
 Germany mgmt falls back automatically to the village tunnel (`wg-village-de`)
 when `afrows-de-relay-up` fails (it checks the authenticated master socket).
@@ -52,6 +61,7 @@ when `afrows-de-relay-up` fails (it checks the authenticated master socket).
   (→ `/etc/tmpfiles.d/afrows-de-relay.conf`)
 - `afrows-web-tunnel.service`, `afrows-tg-socks.service`
 - `usa-afrows-cf.service` (→ USA `/etc/systemd/system/afrows-cf.service`)
+- `usa-afrows-web-origin.socket`, `usa-afrows-web-origin.service` (→ USA `/etc/systemd/system/afrows-web-origin.{socket,service}`)
 
 Keys live only on the hosts: `/etc/afrows/{de_relay_key,web_tunnel_key,tg_socks_key}`
 (owner `afrows`, 0600), the Cloudflare tunnel token in USA

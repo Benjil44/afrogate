@@ -1,0 +1,9 @@
+[Unit]
+Description=Afrows website origin: 127.0.0.1:18444 (cloudflared afrows.com) -> Afrows server 185.252.30.123:443 direct
+
+[Socket]
+ListenStream=127.0.0.1:18444
+ReusePort=true
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Afrows website origin proxy -> 185.252.30.123:443 (replaces the SSH reverse tunnel)
+Requires=afrows-web-origin.socket
+After=afrows-web-origin.socket
+
+[Service]
+ExecStart=/lib/systemd/systemd-socket-proxyd --connections-max=256 185.252.30.123:443
+DynamicUser=yes
+PrivateTmp=yes
+MemoryMax=32M
