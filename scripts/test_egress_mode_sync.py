@@ -155,13 +155,19 @@ assert _vo["tag"] == "via-usa" and _vo["protocol"] == "vless" and _vo["mux"]["en
 assert _vo["streamSettings"]["tlsSettings"]["serverName"] == "us.afrows.com"
 assert _vo["streamSettings"]["wsSettings"] == {"path": "/afrowsus", "host": "us.afrows.com"}
 assert mod.chain_outbound(_us)["tag"] == "via-germany", "default tag stays via-germany (back-compat)"
-# direct REALITY mode (zirsakht DC throttles Cloudflare): exit IP + port, no ws/tls, mux kept
+# direct REALITY mode (zirsakht DC throttles Cloudflare): exit IP + port, no ws/tls, NO mux
+# (a DPI-frozen muxed flow hung every customer stream, 2026-10-25)
 _re = dict(_us, address="162.19.253.235", mode="reality", port=8443, pbk="PBK", sid="ab12", sni="dl.google.com")
 _ro = mod.chain_outbound(_re)
 assert _ro["settings"]["vnext"][0]["address"] == "162.19.253.235" and _ro["settings"]["vnext"][0]["port"] == 8443
 assert _ro["streamSettings"] == {"network": "tcp", "security": "reality", "realitySettings": {
     "serverName": "dl.google.com", "fingerprint": "chrome", "publicKey": "PBK", "shortId": "ab12"}}
-assert _ro["mux"]["enabled"] is True and "flow" not in _ro["settings"]["vnext"][0]["users"][0]
+assert "mux" not in _ro and "flow" not in _ro["settings"]["vnext"][0]["users"][0]
+# optional Vision flow + uTLS fingerprint
+_rv = mod.chain_outbound(dict(_re, sni="www.speedtest.net", flow="xtls-rprx-vision", fp="randomized"))
+assert _rv["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision" and "mux" not in _rv
+assert _rv["streamSettings"]["realitySettings"]["fingerprint"] == "randomized"
+assert _rv["streamSettings"]["realitySettings"]["serverName"] == "www.speedtest.net"
 _mi = mod.us_mgmt_inbound(_us)
 assert _mi["listen"] == "127.0.0.1" and _mi["port"] == 1083 and _mi["protocol"] == "socks"
 # client_inbound_tags skips the system rule even if it is listed first
@@ -238,6 +244,13 @@ _vu = [o for o in _cfg["outbounds"] if o["tag"] == "via-usa"][0]
 assert _vu["settings"]["vnext"][0]["address"] == "93.127.140.50" and _vu["settings"]["vnext"][0]["port"] == 8443
 assert _vu["streamSettings"]["security"] == "reality" and _vu["streamSettings"]["realitySettings"]["serverName"] == "dl.google.com"
 assert _apply(_onr, _cfg)[0] is False, "reality render is idempotent"
+_onv = _onr + ["AFROWS_US_CHAIN_REALITY_FLOW=xtls-rprx-vision", "AFROWS_US_CHAIN_REALITY_FP=randomized",
+               "AFROWS_US_CHAIN_REALITY_SNI=www.speedtest.net"]
+_c, _cfgv = _apply(_onv, _cfg)
+_vv = [o for o in _cfgv["outbounds"] if o["tag"] == "via-usa"][0]
+assert _c is True and _vv["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision" and "mux" not in _vv
+assert _vv["streamSettings"]["realitySettings"]["fingerprint"] == "randomized"
+assert _apply(_onv, _cfgv)[0] is False, "vision render is idempotent"
 # mode unset again -> back to the Cloudflare WS chain
 _c, _cfg = _apply(_on, _cfg)
 _vu = [o for o in _cfg["outbounds"] if o["tag"] == "via-usa"][0]

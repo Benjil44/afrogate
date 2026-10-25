@@ -175,7 +175,9 @@ def reality_cfg(prefix):
     """Optional direct (non-Cloudflare) VLESS+REALITY entry for a chain, from
     <prefix>_MODE=reality + _PORT/_REALITY_PBK/_REALITY_SID/_REALITY_SNI (2026-10-20:
     the زیرساخت DC throttles Cloudflare but reaches the exits directly). Mode unset ->
-    {} and the chain stays VLESS-WS-TLS via Cloudflare."""
+    {} and the chain stays VLESS-WS-TLS via Cloudflare. _REALITY_FLOW (e.g.
+    xtls-rprx-vision; must match the exit's inbound) and _REALITY_FP (uTLS fingerprint)
+    are optional (2026-10-25: DPI froze the plain, muxed chain; Vision got through)."""
     if file_env(prefix + "_MODE") != "reality":
         return {}
     return {
@@ -184,6 +186,8 @@ def reality_cfg(prefix):
         "pbk": file_env(prefix + "_REALITY_PBK"),
         "sid": file_env(prefix + "_REALITY_SID"),
         "sni": file_env(prefix + "_REALITY_SNI", "dl.google.com"),
+        "flow": file_env(prefix + "_REALITY_FLOW", ""),
+        "fp": file_env(prefix + "_REALITY_FP", "chrome"),
     }
 
 
@@ -250,13 +254,25 @@ def chain_outbound(c, tag="via-germany"):
     """A chain outbound (via-germany, or via-usa); deterministic per env. VLESS-WS-TLS
     through Cloudflare by default; VLESS+REALITY straight to the exit (address = the
     exit's own IP) when the chain's mode is "reality"."""
+    user = {"id": c["uuid"], "encryption": "none", "level": 0}
+    # Mux: every customer shares this one chain, and each new stream otherwise
+    # pays a fresh TCP+TLS+WS setup over LTE+CF (~1.3s TTFB measured vs ~0.5s
+    # muxed). UDP/443 (QUIC) is rejected so apps fall back to TCP, which this
+    # TCP-carried tunnel serves better.
+    mux = {"enabled": True, "concurrency": 8, "xudpConcurrency": 16, "xudpProxyUDP443": "reject"}
     if c.get("mode") == "reality":
         port = c["port"]
         stream = {
             "network": "tcp", "security": "reality",
-            "realitySettings": {"serverName": c["sni"], "fingerprint": "chrome",
+            "realitySettings": {"serverName": c["sni"], "fingerprint": c.get("fp") or "chrome",
                                 "publicKey": c["pbk"], "shortId": c["sid"]},
         }
+        if c.get("flow"):
+            user["flow"] = c["flow"]
+        # No mux on the direct REALITY chain: when Iranian DPI freezes a flow, a
+        # muxed chain hangs every customer stream inside that one dead connection
+        # (2026-10-25 outage); separate flows lose only the frozen request.
+        mux = None
     else:
         port = 443
         stream = {
@@ -264,17 +280,11 @@ def chain_outbound(c, tag="via-germany"):
             "tlsSettings": {"serverName": c["host"], "fingerprint": "chrome", "alpn": ["http/1.1"]},
             "wsSettings": {"path": c["path"], "host": c["host"]},
         }
-    return {
+    return dict({
         "tag": tag, "protocol": "vless",
-        "settings": {"vnext": [{"address": c["address"], "port": port,
-                                "users": [{"id": c["uuid"], "encryption": "none", "level": 0}]}]},
+        "settings": {"vnext": [{"address": c["address"], "port": port, "users": [user]}]},
         "streamSettings": stream,
-        # Mux: every customer shares this one chain, and each new stream otherwise
-        # pays a fresh TCP+TLS+WS setup over LTE+CF (~1.3s TTFB measured vs ~0.5s
-        # muxed). UDP/443 (QUIC) is rejected so apps fall back to TCP, which this
-        # TCP-carried tunnel serves better.
-        "mux": {"enabled": True, "concurrency": 8, "xudpConcurrency": 16, "xudpProxyUDP443": "reject"},
-    }
+    }, **({"mux": mux} if mux else {}))
 
 
 def chain_probe_inbound(c):
