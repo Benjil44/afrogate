@@ -249,7 +249,7 @@ _onv = _onr + ["AFROWS_US_CHAIN_REALITY_FLOW=xtls-rprx-vision", "AFROWS_US_CHAIN
 _c, _cfgv = _apply(_onv, _cfg)
 _vv = [o for o in _cfgv["outbounds"] if o["tag"] == "via-usa"][0]
 assert _c is True and _vv["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision" and "mux" not in _vv
-assert _vv["streamSettings"]["realitySettings"]["fingerprint"] == "randomized"
+assert _vv["streamSettings"]["realitySettings"]["fingerprint"] == "chrome", "randomized fp is mapped to chrome"
 assert _apply(_onv, _cfgv)[0] is False, "vision render is idempotent"
 # mode unset again -> back to the Cloudflare WS chain
 _c, _cfg = _apply(_on, _cfg)

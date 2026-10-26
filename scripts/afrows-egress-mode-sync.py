@@ -177,9 +177,12 @@ def reality_cfg(prefix):
     the زیرساخت DC throttles Cloudflare but reaches the exits directly). Mode unset ->
     {} and the chain stays VLESS-WS-TLS via Cloudflare. _REALITY_FLOW (e.g.
     xtls-rprx-vision; must match the exit's inbound) and _REALITY_FP (uTLS fingerprint)
-    are optional (2026-10-25: DPI froze the plain, muxed chain; Vision got through)."""
+    are optional (2026-10-25: DPI froze the plain, muxed chain; Vision got through).
+    "randomized" falls back to chrome: xray's random uTLS hello offers curves REALITY
+    rejects ("CurvePreferences includes unsupported curve"), failing most dials (2026-10-26)."""
     if file_env(prefix + "_MODE") != "reality":
         return {}
+    fp = file_env(prefix + "_REALITY_FP", "chrome")
     return {
         "mode": "reality",
         "port": int(file_env(prefix + "_PORT", "8443")),
@@ -187,7 +190,7 @@ def reality_cfg(prefix):
         "sid": file_env(prefix + "_REALITY_SID"),
         "sni": file_env(prefix + "_REALITY_SNI", "dl.google.com"),
         "flow": file_env(prefix + "_REALITY_FLOW", ""),
-        "fp": file_env(prefix + "_REALITY_FP", "chrome"),
+        "fp": "chrome" if fp in ("random", "randomized") else fp,
     }
 
 

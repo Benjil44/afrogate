@@ -6,4 +6,6 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 /usr/local/bin/afrows-egress-mode-sync.py
-TimeoutStartSec=60
+# Health probes run before the render; with every path down they take ~80 s, and a
+# 60 s limit killed the run before it could write a fixed config (2026-10-26).
+TimeoutStartSec=240
