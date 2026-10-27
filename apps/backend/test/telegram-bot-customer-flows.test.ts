@@ -272,6 +272,29 @@ describe('Telegram bot customer/seller flows (audit 2026-10-27)', { skip: bundle
     });
   });
 
+  describe('gems redeem', () => {
+    it('a second tap on the same Confirm button does not redeem twice', async () => {
+      const redeems: number[] = [];
+      let gems = 500;
+      const h = makeHarness({
+        user: { language: 'en', state: null },
+        hasAccount: true,
+        billingOverrides: {
+          redeemCustomerGemsForGb: (_id, spend) => {
+            redeems.push(spend as number);
+            gems -= spend as number;
+            return { gemsBalance: gems, quotaLimitAfterBytes: 2_000_000_000 };
+          },
+          getCustomerGemsLedger: () => [],
+        },
+      });
+      await h.tap('afws:gems:redeem:ok:2');
+      await h.tap('afws:gems:redeem:ok:2');
+      assert.deepEqual(redeems, [200], 'only the first tap redeems (rate 100 gems/GB)');
+      assert.equal(h.state()?.redeemedMessageId, 5);
+    });
+  });
+
   describe('seller', () => {
     it('"Main menu" / "Retry" on a generic screen opens the seller menu', async () => {
       for (const data of ['afws:menu', 'afws:retry']) {

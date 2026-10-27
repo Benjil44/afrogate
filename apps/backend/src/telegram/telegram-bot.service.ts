@@ -1031,8 +1031,15 @@ export class TelegramBotService {
     const gb = Number.parseInt(gbToken, 10);
     if (!Number.isInteger(gb) || gb < 1) return this.screenRedeemPicker(ctx, language);
 
+    const user = ctx.fromId ? await getTelegramUser(this.database, ctx.fromId) : null;
+    if (ctx.messageId !== undefined && user?.state?.redeemedMessageId === ctx.messageId) {
+      // Second tap on a confirm screen that already redeemed: show the wallet, redeem nothing.
+      return this.screenGems(ctx, language, renderTelegramCopy('common.toast.refreshed', language));
+    }
+
     try {
       const result = await this.billing.redeemCustomerGemsForGb(account.id, gb * rate, rate);
+      if (user && ctx.messageId !== undefined) await this.mergeState(ctx, user, { redeemedMessageId: ctx.messageId });
       const fresh = await this.findAccount(ctx);
       const remaining = fresh?.remainingBytes ?? Math.max(0, result.quotaLimitAfterBytes - account.usedBytes);
       const text = renderTelegramCopy(

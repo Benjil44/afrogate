@@ -35,6 +35,12 @@ export interface TelegramUserState {
    * an account, so is never mid-registration).
    */
   connectStage?: boolean;
+  /**
+   * message_id of the S12c confirm screen whose redeem already went through. The
+   * confirm button stays visible (S12r is a new message), so a second tap on the
+   * same message must not redeem again.
+   */
+  redeemedMessageId?: number;
   // --- Seller flows (Phase 5) — stored on the SAME telegram_id row a seller
   // uses, but never coexist with the customer fields above: role resolution
   // (findSeller) decides customer vs seller BEFORE state is ever read, so a
