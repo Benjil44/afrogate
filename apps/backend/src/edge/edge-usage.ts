@@ -30,11 +30,16 @@ export interface ActiveDeClientRow {
   entryUuid: string;
 }
 
+/** Canonical Postgres uuid text (any version/variant), the `client_configs.id` type. */
+const CLIENT_CONFIG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Validates + clamps reported usage deltas: drops rows with a non-string/empty
- * id or non-finite/<=0 bytes, floors to whole bytes, and caps each at
+ * Validates + clamps reported usage deltas: drops rows whose id is not a uuid
+ * or whose bytes are non-finite/<=0, floors to whole bytes, and caps each at
  * MAX_USAGE_DELTA_BYTES. Bad rows are silently ignored (never throw) so one
- * malformed delta can't sink an otherwise-good batch.
+ * malformed delta can't sink an otherwise-good batch. The uuid check matters:
+ * a non-uuid id made Postgres throw mid-batch (rows before it already applied,
+ * no transaction), so any retry of the whole batch would double-count them.
  */
 export function normalizeUsageDeltas(deltas: unknown): EdgeUsageDelta[] {
   if (!Array.isArray(deltas)) return [];
@@ -44,7 +49,7 @@ export function normalizeUsageDeltas(deltas: unknown): EdgeUsageDelta[] {
       ? (delta as EdgeUsageDelta).clientConfigId
       : '';
     const bytes = Number((delta as EdgeUsageDelta)?.bytes);
-    if (!clientConfigId || !Number.isFinite(bytes) || bytes <= 0) continue;
+    if (!CLIENT_CONFIG_ID_RE.test(clientConfigId) || !Number.isFinite(bytes) || bytes <= 0) continue;
     out.push({ clientConfigId, bytes: Math.min(Math.floor(bytes), MAX_USAGE_DELTA_BYTES) });
   }
   return out;

@@ -33,13 +33,24 @@ export class EdgeService {
    * Applies each reported usage delta additively to `used_bytes` (after
    * validating/clamping via normalizeUsageDeltas). An unknown clientConfigId is
    * a safe no-op (0 rows updated → not counted). Returns how many landed.
+   *
+   * All-or-nothing: the Germany agent keeps its baseline and re-sends the WHOLE
+   * batch after any non-2xx, so a partially applied batch would be counted
+   * twice. One transaction makes a failed request apply nothing. Rows are
+   * applied in id order so concurrent writers lock accounts in a stable order.
    */
   async applyUsage(deltas: EdgeUsageDelta[]): Promise<number> {
-    let applied = 0;
-    for (const delta of normalizeUsageDeltas(deltas)) {
-      const rows = await applyUsageDelta(this.database, delta.clientConfigId, delta.bytes);
-      if (rows > 0) applied += 1;
-    }
+    const normalized = normalizeUsageDeltas(deltas).sort((a, b) =>
+      a.clientConfigId < b.clientConfigId ? -1 : a.clientConfigId > b.clientConfigId ? 1 : 0,
+    );
+    if (normalized.length === 0) return 0;
+    const applied = await this.database.transaction(async (executor) => {
+      let count = 0;
+      for (const delta of normalized) {
+        if ((await applyUsageDelta(executor, delta.clientConfigId, delta.bytes)) > 0) count += 1;
+      }
+      return count;
+    });
     if (applied) this.logger.log(`Edge usage applied for ${applied} client(s)`);
     return applied;
   }
