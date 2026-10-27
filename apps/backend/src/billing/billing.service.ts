@@ -5935,15 +5935,19 @@ export class BillingService {
 
     if (!telegramUsername) return { status: 'not_found' };
 
+    // Username fallback only for accounts NOT bound to a Telegram id. Usernames
+    // are mutable and re-claimable: matching an account bound to a DIFFERENT id
+    // would hand its configs/balance to whoever holds that @username now.
     const result = await this.database.query<CustomerAccountRow>(
       `
         ${this.customerAccountSelectSql()}
         WHERE lower(ca.telegram_username) = lower($1) AND ca.deleted_at IS NULL
+          AND ($2::text IS NULL OR ca.telegram_id IS NULL OR ca.telegram_id = '')
         GROUP BY ca.id, ra.id
         ORDER BY ca.created_at DESC
         LIMIT 2
       `,
-      [telegramUsername],
+      [telegramUsername, telegramId],
     );
 
     if (result.rows.length > 1) return { status: 'ambiguous' };
