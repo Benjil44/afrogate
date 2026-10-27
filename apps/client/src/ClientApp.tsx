@@ -20,6 +20,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  ExternalLink,
   Gamepad2,
   Gift,
   Globe2,
@@ -49,14 +50,17 @@ import {
   configFormatLabel,
   configRenderStatusLabel,
   clientStatusLabel,
-  defaultLanguage,
+  detectDefaultLanguage,
   directionFor,
   formatBytes,
   formatCount,
+  formatPercent,
   healthLabel,
   isLanguage,
   modeLabel,
   profileLabel,
+  protocolLabel,
+  regionName,
   translations,
   type ClientMessages,
   type Language,
@@ -87,10 +91,21 @@ const splitTunnelApps: ClientSplitTunnelAppSummary[] = [
   { id: 'youtube', label: 'YouTube', androidPackage: 'com.google.android.youtube', iosBundleId: 'com.google.ios.youtube' },
 ];
 
+/**
+ * Errors are stored as a translation key (plus the raw API detail, if any) and translated at
+ * render time, so switching language re-labels them instead of re-fetching everything.
+ * `scope` places the message next to the action that failed.
+ */
+interface ClientError {
+  scope: 'load' | 'save' | 'reward';
+  key: 'tokenRejected' | 'requestFailed' | 'noToken' | 'chooseCountry' | 'chooseServer';
+  detail?: string;
+}
+
 export function ClientApp() {
   const [language, setLanguage] = useState<Language>(() => {
     const stored = localStorage.getItem(languageStorageKey);
-    return isLanguage(stored) ? stored : defaultLanguage;
+    return isLanguage(stored) ? stored : detectDefaultLanguage();
   });
   const messages = translations[language];
   const [tokenInput, setTokenInput] = useState('');
@@ -112,7 +127,7 @@ export function ClientApp() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [claimingReward, setClaimingReward] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ClientError | null>(null);
   const [saved, setSaved] = useState(false);
   const [rewardClaimed, setRewardClaimed] = useState(false);
 
@@ -165,7 +180,7 @@ export function ClientApp() {
       setRoutePreference(null);
       setRouteOptions(null);
       setSubscription(null);
-      setError(errorText(requestError, messages));
+      setError(toClientError(requestError, 'load'));
       if (requestError instanceof ClientApiError && requestError.status === 401) {
         localStorage.removeItem(tokenStorageKey);
         setSessionToken(null);
@@ -173,7 +188,7 @@ export function ClientApp() {
     } finally {
       setLoading(false);
     }
-  }, [applyPreference, messages]);
+  }, [applyPreference]);
 
   useEffect(() => {
     const storedToken = localStorage.getItem(tokenStorageKey);
@@ -206,6 +221,7 @@ export function ClientApp() {
         : claimingReward
           ? messages.claimingReward
           : messages.watchAd;
+  const errorMessage = error ? errorText(error, messages) : null;
 
   const selectedOutbound = useMemo(
     () => outboundOptions.find((outbound) => outbound.id === preferredOutboundId) ?? null,
@@ -228,7 +244,7 @@ export function ClientApp() {
     event.preventDefault();
     const token = tokenInput.trim();
     if (!token) {
-      setError(messages.noToken);
+      setError({ scope: 'load', key: 'noToken' });
       return;
     }
 
@@ -255,12 +271,12 @@ export function ClientApp() {
     if (!sessionToken || !routePreference || !canOverride) return;
 
     if (mode === 'country' && !preferredCountryCode) {
-      setError(messages.chooseCountry);
+      setError({ scope: 'save', key: 'chooseCountry' });
       return;
     }
 
     if (mode === 'outbound' && !preferredOutboundId) {
-      setError(messages.chooseServer);
+      setError({ scope: 'save', key: 'chooseServer' });
       return;
     }
 
@@ -284,7 +300,7 @@ export function ClientApp() {
       setProfile((current) => current ? { ...current, routePreference: response.routePreference } : current);
       setSaved(true);
     } catch (requestError) {
-      setError(errorText(requestError, messages));
+      setError(toClientError(requestError, 'save'));
     } finally {
       setSaving(false);
     }
@@ -314,7 +330,7 @@ export function ClientApp() {
       applyPreference(response.profile.routePreference);
       setRewardClaimed(true);
     } catch (requestError) {
-      setError(errorText(requestError, messages));
+      setError(toClientError(requestError, 'reward'));
     } finally {
       setClaimingReward(false);
     }
@@ -354,52 +370,72 @@ export function ClientApp() {
   }
 
   if (!sessionToken || !profile || !routePreference) {
+    // A stored token is being verified: show a quiet loading screen instead of flashing the login form.
+    const restoringSession = Boolean(sessionToken) && loading;
+
     return (
-      <main className="min-h-screen bg-client-page px-4 py-6 text-client-ink sm:px-6">
-        <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-md flex-col justify-center">
-          <div className="mb-6 flex items-center justify-between">
+      <main className="min-h-dvh bg-client-page px-4 py-6 text-client-ink sm:px-6">
+        <div className="mx-auto flex min-h-[calc(100dvh-3rem)] max-w-md flex-col justify-center">
+          <div className="mb-6 flex items-center justify-between gap-3">
             <BrandMark messages={messages} />
             <LanguageButton language={language} setLanguage={setLanguage} label={messages.language} />
           </div>
 
-          <form onSubmit={handleConnect} className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
-            <label className="mb-2 block text-sm font-semibold text-client-ink" htmlFor="client-token">
-              {messages.token}
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="client-token"
-                type="password"
-                value={tokenInput}
-                onChange={(event) => setTokenInput(event.target.value)}
-                className="min-h-11 min-w-0 flex-1 rounded-[8px] border border-client-line bg-white px-3 text-base outline-none focus:border-client-teal focus:ring-2 focus:ring-client-teal/20"
-                autoComplete="current-password"
-              />
-              <button
-                type="submit"
-                className="inline-flex min-h-11 items-center gap-2 rounded-[8px] bg-client-deep px-4 text-sm font-semibold text-white"
-                disabled={loading}
-              >
-                <KeyRound className="h-4 w-4" aria-hidden="true" />
-                {loading ? messages.loading : messages.connect}
-              </button>
+          {restoringSession ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex min-h-14 items-center justify-center gap-2 rounded-[8px] border border-client-line bg-client-panel p-4 text-sm font-semibold text-client-muted shadow-sm"
+            >
+              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+              {messages.loadingAccount}
             </div>
-            {error ? <StatusMessage tone="error" text={error} /> : null}
-          </form>
+          ) : (
+            <form onSubmit={handleConnect} className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
+              <label className="mb-2 block text-sm font-semibold text-client-ink" htmlFor="client-token">
+                {messages.token}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="client-token"
+                  type="password"
+                  value={tokenInput}
+                  onChange={(event) => setTokenInput(event.target.value)}
+                  aria-describedby="client-token-hint"
+                  className="min-h-11 min-w-0 flex-1 rounded-[8px] border border-client-line bg-white px-3 text-base outline-none focus:border-client-teal focus:ring-2 focus:ring-client-teal/20"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="submit"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-[8px] bg-client-deep px-4 text-sm font-semibold text-white disabled:bg-client-muted"
+                  disabled={loading}
+                >
+                  <KeyRound className="h-4 w-4" aria-hidden="true" />
+                  {loading ? messages.loading : messages.connect}
+                </button>
+              </div>
+              <p id="client-token-hint" className="mt-2 text-xs text-client-muted">{messages.tokenHint}</p>
+              {errorMessage ? <StatusMessage tone="error" text={errorMessage} /> : null}
+            </form>
+          )}
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-client-page text-client-ink">
+    <main className="min-h-dvh bg-client-page text-client-ink">
       <header className="border-b border-client-line bg-client-panel">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
           <BrandMark messages={messages} />
           <div className="flex items-center gap-2">
             <LanguageButton language={language} setLanguage={setLanguage} label={messages.language} />
-            <IconButton label={messages.refresh} onClick={() => void loadClientData(sessionToken, routePreference.routeGroup)}>
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            <IconButton
+              label={messages.refresh}
+              disabled={loading}
+              onClick={() => void loadClientData(sessionToken, routePreference.routeGroup)}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
             </IconButton>
             <IconButton label={messages.signOut} onClick={handleSignOut}>
               <LogOut className="h-4 w-4" aria-hidden="true" />
@@ -409,16 +445,30 @@ export function ClientApp() {
       </header>
 
       <section className="mx-auto grid max-w-5xl gap-4 px-4 py-4 safe-bottom sm:px-6 lg:grid-cols-[0.9fr_1.1fr]">
+        {error?.scope === 'load' && errorMessage ? (
+          <div className="lg:col-span-2">
+            <StatusMessage tone="error" text={errorMessage} />
+          </div>
+        ) : null}
+
         <div className="grid gap-4">
           <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
             <PanelTitle icon={<Smartphone className="h-5 w-5" aria-hidden="true" />} title={profile.clientConfig.label} />
             <div className="mt-4 grid grid-cols-2 gap-3">
               <Metric label={messages.remaining} value={formatBytes(profile.clientConfig.remainingBytes, language, messages)} />
               <Metric label={messages.used} value={formatBytes(profile.clientConfig.usedBytes, language, messages)} />
-              <Metric label={messages.protocol} value={profile.clientConfig.protocol} />
+              <Metric label={messages.protocol} value={protocolLabel(profile.clientConfig.protocol)} />
               <Metric label={messages.status} value={clientStatusLabel(profile.clientConfig.status, messages)} />
             </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-client-line">
+            <div
+              role="progressbar"
+              aria-label={messages.quota}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={quotaPercent ?? undefined}
+              aria-valuetext={quotaPercent === null ? messages.unlimited : formatPercent(quotaPercent, language)}
+              className="mt-4 h-2 overflow-hidden rounded-full bg-client-line"
+            >
               <div
                 className="h-full rounded-full bg-client-green"
                 style={{ width: `${quotaPercent ?? 0}%` }}
@@ -426,7 +476,7 @@ export function ClientApp() {
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-client-muted">
               <span>{messages.quota}</span>
-              <span>{quotaPercent === null ? messages.unlimited : `${formatCount(quotaPercent, language)}%`}</span>
+              <span>{quotaPercent === null ? messages.unlimited : formatPercent(quotaPercent, language)}</span>
             </div>
           </section>
 
@@ -450,28 +500,31 @@ export function ClientApp() {
               type="button"
               onClick={() => void handleClaimReward()}
               disabled={!rewardedAds || !rewardedAds.enabled || rewardedAds.remainingToday <= 0 || claimingReward}
+              aria-busy={claimingReward}
               className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-client-teal px-4 text-sm font-semibold text-white disabled:bg-client-muted"
             >
               <PlayCircle className="h-4 w-4" aria-hidden="true" />
               {rewardButtonText}
             </button>
             {rewardClaimed ? <StatusMessage tone="ok" text={messages.rewardAdded} /> : null}
+            {error?.scope === 'reward' && errorMessage ? <StatusMessage tone="error" text={errorMessage} /> : null}
           </section>
 
           <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
             <PanelTitle icon={<Shield className="h-5 w-5" aria-hidden="true" />} title={messages.route} />
             <div className="mt-4 flex flex-wrap gap-2">
-              <Badge tone={routePreference.routeLocked ? 'warning' : 'ok'} text={routePreference.routeLocked ? messages.routeLocked : messages.connected} />
-              <Badge tone="neutral" text={routePreference.stickySessionProtection ? messages.stickyProtected : messages.unknown} />
+              <Badge tone={routePreference.routeLocked ? 'warning' : 'ok'} text={routePreference.routeLocked ? messages.routeLocked : messages.routeOpen} />
+              {routePreference.stickySessionProtection ? <Badge tone="neutral" text={messages.stickyProtected} /> : null}
               {!canOverride ? <Badge tone="warning" text={messages.overrideLocked} /> : null}
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div role="group" aria-label={messages.route} className="mt-4 grid grid-cols-3 gap-2">
               {routeModes.map((candidate) => (
                 <button
                   key={candidate}
                   type="button"
                   onClick={() => setMode(candidate)}
                   disabled={!canOverride}
+                  aria-pressed={mode === candidate}
                   className={segmentClass(mode === candidate)}
                 >
                   {modeLabel(candidate, messages)}
@@ -482,10 +535,11 @@ export function ClientApp() {
 
           <section className="rounded-[8px] border border-client-line bg-client-panel p-4 shadow-sm">
             <PanelTitle icon={<AppWindow className="h-5 w-5" aria-hidden="true" />} title={messages.perAppVpn} />
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div role="group" aria-label={messages.perAppVpn} className="mt-4 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => handleSplitTunnelMode('all_apps')}
+                aria-pressed={splitTunnelMode === 'all_apps'}
                 className={segmentClass(splitTunnelMode === 'all_apps')}
               >
                 {messages.allApps}
@@ -493,6 +547,7 @@ export function ClientApp() {
               <button
                 type="button"
                 onClick={() => handleSplitTunnelMode('selected_apps')}
+                aria-pressed={splitTunnelMode === 'selected_apps'}
                 className={segmentClass(splitTunnelMode === 'selected_apps')}
               >
                 {messages.selectedAppsOnly}
@@ -548,13 +603,13 @@ export function ClientApp() {
                   value={formatCount(subscription?.configLinks?.length ?? 0, language)}
                 />
               </div>
-              {subscription?.endpoints.length ? subscription.endpoints.slice(0, 4).map((endpoint) => (
+              {subscription?.endpoints.length ? subscription.endpoints.map((endpoint) => (
                 <div key={endpoint.outboundId} className="rounded-[8px] border border-client-line bg-client-page p-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="truncate font-semibold">{endpoint.name}</span>
+                    <span className="min-w-0 truncate font-semibold"><bdi>{endpoint.name}</bdi></span>
                     <Badge tone={endpoint.usageMultiplier > 1 ? 'warning' : 'neutral'} text={endpoint.chargeLabel} />
                   </div>
-                  <div className="mt-1 truncate text-client-muted">{subscriptionEndpointAddress(endpoint)}</div>
+                  <div className="mt-1 truncate text-client-muted" dir="ltr">{subscriptionEndpointAddress(endpoint)}</div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <CompactMetric label={messages.usageCost} value={endpoint.chargeLabel} />
                     <CompactMetric
@@ -564,7 +619,7 @@ export function ClientApp() {
                   </div>
                 </div>
               )) : <EmptyState text={messages.noSubscriptionEndpoints} />}
-              {subscription?.configLinks?.slice(0, 4).map((configLink) => (
+              {subscription?.configLinks?.map((configLink) => (
                 <ConfigLinkCard key={`config-${configLink.outboundId}`} configLink={configLink} messages={messages} />
               ))}
             </div>
@@ -586,6 +641,10 @@ export function ClientApp() {
                   onChange={(event) => setDetectedCountryCode(normalizeCountryInput(event.target.value) ?? '')}
                   maxLength={2}
                   disabled={!canOverride}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  dir="ltr"
                   className="min-h-11 min-w-0 flex-1 rounded-[8px] border border-client-line bg-white px-3 text-base uppercase outline-none focus:border-client-teal focus:ring-2 focus:ring-client-teal/20 disabled:bg-client-page"
                 />
                 <button
@@ -593,7 +652,6 @@ export function ClientApp() {
                   onClick={handleDeviceCountry}
                   disabled={!canOverride}
                   className="inline-flex min-h-11 items-center gap-2 rounded-[8px] border border-client-line px-3 text-sm font-semibold text-client-ink disabled:text-client-muted"
-                  title={messages.useDeviceCountry}
                 >
                   <LocateFixed className="h-4 w-4" aria-hidden="true" />
                   {messages.useDeviceCountry}
@@ -616,7 +674,7 @@ export function ClientApp() {
                   <option value="">{messages.chooseCountry}</option>
                   {countryOptions.map((country) => (
                     <option key={country.countryCode} value={country.countryCode}>
-                      {country.countryCode} - {formatCount(country.healthyOutboundCount, language)}/{formatCount(country.availableOutboundCount, language)}
+                      {regionName(country.countryCode, language)} · {formatCount(country.healthyOutboundCount, language)}/{formatCount(country.availableOutboundCount, language)}
                     </option>
                   ))}
                 </select>
@@ -624,8 +682,8 @@ export function ClientApp() {
             ) : null}
 
             {mode === 'outbound' ? (
-              <div>
-                <div className="mb-2 text-sm font-semibold">{messages.preferredServer}</div>
+              <div role="group" aria-labelledby="preferred-server-label">
+                <div id="preferred-server-label" className="mb-2 text-sm font-semibold">{messages.preferredServer}</div>
                 <div className="grid gap-2">
                   {outboundOptions.length === 0 ? (
                     <EmptyState text={messages.noOutbounds} />
@@ -635,14 +693,15 @@ export function ClientApp() {
                       type="button"
                       onClick={() => setPreferredOutboundId(outbound.id)}
                       disabled={!canOverride || !outbound.available}
+                      aria-pressed={preferredOutboundId === outbound.id}
                       className={outboundClass(preferredOutboundId === outbound.id)}
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <Server className="h-4 w-4 shrink-0" aria-hidden="true" />
-                        <span className="truncate">{outbound.name}</span>
+                        <span className="truncate"><bdi>{outbound.name}</bdi></span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-client-muted">{outbound.countryCode ?? '--'}</span>
+                        <span className="text-client-muted">{outbound.countryCode ? regionName(outbound.countryCode, language) : '--'}</span>
                         {outbound.usageMultiplier > 1 ? <Badge tone="warning" text={outbound.chargeLabel} /> : null}
                         <HealthPill status={outbound.healthStatus} label={healthLabel(outbound.healthStatus, messages)} />
                       </span>
@@ -652,8 +711,8 @@ export function ClientApp() {
               </div>
             ) : null}
 
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <div role="group" aria-labelledby="route-profile-label">
+              <div id="route-profile-label" className="mb-2 flex items-center gap-2 text-sm font-semibold">
                 <Gamepad2 className="h-4 w-4 text-client-teal" aria-hidden="true" />
                 {messages.profile}
               </div>
@@ -664,6 +723,7 @@ export function ClientApp() {
                     type="button"
                     onClick={() => setScoreProfile(profileOption)}
                     disabled={!canOverride}
+                    aria-pressed={scoreProfile === profileOption}
                     className={profileClass(scoreProfile === profileOption)}
                   >
                     {profileLabel(profileOption, messages)}
@@ -672,24 +732,26 @@ export function ClientApp() {
               </div>
             </div>
 
-            <label className="flex min-h-11 items-center justify-between rounded-[8px] border border-client-line px-3 text-sm font-semibold">
+            <label className="flex min-h-11 items-center justify-between gap-3 rounded-[8px] border border-client-line px-3 text-sm font-semibold">
               <span>{messages.autoDetect}</span>
               <input
                 type="checkbox"
                 checked={autoDetectCountry}
                 onChange={(event) => setAutoDetectCountry(event.target.checked)}
                 disabled={!canOverride}
-                className="h-5 w-5 accent-client-teal"
+                className="h-5 w-5 shrink-0 accent-client-teal"
               />
             </label>
 
             {selectedOutbound ? (
               <div className="rounded-[8px] border border-client-line bg-client-page p-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="truncate font-semibold">{selectedOutbound.name}</span>
+                  <span className="min-w-0 truncate font-semibold"><bdi>{selectedOutbound.name}</bdi></span>
                   <HealthPill status={selectedOutbound.healthStatus} label={healthLabel(selectedOutbound.healthStatus, messages)} />
                 </div>
-                <div className="mt-1 text-client-muted">{selectedOutbound.countryCode ?? '--'} {selectedOutbound.region ?? ''}</div>
+                <div className="mt-1 text-client-muted">
+                  {selectedOutbound.countryCode ? regionName(selectedOutbound.countryCode, language) : '--'} {selectedOutbound.region ?? ''}
+                </div>
               </div>
             ) : null}
 
@@ -697,6 +759,7 @@ export function ClientApp() {
               type="button"
               onClick={() => void handleSave()}
               disabled={!canOverride || saving}
+              aria-busy={saving}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[8px] bg-client-deep px-4 text-sm font-semibold text-white disabled:bg-client-muted"
             >
               <Save className="h-4 w-4" aria-hidden="true" />
@@ -704,7 +767,7 @@ export function ClientApp() {
             </button>
 
             {saved ? <StatusMessage tone="ok" text={messages.saveOk} /> : null}
-            {error ? <StatusMessage tone="error" text={error} /> : null}
+            {error?.scope === 'save' && errorMessage ? <StatusMessage tone="error" text={errorMessage} /> : null}
           </div>
         </section>
 
@@ -720,9 +783,10 @@ export function ClientApp() {
                   setPreferredCountryCode(country.countryCode);
                 }}
                 disabled={!canOverride}
-                className="min-h-10 rounded-[8px] border border-client-line px-3 text-sm font-semibold disabled:text-client-muted"
+                aria-pressed={mode === 'country' && preferredCountryCode === country.countryCode}
+                className="min-h-11 rounded-[8px] border border-client-line px-3 text-sm font-semibold disabled:text-client-muted aria-pressed:border-client-teal aria-pressed:bg-client-teal/10"
               >
-                {country.countryCode} · {formatCount(country.healthyOutboundCount, language)}
+                {regionName(country.countryCode, language)} · {formatCount(country.healthyOutboundCount, language)}
               </button>
             ))}
           </div>
@@ -739,7 +803,7 @@ function BrandMark({ messages }: { messages: ClientMessages }) {
         <Shield className="h-5 w-5" aria-hidden="true" />
       </div>
       <div className="min-w-0">
-        <div className="truncate text-base font-bold">{messages.appName}</div>
+        <h1 className="truncate text-base font-bold">{messages.appName}</h1>
         <div className="truncate text-xs font-semibold text-client-muted">{messages.clientSurface}</div>
       </div>
     </div>
@@ -759,7 +823,7 @@ function LanguageButton({
     <button
       type="button"
       onClick={() => setLanguage(language === 'en' ? 'fa' : 'en')}
-      className="inline-flex h-10 min-w-10 items-center justify-center gap-2 rounded-[8px] border border-client-line bg-white px-3 text-sm font-semibold"
+      className="inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-[8px] border border-client-line bg-white px-3 text-sm font-semibold"
       title={label}
       aria-label={label}
     >
@@ -769,12 +833,23 @@ function LanguageButton({
   );
 }
 
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function IconButton({
+  label,
+  onClick,
+  disabled = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="grid h-10 w-10 place-items-center rounded-[8px] border border-client-line bg-white"
+      disabled={disabled}
+      className="grid h-11 w-11 place-items-center rounded-[8px] border border-client-line bg-white disabled:text-client-muted"
       title={label}
       aria-label={label}
     >
@@ -787,25 +862,25 @@ function PanelTitle({ icon, title }: { icon: ReactNode; title: string }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] bg-client-page text-client-teal">{icon}</span>
-      <h1 className="truncate text-base font-bold">{title}</h1>
+      <h2 className="truncate text-base font-bold"><bdi>{title}</bdi></h2>
     </div>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-h-[76px] rounded-[8px] border border-client-line bg-client-page p-3">
-      <div className="truncate text-xs font-semibold text-client-muted">{label}</div>
-      <div className="mt-2 truncate text-base font-bold">{value}</div>
+    <div className="min-h-[76px] min-w-0 rounded-[8px] border border-client-line bg-client-page p-3">
+      <div className="text-xs font-semibold leading-tight text-client-muted">{label}</div>
+      <div className="mt-2 break-words text-base font-bold leading-tight">{value}</div>
     </div>
   );
 }
 
 function CompactMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-h-[64px] rounded-[8px] border border-client-line bg-client-page p-2">
-      <div className="truncate text-[11px] font-semibold text-client-muted">{label}</div>
-      <div className="mt-2 truncate text-sm font-bold">{value}</div>
+    <div className="min-h-[64px] min-w-0 rounded-[8px] border border-client-line bg-client-page p-2">
+      <div className="text-[11px] font-semibold leading-tight text-client-muted">{label}</div>
+      <div className="mt-2 break-words text-sm font-bold leading-tight">{value}</div>
     </div>
   );
 }
@@ -819,6 +894,8 @@ function ConfigLinkCard({
 }) {
   const [copied, setCopied] = useState(false);
   const renderedPayload = configLink.uri ?? configLink.configText ?? null;
+  // A rendered VLESS link can be handed straight to the installed VPN app (v2rayNG, Hiddify, Streisand, …).
+  const appLink = configLink.format === 'vless-uri' && configLink.uri?.startsWith('vless://') ? configLink.uri : null;
   const statusTone = configLink.renderStatus === 'rendered'
     ? 'ok'
     : configLink.renderStatus === 'unsupported_protocol'
@@ -837,10 +914,10 @@ function ConfigLinkCard({
   return (
     <div className="rounded-[8px] border border-client-line bg-client-page p-3 text-sm">
       <div className="flex items-center justify-between gap-3">
-        <span className="truncate font-semibold">{configLink.name}</span>
+        <span className="min-w-0 truncate font-semibold"><bdi>{configLink.name}</bdi></span>
         <Badge tone={statusTone} text={configRenderStatusLabel(configLink.renderStatus, messages)} />
       </div>
-      <div className="mt-1 truncate text-client-muted">{subscriptionConfigAddress(configLink)}</div>
+      <div className="mt-1 truncate text-client-muted" dir="ltr">{subscriptionConfigAddress(configLink)}</div>
       <div className="mt-2 flex flex-wrap gap-2">
         <Badge tone="neutral" text={configFormatLabel(configLink.format, messages)} />
         {configLink.requiresClientSecret ? <Badge tone="warning" text={messages.requiresClientSecret} /> : null}
@@ -848,14 +925,25 @@ function ConfigLinkCard({
         {configLink.usageMultiplier > 1 ? <Badge tone="warning" text={configLink.chargeLabel} /> : null}
       </div>
       {renderedPayload ? (
-        <button
-          type="button"
-          onClick={() => void handleCopy()}
-          className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-[8px] bg-client-deep px-3 text-sm font-semibold text-white"
-        >
-          {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
-          {copied ? messages.copiedConfig : messages.copyConfig}
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleCopy()}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[8px] bg-client-deep px-3 text-sm font-semibold text-white"
+          >
+            {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+            {copied ? messages.copiedConfig : messages.copyConfig}
+          </button>
+          {appLink ? (
+            <a
+              href={appLink}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[8px] border border-client-line bg-white px-3 text-sm font-semibold text-client-ink"
+            >
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
+              {messages.openInApp}
+            </a>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -869,7 +957,7 @@ function Badge({ tone, text }: { tone: 'ok' | 'warning' | 'neutral'; text: strin
       : 'border-client-line bg-client-page text-client-muted';
 
   return (
-    <span className={`inline-flex min-h-8 items-center rounded-[8px] border px-2 text-xs font-semibold ${toneClass}`}>
+    <span className={`inline-flex min-h-8 shrink-0 items-center rounded-[8px] border px-2 text-xs font-semibold ${toneClass}`}>
       {text}
     </span>
   );
@@ -898,7 +986,10 @@ function StatusMessage({ tone, text }: { tone: 'ok' | 'error'; text: string }) {
   const Icon = tone === 'ok' ? CheckCircle2 : AlertTriangle;
 
   return (
-    <div className={`mt-3 flex items-center gap-2 rounded-[8px] border px-3 py-2 text-sm font-semibold ${toneClass}`}>
+    <div
+      role={tone === 'ok' ? 'status' : 'alert'}
+      className={`mt-3 flex items-center gap-2 rounded-[8px] border px-3 py-2 text-sm font-semibold ${toneClass}`}
+    >
       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       <span>{text}</span>
     </div>
@@ -924,7 +1015,7 @@ function segmentClass(active: boolean): string {
 
 function profileClass(active: boolean): string {
   return [
-    'min-h-10 rounded-[8px] border px-2 text-xs font-bold disabled:text-client-muted',
+    'min-h-11 rounded-[8px] border px-2 text-xs font-bold disabled:text-client-muted',
     active
       ? 'border-client-teal bg-client-teal text-white'
       : 'border-client-line bg-white text-client-ink',
@@ -950,10 +1041,18 @@ function splitAppClass(active: boolean, enabled: boolean): string {
   ].join(' ');
 }
 
-function errorText(error: unknown, messages: ClientMessages): string {
-  if (error instanceof ClientApiError && error.status === 401) return messages.tokenRejected;
-  if (error instanceof Error && error.message) return error.message;
-  return messages.requestFailed;
+function toClientError(error: unknown, scope: ClientError['scope']): ClientError {
+  if (error instanceof ClientApiError) {
+    if (error.status === 401) return { scope, key: 'tokenRejected' };
+    // Keep the API's own message as a detail; the headline stays translated.
+    return { scope, key: 'requestFailed', detail: error.message || undefined };
+  }
+  return { scope, key: 'requestFailed' };
+}
+
+function errorText(error: ClientError, messages: ClientMessages): string {
+  const headline = messages[error.key];
+  return error.detail && error.detail !== messages.requestFailed ? `${headline} (${error.detail})` : headline;
 }
 
 function normalizeCountryInput(value: string | null | undefined): string | null {
