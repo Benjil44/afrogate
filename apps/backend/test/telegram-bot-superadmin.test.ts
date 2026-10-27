@@ -11,53 +11,14 @@
  * in the "➕ New user" flow (or loop on the stale-button menu).
  */
 import assert from 'node:assert/strict';
-import Module, { createRequire } from 'node:module';
-import path from 'node:path';
 import { before, describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { bundledSkipReason, loadBundled } from './helpers/load-bundled.ts';
 import { renderTelegramCopy, type TelegramCopyId } from '../src/telegram/telegram-i18n.ts';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const backendRoot = path.resolve(here, '..');
-const requireFromBackend = createRequire(path.join(backendRoot, 'package.json'));
-
 type BotService = { handleUpdate(payload: unknown): Promise<{ ok: boolean; status: string }> };
-type BotCtor = new (billing: unknown, telegram: unknown, config: unknown, database: unknown) => BotService;
+type BotCtor = new (billing: unknown, telegram: unknown, config: unknown, database: unknown, topupAdmin?: unknown) => BotService;
 
 let TelegramBotService: BotCtor | null = null;
-let skipReason: string | false = false;
-
-function loadService(): BotCtor {
-  requireFromBackend('reflect-metadata');
-  const esbuild = requireFromBackend('esbuild') as typeof import('esbuild');
-  const out = esbuild.buildSync({
-    entryPoints: [path.join(backendRoot, 'src/telegram/telegram-bot.service.ts')],
-    bundle: true,
-    platform: 'node',
-    format: 'cjs',
-    packages: 'external',
-    write: false,
-    tsconfig: path.join(backendRoot, 'tsconfig.json'),
-    target: 'node20',
-    logLevel: 'error',
-  });
-  const filename = path.join(here, '__telegram-bot.service.bundle.cjs');
-  const mod = new Module(filename) as Module & { _compile(code: string, filename: string): void; paths: string[] };
-  mod.filename = filename;
-  mod.paths = (Module as unknown as { _nodeModulePaths(dir: string): string[] })._nodeModulePaths(here);
-  mod._compile(out.outputFiles[0].text, filename);
-  return (mod.exports as { TelegramBotService: BotCtor }).TelegramBotService;
-}
-
-try {
-  requireFromBackend.resolve('esbuild');
-} catch {
-  // In CI a silent skip would hide a regression in the admin routing; fail loudly
-  // instead (esbuild is hoisted via Vite today — add it as a backend devDependency
-  // if that ever changes).
-  if (process.env.CI) throw new Error('esbuild must be resolvable from apps/backend in CI for the superadmin bot suite');
-  skipReason = 'esbuild not resolvable from apps/backend';
-}
 
 const ADMIN_ID = '900100';
 const CHAT_ID = '900100';
@@ -265,9 +226,9 @@ const buttons = (s: Sent | undefined) => (s?.keyboard?.inline_keyboard ?? []).fl
 const askName = copy('admin.newuser.askName');
 const adminTitle = copy('admin.menu.title');
 
-describe('superadmin via handleUpdate', { skip: skipReason }, () => {
+describe('superadmin via handleUpdate', { skip: bundledSkipReason }, () => {
   before(() => {
-    TelegramBotService = loadService();
+    TelegramBotService = loadBundled<{ TelegramBotService: BotCtor }>('telegram/telegram-bot.service.ts').TelegramBotService;
   });
 
   it('/start shows the superadmin home with New user + the full customer menu (linked admin)', async () => {
