@@ -114,7 +114,8 @@ function makeHarness(options: HarnessOptions = {}) {
     createCustomerAccount: (input) => {
       const dto = input as { displayName: string; telegramId: string };
       if (archivedHolder) {
-        throw Object.assign(new Error('duplicate key value violates unique constraint "customer_accounts_telegram_id_unique"'), { code: '23505' });
+        // Production shape: createCustomerAccount converts the 23505 into a Nest 409 (no `.code`).
+        throw Object.assign(new Error('Customer account Telegram ID or paid number already exists'), { getStatus: () => 409 });
       }
       created.push({ displayName: dto.displayName, telegramId: dto.telegramId });
       hasAccount = true;

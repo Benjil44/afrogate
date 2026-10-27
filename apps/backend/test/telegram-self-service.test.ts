@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { ConflictException } from '@nestjs/common';
 import {
   TelegramSelfServiceProvisioner,
   type LinkAccountByPhoneInput,
@@ -171,77 +172,94 @@ describe('TelegramSelfServiceProvisioner.register (v2, 0 GB + named config)', ()
 });
 
 describe('TelegramSelfServiceProvisioner.register (archived account still holds the telegram id)', () => {
-  const duplicateKey = () => Object.assign(new Error('duplicate key value violates unique constraint "customer_accounts_telegram_id_unique"'), { code: '23505' });
+  // Production shape: BillingService.createCustomerAccount turns the 23505 into a
+  // Nest ConflictException (no `.code`), so the fix must not depend on the error type.
+  const telegramIdConflict = () => new ConflictException('Customer account Telegram ID or paid number already exists');
 
-  it('releases the archived link once and retries, so a deleted customer can sign up again', async () => {
+  it('releases the archived link BEFORE creating, so a deleted customer can sign up again', async () => {
     let holder: 'archived' | 'released' = 'archived';
-    const released: string[] = [];
+    const order: string[] = [];
     const { deps, captured } = makeDeps({
       // getTelegramBotAccountStatus filters deleted_at, so the archived holder is invisible here.
       findAccountByTelegramId: async () => null,
-      createAccount: async (input) => {
-        captured.createAccount += 1;
-        if (holder === 'archived') throw duplicateKey();
-        return { id: 'acct-fresh', displayName: input.displayName, status: 'active', quotaLimitBytes: 0, telegramId: input.telegramId };
-      },
       releaseArchivedTelegramLink: async (telegramId) => {
-        released.push(telegramId);
+        order.push(`release:${telegramId}`);
         holder = 'released';
         return ['acct-archived'];
+      },
+      createAccount: async (input) => {
+        order.push('create');
+        captured.createAccount += 1;
+        if (holder === 'archived') throw telegramIdConflict();
+        return { id: 'acct-fresh', displayName: input.displayName, status: 'active', quotaLimitBytes: 0, telegramId: input.telegramId };
       },
     });
     const result = await new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4242', displayName: 'پوریا', phone: '989121234567' });
 
     assert.equal(result.created, true);
     assert.equal(result.account.id, 'acct-fresh');
-    assert.deepEqual(released, ['4242']);
-    assert.equal(captured.createAccount, 2, 'one failed attempt, one retry');
+    assert.deepEqual(order, ['release:4242', 'create'], 'released up front, created once');
     assert.deepEqual(captured.phoneEvents, [{ event: 'archived_link_released', matchedAccountIds: ['acct-archived'] }]);
   });
 
-  it('rethrows when nothing archived holds the id (no infinite retry)', async () => {
+  it('with nothing archived: no audit event, normal create', async () => {
+    let releaseCalls = 0;
+    const { deps, captured } = makeDeps({
+      releaseArchivedTelegramLink: async () => {
+        releaseCalls += 1;
+        return [];
+      },
+    });
+    const result = await new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4243', displayName: 'smart', phone: '989121234567' });
+    assert.equal(result.created, true);
+    assert.equal(releaseCalls, 1);
+    assert.deepEqual(captured.phoneEvents, []);
+  });
+
+  it('an unrelated conflict (e.g. referral code) is rethrown and never triggers a second release', async () => {
     let releaseCalls = 0;
     const { deps } = makeDeps({
       createAccount: async () => {
-        throw duplicateKey();
+        throw new ConflictException('referral code already exists');
       },
       releaseArchivedTelegramLink: async () => {
         releaseCalls += 1;
         return [];
       },
     });
-    await assert.rejects(new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4243', displayName: 'smart', phone: '989121234567' }), /duplicate key/);
-    assert.equal(releaseCalls, 1);
+    await assert.rejects(
+      new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4244', displayName: 'smart', phone: '989121234567' }),
+      ConflictException,
+    );
+    assert.equal(releaseCalls, 1, 'only the up-front release, nothing reacts to the error');
   });
 
-  it('retries at most once even if the conflict persists after a release', async () => {
+  it('never touches archived links when a live account already holds the id', async () => {
     let releaseCalls = 0;
+    const live: SelfServiceAccount = { id: 'acct-live', status: 'active', quotaLimitBytes: 0, telegramId: '4245' };
     const { deps } = makeDeps({
-      createAccount: async () => {
-        throw duplicateKey();
-      },
+      findAccountByTelegramId: async () => live,
       releaseArchivedTelegramLink: async () => {
         releaseCalls += 1;
         return ['acct-archived'];
       },
     });
-    await assert.rejects(new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4244', displayName: 'smart', phone: '989121234567' }), /duplicate key/);
-    assert.equal(releaseCalls, 1);
+    const result = await new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4245', displayName: 'smart', phone: '989121234567' });
+    assert.equal(result.account.id, 'acct-live');
+    assert.equal(releaseCalls, 0);
   });
 
-  it('never releases on a non-unique error', async () => {
-    let releaseCalls = 0;
+  it('a concurrent-create race surfaced as a ConflictException resolves to the live winner', async () => {
+    let calls = 0;
+    const winner: SelfServiceAccount = { id: 'acct-win', status: 'active', quotaLimitBytes: 0, telegramId: '4246' };
     const { deps } = makeDeps({
+      findAccountByTelegramId: async () => (calls++ === 0 ? null : winner),
       createAccount: async () => {
-        throw new Error('connection reset');
-      },
-      releaseArchivedTelegramLink: async () => {
-        releaseCalls += 1;
-        return [];
+        throw telegramIdConflict();
       },
     });
-    await assert.rejects(new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4245', displayName: 'smart', phone: '989121234567' }), /connection reset/);
-    assert.equal(releaseCalls, 0);
+    const result = await new TelegramSelfServiceProvisioner(deps).register({ telegramId: '4246', displayName: 'smart', phone: '989121234567' });
+    assert.equal(result.account.id, 'acct-win');
   });
 });
 
