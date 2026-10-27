@@ -1031,6 +1031,13 @@ export class TelegramBotService {
       return this.screenRedeemPicker(ctx, language);
     }
 
+    // This message becomes a fresh, live confirm (e.g. Back → wallet → picker on the
+    // same message after an earlier redeem): forget the used-confirm marker for it.
+    if (ctx.fromId && ctx.messageId !== undefined) {
+      const user = await getTelegramUser(this.database, ctx.fromId);
+      if (user?.state?.redeemedMessageId === ctx.messageId) await this.mergeState(ctx, user, { redeemedMessageId: undefined });
+    }
+
     const text = renderTelegramCopy(
       'gems.redeemConfirm',
       language,

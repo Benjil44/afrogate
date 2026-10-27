@@ -332,6 +332,29 @@ describe('Telegram bot customer/seller flows (audit 2026-10-27)', { skip: bundle
       assert.deepEqual(redeems, [200], 'only the first tap redeems (rate 100 gems/GB)');
       assert.equal(h.state()?.redeemedMessageId, 5);
     });
+
+    it('re-opening the confirm on the same message (Back -> picker -> amount) redeems again when confirmed', async () => {
+      const redeems: number[] = [];
+      let gems = 500;
+      const h = makeHarness({
+        user: { language: 'en', state: null },
+        hasAccount: true,
+        billingOverrides: {
+          getTelegramBotAccountStatus: () => ({ status: 'found', account: { id: 'acct-1', displayName: 'Sara', status: 'active', quotaLimitBytes: 0, usedBytes: 0, gemsBalance: gems } }),
+          redeemCustomerGemsForGb: (_id, spend) => {
+            redeems.push(spend as number);
+            gems -= spend as number;
+            return { gemsBalance: gems, quotaLimitAfterBytes: 2_000_000_000 };
+          },
+          getCustomerGemsLedger: () => [],
+        },
+      });
+      await h.tap('afws:gems:redeem:ok:1');
+      await h.tap('afws:gems:redeem:1'); // S12c re-rendered on message 5
+      assert.equal(h.state()?.redeemedMessageId, undefined, 'marker cleared for the fresh confirm');
+      await h.tap('afws:gems:redeem:ok:1');
+      assert.deepEqual(redeems, [100, 100]);
+    });
   });
 
   describe('seller', () => {
