@@ -49,7 +49,8 @@ export function InboundsPage({
     };
   }, [sessionToken]);
 
-  const gb = (n: number) => (n <= 0 ? '—' : `${(n / 1e9).toFixed(2)} GB`);
+  // Localized decimal units (and digits in fa) via the shared formatter.
+  const gb = (n: number) => (n <= 0 ? '—' : format.bytes(n));
 
   const columns: Array<DataTableColumn<AdminInboundSummary>> = [
     {

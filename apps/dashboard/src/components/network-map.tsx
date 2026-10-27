@@ -75,7 +75,7 @@ export function NetworkMap({
                 key={ib.tag}
                 type="button"
                 onClick={onOpenInbounds}
-                className={`${card} flex items-center justify-between gap-2 text-left hover:border-afro-teal`}
+                className={`${card} flex items-center justify-between gap-2 text-start hover:border-afro-teal`}
               >
                 <span className="min-w-0">
                   <strong className="block truncate text-[13px] text-afro-ink">{ib.protocol.toUpperCase()} · :{ib.port}</strong>
@@ -94,8 +94,10 @@ export function NetworkMap({
           <div className="text-[11px] font-bold uppercase tracking-wide text-afro-muted">&nbsp;</div>
           <div className={`${card} text-center`}>
             <strong className="block text-[13px] text-afro-ink">{m.server}</strong>
-            <span className="block text-[11px] text-afro-muted" dir="ltr">185.252.30.123</span>
-            <span className="mt-1 inline-block text-[11px] text-afro-muted">xray · wg0 → {applied ?? '—'}</span>
+            {/* The dashboard is served by the same box (nginx → backend), so its host
+                is the server's public name — never a hardcoded IP that goes stale. */}
+            <span className="block truncate text-[11px] text-afro-muted" dir="ltr">{window.location.hostname}</span>
+            <span className="mt-1 inline-block text-[11px] text-afro-muted" dir="ltr">xray · wg0 → {applied ?? '—'}</span>
           </div>
         </div>
         {/* Outgoing */}
@@ -108,7 +110,7 @@ export function NetworkMap({
                 key={e.tag}
                 type="button"
                 onClick={onOpenExits}
-                className={`${card} flex items-center justify-between gap-2 text-left hover:border-afro-teal ${isActive ? 'border-afro-teal ring-1 ring-afro-teal/40' : ''}`}
+                className={`${card} flex items-center justify-between gap-2 text-start hover:border-afro-teal ${isActive ? 'border-afro-teal ring-1 ring-afro-teal/40' : ''}`}
               >
                 <span className="min-w-0">
                   <strong className="block truncate text-[13px] text-afro-ink">

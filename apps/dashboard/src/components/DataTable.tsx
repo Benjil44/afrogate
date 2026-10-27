@@ -168,7 +168,12 @@ export function DataTable<Row>({
     // overflow-y-clip: with overflow-x auto alone, overflow-y computes to auto and can
     // spawn a nested vertical scrollbar; clip (used value: hidden) guarantees this
     // wrapper only ever scrolls horizontally — the page keeps a single vertical scroll.
-    <div aria-busy={showLoading} className={`overflow-x-auto overflow-y-clip ${hasDetail ? '[container-type:inline-size]' : ''}`}>
+    // container-type:inline-size (always, not only with renderDetail): it contains the
+    // inline size, so the table's minWidth no longer leaks into the min-content width of
+    // grid/flex ancestors. Without it, pages that place the table inside a `grid`/`flex`
+    // panel grew to the table's width on phones (clipped by the shell), so the sticky
+    // actions column never actually pinned (seen on Outbounds at 390px).
+    <div aria-busy={showLoading} className="overflow-x-auto overflow-y-clip [container-type:inline-size]">
       {showLoading && loadingLabel ? (
         <span className="sr-only" role="status">
           {loadingLabel}

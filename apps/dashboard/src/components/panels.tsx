@@ -88,7 +88,7 @@ export function TunnelPanel({
         return (
           <button
             aria-pressed={isSelected}
-            className={`max-w-[180px] truncate text-left font-bold ${isSelected ? 'text-afro-blue' : 'text-afro-ink hover:text-afro-blue'}`}
+            className={`max-w-[180px] truncate text-start font-bold ${isSelected ? 'text-afro-blue' : 'text-afro-ink hover:text-afro-blue'}`}
             onClick={() => onSelectTunnel?.(key)}
             title={tunnel.name}
             type="button"
@@ -130,4 +130,4 @@ export function TunnelPanel({
       </div>
     </section>
   );
-}
+}

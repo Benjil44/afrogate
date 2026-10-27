@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminOutboundSummary, AdminResellerAccountSummary, ClientEntryLinkKind, CustomerServerAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminResellerAccountSummary, ClientEntryLinkKind, CustomerServerAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import { CUSTOMER_SERVER_KINDS } from '@afrows/shared';
 import {
   adjustCustomerGems,
@@ -12,7 +12,6 @@ import {
   fetchAdminClientUsageSeries,
   fetchAdminCustomerDevices,
   fetchAdminNetworkOverview,
-  fetchAdminOutbounds,
   fetchAdminResellers,
   deleteAdminClientConfig,
   deleteAdminCustomerAccount,
@@ -36,9 +35,9 @@ import type { DataTableColumnDef } from '../components/primitives';
 import { ALL_SERVERS_ON, ServerAccessControls, ServerAccessSummary, effectiveServerAccess } from '../components/ServerAccessControls';
 import { UsageChart } from '../components/UsageChart';
 import { MicrotiksPage } from './MicrotiksPage';
-import type { DataTableColumn } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
+import { customerAccountStatusLabel, customerQuotaScopeLabel } from '../labels';
 import { usePhoneViewport } from '../use-media-query';
 
 type CustomerSortKey = 'customer' | 'usage' | 'expiry' | 'lastSeen';
@@ -50,6 +49,8 @@ const BYTES_PER_GB = 1_000_000_000;
 
 type Status = 'active' | 'suspended' | 'disabled';
 type Scope = 'account_shared' | 'per_client';
+const STATUS_OPTIONS: Status[] = ['active', 'suspended', 'disabled'];
+const SCOPE_OPTIONS: Scope[] = ['account_shared', 'per_client'];
 
 /** Per-customer Usage panel: used/limit summary plus rollup-backed hourly (48h)
  * and daily (30d) charts for one selected config. One `30d` fetch returns both
@@ -1131,8 +1132,8 @@ export function CustomersPage({
   // Per-egress-path usage + billing (path is decided by tier: gaming->Starlink, normal->Germany).
   const pathSummary = useMemo(() => {
     const rows = [
-      { tier: 'gaming', label: 'Starlink (gaming/VIP)', count: 0, bytes: 0 },
-      { tier: 'normal', label: 'Germany (normal)', count: 0, bytes: 0 },
+      { tier: 'gaming', label: s.pathStarlink, count: 0, bytes: 0 },
+      { tier: 'normal', label: s.pathGermany, count: 0, bytes: 0 },
     ];
     for (const a of accounts) {
       const r = a.egressTier === 'gaming' ? rows[0] : rows[1];
@@ -1144,10 +1145,7 @@ export function CustomersPage({
       cost: Math.round((r.bytes / BYTES_PER_GB) * priceFor(r.tier)),
       currency: tierPrices.find((p) => p.tier === r.tier)?.currency ?? 'IRT',
     }));
-  }, [accounts, tierPrices]);
-
-  const statusTone = (st: string) =>
-    st === 'active' ? '#1f9d57' : st === 'suspended' || st === 'disabled' ? '#d23f3f' : '#9aa7ad';
+  }, [accounts, tierPrices, s]);
 
   const inputClass = 'min-h-10 rounded-md border border-afro-line bg-white px-3 text-sm outline-none focus:border-afro-teal';
   // Edit-panel field grouping (Identity / Quota & status / Routing / Configs &
@@ -1402,16 +1400,13 @@ export function CustomersPage({
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldScope}</span>
               <select value={scope} onChange={(e2) => setScope(e2.target.value as Scope)} className={inputClass}>
-                <option value="account_shared">account_shared</option>
-                <option value="per_client">per_client</option>
+                {SCOPE_OPTIONS.map((value) => <option key={value} value={value}>{customerQuotaScopeLabel(value, t)}</option>)}
               </select>
             </label>
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldStatus}</span>
               <select value={status} onChange={(e2) => setStatus(e2.target.value as Status)} className={inputClass}>
-                <option value="active">active</option>
-                <option value="suspended">suspended</option>
-                <option value="disabled">disabled</option>
+                {STATUS_OPTIONS.map((value) => <option key={value} value={value}>{customerAccountStatusLabel(value, t)}</option>)}
               </select>
             </label>
             <label className="grid gap-1.5">
@@ -1526,7 +1521,7 @@ export function CustomersPage({
                 {routers
                   .filter((r) => r.kind !== 'village' && !r.customerAccountId)
                   .map((r) => (
-                    <option key={r.id} value={r.id}>{r.label}{r.online ? ' · online' : ' · offline'}</option>
+                    <option key={r.id} value={r.id}>{`${r.label} · ${r.online ? s.assignRouterOnline : s.assignRouterOffline}`}</option>
                   ))}
               </select>
               {routers.filter((r) => r.customerAccountId === a.id).map((r) => (
@@ -1589,7 +1584,7 @@ export function CustomersPage({
         <div className="grid gap-2">
           <span className="text-[13px] font-bold text-afro-muted">
             {s.devicesSection} · {devicesNetworks} {s.devicesNetworks} ({devicesActive} {s.devicesActive})
-            {devicesNetworks >= 2 ? <span className="ml-1.5 text-red-600">⚠ {s.devicesSharing}</span> : null}
+            {devicesNetworks >= 2 ? <span className="ms-1.5 text-red-600">⚠ {s.devicesSharing}</span> : null}
           </span>
           {devices.length === 0 ? (
             <span className="text-[12px] text-afro-muted">{s.devicesNone}</span>
@@ -1733,7 +1728,7 @@ export function CustomersPage({
           <span className="text-[12px] text-afro-muted">{format.time(new Date(a.updatedAt), false)}</span>
           {a.gatewayRouter && (
             <span className="mt-0.5 flex items-center gap-1 text-[11px] text-afro-muted">
-              <span aria-hidden>🛰️</span> MikroTik: {a.gatewayRouter.label}
+              <span aria-hidden>🛰️</span> {s.gatewayRouterLabel}: {a.gatewayRouter.label}
             </span>
           )}
         </>
@@ -1760,7 +1755,7 @@ export function CustomersPage({
             >
               <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${isActive ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
             </button>
-            <span className="text-[12px] text-afro-muted">{String(a.status)}</span>
+            <span className="text-[12px] text-afro-muted">{customerAccountStatusLabel(a.status, t)}</span>
           </span>
         );
       },
@@ -2065,6 +2060,7 @@ export function CustomersPage({
           <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
             <Search size={15} className="text-afro-muted" />
             <input
+              aria-label={s.searchPlaceholder}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={s.searchPlaceholder}
@@ -2105,7 +2101,13 @@ export function CustomersPage({
         <div className="rounded-md border border-afro-line bg-afro-panel p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold text-afro-ink">{s.addTitle}</h2>
-            <button type="button" onClick={() => setCreateOpen(false)} className="text-afro-muted hover:text-afro-ink">
+            <button
+              type="button"
+              aria-label={s.closePanel}
+              title={s.closePanel}
+              onClick={() => setCreateOpen(false)}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-afro-muted hover:text-afro-ink md:h-8 md:w-8"
+            >
               <X size={16} />
             </button>
           </div>
@@ -2137,16 +2139,13 @@ export function CustomersPage({
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldScope}</span>
               <select value={scope} onChange={(e) => setScope(e.target.value as Scope)} className={inputClass}>
-                <option value="account_shared">account_shared</option>
-                <option value="per_client">per_client</option>
+                {SCOPE_OPTIONS.map((value) => <option key={value} value={value}>{customerQuotaScopeLabel(value, t)}</option>)}
               </select>
             </label>
             <label className="grid gap-1.5">
               <span className="text-[13px] font-bold text-afro-muted">{s.fldStatus}</span>
               <select value={status} onChange={(e) => setStatus(e.target.value as Status)} className={inputClass}>
-                <option value="active">active</option>
-                <option value="suspended">suspended</option>
-                <option value="disabled">disabled</option>
+                {STATUS_OPTIONS.map((value) => <option key={value} value={value}>{customerAccountStatusLabel(value, t)}</option>)}
               </select>
             </label>
             <label className="grid gap-1.5">
@@ -2343,10 +2342,16 @@ export function CustomersPage({
       {configsFor ? (
         <div className="rounded-md border border-afro-line bg-afro-panel p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-afro-ink">
+            <h2 className="min-w-0 truncate text-sm font-bold text-afro-ink">
               {s.configsTitle} — {nameOf(configsFor)}
             </h2>
-            <button type="button" onClick={() => setConfigsFor(null)} className="text-afro-muted hover:text-afro-ink">
+            <button
+              type="button"
+              aria-label={s.closePanel}
+              title={s.closePanel}
+              onClick={() => setConfigsFor(null)}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-afro-muted hover:text-afro-ink md:h-8 md:w-8"
+            >
               <X size={16} />
             </button>
           </div>
@@ -2488,10 +2493,10 @@ export function CustomersPage({
             <span className="font-bold">⚡ {s.egFlapTitle}</span>
             <span>{s.egFlapHint}</span>
             {overview.egressHealth.catchAllBreaker?.tripped ? (
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold">catch-all ×{overview.egressHealth.catchAllBreaker.recent}</span>
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold">{s.egFlapCatchAll} ×{format.integer(overview.egressHealth.catchAllBreaker.recent)}</span>
             ) : null}
             {overview.egressHealth.gamingBreaker?.tripped ? (
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold">gaming ×{overview.egressHealth.gamingBreaker.recent}</span>
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold">{s.egFlapGaming} ×{format.integer(overview.egressHealth.gamingBreaker.recent)}</span>
             ) : null}
           </div>
         </div>

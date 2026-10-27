@@ -270,7 +270,9 @@ export function ResellersPage({
             >
               <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${on ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
             </button>
-            <span className="text-[12px] text-afro-muted">{String(r.status)}</span>
+            <span className="text-[12px] text-afro-muted">
+              {r.status === 'active' ? s.statusActive : r.status === 'suspended' ? s.statusSuspended : r.status === 'disabled' ? s.statusDisabled : String(r.status)}
+            </span>
           </span>
         );
       },

@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import type {
   AfroIcon,
   DashboardTabItem,
@@ -32,7 +32,7 @@ export function DetailRow({ children, label }: { children: ReactNode; label: str
   return (
     <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" title={rowTooltip}>
       <span className={`${mutedTextClass} min-w-0 truncate`} title={label}>{label}</span>
-      <strong className="min-w-0 shrink text-right text-sm" title={valueTooltip}>{children}</strong>
+      <strong className="min-w-0 shrink text-end text-sm" title={valueTooltip}>{children}</strong>
     </div>
   );
 }
@@ -224,9 +224,18 @@ export function DashboardTabs<T extends string>({
   onChange: (tab: T) => void;
   tabs: Array<DashboardTabItem<T>>;
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // The strip scrolls horizontally on phones; keep the active tab in view so a
+  // deep link (e.g. /settings?tab=telegram) never lands on an off-screen tab.
+  useEffect(() => {
+    const active = listRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTab]);
+
   return (
     <div className="overflow-x-auto rounded-md border border-afro-line bg-afro-panel p-1" role="presentation">
-      <div aria-label={ariaLabel} className="grid min-w-max grid-flow-col gap-1" role="tablist">
+      <div aria-label={ariaLabel} className="grid min-w-max grid-flow-col gap-1" ref={listRef} role="tablist">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
 

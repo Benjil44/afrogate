@@ -513,16 +513,18 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
       header: s.colActions,
       align: 'right',
       render: (router) => (
-        <div className="flex items-center justify-end gap-1.5">
-          <button className={btnClass} onClick={() => openEdit(router)} type="button" title={s.editActionTitle}>
-            <Pencil size={14} /> {s.edit}
+        // Pinned (stickyLastColumn) so Edit/Remove stay reachable on phones; the
+        // text labels collapse to icons below md so the pinned cell stays narrow.
+        <div className="flex items-center justify-end gap-1.5 pe-2">
+          <button className={`${btnClass} px-2 md:px-3`} onClick={() => openEdit(router)} type="button" title={s.editActionTitle} aria-label={s.edit}>
+            <Pencil size={14} /> <span className="hidden md:inline">{s.edit}</span>
           </button>
           {router.webfigUrl ? (
-            <a className={btnClass} href={router.webfigUrl} target="_blank" rel="noreferrer" title={s.advancedTitle}>
-              <ExternalLink size={14} /> {s.advanced}
+            <a className={`${btnClass} px-2 md:px-3`} href={router.webfigUrl} target="_blank" rel="noreferrer" title={s.advancedTitle} aria-label={s.advanced}>
+              <ExternalLink size={14} /> <span className="hidden md:inline">{s.advanced}</span>
             </a>
           ) : null}
-          <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id]) || router.kind === 'village'} onClick={() => void remove(router)} type="button" title={router.kind === 'village' ? s.removeLockedTitle : s.removeTitle}>
+          <button className={`${btnClass} hover:border-red-400 hover:text-red-500`} disabled={Boolean(busy[router.id]) || router.kind === 'village'} onClick={() => void remove(router)} type="button" title={router.kind === 'village' ? s.removeLockedTitle : s.removeTitle} aria-label={router.kind === 'village' ? s.removeLockedTitle : s.removeTitle}>
             <Trash2 size={14} />
           </button>
         </div>
@@ -596,6 +598,7 @@ export function MicrotiksPage({ customerAccountId, roleFilter, sessionToken, t }
           minWidth="760px"
           rowKey={(router) => router.id}
           rows={visibleRows}
+          stickyLastColumn
         />
       </div>
 
@@ -705,10 +708,18 @@ function RouterDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="my-8 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-afro-ink">{editId ? s.dialogEditTitle(draft.label) : s.addButton}</h2>
-          <button className="text-afro-muted hover:text-afro-ink" onClick={onClose} type="button"><X size={18} /></button>
+      <div aria-labelledby="microtik-dialog-title" aria-modal="true" className="my-8 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl" role="dialog">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="min-w-0 truncate text-lg font-bold text-afro-ink" id="microtik-dialog-title">{editId ? s.dialogEditTitle(draft.label) : s.addButton}</h2>
+          <button
+            aria-label={s.cancel}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-afro-muted hover:text-afro-ink md:h-8 md:w-8"
+            onClick={onClose}
+            title={s.cancel}
+            type="button"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {!editId ? (

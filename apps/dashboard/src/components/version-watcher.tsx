@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../api/base';
 import { appVersion } from '../app-config';
-
-const COPY: Record<string, { msg: string; now: string }> = {
-  en: { msg: 'A new version is available — reloading…', now: 'Reload now' },
-  fa: { msg: 'نسخه جدید موجود است — در حال بارگذاری مجدد…', now: 'بارگذاری مجدد' },
-};
+import type { DashboardStrings } from '../i18n';
 
 const POLL_MS = 30_000;
 const AUTO_RELOAD_MS = 4_000;
@@ -18,7 +14,7 @@ const RELOADED_KEY = 'afrows.reloadedForVersion';
  * new code without a manual refresh. A sessionStorage guard prevents reload
  * loops if the versions can't converge.
  */
-export function VersionWatcher({ language }: { language: string }) {
+export function VersionWatcher({ t }: { t: DashboardStrings }) {
   const [newVersion, setNewVersion] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,44 +48,19 @@ export function VersionWatcher({ language }: { language: string }) {
   }, [newVersion]);
 
   if (!newVersion) return null;
-  const copy = COPY[language] ?? COPY.en;
 
   return (
     <div
+      className="fixed inset-x-0 bottom-0 z-[9999] flex flex-wrap items-center justify-center gap-3 bg-[#0f766e] px-4 py-2 text-sm font-bold text-white shadow-[0_-2px_8px_rgba(0,0,0,0.3)]"
       role="status"
-      style={{
-        position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '12px',
-        background: '#0f766e',
-        color: '#ffffff',
-        padding: '8px 16px',
-        fontSize: '14px',
-        fontWeight: 700,
-        boxShadow: '0 -2px 8px rgba(0,0,0,0.3)',
-      }}
     >
-      <span>{copy.msg}</span>
+      <span>{t.versionWatcher.newVersion}</span>
       <button
-        type="button"
+        className="min-h-9 rounded-md bg-white/20 px-3 font-bold text-white hover:bg-white/30"
         onClick={() => window.location.reload()}
-        style={{
-          borderRadius: '6px',
-          background: 'rgba(255,255,255,0.2)',
-          padding: '2px 10px',
-          color: '#ffffff',
-          cursor: 'pointer',
-          border: 'none',
-          fontWeight: 700,
-        }}
+        type="button"
       >
-        {copy.now}
+        {t.versionWatcher.reloadNow}
       </button>
     </div>
   );

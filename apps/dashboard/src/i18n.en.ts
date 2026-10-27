@@ -9,6 +9,10 @@ export const en = {
     exitKioskMode: 'Exit kiosk display',
     openNavMenu: 'Open navigation menu',
     closeNavMenu: 'Close navigation menu',
+    versionWatcher: {
+      newVersion: 'A new version is available — reloading…',
+      reloadNow: 'Reload now',
+    },
     outboundsPage: {
       addButton: 'Add outbound',
       syncNow: 'Sync now',
@@ -78,6 +82,18 @@ export const en = {
       expandAll: 'Expand all',
       loadFailed: 'Could not load outbounds. Check backend access and retry.',
       staleNotice: (time: string) => `Refresh failed — showing last known data from ${time}.`,
+      // Subscription refresh health (consecutive failures, typed reason, staleness).
+      subFailedTimes: (count: string) => `${count}× failed`,
+      subLastOk: (age: string) => `last ok ${age} ago`,
+      subRefreshedAgo: (age: string) => `refreshed ${age} ago`,
+      subReasonUnknown: 'unknown',
+      subExpiresIn: (days: string) => `${days}d`,
+      ageSeconds: (value: string) => `${value}s`,
+      ageMinutes: (value: string) => `${value}m`,
+      ageHours: (value: string) => `${value}h`,
+      ageDays: (value: string) => `${value}d`,
+      closePanel: 'Close',
+      dismissNotice: 'Dismiss',
     },
     customersPage: {
       title: 'Customer accounts',
@@ -295,6 +311,12 @@ export const en = {
       editSectionRouting: 'Routing / egress',
       editSectionConfigs: 'Configs & gateway',
       editSectionTags: 'Tags & notes',
+      pathStarlink: 'Starlink (gaming/VIP)',
+      pathGermany: 'Germany (normal)',
+      gatewayRouterLabel: 'MikroTik',
+      egFlapCatchAll: 'catch-all',
+      egFlapGaming: 'gaming',
+      closePanel: 'Close',
     },
     microtiksPage: {
       intro: 'Manage your MikroTik routers — status, Game/Normal egress, and full configuration.',
@@ -969,6 +991,10 @@ export const en = {
       superadminLocked: 'Superadmin locked',
       adminManaged: 'Admin managed',
       usersLoaded: (count: number | string) => `${count} users`,
+      deleteConfirm: (username: string) => `Delete admin user "${username}"? This cannot be undone.`,
+      rowActions: 'Actions',
+      detailExpand: 'Show actions',
+      detailCollapse: 'Hide actions',
       errors: {
         load: 'Could not load admin users.',
         save: 'Could not save admin user.',

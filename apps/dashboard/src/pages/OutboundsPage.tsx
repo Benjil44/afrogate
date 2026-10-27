@@ -21,19 +21,20 @@ import {
 } from '../api/admin';
 
 type Protocol = 'vless' | 'wireguard' | 'l2tp' | 'subscription';
+type OutboundsStrings = DashboardStrings['outboundsPage'];
 
 // Egress P1 observability helpers (surface the subscription refresh-health the backend
 // now records: consecutive_failures, typed last_failure_reason, seconds_since_success).
-const fmtAge = (sec?: number | null): string => {
+const fmtAge = (sec: number | null | undefined, format: DashboardFormatters, s: OutboundsStrings): string => {
   if (sec == null) return '—';
-  if (sec < 90) return `${sec}s`;
-  if (sec < 5400) return `${Math.round(sec / 60)}m`;
-  if (sec < 172800) return `${Math.round(sec / 3600)}h`;
-  return `${Math.round(sec / 86400)}d`;
+  if (sec < 90) return s.ageSeconds(format.integer(sec));
+  if (sec < 5400) return s.ageMinutes(format.integer(Math.round(sec / 60)));
+  if (sec < 172800) return s.ageHours(format.integer(Math.round(sec / 3600)));
+  return s.ageDays(format.integer(Math.round(sec / 86400)));
 };
-// SUBSCRIPTION_SHRINK_REJECTED -> "shrink rejected"
-const humanizeReason = (code?: string | null): string =>
-  (code ?? '').replace(/^SUBSCRIPTION_/, '').replace(/_/g, ' ').toLowerCase() || 'unknown';
+// SUBSCRIPTION_SHRINK_REJECTED -> "shrink rejected" (backend reason codes are English identifiers).
+const humanizeReason = (code: string | null | undefined, s: OutboundsStrings): string =>
+  (code ?? '').replace(/^SUBSCRIPTION_/, '').replace(/_/g, ' ').toLowerCase() || s.subReasonUnknown;
 type SortKey = 'name' | 'status' | 'ping' | 'jitter' | 'down' | 'up';
 
 /** DataTable row: an outbound plus whether it renders indented under a subscription group. */
@@ -322,15 +323,11 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
   const statusLabel = (st: string) =>
     st === 'healthy' || st === 'up' ? s.statusUp : st === 'unknown' || st === '' ? s.statusUnknown : s.statusDown;
 
-  const fmtBytes = (n?: number) => {
-    if (!n || n <= 0) return '0';
-    const gb = n / 1e9;
-    return gb >= 1000 ? `${(gb / 1000).toFixed(2)} TB` : `${gb.toFixed(1)} GB`;
-  };
+  const fmtBytes = (n?: number) => format.bytes(n && n > 0 ? n : 0);
   const fmtExpire = (sec?: number) => {
     if (!sec) return '—';
     const days = Math.round((sec * 1000 - Date.now()) / 86_400_000);
-    return days >= 0 ? `${days}d` : s.subExpired;
+    return days >= 0 ? s.subExpiresIn(format.integer(days)) : s.subExpired;
   };
 
   // --- Sorting (best servers float to top; untested rows always sort last) ---
@@ -434,11 +431,13 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
               type="button"
               onClick={() => onTest(o.id)}
               disabled={testing}
-              title={s.test}
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-afro-line px-2 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-50"
+              title={testing ? s.testing : s.test}
+              aria-label={testing ? s.testing : s.test}
+              className="inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-md border border-afro-line px-1.5 text-xs font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal disabled:opacity-50 md:px-2"
             >
               {testing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
-              {testing ? s.testing : s.test}
+              {/* Phones: icon only, so the pinned actions column stays narrow enough to leave room for the row. */}
+              <span className="hidden md:inline">{testing ? s.testing : s.test}</span>
             </button>
             <button
               type="button"
@@ -490,7 +489,7 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
             <button
               type="button"
               onClick={() => toggleExpanded(sub.id)}
-              className="inline-flex items-center gap-2 text-left font-bold text-afro-ink"
+              className="inline-flex items-center gap-2 text-start font-bold text-afro-ink"
             >
               {open ? <ChevronDown size={15} /> : <ChevronRight className="rtl:-scale-x-100" size={15} />}
               {sub.name}
@@ -508,20 +507,20 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
             {(sub.consecutiveFailures ?? 0) > 0 ? (
               <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 ps-6 text-[11px]">
                 <span className="inline-flex items-center gap-1 rounded bg-[#fdecec] px-1.5 py-0.5 font-semibold text-[#b91c1c]">
-                  <AlertTriangle size={11} /> {sub.consecutiveFailures}× failed
+                  <AlertTriangle size={11} /> {s.subFailedTimes(format.integer(sub.consecutiveFailures ?? 0))}
                 </span>
                 {sub.lastFailureReason ? (
                   <span className="rounded bg-[#f6efe3] px-1.5 py-0.5 font-mono text-[10px] text-[#8a6d1f]">
-                    {humanizeReason(sub.lastFailureReason)}
+                    {humanizeReason(sub.lastFailureReason, s)}
                   </span>
                 ) : null}
                 <span className="inline-flex items-center gap-1 text-afro-muted">
-                  <Clock size={10} /> last ok {fmtAge(sub.secondsSinceSuccess)} ago
+                  <Clock size={10} /> {s.subLastOk(fmtAge(sub.secondsSinceSuccess, format, s))}
                 </span>
               </div>
             ) : sub.secondsSinceSuccess != null ? (
               <div className="mt-1 inline-flex items-center gap-1 ps-6 text-[11px] text-afro-muted">
-                <Clock size={10} /> refreshed {fmtAge(sub.secondsSinceSuccess)} ago
+                <Clock size={10} /> {s.subRefreshedAgo(fmtAge(sub.secondsSinceSuccess, format, s))}
               </div>
             ) : null}
           </>
@@ -570,7 +569,9 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
           <span className={`inline-block h-2 w-2 rounded-full ${auto ? 'bg-afro-teal' : 'bg-[#c2cdd2]'}`} />
           {s.auto}
         </button>
-        <div className="flex items-center gap-2">
+        {/* flex-wrap + nowrap labels: on phones whole buttons wrap to the next line
+            instead of each label breaking mid-word ("Collapse / all"). */}
+        <div className="flex flex-wrap items-center gap-2 whitespace-nowrap">
           {subs.length > 0 ? (
             <button
               type="button"
@@ -610,7 +611,13 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
       {notice ? (
         <div className="flex items-center justify-between gap-3 rounded-md border border-afro-line bg-[#eef7f6] px-3 py-2 text-[13px] font-bold text-afro-teal">
           <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} className="text-afro-muted hover:text-afro-ink">
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            aria-label={s.dismissNotice}
+            title={s.dismissNotice}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-afro-muted hover:text-afro-ink"
+          >
             <X size={14} />
           </button>
         </div>
@@ -648,7 +655,9 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
                 setAddOpen(false);
                 setEditId(null);
               }}
-              className="text-afro-muted hover:text-afro-ink"
+              aria-label={s.closePanel}
+              title={s.closePanel}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md text-afro-muted hover:text-afro-ink md:h-8 md:w-8"
             >
               <X size={16} />
             </button>
@@ -828,6 +837,7 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
           minWidth="760px"
           rowKey={({ o }) => o.id}
           sections={sections}
+          stickyLastColumn
         />
       </div>
     </section>
