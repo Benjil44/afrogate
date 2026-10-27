@@ -282,14 +282,19 @@ describe('Telegram bot customer/seller flows (audit 2026-10-27)', { skip: bundle
   });
 
   describe('no-account guard (never orphan a paid account)', () => {
-    it('a live account carrying the sender @username (bound to another id) keeps E4, no new account', async () => {
-      const h = makeHarness({ user: { language: 'fa', state: null }, username: 'Pouria_x', liveUsernames: ['pouria_x'] });
+    it('a live account carrying the sender @username (bound to another id) is audited, and signup still starts', async () => {
+      const events: Array<{ event: unknown; details: unknown }> = [];
+      const h = makeHarness({
+        user: { language: 'fa', state: null },
+        username: 'Pouria_x',
+        liveUsernames: ['pouria_x'],
+        billingOverrides: { recordTelegramRegistrationEvent: (event, details) => void events.push({ event, details }) },
+      });
       await h.tap('afws:acct');
-      assert.equal(stripRlm(h.last()!.text), stripRlm(copy('error.accountProblem')));
-      assert.equal(h.state()?.regStage, undefined, 'signup not started');
-      await h.type('/start');
-      assert.equal(stripRlm(h.last()!.text), stripRlm(copy('error.accountProblem')), '/start is guarded too');
-      assert.equal(h.created.length, 0);
+      assert.equal(stripRlm(h.last()!.text), stripRlm(copy('reg.askName')), 'a recycled @username never dead-ends the sender');
+      assert.equal(h.state()?.regStage, 'awaiting_name');
+      assert.equal(events.length, 1);
+      assert.equal(events[0]!.event, 'username_held');
     });
 
     it('an ambiguous username lookup keeps E4', async () => {

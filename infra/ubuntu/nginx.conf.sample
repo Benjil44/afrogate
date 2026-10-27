@@ -1,9 +1,9 @@
 limit_req_zone $binary_remote_addr zone=afrows_api:10m rate=10r/s;
 limit_req_zone $binary_remote_addr zone=afrows_login:10m rate=3r/m;
 # Public subscription URLs (/sub/<token>): VPN apps refresh every ~12h, so a low per-IP rate.
-# app.afrows.com arrives through the Cloudflare tunnel (remote_addr is loopback), so key
-# subscription refreshes on the visitor IP Cloudflare reports; direct hits fall back to
-# the TCP peer. A spoofed header only buys the sender their own bucket (tokens are 192-bit).
+# Keyed on the visitor IP Cloudflare reports (app.afrows.com arrives via the USA proxy,
+# so remote_addr is the same for everyone); direct hits fall back to the TCP peer. A
+# spoofed header only buys the sender their own bucket (tokens are 192-bit).
 map $http_cf_connecting_ip $afrows_sub_client {
     ""      $binary_remote_addr;
     default $http_cf_connecting_ip;
@@ -18,9 +18,11 @@ limit_req_zone $afrows_sub_client zone=afrows_sub:10m rate=30r/m;
 map $remote_addr $afrows_via_tunnel {
     127.0.0.1 1;
     ::1       1;
-    # Since 2026-10-25 afrows.com reaches this box from the USA VPS (cloudflared ->
-    # afrows-web-origin socket proxy), so Cloudflare traffic arrives from its IP.
-    93.127.140.50 1;
+    # NOT the USA VPS (93.127.140.50), although afrows.com reaches this box from it
+    # since 2026-10-25 (cloudflared -> afrows-web-origin socket proxy): it is also a
+    # customer VPN exit, so its users could forge CF-Connecting-IP. Until Cloudflare
+    # adds a secret origin header (Transform Rule; nginx include kept off the repo)
+    # that this map can require, website visitors from the USA proxy share its bucket.
     default   0;
 }
 map "$afrows_via_tunnel:$http_cf_connecting_ip" $afrows_client_ip {

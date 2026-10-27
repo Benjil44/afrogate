@@ -79,44 +79,74 @@ describe('RateLimitGuard with trusted proxy headers', { skip: bundledSkipReason 
   });
 });
 
-describe('POST /client/login per-identifier budget', { skip: bundledSkipReason }, () => {
-  const { ClientAuthController, CLIENT_LOGIN_IDENTIFIER_LIMIT } = loadBundled<{
+describe('POST /client/login failed-password budgets', { skip: bundledSkipReason }, () => {
+  const { ClientAuthController, CLIENT_LOGIN_IDENTIFIER_IP_LIMIT, CLIENT_LOGIN_IDENTIFIER_LIMIT } = loadBundled<{
     ClientAuthController: new (billing: unknown, rateLimit: unknown) => {
-      login(body: { identifier: string; password: string }): Promise<unknown>;
+      login(body: { identifier: string; password: string }, request?: unknown): Promise<unknown>;
     };
+    CLIENT_LOGIN_IDENTIFIER_IP_LIMIT: { max: number; windowMs: number };
     CLIENT_LOGIN_IDENTIFIER_LIMIT: { max: number; windowMs: number };
   }>('client/client-auth.controller.ts', { quiet: true });
   const { RateLimitService } = loadBundled<{ RateLimitService: RateLimitServiceCtor }>('security/rate-limit.service.ts');
-  const { HttpException } = requireBackendDependency<typeof import('@nestjs/common')>('@nestjs/common');
+  const { HttpException, UnauthorizedException } = requireBackendDependency<typeof import('@nestjs/common')>('@nestjs/common');
+
+  const from = (ip: string) => ({ headers: { 'cf-connecting-ip': ip } });
 
   function build(enabled = true) {
     let lookups = 0;
     const billing = {
-      loginClientByPassword: async () => {
+      loginClientByPassword: async (_identifier: string, password: string) => {
         lookups += 1;
+        if (password !== 'right') throw new UnauthorizedException('bad');
         return { token: 't' };
       },
     };
-    const config = { get: (name: string) => (name === 'AFROWS_RATE_LIMIT_ENABLED' && !enabled ? 'false' : undefined) };
+    const config = {
+      get: (name: string) => {
+        if (name === 'AFROWS_RATE_LIMIT_ENABLED' && !enabled) return 'false';
+        if (name === 'AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS') return 'true';
+        return undefined;
+      },
+    };
     const controller = new ClientAuthController(billing, new RateLimitService(config));
     return { controller, lookups: () => lookups };
   }
 
-  it('allows 10/min per identifier (case/space-insensitive), then 429 before any password check', async () => {
-    assert.equal(CLIENT_LOGIN_IDENTIFIER_LIMIT.max, 10);
+  it('10 failed passwords per account and IP (case/space-insensitive), then 429 before any password check', async () => {
+    assert.equal(CLIENT_LOGIN_IDENTIFIER_IP_LIMIT.max, 10);
     const { controller, lookups } = build();
     for (let i = 0; i < 10; i++) {
-      await controller.login({ identifier: i % 2 ? ' Ali@Example.com ' : 'ali@example.com', password: 'x' });
+      await assert.rejects(
+        controller.login({ identifier: i % 2 ? ' Ali@Example.com ' : 'ali@example.com', password: 'x' }, from('198.51.100.7')),
+        UnauthorizedException,
+      );
     }
-    assert.throws(() => controller.login({ identifier: 'ALI@example.com', password: 'x' }), HttpException);
-    assert.equal(lookups(), 10);
-    await controller.login({ identifier: 'other@example.com', password: 'x' });
-    assert.equal(lookups(), 11, 'other identifiers are unaffected');
+    await assert.rejects(controller.login({ identifier: 'ALI@example.com', password: 'right' }, from('198.51.100.7')), HttpException);
+    assert.equal(lookups(), 10, 'the blocked attempt never reached the password check');
+    await controller.login({ identifier: 'ali@example.com', password: 'right' }, from('203.0.113.9'));
+    await controller.login({ identifier: 'other@example.com', password: 'right' }, from('198.51.100.7'));
+  });
+
+  it('successful logins never spend the budget', async () => {
+    const { controller, lookups } = build();
+    for (let i = 0; i < 25; i++) await controller.login({ identifier: 'ali@example.com', password: 'right' }, from('198.51.100.7'));
+    assert.equal(lookups(), 25);
+  });
+
+  it('caps failures per account across many IPs', async () => {
+    const { controller } = build();
+    for (let i = 0; i < CLIENT_LOGIN_IDENTIFIER_LIMIT.max; i++) {
+      await assert.rejects(controller.login({ identifier: 'ali@example.com', password: 'x' }, from(`10.0.${i >> 8}.${i & 255}`)));
+    }
+    await assert.rejects(
+      controller.login({ identifier: 'ali@example.com', password: 'right' }, from('192.0.2.200')),
+      (error: unknown) => error instanceof HttpException && error.getStatus() === 429,
+    );
   });
 
   it('is a no-op when rate limiting is disabled', async () => {
     const { controller, lookups } = build(false);
-    for (let i = 0; i < 15; i++) await controller.login({ identifier: 'a@b.c', password: 'x' });
+    for (let i = 0; i < 15; i++) await assert.rejects(controller.login({ identifier: 'a@b.c', password: 'x' }, from('198.51.100.7')));
     assert.equal(lookups(), 15);
   });
 });

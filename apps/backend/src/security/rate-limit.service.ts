@@ -33,16 +33,21 @@ export class RateLimitService {
   }
 
   /**
-   * Programmatic limit for keys the guard cannot derive from the request alone
-   * (e.g. a per-account login identifier from the validated body). No-op when
-   * rate limiting is disabled; throws 429 when the window is exhausted.
+   * Failure-only budget: throws 429 while `key` already has `max` recorded
+   * failures in its window, without counting this attempt. Pair with
+   * `recordFailure` after a failed check, so successful logins never spend it.
    */
-  enforce(key: string, options: RateLimitOptions): void {
+  assertBelowFailureBudget(key: string, options: RateLimitOptions): void {
     if (!this.isEnabled()) return;
-    const decision = this.consume(key, options);
-    if (!decision.allowed) {
+    const entry = this.entries.get(key);
+    if (entry && entry.resetAt > Date.now() && entry.count >= options.max) {
       throw new HttpException('Rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
     }
+  }
+
+  recordFailure(key: string, options: RateLimitOptions): void {
+    if (!this.isEnabled()) return;
+    this.consume(key, options);
   }
 
   private maxKeys(): number {

@@ -4964,7 +4964,7 @@ export class BillingService {
 
   /** Best-effort audit of a phone conflict / ambiguity / archived-link release during bot registration. */
   async recordTelegramRegistrationEvent(
-    event: 'phone_conflict' | 'phone_ambiguous' | 'archived_link_released',
+    event: 'phone_conflict' | 'phone_ambiguous' | 'archived_link_released' | 'username_held',
     input: { telegramId: string; matchedAccountIds: string[] },
   ): Promise<void> {
     await this.audit.recordBestEffort(

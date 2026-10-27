@@ -470,9 +470,8 @@ export class TelegramBotService {
     user: TelegramUserRecord,
   ): Promise<TelegramBotWebhookResponse> {
     if (await this.selfRegistrationBlocked(ctx)) {
-      // A live account may already be this person's (old/wrong telegram_id but
-      // their @username, or several username matches). Minting a fresh 0 GB
-      // account would silently orphan it, so an operator has to link it.
+      // Several accounts match this sender and none can be picked safely, so an
+      // operator has to link the right one.
       return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
     }
     // Resume the phone step if a name was already captured.
@@ -746,22 +745,29 @@ export class TelegramBotService {
    * never falls into self-registration, so they keep the E4 notice.
    */
   /**
-   * Self-registration is allowed only on a clean `not_found` for this sender AND
-   * when no live account carries the sender's @username (bound to any id). The
-   * bot's lookup ignores username matches bound to another id (a re-claimed
-   * username must not grant access), but such a match may just as well be this
-   * customer's paid account with a stale telegram_id.
+   * Self-registration is blocked only when the bot's lookup is not a clean
+   * `not_found` (e.g. `ambiguous`). A live account bound to another id that
+   * carries the sender's @username may be their paid account with a stale
+   * telegram_id, or a username somebody else used before: never dead-end the
+   * sender on that, but audit it (`telegram.register.username_held`) so support
+   * can merge the accounts.
    */
   private async selfRegistrationBlocked(ctx: Ctx): Promise<boolean> {
     const lookup = await this.billing.getTelegramBotAccountStatus({ telegramId: ctx.fromId, telegramUsername: ctx.username });
     if (lookup.status !== 'not_found') return true;
     const username = ctx.username?.trim().replace(/^@+/, '');
-    if (!username) return false;
-    const holder = await this.database.query<{ id: string }>(
-      `SELECT id FROM customer_accounts WHERE lower(telegram_username) = lower($1) AND deleted_at IS NULL LIMIT 1`,
+    if (!username || !ctx.fromId) return false;
+    const holders = await this.database.query<{ id: string }>(
+      `SELECT id FROM customer_accounts WHERE lower(telegram_username) = lower($1) AND deleted_at IS NULL LIMIT 5`,
       [username],
     );
-    return holder.rows.length > 0;
+    if (holders.rows.length) {
+      await this.billing.recordTelegramRegistrationEvent('username_held', {
+        telegramId: ctx.fromId,
+        matchedAccountIds: holders.rows.map((row) => row.id),
+      });
+    }
+    return false;
   }
 
   private async accountMissing(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {

@@ -38,8 +38,11 @@ export interface PhoneMatchAccount {
  * A registration anomaly worth an audit trail (never blocks onboarding).
  * `archived_link_released`: an ARCHIVED (soft-deleted) account still held this
  * telegram_id, so the id was released from it before re-registering.
+ * `username_held`: a live account bound to another id carries the sender's
+ * @username (a stale telegram_id on their paid account, or a recycled username);
+ * the sender still signs up and support can merge the two.
  */
-export type PhoneRegistrationEvent = 'phone_conflict' | 'phone_ambiguous' | 'archived_link_released';
+export type PhoneRegistrationEvent = 'phone_conflict' | 'phone_ambiguous' | 'archived_link_released' | 'username_held';
 
 /** Result of crediting an inviter when a referred user completes registration (N3/N5). */
 export interface ReferralAttribution {
