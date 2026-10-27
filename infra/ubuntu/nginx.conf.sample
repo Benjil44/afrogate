@@ -18,6 +18,9 @@ limit_req_zone $afrows_sub_client zone=afrows_sub:10m rate=30r/m;
 map $remote_addr $afrows_via_tunnel {
     127.0.0.1 1;
     ::1       1;
+    # Since 2026-10-25 afrows.com reaches this box from the USA VPS (cloudflared ->
+    # afrows-web-origin socket proxy), so Cloudflare traffic arrives from its IP.
+    93.127.140.50 1;
     default   0;
 }
 map "$afrows_via_tunnel:$http_cf_connecting_ip" $afrows_client_ip {
