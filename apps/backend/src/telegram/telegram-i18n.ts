@@ -435,8 +435,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   },
   'reg.btn.sharePhone': { en: '📱 Share my phone number', fa: '📱 اشتراک شمارهٔ من' },
   'reg.phoneNeedButton': {
-    en: "Please use the <b>Share my phone number</b> button below — a typed number can't be verified. 🙏",
-    fa: 'لطفاً از دکمهٔ <b>اشتراک شمارهٔ من</b> در پایین استفاده کنید — شمارهٔ تایپ‌شده قابل تأیید نیست. 🙏',
+    en: "Please use the <b>📱 Share my phone number</b> button below — a typed number can't be verified. 🙏\nDon't see the button? Tap the keyboard icon (🎛) next to the message box.",
+    fa: 'لطفاً از دکمهٔ <b>📱 اشتراک شمارهٔ من</b> در پایین صفحه استفاده کنید — شمارهٔ تایپ‌شده قابل تأیید نیست. 🙏\nدکمه را نمی‌بینید؟ روی آیکون صفحه‌کلید (🎛) کنار کادر پیام بزنید.',
   },
   'reg.phoneNotYours': {
     en: "That contact isn't your own Telegram number — please tap the share button so we get yours. 🙏",

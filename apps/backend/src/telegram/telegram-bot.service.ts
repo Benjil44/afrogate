@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import { telegramWebhookSecretMatches } from './telegram-webhook-secret';
@@ -122,10 +122,14 @@ interface Ctx {
   callbackId?: string;
   /** Sender is a superadmin (allowed_admin_chat_ids): "menu" means the admin home. */
   isAdmin?: boolean;
+  /** Sender is an approved seller: "menu" / stale buttons mean the seller menu. */
+  isSeller?: boolean;
 }
 
 @Injectable()
 export class TelegramBotService {
+  private readonly logger = new Logger(TelegramBotService.name);
+
   constructor(
     private readonly billing: BillingService,
     private readonly telegram: TelegramAlertService,
@@ -187,7 +191,10 @@ export class TelegramBotService {
         return this.guard(adminCtx, () => this.handleAdminCallback(adminCtx, callback.data));
       }
       const seller = await this.findSeller(ctx.fromId);
-      if (seller) return this.guard(ctx, () => this.handleSellerCallback(ctx, seller, callback.data));
+      if (seller) {
+        const sellerCtx: Ctx = { ...ctx, isSeller: true };
+        return this.guard(sellerCtx, () => this.handleSellerCallback(sellerCtx, seller, callback.data));
+      }
       return this.guard(ctx, () => this.handleCallback(ctx, callback.data));
     }
 
@@ -205,7 +212,8 @@ export class TelegramBotService {
 
     const seller = await this.findSeller(ctx.fromId);
     if (seller) {
-      if (message.text) return this.guard(ctx, () => this.handleSellerText(ctx, seller, message.text!));
+      const sellerCtx: Ctx = { ...ctx, isSeller: true };
+      if (message.text) return this.guard(sellerCtx, () => this.handleSellerText(sellerCtx, seller, message.text!));
       return { ok: true, status: 'ignored', reason: 'unsupported_update' };
     }
 
@@ -217,13 +225,21 @@ export class TelegramBotService {
     return { ok: true, status: 'ignored', reason: 'unsupported_update' };
   }
 
-  /** Wrap a handler so any failure renders E5 (generic error) instead of 500ing. */
+  /**
+   * Wrap a handler so any failure renders E5 (generic error) instead of 500ing.
+   * The failure is logged (error class + message only: no update payload, phone
+   * or name) so a user stuck on E5 can be diagnosed from the backend log.
+   */
   private async guard(ctx: Ctx, run: () => Promise<TelegramBotWebhookResponse>): Promise<TelegramBotWebhookResponse> {
     try {
       return await run();
-    } catch {
+    } catch (error) {
+      const kind = error instanceof Error ? error.constructor.name : typeof error;
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`bot handler failed (${kind}): ${message.slice(0, 300)}`);
       const language = await this.languageFor(ctx.fromId);
-      return this.screen('E5', ctx, language, renderTelegramCopy('error.generic', language), this.errorGenericKeyboard(language));
+      const keyboard = ctx.isSeller ? this.sellerMenuKeyboard(language) : this.errorGenericKeyboard(language);
+      return this.screen('E5', ctx, language, renderTelegramCopy('error.generic', language), keyboard);
     }
   }
 
@@ -242,12 +258,19 @@ export class TelegramBotService {
 
     const language = user.language;
 
-    // Registration owns the session: text belongs to the current step.
-    if (user.state?.regStage === 'awaiting_name') {
-      return this.handleNameInput(ctx, language, user, rawText);
-    }
-    if (user.state?.regStage === 'awaiting_phone') {
-      // Any typed text (incl. a typed number or a slash command) → use the button.
+    // Registration owns the session: plain text belongs to the current step. A
+    // slash command is never a name or a phone: /language opens the picker (a
+    // user who tapped the wrong language can still fix it), /start with an invite
+    // payload records the referral, and any command re-asks the current step.
+    if (user.state?.regStage) {
+      if (command === 'language') return this.screenLanguageSettings(ctx, language);
+      if (command !== null) {
+        if (command === 'start' && payload) await this.captureReferral(ctx, user, payload);
+        const current = (await getTelegramUser(this.database, ctx.fromId)) ?? user;
+        return this.reSendRegistrationStep(ctx, language, current);
+      }
+      if (user.state.regStage === 'awaiting_name') return this.handleNameInput(ctx, language, user, rawText);
+      // A typed number can't be verified as the user's own → use the share button.
       return this.sendReply(ctx, language, renderTelegramCopy('reg.phoneNeedButton', language), this.sharePhoneKeyboard(language));
     }
 
@@ -304,7 +327,12 @@ export class TelegramBotService {
     }
 
     const user = ctx.fromId ? await getTelegramUser(this.database, ctx.fromId) : null;
-    if (!user || user.language === null) return this.staleButton(ctx);
+    if (!user || user.language === null) {
+      // Unknown user (no language yet) tapping an old button: the main menu would
+      // be just as unusable (every tap lands here again), so start onboarding.
+      await this.answer(ctx);
+      return this.renderLanguagePicker(ctx);
+    }
     const language = user.language;
 
     // Registration is inescapable: any other button re-prompts the current step.
@@ -360,6 +388,11 @@ export class TelegramBotService {
   /** E7 — unknown/retired callback data: stale-button toast + a fresh main menu. */
   private async staleButton(ctx: Ctx): Promise<TelegramBotWebhookResponse> {
     const language = await this.languageFor(ctx.fromId);
+    if (ctx.isSeller) {
+      // A seller's only working buttons are afws:sell:*; the customer menu would loop here.
+      await this.answer(ctx, renderTelegramCopy('error.staleButton', language));
+      return this.sendNew(ctx, language, renderTelegramCopy('seller.menu.title', language), this.sellerMenuKeyboard(language));
+    }
     if (ctx.isAdmin) {
       const keyboard = await this.adminHomeKeyboard(ctx, language);
       return this.sendNew(ctx, language, renderTelegramCopy('admin.menu.title', language), keyboard, renderTelegramCopy('error.staleButton', language));
@@ -379,6 +412,13 @@ export class TelegramBotService {
     const existing = await getTelegramUser(this.database, ctx.fromId);
     const hadLanguage = existing?.language != null;
     await setTelegramUserLanguage(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, language });
+
+    if (hadLanguage && existing?.state?.regStage) {
+      // Mid-signup: confirm with a toast and re-ask the current step in the new
+      // language (the S8u menu would only bounce back with "finish signup first").
+      await this.answer(ctx, renderTelegramCopy('lang.toast', language));
+      return this.reSendRegistrationStep({ ...ctx, callbackId: undefined }, language, existing);
+    }
 
     if (hadLanguage) {
       // S8u — settings change: edit to lang.updated (in the new language) + menu.
@@ -523,7 +563,7 @@ export class TelegramBotService {
     if (!resolved) {
       // Connect is only offered to registered users; if the account is gone, surface
       // the account-problem screen rather than starting a merge with no source.
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
     await this.mergeState(ctx, user, { connectStage: true });
     return this.sendReply(ctx, language, renderTelegramCopy('connect.intro', language), this.sharePhoneKeyboard(language));
@@ -681,9 +721,24 @@ export class TelegramBotService {
   private async screenAccount(ctx: Ctx, language: TelegramLanguage, toast?: string): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
     return this.screen('S3v2', ctx, language, await this.accountCardText(account, language), this.accountKeyboard(language, account), toast);
+  }
+
+  /**
+   * A customer with a chosen language but no live account (e.g. the account was
+   * archived, or never finished signup) tapped an account screen. "Contact
+   * support" was a dead end (there is no support contact in the bot), so restart
+   * signup, which also re-links a phone-matched account. An admin never falls
+   * into self-registration, so they keep the E4 notice.
+   */
+  private async accountMissing(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
+    if (ctx.isAdmin || !ctx.fromId) {
+      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+    }
+    const user = (await getTelegramUser(this.database, ctx.fromId)) ?? { telegramId: ctx.fromId, chatId: ctx.chatId, language, state: null };
+    return this.beginRegistration(ctx, language, user);
   }
 
   private async accountCardText(account: TelegramBotAccountSummary, language: TelegramLanguage): Promise<string> {
@@ -761,7 +816,7 @@ export class TelegramBotService {
   private async screenInvite(ctx: Ctx, language: TelegramLanguage, toast?: string): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
 
     const economy = await this.gemEconomy();
@@ -801,7 +856,7 @@ export class TelegramBotService {
   private async screenGems(ctx: Ctx, language: TelegramLanguage, toast?: string): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
     const economy = await this.gemEconomy();
     const gems = account.gemsBalance ?? 0;
@@ -877,7 +932,7 @@ export class TelegramBotService {
   private async screenRedeemPicker(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
     const economy = await this.gemEconomy();
     const rate = economy.gemRedeemPerGb;
@@ -929,7 +984,7 @@ export class TelegramBotService {
   private async screenRedeemConfirm(ctx: Ctx, language: TelegramLanguage, gbToken: string): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
     const economy = await this.gemEconomy();
     const rate = economy.gemRedeemPerGb;
@@ -963,7 +1018,7 @@ export class TelegramBotService {
   private async executeRedeem(ctx: Ctx, language: TelegramLanguage, gbToken: string): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
     const economy = await this.gemEconomy();
     const rate = economy.gemRedeemPerGb;
@@ -1003,7 +1058,7 @@ export class TelegramBotService {
   private async screenConfigs(ctx: Ctx, language: TelegramLanguage, toast?: string): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
 
     const configs = await this.loadConfigs(account.id);
@@ -1055,7 +1110,7 @@ export class TelegramBotService {
   private async handleShowConfigQr(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
 
     const primary = await this.billing.getPrimaryVlessEntryLinkForAccount(account.id);
@@ -1218,7 +1273,7 @@ export class TelegramBotService {
 
     const account = await this.findAccount(ctx);
     if (!account) {
-      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+      return this.accountMissing(ctx, language);
     }
 
     const created = await this.database.transaction((executor) =>
@@ -1903,7 +1958,9 @@ export class TelegramBotService {
     if (ctx.fromId) {
       const user = await getTelegramUser(this.database, ctx.fromId);
       if (user?.state?.sellerNewCustomerStage === 'awaiting_name') {
-        return this.handleSellerNewCustomerName(ctx, language, user, rawText);
+        // A slash command (☰ menu) is never a customer name: abandon the flow.
+        if (!rawText.startsWith('/')) return this.handleSellerNewCustomerName(ctx, language, user, rawText);
+        await setTelegramUserState(this.database, { telegramId: ctx.fromId, chatId: ctx.chatId, state: null });
       }
     }
 
@@ -1916,8 +1973,10 @@ export class TelegramBotService {
     seller: AdminResellerAccountSummary,
     data: string,
   ): Promise<TelegramBotWebhookResponse> {
-    if (!data.startsWith('afws:sell:')) return this.staleButton(ctx);
     const language = await this.languageFor(ctx.fromId);
+    // "🏠 Main menu" / "Try again" on generic screens (errors, notifications) mean the seller menu.
+    if (data === 'afws:menu' || data === 'afws:retry') return this.screenSellerMenu(ctx, language);
+    if (!data.startsWith('afws:sell:')) return this.staleButton(ctx);
     const user = ctx.fromId ? await getTelegramUser(this.database, ctx.fromId) : null;
 
     if (data.startsWith('afws:sell:req:approve:')) {
