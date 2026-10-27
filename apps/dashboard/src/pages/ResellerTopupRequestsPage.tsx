@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ImageOff, Loader2, Wallet, X, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { CheckCircle2, Loader2, Wallet, XCircle } from 'lucide-react';
 import {
   approveResellerTopup,
   fetchResellerTopupReceipt,
@@ -9,6 +9,7 @@ import {
   type ResellerWalletTopupRequestSummary,
 } from '../api/reseller-pricing';
 import { DashboardTabs, EmptyState, PanelHeading, StatusBadge } from '../components/primitives';
+import { NoReceiptTile, ReceiptLightbox, ReceiptThumb, receiptStatusTone, useReceiptBlobs } from '../components/receipt-queue';
 import { formatMoneyAmount } from '../labels';
 import type { DashboardTabItem, Tone } from '../dashboard-types';
 import type { DashboardFormatters } from '../formatters';
@@ -20,19 +21,6 @@ const TOAST_MS = 5_000;
 
 type TopupFilter = ResellerTopupStatus | 'all';
 type LoadState = 'loading' | 'live' | 'error';
-
-function statusTone(status: string): Tone {
-  switch (status) {
-    case 'approved':
-      return 'good';
-    case 'rejected':
-      return 'critical';
-    case 'pending':
-      return 'warning';
-    default:
-      return 'neutral';
-  }
-}
 
 function statusLabel(status: string, t: DashboardStrings): string {
   switch (status) {
@@ -71,61 +59,8 @@ export function ResellerTopupRequestsPage({
   const [toast, setToast] = useState<{ text: string; tone: Tone } | null>(null);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
 
-  // Receipt blob lifecycle: id -> objectURL. The ref mirrors state so cleanup
-  // can revoke every URL on unmount, and pruning revokes URLs whose request
-  // left the list after a refresh (no leaked blobs).
-  const [receiptUrls, setReceiptUrls] = useState<Record<string, string>>({});
-  const receiptUrlsRef = useRef<Record<string, string>>({});
-  const receiptLoadingRef = useRef<Set<string>>(new Set());
-  const [receiptErrors, setReceiptErrors] = useState<Record<string, true>>({});
-  const isMountedRef = useRef(true);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      for (const url of Object.values(receiptUrlsRef.current)) URL.revokeObjectURL(url);
-      receiptUrlsRef.current = {};
-    };
-  }, []);
-
-  const pruneReceiptUrls = useCallback((keepIds: Set<string>) => {
-    const removed = Object.keys(receiptUrlsRef.current).filter((id) => !keepIds.has(id));
-    if (removed.length === 0) return;
-
-    for (const id of removed) {
-      URL.revokeObjectURL(receiptUrlsRef.current[id]);
-      delete receiptUrlsRef.current[id];
-    }
-    setReceiptUrls((current) => {
-      const next = { ...current };
-      for (const id of removed) delete next[id];
-      return next;
-    });
-  }, []);
-
-  /** Lazily fetch one receipt (called when its thumbnail scrolls into view). */
-  const ensureReceipt = useCallback((id: string) => {
-    if (receiptUrlsRef.current[id] || receiptLoadingRef.current.has(id)) return;
-
-    receiptLoadingRef.current.add(id);
-    fetchResellerTopupReceipt(sessionToken, id)
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        if (!isMountedRef.current) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        receiptUrlsRef.current[id] = url;
-        setReceiptUrls((current) => ({ ...current, [id]: url }));
-      })
-      .catch(() => {
-        if (isMountedRef.current) setReceiptErrors((current) => ({ ...current, [id]: true }));
-      })
-      .finally(() => {
-        receiptLoadingRef.current.delete(id);
-      });
-  }, [sessionToken]);
+  const fetchReceipt = useCallback((id: string) => fetchResellerTopupReceipt(sessionToken, id), [sessionToken]);
+  const { ensureReceipt, isMountedRef, pruneReceiptUrls, receiptErrors, receiptUrls } = useReceiptBlobs(fetchReceipt);
 
   const load = useCallback(async (activeFilter: TopupFilter) => {
     try {
@@ -140,7 +75,7 @@ export function ResellerTopupRequestsPage({
 
       setLoadState((current) => (current === 'live' ? 'live' : 'error'));
     }
-  }, [pruneReceiptUrls, sessionToken]);
+  }, [isMountedRef, pruneReceiptUrls, sessionToken]);
 
   useEffect(() => {
     let active = true;
@@ -164,16 +99,6 @@ export function ResellerTopupRequestsPage({
     const timer = window.setTimeout(() => setToast(null), TOAST_MS);
     return () => window.clearTimeout(timer);
   }, [toast]);
-
-  // Close the lightbox with Escape.
-  useEffect(() => {
-    if (!lightboxId) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setLightboxId(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxId]);
 
   const sellerName = (request: ResellerWalletTopupRequestSummary): string =>
     request.resellerDisplayName || s.unknownSeller;
@@ -293,38 +218,14 @@ export function ResellerTopupRequestsPage({
       </section>
 
       {lightboxRequest && lightboxUrl ? (
-        <div
-          aria-label={s.receiptAlt(lightboxRequest.reference)}
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4"
-          onClick={() => setLightboxId(null)}
-          role="dialog"
-        >
-          <figure className="relative max-h-full max-w-3xl" onClick={(event) => event.stopPropagation()}>
-            <img
-              alt={s.receiptAlt(lightboxRequest.reference)}
-              className="max-h-[82vh] w-auto max-w-full rounded-md border border-white/20 bg-white object-contain"
-              src={lightboxUrl}
-            />
-            <figcaption className="mt-2 flex min-w-0 items-center justify-between gap-2 text-[13px] font-bold text-white">
-              <span className="min-w-0 truncate">
-                {sellerName(lightboxRequest)}
-                {` / ${amountLabel(lightboxRequest)}`}
-              </span>
-              <span className="shrink-0 opacity-80" dir="ltr">{lightboxRequest.reference}</span>
-            </figcaption>
-            <button
-              aria-label={s.closeReceipt}
-              autoFocus
-              className="absolute -top-3 -right-3 inline-flex size-11 items-center justify-center rounded-full border border-white/30 bg-afro-sidebar text-white shadow-lg hover:bg-[#1f3138]"
-              onClick={() => setLightboxId(null)}
-              title={s.closeReceipt}
-              type="button"
-            >
-              <X size={18} />
-            </button>
-          </figure>
-        </div>
+        <ReceiptLightbox
+          alt={s.receiptAlt(lightboxRequest.reference)}
+          caption={`${sellerName(lightboxRequest)} / ${amountLabel(lightboxRequest)}`}
+          closeLabel={s.closeReceipt}
+          onClose={() => setLightboxId(null)}
+          reference={lightboxRequest.reference}
+          url={lightboxUrl}
+        />
       ) : null}
     </section>
   );
@@ -381,7 +282,7 @@ function ResellerTopupCard({
           <strong className="min-w-0 truncate text-[14px]">{request.resellerDisplayName || s.unknownSeller}</strong>
           <span className={`${mutedTextClass} shrink-0`} dir="ltr">{request.reference}</span>
         </span>
-        <StatusBadge tone={statusTone(String(request.status))}>{statusLabel(String(request.status), t)}</StatusBadge>
+        <StatusBadge tone={receiptStatusTone(String(request.status))}>{statusLabel(String(request.status), t)}</StatusBadge>
       </div>
 
       <div className="flex min-w-0 flex-col gap-2.5 sm:flex-row">
@@ -397,12 +298,7 @@ function ResellerTopupCard({
             url={receiptUrl}
           />
         ) : (
-          <div className="grid h-24 w-full shrink-0 place-items-center rounded-md border border-dashed border-afro-line bg-afro-page text-afro-muted sm:w-24">
-            <span className="grid justify-items-center gap-1 px-1 text-center text-[11px] font-bold">
-              <ImageOff size={16} />
-              {s.noReceipt}
-            </span>
-          </div>
+          <NoReceiptTile label={s.noReceipt} />
         )}
 
         <dl className="grid min-w-0 flex-1 content-start gap-x-4 gap-y-1 sm:grid-cols-2">
@@ -488,75 +384,5 @@ function ResellerTopupCard({
         </form>
       ) : null}
     </article>
-  );
-}
-
-/** Receipt thumbnail that only fetches its blob once scrolled into view; the
- * parent owns the objectURL and revokes it on refresh/unmount. */
-function ReceiptThumb({
-  alt,
-  failed,
-  failedLabel,
-  loadingLabel,
-  onOpen,
-  onVisible,
-  openLabel,
-  url,
-}: {
-  alt: string;
-  failed: boolean;
-  failedLabel: string;
-  loadingLabel: string;
-  onOpen: () => void;
-  onVisible: () => void;
-  openLabel: string;
-  url: string | null;
-}) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const onVisibleRef = useRef(onVisible);
-  onVisibleRef.current = onVisible;
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || url || failed) return;
-
-    if (typeof IntersectionObserver === 'undefined') {
-      onVisibleRef.current();
-      return;
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        onVisibleRef.current();
-        observer.disconnect();
-      }
-    }, { rootMargin: '200px' });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [failed, url]);
-
-  return (
-    <button
-      aria-label={openLabel}
-      className="relative block h-24 w-full shrink-0 overflow-hidden rounded-md border border-afro-line bg-afro-page text-afro-muted outline-none ring-afro-teal/20 focus-visible:border-afro-teal focus-visible:ring-4 enabled:hover:border-afro-teal sm:w-24"
-      data-receipt-thumb="true"
-      disabled={!url}
-      onClick={onOpen}
-      ref={ref}
-      title={openLabel}
-      type="button"
-    >
-      {url ? (
-        <img alt={alt} className="size-full object-cover" src={url} />
-      ) : (
-        <span className="grid size-full place-items-center px-1 text-center text-[11px] font-bold">
-          {failed ? (
-            <span className="grid justify-items-center gap-1"><ImageOff size={16} />{failedLabel}</span>
-          ) : (
-            <span className="grid justify-items-center gap-1"><Loader2 className="animate-spin" size={16} />{loadingLabel}</span>
-          )}
-        </span>
-      )}
-    </button>
   );
 }
