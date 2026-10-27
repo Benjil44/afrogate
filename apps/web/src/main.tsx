@@ -1,6 +1,5 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { LangProvider } from './i18n';
 import { PlayerProvider } from './lib/player';
@@ -19,9 +18,7 @@ createRoot(root).render(
       {/* MotionProvider needs the language (RTL mirroring); PlayerProvider needs the motion tier (analyser gating). */}
       <MotionProvider>
         <PlayerProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <App />
         </PlayerProvider>
       </MotionProvider>
     </LangProvider>
