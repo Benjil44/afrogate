@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import { DatabaseService } from '../database/database.service';
 import { parseAccessLogLine } from './access-log-parse';
+import { parseConfigFlag } from '../common/config-flag';
 
 /**
  * F1 device/IP visibility: tails the xray access log and folds in WireGuard peer
@@ -31,7 +32,9 @@ export class XrayAccessLogService implements OnModuleInit, OnModuleDestroy {
   private path(): string { return this.config.get<string>('AFROWS_XRAY_ACCESS_LOG')?.trim() || '/var/log/afrows-xray/access.log'; }
   private intervalMs(): number { const n = Number(this.config.get('AFROWS_ACCESS_LOG_INTERVAL_SECONDS')); return (Number.isInteger(n) ? Math.min(Math.max(n, 15), 600) : 30) * 1000; }
   private retentionDays(): number { const n = Number(this.config.get('AFROWS_DEVICE_SIGHTING_RETENTION_DAYS')); return Number.isInteger(n) ? Math.min(Math.max(n, 1), 90) : 7; }
-  private flag(name: string, fb: boolean): boolean { const v = this.config.get<string>(name)?.trim().toLowerCase(); return v ? ['1', 'true', 'yes', 'on'].includes(v) : fb; }
+  private flag(name: string, fb: boolean): boolean {
+    return parseConfigFlag(this.config.get<string>(name), fb);
+  }
 
   async tick(): Promise<void> {
     if (this.running) return;

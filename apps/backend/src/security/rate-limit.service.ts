@@ -7,6 +7,7 @@ import {
   type RateLimitDecision,
   type RateLimitEntry,
 } from './rate-limit-window';
+import { parseConfigFlag } from '../common/config-flag';
 
 export type { RateLimitDecision } from './rate-limit-window';
 
@@ -37,8 +38,6 @@ export class RateLimitService {
   }
 
   private configFlag(name: string, fallback: boolean): boolean {
-    const value = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!value) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(value);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
 }

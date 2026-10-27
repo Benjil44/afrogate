@@ -8,6 +8,7 @@ import * as net from 'node:net';
 import { DatabaseService } from '../database/database.service';
 import { createSecureTempFile } from '../common/secure-temp-file';
 import { buildXraySpeedTestConfig } from './outbound-xray-config';
+import { parseConfigFlag } from '../common/config-flag';
 
 const execFileAsync = promisify(execFile);
 
@@ -370,9 +371,7 @@ export class OutboundSpeedTestService implements OnModuleInit, OnModuleDestroy {
   }
 
   private configFlag(name: string, fallback: boolean): boolean {
-    const value = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!value) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(value);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
 
   private asRecord(value: unknown): Record<string, unknown> {

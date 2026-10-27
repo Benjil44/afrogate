@@ -29,6 +29,7 @@ import {
   type ProvisioningTarget,
 } from './xray-provisioning';
 import { serverAccessFromRow, serverAccessSelectSql, type ServerAccessColumns } from './customer-server-access';
+import { parseConfigFlag } from '../common/config-flag';
 
 const execFileAsync = promisify(execFile);
 
@@ -484,8 +485,6 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     return Math.min(Math.max(n, min), max);
   }
   private flag(name: string, fallback: boolean): boolean {
-    const v = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!v) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(v);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
 }
