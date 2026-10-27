@@ -56,6 +56,14 @@ tunnels to foreign IPs on other ports):
   bittorrent stay blocked): until Germany has its own 443, the Afrows customer catch-all
   `via-germany` is pointed at this USA entry (`AFROWS_DE_CHAIN_*` = the USA values on the
   Afrows server). Backup `config.json.bak-chain-egress-20261020-*`.
+- 2026-10-27: the live chain is **Shadowsocks-2022** inbound `afrows-us-ss` on :8447 (tcp+udp,
+  `2022-blake3-aes-128-gcm`, one client `afrows-chain@afrows`, the user the SSH-relay rule
+  allows). Its client password (`serverPSK:userPSK`) is in `config.json.afrows-us-ss.client`
+  and in the Afrows env as `AFROWS_{US,DE}_CHAIN_SS_PASSWORD`. `afrows-reality-fw` guards
+  8443/8446/8447 (8447 also udp) with the `AFROWS-REALITY` chain. REALITY inbounds
+  `afrows-us-reality` (:8443) and `afrows-us-rv` (:8446, Vision, user `afrows-chain-rv@afrows`,
+  which can NOT reach the SSH relay) stay as fallbacks: on the Afrows server re-enable them
+  by restoring the `#pre-ss-20261027#` env lines and running the egress mode sync.
 - Rollback: `systemctl disable --now afrows-reality-fw`, `xray api rmi afrows-us-reality`,
   restore the config backup under the lock.
 

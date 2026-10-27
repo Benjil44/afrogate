@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.121.4 - 2026-10-27
+
+- **Germany and USA links work on Shatel FTTH again.** Shatel blocks the Cloudflare WS tunnel by the client's TLS fingerprint, not by the afrows name: from a direct Shatel line `fp=chrome` passed 0/10 and `fp=ios` 10/10 (YouTube included), and the ECH cover name `cloudflare-ech.com` is blocked outright. The Germany/USA entry links now carry `fp=ios` with no ECH (`AFROWS_{DE,US}_ENTRY_FP=ios`, ECH unset); customers pick it up on their next subscription refresh.
+- **The server's own link abroad switched to Shadowsocks-2022.** Iranian DPI kept freezing the REALITY chain from the زیرساخت datacenter to the USA (0/20 in three of five test rounds); Shadowsocks-2022 passed 14-20/20 in every round. The egress renderer gained an `ss` chain mode (`<prefix>_MODE=ss`, `_PORT`, `_SS_PASSWORD`); the USA box serves it on :8447, firewalled to the Afrows server.
+- **Fixed: the renderer no longer emits the `randomized` uTLS fingerprint** (xray's random hello offers curves REALITY rejects, failing most dials), and the egress mode sync gets 240 s instead of 60 s, so it can still apply a fixed config when every health probe is timing out.
+- **Fixed: the bot's Telegram link and Germany management were cut off** since 2026-10-25: the REALITY+Vision inbound used a different chain user than the one the USA allows to reach its SSH relay. The Shadowsocks user is `afrows-chain@afrows` again.
+
 ## 0.121.3 - 2026-10-21
 
 - **Every customer-facing GB figure now uses decimal GB.** The customer web panel (`apps/client` `formatBytes`) and the Telegram charge notices ("Added: …", "Account remaining: … of …") still divided by 1024, so a 25 GB charge read "23.3 GB" there too. Both now use 1 GB = 1,000,000,000 bytes, matching the bot menus, the admin panel and (since 0.121.2) the VPN apps.

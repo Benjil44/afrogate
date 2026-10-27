@@ -2,13 +2,13 @@
 
 Since 2026-10-20 the Afrows server is 185.252.30.123 (زیرساخت مشهد). Everything
 foreign the server needs goes over SSH to the USA VPS. From this datacenter Iranian
-DPI blackholes tunnels to foreign IPs on every port except 443, and Cloudflare is
-throttled, so the SSH rides a direct VLESS+REALITY chain on 443 (the USA NAT-redirects
-only the Afrows servers' :443 to its xray :8443; `afrows-reality-fw` on the USA):
+DPI freezes REALITY tunnels to foreign IPs, and Cloudflare is blocked, so since
+2026-10-27 the SSH rides a direct Shadowsocks-2022 chain to the USA xray :8447
+(`afrows-reality-fw` on the USA lets only the Afrows server reach it):
 
 ```
 Afrows ──nc──▶ xray loopback socks us-mgmt-socks 127.0.0.1:1083
-       ──▶ via-usa (VLESS+REALITY, 93.127.140.50:443, SNI dl.google.com)
+       ──▶ via-usa (Shadowsocks-2022, 93.127.140.50:8447, user afrows-chain@afrows)
        ──▶ USA xray ──▶ USA sshd 127.0.0.1:22 (user afrows-relay)  ──▶  target
 ```
 

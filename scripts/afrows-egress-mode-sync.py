@@ -194,6 +194,21 @@ def reality_cfg(prefix):
     }
 
 
+def ss_cfg(prefix):
+    """Optional Shadowsocks-2022 chain straight to the exit, from <prefix>_MODE=ss +
+    _PORT/_SS_PASSWORD (multi-user "serverPSK:userPSK")/_SS_METHOD. From the زیرساخت DC
+    it was the only transport DPI left alone in every round (2026-10-26: SS-2022 14-20/20,
+    REALITY 0-18/20). Mode not ss -> {}."""
+    if file_env(prefix + "_MODE") != "ss":
+        return {}
+    return {
+        "mode": "ss",
+        "port": int(file_env(prefix + "_PORT", "8447")),
+        "ss_method": file_env(prefix + "_SS_METHOD", "2022-blake3-aes-128-gcm"),
+        "ss_password": file_env(prefix + "_SS_PASSWORD"),
+    }
+
+
 def chain_cfg():
     """Germany chain settings from the env file, or None when not configured."""
     uuid = file_env("AFROWS_DE_CHAIN_UUID")
@@ -207,7 +222,7 @@ def chain_cfg():
         "path": file_env("AFROWS_DE_CHAIN_PATH", "/afrowsws"),
         "probe_host": host or "127.0.0.1",
         "probe_port": int(port or "10812"),
-    }, **reality_cfg("AFROWS_DE_CHAIN"))
+    }, **reality_cfg("AFROWS_DE_CHAIN"), **ss_cfg("AFROWS_DE_CHAIN"))
 
 
 def us_chain_cfg():
@@ -223,7 +238,7 @@ def us_chain_cfg():
         "path": file_env("AFROWS_US_CHAIN_PATH", "/afrowsus"),
         "socks_host": host or "127.0.0.1",
         "socks_port": int(port or "1083"),
-    }, **reality_cfg("AFROWS_US_CHAIN"))
+    }, **reality_cfg("AFROWS_US_CHAIN"), **ss_cfg("AFROWS_US_CHAIN"))
 
 
 def us_mgmt_inbound(c):
@@ -256,7 +271,14 @@ def drop_tagged(items, tag):
 def chain_outbound(c, tag="via-germany"):
     """A chain outbound (via-germany, or via-usa); deterministic per env. VLESS-WS-TLS
     through Cloudflare by default; VLESS+REALITY straight to the exit (address = the
-    exit's own IP) when the chain's mode is "reality"."""
+    exit's own IP) when the chain's mode is "reality"; Shadowsocks-2022 to the exit when
+    it is "ss" (no mux, for the same reason as REALITY)."""
+    if c.get("mode") == "ss":
+        return {
+            "tag": tag, "protocol": "shadowsocks",
+            "settings": {"servers": [{"address": c["address"], "port": c["port"],
+                                      "method": c["ss_method"], "password": c["ss_password"]}]},
+        }
     user = {"id": c["uuid"], "encryption": "none", "level": 0}
     # Mux: every customer shares this one chain, and each new stream otherwise
     # pays a fresh TCP+TLS+WS setup over LTE+CF (~1.3s TTFB measured vs ~0.5s

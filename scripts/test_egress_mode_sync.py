@@ -251,6 +251,15 @@ _vv = [o for o in _cfgv["outbounds"] if o["tag"] == "via-usa"][0]
 assert _c is True and _vv["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision" and "mux" not in _vv
 assert _vv["streamSettings"]["realitySettings"]["fingerprint"] == "chrome", "randomized fp is mapped to chrome"
 assert _apply(_onv, _cfgv)[0] is False, "vision render is idempotent"
+# Shadowsocks-2022 chain mode
+_ons = _on + ["AFROWS_US_CHAIN_ADDRESS=93.127.140.50", "AFROWS_US_CHAIN_MODE=ss", "AFROWS_US_CHAIN_PORT=8447",
+              "AFROWS_US_CHAIN_SS_PASSWORD=SRV:USR"]
+_c, _cfgs = _apply(_ons, _cfgv)
+_vs = [o for o in _cfgs["outbounds"] if o["tag"] == "via-usa"][0]
+assert _c is True and _vs["protocol"] == "shadowsocks" and "mux" not in _vs and "streamSettings" not in _vs
+assert _vs["settings"]["servers"] == [{"address": "93.127.140.50", "port": 8447,
+                                        "method": "2022-blake3-aes-128-gcm", "password": "SRV:USR"}]
+assert _apply(_ons, _cfgs)[0] is False, "ss render is idempotent"
 # mode unset again -> back to the Cloudflare WS chain
 _c, _cfg = _apply(_on, _cfg)
 _vu = [o for o in _cfg["outbounds"] if o["tag"] == "via-usa"][0]

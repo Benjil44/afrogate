@@ -1,5 +1,11 @@
 # Afrows Progress
 
+## 2026-10-27 (0.121.4)
+
+- Shatel FTTH: Germany/USA (Cloudflare WS) links failed and the Shatel link had no working foreign exit. Tested from the operator PC on direct Shatel (the home ac3's wg-home to the USA is blocked by Shatel since 2026-10-26, so it fails open). Findings: Shatel blocks by client TLS fingerprint (chrome 0/10, ios 10/10) and blocks the ECH cover name; the زیرساخت → USA REALITY chain was broken by a `randomized` fp (unsupported curve) and DPI-frozen; the Vision inbound's user could not reach the USA SSH relay, so Telegram/mgmt were down.
+- Done: entry links fp=ios, ECH off (env); chain → Shadowsocks-2022 on USA :8447 (renderer `ss` mode, tests); renderer never emits `randomized`; mode-sync timeout 240 s. Verified: chain google 20/20, youtube 10/10; Shatel link from Shatel 6/6 youtube; DE/US links from Shatel 4/4; de-relay up; Telegram recovering.
+- Remaining: confirm DE/US links on MCI without ECH; home wg-home WireGuard blocked by Shatel (move the home router to a TCP/REALITY tunnel?); a direct REALITY USA entry (no Vision, fp ios) tested 10/10 from Shatel as a Cloudflare-independent backup, not deployed (needs a public USA port, operator decision); old server 94.74.145.199 can be powered off.
+
 ## 2026-10-20
 
 - OUTAGE afrows.com + app.afrows.com Cloudflare 502 (from ~09:57 UTC): the Afrows VPS (94.74.145.199, مخابرات مشهد) rebooted at 09:56 (not by us) and came back with NO international connectivity (domestic OK: digikala 200; 1.1.1.1/8.8.8.8/USA/Cloudflare all dead, traceroute stops at hop 3 10.21.249.218 in the provider; local firewall clean). The USA→Afrows direction is dead too. So `afrows-web-tunnel`, `afrows-tg-socks` and `afrows-de-relay` (all via us-mgmt socks 1083 → via-usa → Cloudflare 172.64.34.62) could not connect (866 restarts).
