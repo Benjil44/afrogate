@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { RateLimitOptions } from './rate-limit.decorator';
 import {
@@ -30,6 +30,19 @@ export class RateLimitService {
     const decision = consumeRateLimit(this.entries, key, options, now);
     compactRateLimitEntries(this.entries, now, this.maxKeys());
     return decision;
+  }
+
+  /**
+   * Programmatic limit for keys the guard cannot derive from the request alone
+   * (e.g. a per-account login identifier from the validated body). No-op when
+   * rate limiting is disabled; throws 429 when the window is exhausted.
+   */
+  enforce(key: string, options: RateLimitOptions): void {
+    if (!this.isEnabled()) return;
+    const decision = this.consume(key, options);
+    if (!decision.allowed) {
+      throw new HttpException('Rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
   }
 
   private maxKeys(): number {

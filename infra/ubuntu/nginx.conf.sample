@@ -9,6 +9,21 @@ map $http_cf_connecting_ip $afrows_sub_client {
     default $http_cf_connecting_ip;
 }
 limit_req_zone $afrows_sub_client zone=afrows_sub:10m rate=30r/m;
+# Trusted client IP handed to the backend (its rate limiter reads CF-Connecting-IP, then
+# X-Real-IP, then the LAST X-Forwarded-For hop; AFROWS_RATE_LIMIT_TRUST_PROXY_HEADERS=true).
+# Cloudflare's header is trusted only when the request came through the local cloudflared
+# tunnel (loopback peer); a direct hit to the origin gets its TCP peer, so a forged
+# CF-Connecting-IP / X-Forwarded-For can never pick the backend's rate-limit bucket.
+# Both headers are OVERWRITTEN in every /api proxy block below.
+map $remote_addr $afrows_via_tunnel {
+    127.0.0.1 1;
+    ::1       1;
+    default   0;
+}
+map "$afrows_via_tunnel:$http_cf_connecting_ip" $afrows_client_ip {
+    "~^1:(?<afrows_cf_ip>[0-9a-fA-F.:]+)$" $afrows_cf_ip;
+    default                                 $remote_addr;
+}
 
 server {
     listen 80;
@@ -50,7 +65,8 @@ server {
         proxy_pass http://127.0.0.1:7000/api/auth/login;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-IP $afrows_client_ip;
+        proxy_set_header CF-Connecting-IP $afrows_client_ip;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 30s;
@@ -61,7 +77,8 @@ server {
         proxy_pass http://127.0.0.1:7000/api/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-IP $afrows_client_ip;
+        proxy_set_header CF-Connecting-IP $afrows_client_ip;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 30s;
@@ -84,7 +101,8 @@ server {
         proxy_pass http://127.0.0.1:7000/api/sub/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-IP $afrows_client_ip;
+        proxy_set_header CF-Connecting-IP $afrows_client_ip;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_no_cache 1;

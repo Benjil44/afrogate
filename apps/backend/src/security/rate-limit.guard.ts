@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { resolveClientIp } from './client-ip';
 import { RATE_LIMIT_METADATA_KEY, type RateLimitOptions } from './rate-limit.decorator';
 import { RateLimitService } from './rate-limit.service';
 
@@ -46,20 +47,10 @@ export class RateLimitGuard implements CanActivate {
   }
 
   private clientKey(request: HttpRequestLike): string {
-    if (this.rateLimit.shouldTrustProxyHeaders()) {
-      const forwardedFor = this.headerValue(request.headers?.['x-forwarded-for']);
-      const firstForwardedFor = forwardedFor?.split(',')[0]?.trim();
-      if (firstForwardedFor) return firstForwardedFor;
-
-      const realIp = this.headerValue(request.headers?.['x-real-ip']);
-      if (realIp) return realIp;
-    }
-
-    return request.ip || request.socket?.remoteAddress || 'unknown';
-  }
-
-  private headerValue(value: string | string[] | undefined): string | undefined {
-    if (Array.isArray(value)) return value[0]?.trim() || undefined;
-    return value?.trim() || undefined;
+    return resolveClientIp(
+      request.headers,
+      request.ip || request.socket?.remoteAddress,
+      this.rateLimit.shouldTrustProxyHeaders(),
+    );
   }
 }
