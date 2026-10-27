@@ -36,6 +36,7 @@ export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
 
     this.isDelivering = true;
     try {
+      this.pruneExpiredAttempts();
       if (!(await this.telegram.isEnabled())) return;
       if (!(await this.telegram.isConfigured())) {
         this.warnMissingTelegramConfig();
@@ -90,6 +91,19 @@ export class AlertNotificationService implements OnModuleInit, OnModuleDestroy {
     }
     const lastAttempt = this.lastAttemptByAlert.get(alert.id);
     return lastAttempt === undefined || Date.now() - lastAttempt >= this.cooldownMs();
+  }
+
+  /**
+   * Drops attempt stamps whose cooldown has elapsed: shouldAttempt treats them
+   * exactly like a missing entry, and without this the map kept one entry per
+   * critical alert id ever seen for the life of the process.
+   */
+  private pruneExpiredAttempts(): void {
+    const cooldownMs = this.cooldownMs();
+    const now = Date.now();
+    for (const [alertId, attemptedAt] of this.lastAttemptByAlert) {
+      if (now - attemptedAt >= cooldownMs) this.lastAttemptByAlert.delete(alertId);
+    }
   }
 
   private warnMissingTelegramConfig(): void {
