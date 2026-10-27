@@ -1,291 +1,81 @@
-import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   AdminAlertSummary,
-  AdminOperationsOverview,
-  AdminAuditLogSummary,
-  AdminBackupRestoreCheckSummary,
-  AdminBackupRestorePlanStepSummary,
-  AdminBackupRestorePlanSummary,
   AdminBackupStatusSummary,
-  AdminBillingSettingsSummary,
-  AdminClientConfigsExportResponse,
-  AdminCurrentPanelImportConfigsResponse,
-  AdminCurrentPanelImportPreviewResponse,
-  AdminCurrentPanelUsageSyncResponse,
-  AdminCurrentPanelVolumeChargeResponse,
-  AdminCustomerAccountSummary,
-  AdminPaymentMethodSummary,
-  AdminPaymentOrderSummary,
-  AdminPaymentProviderAdapterSummary,
-  AdminPermissionId,
-  AdminPermissionsResponse,
-  AdminResellerAccountSummary,
-  AdminResellerPackageSaleResponse,
-  AdminResellerWalletLedgerEntry,
-  AdminProtocolServerApplyAdapterSummary,
-  AdminProtocolServerApplyEventDetail,
-  AdminProtocolServerApplyEventSummary,
-  AdminProtocolSetupSummary,
-  AdminProtocolServerApplyPlanSummary,
-  AdminProtocolServerApplyPreflightSummary,
+  AdminOperationsOverview,
   AdminOutboundSummary,
-  AdminIncidentTimelineEvent,
-  AdminIncidentTimelineResponse,
-  AdminRouteAssignmentSummary,
-  AdminRouteCanaryStatusResponse,
-  AdminRouteDecisionApplyAdapterSummary,
-  AdminRouteDecisionApplyPlanSummary,
-  AdminRouteDecisionApplyPlanStep,
-  AdminRouteDecisionEventDetail,
-  AdminRouteDecisionEventSummary,
-  AdminRouteHealthHistoryResponse,
-  AdminRouteQualityAnalyticsResponse,
-  AdminRouteDecisionCandidateSummary,
-  AdminRouteDecisionCandidateReviewSummary,
-  AdminRouteDecisionClientPreferenceSummary,
-  AdminRouteDecisionLoadBalancingSummary,
-  AdminRouteDecisionProfileRecommendation,
-  AdminRouteDecisionPreviewResponse,
-  AdminRouteDecisionSessionSafetySummary,
-  AdminRouteDecisionSwitchExecutionSummary,
-  AdminRouteDecisionSwitchEngineSummary,
-  AdminRouteDecisionSwitchOrchestrationSummary,
-  AdminRouteDecisionSwitchPreflightSummary,
-  AdminRouteDecisionSwitchRolloutEvaluationSummary,
-  AdminRouteDecisionSwitchRolloutSummary,
-  AdminServerSummary,
-  AdminServerInterfaceSummary,
-  AdminRewardedAdSettingsSummary,
-  AdminReportsSummaryResponse,
-  AdminSettingsResponse,
-  AdminSessionResponse,
-  AdminTelegramBotSettingsSummary,
-  AdminTenantBrandSettingsSummary,
-  AdminTunnelSummary,
-  AdminVolumePackageSummary,
-  AdminWireGuardCandidate,
-  CurrentPanelKind,
-  CustomerAccountStatus,
-  CustomerQuotaScope,
-  LoadBalanceStrategy,
-  AdminUserSummary,
-  MetricsTimeRange,
-  NetworkInterfaceMetric,
-  ProtocolKind,
-  ProtocolProfile,
-  RouteFailoverEventSummary,
-  RouteDecisionAction,
-  RouteQualityRecommendation,
-  RouteProbeMetric,
-  RouteSelectionMode,
-  Role,
-  ServerAccessMethod,
-  ServerBootstrapState,
-  ServerCredentialKind,
   AdminServerDetail,
+  AdminServerSummary,
+  AdminSessionResponse,
+  AdminTunnelSummary,
+  MetricsTimeRange,
+  RouteFailoverEventSummary,
   ServerMetricSnapshot,
   ServerMetricTimeseries,
-  StorageVolumeMetric,
-  WireGuardInterfaceMetric,
-  RouteHealthHistoryPoint,
 } from '@afrows/shared';
+import { Clock, Eye, LogOut, Menu, ShieldCheck } from 'lucide-react';
+import { useAdminSession } from './auth';
 import {
-  Activity,
-  AlertTriangle,
-  Archive,
-  ArrowDownUp,
-  Bell,
-  Bot,
-  CheckCircle2,
-  Clock,
-  CreditCard,
-  Cpu,
-  Download,
-  Eye,
-  EyeOff,
-  Gauge,
-  HardDrive,
-  Inbox,
-  Languages,
-  LockKeyhole,
-  Loader2,
-  LogIn,
-  LogOut,
-  Maximize2,
-  MemoryStick,
-  Menu,
-  Minimize2,
-  Network,
-  Palette,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Plus,
-  Route,
-  ScrollText,
-  Server,
-  Settings as SettingsIcon,
-  ShieldCheck,
-  Upload,
-  UserRound,
-  Gift,
-  WifiOff,
-  X,
-} from 'lucide-react';
-import rootPackage from '../../../package.json';
-import { useAdminSession, type AdminSessionHook } from './auth';
-import {
-  createAdminCustomerAccount,
-  createAdminResellerPackageSale,
-  createAdminResellerCustomerAccount,
-  chargeAdminCurrentPanelVolume,
-  createAdminProtocolSetup,
-  createAdminSettingsSecret,
-  createAdminUser,
-  deleteAdminUser,
-  exportAdminCustomerClientConfigs,
   fetchAdminAlerts,
-  fetchAdminOperationsOverview,
-  fetchAdminAuditLogs,
-  fetchAdminBackupRestorePlan,
   fetchAdminBackupStatus,
-  fetchAdminBillingCatalog,
-  fetchAdminCustomerAccounts,
+  fetchAdminOperationsOverview,
   fetchAdminOutbounds,
-  fetchAdminPermissions,
-  fetchAdminPaymentOrders,
-  fetchAdminReportsSummary,
-  fetchAdminRewardedAdSettings,
-  fetchAdminResellerWorkspace,
-  fetchAdminServer,
-  fetchAdminServerInterfaces,
   fetchAdminServers,
-  fetchAdminSettings,
-  fetchAdminTelegramBotSettings,
-  fetchAdminTenantBranding,
-  fetchAdminTunnel,
   fetchAdminTunnels,
-  fetchAdminUsers,
-  fetchTelegramTopupRequests,
-  fetchIncidentTimeline,
-  importAdminCurrentPanelConfigs,
-  previewAdminCurrentPanelImport,
-  syncAdminCurrentPanelUsage,
-  fetchProtocolServerApplyEvent,
-  fetchProtocolServerApplyEvents,
-  fetchRouteAssignment,
-  fetchRouteCanaryStatus,
   fetchRouteFailoverEvents,
-  fetchRouteHealthHistory,
-  fetchRouteQualityAnalytics,
-  fetchRouteDecisionEvent,
-  fetchRouteDecisionEvents,
-  fetchRouteDecisionPreview,
-  provisionAdminProtocolSetup,
-  recordAdminProtocolServerApplyDryRun,
-  recordRouteDecisionPreview,
-  requestAdminProtocolServerApply,
-  storeAdminServerCredential,
-  testAdminTelegramBotConnection,
-  updateAdminRouteAssignment,
-  updateAdminRouteSettings,
-  updateAdminCustomerAccount,
-  updateAdminResellerCustomerAccount,
-  updateAdminRewardedAdSettings,
-  updateAdminServer,
-  updateAdminTelegramBotSettings,
-  updateAdminTenantBranding,
-  updateAdminUser,
-  updateAdminUserPassword,
-  applyRouteDecisionPreview,
+  fetchTelegramTopupRequests,
 } from './api/admin';
 import { fetchLatestMetrics, fetchMetricsTimeseries } from './api/metrics';
 import { fetchResellerTopups, type ImpersonateResellerResult } from './api/reseller-pricing';
-import { ReportsPage } from './pages/ReportsPage';
+import { AdminLoginPage } from './pages/AdminLoginPage';
+import { AlertsPage } from './pages/AlertsPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { BackupsPage } from './pages/BackupsPage';
-import { AlertsPage } from './pages/AlertsPage';
-import { UsersPage } from './pages/UsersPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { ServersPage } from './pages/ServersPage';
-import { MicrotiksPage } from './pages/MicrotiksPage';
-import { RoutesPage } from './pages/RoutesPage';
-import { OutboundsPage } from './pages/OutboundsPage';
-import { ExitsPage } from './pages/ExitsPage';
-import { NetworkPage } from './pages/NetworkPage';
-import { ResellersPage } from './pages/ResellersPage';
-import { CustomersPage } from './pages/CustomersPage';
-import { TopupRequestsPage } from './pages/TopupRequestsPage';
-import { ResellerTopupRequestsPage } from './pages/ResellerTopupRequestsPage';
-import { InboundsPage } from './pages/InboundsPage';
-import { ConnectionsPage } from './pages/ConnectionsPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { BillingPage, ResellerDashboardPage, ResellerUsersPage } from './pages/BillingReseller';
-import { AdminLoginPage } from './pages/AdminLoginPage';
-import { canViewAdminUsers, canViewAuditLogs, canViewBackupStatus, canViewReports } from './session-access';
-import { EChart, type AfroChartOption } from './components/EChart';
+import { ConnectionsPage } from './pages/ConnectionsPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { ExitsPage } from './pages/ExitsPage';
+import { GbPricePanel } from './pages/GbPricePanel';
+import { InboundsPage } from './pages/InboundsPage';
+import { MicrotiksPage } from './pages/MicrotiksPage';
+import { NetworkPage } from './pages/NetworkPage';
+import { OutboundsPage } from './pages/OutboundsPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { ResellerTopupRequestsPage } from './pages/ResellerTopupRequestsPage';
+import { ResellersPage } from './pages/ResellersPage';
+import { RoutesPage } from './pages/RoutesPage';
+import { ServersPage } from './pages/ServersPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { TopupRequestsPage } from './pages/TopupRequestsPage';
+import { UsersPage } from './pages/UsersPage';
+import { canViewBackupStatus } from './session-access';
 import { VpsBillBanner } from './components/VpsBillBanner';
+import { KioskToggleButton, Sidebar } from './components/Sidebar';
+import { SystemResourceHeader } from './components/SystemResourceHeader';
+import { VersionWatcher } from './components/version-watcher';
 import { useDashboardLanguage, type DashboardLanguage, type DashboardStrings } from './i18n';
 import type {
   ActiveView,
-  AfroIcon,
   AlertRowData,
-  AlertSeverityFilter,
-  AlertStatusFilter,
-  BackupsTab,
-  BillingTab,
   DataState,
-  DataTableColumn,
-  DashboardTabItem,
   MetricCardData,
   OutboundRowData,
-  PanelStateKind,
-  ProtocolSetupDraft,
   RouteFailoverRowData,
-  RoutesTab,
-  ServerEditTab,
   ServerRowData,
-  SettingsTab,
   SidebarAlertState,
-  TableCellAlign,
-  TelegramBotSettingsForm,
-  TenantBrandSettingsForm,
-  Tone,
   TrafficTotals,
   TunnelRowData,
-  UsersTab,
-  WireGuardHealthCandidate,
-  WireGuardSetupDraft,
 } from './dashboard-types';
+import { createDashboardFormatters, useWallClock, type DashboardFormatters } from './formatters';
+import { createFallbackTimeseries } from './chart-options';
 import {
-  averagePercent,
-  clamp,
-  createDashboardFormatters,
-  createStorageFallback,
-  dashboardLanguageLabel,
-  normalizePercent,
-  normalizePositive,
-  sumNullable,
-  timeRanges,
-  useWallClock,
-  type DashboardFormatters,
-  normalizeNullableText,
-} from './formatters';
-import { createDonutChartOption, createFallbackTimeseries, createHealthChartOption } from './chart-options';
-import {
-  countActiveAlertRows,
   createComputedAlertRows,
   createFallbackFailoverRows,
   createNoOpenAlertsRow,
   createSidebarAlertState,
   createSummary,
   createTrafficTotals,
-  incidentTimelineEventDetail,
-  incidentTimelineEventTitle,
-  incidentTimelineKindLabel,
-  incidentTimelineSeverityTone,
-  localizeAlertTitle,
   mapAdminAlertsToRows,
   mapAdminOutboundToRow,
   mapAdminServerToServerRow,
@@ -293,183 +83,6 @@ import {
   mapRouteFailoverEventToRow,
   mapSnapshotToServerRow,
 } from './mappers';
-import {
-  countTones,
-  getHealthTone,
-  getScoreClass,
-  getStorageTone,
-  getUsageTone,
-  getWireGuardScoreTone,
-  protocolApplyAdapterStatusTone,
-  protocolApplyGateTone,
-  protocolServerApplyStepTone,
-  protocolServerApplyTone,
-  serverAccessReady,
-} from './tone';
-import {
-  formatLoadedLatency,
-  formatMtuRecommendation,
-  parseTelegramChatIds,
-  routeApplyAdapterStatusLabel,
-  routeApplyAdapterStatusTone,
-  routeApplyPlanStatusLabel,
-  routeApplyPlanStatusTone,
-  routeApplyPlanStepLabel,
-  routeClientPreferenceModeLabel,
-  routeDecisionActionLabel,
-  routeDecisionCandidateSourceLabel,
-  routeDecisionDispositionLabel,
-  routeDecisionReasonLabel,
-  routeDecisionStateLabel,
-  routeLoadBalanceStrategyLabel,
-  routeLoadBalancingModeLabel,
-  routeLoadBalancingModeTone,
-  routeLoadBalancingReasonLabel,
-  routeLoadBalancingRiskLabel,
-  routeLoadBalancingRiskTone,
-  routeLoadBalancingRoleLabel,
-  routeProfileRecommendationReasonLabel,
-  routeScoreProfileLabel,
-  routeScoreReasonLabel,
-  routeSessionSafetyModeLabel,
-  routeSessionSafetyModeTone,
-  routeSessionSafetyPolicyLabel,
-  routeSessionSafetyReasonLabel,
-  routeSessionSafetyRiskLabel,
-  routeSessionSafetyRiskTone,
-  routeSwitchEngineModeLabel,
-  routeSwitchEngineReasonLabel,
-  routeSwitchEngineSessionImpactLabel,
-  routeSwitchEngineStatusLabel,
-  routeSwitchEngineStatusTone,
-  routeSwitchEngineStepLabel,
-  routeSwitchEngineStepStatusLabel,
-  routeSwitchEngineStepStatusTone,
-  routeSwitchExecutionPhaseLabel,
-  routeSwitchExecutionReasonLabel,
-  routeSwitchExecutionStatusLabel,
-  routeSwitchExecutionStatusTone,
-  routeSwitchOrchestrationActionLabel,
-  routeSwitchOrchestrationPhaseLabel,
-  routeSwitchOrchestrationReasonLabel,
-  routeSwitchOrchestrationStageLabel,
-  routeSwitchOrchestrationStageStatusLabel,
-  routeSwitchOrchestrationStageStatusTone,
-  routeSwitchOrchestrationStatusLabel,
-  routeSwitchOrchestrationStatusTone,
-  routeSwitchPreflightCheckLabel,
-  routeSwitchPreflightCheckStatusLabel,
-  routeSwitchPreflightCheckStatusTone,
-  routeSwitchPreflightReasonLabel,
-  routeSwitchPreflightStatusLabel,
-  routeSwitchPreflightStatusTone,
-  routeSwitchRolloutEvaluationActionLabel,
-  routeSwitchRolloutEvaluationReasonLabel,
-  routeSwitchRolloutEvaluationStatusLabel,
-  routeSwitchRolloutEvaluationStatusTone,
-  routeSwitchRolloutReasonLabel,
-  routeSwitchRolloutStatusLabel,
-  routeSwitchRolloutStatusTone,
-  routeSwitchRolloutStepLabel,
-  routeSwitchRolloutStepStatusLabel,
-  routeSwitchRolloutStepStatusTone,
-  routeSwitchRolloutStrategyLabel,
-  routeSwitchRolloutTrafficScopeLabel,
-  telegramSecretSourceLabel,
-  telegramTestStatusLabel,
-} from './route-labels';
-import {
-  backupArtifactLabel,
-  backupIssueLabel,
-  backupJobStatusLabel,
-  backupJobStatusTone,
-  backupRestoreCheckLabel,
-  backupRestoreCheckStatusLabel,
-  backupRestoreCheckStatusTone,
-  backupRestoreReadinessLabel,
-  backupRestoreReadinessTone,
-  backupRestoreReasonLabel,
-  backupRestoreSafetyNoteLabel,
-  backupRestoreStepLabel,
-  backupStatusAgeTone,
-  backupStatusEncryptionTone,
-  backupStatusLabel,
-  backupStatusTone,
-  billingStatusTone,
-  currentPanelKindLabel,
-  currentPanelStatusLabel,
-  currentPanelStatusTone,
-  customerAccountStatusLabel,
-  customerQuotaScopeLabel,
-  formatBackupAgeDays,
-  formatBackupAgeHours,
-  formatBackupDate,
-  formatBackupDuration,
-  formatMoneyAmount,
-  paymentAdapterStatusLabel,
-  paymentAdapterStatusTone,
-  paymentCheckoutModeLabel,
-  paymentProviderLabel,
-  paymentSettlementLabel,
-  paymentVerificationLabel,
-  protocolApplyAdapterStatusLabel,
-  protocolApplyGateKindLabel,
-  protocolApplyGateStatusLabel,
-  protocolApplyRunnerModeLabel,
-  protocolServerApplyEventStatusLabel,
-  protocolServerApplyModeLabel,
-  protocolServerApplyStatusLabel,
-  protocolServerApplyStepLabel,
-  reportReasonLabel,
-  reportRiskLabel,
-  reportRiskTone,
-  resellerWalletEntryTypeLabel,
-  resellerWalletSourceLabel,
-} from './labels';
-import {
-  fieldInputClass,
-  fieldLabelClass,
-  formLabelClass,
-  inputClass,
-  mutedTextClass,
-  panelClass,
-  primaryButtonClass,
-} from './ui-classes';
-import {
-  DataStateEmpty,
-  DataStateNotice,
-  DetailRow,
-  EmptyState,
-  PanelState,
-  dataStatePanelDetail,
-  dataStatePanelKind,
-  dataStatePanelTitle,
-  panelStateClass,
-  panelStateIcon,
-  primitiveTooltip,
-  DashboardTabs,
-  DataTable,
-  MetricCard,
-  MetricPill,
-  PanelHeading,
-  PanelHeadingContent,
-  StatusBadge,
-  UsageBar,
-  BackupMetricCard,
-} from './components/primitives';
-import { ServerPanel, TunnelPanel, tunnelRowKey } from './components/panels';
-import { AlertsPanel, CapacityPanel, ControlPlanePanel, DashboardOverviewChartsPanel, HealthChartPanel, OutboundsPanel } from './components/dashboard-panels';
-import {
-  RouteDecisionCandidateCard,
-  RouteDecisionMetric,
-  RouteDecisionPreviewPanel,
-  RouteDecisionSwitchOrchestrationCard,
-  RouteDecisionSwitchRolloutCard,
-  RouteIntelligencePanel,
-} from './components/route-decision';
-import { KioskToggleButton, LanguageButton, Sidebar } from './components/Sidebar';
-import { SystemResourceHeader } from './components/SystemResourceHeader';
-import { VersionWatcher } from './components/version-watcher';
 import { appVersion, resellerNavViews } from './app-config';
 import {
   collapsedGroupsStorageKey,
@@ -479,34 +92,6 @@ import {
   type NavGroupId,
 } from './nav-views';
 import type { SidebarNavItem } from './nav-config';
-import { GbPricePanel } from './pages/GbPricePanel';
-import { SettingsInput, SettingsSelect } from './components/settings-form';
-import {
-  formatRouteHourWindow,
-  formatWireGuardCandidateHandshake,
-  formatWireGuardCandidatePeers,
-  formatWireGuardCandidateRate,
-  routeHealthHistoryKey,
-  routeHealthPointMeta,
-  routeHealthPointRoute,
-  routeRecommendationConfidence,
-  routeRecommendationDetail,
-  routeRecommendationKey,
-  routeRecommendationOperator,
-  routeRecommendationProfile,
-  routeRecommendationTitle,
-} from './route-helpers';
-import {
-  formatWireGuardHandshake,
-  formatWireGuardPeerSummary,
-  inventoryStatusLabel,
-  inventoryStatusTone,
-  summarizeRouteProbes,
-  summarizeWireGuardInterfaces,
-  wireGuardStatusLabel,
-  wireGuardTone,
-} from './server-helpers';
-
 
 const refreshIntervalMs = 10_000;
 
@@ -1303,7 +888,7 @@ function AuthenticatedDashboard({
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
     >
-      <VersionWatcher language={language} />
+      <VersionWatcher t={t} />
       {isKioskMode ? null : (
         <>
           {/* Mobile top bar: hamburger opens the nav drawer. */}

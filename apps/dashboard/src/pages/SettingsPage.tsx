@@ -302,7 +302,7 @@ export function SettingsPage({
       draft.allowedIps.trim(),
   );
   const hasHealthTarget = draft.healthTarget.trim().length > 0;
-  const { best: bestWireGuard, selected: selectedWireGuard, active: activeWireGuard } = deriveActiveWireGuard(wireGuardCandidates, routeMode, selectedWireGuardId);
+  const { active: activeWireGuard } = deriveActiveWireGuard(wireGuardCandidates, routeMode, selectedWireGuardId);
   const loadBalanceOptions: Array<[LoadBalanceStrategy, string]> = [
     ['balanced', t.settings.balancedStrategy],
     ['stability', t.settings.stabilityStrategy],

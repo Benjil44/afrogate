@@ -5,7 +5,7 @@ import type { AdminBillingSettingsSummary, AdminClientConfigExportEntry, AdminCu
 import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportResellerCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, rotateResellerClientConfigSubscriptionToken, sendResellerCustomerConfigTelegram, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
 import { ServerAccessSummary, effectiveServerAccess } from '../components/ServerAccessControls';
-import { EChart, type AfroChartOption } from '../components/EChart';
+import { EChart } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerTelegramLinkPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
 import { DashboardTabs, DataStateNotice, DataTable, DetailRow, EmptyState, MetricCard, MetricPill, PanelHeading, PanelHeadingContent, PanelState, StatusBadge } from '../components/primitives';
