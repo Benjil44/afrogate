@@ -128,7 +128,7 @@ function ServerManagementCard({
             </span>
           )}
         </div>
-        <div className="text-left sm:text-right">
+        <div className="text-start sm:text-end">
           <span className={mutedTextClass}>{t.resources.health}</span>
           <b className={`block text-[20px] ${getScoreClass(server.score)}`}>{format.integer(server.score)}</b>
         </div>
@@ -514,7 +514,9 @@ function ServerAccessTab({
   return (
     <div className="grid gap-3">
       <DetailRow label={t.accessRows.defaultUser}>{profile?.username ?? 'afrows'}</DetailRow>
-      <DetailRow label={t.accessRows.accessMethod}>{profile?.accessMethod ?? t.accessRows.sshKey}</DetailRow>
+      <DetailRow label={t.accessRows.accessMethod}>
+        {accessMethodOptions.find(([value]) => value === profile?.accessMethod)?.[1] ?? profile?.accessMethod ?? t.accessRows.sshKey}
+      </DetailRow>
       <DetailRow label={t.serverEdit.labels.sshPort}>{profile?.sshPort ?? 22}</DetailRow>
       <DetailRow label={t.accessRows.rootPassword}>{t.accessRows.bootstrapOnly}</DetailRow>
       <DetailRow label={t.accessRows.credentialView}>{profile?.hasCredentialRef ? t.accessRows.hidden : t.serverEdit.values.notRun}</DetailRow>
@@ -529,7 +531,7 @@ function ServerAccessTab({
       </DetailRow>
       <DetailRow label={t.serverEdit.labels.bootstrapState}>
         <StatusBadge tone={profile?.bootstrapState === 'installed' ? 'good' : 'warning'}>
-          {profile?.bootstrapState ?? t.serverEdit.values.pending}
+          {bootstrapStateOptions.find(([value]) => value === profile?.bootstrapState)?.[1] ?? profile?.bootstrapState ?? t.serverEdit.values.pending}
         </StatusBadge>
       </DetailRow>
       <DetailRow label={t.serverEdit.labels.connectionTest}>{profile?.lastTestStatus ?? t.serverEdit.values.notRun}</DetailRow>

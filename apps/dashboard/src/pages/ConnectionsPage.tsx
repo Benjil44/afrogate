@@ -50,7 +50,8 @@ export function ConnectionsPage({
     };
   }, [sessionToken]);
 
-  const gb = (n: number) => (n <= 0 ? '—' : `${(n / 1e9).toFixed(2)} GB`);
+  // Localized decimal units (and digits in fa) via the shared formatter.
+  const gb = (n: number) => (n <= 0 ? '—' : format.bytes(n));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -103,6 +104,7 @@ export function ConnectionsPage({
         <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-afro-line bg-white px-3">
           <Search size={15} className="text-afro-muted" />
           <input
+            aria-label={s.searchPlaceholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={s.searchPlaceholder}
