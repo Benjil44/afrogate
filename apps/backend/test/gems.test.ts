@@ -195,6 +195,23 @@ describe('creditReferralSignup (+ milestone)', () => {
     assert.equal(result?.milestone?.inviterGemsBalance, 800);
   });
 
+  it('milestone dedup is scoped to the inviter (another inviter reaching N does not block it)', async () => {
+    const executor = createFakeExecutor([
+      { rows: [] }, // dedup signup
+      { rows: [] }, // signup ledger
+      { rows: [{ gemsBalance: 500 }] }, // signup update
+      { rows: [{ count: 10 }] }, // countCompletedReferrals
+      { rows: [] }, // milestone dedup (this inviter has no milestone:10 yet)
+      { rows: [] }, // milestone ledger
+      { rows: [{ gemsBalance: 800 }] }, // milestone update
+    ]);
+    await creditReferralSignup(executor, 'new-2', 'inviter-2', config);
+    const dedup = executor.calls[4];
+    assert.match(dedup.text, /reason = 'referral_milestone'/);
+    assert.match(dedup.text, /customer_account_id = \$2/);
+    assert.deepEqual(dedup.values, ['milestone:10', 'inviter-2']);
+  });
+
   it('is de-duplicated: a replay for the same referred account is a no-op', async () => {
     const executor = createFakeExecutor([{ rows: [{ exists: 1 }] }]);
     const result = await creditReferralSignup(executor, 'new-1', 'inviter-1', config);

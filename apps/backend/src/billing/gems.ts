@@ -342,9 +342,13 @@ export async function creditReferralSignup(
     completedReferrals % config.milestoneEvery === 0
   ) {
     const ref = `milestone:${completedReferrals}`;
+    // Per inviter: the ref alone is shared by every inviter who reaches N, so a
+    // global check paid each milestone only to the first inviter platform-wide.
     const duplicate = await executor.query(
-      `SELECT 1 FROM gems_ledger WHERE reason = 'referral_milestone' AND ref = $1 LIMIT 1`,
-      [ref],
+      `SELECT 1 FROM gems_ledger
+        WHERE reason = 'referral_milestone' AND ref = $1 AND customer_account_id = $2
+        LIMIT 1`,
+      [ref, inviterAccountId],
     );
     if (duplicate.rows.length === 0) {
       const credit = await earnGems(executor, inviterAccountId, config.milestoneBonus, 'referral_milestone', ref);

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as net from 'node:net';
 import { DatabaseService } from '../database/database.service';
 import { OutboundHttpService } from './outbound-http.service';
+import { parseConfigFlag } from '../common/config-flag';
 
 type OutboundCheckStatus = 'healthy' | 'degraded' | 'critical' | 'unknown';
 type ProbeKind = 'http' | 'tcp' | 'not_configured';
@@ -356,9 +357,7 @@ export class OutboundHealthService implements OnModuleInit, OnModuleDestroy {
   }
 
   private configFlag(name: string, fallback: boolean): boolean {
-    const value = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!value) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(value);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
 
   private firstString(...values: unknown[]): string | undefined {

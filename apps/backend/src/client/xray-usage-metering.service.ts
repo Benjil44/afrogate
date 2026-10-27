@@ -15,6 +15,7 @@ import {
   recordRemoteRevocation,
   type RemoteMembershipState,
 } from './remote-exit-membership';
+import { parseConfigFlag } from '../common/config-flag';
 
 const execFileAsync = promisify(execFile);
 
@@ -280,8 +281,6 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     return (Number.isInteger(n) ? Math.min(Math.max(n, 10), 3600) : 15) * 1000;
   }
   private flag(name: string, fallback: boolean): boolean {
-    const v = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!v) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(v);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
 }

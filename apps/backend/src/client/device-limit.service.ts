@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { XrayProvisioningService } from './xray-provisioning.service';
 import { provisioningEmail } from './xray-provisioning';
+import { parseConfigFlag } from '../common/config-flag';
 
 interface OverLimitRow {
   clientConfigId: string;
@@ -220,9 +221,7 @@ export class DeviceLimitService implements OnModuleInit, OnModuleDestroy {
     return this.intFromValue(this.config.get<string>('AFROWS_DEVICE_LIMIT_INTERVAL_SECONDS'), 30, 10, 300) * 1000;
   }
   private flag(name: string, fallback: boolean): boolean {
-    const v = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!v) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(v);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
   private intFromValue(raw: unknown, fallback: number, min: number, max: number): number {
     const n = typeof raw === 'number' ? raw : Number(raw);

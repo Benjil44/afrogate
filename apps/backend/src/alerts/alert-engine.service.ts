@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { subscriptionRefreshAlertLevel, isRefreshStale } from '../operations/subscription-refresh-reason';
+import { parseConfigFlag } from '../common/config-flag';
 
 type AlertSeverity = 'warning' | 'critical';
 
@@ -462,9 +463,7 @@ export class AlertEngineService implements OnModuleInit, OnModuleDestroy {
   }
 
   private configFlag(name: string, fallback: boolean): boolean {
-    const value = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!value) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(value);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
 
   private formatNumber(value: number): string {

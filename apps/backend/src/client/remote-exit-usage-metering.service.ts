@@ -16,6 +16,7 @@ import { GermanyMgmtService } from './germany-mgmt.service';
 import { UsaMgmtService } from './usa-mgmt.service';
 import type { RemoteExitMgmt } from './remote-exit-mgmt';
 import { XrayUsageMeteringService } from './xray-usage-metering.service';
+import { parseConfigFlag } from '../common/config-flag';
 
 /** One metered remote exit. */
 interface MeteredSite {
@@ -198,8 +199,6 @@ export class RemoteExitUsageMeteringService implements OnModuleInit, OnModuleDes
     return Math.min(Math.max(n, min), max);
   }
   private flag(name: string, fallback: boolean): boolean {
-    const v = this.config.get<string>(name)?.trim().toLowerCase();
-    if (!v) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(v);
+    return parseConfigFlag(this.config.get<string>(name), fallback);
   }
 }

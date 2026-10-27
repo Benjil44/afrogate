@@ -233,3 +233,13 @@ export class CreateOutboundSubscriptionDto {
   @IsBoolean()
   enabled?: boolean;
 }
+
+/**
+ * PATCH /admin/outbound-test-settings. Was an inline type (ValidationPipe skips
+ * those), so `{"enabled":"false"}` became Boolean("false") === true.
+ */
+export class UpdateOutboundTestSettingsDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}

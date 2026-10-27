@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'crypto';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -114,6 +121,7 @@ import {
   UpsertRouteSettingsDto,
 } from './dto/settings.dto';
 import { RouteQualityAggregationService } from './route-quality-aggregation.service';
+import { isSafeSshHost } from './ssh-target';
 
 interface ServerInventoryRow {
   id: string;
@@ -1538,7 +1546,15 @@ export class OperationsService {
   ): Promise<AdminOutboundSubscriptionSummary> {
     const url = dto.url.trim();
     if (!/^https?:\/\//i.test(url)) throw new BadRequestException('Subscription URL must be http(s)');
-    const parsed = await this.fetchAndParseSubscription(url);
+    let parsed: ParsedSubscription;
+    try {
+      parsed = await this.fetchAndParseSubscription(url);
+    } catch (error) {
+      // Upstream fetch/parse failures are the caller's input problem (bad URL,
+      // non-2xx, empty body), not a server fault: 400 with the reason, as refresh does.
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException(`Subscription fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const name = dto.name?.trim() || parsed.title || 'Subscription';
     const routeGroup = dto.routeGroup ?? 'default';
     const enabled = dto.enabled ?? true;
@@ -9016,7 +9032,7 @@ export class OperationsService {
   }
 
   private isSafeProtocolServerApplyHost(value: string): boolean {
-    return value.length > 0 && value.length <= 253 && !/[\s"'`;$\\]/.test(value);
+    return isSafeSshHost(value);
   }
 
   private isSafeProtocolServerApplyUsername(value: string): boolean {

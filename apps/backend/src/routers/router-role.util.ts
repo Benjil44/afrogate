@@ -18,5 +18,10 @@ export function resolveRouterRoleAndCustomer(
     if (cust) throw new BadRequestException('A transport router cannot have a customer');
     return { role: 'transport', customerAccountId: null };
   }
+  // customer_account_id is a uuid column: a malformed id would surface as a PG
+  // 22P02 → 500 instead of a 400.
+  if (cust && !UUID_TEXT_RE.test(cust)) throw new BadRequestException('customerAccountId must be a UUID');
   return { role: 'gateway', customerAccountId: cust };
 }
+
+const UUID_TEXT_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
