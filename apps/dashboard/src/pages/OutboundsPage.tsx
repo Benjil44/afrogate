@@ -569,7 +569,9 @@ export function OutboundsPage({ format, sessionToken, t }: { format: DashboardFo
           <span className={`inline-block h-2 w-2 rounded-full ${auto ? 'bg-afro-teal' : 'bg-[#c2cdd2]'}`} />
           {s.auto}
         </button>
-        <div className="flex items-center gap-2">
+        {/* flex-wrap + nowrap labels: on phones whole buttons wrap to the next line
+            instead of each label breaking mid-word ("Collapse / all"). */}
+        <div className="flex flex-wrap items-center gap-2 whitespace-nowrap">
           {subs.length > 0 ? (
             <button
               type="button"

@@ -912,8 +912,10 @@ export function SettingsPage({
         tabs={settingsTabs}
       />
 
-      <section className={settingsHasSideRail ? 'grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]' : 'grid gap-3'}>
-      <section className="grid gap-3">
+      {/* min-w-0 on both grid levels: grid items default to min-width:auto, which lets a
+          single wide child grow the column past the viewport instead of wrapping. */}
+      <section className={settingsHasSideRail ? 'grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]' : 'grid min-w-0 gap-3'}>
+      <section className="grid min-w-0 gap-3">
         <section className={`${panelClass} ${activeSettingsTab === 'branding' ? '' : 'hidden'}`}>
           <PanelHeading title={t.panels.tenantBranding} icon={Palette} meta={canManageTenantBranding ? t.settings.adminReady : t.settings.adminOnly} />
           <form className="mt-3 grid gap-3" onSubmit={(event) => { event.preventDefault(); void saveTenantBranding(); }}>
@@ -1290,9 +1292,11 @@ export function SettingsPage({
               </div>
             ) : null}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
-              <div className="flex min-w-0 items-center gap-2 text-[13px] text-afro-muted">
-                <LockKeyhole className="shrink-0" size={16} />
-                <span className="min-w-0 truncate">{t.settings.telegramBotWriteOnly}</span>
+              {/* Wraps (not truncate): a nowrap span here sets the panel's min-content
+                  width to the full sentence and pushed the whole tab past phone widths. */}
+              <div className="flex min-w-0 items-start gap-2 text-[13px] text-afro-muted">
+                <LockKeyhole className="mt-0.5 shrink-0" size={16} />
+                <span className="min-w-0">{t.settings.telegramBotWriteOnly}</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1514,9 +1518,9 @@ export function SettingsPage({
             <SettingsInput label={t.settings.healthTarget} onChange={(value) => updateDraft('healthTarget', value)} placeholder="https://example.com/health" value={draft.healthTarget} />
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-afro-line pt-3">
-              <div className="flex min-w-0 items-center gap-2 text-[13px] text-afro-muted">
-                <LockKeyhole className="shrink-0" size={16} />
-                <span className="min-w-0 truncate">{t.settings.writeOnlySecret}</span>
+              <div className="flex min-w-0 items-start gap-2 text-[13px] text-afro-muted">
+                <LockKeyhole className="mt-0.5 shrink-0" size={16} />
+                <span className="min-w-0">{t.settings.writeOnlySecret}</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="inline-flex min-h-10 items-center justify-center rounded-md border border-afro-line px-4 text-sm font-bold text-afro-ink hover:border-afro-teal hover:text-afro-teal" onClick={clearDraft} type="button">
@@ -1533,7 +1537,7 @@ export function SettingsPage({
         </section>
       </section>
 
-      <section className={`grid gap-3 ${settingsHasSideRail ? '' : 'hidden'}`}>
+      <section className={`grid min-w-0 gap-3 ${settingsHasSideRail ? '' : 'hidden'}`}>
         <section className={`${panelClass} ${activeSettingsTab === 'wireguard' || activeSettingsTab === 'protocols' ? '' : 'hidden'}`}>
           <PanelHeading title={t.settings.routeSelectionTitle} icon={Route} meta={t.settings.smartRoute} />
           <div className="mt-2 grid gap-2">

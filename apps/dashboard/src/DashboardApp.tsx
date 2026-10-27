@@ -882,8 +882,11 @@ function AuthenticatedDashboard({
     : effectiveSidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[248px_minmax(0,1fr)]';
 
   return (
+    // content-start: below lg the shell is a one-column grid (top bar + page). With the
+    // default align-content, any viewport height left over by a short page was split
+    // between the two auto rows, stretching the dark mobile top bar to 200px+.
     <main
-      className={`grid min-h-screen grid-cols-1 overflow-x-clip bg-afro-page text-afro-ink ${shellGridClass}`}
+      className={`grid min-h-screen grid-cols-1 content-start overflow-x-clip bg-afro-page text-afro-ink lg:content-normal ${shellGridClass}`}
       data-dashboard-kiosk={isKioskMode ? 'true' : 'false'}
       dir={isRtl ? 'rtl' : 'ltr'}
       lang={language}
