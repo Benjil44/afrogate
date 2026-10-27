@@ -30,7 +30,7 @@ went dark at 09:10 UTC that day and took afrows.com down.
 |---|---|---|
 | Germany mgmt SSH (adu / rmu / read-usage) | `afrows-de-relay.service` (master, `ssh -F de_relay_ssh_config`) + `60-afrows-de-relay.conf` | `permitopen="162.19.253.235:22"` |
 | Website reverse tunnel (**retired 2026-10-25**, see below) | `afrows-web-tunnel.service` (`-R 127.0.0.1:18444:127.0.0.1:443`) | `permitlisten="127.0.0.1:18444"` |
-| Telegram Bot API | `afrows-tg-socks.service` (`-D 127.0.0.1:1081`; backend `AFROWS_OUTBOUND_PROXY_URL=socks5://127.0.0.1:1081`) | `permitopen="api.telegram.org:443"` |
+| Telegram Bot API (**until 2026-10-27**; now the backend uses `AFROWS_OUTBOUND_PROXY_URL=socks5://127.0.0.1:1083`, the xray us-mgmt-socks → via-usa, because DPI froze the long-lived SSH flow) | `afrows-tg-socks.service` (`-D 127.0.0.1:1081`) | `permitopen="api.telegram.org:443"` |
 
 All three set `SHELL=/bin/sh`: ssh starts ProxyCommand through `$SHELL`, and the
 `afrows` user has a nologin shell. The USA host key is pinned as
