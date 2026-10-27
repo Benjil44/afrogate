@@ -11,7 +11,8 @@
   --color-client-green: #27824a;
   --color-client-amber: #a46305;
   --color-client-red: #b42318;
-  --font-client-arabic: "Afrows YekanBakh", Tahoma, Arial, sans-serif;
+  /* No font is bundled (Iranian mobile data is slow): use the phone's own Persian-capable system font. */
+  --font-client-arabic: "Afrows YekanBakh", "Vazirmatn", system-ui, "Segoe UI", Tahoma, Arial, sans-serif;
 }
 
 @layer base {
