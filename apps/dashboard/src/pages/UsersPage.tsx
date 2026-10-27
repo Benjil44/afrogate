@@ -8,6 +8,10 @@ import type { DashboardFormatters } from '../formatters';
 import type { DashboardStrings } from '../i18n';
 import { canManageAdminUsers, managedAdminRoles } from '../session-access';
 import { mutedTextClass, panelClass } from '../ui-classes';
+import { usePhoneViewport } from '../use-media-query';
+
+const rowActionButtonClass =
+  'min-h-11 rounded-md border bg-white px-2.5 text-[12px] font-bold disabled:cursor-not-allowed disabled:opacity-45 md:min-h-8 md:px-2';
 
 export function UsersPage({
   format,
@@ -32,6 +36,10 @@ export function UsersPage({
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [activeUsersTab, setActiveUsersTab] = useState<UsersTab>('adminUsers');
   const canManageUsers = canManageAdminUsers(session);
+  // Phones: the actions cell (3 buttons + a password field) is wider than the
+  // screen, so it moves into the row's expandable detail panel instead of
+  // sitting beyond the horizontal scroll where it cannot be tapped.
+  const isPhone = usePhoneViewport();
 
   const loadUsers = useMemo(() => async (signal?: AbortSignal) => {
     setIsLoading(true);
@@ -117,6 +125,8 @@ export function UsersPage({
   };
 
   const handleDeleteUser = async (user: AdminUserSummary) => {
+    // Destructive and irreversible: never a single accidental tap.
+    if (!window.confirm(t.userManagement.deleteConfirm(user.username))) return;
     setError(null);
 
     try {
@@ -144,6 +154,44 @@ export function UsersPage({
     { id: 'adminUsers', label: t.tabs.adminUsers, meta: isLoading ? t.dataStatus.loading : format.integer(users.length) },
     { id: 'permissions', label: t.tabs.permissions, meta: permissionPolicy ? format.integer(permissionPolicy.permissions.length) : t.dataStatus.loading },
   ];
+  // Shared between the desktop actions column and the phone detail panel.
+  const renderUserActions = (user: AdminUserSummary) => (
+    <div className={`flex flex-wrap gap-1.5 ${isPhone ? '' : 'min-w-[260px] justify-end'}`}>
+      <button
+        className={`${rowActionButtonClass} border-afro-line text-afro-ink`}
+        disabled={!canManageUsers || !user.canDisable}
+        onClick={() => void handleToggleStatus(user)}
+        type="button"
+      >
+        {user.status === 'active' ? t.actions.disable : t.actions.enable}
+      </button>
+      <button
+        className={`${rowActionButtonClass} border-[#f0b7b7] text-[#b91c1c]`}
+        disabled={!canManageUsers || !user.canDelete}
+        onClick={() => void handleDeleteUser(user)}
+        type="button"
+      >
+        {t.actions.delete}
+      </button>
+      <input
+        aria-label={t.userManagement.newPassword}
+        className="min-h-11 w-full rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-2 disabled:opacity-45 sm:w-40 md:min-h-8 md:w-28"
+        disabled={!canManageUsers || !user.canChangePassword}
+        onChange={(event) => setPasswordDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
+        placeholder={t.userManagement.newPassword}
+        type="password"
+        value={passwordDrafts[user.id] ?? ''}
+      />
+      <button
+        className={`${rowActionButtonClass} border-afro-line text-afro-blue`}
+        disabled={!canManageUsers || !user.canChangePassword || !passwordDrafts[user.id]}
+        onClick={() => void handleChangePassword(user)}
+        type="button"
+      >
+        {t.actions.savePassword}
+      </button>
+    </div>
+  );
   const userTableColumns: Array<DataTableColumn<AdminUserSummary>> = [
     {
       key: 'username',
@@ -175,47 +223,17 @@ export function UsersPage({
         </StatusBadge>
       ),
     },
-    {
-      key: 'actions',
-      header: t.tables.actions,
-      render: (user) => (
-        <div className="flex min-w-[260px] flex-wrap justify-end gap-1.5">
-          <button
-            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-ink disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={!canManageUsers || !user.canDisable}
-            onClick={() => void handleToggleStatus(user)}
-            type="button"
-          >
-            {user.status === 'active' ? t.actions.disable : t.actions.enable}
-          </button>
-          <button
-            className="min-h-8 rounded-md border border-[#f0b7b7] bg-white px-2 text-[12px] font-bold text-[#b91c1c] disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={!canManageUsers || !user.canDelete}
-            onClick={() => void handleDeleteUser(user)}
-            type="button"
-          >
-            {t.actions.delete}
-          </button>
-          <input
-            className="min-h-8 w-28 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold outline-none ring-afro-teal/20 focus:border-afro-teal focus:ring-2 disabled:opacity-45"
-            disabled={!canManageUsers || !user.canChangePassword}
-            onChange={(event) => setPasswordDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
-            placeholder={t.userManagement.newPassword}
-            type="password"
-            value={passwordDrafts[user.id] ?? ''}
-          />
-          <button
-            className="min-h-8 rounded-md border border-afro-line bg-white px-2 text-[12px] font-bold text-afro-blue disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={!canManageUsers || !user.canChangePassword || !passwordDrafts[user.id]}
-            onClick={() => void handleChangePassword(user)}
-            type="button"
-          >
-            {t.actions.savePassword}
-          </button>
-        </div>
-      ),
-      alignRight: true,
-    },
+    // Desktop/tablet only: pinned to the inline-end edge so the actions stay
+    // reachable while the rest of the row scrolls. Phones use renderDetail.
+    ...(isPhone
+      ? []
+      : [{
+          key: 'actions',
+          header: t.tables.actions,
+          render: (user: AdminUserSummary) => <div className="pe-2">{renderUserActions(user)}</div>,
+          alignRight: true,
+          className: 'w-px',
+        } satisfies DataTableColumn<AdminUserSummary>]),
   ];
 
   return (
@@ -306,7 +324,18 @@ export function UsersPage({
           {!isLoading && users.length === 0 && !error ? (
             <PanelState detail={t.panelStates.emptyDetail} kind="empty" title={t.operationalData.noUsers} />
           ) : null}
-          {users.length > 0 ? <DataTable columns={userTableColumns} minWidth="880px" rowKey={(user) => user.id} rows={users} /> : null}
+          {users.length > 0 ? (
+            <DataTable
+              columns={userTableColumns}
+              detailCollapseLabel={t.userManagement.detailCollapse}
+              detailExpandLabel={t.userManagement.detailExpand}
+              minWidth={isPhone ? '560px' : '880px'}
+              renderDetail={isPhone ? renderUserActions : undefined}
+              rowKey={(user) => user.id}
+              rows={users}
+              stickyLastColumn={!isPhone}
+            />
+          ) : null}
         </div>
       </section>
       ) : null}

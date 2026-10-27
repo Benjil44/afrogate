@@ -1077,6 +1077,8 @@ export const fa: DashboardStrings = {
       usersLoaded: (count: number | string) => `${count} کاربر`,
       deleteConfirm: (username: string) => `کاربر ادمین «${username}» حذف شود؟ این کار قابل بازگشت نیست.`,
       rowActions: 'عملیات',
+      detailExpand: 'نمایش عملیات',
+      detailCollapse: 'بستن عملیات',
       errors: {
         load: 'بارگذاری کاربران ادمین ممکن نشد.',
         save: 'ذخیره کاربر ادمین ممکن نشد.',

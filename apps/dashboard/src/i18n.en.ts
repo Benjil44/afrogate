@@ -993,6 +993,8 @@ export const en = {
       usersLoaded: (count: number | string) => `${count} users`,
       deleteConfirm: (username: string) => `Delete admin user "${username}"? This cannot be undone.`,
       rowActions: 'Actions',
+      detailExpand: 'Show actions',
+      detailCollapse: 'Hide actions',
       errors: {
         load: 'Could not load admin users.',
         save: 'Could not save admin user.',
