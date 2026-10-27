@@ -190,7 +190,7 @@ export function OutboundsPanel({
                 {outbound.serverLabel ? ` / ${format.label(outbound.serverLabel)}` : ''}
               </span>
             </div>
-            <div className="text-right">
+            <div className="text-end">
               <StatusBadge tone={outbound.statusTone}>{format.label(outbound.statusText)}</StatusBadge>
               <div className={mutedTextClass}>{format.latency(outbound.latencyMs)}</div>
             </div>
@@ -251,7 +251,7 @@ export function CapacityPanel({ activeUsers, format, t, trafficTotals }: { activ
         {items.map((item) => (
           <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-afro-line px-2 py-1" key={item.label}>
             <span className={`${mutedTextClass} min-w-0 truncate`}>{item.label}</span>
-            <strong className="shrink-0 text-right text-[14px] leading-tight">{item.value}</strong>
+            <strong className="shrink-0 text-end text-[14px] leading-tight">{item.value}</strong>
           </div>
         ))}
       </div>

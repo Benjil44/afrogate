@@ -146,7 +146,7 @@ export function VpsBillBanner({ t }: { t: DashboardStrings }) {
       <span className={`font-bold ${tone.accent}`}>— {statusText}</span>
       {!overdue ? <span className="text-afro-muted">({s.onDate(dueDateLabel)})</span> : null}
 
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ms-auto flex items-center gap-1.5">
         <button
           type="button"
           onClick={markPaid}

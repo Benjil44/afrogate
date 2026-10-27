@@ -406,7 +406,7 @@ export function ResellerWalletTopupPanel({
             <span className={formLabelClass}>{s.receiptFile}</span>
             <input
               accept="image/*"
-              className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 py-2 text-sm text-afro-ink outline-none ring-afro-teal/20 file:mr-3 file:rounded-md file:border-0 file:bg-afro-page file:px-3 file:py-1 file:text-[12px] file:font-bold file:text-afro-ink focus:border-afro-teal focus:ring-4"
+              className="min-h-10 w-full rounded-md border border-afro-line bg-white px-3 py-2 text-sm text-afro-ink outline-none ring-afro-teal/20 file:me-3 file:rounded-md file:border-0 file:bg-afro-page file:px-3 file:py-1 file:text-[12px] file:font-bold file:text-afro-ink focus:border-afro-teal focus:ring-4"
               onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)}
               ref={fileInputRef}
               required

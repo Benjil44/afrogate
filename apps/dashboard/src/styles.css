@@ -10,6 +10,13 @@
   --color-afro-teal: #0f8f83;
   --color-afro-green: #238a4b;
   --color-afro-blue: #2764a8;
+  /* Secondary surfaces referenced by pages (bg-afro-soft, bg-afro-bg, bg-afro-surface) and
+     the accent used for checkboxes/badges (accent-afro-accent, text-afro-accent). Without
+     these tokens Tailwind emits nothing for those classes, so the badges rendered unstyled. */
+  --color-afro-soft: #f4f7f8;
+  --color-afro-bg: #eef3f5;
+  --color-afro-surface: #e7f6f3;
+  --color-afro-accent: #0f8f83;
   --font-afro-arabic: "Afrows YekanBakh", Tahoma, Arial, sans-serif;
 }
 

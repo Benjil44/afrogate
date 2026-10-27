@@ -32,7 +32,7 @@ export function DetailRow({ children, label }: { children: ReactNode; label: str
   return (
     <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-afro-line px-2.5" title={rowTooltip}>
       <span className={`${mutedTextClass} min-w-0 truncate`} title={label}>{label}</span>
-      <strong className="min-w-0 shrink text-right text-sm" title={valueTooltip}>{children}</strong>
+      <strong className="min-w-0 shrink text-end text-sm" title={valueTooltip}>{children}</strong>
     </div>
   );
 }
