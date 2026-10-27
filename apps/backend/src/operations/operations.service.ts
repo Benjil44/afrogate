@@ -114,6 +114,7 @@ import {
   UpsertRouteSettingsDto,
 } from './dto/settings.dto';
 import { RouteQualityAggregationService } from './route-quality-aggregation.service';
+import { isSafeSshHost } from './ssh-target';
 
 interface ServerInventoryRow {
   id: string;
@@ -9016,7 +9017,7 @@ export class OperationsService {
   }
 
   private isSafeProtocolServerApplyHost(value: string): boolean {
-    return value.length > 0 && value.length <= 253 && !/[\s"'`;$\\]/.test(value);
+    return isSafeSshHost(value);
   }
 
   private isSafeProtocolServerApplyUsername(value: string): boolean {
