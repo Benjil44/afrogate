@@ -78,6 +78,7 @@ import {
   CreateOutboundSubscriptionDto,
   MoveOutboundDto,
   UpdateOutboundDto,
+  UpdateOutboundTestSettingsDto,
 } from './dto/outbound.dto';
 import { CreateServerCredentialDto, CreateServerDto, UpdateServerDto } from './dto/server.dto';
 import {
@@ -799,8 +800,8 @@ export class OperationsController {
 
   @Patch('outbound-test-settings')
   @Roles('admin')
-  setOutboundTestSettings(@Body() body: { enabled?: boolean }): Promise<AdminOutboundsAutoTestState> {
-    return this.operationsService.setOutboundTestSettings(Boolean(body?.enabled));
+  setOutboundTestSettings(@Body() body: UpdateOutboundTestSettingsDto): Promise<AdminOutboundsAutoTestState> {
+    return this.operationsService.setOutboundTestSettings(body?.enabled === true);
   }
 
   @Get('route-failover-events')
