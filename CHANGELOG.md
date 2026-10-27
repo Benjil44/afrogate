@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.122.0 - 2026-10-28
+
+Overnight quality pass across the bot, the backend, the admin dashboard, the customer panel and the website (branch `overnight/2026-10-27-quality`).
+
+**Telegram bot**
+- A deleted (archived) customer can sign up again instead of looping at the phone step: the archived account still held their Telegram id, and the id is now released (audited) before sign-up.
+- The @username fallback never opens an account bound to another Telegram id (a re-claimed username showed someone else's configs and balance). A live account carrying the sender's @username is audited (`telegram.register.username_held`) for support to merge, never a dead end.
+- Dead ends removed: stale buttons, a missing account ("contact support" with no support), seller menus, `/start` and `/language` during sign-up. Errors are logged (type and message only).
+- A double tap on the gems redeem Confirm redeems once; an already-reviewed receipt shows a translated message; Persian copy and size display fixes.
+
+**Backend**
+- `POST /client/login` is rate limited: per client IP (60/min) and failed passwords per account (10/min per IP, 100/min overall). The client IP comes from CF-Connecting-IP / X-Real-IP / the last X-Forwarded-For hop, never the client-chosen first entry; this applies to every limited route.
+- Gateway billing and the router sampler can no longer run overlapping passes (double charge); edge usage batches apply atomically and ignore non-uuid ids (a failed batch was re-sent and double-counted).
+- Referral milestone gems are paid to every inviter (they were deduplicated platform-wide, so only the first inviter to reach N was paid); `gbToBytes` returns whole bytes (reseller per-GB charges could fail).
+- A public metrics query 500 and its full-table scan, an unhandled timer rejection, ssh host validation, typed admin inputs, router customer id validation, alert map pruning, one shared env-flag parser.
+
+**Admin dashboard**
+- Phone and tablet layout: the shell's stretched top bar, tables leaking past the screen (row actions unreachable), Settings overflow, and Users actions on phones; deleting an admin asks for confirmation.
+- Missing theme colours defined; remaining English-only strings moved into the typed en/fa layer; RTL-safe alignment; icon buttons labelled; the network map no longer shows a hard-coded server IP; shared receipt-queue component and about 400 lines of dead imports removed.
+
+**Customer panel and website**
+- Panel: errors shown next to the action, no data re-fetch on language switch, 44px tap targets, Persian copy and RTL fixes, Persian by default for Persian phones, "Open in VPN app" links, accessibility roles.
+- Website: the music deck stays inside its card on phones, promo and footer fixes, and react-router removed from the bundle (vendor 83 → 70 kB gzip).
+
 ## 0.121.4 - 2026-10-27
 
 - **Germany and USA links work on Shatel FTTH again.** Shatel blocks the Cloudflare WS tunnel by the client's TLS fingerprint, not by the afrows name: from a direct Shatel line `fp=chrome` passed 0/10 and `fp=ios` 10/10 (YouTube included), and the ECH cover name `cloudflare-ech.com` is blocked outright. The Germany/USA entry links now carry `fp=ios` with no ECH (`AFROWS_{DE,US}_ENTRY_FP=ios`, ECH unset); customers pick it up on their next subscription refresh.

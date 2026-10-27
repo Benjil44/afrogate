@@ -1,5 +1,10 @@
 # Afrows Progress
 
+## 2026-10-28 (0.122.0, branch overnight/2026-10-27-quality, NOT deployed)
+
+- Overnight team pass: Telegram (backend engineer), backend API (backend engineer), admin dashboard and customer panel/web (frontend designers), each in its own worktree; two cto-architect reviews; review findings fixed. Verified: typecheck, 989/989 backend tests, full build, secrets, contrast, egress tests; dashboard 72 screenshots (0 overflow, 0 console errors); client e2e 6 passed.
+- Open (operator decisions): reseller-settable operator fields; global egress mode writable by any customer token; gateway billing vs WG metering overwriting used_bytes; unauthenticated /metrics reads; VLESS uuid visible to support/auditor roles; retention for growing tables and client_ip_violations; Cloudflare secret origin header so nginx can trust the USA web proxy; the website "notify me" buttons have no channel.
+
 ## 2026-10-27 (0.121.4)
 
 - Shatel FTTH: Germany/USA (Cloudflare WS) links failed and the Shatel link had no working foreign exit. Tested from the operator PC on direct Shatel (the home ac3's wg-home to the USA is blocked by Shatel since 2026-10-26, so it fails open). Findings: Shatel blocks by client TLS fingerprint (chrome 0/10, ios 10/10) and blocks the ECH cover name; the زیرساخت → USA REALITY chain was broken by a `randomized` fp (unsupported curve) and DPI-frozen; the Vision inbound's user could not reach the USA SSH relay, so Telegram/mgmt were down.
