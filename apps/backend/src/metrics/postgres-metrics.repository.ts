@@ -77,9 +77,11 @@ export class PostgresMetricsRepository implements MetricsRepository {
   }
 
   async listLatest(): Promise<ServerMetricSnapshot[]> {
+    // One index probe per server (server_metrics_server_observed_idx) instead of a
+    // DISTINCT ON over the whole, never-pruned server_metrics table on every poll.
     const result = await this.database.query<LatestMetricRow>(
       `
-        SELECT DISTINCT ON (s.external_id)
+        SELECT
           s.external_id AS "serverId",
           s.hostname AS "hostname",
           s.platform AS "platform",
@@ -95,8 +97,14 @@ export class PostgresMetricsRepository implements MetricsRepository {
           m.health_score AS "healthScore",
           m.raw AS "raw"
         FROM servers s
-        JOIN server_metrics m ON m.server_id = s.id
-        ORDER BY s.external_id, m.observed_at DESC
+        CROSS JOIN LATERAL (
+          SELECT *
+          FROM server_metrics sm
+          WHERE sm.server_id = s.id
+          ORDER BY sm.observed_at DESC
+          LIMIT 1
+        ) m
+        ORDER BY s.external_id
       `,
     );
 

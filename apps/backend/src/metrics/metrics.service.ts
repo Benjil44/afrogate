@@ -102,7 +102,9 @@ export class MetricsService {
   }
 
   private normalizeRange(rangeInput?: string): MetricsTimeRange {
-    if (rangeInput && rangeInput in MetricsService.rangeMinutes) {
+    // Own keys only: `in` would accept inherited names (`toString`, `constructor`)
+    // from this public query param and hand the repository a non-range.
+    if (rangeInput && Object.hasOwn(MetricsService.rangeMinutes, rangeInput)) {
       return rangeInput as MetricsTimeRange;
     }
 
