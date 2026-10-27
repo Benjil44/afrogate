@@ -46,6 +46,10 @@ interface HarnessOptions {
   /** An archived account still holds USER_ID's telegram_id (unique index conflict on create). */
   archivedHolder?: boolean;
   billingOverrides?: Record<string, (...args: unknown[]) => unknown>;
+  /** Sender's Telegram @username (absent by default). */
+  username?: string;
+  /** Lower-cased @usernames carried by LIVE customer accounts (bound to any id). */
+  liveUsernames?: string[];
 }
 
 function makeHarness(options: HarnessOptions = {}) {
@@ -76,6 +80,10 @@ function makeHarness(options: HarnessOptions = {}) {
         const row = users.get(id) ?? { telegramId: id, chatId, language: null, state: null };
         users.set(id, { ...row, chatId, state: state === null ? null : JSON.parse(state) });
         return { rows: [], rowCount: 1 };
+      }
+      if (/FROM customer_accounts WHERE lower\(telegram_username\) = lower\(\$1\)/.test(text)) {
+        const hit = (options.liveUsernames ?? []).includes(String(values[0]).toLowerCase());
+        return { rows: hit ? [{ id: 'acct-paid' }] : [], rowCount: hit ? 1 : 0 };
       }
       if (/UPDATE customer_accounts/.test(text) && /deleted_at IS NOT NULL/.test(text)) {
         if (!archivedHolder || values[0] !== USER_ID) return { rows: [], rowCount: 0 };
@@ -114,7 +122,8 @@ function makeHarness(options: HarnessOptions = {}) {
     createCustomerAccount: (input) => {
       const dto = input as { displayName: string; telegramId: string };
       if (archivedHolder) {
-        throw Object.assign(new Error('duplicate key value violates unique constraint "customer_accounts_telegram_id_unique"'), { code: '23505' });
+        // Production shape: createCustomerAccount converts the 23505 into a Nest 409 (no `.code`).
+        throw Object.assign(new Error('Customer account Telegram ID or paid number already exists'), { getStatus: () => 409 });
       }
       created.push({ displayName: dto.displayName, telegramId: dto.telegramId });
       hasAccount = true;
@@ -170,10 +179,10 @@ function makeHarness(options: HarnessOptions = {}) {
     state: () => users.get(USER_ID)?.state ?? null,
     tap: (data: string) =>
       service.handleUpdate({
-        callback_query: { id: `cb-${++seq}`, from: { id: Number(USER_ID) }, message: { message_id: 5, chat: { id: Number(USER_ID) } }, data },
+        callback_query: { id: `cb-${++seq}`, from: { id: Number(USER_ID), username: options.username }, message: { message_id: 5, chat: { id: Number(USER_ID) } }, data },
       }),
     type: (text: string) =>
-      service.handleUpdate({ message: { message_id: 6, chat: { id: Number(USER_ID) }, from: { id: Number(USER_ID) }, text } }),
+      service.handleUpdate({ message: { message_id: 6, chat: { id: Number(USER_ID) }, from: { id: Number(USER_ID), username: options.username }, text } }),
     shareOwnPhone: (phone = '+989121234567') =>
       service.handleUpdate({
         message: {
@@ -272,6 +281,36 @@ describe('Telegram bot customer/seller flows (audit 2026-10-27)', { skip: bundle
     });
   });
 
+  describe('no-account guard (never orphan a paid account)', () => {
+    it('a live account carrying the sender @username (bound to another id) keeps E4, no new account', async () => {
+      const h = makeHarness({ user: { language: 'fa', state: null }, username: 'Pouria_x', liveUsernames: ['pouria_x'] });
+      await h.tap('afws:acct');
+      assert.equal(stripRlm(h.last()!.text), stripRlm(copy('error.accountProblem')));
+      assert.equal(h.state()?.regStage, undefined, 'signup not started');
+      await h.type('/start');
+      assert.equal(stripRlm(h.last()!.text), stripRlm(copy('error.accountProblem')), '/start is guarded too');
+      assert.equal(h.created.length, 0);
+    });
+
+    it('an ambiguous username lookup keeps E4', async () => {
+      const h = makeHarness({
+        user: { language: 'en', state: null },
+        username: 'twins',
+        billingOverrides: { getTelegramBotAccountStatus: () => ({ status: 'ambiguous' }) },
+      });
+      await h.tap('afws:cfg');
+      assert.equal(h.last()!.text, copy('error.accountProblem', 'en'));
+      assert.equal(h.state()?.regStage, undefined);
+    });
+
+    it('a clean not_found with an unused @username restarts signup', async () => {
+      const h = makeHarness({ user: { language: 'en', state: null }, username: 'newcomer', liveUsernames: ['someone_else'] });
+      await h.tap('afws:acct');
+      assert.equal(h.last()!.text, copy('reg.askName', 'en'));
+      assert.equal(h.state()?.regStage, 'awaiting_name');
+    });
+  });
+
   describe('gems redeem', () => {
     it('a second tap on the same Confirm button does not redeem twice', async () => {
       const redeems: number[] = [];
@@ -292,6 +331,29 @@ describe('Telegram bot customer/seller flows (audit 2026-10-27)', { skip: bundle
       await h.tap('afws:gems:redeem:ok:2');
       assert.deepEqual(redeems, [200], 'only the first tap redeems (rate 100 gems/GB)');
       assert.equal(h.state()?.redeemedMessageId, 5);
+    });
+
+    it('re-opening the confirm on the same message (Back -> picker -> amount) redeems again when confirmed', async () => {
+      const redeems: number[] = [];
+      let gems = 500;
+      const h = makeHarness({
+        user: { language: 'en', state: null },
+        hasAccount: true,
+        billingOverrides: {
+          getTelegramBotAccountStatus: () => ({ status: 'found', account: { id: 'acct-1', displayName: 'Sara', status: 'active', quotaLimitBytes: 0, usedBytes: 0, gemsBalance: gems } }),
+          redeemCustomerGemsForGb: (_id, spend) => {
+            redeems.push(spend as number);
+            gems -= spend as number;
+            return { gemsBalance: gems, quotaLimitAfterBytes: 2_000_000_000 };
+          },
+          getCustomerGemsLedger: () => [],
+        },
+      });
+      await h.tap('afws:gems:redeem:ok:1');
+      await h.tap('afws:gems:redeem:1'); // S12c re-rendered on message 5
+      assert.equal(h.state()?.redeemedMessageId, undefined, 'marker cleared for the fresh confirm');
+      await h.tap('afws:gems:redeem:ok:1');
+      assert.deepEqual(redeems, [100, 100]);
     });
   });
 

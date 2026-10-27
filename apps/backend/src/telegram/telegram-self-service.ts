@@ -136,14 +136,16 @@ export interface TelegramSelfServiceDeps {
   releaseArchivedTelegramLink(telegramId: string): Promise<string[]>;
 }
 
-/** Narrow an unknown error to a Postgres unique-constraint violation (23505). */
+/**
+ * A duplicate-key outcome: the raw Postgres 23505, or the Nest ConflictException
+ * (HTTP 409) that BillingService.createCustomerAccount converts it into. Only used
+ * for the concurrent-registration race (re-read the live winner), never to decide
+ * anything destructive.
+ */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code: unknown }).code === '23505'
-  );
+  if (typeof error !== 'object' || error === null) return false;
+  if ('code' in error && (error as { code: unknown }).code === '23505') return true;
+  return (error as { getStatus?: () => number }).getStatus?.() === 409;
 }
 
 export class TelegramSelfServiceProvisioner {
@@ -165,38 +167,38 @@ export class TelegramSelfServiceProvisioner {
    *     referral code was captured) attribute + credit the inviter.
    */
   async register(input: RegisterInput): Promise<RegisterResult> {
-    return this.registerAttempt(input, false);
-  }
-
-  private async registerAttempt(input: RegisterInput, releasedArchived: boolean): Promise<RegisterResult> {
     const existing = await this.deps.findAccountByTelegramId(input.telegramId);
     if (existing) return this.resolveExisting(existing);
+
+    // No LIVE account holds this telegram id. An ARCHIVED one may still: archiving
+    // keeps the link, and the unique index ignores deleted_at, so creating/linking
+    // would always fail. Release it up front (only archived rows, only this id).
+    await this.releaseArchivedLink(input.telegramId);
 
     try {
       const linked = await this.tryLinkByPhone(input);
       if (linked) return linked;
       return await this.createNewAccount(input);
     } catch (error) {
-      if (!isUniqueViolation(error)) throw error;
       // Lost the race: another registration already claimed the telegram id (via a
       // concurrent create OR link). Re-read and return the winner rather than
       // surfacing a duplicate-key error.
-      const raced = await this.deps.findAccountByTelegramId(input.telegramId);
-      if (raced) return this.resolveExisting(raced);
-      // No LIVE holder: an archived account still owns the id. Release it once and
-      // retry; a second conflict is a real error.
-      if (!releasedArchived && input.telegramId) {
-        const released = await this.deps.releaseArchivedTelegramLink(input.telegramId);
-        if (released.length) {
-          await this.deps.recordPhoneRegistrationEvent('archived_link_released', {
-            telegramId: input.telegramId,
-            matchedAccountIds: released,
-          });
-          return this.registerAttempt(input, true);
-        }
+      if (isUniqueViolation(error)) {
+        const raced = await this.deps.findAccountByTelegramId(input.telegramId);
+        if (raced) return this.resolveExisting(raced);
       }
       throw error;
     }
+  }
+
+  private async releaseArchivedLink(telegramId: string): Promise<void> {
+    if (!telegramId) return;
+    const released = await this.deps.releaseArchivedTelegramLink(telegramId);
+    if (!released.length) return;
+    await this.deps.recordPhoneRegistrationEvent('archived_link_released', {
+      telegramId,
+      matchedAccountIds: released,
+    });
   }
 
   /**
