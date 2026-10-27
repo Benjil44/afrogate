@@ -53,6 +53,12 @@ import {
 } from './telegram-self-service';
 import { TelegramConnectResolver, type ConnectOutcome } from './telegram-connect';
 import { createPendingTopupInTransaction, topupReference } from './telegram-topup';
+
+/** A Nest HttpException with status 409: the top-up was already approved/rejected (double tap, second admin). */
+function isAlreadyDecided(error: unknown): boolean {
+  const status = (error as { getStatus?: () => number } | null)?.getStatus?.();
+  return status === 409;
+}
 import { TelegramTopupAdminService } from './telegram-topup-admin.service';
 import type { AuthActor } from '../security/auth-request';
 import {
@@ -1532,7 +1538,7 @@ export class TelegramBotService {
       [telegramId],
     );
     const id = result.rows[0]?.id;
-    return id ? id.replace(/-/g, '').slice(0, 6).toUpperCase() : null;
+    return id ? topupReference(id) : null;
   }
 
   // --- Inviter notifications (N3/N5) ----------------------------------------
@@ -2277,7 +2283,10 @@ export class TelegramBotService {
       return { ok: true, status: 'sent' };
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'failed';
-      await this.answer(ctx, renderTelegramCopy('admin.receipt.failed', language, {}, { reference, reason }));
+      const toast = isAlreadyDecided(error)
+        ? renderTelegramCopy('admin.receipt.alreadyHandled', language, {}, { reference })
+        : renderTelegramCopy('admin.receipt.failed', language, {}, { reference, reason });
+      await this.answer(ctx, toast);
       return { ok: false, status: 'failed', reason };
     }
   }
@@ -2342,7 +2351,13 @@ export class TelegramBotService {
       }
       return { ok: true, status: 'sent' };
     } catch (error) {
-      await this.answer(ctx, renderTelegramCopy('seller.req.approveFailed', language));
+      // "Check your wallet balance" is wrong advice for a receipt that was already reviewed.
+      await this.answer(
+        ctx,
+        isAlreadyDecided(error)
+          ? renderTelegramCopy('admin.receipt.alreadyHandled', language, {}, { reference: topupReference(requestId) })
+          : renderTelegramCopy('seller.req.approveFailed', language),
+      );
       return { ok: false, status: 'failed', reason: error instanceof Error ? error.message : 'approve_failed' };
     }
   }
@@ -2369,7 +2384,12 @@ export class TelegramBotService {
       }
       return { ok: true, status: 'sent' };
     } catch (error) {
-      await this.answer(ctx, renderTelegramCopy('seller.req.rejectFailed', language));
+      await this.answer(
+        ctx,
+        isAlreadyDecided(error)
+          ? renderTelegramCopy('admin.receipt.alreadyHandled', language, {}, { reference: topupReference(requestId) })
+          : renderTelegramCopy('seller.req.rejectFailed', language),
+      );
       return { ok: false, status: 'failed', reason: error instanceof Error ? error.message : 'reject_failed' };
     }
   }

@@ -25,6 +25,13 @@ describe('formatDataSize', () => {
     assert.equal(formatDataSize(1_500_000_000, 'en'), '1.5 GB');
   });
 
+  it('switches to GB when the MB value rounds to 1000 (never "1000 MB")', () => {
+    assert.equal(formatDataSize(999_999_999, 'en'), '1 GB');
+    assert.equal(formatDataSize(999_995_000, 'en'), '1 GB');
+    assert.equal(formatDataSize(999_994_999, 'en'), '999.99 MB');
+    assert.equal(formatDataSize(999_999_999, 'fa'), '۱ گیگابایت');
+  });
+
   it('uses Persian digits + spelled units in Persian', () => {
     assert.equal(formatDataSize(20_000_000_000, 'fa'), '۲۰ گیگابایت');
     assert.equal(formatDataSize(500_000_000, 'fa'), '۵۰۰ مگابایت');

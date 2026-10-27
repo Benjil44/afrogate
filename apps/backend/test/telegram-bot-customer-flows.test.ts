@@ -305,6 +305,20 @@ describe('Telegram bot customer/seller flows (audit 2026-10-27)', { skip: bundle
       assert.ok(callbacks(h.last()).every((cb) => cb?.startsWith('afws:sell:')));
     });
 
+    it('approving an already-reviewed receipt says so instead of "check your wallet balance"', async () => {
+      const h = makeHarness({
+        user: { language: 'en', state: null },
+        seller: true,
+        billingOverrides: {
+          approveTelegramTopupViaReseller: () => {
+            throw Object.assign(new Error('Only a pending top-up request can be approved'), { getStatus: () => 409 });
+          },
+        },
+      });
+      await h.tap('afws:sell:req:approve:abcdef12-0000-0000-0000-000000000000');
+      assert.deepEqual(h.toasts, [renderTelegramCopy('admin.receipt.alreadyHandled', 'en', {}, { reference: 'ABCDEF' })]);
+    });
+
     it('a slash command during "New customer" escapes to the seller menu instead of failing as a name', async () => {
       const h = makeHarness({ user: { language: 'en', state: { sellerNewCustomerStage: 'awaiting_name' } }, seller: true });
       await h.type('/start');

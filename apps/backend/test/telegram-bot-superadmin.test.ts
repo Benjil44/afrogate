@@ -199,12 +199,18 @@ function makeHarness(options: { linkedCustomer: boolean; language?: 'fa' | 'en' 
     },
   };
 
+  // Ids starting with "done-" were already reviewed: the service throws a Nest 409.
+  const alreadyDecided = (id: string) => {
+    if (id.startsWith('done-')) throw Object.assign(new Error('Only a pending top-up request can be approved'), { getStatus: () => 409 });
+  };
   const topupAdmin = {
     async approve(id: string, actor: { id: string }) {
+      alreadyDecided(id);
       decisions.push({ kind: 'approve', id, actor: actor.id });
       return {};
     },
     async reject(id: string, _reason: string | null, actor: { id: string }) {
+      alreadyDecided(id);
       decisions.push({ kind: 'reject', id, actor: actor.id });
       return {};
     },
@@ -448,6 +454,13 @@ describe('superadmin via handleUpdate', { skip: skipReason }, () => {
       { kind: 'reject', id: 'req-2', actor: `telegram:${ADMIN_ID}` },
     ]);
     assert.ok(h.toasts.some((t) => t.includes('REQ1')), 'approve toast carries the reference');
+  });
+
+  it('tapping Approve on an already-reviewed receipt says so (localized), not a raw English error', async () => {
+    const h = makeHarness({ linkedCustomer: true, language: 'fa' });
+    await h.tap('afws:adm:topup:approve:done-1');
+    assert.deepEqual(h.decisions, []);
+    assert.deepEqual(h.toasts, [renderTelegramCopy('admin.receipt.alreadyHandled', 'fa', {}, { reference: 'DONE1' })]);
   });
 
   it('linked admin: a photo with no pending charge gets the customer "no charge" reply, not the new-user flow', async () => {

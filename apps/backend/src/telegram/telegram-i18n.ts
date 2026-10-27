@@ -196,6 +196,7 @@ export type TelegramCopyId =
   | 'admin.receipt.approved'
   | 'admin.receipt.rejected'
   | 'admin.receipt.failed'
+  | 'admin.receipt.alreadyHandled'
   | 'admin.menu.title'
   | 'admin.menu.btn.newUser'
   | 'admin.btn.backToMenu'
@@ -360,7 +361,7 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   },
   'buy.submitted': {
     en: "✅ Got your receipt!\nRequest <b>#{requestId}</b> is submitted and awaiting admin approval.\nWe'll message you here as soon as it's reviewed.",
-    fa: '✅ رسید شما رسید!\nدرخواست <b>شمارهٔ {requestId}</b> ثبت شد و در انتظار تأیید مدیر است.\nبه‌محض بررسی، همین‌جا به شما خبر می‌دهیم.',
+    fa: '✅ رسید شما دریافت شد!\nدرخواست <b>شمارهٔ {requestId}</b> ثبت شد و در انتظار تأیید مدیر است.\nبه‌محض بررسی، همین‌جا به شما خبر می‌دهیم.',
   },
   'buy.cancelled': {
     en: 'Purchase cancelled. No worries — come back any time. 🙂',
@@ -643,6 +644,10 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'admin.receipt.btn.reject': { en: '❌ Reject', fa: '❌ رد' },
   'admin.receipt.approved': { en: '✅ Approved {reference}: the account was charged.', fa: '✅ رسید {reference} تأیید شد و حساب شارژ شد.' },
   'admin.receipt.rejected': { en: '❌ Rejected {reference}.', fa: '❌ رسید {reference} رد شد.' },
+  'admin.receipt.alreadyHandled': {
+    en: 'ℹ️ Request {reference} was already reviewed — nothing changed.',
+    fa: 'ℹ️ درخواست {reference} قبلاً بررسی شده است — تغییری انجام نشد.',
+  },
   'admin.receipt.failed': { en: '⚠️ Could not update {reference}: {reason}', fa: '⚠️ به‌روزرسانی {reference} انجام نشد: {reason}' },
   'admin.menu.title': { en: '🛠 <b>Admin panel</b>\nWhat would you like to do?', fa: '🛠 <b>پنل مدیریت</b>\nچه کاری می‌خواهید انجام دهید؟' },
   'admin.menu.btn.newUser': { en: '➕ New user', fa: '➕ کاربر جدید' },

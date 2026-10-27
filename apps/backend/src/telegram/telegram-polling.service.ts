@@ -115,6 +115,7 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
       { command: 'invite', description: 'Invite & earn' },
       { command: 'gems', description: 'Gems wallet' },
       { command: 'connect', description: 'Connect my account' },
+      { command: 'language', description: 'Language / زبان' },
       { command: 'help', description: 'Help' },
     ];
     const commandsFa = [
@@ -122,9 +123,10 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
       { command: 'menu', description: 'منوی اصلی' },
       { command: 'status', description: 'حساب و مصرف من' },
       { command: 'charge', description: 'خرید حجم' },
-      { command: 'invite', description: 'دعوت و جایزه' },
+      { command: 'invite', description: 'دعوت و هدیه' },
       { command: 'gems', description: 'کیف جم' },
       { command: 'connect', description: 'اتصال حساب من' },
+      { command: 'language', description: 'زبان / Language' },
       { command: 'help', description: 'راهنما' },
     ];
     try {

@@ -44,7 +44,8 @@ export function formatDataSize(bytes: number | null | undefined, language: Teleg
   let amountText: string;
   let unitEn: string;
   let unitFa: string;
-  if (value >= 1_000_000_000) {
+  // Choose the unit AFTER rounding: 999,999,999 B would otherwise print "1000 MB".
+  if (value >= 1_000_000_000 || Number(trimZeros(value / 1_000_000)) >= 1000) {
     amountText = trimZeros(gb);
     unitEn = 'GB';
     unitFa = 'گیگابایت';
