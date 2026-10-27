@@ -2,7 +2,7 @@ import { Fragment, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Equalizer } from '@/components/equalizer';
 import { siteLinks } from '@/components/nav';
-import { useLang } from '@/i18n';
+import { NUMBER_LOCALE, useLang } from '@/i18n';
 import { usePlayer } from '@/lib/player';
 import { useMotion } from '@/motion/provider';
 import { watchOnscreen } from '@/motion/reveal';
@@ -26,12 +26,14 @@ function MarqueeRow({ items }: { items: readonly string[] }) {
 
 /** Act 8 — sign-off: the name glows from the ground (watermark parallax + ember glow), marquee of stations. */
 export function Footer() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { playing } = usePlayer();
   const { scrollTo } = useMotion();
   const ref = useRef<HTMLElement>(null);
   const watermarkRef = useRef<HTMLDivElement>(null);
   const links = siteLinks(t);
+  // Current year in the page language's digits (no grouping: "۲۰۲۶", not "۲٬۰۲۶").
+  const year = new Intl.NumberFormat(NUMBER_LOCALE[lang], { useGrouping: false }).format(new Date().getFullYear());
 
   useFx(ref, (fx) => {
     const footer = ref.current!;
@@ -98,7 +100,7 @@ export function Footer() {
 
         <div className="relative z-10 mt-14 flex items-center justify-between gap-4 border-t border-[var(--border)] pt-6">
           <p className="text-xs font-semibold text-[var(--muted-foreground)]">
-            © 2026 {t.brand}. {t.footer.rights}
+            © {year} {t.brand}. {t.footer.rights}
           </p>
           <button
             type="button"

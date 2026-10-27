@@ -18,7 +18,8 @@ export function PromoBar() {
   return (
     <Collapse open={open} className="w-full">
       <div className="animate-gradient-bg relative w-full bg-[linear-gradient(90deg,var(--secondary),var(--primary),var(--secondary))]">
-        <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 px-12 py-2 text-sm text-white">
+        {/* Phones: only the dismiss button sits at the end, so pad the start less and the text no longer truncates. */}
+        <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 py-2 ps-4 pe-12 text-sm text-white sm:px-12">
           <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="hidden rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider sm:inline">
             {t.promo.tag}
