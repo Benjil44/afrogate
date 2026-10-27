@@ -65,6 +65,17 @@ describe("gbToBytes", () => {
     assert.equal(gbToBytes(0), 0);
   });
 
+  it("returns whole bytes for every 2-decimal GB value (float noise must not fail addPositiveBytes)", () => {
+    assert.equal(gbToBytes(1.07), 1_070_000_000);
+    assert.equal(gbToBytes(4.1), 4_100_000_000);
+    for (let cents = 1; cents <= 100_000; cents++) {
+      const bytes = gbToBytes(cents / 100);
+      assert.ok(Number.isSafeInteger(bytes), `${cents / 100} GB -> ${bytes}`);
+      assert.equal(bytes, cents * 10_000_000);
+      assert.equal(addPositiveBytes(0, bytes, 'overflow'), bytes);
+    }
+  });
+
   it("treats GB as decimal (1 GB = 1,000,000,000 bytes), not binary GiB", () => {
     // Regression guard for the quota-overage bug: a "20 GB" plan must resolve to
     // exactly 20e9 bytes and enforce there — NOT 21.47e9 (20 * 1024**3), which

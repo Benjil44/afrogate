@@ -54,7 +54,11 @@ export function addPositiveBytes(baseBytes: number, deltaBytes: number, errorMes
  */
 export const BYTES_PER_GB = 1_000_000_000;
 
-/** Converts (decimal) gigabytes to bytes. */
+/**
+ * Converts (decimal) gigabytes to whole bytes. Rounded because binary floats
+ * make e.g. 1.07 * 1e9 = 1070000000.0000001, which failed the safe-integer
+ * byte checks (400) or a bigint bind; the rounding error is < 1 byte.
+ */
 export function gbToBytes(value: number): number {
-  return value * BYTES_PER_GB;
+  return Math.round(value * BYTES_PER_GB);
 }
