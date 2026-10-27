@@ -4962,9 +4962,9 @@ export class BillingService {
     return this.getCustomerAccount(input.accountId);
   }
 
-  /** Best-effort audit of a phone conflict / ambiguity during bot registration. */
+  /** Best-effort audit of a phone conflict / ambiguity / archived-link release during bot registration. */
   async recordTelegramRegistrationEvent(
-    event: 'phone_conflict' | 'phone_ambiguous',
+    event: 'phone_conflict' | 'phone_ambiguous' | 'archived_link_released',
     input: { telegramId: string; matchedAccountIds: string[] },
   ): Promise<void> {
     await this.audit.recordBestEffort(

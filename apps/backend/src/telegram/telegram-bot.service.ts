@@ -1381,6 +1381,16 @@ export class TelegramBotService {
         return { ...outcome, friendName };
       },
       buildConfigLabel: (displayName, phone) => buildConfigLabel(displayName, phone),
+      releaseArchivedTelegramLink: async (telegramId) => {
+        const released = await this.database.query<{ id: string }>(
+          `UPDATE customer_accounts
+              SET telegram_id = NULL, telegram_username = NULL, updated_at = now()
+            WHERE telegram_id = $1 AND deleted_at IS NOT NULL
+            RETURNING id`,
+          [telegramId],
+        );
+        return released.rows.map((row) => row.id);
+      },
     });
 
     return provisioner.register({

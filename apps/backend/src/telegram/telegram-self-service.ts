@@ -34,8 +34,12 @@ export interface PhoneMatchAccount {
   telegramId?: string | null;
 }
 
-/** A phone-registration anomaly worth an audit trail (never blocks onboarding). */
-export type PhoneRegistrationEvent = 'phone_conflict' | 'phone_ambiguous';
+/**
+ * A registration anomaly worth an audit trail (never blocks onboarding).
+ * `archived_link_released`: an ARCHIVED (soft-deleted) account still held this
+ * telegram_id, so the id was released from it before re-registering.
+ */
+export type PhoneRegistrationEvent = 'phone_conflict' | 'phone_ambiguous' | 'archived_link_released';
 
 /** Result of crediting an inviter when a referred user completes registration (N3/N5). */
 export interface ReferralAttribution {
@@ -122,6 +126,14 @@ export interface TelegramSelfServiceDeps {
   }): Promise<ReferralAttribution | null>;
   /** Build the ASCII, auto-pattern-safe config label from the name + phone (§11 R2). */
   buildConfigLabel(displayName: string, phone: string): string;
+  /**
+   * Clear telegram_id/telegram_username on ARCHIVED (deleted_at set) accounts that
+   * still hold this telegram id; returns the released account ids. Archiving keeps
+   * the link (for restore), but the unique index on customer_accounts.telegram_id
+   * ignores deleted_at, so without this a deleted customer could never sign up
+   * again: every attempt hit a duplicate key and looped on the generic error.
+   */
+  releaseArchivedTelegramLink(telegramId: string): Promise<string[]>;
 }
 
 /** Narrow an unknown error to a Postgres unique-constraint violation (23505). */
@@ -153,6 +165,10 @@ export class TelegramSelfServiceProvisioner {
    *     referral code was captured) attribute + credit the inviter.
    */
   async register(input: RegisterInput): Promise<RegisterResult> {
+    return this.registerAttempt(input, false);
+  }
+
+  private async registerAttempt(input: RegisterInput, releasedArchived: boolean): Promise<RegisterResult> {
     const existing = await this.deps.findAccountByTelegramId(input.telegramId);
     if (existing) return this.resolveExisting(existing);
 
@@ -161,12 +177,23 @@ export class TelegramSelfServiceProvisioner {
       if (linked) return linked;
       return await this.createNewAccount(input);
     } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
       // Lost the race: another registration already claimed the telegram id (via a
       // concurrent create OR link). Re-read and return the winner rather than
       // surfacing a duplicate-key error.
-      if (isUniqueViolation(error)) {
-        const raced = await this.deps.findAccountByTelegramId(input.telegramId);
-        if (raced) return this.resolveExisting(raced);
+      const raced = await this.deps.findAccountByTelegramId(input.telegramId);
+      if (raced) return this.resolveExisting(raced);
+      // No LIVE holder: an archived account still owns the id. Release it once and
+      // retry; a second conflict is a real error.
+      if (!releasedArchived && input.telegramId) {
+        const released = await this.deps.releaseArchivedTelegramLink(input.telegramId);
+        if (released.length) {
+          await this.deps.recordPhoneRegistrationEvent('archived_link_released', {
+            telegramId: input.telegramId,
+            matchedAccountIds: released,
+          });
+          return this.registerAttempt(input, true);
+        }
       }
       throw error;
     }
