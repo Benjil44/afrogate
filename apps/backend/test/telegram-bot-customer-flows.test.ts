@@ -46,6 +46,10 @@ interface HarnessOptions {
   /** An archived account still holds USER_ID's telegram_id (unique index conflict on create). */
   archivedHolder?: boolean;
   billingOverrides?: Record<string, (...args: unknown[]) => unknown>;
+  /** Sender's Telegram @username (absent by default). */
+  username?: string;
+  /** Lower-cased @usernames carried by LIVE customer accounts (bound to any id). */
+  liveUsernames?: string[];
 }
 
 function makeHarness(options: HarnessOptions = {}) {
@@ -76,6 +80,10 @@ function makeHarness(options: HarnessOptions = {}) {
         const row = users.get(id) ?? { telegramId: id, chatId, language: null, state: null };
         users.set(id, { ...row, chatId, state: state === null ? null : JSON.parse(state) });
         return { rows: [], rowCount: 1 };
+      }
+      if (/FROM customer_accounts WHERE lower\(telegram_username\) = lower\(\$1\)/.test(text)) {
+        const hit = (options.liveUsernames ?? []).includes(String(values[0]).toLowerCase());
+        return { rows: hit ? [{ id: 'acct-paid' }] : [], rowCount: hit ? 1 : 0 };
       }
       if (/UPDATE customer_accounts/.test(text) && /deleted_at IS NOT NULL/.test(text)) {
         if (!archivedHolder || values[0] !== USER_ID) return { rows: [], rowCount: 0 };
@@ -171,10 +179,10 @@ function makeHarness(options: HarnessOptions = {}) {
     state: () => users.get(USER_ID)?.state ?? null,
     tap: (data: string) =>
       service.handleUpdate({
-        callback_query: { id: `cb-${++seq}`, from: { id: Number(USER_ID) }, message: { message_id: 5, chat: { id: Number(USER_ID) } }, data },
+        callback_query: { id: `cb-${++seq}`, from: { id: Number(USER_ID), username: options.username }, message: { message_id: 5, chat: { id: Number(USER_ID) } }, data },
       }),
     type: (text: string) =>
-      service.handleUpdate({ message: { message_id: 6, chat: { id: Number(USER_ID) }, from: { id: Number(USER_ID) }, text } }),
+      service.handleUpdate({ message: { message_id: 6, chat: { id: Number(USER_ID) }, from: { id: Number(USER_ID), username: options.username }, text } }),
     shareOwnPhone: (phone = '+989121234567') =>
       service.handleUpdate({
         message: {
@@ -270,6 +278,36 @@ describe('Telegram bot customer/seller flows (audit 2026-10-27)', { skip: bundle
       assert.equal(stripRlm(h.last()!.text), stripRlm(copy('reg.askName')));
       assert.equal(h.state()?.regStage, 'awaiting_name');
       assert.ok(!h.sent.some((m) => stripRlm(m.text) === stripRlm(copy('error.accountProblem'))));
+    });
+  });
+
+  describe('no-account guard (never orphan a paid account)', () => {
+    it('a live account carrying the sender @username (bound to another id) keeps E4, no new account', async () => {
+      const h = makeHarness({ user: { language: 'fa', state: null }, username: 'Pouria_x', liveUsernames: ['pouria_x'] });
+      await h.tap('afws:acct');
+      assert.equal(stripRlm(h.last()!.text), stripRlm(copy('error.accountProblem')));
+      assert.equal(h.state()?.regStage, undefined, 'signup not started');
+      await h.type('/start');
+      assert.equal(stripRlm(h.last()!.text), stripRlm(copy('error.accountProblem')), '/start is guarded too');
+      assert.equal(h.created.length, 0);
+    });
+
+    it('an ambiguous username lookup keeps E4', async () => {
+      const h = makeHarness({
+        user: { language: 'en', state: null },
+        username: 'twins',
+        billingOverrides: { getTelegramBotAccountStatus: () => ({ status: 'ambiguous' }) },
+      });
+      await h.tap('afws:cfg');
+      assert.equal(h.last()!.text, copy('error.accountProblem', 'en'));
+      assert.equal(h.state()?.regStage, undefined);
+    });
+
+    it('a clean not_found with an unused @username restarts signup', async () => {
+      const h = makeHarness({ user: { language: 'en', state: null }, username: 'newcomer', liveUsernames: ['someone_else'] });
+      await h.tap('afws:acct');
+      assert.equal(h.last()!.text, copy('reg.askName', 'en'));
+      assert.equal(h.state()?.regStage, 'awaiting_name');
     });
   });
 

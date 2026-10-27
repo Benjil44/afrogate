@@ -469,6 +469,12 @@ export class TelegramBotService {
     language: TelegramLanguage,
     user: TelegramUserRecord,
   ): Promise<TelegramBotWebhookResponse> {
+    if (await this.selfRegistrationBlocked(ctx)) {
+      // A live account may already be this person's (old/wrong telegram_id but
+      // their @username, or several username matches). Minting a fresh 0 GB
+      // account would silently orphan it, so an operator has to link it.
+      return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
+    }
     // Resume the phone step if a name was already captured.
     if (user.state?.regStage === 'awaiting_phone' && user.state.regName) {
       return this.renderAskPhone(ctx, language);
@@ -734,11 +740,30 @@ export class TelegramBotService {
 
   /**
    * A customer with a chosen language but no live account (e.g. the account was
-   * archived, or never finished signup) tapped an account screen. "Contact
-   * support" was a dead end (there is no support contact in the bot), so restart
-   * signup, which also re-links a phone-matched account. An admin never falls
-   * into self-registration, so they keep the E4 notice.
+   * archived, or never finished signup) tapped an account screen. Restart signup
+   * (which also re-links a phone-matched account) unless selfRegistrationBlocked
+   * says a live account may be theirs; then beginRegistration keeps E4. An admin
+   * never falls into self-registration, so they keep the E4 notice.
    */
+  /**
+   * Self-registration is allowed only on a clean `not_found` for this sender AND
+   * when no live account carries the sender's @username (bound to any id). The
+   * bot's lookup ignores username matches bound to another id (a re-claimed
+   * username must not grant access), but such a match may just as well be this
+   * customer's paid account with a stale telegram_id.
+   */
+  private async selfRegistrationBlocked(ctx: Ctx): Promise<boolean> {
+    const lookup = await this.billing.getTelegramBotAccountStatus({ telegramId: ctx.fromId, telegramUsername: ctx.username });
+    if (lookup.status !== 'not_found') return true;
+    const username = ctx.username?.trim().replace(/^@+/, '');
+    if (!username) return false;
+    const holder = await this.database.query<{ id: string }>(
+      `SELECT id FROM customer_accounts WHERE lower(telegram_username) = lower($1) AND deleted_at IS NULL LIMIT 1`,
+      [username],
+    );
+    return holder.rows.length > 0;
+  }
+
   private async accountMissing(ctx: Ctx, language: TelegramLanguage): Promise<TelegramBotWebhookResponse> {
     if (ctx.isAdmin || !ctx.fromId) {
       return this.screen('E4', ctx, language, renderTelegramCopy('error.accountProblem', language), this.menuOnlyKeyboard(language));
