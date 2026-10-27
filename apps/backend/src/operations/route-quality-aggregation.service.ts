@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
 export interface RouteQualityAggregationResult {
@@ -10,6 +10,7 @@ export interface RouteQualityAggregationResult {
 
 @Injectable()
 export class RouteQualityAggregationService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(RouteQualityAggregationService.name);
   private timer?: NodeJS.Timeout;
   private isRunning = false;
 
@@ -19,9 +20,22 @@ export class RouteQualityAggregationService implements OnModuleInit, OnModuleDes
     if (!process.env.DATABASE_URL) return;
     if (!this.configFlag('AFROWS_ROUTE_QUALITY_AGGREGATION_ENABLED', true)) return;
 
-    this.timer = setInterval(() => void this.aggregateRecent(), this.intervalMs());
+    this.timer = setInterval(() => void this.runScheduled(), this.intervalMs());
     this.timer.unref?.();
-    void this.aggregateRecent();
+    void this.runScheduled();
+  }
+
+  /**
+   * Timer entry point. aggregateRecent rejects on any DB error (try/finally,
+   * no catch, so HTTP callers can surface it); a `void`-ed rejection from a
+   * timer is an unhandled rejection, which terminates Node by default.
+   */
+  async runScheduled(): Promise<void> {
+    try {
+      await this.aggregateRecent();
+    } catch (error) {
+      this.logger.warn(`Route quality aggregation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   onModuleDestroy(): void {
