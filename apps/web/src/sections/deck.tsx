@@ -28,9 +28,11 @@ export function Deck() {
       <SectionHeading tag={t.deck.tag} title={t.deck.title} subtitle={t.deck.subtitle} />
 
       <div data-fx="rise" className="deck mt-12 overflow-hidden rounded-3xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--card)_70%,transparent)] backdrop-blur-md">
+        {/* `min-w-0` on every grid child: `.truncate` is `white-space: nowrap`, so without it one long mix title
+            widens the single phone column past the card and the controls/clock get clipped (worse in RTL). */}
         <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
           {/* Now playing */}
-          <div className="relative flex flex-col justify-between gap-5 p-5 sm:p-7">
+          <div className="relative flex min-w-0 flex-col justify-between gap-5 p-5 sm:p-7">
             <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 20% 0%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 55%)` }} />
             <div className="relative flex items-center gap-4">
               <span className="relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl shadow-lg" style={{ background: trackArt(index) }} aria-hidden="true">
@@ -76,7 +78,7 @@ export function Deck() {
 
           {/* Track list */}
           {tracksStatus === 'loading' && (
-            <ol aria-busy="true" aria-label={t.deck.listLoading} className="flex flex-col gap-1.5 border-t border-[var(--border)] p-3 sm:p-4 lg:border-s lg:border-t-0">
+            <ol aria-busy="true" aria-label={t.deck.listLoading} className="flex min-w-0 flex-col gap-1.5 border-t border-[var(--border)] p-3 sm:p-4 lg:border-s lg:border-t-0">
               {Array.from({ length: SKELETON_ROWS }, (_, i) => (
                 <li key={i} className="flex min-h-14 items-center gap-3 rounded-2xl p-2" aria-hidden="true">
                   <span className="h-11 w-11 shrink-0 animate-pulse rounded-xl bg-[color-mix(in_oklch,var(--foreground)_8%,transparent)]" />
@@ -89,7 +91,7 @@ export function Deck() {
             </ol>
           )}
           {(tracksStatus === 'empty' || tracksStatus === 'error') && (
-            <div role="status" className="flex min-h-64 flex-col items-center justify-center gap-4 border-t border-[var(--border)] p-6 text-center lg:border-s lg:border-t-0">
+            <div role="status" className="flex min-h-64 min-w-0 flex-col items-center justify-center gap-4 border-t border-[var(--border)] p-6 text-center lg:border-s lg:border-t-0">
               <p className="text-sm font-semibold text-[var(--muted-foreground)]">{tracksStatus === 'empty' ? t.deck.empty : t.deck.listError}</p>
               {tracksStatus === 'error' && (
                 <button type="button" onClick={reloadTracks} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--border)] px-5 text-sm font-bold transition-colors hover:bg-[color-mix(in_oklch,var(--foreground)_6%,transparent)]">
@@ -100,7 +102,7 @@ export function Deck() {
             </div>
           )}
           {ready && (
-            <ol className="flex flex-col gap-1.5 border-t border-[var(--border)] p-3 sm:p-4 lg:border-s lg:border-t-0">
+            <ol className="flex min-w-0 flex-col gap-1.5 border-t border-[var(--border)] p-3 sm:p-4 lg:border-s lg:border-t-0">
               {tracks.map((item, i) => {
                 const active = i === index;
                 const isPlaying = active && playing;

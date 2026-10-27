@@ -7,27 +7,26 @@ import type {
 
 export type Language = 'en' | 'fa';
 
-export const defaultLanguage: Language = 'en';
-
 export const translations = {
   en: {
     appName: 'Afrows',
-    clientSurface: 'Client',
+    clientSurface: 'Customer panel',
     token: 'Client token',
+    tokenHint: 'Paste the access token you received from Afrows support.',
     connect: 'Connect',
     signOut: 'Sign out',
     language: 'Language',
     refresh: 'Refresh',
     save: 'Save',
-    saving: 'Saving',
-    loading: 'Loading',
-    connected: 'Connected',
-    disconnected: 'Disconnected',
+    saving: 'Saving…',
+    loading: 'Loading…',
+    loadingAccount: 'Loading your account…',
+    routeOpen: 'Route open',
     quota: 'Quota',
     rewardedData: 'Rewarded data',
     watchAd: 'Watch ad',
-    claimingReward: 'Claiming',
-    rewardAdded: 'Reward added',
+    claimingReward: 'Adding…',
+    rewardAdded: 'Reward added to your quota',
     adsToday: 'Ads today',
     adsRemaining: 'Ads left',
     rewardDisabled: 'Rewards disabled',
@@ -35,31 +34,27 @@ export const translations = {
     remaining: 'Remaining',
     used: 'Used',
     unlimited: 'Unlimited',
-    device: 'Device',
     status: 'Status',
     protocol: 'Protocol',
     route: 'Route',
     perAppVpn: 'Per-app VPN',
     allApps: 'All apps',
     selectedAppsOnly: 'Selected apps',
-    appSelection: 'App selection',
     selectedApps: 'Selected apps',
-    nativeStatus: 'Native status',
-    androidReady: 'Android ready',
+    nativeStatus: 'Android',
+    androidReady: 'Ready',
     iosStatus: 'iOS',
-    iosManaged: 'iOS managed',
+    iosManaged: 'Managed profile',
     privacy: 'Privacy',
     localOnly: 'Local only',
-    nativeProfile: 'Native profile',
     copyNativeProfile: 'Copy profile',
     copiedNativeProfile: 'Profile copied',
     subscription: 'Subscription',
-    subscriptionServers: 'Subscription servers',
+    subscriptionServers: 'Servers',
     configLinks: 'Config links',
-    subscriptionUpdated: 'Updated',
     usageCost: 'Usage cost',
     usableOnServer: 'Usable here',
-    noSubscriptionEndpoints: 'No subscription endpoints published',
+    noSubscriptionEndpoints: 'No servers have been published for your subscription yet',
     ready: 'Ready',
     needsSecret: 'Needs client secret',
     secretUnavailable: 'Secret unavailable',
@@ -67,16 +62,16 @@ export const translations = {
     missingEndpoint: 'Missing endpoint',
     unsupportedProtocol: 'Unsupported',
     manualProfile: 'Manual profile',
-    vlessUri: 'VLESS URI',
+    vlessUri: 'VLESS link',
     l2tpProfile: 'L2TP profile',
     ikev2Profile: 'IKEv2 profile',
     requiresClientSecret: 'Client secret required',
     privateConfig: 'Private config',
-    copyConfig: 'Copy',
+    copyConfig: 'Copy link',
     copiedConfig: 'Copied',
-    mode: 'Mode',
+    openInApp: 'Open in VPN app',
     profile: 'Profile',
-    detectedCountry: 'Detected country',
+    detectedCountry: 'Your current country',
     preferredCountry: 'Country',
     preferredServer: 'Server',
     routeOptions: 'Route options',
@@ -84,19 +79,19 @@ export const translations = {
     automatic: 'Automatic',
     country: 'Country',
     outbound: 'Server',
-    autoDetect: 'Auto detect',
+    autoDetect: 'Detect country automatically',
     useDeviceCountry: 'Use device country',
-    overrideLocked: 'Locked by admin',
+    overrideLocked: 'Locked by support',
     routeLocked: 'Route locked',
     stickyProtected: 'Sticky sessions',
-    noToken: 'Client token required',
+    noToken: 'Enter your client token',
     noCountries: 'No countries available',
     noOutbounds: 'No servers available',
     chooseCountry: 'Choose country',
     chooseServer: 'Choose server',
     saveOk: 'Saved',
-    tokenRejected: 'Token rejected',
-    requestFailed: 'Request failed',
+    tokenRejected: 'Token rejected. Check it or ask support for a new one.',
+    requestFailed: 'Could not reach the server. Check your connection and try again.',
     healthy: 'Healthy',
     degraded: 'Degraded',
     critical: 'Critical',
@@ -117,91 +112,88 @@ export const translations = {
   },
   fa: {
     appName: 'Afrows',
-    clientSurface: 'کلاینت',
+    clientSurface: 'پنل مشتری',
     token: 'توکن کلاینت',
-    connect: 'اتصال',
+    tokenHint: 'توکنی را که از پشتیبانی افروز گرفته‌اید اینجا وارد کنید.',
+    connect: 'ورود',
     signOut: 'خروج',
     language: 'زبان',
-    refresh: 'تازه سازی',
+    refresh: 'تازه‌سازی',
     save: 'ذخیره',
-    saving: 'در حال ذخیره',
-    loading: 'در حال بارگذاری',
-    connected: 'متصل',
-    disconnected: 'قطع',
+    saving: 'در حال ذخیره…',
+    loading: 'در حال بارگذاری…',
+    loadingAccount: 'در حال بارگذاری حساب شما…',
+    routeOpen: 'مسیر آزاد',
     quota: 'حجم',
     rewardedData: 'حجم هدیه',
     watchAd: 'دیدن تبلیغ',
-    claimingReward: 'در حال شارژ',
-    rewardAdded: 'حجم اضافه شد',
+    claimingReward: 'در حال افزودن…',
+    rewardAdded: 'حجم هدیه به حساب شما اضافه شد',
     adsToday: 'تبلیغ امروز',
-    adsRemaining: 'تبلیغ باقی مانده',
+    adsRemaining: 'تبلیغ باقی‌مانده',
     rewardDisabled: 'هدیه غیرفعال است',
     rewardLimitReached: 'سقف روزانه پر شد',
-    remaining: 'باقی مانده',
-    used: 'مصرف شده',
+    remaining: 'باقی‌مانده',
+    used: 'مصرف‌شده',
     unlimited: 'نامحدود',
-    device: 'دستگاه',
     status: 'وضعیت',
     protocol: 'پروتکل',
     route: 'مسیر',
-    perAppVpn: 'VPN هر اپ',
-    allApps: 'همه اپ‌ها',
-    selectedAppsOnly: 'اپ‌های انتخابی',
-    appSelection: 'انتخاب اپ',
+    perAppVpn: 'VPN برای هر اپ',
+    allApps: 'همهٔ اپ‌ها',
+    selectedAppsOnly: 'فقط اپ‌های انتخابی',
     selectedApps: 'اپ‌های انتخابی',
-    nativeStatus: 'وضعیت native',
-    androidReady: 'آماده Android',
+    nativeStatus: 'اندروید',
+    androidReady: 'آماده',
     iosStatus: 'iOS',
-    iosManaged: 'iOS مدیریتی',
+    iosManaged: 'پروفایل مدیریتی',
     privacy: 'حریم خصوصی',
     localOnly: 'فقط روی دستگاه',
-    nativeProfile: 'پروفایل native',
     copyNativeProfile: 'کپی پروفایل',
     copiedNativeProfile: 'پروفایل کپی شد',
-    subscription: 'سابسکریپشن',
-    subscriptionServers: 'سرورهای سابسکریپشن',
-    configLinks: 'لینک پیکربندی',
-    subscriptionUpdated: 'به روز شده',
+    subscription: 'اشتراک',
+    subscriptionServers: 'سرورها',
+    configLinks: 'لینک‌های کانفیگ',
     usageCost: 'ضریب مصرف',
     usableOnServer: 'قابل استفاده اینجا',
-    noSubscriptionEndpoints: 'اندپوینتی برای سابسکریپشن منتشر نشده',
+    noSubscriptionEndpoints: 'هنوز سروری برای اشتراک شما منتشر نشده است',
     ready: 'آماده',
-    needsSecret: 'نیازمند سکرت کلاینت',
-    secretUnavailable: 'سکرت در دسترس نیست',
-    secretInvalid: 'سکرت ناقص است',
-    missingEndpoint: 'اندپوینت ناقص',
-    unsupportedProtocol: 'پشتیبانی نشده',
+    needsSecret: 'نیاز به کلید کلاینت',
+    secretUnavailable: 'کلید در دسترس نیست',
+    secretInvalid: 'کلید ناقص است',
+    missingEndpoint: 'آدرس سرور ناقص است',
+    unsupportedProtocol: 'پشتیبانی نمی‌شود',
     manualProfile: 'پروفایل دستی',
-    vlessUri: 'VLESS URI',
+    vlessUri: 'لینک VLESS',
     l2tpProfile: 'پروفایل L2TP',
     ikev2Profile: 'پروفایل IKEv2',
-    requiresClientSecret: 'سکرت کلاینت لازم است',
-    privateConfig: 'پیکربندی خصوصی',
-    copyConfig: 'کپی',
+    requiresClientSecret: 'کلید کلاینت لازم است',
+    privateConfig: 'کانفیگ خصوصی',
+    copyConfig: 'کپی لینک',
     copiedConfig: 'کپی شد',
-    mode: 'حالت',
+    openInApp: 'باز کردن در اپ VPN',
     profile: 'پروفایل',
-    detectedCountry: 'کشور تشخیص داده شده',
+    detectedCountry: 'کشور فعلی شما',
     preferredCountry: 'کشور',
     preferredServer: 'سرور',
-    routeOptions: 'گزینه های مسیر',
+    routeOptions: 'تنظیمات مسیر',
     availableCountries: 'کشورها',
     automatic: 'خودکار',
     country: 'کشور',
     outbound: 'سرور',
-    autoDetect: 'تشخیص خودکار',
+    autoDetect: 'تشخیص خودکار کشور',
     useDeviceCountry: 'کشور دستگاه',
-    overrideLocked: 'قفل توسط ادمین',
+    overrideLocked: 'قفل‌شده توسط پشتیبانی',
     routeLocked: 'مسیر قفل است',
     stickyProtected: 'نشست پایدار',
-    noToken: 'توکن کلاینت لازم است',
+    noToken: 'توکن کلاینت را وارد کنید',
     noCountries: 'کشوری در دسترس نیست',
     noOutbounds: 'سروری در دسترس نیست',
     chooseCountry: 'انتخاب کشور',
     chooseServer: 'انتخاب سرور',
     saveOk: 'ذخیره شد',
-    tokenRejected: 'توکن رد شد',
-    requestFailed: 'درخواست ناموفق بود',
+    tokenRejected: 'توکن پذیرفته نشد. آن را دوباره بررسی کنید یا از پشتیبانی توکن تازه بگیرید.',
+    requestFailed: 'ارتباط با سرور برقرار نشد. اینترنت را بررسی کنید و دوباره تلاش کنید.',
     healthy: 'سالم',
     degraded: 'ضعیف',
     critical: 'بحرانی',
@@ -229,8 +221,19 @@ export function isLanguage(value: string | null): value is Language {
   return value === 'en' || value === 'fa';
 }
 
+/** First visit: follow the phone's language (most customers are Persian), otherwise English. */
+export function detectDefaultLanguage(): Language {
+  if (typeof navigator === 'undefined') return 'en';
+  const locales = navigator.languages?.length ? navigator.languages : [navigator.language];
+  return locales.some((locale) => /^fa\b/i.test(locale ?? '')) ? 'fa' : 'en';
+}
+
 export function directionFor(language: Language): 'ltr' | 'rtl' {
   return language === 'fa' ? 'rtl' : 'ltr';
+}
+
+function localeFor(language: Language): string {
+  return language === 'fa' ? 'fa-IR' : 'en-US';
 }
 
 export function modeLabel(mode: ClientRoutePreferenceMode | string, messages: ClientMessages): string {
@@ -286,6 +289,22 @@ export function clientStatusLabel(status: ClientConfigStatus | string, messages:
   return status;
 }
 
+/** Protocol ids are technical identifiers (`vless`, `wireguard`); show them in their usual capitalised form. */
+export function protocolLabel(protocol: string): string {
+  if (protocol === 'wireguard') return 'WireGuard';
+  return protocol.toUpperCase();
+}
+
+/** Human country name for an ISO code ("DE" -> "Germany" / "آلمان"); falls back to the code. */
+export function regionName(countryCode: string, language: Language): string {
+  try {
+    const name = new Intl.DisplayNames([localeFor(language)], { type: 'region', fallback: 'none' }).of(countryCode.toUpperCase());
+    return name || countryCode;
+  } catch {
+    return countryCode;
+  }
+}
+
 export function formatBytes(value: number | null | undefined, language: Language, messages: ClientMessages): string {
   if (value === null || value === undefined) return messages.unlimited;
   const units = language === 'fa'
@@ -300,7 +319,7 @@ export function formatBytes(value: number | null | undefined, language: Language
     unitIndex += 1;
   }
 
-  const number = new Intl.NumberFormat(language === 'fa' ? 'fa-IR' : 'en-US', {
+  const number = new Intl.NumberFormat(localeFor(language), {
     maximumFractionDigits: unitIndex === 0 ? 0 : 1,
   }).format(size);
 
@@ -308,5 +327,10 @@ export function formatBytes(value: number | null | undefined, language: Language
 }
 
 export function formatCount(value: number, language: Language): string {
-  return new Intl.NumberFormat(language === 'fa' ? 'fa-IR' : 'en-US').format(value);
+  return new Intl.NumberFormat(localeFor(language)).format(value);
+}
+
+/** `62%` / `۶۲٪` from a 0-100 value. */
+export function formatPercent(value: number, language: Language): string {
+  return new Intl.NumberFormat(localeFor(language), { style: 'percent', maximumFractionDigits: 0 }).format(value / 100);
 }

@@ -3,7 +3,7 @@ import { Apple, Globe, Smartphone, Play } from 'lucide-react';
 import { Equalizer } from '@/components/equalizer';
 import { RadioDial } from '@/components/radio-dial';
 import { SectionHeading } from '@/components/section-heading';
-import { useLang } from '@/i18n';
+import { NUMBER_LOCALE, useLang } from '@/i18n';
 import { CHANNEL_ART, CHANNEL_KEYS, trackArt, usePlayer, usePlayerProgress } from '@/lib/player';
 import { useMotion } from '@/motion/provider';
 import { EASE } from '@/motion/tokens';
@@ -25,8 +25,9 @@ function ProgressLine() {
 
 /** Pure-CSS phone mock with three screens: library, now playing, station dial. No images, no store links. */
 function PhoneMock({ screen }: { screen: number }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { playing, track, index } = usePlayer();
+  const count = new Intl.NumberFormat(NUMBER_LOCALE[lang]);
   const rows = [
     { name: t.apps.phone.playlistA, art: CHANNEL_ART.pop, count: 42 },
     { name: t.apps.phone.playlistB, art: CHANNEL_ART.chill, count: 28 },
@@ -57,7 +58,7 @@ function PhoneMock({ screen }: { screen: number }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-bold">{r.name}</span>
                     <span className="block text-[10px] text-[var(--muted-foreground)]">
-                      {r.count} {t.apps.phone.trackCount}
+                      {count.format(r.count)} {t.apps.phone.trackCount}
                     </span>
                   </span>
                   <Play className="h-3.5 w-3.5 text-[var(--muted-foreground)]" fill="currentColor" />

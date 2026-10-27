@@ -55,7 +55,7 @@ export function Radio() {
                 </span>
                 <span className="mt-3 block px-1 pb-1">
                   <span className="block truncate text-sm font-bold">{ch.name}</span>
-                  <span className="mt-0.5 block text-xs leading-snug text-[var(--muted-foreground)]">{ch.desc}</span>
+                  <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-[var(--muted-foreground)]">{ch.desc}</span>
                 </span>
               </button>
             </li>

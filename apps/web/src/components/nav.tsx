@@ -24,7 +24,7 @@ function Logo() {
   const { t } = useLang();
   const { playing } = usePlayer();
   return (
-    <a href="#top" aria-label={t.nav.home} className="flex items-center gap-2.5 text-lg font-black tracking-tight">
+    <a href="#top" aria-label={t.nav.home} className="flex min-h-11 items-center gap-2.5 text-lg font-black tracking-tight">
       <span className="grid h-9 w-9 place-items-center rounded-xl bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white">
         <Equalizer active={playing} bars={4} className="h-4 text-white" />
       </span>
