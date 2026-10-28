@@ -197,3 +197,7 @@ rm -f /etc/ssh/ssh_config.d/61-afrows-us-mgmt.conf
 # then on the USA: sed -i '/afrows-us-mgmt-cmd/d' /root/.ssh/authorized_keys
 # last resort: restore the xray config backup + systemctl restart afrows-xray
 ```
+
+## DNS resilience (2026-10-28)
+
+The exit resolved through a single upstream (8.8.4.4, from netplan). Twice (2026-10-27 22:25 and 2026-10-28 03:40 UTC) it stopped answering for ~19 min; the Iran→USA chain stayed up, but every customer request by hostname failed (found by `scripts/observatory/`). `/etc/systemd/resolved.conf.d/afrows-dns-resilience.conf` adds global `DNS=1.1.1.1 8.8.8.8 9.9.9.9` and `FallbackDNS=1.0.0.1 8.8.4.4 149.112.112.112`; applying it only restarts systemd-resolved (xray keeps running). Rollback: delete the file and `systemctl restart systemd-resolved`.
