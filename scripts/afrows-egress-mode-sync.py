@@ -38,8 +38,12 @@ EGRESS_STATE_DEFAULTS = {
     "breaker_max": 4,     # transitions within the window that mark the lane flapping
     "breaker_extra": 2,   # extra strikes required while flapping (damping)
 }
-# Explicit priority ladders (most-preferred first).
-CATCHALL_ORDER = ["via-germany", "proxy", "direct"]
+# Explicit priority ladders (most-preferred first). via-backup (2026-10-28) is the
+# optional second foreign transport (AFROWS_BACKUP_CHAIN_*): when the primary chain is
+# down, customers move to it instead of the relay pool / direct (Iranian internet,
+# where YouTube/Instagram/Telegram are blocked). Unconfigured -> never wanted, so the
+# ladder behaves exactly as via-germany > proxy > direct.
+CATCHALL_ORDER = ["via-germany", "via-backup", "proxy", "direct"]
 GAMING_ORDER = ["via-village", "via-germany", "proxy"]
 
 
@@ -131,7 +135,17 @@ CHAIN_PROBE_SVC = "afrows-xray"  # engine that hosts the local chain probe inbou
 # previously rendered pair is removed, so unsetting is the rollback).
 US_MGMT_TAG = "us-mgmt-socks"
 US_CHAIN_TAG = "via-usa"
-SYSTEM_INBOUND_TAGS = {"api", CHAIN_PROBE_TAG, DNS_TAG, US_MGMT_TAG}
+# Backup foreign transport (2026-10-28): a second chain outbound built by the same
+# chain_outbound() (mode reality / ss / ws) from AFROWS_BACKUP_CHAIN_*, plus a
+# loopback probe socks (backup-probe, 127.0.0.1:10813) routed to it. Iranian DPI
+# tends to freeze one transport while another still passes (SS-2022 outages of
+# ~20 min while REALITY kept working), so the catch-all fails over to it before
+# falling to the relay pool / direct. Rendered on every engine that carries the
+# catch-all (so it is always a valid target); the probe inbound only on afrows-xray.
+# Env unset -> neither object exists (a previously rendered pair is removed).
+BACKUP_TAG = "via-backup"
+BACKUP_PROBE_TAG = "backup-probe"
+SYSTEM_INBOUND_TAGS = {"api", CHAIN_PROBE_TAG, DNS_TAG, US_MGMT_TAG, BACKUP_PROBE_TAG}
 # Self-healing foreign egress: probe the relay pool (socks); when it can't carry
 # traffic, send the normal foreign catch-all to via-village (owned Germany/Starlink)
 # instead of the dead pool, and flip back when the pool recovers.
@@ -239,6 +253,38 @@ def us_chain_cfg():
         "socks_host": host or "127.0.0.1",
         "socks_port": int(port or "1083"),
     }, **reality_cfg("AFROWS_US_CHAIN"), **ss_cfg("AFROWS_US_CHAIN"))
+
+
+def backup_cfg():
+    """Backup chain settings from the env file, or None when not configured.
+    AFROWS_BACKUP_CHAIN_MODE selects the transport: reality / ss reuse reality_cfg /
+    ss_cfg (same keys as the other chains, prefix AFROWS_BACKUP_CHAIN), ws is the
+    Cloudflare VLESS-WS chain (_HOST/_PATH). Needs _ADDRESS and the mode credential
+    (_UUID for reality/ws, _SS_PASSWORD for ss); anything missing -> None (disabled)."""
+    p = "AFROWS_BACKUP_CHAIN"
+    mode = file_env(p + "_MODE").lower()
+    address = file_env(p + "_ADDRESS")
+    if mode not in ("reality", "ss", "ws") or not address:
+        return None
+    if mode == "ss" and not file_env(p + "_SS_PASSWORD"):
+        return None
+    if mode != "ss" and not file_env(p + "_UUID"):
+        return None
+    host, _, port = file_env("AFROWS_BACKUP_PROBE_SOCKS", "127.0.0.1:10813").partition(":")
+    return dict({
+        "uuid": file_env(p + "_UUID"),
+        "address": address,
+        "host": file_env(p + "_HOST", ""),
+        "path": file_env(p + "_PATH", "/"),
+        "probe_host": host or "127.0.0.1",
+        "probe_port": int(port or "10813"),
+    }, **reality_cfg(p), **ss_cfg(p))
+
+
+def backup_probe_inbound(c):
+    """Loopback-only socks inbound routed to via-backup (health probe of the backup chain)."""
+    return {"tag": BACKUP_PROBE_TAG, "listen": c["probe_host"], "port": c["probe_port"],
+            "protocol": "socks", "settings": {"auth": "noauth", "udp": False}}
 
 
 def us_mgmt_inbound(c):
@@ -428,8 +474,24 @@ def path_wg_sources(url, path):
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
+_PROBE_MEMO = {}
+
+
+def _memo(key, fn):
+    """Probe once per run: the catch-all ladder, the gaming ladder and the health
+    snapshot ask for the same paths, and a dead path costs up to ~25 s per probe
+    (the whole run must stay well under the unit TimeoutStartSec=240)."""
+    if key not in _PROBE_MEMO:
+        _PROBE_MEMO[key] = fn()
+    return _PROBE_MEMO[key]
+
+
 def pool_alive():
     """True if the foreign relay pool (socks) can fetch a basic 204 endpoint."""
+    return _memo(("pool",), _pool_alive)
+
+
+def _pool_alive():
     for url in POOL_PROBE_URLS:
         try:
             r = subprocess.run(
@@ -448,6 +510,10 @@ def iface_alive(iface):
     """True if a foreign 204 endpoint is reachable bound to `iface` (the village
     egress path, wg-village-de). This is how we detect the village/via-germany
     path being down so we can fail over to a village-independent reserve."""
+    return _memo(("iface", iface), lambda: _iface_alive(iface))
+
+
+def _iface_alive(iface):
     for url in POOL_PROBE_URLS:
         try:
             r = subprocess.run(
@@ -462,14 +528,15 @@ def iface_alive(iface):
     return False
 
 
-def socks_alive(socks):
-    """True if a foreign 204 endpoint is reachable through the given local socks."""
+def socks_alive(socks, max_time=10):
+    """True if a foreign 204 endpoint is reachable through the given local socks.
+    Worst case (both URLs time out) about 2 * (max_time + 4) s."""
     for url in POOL_PROBE_URLS:
         try:
             r = subprocess.run(
-                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", "10",
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", str(max_time),
                  "--socks5-hostname", socks, url],
-                capture_output=True, text=True, timeout=14,
+                capture_output=True, text=True, timeout=max_time + 4,
             )
             if r.stdout.strip() in ("200", "204"):
                 return True
@@ -495,6 +562,16 @@ def germany_alive():
     return _GERMANY_ALIVE
 
 
+def backup_alive():
+    """Health of the via-backup chain through its probe socks, probed once per run.
+    Shorter curl bound than the primary (8 s): with every path dead the run still
+    ends well inside the 240 s unit limit. Unconfigured -> False."""
+    c = backup_cfg()
+    if not c:
+        return False
+    return _memo(("backup",), lambda: socks_alive("%s:%d" % (c["probe_host"], c["probe_port"]), max_time=8))
+
+
 def hysteresis_cfg():
     """Env-tunable asymmetric-hysteresis + circuit-breaker config (falls back to the
     egress_state DEFAULTS). k_out preserves today's 2-strike fail-OUT exactly; only
@@ -513,14 +590,17 @@ def hysteresis_cfg():
     }
 
 
-def choose_catchall(via_germany_ok, pool_ok, state):
+def choose_catchall(via_germany_ok, pool_ok, state, backup_ok=False):
     """Health-ordered failover via the explicit egress_state machine: asymmetric
     hysteresis (fail out fast, fail back slow) + a flapping circuit breaker + a
-    transition log. Returns (applied_tag, new_state). Priority (UNCHANGED):
-    via-germany (owned Germany via the village) -> proxy (village-independent relay
-    pool) -> direct (last resort; only the foreign sites Ireland doesn't filter)."""
+    transition log. Returns (applied_tag, new_state). Priority: via-germany (primary
+    foreign chain) -> via-backup (second transport; only when configured, else
+    backup_ok is always False) -> proxy (relay pool) -> direct (last resort; only
+    the foreign sites Iran does not filter)."""
     if via_germany_ok:
         want = "via-germany"
+    elif backup_ok:
+        want = BACKUP_TAG
     elif pool_ok:
         want = "proxy"
     else:
@@ -538,7 +618,7 @@ def _breaker_of(state_file):
         return {"tripped": False, "recent": 0}
 
 
-def write_health(starlink_up, germany_up, catch_all, gaming_out, mode):
+def write_health(starlink_up, germany_up, catch_all, gaming_out, mode, backup_up=None):
     """Persist an egress-health snapshot the backend serves to the dashboard. Now
     includes the P2 circuit-breaker state per lane so the backend can alert on a
     flapping egress ("why is my egress unstable")."""
@@ -547,6 +627,7 @@ def write_health(starlink_up, germany_up, catch_all, gaming_out, mode):
         json.dump({
             "starlinkUp": bool(starlink_up),
             "germanyUp": bool(germany_up),
+            "backupUp": backup_up,  # null = backup chain not configured
             "appliedCatchAll": catch_all,
             "gamingOutbound": gaming_out,
             "mode": mode,
@@ -601,6 +682,14 @@ def decide_gaming():
     return applied
 
 
+def forget_unconfigured_backup(st, has_backup):
+    """Backup unconfigured (rollback) while it is the applied catch-all: its outbound
+    is gone, so do not hold a dangling tag through hysteresis; re-decide at once."""
+    if has_backup or st.get("applied") != BACKUP_TAG:
+        return st
+    return {k: v for k, v in st.items() if k not in ("applied", "pending", "count")}
+
+
 def decide_catchall(egress):
     """NORMAL foreign catch-all outbound (gaming always -> via-village/Starlink).
     'village' forces via-village; otherwise health-ordered auto-failover so a
@@ -609,19 +698,24 @@ def decide_catchall(egress):
         log("foreign-egress=village -> catch-all=via-village (Starlink)")
         return "via-village"
     vg = germany_alive()
-    pool = False if vg else pool_alive()  # only probe the reserve when the primary is down
+    has_backup = backup_cfg() is not None
+    # Each reserve is probed only when everything above it is down.
+    bk = False if (vg or not has_backup) else backup_alive()
+    pool = False if (vg or bk) else pool_alive()
     try:
         st = json.load(open(STATE_FILE))
     except Exception:
         st = {}
-    applied, st = choose_catchall(vg, pool, st)
+    applied, st = choose_catchall(vg, pool, forget_unconfigured_backup(st, has_backup), bk)
     try:
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         json.dump(st, open(STATE_FILE, "w"))
     except Exception:
         pass
-    log("failover: via-germany=%s pool=%s -> catch-all=%s (pending=%s count=%d)" % (
-        "up" if vg else "DOWN", ("up" if pool else "n/a") if vg else ("up" if pool else "DOWN"),
+    log("failover: via-germany=%s backup=%s pool=%s -> catch-all=%s (pending=%s count=%d)" % (
+        "up" if vg else "DOWN",
+        ("n/a" if (vg or not has_backup) else ("up" if bk else "DOWN")),
+        ("n/a" if (vg or bk) else ("up" if pool else "DOWN")),
         applied, st.get("pending"), st.get("count", 0)))
     return applied
 
@@ -630,7 +724,7 @@ def client_inbound_tags(rules):
     # The client catch-all is the rule with inboundTag whose outbound is the foreign
     # egress (either the relay pool 'proxy' or the owned 'via-village').
     for r in rules:
-        if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village", "via-germany", "direct"):
+        if r.get("inboundTag") and r.get("outboundTag") in ("proxy", "via-village", "via-germany", BACKUP_TAG, "direct"):
             if set(r["inboundTag"]) <= SYSTEM_INBOUND_TAGS:
                 continue  # chain probe / internal DNS rule, not the client catch-all
             return list(r["inboundTag"])
@@ -744,6 +838,21 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
         else:
             changed_out |= drop_tagged(ins, US_MGMT_TAG)
             changed_out |= drop_tagged(outs, US_CHAIN_TAG)
+    # Backup chain: the outbound on every engine (the catch-all may point at it), the
+    # probe inbound + its rule only on the chain engine. The outbound set stays constant
+    # while configured, so a failover changes only the catch-all rule.
+    backup = backup_cfg()
+    if backup:
+        changed_out |= upsert_tagged(outs, chain_outbound(backup, BACKUP_TAG))
+    else:
+        changed_out |= drop_tagged(outs, BACKUP_TAG)
+    if svc == CHAIN_PROBE_SVC:
+        ins = cfg.setdefault("inbounds", [])
+        if backup:
+            changed_out |= upsert_tagged(ins, backup_probe_inbound(backup))
+            system_rules.insert(0, {"inboundTag": [BACKUP_PROBE_TAG], "outboundTag": BACKUP_TAG})
+        else:
+            changed_out |= drop_tagged(ins, BACKUP_PROBE_TAG)
 
     # Drop any fixed rule (D2 pin / bypass) whose outbound does not exist — `xray -test`
     # would NOT reject a dangling outboundTag, so an unknown target must be caught here.
@@ -852,6 +961,9 @@ def main():
     write_health(
         starlink_up=iface_alive("wg-village"),
         germany_up=germany_alive(),
+        # memoized when the ladder already probed it; else one fast probe (keeps the
+        # backup health visible while it is idle, so a dead backup is seen early)
+        backup_up=(backup_alive() if backup_cfg() else None),
         catch_all=catch,
         gaming_out=gaming_out,
         mode=mode,

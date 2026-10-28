@@ -147,7 +147,7 @@ import tempfile as _tempfile
 from types import SimpleNamespace as _NS
 
 assert "us-mgmt-socks" in mod.SYSTEM_INBOUND_TAGS, "us-mgmt rule must never be taken for the client catch-all"
-assert mod.CATCHALL_ORDER == ["via-germany", "proxy", "direct"], "INV-17: catch-all order unchanged"
+assert mod.CATCHALL_ORDER == ["via-germany", "via-backup", "proxy", "direct"], "INV-17: catch-all ladder (via-backup added 2026-10-28)"
 _us = {"uuid": "00000000-0000-4000-8000-000000000000", "address": "172.64.34.62",
        "host": "us.afrows.com", "path": "/afrowsus", "socks_host": "127.0.0.1", "socks_port": 1083}
 _vo = mod.chain_outbound(_us, "via-usa")
@@ -265,3 +265,219 @@ _c, _cfg = _apply(_on, _cfg)
 _vu = [o for o in _cfg["outbounds"] if o["tag"] == "via-usa"][0]
 assert _c is True and _vu["streamSettings"]["network"] == "ws" and _vu["settings"]["vnext"][0]["port"] == 443
 print("OK: chain REALITY mode (env-gated, idempotent, reversible)")
+
+# --- backup foreign transport: via-backup + backup-probe (AFROWS_BACKUP_CHAIN_*-gated) ---
+_bk_on = ["DATABASE_URL=x", "AFROWS_BACKUP_CHAIN_MODE=reality", "AFROWS_BACKUP_CHAIN_ADDRESS=93.127.140.50",
+          "AFROWS_BACKUP_CHAIN_PORT=443", "AFROWS_BACKUP_CHAIN_UUID=22222222-2222-4222-8222-222222222222",
+          "AFROWS_BACKUP_CHAIN_REALITY_PBK=PBK", "AFROWS_BACKUP_CHAIN_REALITY_SID=ab12",
+          "AFROWS_BACKUP_CHAIN_REALITY_SNI=www.speedtest.net", "AFROWS_BACKUP_CHAIN_REALITY_FP=ios"]
+
+
+def _apply_svc(env_lines, cfg, svc, catch="via-germany"):
+    d = _tempfile.mkdtemp()
+    envp, cfgp = _os.path.join(d, "afrows.env"), _os.path.join(d, "config.json")
+    open(envp, "w").write("\n".join(env_lines) + "\n")
+    _json.dump(cfg, open(cfgp, "w"))
+    old_env, old_run = mod.ENV, mod.subprocess.run
+    mod.ENV = envp
+    mod.subprocess.run = lambda *a, **k: _NS(stdout="Configuration OK", stderr="", returncode=0)
+    try:
+        changed = mod.apply_target(cfgp, svc, "smart", [], [], catch, [], "via-village")
+    finally:
+        mod.ENV, mod.subprocess.run = old_env, old_run
+    return changed, _json.load(open(cfgp))
+
+
+def _cfg_with(env_lines, fn):
+    d = _tempfile.mkdtemp()
+    envp = _os.path.join(d, "afrows.env")
+    open(envp, "w").write("\n".join(env_lines) + "\n")
+    old = mod.ENV
+    mod.ENV = envp
+    try:
+        return fn()
+    finally:
+        mod.ENV = old
+
+
+for _k in [k for k in _os.environ if k.startswith("AFROWS_BACKUP_")]:
+    _os.environ.pop(_k)
+assert "backup-probe" in mod.SYSTEM_INBOUND_TAGS, "backup probe rule must never be taken for the client catch-all"
+
+# env unset / incomplete -> disabled (None), and the render is unchanged
+assert _cfg_with(["DATABASE_URL=x"], mod.backup_cfg) is None
+assert _cfg_with([l for l in _bk_on if "_UUID" not in l], mod.backup_cfg) is None, "reality needs a uuid"
+assert _cfg_with([l for l in _bk_on if "_ADDRESS" not in l], mod.backup_cfg) is None, "needs an address"
+assert _cfg_with(["AFROWS_BACKUP_CHAIN_MODE=ss", "AFROWS_BACKUP_CHAIN_ADDRESS=1.2.3.4"], mod.backup_cfg) is None, "ss needs a password"
+_c0, _off = _apply_svc(["DATABASE_URL=x"], _base, "afrows-xray")
+_c0b, _off_again = _apply_svc(["DATABASE_URL=x"], _off, "afrows-xray")
+assert _c0b is False, "unset backup: second run is a no-op"
+assert not any(o["tag"] == "via-backup" for o in _off["outbounds"])
+assert not any(i["tag"] == "backup-probe" for i in _off["inbounds"])
+assert not any(r.get("outboundTag") == "via-backup" or r.get("inboundTag") == ["backup-probe"] for r in _off["routing"]["rules"])
+
+# set -> reality outbound (port 443, fp ios, no mux, no flow) + probe socks + its rule
+_bc = _cfg_with(_bk_on, mod.backup_cfg)
+assert _bc["mode"] == "reality" and _bc["port"] == 443 and _bc["fp"] == "ios" and _bc["flow"] == ""
+assert (_bc["probe_host"], _bc["probe_port"]) == ("127.0.0.1", 10813)
+_c1, _bon = _apply_svc(_bk_on, _off, "afrows-xray")
+assert _c1 is True
+_vb = [o for o in _bon["outbounds"] if o["tag"] == "via-backup"]
+assert len(_vb) == 1 and _vb[0]["protocol"] == "vless" and "mux" not in _vb[0]
+assert _vb[0]["settings"]["vnext"][0]["address"] == "93.127.140.50" and _vb[0]["settings"]["vnext"][0]["port"] == 443
+assert "flow" not in _vb[0]["settings"]["vnext"][0]["users"][0]
+assert _vb[0]["streamSettings"]["realitySettings"] == {"serverName": "www.speedtest.net", "fingerprint": "ios",
+                                                       "publicKey": "PBK", "shortId": "ab12"}
+assert _bon["outbounds"][0]["tag"] == "proxy", "via-backup must never become the default (first) outbound"
+_bp = [i for i in _bon["inbounds"] if i["tag"] == "backup-probe"]
+assert len(_bp) == 1 and _bp[0]["listen"] == "127.0.0.1" and _bp[0]["port"] == 10813 and _bp[0]["protocol"] == "socks"
+_rules = _bon["routing"]["rules"]
+_ri = _rules.index({"type": "field", "inboundTag": ["backup-probe"], "outboundTag": "via-backup"})
+assert _ri < len(_rules) - 1 and _rules[-1]["inboundTag"] == ["afrows-in"], "probe rule precedes the catch-all"
+assert _rules[-1]["outboundTag"] == "via-germany"
+# idempotent: no rewrite / restart on re-run
+assert _apply_svc(_bk_on, _bon, "afrows-xray")[0] is False, "backup render is idempotent"
+# failover = rule change only: the outbound/inbound sets stay identical
+_cf, _bfail = _apply_svc(_bk_on, _bon, "afrows-xray", catch="via-backup")
+assert _cf is True and _bfail["routing"]["rules"][-1]["outboundTag"] == "via-backup"
+assert _bfail["outbounds"] == _bon["outbounds"] and _bfail["inbounds"] == _bon["inbounds"]
+assert {"type": "field", "inboundTag": ["dns-internal"], "outboundTag": "via-backup"} in _bfail["routing"]["rules"], \
+    "xray DNS follows the catch-all onto the backup"
+# a config whose catch-all already points at via-backup is still recognised next run
+assert mod.client_inbound_tags(_bfail["routing"]["rules"]) == ["afrows-in"]
+assert _apply_svc(_bk_on, _bfail, "afrows-xray", catch="via-backup")[0] is False
+# Vision variant and ss / ws modes use the same builders
+_bv = _cfg_with(_bk_on + ["AFROWS_BACKUP_CHAIN_REALITY_FLOW=xtls-rprx-vision"], mod.backup_cfg)
+assert mod.chain_outbound(_bv, "via-backup")["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision"
+_bs = _cfg_with(["AFROWS_BACKUP_CHAIN_MODE=ss", "AFROWS_BACKUP_CHAIN_ADDRESS=93.127.140.50",
+                 "AFROWS_BACKUP_CHAIN_PORT=8447", "AFROWS_BACKUP_CHAIN_SS_PASSWORD=SRV:USR"], mod.backup_cfg)
+_bso = mod.chain_outbound(_bs, "via-backup")
+assert _bso["protocol"] == "shadowsocks" and _bso["settings"]["servers"][0]["port"] == 8447
+_bw = _cfg_with(["AFROWS_BACKUP_CHAIN_MODE=ws", "AFROWS_BACKUP_CHAIN_ADDRESS=172.64.34.62",
+                 "AFROWS_BACKUP_CHAIN_UUID=33333333-3333-4333-8333-333333333333",
+                 "AFROWS_BACKUP_CHAIN_HOST=us.afrows.com", "AFROWS_BACKUP_CHAIN_PATH=/afrowsus"], mod.backup_cfg)
+_bwo = mod.chain_outbound(_bw, "via-backup")
+assert _bwo["streamSettings"]["network"] == "ws"
+assert _bwo["streamSettings"]["wsSettings"] == {"path": "/afrowsus", "host": "us.afrows.com"}
+# afrows-wg also carries the catch-all -> it gets the outbound, but never the probe inbound
+_cw, _wg = _apply_svc(_bk_on, _base, "afrows-wg", catch="via-backup")
+assert any(o["tag"] == "via-backup" for o in _wg["outbounds"])
+assert not any(i["tag"] == "backup-probe" for i in _wg["inbounds"])
+assert _wg["routing"]["rules"][-1]["outboundTag"] == "via-backup"
+# via-usa is untouched by the backup
+_cu, _cfgu = _apply_svc(_on + _bk_on[1:], _base, "afrows-xray")
+_cu2, _cfgu2 = _apply_svc(_on, _base, "afrows-xray")
+assert [o for o in _cfgu["outbounds"] if o["tag"] == "via-usa"] == [o for o in _cfgu2["outbounds"] if o["tag"] == "via-usa"]
+# unset again -> outbound, probe inbound and rule removed (rollback)
+_cr, _boff = _apply_svc(["DATABASE_URL=x"], _bon, "afrows-xray")
+assert _cr is True and _boff == _off, "unsetting the backup env restores the pre-backup config exactly"
+# a fixed (D2/bypass) rule may target via-backup only while it exists
+_ok_tags, _no_tags = {o["tag"] for o in _bon["outbounds"]}, {o["tag"] for o in _off["outbounds"]}
+assert mod.partition_known_outbound_rules([{"user": ["u"], "outboundTag": "via-backup"}], _ok_tags)[1] == []
+assert mod.partition_known_outbound_rules([{"user": ["u"], "outboundTag": "via-backup"}], _no_tags)[0] == []
+print("OK: via-backup + backup-probe render (gated, idempotent, rule-only failover, removable)")
+
+# --- failover ladder: via-germany -> via-backup -> proxy -> direct, with hysteresis ---
+# (ch is choose_catchall; positional args: germany_ok, pool_ok, state, backup_ok)
+applied, st = ch(True, False, {}, True)
+assert applied == "via-germany"
+# primary down, backup up: k_out=2 strikes before leaving via-germany
+applied, st = ch(False, False, {"applied": "via-germany"}, True)
+assert applied == "via-germany", ("hold on 1st strike", applied)
+applied, st = ch(False, True, st, True)  # pool health is irrelevant while the backup is up
+assert applied == "via-backup", ("backup on 2nd strike, preferred over the pool", applied)
+# a single primary blip does not flip (the count resets when the primary answers again)
+applied, st2 = ch(False, False, {"applied": "via-germany"}, True)
+applied, st2 = ch(True, False, st2, True)
+applied, st2 = ch(False, False, st2, True)
+assert applied == "via-germany", ("blips separated by a good probe never flip", applied)
+# backup down too: the pool, else direct (k_out=2 each)
+applied, st = ch(False, True, st, False)
+assert applied == "via-backup", applied
+applied, st = ch(False, True, st, False)
+assert applied == "proxy", ("pool when both chains are down", applied)
+applied, st = ch(False, False, {"applied": "via-backup"}, False)
+applied, st = ch(False, False, st, False)
+assert applied == "direct", ("direct only when everything is down", applied)
+# recovery: direct -> via-backup (k_back=3) -> via-germany (k_back=3)
+for n, exp in ((1, "direct"), (2, "direct"), (3, "via-backup")):
+    applied, st = ch(False, False, st, True)
+    assert applied == exp, (n, applied)
+for n, exp in ((1, "via-backup"), (2, "via-backup"), (3, "via-germany")):
+    applied, st = ch(True, False, st, True)
+    assert applied == exp, ("slow fail-back to the primary", n, applied)
+# backup unconfigured -> backup_ok defaults to False -> exactly the old ladder
+assert ch(False, True, {"applied": "proxy"})[0] == "proxy"
+print("OK: choose_catchall ladder via-germany -> via-backup -> proxy -> direct with hysteresis")
+
+# --- decide_catchall: probe order, bounded probing, rollback of a stale applied tag ---
+_d = _tempfile.mkdtemp()
+_old = (mod.STATE_FILE, mod.germany_alive, mod.backup_alive, mod.pool_alive, mod.ENV)
+_calls = []
+
+
+def _probe(name, result):
+    def f():
+        _calls.append(name)
+        return result
+    return f
+
+
+def _run(env_lines, vg, bk, pool, state):
+    envp = _os.path.join(_d, "afrows.env")
+    open(envp, "w").write("\n".join(env_lines) + "\n")
+    mod.ENV = envp
+    mod.STATE_FILE = _os.path.join(_d, "pool.state")
+    _json.dump(state, open(mod.STATE_FILE, "w"))
+    _calls.clear()
+    mod.germany_alive, mod.backup_alive, mod.pool_alive = _probe("germany", vg), _probe("backup", bk), _probe("pool", pool)
+    return mod.decide_catchall("germany"), _json.load(open(mod.STATE_FILE))
+
+
+try:
+    _a, _ = _run(_bk_on, True, True, True, {"applied": "via-germany"})
+    assert _a == "via-germany" and _calls == ["germany"], ("primary up: no reserve probed", _calls)
+    _a, _ = _run(_bk_on, False, True, True, {"applied": "via-backup"})
+    assert _a == "via-backup" and _calls == ["germany", "backup"], ("backup up: pool not probed", _calls)
+    _a, _ = _run(_bk_on, False, False, False, {"applied": "via-backup", "pending": "via-backup"})
+    assert _calls == ["germany", "backup", "pool"], _calls
+    _a, _ = _run(["DATABASE_URL=x"], False, True, False, {"applied": "via-germany"})
+    assert "backup" not in _calls, ("an unconfigured backup is never probed", _calls)
+    # rollback while via-backup is applied: decide afresh, never keep the dangling tag
+    _a, _st = _run(["DATABASE_URL=x"], False, True, True, {"applied": "via-backup", "pending": "via-backup", "count": 0})
+    assert _a == "proxy" and _st["applied"] == "proxy", (_a, _st)
+    _a, _st = _run(["DATABASE_URL=x"], True, False, False, {"applied": "via-backup"})
+    assert _a == "via-germany", _a
+finally:
+    mod.STATE_FILE, mod.germany_alive, mod.backup_alive, mod.pool_alive, mod.ENV = _old
+print("OK: decide_catchall probes each reserve only when every path above it is down")
+
+# --- probe bounds: memoised per run, the backup curl bound shorter than the primary ---
+_seen = []
+
+
+def _fake_run(cmd, **k):
+    _seen.append((cmd, k.get("timeout")))
+    return _NS(stdout="000", stderr="", returncode=0)
+
+
+_or, _oe = mod.subprocess.run, mod.ENV
+mod.subprocess.run = _fake_run
+try:
+    mod._PROBE_MEMO.clear()
+    _envp = _os.path.join(_d, "bk.env")
+    open(_envp, "w").write("\n".join(_bk_on) + "\n")
+    mod.ENV = _envp
+    assert mod.backup_alive() is False and mod.backup_alive() is False
+    assert len(_seen) == 2, ("2 URLs once, then memoised", len(_seen))
+    assert all(c[c.index("-m") + 1] == "8" and t == 12 for c, t in _seen), _seen
+    assert all("127.0.0.1:10813" in c for c, _t in _seen)
+    _seen.clear()
+    assert mod.pool_alive() is False and mod.pool_alive() is False and len(_seen) == 2
+    _seen.clear()
+    assert mod.iface_alive("wg-x") is False and mod.iface_alive("wg-x") is False and len(_seen) == 2
+finally:
+    mod.subprocess.run, mod.ENV = _or, _oe
+    mod._PROBE_MEMO.clear()
+# all-down worst case: primary 2x14 + backup 2x12 + pool 2x12 + village 2x12 = 100 s < 240 s
+print("OK: backup probe bounded (8 s curl / 12 s hard) and memoised per run")

@@ -53,6 +53,89 @@ ever fails, `systemctl disable --now afrows-web-origin.socket` on the USA and
 Germany mgmt falls back automatically to the village tunnel (`wg-village-de`)
 when `afrows-de-relay-up` fails (it checks the authenticated master socket).
 
+## Backup foreign transport `via-backup` (2026-10-28)
+
+Customers ride `via-germany` (the Shadowsocks-2022 chain above). When it is down,
+the catch-all now moves to a **second transport** before the relay pool or
+`direct` (Iranian internet, where YouTube, Instagram and Telegram are blocked). DPI
+tends to freeze one transport while another still passes: the two ~20 min SS
+outages (2026-10-27 22:25-22:44, 2026-10-28 03:40-04:00 UTC) did not hit REALITY.
+
+`scripts/afrows-egress-mode-sync.py` renders it from `/etc/afrows/afrows.env`, with the
+same builder as the other chains (`reality`, `ss` or `ws`):
+
+| Variable | Live value | Notes |
+|---|---|---|
+| `AFROWS_BACKUP_CHAIN_MODE` | `reality` | `reality`, `ss` or `ws`. Unset disables the backup |
+| `AFROWS_BACKUP_CHAIN_ADDRESS` | `93.127.140.50` | Required |
+| `AFROWS_BACKUP_CHAIN_PORT` | `443` | The USA NAT-redirects only the Afrows server's tcp/443 to `afrows-us-rv` :8446 |
+| `AFROWS_BACKUP_CHAIN_UUID` | (secret) | Required for `reality` and `ws`. Same uuid as the `afrows-us-rv` client |
+| `AFROWS_BACKUP_CHAIN_REALITY_PBK` / `_SID` / `_SNI` | (pbk/sid secret), `www.speedtest.net` | The `afrows-us-rv` values |
+| `AFROWS_BACKUP_CHAIN_REALITY_FLOW` | `xtls-rprx-vision` | Must match the server client (`afrows-us-rv` requires Vision) |
+| `AFROWS_BACKUP_CHAIN_REALITY_FP` | `ios` | Chosen by measurement (see below) |
+| `AFROWS_BACKUP_CHAIN_SS_PASSWORD` / `_SS_METHOD` | | `ss` mode only |
+| `AFROWS_BACKUP_CHAIN_HOST` / `_PATH` | | `ws` mode only |
+| `AFROWS_BACKUP_PROBE_SOCKS` | default `127.0.0.1:10813` | Loopback probe socks |
+
+What gets rendered when the backup is configured:
+- the outbound `via-backup` on **both** engines (afrows-xray and afrows-wg), since either catch-all may point at it;
+- on afrows-xray only, the loopback socks inbound `backup-probe` (127.0.0.1:10813) and the rule `backup-probe -> via-backup`.
+
+The outbound set stays the same while the backup is configured, so a failover only
+changes the catch-all rule. The reconciler still restarts the engines on any change,
+exactly as it does today when the catch-all flips to `direct`.
+
+Failover ladder (`decide_catchall`, the same hysteresis: 2 bad probes to leave a path, 3 good ones to come back):
+
+`via-germany` up -> `via-germany`; else `via-backup` up -> `via-backup`; else relay pool up -> `proxy`; else `direct`.
+
+The backup is probed only when `via-germany` is down, and the pool only when both
+chains are down. The backup probe is bounded to 8 s per URL (12 s hard limit).
+Probes are memoized per run, so with every path dead a run takes about 100 s,
+well inside the unit's 240 s. `/var/lib/afrows/egress-health.json` has
+`backupUp` (`null` when the backup is not configured). The gaming ladder and the
+D2 fixed paths are unchanged. The bypass still activates only when the catch-all is `direct`.
+
+Measured from this server before the deploy (2026-10-28, two rounds, standalone xray
+clients on throwaway socks ports, interleaved with the live SS chain; ok = curl exit 0):
+
+| Path | google 204 | youtube | bulk (10 MB, MB/s) |
+|---|---|---|---|
+| REALITY + Vision, fp=ios, :443 -> `afrows-us-rv` | 20/20, 19/20 | 10/10, 10/10 | 2.2, 2.9, 2.8, 2.4 |
+| REALITY no Vision, fp=ios, :8443 `afrows-us-reality` | 20/20, 20/20 | 10/10, 9/10 | **0.002 (stalled)**, 2.6, 1.9, 2.1 |
+| SS-2022 :8447 (live chain, reference) | 19/20, 20/20 | 10/10, 10/10 | 3.0, 3.1, 1.6, 2.6 |
+
+Vision + ios on 443 was as good as SS and needs no USA change, so it is the backup.
+No-Vision could only be tested on :8443 (the 443 redirect goes to the Vision-only
+`afrows-us-rv`), and one of its bulk transfers stalled, which fits the non-443
+blackhole. No 8448 inbound was added.
+
+Verify (on the Afrows server, without forcing a failover):
+```bash
+ss -ltn | grep -E '127.0.0.1:(10812|10813) '
+curl -s -o /dev/null -w '%{http_code} %{time_total}
+' -m 10 --socks5-hostname 127.0.0.1:10812 https://www.google.com/generate_204   # primary
+curl -s -o /dev/null -w '%{http_code} %{time_total}
+' -m 10 --socks5-hostname 127.0.0.1:10813 https://www.google.com/generate_204   # backup
+journalctl -u afrows-egress-mode-sync -n 5 --no-pager    # "failover: via-germany=up backup=n/a ..."
+jq '.backupUp, .appliedCatchAll' /var/lib/afrows/egress-health.json
+```
+
+Rollback (backups `*.bak-20261028-backup`):
+```bash
+# disable only the backup (renderer stays): the next run removes via-backup, backup-probe and the rule
+sed -i '/^AFROWS_BACKUP_CHAIN_/d' /etc/afrows/afrows.env
+systemctl start afrows-egress-mode-sync.service
+# full: the previous renderer + env
+cp -a /usr/local/bin/afrows-egress-mode-sync.py.bak-20261028-backup /usr/local/bin/afrows-egress-mode-sync.py
+cp -a /etc/afrows/afrows.env.bak-20261028-backup /etc/afrows/afrows.env
+systemctl start afrows-egress-mode-sync.service
+```
+Use the env removal first. The old renderer does not know `via-backup` and would skip
+an engine whose catch-all still points at it, so the new renderer must remove the
+backup objects first. If the catch-all is on `via-backup` at that moment, the new
+renderer re-decides at once rather than holding a missing tag.
+
 ## Files here (no keys)
 
 - `afrows-de-relay.service`, `de_relay_ssh_config` (→ `/etc/afrows/`),

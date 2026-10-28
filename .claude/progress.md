@@ -1,5 +1,12 @@
 # Afrows Progress
 
+## 2026-10-28 (Unreleased): backup foreign transport via-backup (deployed)
+
+- Renderer `scripts/afrows-egress-mode-sync.py`: optional `via-backup` chain from `AFROWS_BACKUP_CHAIN_*` (reality/ss/ws via `chain_outbound`), with the outbound on both engines and the `backup-probe` socks 127.0.0.1:10813 on afrows-xray. Ladder via-germany > via-backup > proxy > direct, same hysteresis; the backup is probed only when the primary is down (8 s curl bound); probes are memoized per run. Unset = byte-identical render (verified live by a dry run on copies of the configs). INV-17 amended.
+- Measured from the server: Vision+ios on :443 (afrows-us-rv) = google 39/40, youtube 20/20, 2.2-2.9 MB/s, same as SS. No-Vision+ios was only testable on :8443, and one of its bulk transfers stalled. No USA change.
+- Deployed 11:50 UTC (backups `*.bak-20261028-backup`); both probe socks 10/10 google, 3/3 youtube, exit 93.127.140.50; the next timer run reported no change. Runbook and rollback in `infra/ubuntu/relay/README.md`.
+- Found (not fixed): the USA `afrows-us-ss` inbound (the live primary chain) is runtime-only. It is not in `/usr/local/etc/xray/config.json` (only in a stale `config.json.tmp` from 2026-10-27 20:35), so a USA xray restart would drop the primary chain, Telegram and mgmt. Also, the USA config.json is root:root 0644 (README says root:nogroup 0640) and holds REALITY private keys and uuids. Dashboard labels for `via-backup` are not yet in the i18n layer (it shows the raw tag).
+
 ## 2026-10-28 (0.122.0, branch overnight/2026-10-27-quality, NOT deployed)
 
 - Overnight team pass: Telegram (backend engineer), backend API (backend engineer), admin dashboard and customer panel/web (frontend designers), each in its own worktree; two cto-architect reviews; review findings fixed. Verified: typecheck, 989/989 backend tests, full build, secrets, contrast, egress tests; dashboard 72 screenshots (0 overflow, 0 console errors); client e2e 6 passed.

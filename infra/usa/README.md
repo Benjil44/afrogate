@@ -62,7 +62,8 @@ tunnels to foreign IPs on other ports):
   and in the Afrows env as `AFROWS_{US,DE}_CHAIN_SS_PASSWORD`. `afrows-reality-fw` guards
   8443/8446/8447 (8447 also udp) with the `AFROWS-REALITY` chain. REALITY inbounds
   `afrows-us-reality` (:8443) and `afrows-us-rv` (:8446, Vision, user `afrows-chain-rv@afrows`,
-  which can NOT reach the SSH relay) stay as fallbacks: on the Afrows server re-enable them
+  which can NOT reach the SSH relay) stay as fallbacks (since 2026-10-28 `afrows-us-rv` via :443 is the
+  live target of the Afrows backup transport `via-backup`, see `infra/ubuntu/relay/README.md`): on the Afrows server re-enable them
   by restoring the `#pre-ss-20261027#` env lines and running the egress mode sync.
 - Rollback: `systemctl disable --now afrows-reality-fw`, `xray api rmi afrows-us-reality`,
   restore the config backup under the lock.

@@ -128,7 +128,7 @@
       "status": "active",
       "source_adr": "docs/adr/0009-egress-p2-explicit-state-machine-anti-flap.md",
       "kind": "state-machine",
-      "decision": "Egress transitions run through the explicit pure decide() INLINED in afrows-egress-mode-sync.py (asymmetric hysteresis k_out=2/k_back=3, flapping circuit breaker, bounded transition log). Kept in the reconciler (not a sibling module) so it stays a self-contained single-file deploy. The priority ORDER (CATCHALL_ORDER via-germany>proxy>direct; GAMING_ORDER via-village>via-germany>proxy) is UNCHANGED from the prior inline logic — reordering it is P4, not P2.",
+      "decision": "Egress transitions run through the explicit pure decide() INLINED in afrows-egress-mode-sync.py (asymmetric hysteresis k_out=2/k_back=3, flapping circuit breaker, bounded transition log). Kept in the reconciler (not a sibling module) so it stays a self-contained single-file deploy. The priority ORDER (CATCHALL_ORDER via-germany>proxy>direct; GAMING_ORDER via-village>via-germany>proxy) is UNCHANGED from the prior inline logic — reordering it is P4, not P2. Amended 2026-10-28: CATCHALL_ORDER via-germany>via-backup>proxy>direct (via-backup = optional second foreign transport from AFROWS_BACKUP_CHAIN_*; never wanted while unconfigured).",
       "affected_paths": ["scripts/afrows-egress-mode-sync.py", "apps/backend/src/alerts/alert-engine.service.ts", "apps/backend/src/operations/subscription-refresh-reason.ts"],
       "affected_services": ["AlertEngineService"],
       "affected_tables": ["alerts", "outbound_subscriptions"],
