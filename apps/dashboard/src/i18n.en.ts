@@ -120,6 +120,7 @@ export const en = {
       colInternet: 'Internet',
       egStarlink: 'Starlink',
       egGermany: 'Germany',
+      egBackup: 'Backup link',
       egPool: 'Relay pool',
       egDirect: 'Direct',
       egFailover: 'failover',

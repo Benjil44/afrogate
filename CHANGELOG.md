@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Backup foreign transport.** When the primary foreign chain (Shadowsocks-2022) is down, customers now move to a second transport, `via-backup`, instead of the relay pool or `direct`, the Iranian internet where YouTube, Instagram and Telegram are blocked. The backup is REALITY+Vision with fp=ios to the USA on port 443; measured from the server, it matched SS (google 39/40, youtube 20/20, 2.2-2.9 MB/s). It is configured with `AFROWS_BACKUP_CHAIN_*` (modes reality/ss/ws; unset = no change) and probed through 127.0.0.1:10813 only when the primary is down. The ladder is via-germany > via-backup > proxy > direct, with the same hysteresis. Health probes now run once per run, so a run with every path down stays at about 100 s.
+- Dashboard: the customers page labels the backup link ("Backup link" / "لینک پشتیبان") instead of showing the raw `via-backup` tag.
 
 ## 0.122.0 - 2026-10-28
 

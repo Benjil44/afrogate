@@ -121,6 +121,7 @@ export const fa: DashboardStrings = {
       colInternet: 'اینترنت',
       egStarlink: 'استارلینک',
       egGermany: 'آلمان',
+      egBackup: 'لینک پشتیبان',
       egPool: 'استخر رله',
       egDirect: 'مستقیم',
       egFailover: 'جایگزین',

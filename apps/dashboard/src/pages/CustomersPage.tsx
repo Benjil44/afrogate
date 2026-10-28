@@ -427,6 +427,7 @@ export function CustomersPage({
     const base: Record<string, { label: string; cls: string }> = {
       'via-village': { label: s.egStarlink, cls: 'border-sky-300 bg-sky-50 text-sky-700' },
       'via-germany': { label: s.egGermany, cls: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
+      'via-backup': { label: s.egBackup, cls: 'border-amber-300 bg-amber-50 text-amber-700' },
       proxy: { label: s.egPool, cls: 'border-amber-300 bg-amber-50 text-amber-700' },
       direct: { label: s.egDirect, cls: 'border-red-300 bg-red-50 text-red-600' },
     };
