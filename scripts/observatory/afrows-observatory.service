@@ -1,0 +1,18 @@
+[Unit]
+Description=Afrows path observatory probe cycle (one JSON line per probe)
+After=network-online.target
+
+[Service]
+Type=oneshot
+# OBS_VANTAGE=iran|usa (+ optional OBS_* overrides) written by install.sh
+EnvironmentFile=/etc/default/afrows-observatory
+ExecStart=/usr/bin/python3 /usr/local/lib/afrows-observatory/afrows-observatory-probe.py
+TimeoutStartSec=55
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=96M
+CPUQuota=30%
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log/afrows-observatory
