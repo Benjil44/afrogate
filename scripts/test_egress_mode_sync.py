@@ -359,6 +359,51 @@ _bw = _cfg_with(["AFROWS_BACKUP_CHAIN_MODE=ws", "AFROWS_BACKUP_CHAIN_ADDRESS=172
 _bwo = mod.chain_outbound(_bw, "via-backup")
 assert _bwo["streamSettings"]["network"] == "ws"
 assert _bwo["streamSettings"]["wsSettings"] == {"path": "/afrowsus", "host": "us.afrows.com"}
+# xhttp mode (2026-10-28): VLESS + XHTTP packet-up, one POST per fresh TCP connection
+_bx_on = ["DATABASE_URL=x", "AFROWS_BACKUP_CHAIN_MODE=xhttp", "AFROWS_BACKUP_CHAIN_ADDRESS=93.127.140.50",
+          "AFROWS_BACKUP_CHAIN_PORT=8448", "AFROWS_BACKUP_CHAIN_UUID=44444444-4444-4444-8444-444444444444",
+          "AFROWS_BACKUP_CHAIN_PATH=/xu", "AFROWS_BACKUP_CHAIN_XHTTP_ENCRYPTION=mlkem768x25519plus.native.0rtt.KEY"]
+assert _cfg_with([l for l in _bx_on if "_UUID" not in l], mod.backup_cfg) is None, "xhttp needs a uuid"
+_bx = _cfg_with(_bx_on, mod.backup_cfg)
+assert _bx["mode"] == "xhttp" and _bx["port"] == 8448 and _bx["path"] == "/xu"
+assert (_bx["xhttp_post_bytes"], _bx["xhttp_post_interval_ms"]) == (32000, 5), "measured defaults"
+_bxo = mod.chain_outbound(_bx, "via-backup")
+assert _bxo["protocol"] == "vless" and "mux" not in _bxo
+assert _bxo["settings"]["vnext"] == [{"address": "93.127.140.50", "port": 8448, "users": [
+    {"id": "44444444-4444-4444-8444-444444444444", "encryption": "mlkem768x25519plus.native.0rtt.KEY", "level": 0}]}]
+assert "flow" not in _bxo["settings"]["vnext"][0]["users"][0]
+_bxs = _bxo["streamSettings"]
+assert _bxs["network"] == "xhttp" and _bxs["security"] == "none"
+assert _bxs["xhttpSettings"]["path"] == "/xu" and _bxs["xhttpSettings"]["mode"] == "packet-up"
+_bxx = _bxs["xhttpSettings"]["extra"]
+assert (_bxx["scMaxEachPostBytes"], _bxx["scMinPostsIntervalMs"]) == ("32000", "5")
+assert set(_bxx["xmux"]) == {"maxConcurrency", "maxConnections", "cMaxReuseTimes", "hMaxRequestTimes",
+                             "hMaxReusableSecs", "hKeepAlivePeriod"}, "xray needs every xmux field once any is set"
+assert (_bxx["xmux"]["cMaxReuseTimes"], _bxx["xmux"]["hMaxRequestTimes"]) == ("1", "1"), "one request per connection"
+# tunables and the encryption default
+_bx2 = _cfg_with([l for l in _bx_on if "_ENCRYPTION" not in l] + ["AFROWS_BACKUP_CHAIN_XHTTP_POST_BYTES=24000",
+                 "AFROWS_BACKUP_CHAIN_XHTTP_POST_INTERVAL_MS=10"], mod.backup_cfg)
+_bx2o = mod.chain_outbound(_bx2, "via-backup")
+assert _bx2o["settings"]["vnext"][0]["users"][0]["encryption"] == "none"
+assert _bx2o["streamSettings"]["xhttpSettings"]["extra"]["scMaxEachPostBytes"] == "24000"
+assert _bx2o["streamSettings"]["xhttpSettings"]["extra"]["scMinPostsIntervalMs"] == "10"
+# render: gated, idempotent, removable, the same way as the other modes
+_cx, _bxon = _apply_svc(_bx_on, _off, "afrows-xray")
+assert _cx is True and [o for o in _bxon["outbounds"] if o["tag"] == "via-backup"] == [_bxo]
+assert _apply_svc(_bx_on, _bxon, "afrows-xray")[0] is False, "xhttp render is idempotent"
+_cxr, _bxoff = _apply_svc(["DATABASE_URL=x"], _bxon, "afrows-xray")
+assert _cxr is True and _bxoff == _off, "unsetting the xhttp backup restores the pre-backup config exactly"
+# a mode string the renderer does not know still disables the backup (unchanged behaviour)
+assert _cfg_with([l.replace("=xhttp", "=hysteria") for l in _bx_on], mod.backup_cfg) is None
+# the customer chain (via-germany) can run xhttp too; the mgmt chain (via-usa) keeps its own mode
+_px_on = ["DATABASE_URL=x", "AFROWS_DE_CHAIN_UUID=44444444-4444-4444-8444-444444444444",
+          "AFROWS_DE_CHAIN_ADDRESS=93.127.140.50", "AFROWS_DE_CHAIN_MODE=xhttp", "AFROWS_DE_CHAIN_PORT=8448",
+          "AFROWS_DE_CHAIN_PATH=/xu", "AFROWS_DE_CHAIN_XHTTP_ENCRYPTION=mlkem768x25519plus.native.0rtt.KEY"]
+_px = _cfg_with(_px_on, mod.chain_cfg)
+assert _px["mode"] == "xhttp" and _px["port"] == 8448
+_pxo = mod.chain_outbound(_px, "via-germany")
+assert _pxo["tag"] == "via-germany" and _pxo["streamSettings"]["network"] == "xhttp" and "mux" not in _pxo
+print("OK: xhttp packet-up chain mode (backup and primary; one POST per connection; gated, idempotent, removable)")
 # afrows-wg also carries the catch-all -> it gets the outbound, but never the probe inbound
 _cw, _wg = _apply_svc(_bk_on, _base, "afrows-wg", catch="via-backup")
 assert any(o["tag"] == "via-backup" for o in _wg["outbounds"])

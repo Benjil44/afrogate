@@ -144,3 +144,18 @@ or the first packets only), and fragmenting the ClientHello (it is reassembled).
 - TCP Brutal: https://github.com/apernet/tcp-brutal ; sing-box: https://sing-box.sagernet.org/configuration/shared/tcp-brutal/
 - Hysteria2 client config: https://v2.hysteria.network/docs/advanced/Full-Client-Config/
 - xmux default change and DPI (3x-ui #5194): https://github.com/MHSanaei/3x-ui/issues/5194
+
+## Verified 2026-10-28: upload fix from the زیرساخت DC
+
+| Transport (Iran -> USA 93.127.140.50, RTT 196 ms) | Upload MB/s | TCP resends | google 204 |
+|---|---|---|---|
+| SS-2022 :8447 (single long flow) | 0.03-0.23 | 12-24% | 18-20/20 |
+| REALITY+Vision fp=ios :443 | 0.18-0.23 | 13-28% | 19-20/20 |
+| Hysteria2 brutal 32 Mbps (UDP) | 0.5-0.6 | n/a | 20/20 |
+| XHTTP packet-up, no xmux rotation | ~1.26 | 19-23% | 17-18/20 |
+| **XHTTP packet-up + xmux one POST per connection, 32 KB posts, 5 ms** | **2.0-2.9** | **0-4%** | **19-20/20** |
+
+- ICMP stayed at ~0-1% loss, so the network itself is clean. 8 parallel SS flows reached only 0.27 MB/s in total, so parallel long flows do not help.
+- Short, rotating flows do help. The mechanism appears to be a per-flow budget, about the first 40 upstream packets, after which most of that flow's upstream is dropped.
+- BBR vs cubic barely matters once flows are short.
+- Production since 2026-10-28: the customer chain is this XHTTP config; the backup is SS.

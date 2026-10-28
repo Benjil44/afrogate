@@ -190,3 +190,9 @@ Match User afrows-relay
 Without it (`ClientAliveInterval 0`) a dead reverse tunnel kept `127.0.0.1:18444` bound on the USA for minutes, so the
 reconnecting `afrows-web-tunnel` failed with "remote port forwarding failed" and afrows.com returned Cloudflare 502
 (2026-10-15). Root and other logins are unaffected.
+
+## Customer chain: XHTTP packet-up (since 2026-10-28)
+
+`via-germany` = VLESS + XHTTP `packet-up`, VLESS Encryption (ML-KEM-768), no TLS, to USA inbound `afrows-us-xh` :8448 (firewalled to the Afrows server by `afrows-reality-fw`). The client password is in USA `config.json.afrows-us-xh.client` and the Afrows env (`AFROWS_DE_CHAIN_UUID/PATH/XHTTP_ENCRYPTION`). Every `xmux` field is set, with one request per TCP connection: Iranian DPI drops most upstream packets of any flow after its first ~40, so short flows are the fix (see the `iran-dpi-playbook` skill). `via-backup` = the Shadowsocks chain (:8447). `via-usa` (mgmt and Telegram) stays on Shadowsocks: the USA SSH relay only accepts `afrows-chain@afrows`.
+
+Rollback (Afrows server): restore `/etc/afrows/afrows.env.bak-20261028-xhttp` (or uncomment the `#pre-xh-20261028#` lines and delete the block below them) and run `systemctl start afrows-egress-mode-sync.service`.

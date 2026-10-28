@@ -223,6 +223,24 @@ def ss_cfg(prefix):
     }
 
 
+def xhttp_cfg(prefix):
+    """Optional VLESS + XHTTP packet-up chain straight to the exit, from <prefix>_MODE=xhttp +
+    _PORT/_PATH/_XHTTP_ENCRYPTION (the VLESS Encryption client string from `xray vlessenc`,
+    default "none")/_XHTTP_POST_BYTES/_XHTTP_POST_INTERVAL_MS. 2026-10-28: from the
+    zirsakht DC every upload flow to the USA IP loses ~80% of its packets after its first
+    ~40 (per 5-tuple, any protocol, any payload); packet-up with one POST per fresh TCP
+    connection keeps each flow under that quota. Mode not xhttp -> {}."""
+    if file_env(prefix + "_MODE") != "xhttp":
+        return {}
+    return {
+        "mode": "xhttp",
+        "port": int(file_env(prefix + "_PORT", "8448")),
+        "xhttp_encryption": file_env(prefix + "_XHTTP_ENCRYPTION", "none") or "none",
+        "xhttp_post_bytes": int(file_env(prefix + "_XHTTP_POST_BYTES", "32000")),
+        "xhttp_post_interval_ms": int(file_env(prefix + "_XHTTP_POST_INTERVAL_MS", "5")),
+    }
+
+
 def chain_cfg():
     """Germany chain settings from the env file, or None when not configured."""
     uuid = file_env("AFROWS_DE_CHAIN_UUID")
@@ -236,7 +254,7 @@ def chain_cfg():
         "path": file_env("AFROWS_DE_CHAIN_PATH", "/afrowsws"),
         "probe_host": host or "127.0.0.1",
         "probe_port": int(port or "10812"),
-    }, **reality_cfg("AFROWS_DE_CHAIN"), **ss_cfg("AFROWS_DE_CHAIN"))
+    }, **reality_cfg("AFROWS_DE_CHAIN"), **ss_cfg("AFROWS_DE_CHAIN"), **xhttp_cfg("AFROWS_DE_CHAIN"))
 
 
 def us_chain_cfg():
@@ -257,14 +275,15 @@ def us_chain_cfg():
 
 def backup_cfg():
     """Backup chain settings from the env file, or None when not configured.
-    AFROWS_BACKUP_CHAIN_MODE selects the transport: reality / ss reuse reality_cfg /
-    ss_cfg (same keys as the other chains, prefix AFROWS_BACKUP_CHAIN), ws is the
-    Cloudflare VLESS-WS chain (_HOST/_PATH). Needs _ADDRESS and the mode credential
-    (_UUID for reality/ws, _SS_PASSWORD for ss); anything missing -> None (disabled)."""
+    AFROWS_BACKUP_CHAIN_MODE selects the transport: reality / ss / xhttp reuse
+    reality_cfg / ss_cfg / xhttp_cfg (same keys as the other chains, prefix
+    AFROWS_BACKUP_CHAIN), ws is the Cloudflare VLESS-WS chain (_HOST/_PATH). Needs
+    _ADDRESS and the mode credential (_UUID for reality/ws/xhttp, _SS_PASSWORD for ss);
+    anything missing -> None (disabled)."""
     p = "AFROWS_BACKUP_CHAIN"
     mode = file_env(p + "_MODE").lower()
     address = file_env(p + "_ADDRESS")
-    if mode not in ("reality", "ss", "ws") or not address:
+    if mode not in ("reality", "ss", "ws", "xhttp") or not address:
         return None
     if mode == "ss" and not file_env(p + "_SS_PASSWORD"):
         return None
@@ -278,7 +297,7 @@ def backup_cfg():
         "path": file_env(p + "_PATH", "/"),
         "probe_host": host or "127.0.0.1",
         "probe_port": int(port or "10813"),
-    }, **reality_cfg(p), **ss_cfg(p))
+    }, **reality_cfg(p), **ss_cfg(p), **xhttp_cfg(p))
 
 
 def backup_probe_inbound(c):
@@ -318,12 +337,31 @@ def chain_outbound(c, tag="via-germany"):
     """A chain outbound (via-germany, or via-usa); deterministic per env. VLESS-WS-TLS
     through Cloudflare by default; VLESS+REALITY straight to the exit (address = the
     exit's own IP) when the chain's mode is "reality"; Shadowsocks-2022 to the exit when
-    it is "ss" (no mux, for the same reason as REALITY)."""
+    it is "ss" (no mux, for the same reason as REALITY); VLESS + XHTTP packet-up when it
+    is "xhttp" (no mux: the transport itself spreads the upload over short flows)."""
     if c.get("mode") == "ss":
         return {
             "tag": tag, "protocol": "shadowsocks",
             "settings": {"servers": [{"address": c["address"], "port": c["port"],
                                       "method": c["ss_method"], "password": c["ss_password"]}]},
+        }
+    if c.get("mode") == "xhttp":
+        # One POST per fresh TCP connection (every xmux field set, as xray requires when
+        # any is): each upload flow stays below the per-flow packet quota, after which
+        # Iranian DPI drops ~80% of that flow's upstream packets (2026-10-28).
+        extra = {
+            "scMaxEachPostBytes": str(c["xhttp_post_bytes"]),
+            "scMinPostsIntervalMs": str(c["xhttp_post_interval_ms"]),
+            "xmux": {"maxConcurrency": "1", "maxConnections": 0, "cMaxReuseTimes": "1",
+                     "hMaxRequestTimes": "1", "hMaxReusableSecs": "5-10", "hKeepAlivePeriod": 0},
+        }
+        return {
+            "tag": tag, "protocol": "vless",
+            "settings": {"vnext": [{"address": c["address"], "port": c["port"],
+                                    "users": [{"id": c["uuid"], "encryption": c["xhttp_encryption"],
+                                               "level": 0}]}]},
+            "streamSettings": {"network": "xhttp", "security": "none",
+                               "xhttpSettings": {"path": c["path"], "mode": "packet-up", "extra": extra}},
         }
     user = {"id": c["uuid"], "encryption": "none", "level": 0}
     # Mux: every customer shares this one chain, and each new stream otherwise
