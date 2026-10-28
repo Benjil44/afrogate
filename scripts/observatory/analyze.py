@@ -117,7 +117,7 @@ def state_events(recs):
     return ev
 
 
-def verdict(F, gaps, okset=frozenset()):
+def verdict(F, gaps, okset=frozenset(), peak=99):
     """F = failed 'vantage:probe' keys during an episode; okset = keys that succeeded at least
     once in it; gaps = vantages with no data."""
     has = lambda *ks: any(k in F for k in ks)
@@ -132,6 +132,9 @@ def verdict(F, gaps, okset=frozenset()):
     usadns = [k for k in ("usa:dns.8844", "usa:dns.system") if k in F]
     usatcp = has("usa:tcp.1111")
     out = []
+    if peak <= 1 and not gaps:
+        return ["SPORADIC: isolated single-request failure(s), never 2 probes in the same minute "
+                "(a stalled flow, not a hop outage)"]
     if "iran" in gaps:
         out.append("NO IRAN DATA: Iran server down/frozen or probe timer stalled")
     if dir_ir and dint:
@@ -213,17 +216,19 @@ def episodes(recs, merge_gap, min_minutes, extra_events):
             e = eps[-1]
             e["end"] = t
         else:
-            e = {"start": t, "end": t, "fail": Counter(), "gaps": Counter(), "minutes": 0, "ok": set()}
+            e = {"start": t, "end": t, "fail": Counter(), "gaps": Counter(), "minutes": 0, "ok": set(),
+                 "peak": 0}
             eps.append(e)
         e["minutes"] += 1
         e["fail"].update(fail)
         e["gaps"].update(gaps)
         e["ok"] |= oks
+        e["peak"] = max(e["peak"], len(fail))
     eps = [e for e in eps if e["minutes"] >= min_minutes]
     for e in eps:
         lo, hi = e["start"] - timedelta(minutes=2), e["end"] + timedelta(minutes=2)
         e["events"] = ["%s %s" % (fmt(t), w) for t, w in extra_events if lo <= t <= hi]
-        e["verdict"] = verdict(set(e["fail"]), set(e["gaps"]), e["ok"])
+        e["verdict"] = verdict(set(e["fail"]), set(e["gaps"]), e["ok"], e["peak"])
     return eps
 
 

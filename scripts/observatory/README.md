@@ -36,7 +36,9 @@ config. It only dials out, through the existing loopback socks ports, and reads
 ## Install / update (on each host, as root)
 
     scp scripts/observatory/{afrows-observatory-probe.py,afrows-observatory.service,afrows-observatory.timer,install.sh} HOST:/root/afrows-observatory-src/
-    ssh HOST 'bash /root/afrows-observatory-src/install.sh iran'   # or: usa
+    ssh HOST "sed -i 's/\r$//' /root/afrows-observatory-src/*; bash /root/afrows-observatory-src/install.sh iran"   # or: usa
+
+(The `sed` strips CRLF from a Windows checkout: `core.autocrlf=true` and no `.gitattributes`.)
 
 `install.sh` is idempotent. It installs to `/usr/local/lib/afrows-observatory/`, writes
 `OBS_VANTAGE` to `/etc/default/afrows-observatory`, enables the timer, and runs one
@@ -67,6 +69,7 @@ Verdicts, highest-priority hop first:
 
 | what failed | verdict |
 |---|---|
+| one probe per minute at most | sporadic stalled flow (not a hop outage) |
 | direct Iranian site + direct foreign | Iran server / DC network |
 | direct foreign + USA ping/TCP | DC international link |
 | USA ping/TCP only | IP block or DPI on the USA IP; if only TCP 8447 fails, the SS port |
