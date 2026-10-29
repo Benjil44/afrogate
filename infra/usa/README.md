@@ -201,3 +201,12 @@ rm -f /etc/ssh/ssh_config.d/61-afrows-us-mgmt.conf
 ## DNS resilience (2026-10-28)
 
 The exit resolved through a single upstream (8.8.4.4, from netplan). Twice (2026-10-27 22:25 and 2026-10-28 03:40 UTC) it stopped answering for ~19 min; the Iran→USA chain stayed up, but every customer request by hostname failed (found by `scripts/observatory/`). `/etc/systemd/resolved.conf.d/afrows-dns-resilience.conf` adds global `DNS=1.1.1.1 8.8.8.8 9.9.9.9` and `FallbackDNS=1.0.0.1 8.8.4.4 149.112.112.112`; applying it only restarts systemd-resolved (xray keeps running). Rollback: delete the file and `systemctl restart systemd-resolved`.
+
+## Provider outbound blocks (2026-10-29, supersedes the DNS diagnosis above)
+
+The recurring ~20 min outages are not DNS. During them, the box's NEW outbound TCP to almost every destination (Google, Cloudflare, Telegram, GitHub, Fastly, AWS; ports 80 and 443) gets no SYN-ACK: SYNs leave enp21s0 and die inside the provider's network (TCP traceroute stops after hop 4). Only 1.1.1.1 and 8.8.8.8 stay reachable, and ICMP to the same hosts stays at 0% loss. Each episode lasts exactly ~20 min:
+- 10-27: 16:10, 17:19, 22:25
+- 10-28: 03:40
+- 10-29: 04:17, 13:48, 14:27, 15:01
+
+This looks like an automatic provider (Database Mart) abuse/DDoS filter on 93.127.140.50, and it happened even at very low outbound rates. `afrows-rate-logger.service` logs 10 s rates to `/var/log/afrows-observatory/usa-rates.jsonl` to catch the trigger. Fix options: ask the provider, and add a second exit for failover. The DNS upstream change stays (harmless).
