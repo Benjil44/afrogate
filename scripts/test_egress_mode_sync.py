@@ -534,4 +534,5 @@ _geo = next(i for i, r in enumerate(_ft) if r.get("outboundTag") == "direct" and
 assert _fti < _geo, "full-tunnel rule must precede the Iran-direct rule"
 assert mod.desired_rules("smart", ["tproxy-in"], [], [], "via-backup", [], "via-village", None, ["10.21.0.2"])[_fti]["outboundTag"] == "via-backup", "follows failover"
 assert mod.desired_rules("smart", ["tproxy-in"], [], [], "via-germany") == [r for r in _ft if r.get("source") != ["10.21.0.2"]], "unset = unchanged"
-print("OK: full-tunnel sources precede Iran-direct and follow the catch-all; unset = unchanged")
+assert mod.desired_rules("smart", ["tproxy-in"], [], [], "direct", [], "via-village", None, ["10.21.0.2"])[_fti]["outboundTag"] == "block", "never leaked to direct"
+print("OK: full-tunnel sources precede Iran-direct, follow the catch-all, block instead of direct; unset = unchanged")

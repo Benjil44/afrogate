@@ -783,8 +783,11 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outboun
     # Full-tunnel sources (AFROWS_FULL_TUNNEL_SOURCES, e.g. the operator's home router
     # 10.21.0.2): ALL their traffic, Iranian destinations included, follows the foreign
     # catch-all, so ahead of the smart-mode Iran-direct rules (2026-10-29).
+    # When no foreign path is up (catch-all fell to direct) they are blocked rather than
+    # leaked onto the Iranian internet: those users asked for USA-only egress.
     if full_tunnel_sources:
-        rules.append({"type": "field", "source": sorted(full_tunnel_sources), "outboundTag": catch_outbound})
+        rules.append({"type": "field", "source": sorted(full_tunnel_sources),
+                      "outboundTag": "block" if catch_outbound == "direct" else catch_outbound})
     if mode == "smart":
         rules.append(dict(GEOIP_DIRECT))
         rules.append(dict(GEOSITE_DIRECT))
