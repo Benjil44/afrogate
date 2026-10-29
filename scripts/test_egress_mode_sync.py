@@ -526,3 +526,12 @@ finally:
     mod._PROBE_MEMO.clear()
 # all-down worst case: primary 2x14 + backup 2x12 + pool 2x12 + village 2x12 = 100 s < 240 s
 print("OK: backup probe bounded (8 s curl / 12 s hard) and memoised per run")
+
+# full-tunnel sources: every packet (Iranian destinations too) follows the catch-all, ahead of Iran-direct
+_ft = mod.desired_rules("smart", ["tproxy-in"], [], [], "via-germany", [], "via-village", None, ["10.21.0.2"])
+_fti = _ft.index({"type": "field", "source": ["10.21.0.2"], "outboundTag": "via-germany"})
+_geo = next(i for i, r in enumerate(_ft) if r.get("outboundTag") == "direct" and r.get("ip"))
+assert _fti < _geo, "full-tunnel rule must precede the Iran-direct rule"
+assert mod.desired_rules("smart", ["tproxy-in"], [], [], "via-backup", [], "via-village", None, ["10.21.0.2"])[_fti]["outboundTag"] == "via-backup", "follows failover"
+assert mod.desired_rules("smart", ["tproxy-in"], [], [], "via-germany") == [r for r in _ft if r.get("source") != ["10.21.0.2"]], "unset = unchanged"
+print("OK: full-tunnel sources precede Iran-direct and follow the catch-all; unset = unchanged")

@@ -769,7 +769,7 @@ def client_inbound_tags(rules):
     return None
 
 
-def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", system_rules=None):
+def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", system_rules=None, full_tunnel_sources=None):
     # All list members are SORTED so the desired config is deterministic: the DB
     # aggregates (string_agg) can return rows in any order run-to-run, and an
     # order-sensitive `rules == want` compare would otherwise see a phantom change
@@ -780,6 +780,11 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outboun
     # inboundTag, disjoint from the client tags, so placement cannot shadow clients.
     for sr in (system_rules or []):
         rules.append({"type": "field", "inboundTag": list(sr["inboundTag"]), "outboundTag": sr["outboundTag"]})
+    # Full-tunnel sources (AFROWS_FULL_TUNNEL_SOURCES, e.g. the operator's home router
+    # 10.21.0.2): ALL their traffic, Iranian destinations included, follows the foreign
+    # catch-all, so ahead of the smart-mode Iran-direct rules (2026-10-29).
+    if full_tunnel_sources:
+        rules.append({"type": "field", "source": sorted(full_tunnel_sources), "outboundTag": catch_outbound})
     if mode == "smart":
         rules.append(dict(GEOIP_DIRECT))
         rules.append(dict(GEOSITE_DIRECT))
@@ -828,7 +833,7 @@ def strip_identities_from_fixed(fixed, src_set, usr_set):
     return out
 
 
-def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village"):
+def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", full_tunnel_sources=None):
     """gaming_sources: source IPs -> via-village; gaming_users: VLESS emails -> via-village.
     catch_outbound: where the normal foreign catch-all goes ('proxy' or 'via-village')."""
     cfg = json.load(open(cfg_path))
@@ -898,7 +903,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
     for dr in dropped_rules:
         log("%s: dropping fixed rule -> unknown outbound '%s' (create it before routing to it)" % (svc, dr.get("outboundTag")))
 
-    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound, system_rules)
+    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound, system_rules, full_tunnel_sources)
     # Include the trusted DNS block in the change gate so an already-converged
     # config that predates the DNS fix still gets it written once, and so a config
     # that already has it does NOT get needlessly rewritten/restarted. Dict equality
@@ -992,7 +997,9 @@ def main():
                 fixed.append({"source": bypass_wg, "outboundTag": bypass_outbound})
             elif not use_db and bypass_xray:
                 fixed.append({"user": bypass_xray, "outboundTag": bypass_outbound})
-        changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed, gaming_out)
+        # full-tunnel sources are source IPs, so only the afrows-wg engine has them
+        full = [x.strip() for x in file_env("AFROWS_FULL_TUNNEL_SOURCES").split(",") if x.strip()] if use_db else []
+        changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed, gaming_out, full)
     # Health snapshot for the dashboard: raw path reachability + the applied
     # outbounds, so operators can see at a glance which egress (Starlink/Germany)
     # is down. Written every run (cheap: 2 extra probes ~once/min).
