@@ -210,3 +210,7 @@ The recurring ~20 min outages are not DNS. During them, the box's NEW outbound T
 - 10-29: 04:17, 13:48, 14:27, 15:01
 
 This looks like an automatic provider (Database Mart) abuse/DDoS filter on 93.127.140.50, and it happened even at very low outbound rates. `afrows-rate-logger.service` logs 10 s rates to `/var/log/afrows-observatory/usa-rates.jsonl` to catch the trigger. Fix options: ask the provider, and add a second exit for failover. The DNS upstream change stays (harmless).
+
+## SSH login alerts (2026-10-31)
+
+`afrows-login-alert` (→ `/usr/local/sbin/`, root 0700) runs from `/etc/pam.d/sshd` as `session optional pam_exec.so quiet /usr/local/sbin/afrows-login-alert`, so it can never block a login. It skips the Afrows tunnels (rhost 127.0.0.1, user `afrows-relay`), logs every other login to `/var/log/afrows-logins.log`, and sends the bot's alert chat a Telegram message, at most once per user+IP per 30 min. The token and chat id are in `/etc/afrows/login-alert.env` (root 0600, copied from the Afrows env; not in the repo). Audit on 2026-10-31: no password login ever; only Afrows keys and the operator's own sessions; 39,525 failed bot attempts, with 702 IPs banned by fail2ban. Rollback: remove the pam line (backup `/root/pam.d-sshd.bak-20261031`).

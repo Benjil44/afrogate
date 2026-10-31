@@ -1,0 +1,22 @@
+#!/bin/bash
+# Afrows 2026-10-31: tell the operator (Telegram alert chat) about every interactive SSH
+# login on the USA box. Called by pam_exec (optional) on session open; never blocks.
+[ "$PAM_TYPE" = "open_session" ] || exit 0
+[ "$PAM_RHOST" = "127.0.0.1" ] || [ "$PAM_RHOST" = "::1" ] && exit 0   # Afrows tunnels
+[ "$PAM_USER" = "afrows-relay" ] && exit 0
+LOG=/var/log/afrows-logins.log
+TS=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+echo "$TS user=$PAM_USER from=$PAM_RHOST service=$PAM_SERVICE" >> "$LOG"
+STAMP=/run/afrows-login-alert.$(echo "$PAM_USER-$PAM_RHOST" | tr -c 'a-zA-Z0-9.-' _)
+[ -f "$STAMP" ] && [ $(( $(date +%s) - $(stat -c %Y "$STAMP") )) -lt 1800 ] && exit 0
+touch "$STAMP"
+. /etc/afrows/login-alert.env
+TEXT="🔐 USA VPS login
+user: $PAM_USER
+from: $PAM_RHOST
+time: $TS
+(next alert for this user+IP at most every 30 min; full log: /var/log/afrows-logins.log)"
+( curl -s -m 15 -o /dev/null "https://api.telegram.org/bot${AFROWS_TELEGRAM_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${AFROWS_TELEGRAM_ALERT_CHAT_ID}" --data-urlencode "text=$TEXT" \
+  || echo "$TS telegram send failed" >> "$LOG" ) </dev/null >/dev/null 2>&1 &
+exit 0
