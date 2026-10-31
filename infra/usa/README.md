@@ -214,3 +214,5 @@ This looks like an automatic provider (Database Mart) abuse/DDoS filter on 93.12
 ## SSH login alerts (2026-10-31)
 
 `afrows-login-alert` (→ `/usr/local/sbin/`, root 0700) runs from `/etc/pam.d/sshd` as `session optional pam_exec.so quiet /usr/local/sbin/afrows-login-alert`, so it can never block a login. It skips the Afrows tunnels (rhost 127.0.0.1, user `afrows-relay`), logs every other login to `/var/log/afrows-logins.log`, and sends the bot's alert chat a Telegram message, at most once per user+IP per 30 min. The token and chat id are in `/etc/afrows/login-alert.env` (root 0600, copied from the Afrows env; not in the repo). Audit on 2026-10-31: no password login ever; only Afrows keys and the operator's own sessions; 39,525 failed bot attempts, with 702 IPs banned by fail2ban. Rollback: remove the pam line (backup `/root/pam.d-sshd.bak-20261031`).
+
+fail2ban (`/etc/fail2ban/jail.d/afrows-usa.conf`, operator 2026-10-31): maxretry 3, findtime 1h, bantime 24h, bantime.increment (factor 2, max 1w), nftables allports. The ignoreip list (loopback, 10/8, the Afrows servers, the operator's known IPs) is unchanged. Backup: `afrows-usa.conf.bak-20261031`.
