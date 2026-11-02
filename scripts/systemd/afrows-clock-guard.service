@@ -1,0 +1,5 @@
+[Unit]
+Description=Afrows clock guard (resync after a VM freeze)
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/afrows-clock-guard.sh
