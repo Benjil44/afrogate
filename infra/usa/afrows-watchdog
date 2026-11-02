@@ -33,6 +33,10 @@ Shatel links, subscriptions and the bot are offline.
 • Customers: use the Germany / USA links (they keep working)."; }
 USA_OUTBOUND_msg() { send "⚠️ USA exit (93.127.140.50) cannot reach the internet since $(date -u -d @$(cat $S/USA_OUTBOUND.down) '+%H:%M UTC') (provider outbound block).
 Customers fall back automatically; usually clears in ~20 min. Ask Database Mart to remove the filter."; }
+if [ "$1" = "test" ]; then
+  send "🛡 Afrows watchdog test: alerts reach you. You will get a message here if the Iran server stops answering for 3 min, or the USA exit loses the internet, and when each recovers. SSH logins to the USA server are reported here too."
+  flush; [ -s "$Q" ] && echo "Telegram did not accept the message (queued)" || echo "test message sent"; exit 0
+fi
 check IRAN_SERVER 3 iran_ok
 check USA_OUTBOUND 2 usa_out_ok
 flush
