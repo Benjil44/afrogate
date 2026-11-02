@@ -221,8 +221,26 @@ export function buildEntryLinkSet(
   const germany = readAfrowsDeEntryEnv(env);
   if (germany) links.push({ kind: 'germany', uri: buildAfrowsEntryUri(germany, entryUuid, remarks.germany) });
   const iran = readAfrowsInboundEnv(env);
-  if (iran) links.push({ kind: 'iran', uri: buildAfrowsEntryUri(iran, entryUuid, remarks.iran) });
+  if (iran) {
+    links.push({ kind: 'iran', uri: buildAfrowsEntryUri(iran, entryUuid, remarks.iran) });
+    // Extra entry IPs for the same Iran inbound (AFROWS_INBOUND_EXTRA_HOSTS, comma-separated),
+    // e.g. the old server that DNATs to this one: same link through another datacenter's route,
+    // so customers can compare which entry their ISP reaches better. Named "<Shatel> 2", "3", …
+    readInboundExtraHosts(env).forEach((host, index) => {
+      links.push({ kind: 'iran', uri: buildAfrowsEntryUri({ ...iran, host }, entryUuid, `${remarks.iran} ${index + 2}`) });
+    });
+  }
   const usa = readAfrowsUsEntryEnv(env);
   if (usa) links.push({ kind: 'usa', uri: buildAfrowsEntryUri(usa, entryUuid, remarks.usa) });
   return links;
+}
+
+/** AFROWS_INBOUND_EXTRA_HOSTS: extra entry hosts for the Iran inbound (valid host chars only, deduped). */
+export function readInboundExtraHosts(env: Record<string, string | undefined>): string[] {
+  const primary = env.AFROWS_INBOUND_HOST?.trim();
+  const hosts = (env.AFROWS_INBOUND_EXTRA_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter((host) => /^[A-Za-z0-9.-]+$/.test(host) && host !== primary);
+  return [...new Set(hosts)];
 }

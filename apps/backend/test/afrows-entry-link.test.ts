@@ -194,3 +194,20 @@ test('buildEntryLinkSet: each link only when its env is configured; none without
 test('customerEntryLinkRemarks falls back to Afrows for a blank name', () => {
   assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA' });
 });
+
+test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right after the primary', () => {
+  const env = {
+    ...BOTH_ENTRIES_ENV,
+    AFROWS_INBOUND_HOST: '185.252.30.123',
+    AFROWS_INBOUND_EXTRA_HOSTS: ' 94.74.145.199 , bad host;rm, 185.252.30.123, 94.74.145.199, 10.0.0.9',
+  };
+  const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
+  assert.deepEqual(links.map((link) => link.kind), ['germany', 'iran', 'iran', 'iran']);
+  assert.ok(links[1].uri.startsWith(`vless://${UUID}@185.252.30.123:443?`) && links[1].uri.endsWith('#Afrows%20Shatel'));
+  assert.ok(links[2].uri.startsWith(`vless://${UUID}@94.74.145.199:443?`) && links[2].uri.endsWith('#Afrows%20Shatel%202'));
+  assert.ok(links[3].uri.startsWith(`vless://${UUID}@10.0.0.9:443?`) && links[3].uri.endsWith('#Afrows%20Shatel%203'));
+  // same inbound settings, only the host differs
+  assert.equal(links[2].uri.split('?')[1].split('#')[0], links[1].uri.split('?')[1].split('#')[0]);
+  // unset -> unchanged
+  assert.equal(buildEntryLinkSet({ ...BOTH_ENTRIES_ENV }, UUID, PUBLIC_ENTRY_LINK_REMARKS).length, 2);
+});

@@ -3,7 +3,7 @@ import { Copy, QrCode, RefreshCw } from 'lucide-react';
 import type { AdminClientConfigExportEntry, ClientEntryLinkKind } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
 
-type LinkRowKey = 'subscription' | ClientEntryLinkKind | 'legacy';
+type LinkRowKey = 'subscription' | ClientEntryLinkKind | `${ClientEntryLinkKind}-${number}` | 'legacy';
 
 type LinkRow = {
   key: LinkRowKey;
@@ -60,12 +60,12 @@ export function ConfigLinksList({ config, t, fallbackUri, onRotateSubscription }
     iran: { label: s.linkShatel, hint: s.linkShatelHint },
     usa: { label: s.linkUsa, hint: s.linkUsaHint },
   };
-  for (const link of config.entryLinks ?? []) {
+  for (const [index, link] of (config.entryLinks ?? []).entries()) {
     if (!link.uri) continue;
     const text = entryText[link.kind];
     if (!text) continue; // unknown kind from a newer backend: skip rather than mislabel
     rows.push({
-      key: link.kind,
+      key: `${link.kind}-${index}`, // a kind can repeat (extra Iran entry hosts)
       label: text.label,
       hint: text.hint,
       value: link.uri,
