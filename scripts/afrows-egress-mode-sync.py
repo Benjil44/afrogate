@@ -297,6 +297,7 @@ def backup_cfg():
         "path": file_env(p + "_PATH", "/"),
         # ws via Cloudflare: uTLS fingerprint (the زیرساخت DC blocks chrome; ios passes, 2026-11-02)
         "ws_fp": file_env(p + "_WS_FP", "chrome"),
+        "ws_mux": file_env(p + "_WS_MUX", "on").lower() not in ("0", "off", "false", "no"),
         "probe_host": host or "127.0.0.1",
         "probe_port": int(port or "10813"),
     }, **reality_cfg(p), **ss_cfg(p), **xhttp_cfg(p))
@@ -391,6 +392,10 @@ def chain_outbound(c, tag="via-germany"):
             "tlsSettings": {"serverName": c["host"], "fingerprint": c.get("ws_fp") or "chrome", "alpn": ["http/1.1"]},
             "wsSettings": {"path": c["path"], "host": c["host"]},
         }
+        # <prefix>_WS_MUX=off: no mux (one muxed flow frozen by DPI hangs every stream in it;
+        # the Cloudflare->Germany backup from the زیرساخت DC went 8/8 without mux, 1/5 with, 2026-11-02)
+        if c.get("ws_mux") is False:
+            mux = None
     return dict({
         "tag": tag, "protocol": "vless",
         "settings": {"vnext": [{"address": c["address"], "port": port, "users": [user]}]},

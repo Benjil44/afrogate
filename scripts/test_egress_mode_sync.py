@@ -547,4 +547,6 @@ _bw = ["DATABASE_URL=x", "AFROWS_BACKUP_CHAIN_MODE=ws", "AFROWS_BACKUP_CHAIN_ADD
 assert mod.chain_outbound(_cfg_with(_bw, mod.backup_cfg), "via-backup")["streamSettings"]["tlsSettings"]["fingerprint"] == "chrome"
 _bwo = mod.chain_outbound(_cfg_with(_bw + ["AFROWS_BACKUP_CHAIN_WS_FP=ios"], mod.backup_cfg), "via-backup")
 assert _bwo["streamSettings"]["tlsSettings"] == {"serverName": "de.afrows.com", "fingerprint": "ios", "alpn": ["http/1.1"]}
-print("OK: full-tunnel exit pin; backup ws fingerprint configurable (default unchanged)")
+assert "mux" in _bwo, "ws keeps mux by default"
+assert "mux" not in mod.chain_outbound(_cfg_with(_bw + ["AFROWS_BACKUP_CHAIN_WS_MUX=off"], mod.backup_cfg), "via-backup")
+print("OK: full-tunnel exit pin; backup ws fingerprint and mux configurable (defaults unchanged)")
