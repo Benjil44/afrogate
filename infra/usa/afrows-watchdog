@@ -1,0 +1,38 @@
+#!/bin/bash
+# Afrows 2026-11-02: tell the operator on Telegram, within minutes, when
+#  - the Iran server (customer entry, bot, subscriptions) stops answering (e.g. the
+#    provider froze it for 11.5 h on 2026-11-02), or
+#  - this USA exit's provider blocks its outbound connections (20-min blocks).
+# Runs every minute; alerts on state changes; queues messages Telegram can't take yet.
+. /etc/afrows/login-alert.env
+S=/var/lib/afrows-watch; Q=$S/queue; now=$(date +%s)
+send() { printf '%s\n\n' "$1" >> "$Q"; }
+flush() {
+  [ -s "$Q" ] || return 0
+  curl -s -m 15 -o /dev/null -w '%{http_code}' "https://api.telegram.org/bot${AFROWS_TELEGRAM_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${AFROWS_TELEGRAM_ALERT_CHAT_ID}" --data-urlencode "text=$(cat "$Q")" | grep -q 200 && : > "$Q"
+}
+check() {  # name, consecutive-fail threshold, test command
+  local name=$1 need=$2; shift 2
+  local f=$S/$name.fails d=$S/$name.down n
+  if "$@"; then
+    if [ -f "$d" ]; then
+      send "✅ $name RECOVERED after $(( (now - $(cat "$d")) / 60 )) min ($(date -u '+%H:%M UTC'))"; rm -f "$d"
+    fi
+    echo 0 > "$f"
+  else
+    n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 )); echo $n > "$f"
+    if [ $n -eq $need ] && [ ! -f "$d" ]; then echo $(( now - 60 * (need - 1) )) > "$d"; "${name}_msg"; fi
+  fi
+}
+iran_ok() { timeout 6 bash -c '</dev/tcp/185.252.30.123/443' 2>/dev/null || ping -c 2 -W 2 -q 185.252.30.123 >/dev/null 2>&1; }
+usa_out_ok() { curl -4 -s -o /dev/null -m 6 https://www.google.com/generate_204 || curl -4 -s -o /dev/null -m 6 https://cp.cloudflare.com/generate_204; }
+IRAN_SERVER_msg() { send "🚨 Iran server (185.252.30.123) DOWN since $(date -u -d @$(cat $S/IRAN_SERVER.down) '+%H:%M UTC').
+Shatel links, subscriptions and the bot are offline.
+• Check the زیرساخت panel: billing/credit, VM paused, maintenance.
+• Customers: use the Germany / USA links (they keep working)."; }
+USA_OUTBOUND_msg() { send "⚠️ USA exit (93.127.140.50) cannot reach the internet since $(date -u -d @$(cat $S/USA_OUTBOUND.down) '+%H:%M UTC') (provider outbound block).
+Customers fall back automatically; usually clears in ~20 min. Ask Database Mart to remove the filter."; }
+check IRAN_SERVER 3 iran_ok
+check USA_OUTBOUND 2 usa_out_ok
+flush
