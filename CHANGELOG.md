@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The backup chain can go through Cloudflare to Germany**, so a USA provider block no longer takes customers offline. Ws mode takes `AFROWS_BACKUP_CHAIN_WS_FP` (the Iran DC blocks the chrome fingerprint; ios passes). `AFROWS_FULL_TUNNEL_OUTBOUNDS` pins full-tunnel sources (the operator's home) to chosen exits, so their exit IP never changes; any other catch-all blocks them.
+
 ## 0.123.0 - 2026-11-02
 
 - **"Shatel 2" link through the old server.** `AFROWS_INBOUND_EXTRA_HOSTS` (comma-separated) adds the same Iran-entry link through extra entry IPs, named "Shatel 2", "Shatel 3", …, right after the primary. It is set to the old server 94.74.145.199, which forwards to this one, so customers can compare which datacenter route their ISP reaches better. The dashboard keys link rows by position, since a kind can now repeat.

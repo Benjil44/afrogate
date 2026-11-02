@@ -295,6 +295,8 @@ def backup_cfg():
         "address": address,
         "host": file_env(p + "_HOST", ""),
         "path": file_env(p + "_PATH", "/"),
+        # ws via Cloudflare: uTLS fingerprint (the زیرساخت DC blocks chrome; ios passes, 2026-11-02)
+        "ws_fp": file_env(p + "_WS_FP", "chrome"),
         "probe_host": host or "127.0.0.1",
         "probe_port": int(port or "10813"),
     }, **reality_cfg(p), **ss_cfg(p), **xhttp_cfg(p))
@@ -386,7 +388,7 @@ def chain_outbound(c, tag="via-germany"):
         port = 443
         stream = {
             "network": "ws", "security": "tls",
-            "tlsSettings": {"serverName": c["host"], "fingerprint": "chrome", "alpn": ["http/1.1"]},
+            "tlsSettings": {"serverName": c["host"], "fingerprint": c.get("ws_fp") or "chrome", "alpn": ["http/1.1"]},
             "wsSettings": {"path": c["path"], "host": c["host"]},
         }
     return dict({
@@ -769,7 +771,7 @@ def client_inbound_tags(rules):
     return None
 
 
-def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", system_rules=None, full_tunnel_sources=None):
+def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", system_rules=None, full_tunnel_sources=None, full_tunnel_outbounds=None):
     # All list members are SORTED so the desired config is deterministic: the DB
     # aggregates (string_agg) can return rows in any order run-to-run, and an
     # order-sensitive `rules == want` compare would otherwise see a phantom change
@@ -785,9 +787,12 @@ def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outboun
     # catch-all, so ahead of the smart-mode Iran-direct rules (2026-10-29).
     # When no foreign path is up (catch-all fell to direct) they are blocked rather than
     # leaked onto the Iranian internet: those users asked for USA-only egress.
+    # AFROWS_FULL_TUNNEL_OUTBOUNDS optionally pins them to specific exits (e.g. only the USA
+    # chain, so the exit IP never changes); any other catch-all blocks them too.
     if full_tunnel_sources:
+        allowed = catch_outbound != "direct" and (not full_tunnel_outbounds or catch_outbound in full_tunnel_outbounds)
         rules.append({"type": "field", "source": sorted(full_tunnel_sources),
-                      "outboundTag": "block" if catch_outbound == "direct" else catch_outbound})
+                      "outboundTag": catch_outbound if allowed else "block"})
     if mode == "smart":
         rules.append(dict(GEOIP_DIRECT))
         rules.append(dict(GEOSITE_DIRECT))
@@ -836,7 +841,7 @@ def strip_identities_from_fixed(fixed, src_set, usr_set):
     return out
 
 
-def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", full_tunnel_sources=None):
+def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", full_tunnel_sources=None, full_tunnel_outbounds=None):
     """gaming_sources: source IPs -> via-village; gaming_users: VLESS emails -> via-village.
     catch_outbound: where the normal foreign catch-all goes ('proxy' or 'via-village')."""
     cfg = json.load(open(cfg_path))
@@ -906,7 +911,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
     for dr in dropped_rules:
         log("%s: dropping fixed rule -> unknown outbound '%s' (create it before routing to it)" % (svc, dr.get("outboundTag")))
 
-    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound, system_rules, full_tunnel_sources)
+    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound, system_rules, full_tunnel_sources, full_tunnel_outbounds)
     # Include the trusted DNS block in the change gate so an already-converged
     # config that predates the DNS fix still gets it written once, and so a config
     # that already has it does NOT get needlessly rewritten/restarted. Dict equality
@@ -1002,7 +1007,8 @@ def main():
                 fixed.append({"user": bypass_xray, "outboundTag": bypass_outbound})
         # full-tunnel sources are source IPs, so only the afrows-wg engine has them
         full = [x.strip() for x in file_env("AFROWS_FULL_TUNNEL_SOURCES").split(",") if x.strip()] if use_db else []
-        changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed, gaming_out, full)
+        full_out = [x.strip() for x in file_env("AFROWS_FULL_TUNNEL_OUTBOUNDS").split(",") if x.strip()]
+        changed |= apply_target(cfg_path, svc, mode, sources, users, catch, fixed, gaming_out, full, full_out)
     # Health snapshot for the dashboard: raw path reachability + the applied
     # outbounds, so operators can see at a glance which egress (Starlink/Germany)
     # is down. Written every run (cheap: 2 extra probes ~once/min).

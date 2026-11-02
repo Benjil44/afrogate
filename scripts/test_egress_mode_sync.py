@@ -536,3 +536,15 @@ assert mod.desired_rules("smart", ["tproxy-in"], [], [], "via-backup", [], "via-
 assert mod.desired_rules("smart", ["tproxy-in"], [], [], "via-germany") == [r for r in _ft if r.get("source") != ["10.21.0.2"]], "unset = unchanged"
 assert mod.desired_rules("smart", ["tproxy-in"], [], [], "direct", [], "via-village", None, ["10.21.0.2"])[_fti]["outboundTag"] == "block", "never leaked to direct"
 print("OK: full-tunnel sources precede Iran-direct, follow the catch-all, block instead of direct; unset = unchanged")
+
+# full-tunnel sources pinned to an exit list block on any other catch-all (e.g. a Germany backup)
+_pin = lambda catch: mod.desired_rules("smart", ["tproxy-in"], [], [], catch, [], "via-village", None, ["10.21.0.2"], ["via-germany"])[_fti]["outboundTag"]
+assert (_pin("via-germany"), _pin("via-backup"), _pin("direct")) == ("via-germany", "block", "block")
+# backup ws via Cloudflare takes a configurable uTLS fingerprint (default chrome = unchanged)
+_bw = ["DATABASE_URL=x", "AFROWS_BACKUP_CHAIN_MODE=ws", "AFROWS_BACKUP_CHAIN_ADDRESS=172.64.34.62",
+       "AFROWS_BACKUP_CHAIN_UUID=55555555-5555-4555-8555-555555555555", "AFROWS_BACKUP_CHAIN_HOST=de.afrows.com",
+       "AFROWS_BACKUP_CHAIN_PATH=/afrowsws"]
+assert mod.chain_outbound(_cfg_with(_bw, mod.backup_cfg), "via-backup")["streamSettings"]["tlsSettings"]["fingerprint"] == "chrome"
+_bwo = mod.chain_outbound(_cfg_with(_bw + ["AFROWS_BACKUP_CHAIN_WS_FP=ios"], mod.backup_cfg), "via-backup")
+assert _bwo["streamSettings"]["tlsSettings"] == {"serverName": "de.afrows.com", "fingerprint": "ios", "alpn": ["http/1.1"]}
+print("OK: full-tunnel exit pin; backup ws fingerprint configurable (default unchanged)")
