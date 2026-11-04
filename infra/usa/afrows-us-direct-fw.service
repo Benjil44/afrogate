@@ -1,0 +1,18 @@
+# Public :443 -> the direct REALITY inbound afrows-us-dr (:8450), for customers who dial the
+# USA box without Cloudflare. Ordered AFTER afrows-reality-fw, whose rule for the Afrows Iran
+# server (its :443 -> the chain inbound :8446) is inserted at the top, so that path is untouched.
+# The direct inbounds themselves (8450, 8080, 2095) are public on purpose; xray rejects any
+# client that is not a provisioned customer.
+[Unit]
+Description=Afrows USA direct entry (public :443 -> afrows-us-dr)
+After=network-online.target afrows-reality-fw.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c "iptables -t nat -C PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8450 2>/dev/null || iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8450"
+ExecStop=/bin/sh -c "iptables -t nat -D PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8450"
+
+[Install]
+WantedBy=multi-user.target

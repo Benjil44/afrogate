@@ -225,3 +225,18 @@ fail2ban (`/etc/fail2ban/jail.d/afrows-usa.conf`, operator 2026-10-31): maxretry
 - each recovery, with its duration.
 
 Messages Telegram cannot take yet are queued in `/var/lib/afrows-watch/queue`. The watchdog lives here because this box can see the Iran server from outside. The USA ws inbound keeps all customers on disk, so the USA/Germany Cloudflare links keep working while the Iran server is down.
+
+## Direct customer entries (no Cloudflare), 2026-11-04
+
+MCI throttles Cloudflare after the handshake, so customers also get links straight to this box:
+
+| Tag | Port | Transport |
+|---|---|---|
+| `afrows-us-dr` | :443 → 8450 | VLESS + REALITY (SNI www.speedtest.net), fp ios, no flow |
+| `afrows-us-dx` | 8080 | VLESS + XHTTP packet-up over REALITY (SNI dl.google.com) |
+| `afrows-us-dh` | 2095 | VLESS + tcp `headerType=http` (decoy Host) + VLESS Encryption, no TLS |
+
+- Install or refresh: `python3 -I /usr/local/sbin/afrows-us-direct.py > /etc/afrows/us-direct.env.out`. It is idempotent: it copies the customers from `afrows-us-ws`, reuses the REALITY key of `afrows-us-rv`, generates the VLESS Encryption pair once (client half in `/etc/afrows/us-direct-encryption`, root 600) and prints the public `AFROWS_US_DIRECT_*` values for the Iran server's env (plus `AFROWS_US_DIRECT_HOST=93.127.140.50`).
+- `afrows-us-direct-fw.service` redirects public :443 to 8450, after `afrows-reality-fw` (the Iran server's :443 still goes to the chain inbound 8446).
+- `afrows-us-mgmt-cmd` repeats every `adu`/`rmu` on the three direct tags and mirrors them into config.json, so a customer has the same uuid everywhere. Usage is per user, so it is billed 2x as before.
+- Rollback: `systemctl disable --now afrows-us-direct-fw`, restore `config.json.bak-*-direct`, restart xray, and set `AFROWS_US_DIRECT_ENABLED=false` on the Iran server.

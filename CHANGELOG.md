@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.124.0 - 2026-11-04
+
+- **Direct USA links that skip Cloudflare.** On MCI (Hamrah-e Avval) the "USA AI Support 2x" link pinged at ~224 ms but loaded nothing: MCI throttles Cloudflare once data starts flowing, while the USA box itself was fine (6/6 Google/YouTube and 5.5 MB/s through the same Cloudflare path from the server side). The subscription now also carries up to three links straight to the USA box, Hexogate-style, named "USA AI Support 2x · Direct 1/2/3":
+  1. VLESS + REALITY (fp ios, SNI www.speedtest.net) on :443;
+  2. VLESS + XHTTP packet-up over REALITY (SNI dl.google.com) on :8080;
+  3. VLESS over a plain-HTTP request header (decoy Host) with VLESS Encryption (mlkem768x25519plus) on :2095. This is the only one that also passed 5/5 from the heavily filtered Iranian datacenter.
+  They use the same customer uuid and the same per-user metering, so usage still counts 2x. Configured with `AFROWS_US_DIRECT_*` (off by default). On the USA box, `infra/usa/afrows-us-direct.py` adds the inbounds, `afrows-us-direct-fw.service` sends public :443 to the REALITY inbound (the Iran server's own :443 path is unchanged), and `afrows-us-mgmt-cmd` now syncs customers onto them.
 ## 0.123.1 - 2026-11-03
 
 - **The USA link is now called "USA AI Support 2x"**, so VPN apps such as NPV Tunnel show the 2x price right in the config name (subscription, dashboard, bot; Persian "آمریکا · پشتیبانی هوش مصنوعی"). The bot and the customer panel say it is meant for AI tools and that its usage counts 2x; the 2x price itself is unchanged.

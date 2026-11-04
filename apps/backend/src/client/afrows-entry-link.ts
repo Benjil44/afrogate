@@ -7,7 +7,8 @@ import type { ClientEntryLinkKind } from '@afrows/shared';
  */
 
 export interface AfrowsInboundParams {
-  mode: 'ws' | 'reality';
+  /** `xhttp` = XHTTP packet-up over REALITY; `http` = tcp with an HTTP request header, no TLS. */
+  mode: 'ws' | 'reality' | 'xhttp' | 'http';
   host: string;
   port: number;
   serverName: string; // SNI
@@ -23,6 +24,13 @@ export interface AfrowsInboundParams {
   publicKey?: string;
   shortId?: string;
   flow?: string;
+  // xhttp:
+  xhttpPath?: string;
+  // http (decoy Host/path in the plain-HTTP header; the payload is VLESS-Encrypted):
+  httpHost?: string;
+  httpPath?: string;
+  /** VLESS Encryption client string (`mlkem768x25519plus.…`); default `none`. */
+  vlessEncryption?: string;
 }
 
 export function buildAfrowsEntryUri(
@@ -30,6 +38,17 @@ export function buildAfrowsEntryUri(
   entryUuid: string,
   name: string,
 ): string {
+  if (params.mode === 'http') {
+    const h = new URLSearchParams({
+      encryption: params.vlessEncryption || 'none',
+      security: 'none',
+      type: 'tcp',
+      headerType: 'http',
+      host: params.httpHost ?? '',
+      path: params.httpPath || '/',
+    });
+    return `vless://${entryUuid}@${params.host}:${params.port}?${h.toString()}#${encodeURIComponent(name)}`;
+  }
   const q = new URLSearchParams({ encryption: 'none', fp: params.fingerprint, sni: params.serverName });
   if (params.mode === 'ws') {
     q.set('security', 'tls');
@@ -39,7 +58,11 @@ export function buildAfrowsEntryUri(
     if (params.ech) q.set('ech', params.ech);
   } else {
     q.set('security', 'reality');
-    q.set('type', 'tcp');
+    q.set('type', params.mode === 'xhttp' ? 'xhttp' : 'tcp');
+    if (params.mode === 'xhttp') {
+      q.set('path', params.xhttpPath || '/');
+      q.set('mode', 'packet-up');
+    }
     q.set('pbk', params.publicKey ?? '');
     q.set('sid', params.shortId ?? '');
     if (params.flow) q.set('flow', params.flow);
@@ -189,6 +212,50 @@ export function readAfrowsUsEntryEnv(env: Record<string, string | undefined>): A
   return readRemoteEntryEnv(env, 'AFROWS_US_ENTRY', '/afrowsus');
 }
 
+/**
+ * The DIRECT USA entries (no Cloudflare; MCI throttles Cloudflare after the handshake,
+ * 2026-11-04): up to three links to the USA box itself, from AFROWS_US_DIRECT_*.
+ * ENABLED + HOST + PBK + SID gate the REALITY pair; each transport is emitted only when
+ * its PORT is set: REALITY (REALITY_PORT/_SNI), XHTTP-over-REALITY (XHTTP_PORT/_SNI/_PATH),
+ * and HTTP-header + VLESS Encryption (HTTP_PORT/_HOST/_PATH/_ENCRYPTION). FP default ios.
+ * Same customer uuid and the same per-user 2x metering as the Cloudflare USA link.
+ */
+export function readAfrowsUsDirectEnv(env: Record<string, string | undefined>): AfrowsInboundParams[] {
+  const get = (key: string) => env[`AFROWS_US_DIRECT_${key}`]?.trim() || undefined;
+  if (!['1', 'true', 'yes', 'on'].includes(get('ENABLED')?.toLowerCase() ?? '')) return [];
+  const host = get('HOST');
+  if (!host) return [];
+  const port = (key: string) => {
+    const value = Number(get(key));
+    return Number.isInteger(value) && value > 0 && value <= 65535 ? value : null;
+  };
+  const fingerprint = get('FP') || 'ios';
+  const publicKey = get('PBK');
+  const shortId = get('SID');
+  const entries: AfrowsInboundParams[] = [];
+  const realityPort = port('REALITY_PORT');
+  const realitySni = get('REALITY_SNI');
+  if (publicKey && shortId && realityPort && realitySni) {
+    entries.push({ mode: 'reality', host, port: realityPort, serverName: realitySni, fingerprint, publicKey, shortId });
+  }
+  const xhttpPort = port('XHTTP_PORT');
+  const xhttpSni = get('XHTTP_SNI');
+  if (publicKey && shortId && xhttpPort && xhttpSni) {
+    entries.push({
+      mode: 'xhttp', host, port: xhttpPort, serverName: xhttpSni, fingerprint, publicKey, shortId, xhttpPath: get('XHTTP_PATH') || '/',
+    });
+  }
+  const httpPort = port('HTTP_PORT');
+  const httpHost = get('HTTP_HOST');
+  const vlessEncryption = get('HTTP_ENCRYPTION');
+  if (httpPort && httpHost && vlessEncryption) {
+    entries.push({
+      mode: 'http', host, port: httpPort, serverName: httpHost, fingerprint, httpHost, httpPath: get('HTTP_PATH') || '/', vlessEncryption,
+    });
+  }
+  return entries;
+}
+
 /** Remarks for each entry link: per-customer (dashboard/bot) or fixed ASCII (public subscription). */
 export type EntryLinkRemarks = Record<ClientEntryLinkKind, string>;
 
@@ -208,7 +275,8 @@ export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks 
 /**
  * Every VLESS entry link for one entry uuid, in order: Germany (de.afrows.com via
  * Cloudflare, fast but frozen on Shatel), Iran (afrows-in, works on Shatel; also
- * exits in Germany), then USA (us.afrows.com via Cloudflare, alternative exit).
+ * exits in Germany), then USA (us.afrows.com via Cloudflare, alternative exit), then the
+ * direct USA entries.
  * Each is present only when its env is configured.
  */
 export function buildEntryLinkSet(
@@ -232,6 +300,10 @@ export function buildEntryLinkSet(
   }
   const usa = readAfrowsUsEntryEnv(env);
   if (usa) links.push({ kind: 'usa', uri: buildAfrowsEntryUri(usa, entryUuid, remarks.usa) });
+  // Direct USA entries (no Cloudflare): "<USA remark> · Direct 1", "· Direct 2", …
+  readAfrowsUsDirectEnv(env).forEach((direct, index) => {
+    links.push({ kind: 'usa', uri: buildAfrowsEntryUri(direct, entryUuid, `${remarks.usa} · Direct ${index + 1}`) });
+  });
   return links;
 }
 

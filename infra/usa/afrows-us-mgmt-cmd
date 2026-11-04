@@ -12,6 +12,10 @@
 #   rmu <email>   remove cc_<id>@afrows from inbound afrows-us-ws
 #   adu           add the users in the adu JSON on stdin (tag afrows-us-ws, port 10085)
 #
+# Direct inbounds (afrows-us-direct.py, 2026-11-04): every adu/rmu on afrows-us-ws is
+# repeated on DIRECT_TAGS (REALITY / XHTTP / HTTP+VLESS Encryption, no Cloudflare), so a
+# customer has the same uuid on every USA entry. Their result never changes the exit code.
+#
 # USA-only addition: adu/rmu are ALSO mirrored into config.json (under a lock) so
 # customers survive an xray restart/reboot. The xray API change is the authoritative
 # result (its exit code is returned, exactly as on DE); the mirror is best-effort and
@@ -20,6 +24,7 @@ set -euo pipefail
 read -ra cmd <<< "${SSH_ORIGINAL_COMMAND:-}"
 API=127.0.0.1:10086
 TAG=afrows-us-ws
+DIRECT_TAGS="afrows-us-dr afrows-us-dx afrows-us-dh"
 XR=/usr/local/bin/xray
 CFG=/usr/local/etc/xray/config.json
 LOCK=/run/afrows-us-mgmt.lock
@@ -28,7 +33,7 @@ LOCK=/run/afrows-us-mgmt.lock
 mirror() {
   (
     flock -w 20 9 || exit 0
-    python3 -I - "$CFG" "$TAG" "$1" "$2" "$XR" <<'PY' || echo "mirror-failed" >&2
+    DIRECT_TAGS="$DIRECT_TAGS" python3 -I - "$CFG" "$TAG" "$1" "$2" "$XR" <<'PY' || echo "mirror-failed" >&2
 import json, os, re, subprocess, sys
 cfg_path, tag, op, arg, xr = sys.argv[1:6]
 email_re = re.compile(r"^cc_[0-9a-fA-F-]{36}@afrows$")
@@ -38,6 +43,7 @@ with open(cfg_path) as fh:
 inb = next((i for i in cfg.get("inbounds", []) if i.get("tag") == tag), None)
 if inb is None:
     sys.exit(1)
+direct = [i for i in cfg.get("inbounds", []) if i.get("tag") in os.environ.get("DIRECT_TAGS", "").split()]
 clients = inb.setdefault("settings", {}).setdefault("clients", [])
 if op == "add":
     with open(arg) as fh:
@@ -50,9 +56,13 @@ if op == "add":
             if email_re.match(str(c.get("email", ""))) and uuid_re.match(str(c.get("id", ""))):
                 new.append({"id": str(c["id"]), "email": c["email"], "level": 0})
     emails = {c["email"] for c in new}
-    clients[:] = [c for c in clients if c.get("email") not in emails] + new
+    for target in [inb] + direct:
+        cl = target.setdefault("settings", {}).setdefault("clients", [])
+        cl[:] = [c for c in cl if c.get("email") not in emails] + [dict(c) for c in new]
 else:
-    clients[:] = [c for c in clients if c.get("email") != arg]
+    for target in [inb] + direct:
+        cl = target.setdefault("settings", {}).setdefault("clients", [])
+        cl[:] = [c for c in cl if c.get("email") != arg]
 tmp = cfg_path + ".mgmt.tmp"
 with open(tmp, "w") as fh:
     json.dump(cfg, fh, indent=2)
@@ -79,6 +89,7 @@ case "${cmd[0]:-}" in
     [[ "${cmd[1]:-}" =~ ^cc_[0-9a-fA-F-]{36}@afrows$ ]] || { echo "bad-email"; exit 2; }
     rc=0
     "$XR" api rmu --server="$API" -tag="$TAG" "${cmd[1]}" || rc=$?
+    for t in $DIRECT_TAGS; do "$XR" api rmu --server="$API" -tag="$t" "${cmd[1]}" >/dev/null 2>&1 || true; done
     mirror rm "${cmd[1]}"
     exit $rc
     ;;
@@ -108,6 +119,12 @@ except Exception:
 CHK
     rc=0
     "$XR" api adu --server="$API" "$tmp" || rc=$?
+    # same users onto each direct inbound (payload already validated above)
+    for t in $DIRECT_TAGS; do
+      dtmp=$(mktemp)
+      python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); [i.update(tag=sys.argv[2]) for i in r["inbounds"]]; json.dump(r,open(sys.argv[3],"w"))' "$tmp" "$t" "$dtmp"         && "$XR" api adu --server="$API" "$dtmp" >/dev/null 2>&1 || true
+      rm -f "$dtmp"
+    done
     [ "$rc" -eq 0 ] && mirror add "$tmp"
     exit $rc
     ;;
