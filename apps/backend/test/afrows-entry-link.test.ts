@@ -192,7 +192,7 @@ test('buildEntryLinkSet: each link only when its env is configured; none without
 });
 
 test('customerEntryLinkRemarks falls back to Afrows for a blank name', () => {
-  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA' });
+  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support' });
 });
 
 test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right after the primary', () => {

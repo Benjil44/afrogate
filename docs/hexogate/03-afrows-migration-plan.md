@@ -392,6 +392,16 @@ Workers** as a proxy (ToS, SNI-blocked within ~24 h), any Hexogate box, account,
 
 ## 5. Open questions for the operator
 
+### Decisions so far (operator, 2026-11-03)
+- **Q1 accounts:** an employee opens the Hetzner and second-provider accounts.
+- **Q2 domains:** no `.ir` domains. Use neutral gTLDs plus the servers' own rDNS names.
+- **Q4 USA:** keep the USA exit at **2x**, and name it **"USA AI Support"** (live in code from 0.123.1). Phase 1
+  needs dedicated USA inbounds on the fronts so the multiplier keeps working.
+- **Direction:** Afrows and Hexogate stay separate systems, but Afrows copies Hexogate's data-plane design
+  (direct foreign fronts, several transports per exit, no Iran-DC hop), because it is faster and does not drop.
+- Still open: Q3, Q5-Q12.
+
+
 1. **Accounts and payment:** who opens the Hetzner and second-provider accounts, and with which payment
    method? If Hetzner KYC refuses, is a non-Hetzner EU provider acceptable for both fronts?
 2. **`.ir` zones:** accept registering 3-5 `.ir` domains (Iranian registrant identity at nic.ir, seizure

@@ -322,8 +322,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   },
   // Third entry (when AFROWS_US_ENTRY_* is on): us.afrows.com via Cloudflare, exits in the USA.
   'cfg.link.usa': {
-    en: '🇺🇸 <b>USA</b> — alternative exit (USA):',
-    fa: '🇺🇸 <b>آمریکا</b> — خروجی جایگزین (آمریکا):',
+    en: '🇺🇸 <b>USA AI Support</b> — for AI tools (ChatGPT, Claude, Gemini), exits in the USA, usage counts 2x:',
+    fa: '🇺🇸 <b>آمریکا · پشتیبانی هوش مصنوعی</b> — برای ابزارهای هوش مصنوعی (ChatGPT، Claude، Gemini)، خروج از آمریکا، مصرف ۲ برابر حساب می‌شود:',
   },
   'cfg.subscription': {
     en: '🔄 <b>Subscription link</b> — add this URL as a subscription in your app to get updates:',

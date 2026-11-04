@@ -412,7 +412,7 @@ describe('USA entry link', () => {
     assert.equal(q.get('path'), '/afrowsus');
     assert.ok(link.uri.includes('path=%2Fafrowsus'));
     assert.equal(q.has('ech'), false);
-    assert.equal(decodeURIComponent(url.hash.slice(1)), 'ben · USA');
+    assert.equal(decodeURIComponent(url.hash.slice(1)), 'ben · USA AI Support');
   });
 
   it('honors PORT / WS_HOST / WS_PATH / FP / ECH overrides', () => {
@@ -439,8 +439,8 @@ describe('USA entry link', () => {
   it('link order is Germany, Shatel, USA; public remarks are fixed ASCII', () => {
     const links = buildEntryLinkSet(ALL_ENV, UUID, PUBLIC_ENTRY_LINK_REMARKS);
     assert.deepEqual(links.map((l) => l.kind), ['germany', 'iran', 'usa']);
-    assert.ok(links[2].uri.endsWith('#Afrows%20USA'));
-    assert.equal(PUBLIC_ENTRY_LINK_REMARKS.usa, 'Afrows USA');
+    assert.ok(links[2].uri.endsWith('#USA%20AI%20Support'));
+    assert.equal(PUBLIC_ENTRY_LINK_REMARKS.usa, 'USA AI Support');
     assert.ok(links.every((link) => /^[!-~]+$/.test(link.uri)));
   });
 
@@ -470,8 +470,8 @@ describe('Telegram 3-link message', () => {
     });
   }
 
-  it('USA label is bilingual and says "alternative exit (USA)"', () => {
-    assert.match(renderTelegramCopy('cfg.link.usa', 'en'), /alternative exit \(USA\)/);
-    assert.match(renderTelegramCopy('cfg.link.usa', 'fa'), /آمریکا/);
+  it('USA label is bilingual, named "USA AI Support" and states the 2x usage', () => {
+    assert.match(renderTelegramCopy('cfg.link.usa', 'en'), /USA AI Support.*2x/);
+    assert.match(renderTelegramCopy('cfg.link.usa', 'fa'), /پشتیبانی هوش مصنوعی.*۲ برابر/);
   });
 });
