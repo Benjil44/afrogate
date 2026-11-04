@@ -7,7 +7,10 @@ reach the USA box directly, Hexogate-style, with three independent transports:
 
   afrows-us-dr  :8450  VLESS + REALITY (tcp, no flow), SNI www.speedtest.net;
                        public :443 is redirected here by afrows-us-direct-fw.
-  afrows-us-dx  :8080  VLESS + XHTTP packet-up + REALITY, SNI dl.google.com.
+  afrows-us-dx  :8080  VLESS + XHTTP packet-up + VLESS Encryption, no TLS: the recipe that
+                       fixed upload on the Iran->USA chain (DPI cuts each long upload flow;
+                       one POST per connection never gets that far). The first version
+                       (XHTTP over REALITY) failed on MCI, Irancell and Shatel (2026-11-04).
   afrows-us-dh  :2095  VLESS + tcp headerType=http (decoy Host) + VLESS Encryption
                        (mlkem768x25519plus, X25519 auth), no TLS.
 
@@ -83,10 +86,11 @@ def main() -> None:
         },
         {
             "tag": "afrows-us-dx", "listen": "0.0.0.0", "port": 8080, "protocol": "vless",
-            "settings": {"clients": customers, "decryption": "none"},
+            "settings": {"clients": customers, "decryption": decryption},
             "streamSettings": {
-                "network": "xhttp", "security": "reality", "realitySettings": reality("dl.google.com", private_key),
-                "xhttpSettings": {"path": XHTTP_PATH, "mode": "auto", "extra": {"scMaxBufferedPosts": 200}},
+                "network": "xhttp", "security": "none",
+                "xhttpSettings": {"host": HTTP_HOST, "path": XHTTP_PATH, "mode": "packet-up", "extra": {"scMaxBufferedPosts": 200}},
+                "sockopt": {"tcpcongestion": "bbr"},
             },
             "sniffing": sniff,
         },
@@ -125,7 +129,6 @@ def main() -> None:
     print("AFROWS_US_DIRECT_REALITY_PORT=443")
     print("AFROWS_US_DIRECT_REALITY_SNI=www.speedtest.net")
     print("AFROWS_US_DIRECT_XHTTP_PORT=8080")
-    print("AFROWS_US_DIRECT_XHTTP_SNI=dl.google.com")
     print("AFROWS_US_DIRECT_XHTTP_PATH=" + XHTTP_PATH)
     print("AFROWS_US_DIRECT_HTTP_PORT=2095")
     print("AFROWS_US_DIRECT_HTTP_HOST=" + HTTP_HOST)

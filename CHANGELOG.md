@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.124.1 - 2026-11-04
+
+- **Direct USA links, round 2, after the operator's tests on MCI, Irancell 5G and Shatel FTTH.** Direct 1 (REALITY) worked on all three networks (Shatel 93 Mbps down, Irancell 90 down / 12 up), and so did Direct 3 (HTTP + encryption; MCI 17.7 down). Direct 2 (XHTTP over REALITY) failed everywhere. Upload stayed near zero on Shatel and MCI: Iranian DPI cuts long upload flows.
+  - Direct 2 is now **XHTTP packet-up + VLESS Encryption without TLS**, the recipe that fixed upload on the Iran→USA chain. The link carries `extra` with xmux one POST per connection. It passed 5/5 from the Iranian datacenter, where the old version managed 2/5.
+  - The links have fixed numbers per transport and come best-first: Direct 1, Direct 3, Direct 2, then the Cloudflare USA link last (MCI throttles Cloudflare).
 ## 0.124.0 - 2026-11-04
 
 - **Direct USA links that skip Cloudflare.** On MCI (Hamrah-e Avval) the "USA AI Support 2x" link pinged at ~224 ms but loaded nothing: MCI throttles Cloudflare once data starts flowing, while the USA box itself was fine (6/6 Google/YouTube and 5.5 MB/s through the same Cloudflare path from the server side). The subscription now also carries up to three links straight to the USA box, Hexogate-style, named "USA AI Support 2x · Direct 1/2/3":

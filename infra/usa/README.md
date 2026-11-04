@@ -233,7 +233,7 @@ MCI throttles Cloudflare after the handshake, so customers also get links straig
 | Tag | Port | Transport |
 |---|---|---|
 | `afrows-us-dr` | :443 → 8450 | VLESS + REALITY (SNI www.speedtest.net), fp ios, no flow |
-| `afrows-us-dx` | 8080 | VLESS + XHTTP packet-up over REALITY (SNI dl.google.com) |
+| `afrows-us-dx` | 8080 | VLESS + XHTTP packet-up + VLESS Encryption, no TLS (decoy Host); the first version over REALITY failed on every Iranian ISP |
 | `afrows-us-dh` | 2095 | VLESS + tcp `headerType=http` (decoy Host) + VLESS Encryption, no TLS |
 
 - Install or refresh: `python3 -I /usr/local/sbin/afrows-us-direct.py > /etc/afrows/us-direct.env.out`. It is idempotent: it copies the customers from `afrows-us-ws`, reuses the REALITY key of `afrows-us-rv`, generates the VLESS Encryption pair once (client half in `/etc/afrows/us-direct-encryption`, root 600) and prints the public `AFROWS_US_DIRECT_*` values for the Iran server's env (plus `AFROWS_US_DIRECT_HOST=93.127.140.50`).

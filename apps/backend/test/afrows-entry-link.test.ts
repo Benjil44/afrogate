@@ -221,7 +221,6 @@ const US_DIRECT_ENV = {
   AFROWS_US_DIRECT_REALITY_PORT: '443',
   AFROWS_US_DIRECT_REALITY_SNI: 'www.speedtest.net',
   AFROWS_US_DIRECT_XHTTP_PORT: '8080',
-  AFROWS_US_DIRECT_XHTTP_SNI: 'dl.google.com',
   AFROWS_US_DIRECT_XHTTP_PATH: '/x1',
   AFROWS_US_DIRECT_HTTP_PORT: '2095',
   AFROWS_US_DIRECT_HTTP_HOST: 'download.windowsupdate.com',
@@ -229,11 +228,11 @@ const US_DIRECT_ENV = {
   AFROWS_US_DIRECT_HTTP_ENCRYPTION: 'mlkem768x25519plus.native.0rtt.KEY',
 };
 
-test('direct USA links: REALITY, XHTTP-REALITY and HTTP+VLESS Encryption, named "<USA> · Direct n"', () => {
+test('direct USA links: best-first (1 REALITY, 3 HTTP, 2 XHTTP), fixed names, Cloudflare USA last', () => {
   const links = buildEntryLinkSet({ ...BOTH_ENTRIES_ENV, ...US_DIRECT_ENV }, UUID, PUBLIC_ENTRY_LINK_REMARKS);
   const direct = links.filter((link) => link.kind === 'usa');
   assert.equal(direct.length, 3);
-  const [r, x, h] = direct.map((link) => new URL(link.uri));
+  const [r, h, x] = direct.map((link) => new URL(link.uri));
   assert.equal(r.host, '203.0.113.7:443');
   assert.equal(r.searchParams.get('security'), 'reality');
   assert.equal(r.searchParams.get('type'), 'tcp');
@@ -245,7 +244,17 @@ test('direct USA links: REALITY, XHTTP-REALITY and HTTP+VLESS Encryption, named 
   assert.equal(x.searchParams.get('mode'), 'packet-up');
   assert.equal(x.searchParams.get('path'), '/x1');
   assert.equal(x.port, '8080');
+  assert.equal(x.searchParams.get('security'), 'none');
+  assert.equal(x.searchParams.get('host'), 'download.windowsupdate.com');
+  assert.equal(x.searchParams.get('encryption'), 'mlkem768x25519plus.native.0rtt.KEY');
+  assert.equal(JSON.parse(x.searchParams.get('extra') ?? '{}').xmux.cMaxReuseTimes, '1');
   assert.equal(decodeURIComponent(x.hash.slice(1)), 'USA AI Support 2x · Direct 2');
+  const withCloudflare = buildEntryLinkSet(
+    { ...BOTH_ENTRIES_ENV, ...US_DIRECT_ENV, AFROWS_US_ENTRY_ENABLED: 'true', AFROWS_US_ENTRY_HOST: '104.16.0.1', AFROWS_US_ENTRY_SNI: 'us.example.com' },
+    UUID,
+    PUBLIC_ENTRY_LINK_REMARKS,
+  );
+  assert.ok(withCloudflare.at(-1)?.uri.endsWith('#USA%20AI%20Support%202x'));
   assert.equal(h.searchParams.get('security'), 'none');
   assert.equal(h.searchParams.get('headerType'), 'http');
   assert.equal(h.searchParams.get('host'), 'download.windowsupdate.com');
@@ -256,7 +265,7 @@ test('direct USA links: REALITY, XHTTP-REALITY and HTTP+VLESS Encryption, named 
 test('direct USA links: off unless enabled; each transport needs its own settings', () => {
   assert.deepEqual(readAfrowsUsDirectEnv({ ...US_DIRECT_ENV, AFROWS_US_DIRECT_ENABLED: 'false' }), []);
   assert.deepEqual(readAfrowsUsDirectEnv({ ...US_DIRECT_ENV, AFROWS_US_DIRECT_HOST: '' }), []);
-  const { AFROWS_US_DIRECT_HTTP_ENCRYPTION: _e, AFROWS_US_DIRECT_XHTTP_PORT: _p, ...realityOnly } = US_DIRECT_ENV;
-  assert.deepEqual(readAfrowsUsDirectEnv(realityOnly).map((entry) => entry.mode), ['reality']);
-  assert.deepEqual(readAfrowsUsDirectEnv({ ...US_DIRECT_ENV, AFROWS_US_DIRECT_PBK: '' }).map((entry) => entry.mode), ['http']);
+  const { AFROWS_US_DIRECT_HTTP_ENCRYPTION: _e, ...realityOnly } = US_DIRECT_ENV;
+  assert.deepEqual(readAfrowsUsDirectEnv(realityOnly).map((entry) => entry.slot), [1]);
+  assert.deepEqual(readAfrowsUsDirectEnv({ ...US_DIRECT_ENV, AFROWS_US_DIRECT_PBK: '' }).map((entry) => entry.slot), [3, 2]);
 });

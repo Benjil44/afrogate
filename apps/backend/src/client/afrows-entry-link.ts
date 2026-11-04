@@ -7,7 +7,8 @@ import type { ClientEntryLinkKind } from '@afrows/shared';
  */
 
 export interface AfrowsInboundParams {
-  /** `xhttp` = XHTTP packet-up over REALITY; `http` = tcp with an HTTP request header, no TLS. */
+  /** `xhttp` = XHTTP packet-up (over REALITY, or plain + VLESS Encryption when `vlessEncryption` is
+   *  set); `http` = tcp with an HTTP request header, no TLS. */
   mode: 'ws' | 'reality' | 'xhttp' | 'http';
   host: string;
   port: number;
@@ -26,6 +27,8 @@ export interface AfrowsInboundParams {
   flow?: string;
   // xhttp:
   xhttpPath?: string;
+  /** XHTTP `extra` JSON for the share link (e.g. xmux: one POST per connection). */
+  xhttpExtra?: string;
   // http (decoy Host/path in the plain-HTTP header; the payload is VLESS-Encrypted):
   httpHost?: string;
   httpPath?: string;
@@ -38,6 +41,18 @@ export function buildAfrowsEntryUri(
   entryUuid: string,
   name: string,
 ): string {
+  if (params.mode === 'xhttp' && params.vlessEncryption) {
+    const x = new URLSearchParams({
+      encryption: params.vlessEncryption,
+      security: 'none',
+      type: 'xhttp',
+      host: params.httpHost ?? '',
+      path: params.xhttpPath || '/',
+      mode: 'packet-up',
+    });
+    if (params.xhttpExtra) x.set('extra', params.xhttpExtra);
+    return `vless://${entryUuid}@${params.host}:${params.port}?${x.toString()}#${encodeURIComponent(name)}`;
+  }
   if (params.mode === 'http') {
     const h = new URLSearchParams({
       encryption: params.vlessEncryption || 'none',
@@ -213,14 +228,29 @@ export function readAfrowsUsEntryEnv(env: Record<string, string | undefined>): A
 }
 
 /**
+ * XHTTP client `extra` for the direct USA link: one POST per fresh TCP connection, so no
+ * upload flow lives long enough for Iranian DPI to cut it (the Iran->USA chain fix).
+ */
+export const US_DIRECT_XHTTP_EXTRA = JSON.stringify({
+  scMaxEachPostBytes: 32000,
+  scMinPostsIntervalMs: 5,
+  xmux: { maxConcurrency: '1', cMaxReuseTimes: '1', hMaxRequestTimes: '1', hMaxReusableSecs: '1' },
+});
+
+/**
  * The DIRECT USA entries (no Cloudflare; MCI throttles Cloudflare after the handshake,
- * 2026-11-04): up to three links to the USA box itself, from AFROWS_US_DIRECT_*.
- * ENABLED + HOST + PBK + SID gate the REALITY pair; each transport is emitted only when
- * its PORT is set: REALITY (REALITY_PORT/_SNI), XHTTP-over-REALITY (XHTTP_PORT/_SNI/_PATH),
- * and HTTP-header + VLESS Encryption (HTTP_PORT/_HOST/_PATH/_ENCRYPTION). FP default ios.
+ * 2026-11-04): up to three links to the USA box itself, from AFROWS_US_DIRECT_*, each with a
+ * fixed number so a customer's report ("Direct 3 works") stays meaningful:
+ *   1 REALITY (PBK, SID, REALITY_PORT, REALITY_SNI);
+ *   2 XHTTP packet-up + VLESS Encryption, no TLS (XHTTP_PORT, XHTTP_PATH);
+ *   3 tcp HTTP header + VLESS Encryption (HTTP_PORT, HTTP_PATH).
+ * 2 and 3 share HTTP_HOST (decoy Host) and HTTP_ENCRYPTION. ENABLED + HOST gate all; FP default ios.
+ * Returned best-first as measured on MCI, Irancell and Shatel: 1, 3, 2.
  * Same customer uuid and the same per-user 2x metering as the Cloudflare USA link.
  */
-export function readAfrowsUsDirectEnv(env: Record<string, string | undefined>): AfrowsInboundParams[] {
+export function readAfrowsUsDirectEnv(
+  env: Record<string, string | undefined>,
+): Array<{ slot: number; params: AfrowsInboundParams }> {
   const get = (key: string) => env[`AFROWS_US_DIRECT_${key}`]?.trim() || undefined;
   if (!['1', 'true', 'yes', 'on'].includes(get('ENABLED')?.toLowerCase() ?? '')) return [];
   const host = get('HOST');
@@ -232,25 +262,29 @@ export function readAfrowsUsDirectEnv(env: Record<string, string | undefined>): 
   const fingerprint = get('FP') || 'ios';
   const publicKey = get('PBK');
   const shortId = get('SID');
-  const entries: AfrowsInboundParams[] = [];
+  const httpHost = get('HTTP_HOST');
+  const vlessEncryption = get('HTTP_ENCRYPTION');
+  const entries: Array<{ slot: number; params: AfrowsInboundParams }> = [];
   const realityPort = port('REALITY_PORT');
   const realitySni = get('REALITY_SNI');
   if (publicKey && shortId && realityPort && realitySni) {
-    entries.push({ mode: 'reality', host, port: realityPort, serverName: realitySni, fingerprint, publicKey, shortId });
-  }
-  const xhttpPort = port('XHTTP_PORT');
-  const xhttpSni = get('XHTTP_SNI');
-  if (publicKey && shortId && xhttpPort && xhttpSni) {
-    entries.push({
-      mode: 'xhttp', host, port: xhttpPort, serverName: xhttpSni, fingerprint, publicKey, shortId, xhttpPath: get('XHTTP_PATH') || '/',
-    });
+    entries.push({ slot: 1, params: { mode: 'reality', host, port: realityPort, serverName: realitySni, fingerprint, publicKey, shortId } });
   }
   const httpPort = port('HTTP_PORT');
-  const httpHost = get('HTTP_HOST');
-  const vlessEncryption = get('HTTP_ENCRYPTION');
   if (httpPort && httpHost && vlessEncryption) {
     entries.push({
-      mode: 'http', host, port: httpPort, serverName: httpHost, fingerprint, httpHost, httpPath: get('HTTP_PATH') || '/', vlessEncryption,
+      slot: 3,
+      params: { mode: 'http', host, port: httpPort, serverName: httpHost, fingerprint, httpHost, httpPath: get('HTTP_PATH') || '/', vlessEncryption },
+    });
+  }
+  const xhttpPort = port('XHTTP_PORT');
+  if (xhttpPort && httpHost && vlessEncryption) {
+    entries.push({
+      slot: 2,
+      params: {
+        mode: 'xhttp', host, port: xhttpPort, serverName: httpHost, fingerprint, httpHost, vlessEncryption,
+        xhttpPath: get('XHTTP_PATH') || '/', xhttpExtra: US_DIRECT_XHTTP_EXTRA,
+      },
     });
   }
   return entries;
@@ -275,8 +309,7 @@ export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks 
 /**
  * Every VLESS entry link for one entry uuid, in order: Germany (de.afrows.com via
  * Cloudflare, fast but frozen on Shatel), Iran (afrows-in, works on Shatel; also
- * exits in Germany), then USA (us.afrows.com via Cloudflare, alternative exit), then the
- * direct USA entries.
+ * exits in Germany), then the direct USA entries, then USA via Cloudflare (us.afrows.com).
  * Each is present only when its env is configured.
  */
 export function buildEntryLinkSet(
@@ -298,12 +331,13 @@ export function buildEntryLinkSet(
       links.push({ kind: 'iran', uri: buildAfrowsEntryUri({ ...iran, host }, entryUuid, `${remarks.iran} ${index + 2}`) });
     });
   }
+  // Direct USA entries first (no Cloudflare; they work on MCI, Irancell and Shatel), best-first,
+  // named "<USA remark> · Direct <slot>"; the Cloudflare USA link last.
+  for (const { slot, params } of readAfrowsUsDirectEnv(env)) {
+    links.push({ kind: 'usa', uri: buildAfrowsEntryUri(params, entryUuid, `${remarks.usa} · Direct ${slot}`) });
+  }
   const usa = readAfrowsUsEntryEnv(env);
   if (usa) links.push({ kind: 'usa', uri: buildAfrowsEntryUri(usa, entryUuid, remarks.usa) });
-  // Direct USA entries (no Cloudflare): "<USA remark> · Direct 1", "· Direct 2", …
-  readAfrowsUsDirectEnv(env).forEach((direct, index) => {
-    links.push({ kind: 'usa', uri: buildAfrowsEntryUri(direct, entryUuid, `${remarks.usa} · Direct ${index + 1}`) });
-  });
   return links;
 }
 
