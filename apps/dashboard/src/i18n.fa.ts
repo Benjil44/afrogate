@@ -229,7 +229,7 @@ export const fa: DashboardStrings = {
       linkGermanyHint: 'سریع — پیش‌فرض',
       linkShatel: 'شاتل',
       linkShatelHint: 'برای شاتل / فیبر خانگی',
-      linkUsa: 'آمریکا · پشتیبانی هوش مصنوعی',
+      linkUsa: 'آمریکا · پشتیبانی هوش مصنوعی ۲x',
       linkUsaHint: 'برای ابزارهای هوش مصنوعی، خروج از آمریکا، مصرف ۲ برابر',
       linkVless: 'لینک VLESS',
       scanSubscription: 'برای افزودن اشتراک، در اپ VPN اسکن کنید',

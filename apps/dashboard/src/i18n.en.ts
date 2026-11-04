@@ -229,7 +229,7 @@ export const en = {
       linkGermanyHint: 'Fast — use by default',
       linkShatel: 'Shatel',
       linkShatelHint: 'Use on Shatel / home fibre',
-      linkUsa: 'USA AI Support',
+      linkUsa: 'USA AI Support 2x',
       linkUsaHint: 'For AI tools, exits in the USA, usage counts 2x',
       linkVless: 'VLESS link',
       scanSubscription: 'Scan in the VPN app to add the subscription',

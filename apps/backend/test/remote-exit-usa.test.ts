@@ -412,7 +412,7 @@ describe('USA entry link', () => {
     assert.equal(q.get('path'), '/afrowsus');
     assert.ok(link.uri.includes('path=%2Fafrowsus'));
     assert.equal(q.has('ech'), false);
-    assert.equal(decodeURIComponent(url.hash.slice(1)), 'ben · USA AI Support');
+    assert.equal(decodeURIComponent(url.hash.slice(1)), 'ben · USA AI Support 2x');
   });
 
   it('honors PORT / WS_HOST / WS_PATH / FP / ECH overrides', () => {
@@ -439,8 +439,8 @@ describe('USA entry link', () => {
   it('link order is Germany, Shatel, USA; public remarks are fixed ASCII', () => {
     const links = buildEntryLinkSet(ALL_ENV, UUID, PUBLIC_ENTRY_LINK_REMARKS);
     assert.deepEqual(links.map((l) => l.kind), ['germany', 'iran', 'usa']);
-    assert.ok(links[2].uri.endsWith('#USA%20AI%20Support'));
-    assert.equal(PUBLIC_ENTRY_LINK_REMARKS.usa, 'USA AI Support');
+    assert.ok(links[2].uri.endsWith('#USA%20AI%20Support%202x'));
+    assert.equal(PUBLIC_ENTRY_LINK_REMARKS.usa, 'USA AI Support 2x');
     assert.ok(links.every((link) => /^[!-~]+$/.test(link.uri)));
   });
 

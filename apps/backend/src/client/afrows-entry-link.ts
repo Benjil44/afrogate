@@ -196,13 +196,13 @@ export type EntryLinkRemarks = Record<ClientEntryLinkKind, string>;
 export const PUBLIC_ENTRY_LINK_REMARKS: EntryLinkRemarks = {
   germany: 'Afrows Germany',
   iran: 'Afrows Shatel',
-  usa: 'USA AI Support',
+  usa: 'USA AI Support 2x',
 };
 
-/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support". */
+/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x". */
 export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks {
   const name = displayName.trim() || 'Afrows';
-  return { germany: `${name} · Germany`, iran: `${name} · Shatel`, usa: `${name} · USA AI Support` };
+  return { germany: `${name} · Germany`, iran: `${name} · Shatel`, usa: `${name} · USA AI Support 2x` };
 }
 
 /**
