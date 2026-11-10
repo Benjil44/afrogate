@@ -206,7 +206,7 @@ test('buildEntryLinkSet: each link only when its env is configured; none without
 });
 
 test('customerEntryLinkRemarks falls back to Afrows for a blank name', () => {
-  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support 2x', hexo: 'Afrows · Hexo' });
+  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support 2x', hexo: 'Afrows · Afro' });
 });
 
 test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right after the primary', () => {
@@ -329,14 +329,14 @@ test('hexo entries: AFROWS_HEXO_COUNTRIES narrows; AFROWS_HEXO_ENTRY_PORTS only 
   );
 });
 
-test('buildEntryLinkSet: hexo entries appear last, kind hexo, remark "Hexo <CC>", ws+tls identical to Shatel except path', () => {
+test('buildEntryLinkSet: hexo entries appear last, kind hexo, remark "Afro <CC>", ws+tls identical to Shatel except path', () => {
   const env = { ...HEXO_ENV, AFROWS_HEXO_COUNTRIES: 'DE,NL' };
   const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
   // the base WS inbound now also yields the native "Afrows Shatel" (iran) entry, before hexo.
   assert.deepEqual(links.map((l) => l.kind), ['iran', 'hexo', 'hexo']);
   const hexo = links.filter((l) => l.kind === 'hexo');
-  assert.ok(hexo[0].uri.endsWith('#Hexo%20DE'));
-  assert.ok(hexo[1].uri.endsWith('#Hexo%20NL'));
+  assert.ok(hexo[0].uri.endsWith('#Afro%20DE'));
+  assert.ok(hexo[1].uri.endsWith('#Afro%20NL'));
   assert.match(hexo[0].uri, /security=tls/);
   assert.match(hexo[0].uri, /type=ws/);
   assert.match(hexo[0].uri, /path=%2Fafrowsws-de/);
@@ -408,7 +408,7 @@ test('buildEntryLinkSet: hexoResolved filters the emitted Hexo links to live cou
     buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS, resolved)
       .filter((l) => l.kind === 'hexo')
       .map((l) => l.uri.split('#')[1]);
-  assert.deepEqual(hexoRemarks(new Set(['DE'])), ['Hexo%20DE']);
-  assert.deepEqual(hexoRemarks(null), ['Hexo%20DE', 'Hexo%20NL', 'Hexo%20SE']);
+  assert.deepEqual(hexoRemarks(new Set(['DE'])), ['Afro%20DE']);
+  assert.deepEqual(hexoRemarks(null), ['Afro%20DE', 'Afro%20NL', 'Afro%20SE']);
   assert.deepEqual(hexoRemarks(new Set()), []);
 });

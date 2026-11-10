@@ -407,22 +407,22 @@ export function readHexoResolvedCountries(
 export type EntryLinkRemarks = Record<ClientEntryLinkKind, string>;
 
 /** Fixed, PII-free remarks for the publicly fetched subscription body. `hexo` is a base;
- *  the per-country entry appends the country code ("Hexo DE"). */
+ *  the per-country entry appends the country code ("Afro DE"). */
 export const PUBLIC_ENTRY_LINK_REMARKS: EntryLinkRemarks = {
   germany: 'Afrows Germany',
   iran: 'Afrows Shatel',
   usa: 'USA AI Support 2x',
-  hexo: 'Hexo',
+  hexo: 'Afro',
 };
 
-/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x" / "<name> · Hexo <CC>". */
+/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x" / "<name> · Afro <CC>". */
 export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks {
   const name = displayName.trim() || 'Afrows';
   return {
     germany: `${name} · Germany`,
     iran: `${name} · Shatel`,
     usa: `${name} · USA AI Support 2x`,
-    hexo: `${name} · Hexo`,
+    hexo: `${name} · Afro`,
   };
 }
 
