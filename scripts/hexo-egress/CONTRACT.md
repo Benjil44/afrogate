@@ -128,6 +128,7 @@ and does not change when the reconciler re-resolves countries.
 | `AFROWS_HEXO_PROBE_TIMEOUT` | reconciler | Per-probe curl timeout (seconds). Default `10`. |
 | `AFROWS_HEXO_PROBE_MAX_CANDIDATES` | reconciler | Max fronts probed per country before giving up. Default `4`. |
 | `AFROWS_HEXO_PROBE_BUDGET_SECS` | reconciler | Total wall-clock cap for all probing in one tick; once spent, un-probed countries are left to keep-last-good. Default `90`. |
+| `AFROWS_HEXO_RESOLVED_GRACE_SECS` | reconciler | Grace window for the resolved (advertised) file: a country that fails a probe stays advertised while it still has a live last-good outbound AND last passed within this many seconds, so a single transient false-negative probe does not flap the customer's country list. Default `1200` (20 min). |
 | `AFROWS_HEXO_ENTRY_ENABLED` | backend | Gate (default off) for emitting `hexo` entries in subscriptions. |
 | `AFROWS_HEXO_ENTRY_HOST` | backend | Entry host customers dial (default `AFROWS_INBOUND_HOST`, the Afrows Iran server). The entry is TLS+WS on `:443`, path `/afrowsws-<cc>` (backend-owned; see the WS entry-transport note). |
 | `AFROWS_XRAY_INBOUND_TAGS` | provisioning (**REQUIRED**) | Add `hexo-in-<cc>:<port>` (2-part, WS — **no** `:xtls-rprx-vision` flow suffix, matching the ws inbound) so `XrayProvisioningService` registers **entitled** customers (`access_hexo=true`) onto the hexo inbounds (`xray api adu`), and rmu's non-entitled ones. REQUIRED: the hexo inbounds are cloned with an EMPTY client list, so without this tag listing NO customer can authenticate on them (entitled customers' `Hexo <CC>` links would be dead), and the data-plane gate has nothing to enforce. This listing is what makes the gate fail-closed in practice. |
@@ -152,21 +153,29 @@ it selects:
   country, at most `AFROWS_HEXO_PROBE_MAX_CANDIDATES` probes per country, and a total
   `AFROWS_HEXO_PROBE_BUDGET_SECS` wall-clock cap.
 
-**Keep-last-good ↔ resolved-countries file.** Only countries that PASS the probe this tick
-(`healthy`) are written to `hexo-resolved.json`, so the backend advertises a `Hexo <CC>`
-link only for a verified-working, correctly-geolocated country. The interaction with
-keep-last-good:
+**Keep-last-good ↔ resolved-countries file (with a grace window).** The resolved file
+(`hexo-resolved.json`) is what the backend advertises, and it is made **as sticky as the
+outbound keep-last-good** so the customer's country list does not flap (6 → 3 → 6) on a
+single transient false-negative probe (a Cloudflare-trace blip / momentary front hiccup).
+Per-country `last_healthy` timestamps are persisted in the state file (stamped `now` every
+time a country passes the health+geo probe) and pruned when a country leaves
+`AFROWS_HEXO_COUNTRIES`. A country is advertised when it PASSES this tick, OR it still has a
+live last-good `hexo-<cc>` outbound in the config AND it last passed within
+`AFROWS_HEXO_RESOLVED_GRACE_SECS`. The interaction with keep-last-good:
 
-- **Passes this tick** → fresh outbound + inbound + routing, and listed in the resolved file
-  (advertised).
-- **Fails this tick but had a last-good** (no sibling passes) → its last-good `hexo-<cc>`
-  outbound (and inbound/rule) STAYS in the config so in-flight sessions are not ripped out,
-  but the country is EXCLUDED from the resolved file, so the backend hides the link until it
-  probes healthy again.
-- **Absent from this shard** (sharded sub) → same as above: last-good kept in config,
-  hidden from the resolved file until it is re-fetched and re-verified.
-- `AFROWS_HEXO_HEALTHCHECK=0` → rank-only selection and the resolved file reverts to
-  config-presence-only (a live inbound+outbound is advertised without a probe).
+- **Passes this tick** → fresh outbound + inbound + routing, `last_healthy` stamped, and
+  listed in the resolved file (advertised immediately).
+- **Fails this tick but passed within the grace window** (last-good still in config) → its
+  `hexo-<cc>` outbound/inbound/rule STAYS in the config AND it REMAINS advertised, because a
+  single failed probe is usually a false negative while the last-good outbound still works.
+- **Fails continuously past the grace window** (or **absent from the shard** that long) →
+  last-good outbound stays in the config so in-flight sessions are not ripped out, but the
+  country is now EXCLUDED from the resolved file (the backend hides the link) until it probes
+  healthy again.
+- **No last-good outbound at all** → never advertised (a probe failure with no fallback is a
+  real dead link).
+- `AFROWS_HEXO_HEALTHCHECK=0` → rank-only selection; the resolved file reverts to
+  config-presence-only (a live inbound+outbound is advertised without a probe, grace unused).
 
 ## Co-management with `afrows-egress-mode-sync.py`
 

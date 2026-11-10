@@ -437,23 +437,49 @@ def write_state(state):
         pass
 
 
-def resolved_countries(in_objs, out_objs, countries, healthy=None):
-    """Sorted, lowercased CCs that have BOTH a live hexo-in-<cc> inbound AND a hexo-<cc>
-    outbound in the config this tick. A country unresolved with no last-good (no outbound)
-    or missing its inbound is excluded, so the backend never advertises a dead link. When
-    `healthy` is given (the set of countries that PASSED the exit-country probe this tick),
-    a country is ALSO required to be in it — so a kept-last-good-but-unhealthy country stays
-    in the config (existing sessions keep working) but is hidden from the backend until it
-    probes healthy again. `healthy=None` (health-check off) keeps the config-presence-only
-    behaviour."""
+def bump_last_healthy(last_healthy, passed, countries, now):
+    """New per-country last-healthy-timestamp map: stamp `now` for every country that PASSED
+    the health+geo probe this tick, carry the rest forward, and PRUNE entries for countries
+    no longer configured. Pure (injectable `now`) so the grace logic is unit-testable."""
+    keep = {c.upper() for c in countries}
+    out = {cc.upper(): ts for cc, ts in (last_healthy or {}).items() if cc.upper() in keep}
+    for cc in passed:
+        if cc.upper() in keep:
+            out[cc.upper()] = now
+    return out
+
+
+def resolved_countries(in_objs, out_objs, countries, healthy=None, last_healthy=None, grace=0, now=None):
+    """Sorted, lowercased CCs the backend may advertise. A cc must ALWAYS have BOTH a live
+    hexo-in-<cc> inbound AND a hexo-<cc> outbound in the config (no inbound/outbound -> never
+    advertised). On top of that:
+
+    - `healthy=None` (health-check OFF): config-presence-only (advertise every live listener).
+    - `healthy` given (ON): advertise a cc if it PASSED the probe this tick (`cc in healthy`),
+      OR — the GRACE WINDOW — it still has its live last-good outbound (checked above) and it
+      last passed within `grace` seconds (`now - last_healthy[cc] <= grace`). This makes the
+      advertised list as sticky as the outbound keep-last-good, so a single transient
+      false-negative probe (a Cloudflare-trace blip / momentary front hiccup) does NOT drop a
+      country from the customer's subscription. A cc leaves the list only when it loses its
+      last-good outbound or has been failing continuously longer than the grace window."""
     have_in = {i.get("tag") for i in in_objs}
     have_out = {o.get("tag") for o in out_objs}
     allow = None if healthy is None else {c.lower() for c in healthy}
-    return sorted(
-        cc.lower() for cc in countries
-        if ("hexo-in-%s" % cc.lower()) in have_in and ("hexo-%s" % cc.lower()) in have_out
-        and (allow is None or cc.lower() in allow)
-    )
+    lh = {str(k).upper(): v for k, v in (last_healthy or {}).items()}
+    if now is None:
+        now = time.time()
+    out = []
+    for cc in countries:
+        lc = cc.lower()
+        if ("hexo-in-%s" % lc) not in have_in or ("hexo-%s" % lc) not in have_out:
+            continue  # no live inbound+outbound -> never advertised
+        if allow is None or lc in allow:
+            out.append(lc)  # off path (config presence), or passed this tick
+            continue
+        ts = lh.get(cc.upper())  # grace: kept-last-good outbound (checked above) + passed recently
+        if ts is not None and (now - ts) <= grace:
+            out.append(lc)
+    return sorted(out)
 
 
 def write_resolved(ccs, path=None):
@@ -698,6 +724,19 @@ def run(args):
     outbounds, fronts_by_cc, source = resolve_outbounds(fronts, countries, ports, prev, chosen)
     healthy = set(chosen) if healthcheck else None
 
+    # GRACE WINDOW for the resolved (advertised) file: stamp now for every country that passed
+    # this tick, then advertise a country while it still has a live last-good outbound AND it
+    # passed within the grace window — so a single transient false-negative probe does not
+    # flap the customer's country list. Only passers (never rank-only picks) refresh the
+    # timestamp, so the off path never feeds the grace logic.
+    now = time.time()
+    try:
+        grace = float(file_env("AFROWS_HEXO_RESOLVED_GRACE_SECS", "1200"))
+    except ValueError:
+        grace = 1200.0
+    passed = set(chosen) if healthcheck else set()
+    last_healthy = bump_last_healthy(prev.get("last_healthy", {}), passed, countries, now)
+
     if args.dry_run:
         log("parsed %d fronts; countries=%s; healthcheck=%s" % (len(fronts), ",".join(countries), "on" if healthcheck else "off"))
         for cc in countries:
@@ -720,7 +759,10 @@ def run(args):
                 for e in entries:
                     log("  %s: %s exit=%s %s" % (cc, redact_front(e["front"]), e["loc"] or "?",
                                                  "PASS" if e["pass"] else "SKIP(wrong-exit/dead)"))
-            log("would-advertise (resolved) = %s" % (",".join(sorted(c.lower() for c in healthy if c in outbounds)) or "(none)"))
+            would = sorted(cc.lower() for cc in countries
+                           if cc in outbounds and last_healthy.get(cc.upper()) is not None
+                           and (now - last_healthy[cc.upper()]) <= grace)
+            log("would-advertise (resolved, grace=%ds) = %s" % (int(grace), ",".join(would) or "(none)"))
         try:
             cfg = json.load(open(XRAY_CONFIG))
         except Exception as e:
@@ -746,7 +788,7 @@ def run(args):
     merged_fronts = dict(prev.get("fronts", {}))
     for cc, f in fronts_by_cc.items():
         merged_fronts[cc] = f
-    write_state({"outbounds": merged, "fronts": merged_fronts,
+    write_state({"outbounds": merged, "fronts": merged_fronts, "last_healthy": last_healthy,
                  "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
 
     try:
@@ -759,16 +801,16 @@ def run(args):
         log("note: %s" % note)
     if not changed:
         # Config already matches the live one, so these in/out objs ARE the live listeners:
-        # refresh the resolved-countries state (health-filtered) so the backend's freshness
-        # window stays green only for countries that passed the probe this tick.
-        write_resolved(resolved_countries(in_objs, out_objs, countries, healthy))
+        # refresh the resolved-countries state (health-filtered + grace) so the backend's
+        # freshness window stays green for passers and recently-passing kept-last-good.
+        advertised = resolved_countries(in_objs, out_objs, countries, healthy, last_healthy, grace, now)
+        write_resolved(advertised)
         log("no change (countries resolved=%d of %d; advertised=%d)" % (
-            len(outbounds), len([c for c in countries if c in ports]),
-            len(resolved_countries(in_objs, out_objs, countries, healthy))))
+            len(outbounds), len([c for c in countries if c in ports]), len(advertised)))
         return 0
     if apply_config(cfg, out_objs, in_objs, rules):
         # Apply succeeded, so in/out objs are now the live listeners.
-        write_resolved(resolved_countries(in_objs, out_objs, countries, healthy))
+        write_resolved(resolved_countries(in_objs, out_objs, countries, healthy, last_healthy, grace, now))
         log("applied: %s" % ", ".join("hexo-%s(%s)" % (cc.lower(), source.get(cc, "kept")) for cc in countries if cc in outbounds))
     return 0
 

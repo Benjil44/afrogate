@@ -211,6 +211,37 @@ assert mod.resolved_countries(_in, _out, ["DE", "NL"]) == ["de", "nl"], "off pat
 print("OK: resolved file health-filter (kept-but-unhealthy hidden, off path unchanged)")
 
 
+# --- grace window: resolved file is as sticky as the outbound keep-last-good (no flap) ----
+G = 1200
+_in2 = [{"tag": "hexo-in-de"}, {"tag": "hexo-in-nl"}]
+_out2 = [{"tag": "hexo-de"}, {"tag": "hexo-nl"}]
+# t0: both pass -> both advertised immediately (fresh pass is in `healthy`)
+lh0 = mod.bump_last_healthy({}, {"DE", "NL"}, ["DE", "NL"], 1000.0)
+assert mod.resolved_countries(_in2, _out2, ["DE", "NL"], healthy={"DE", "NL"},
+                              last_healthy=lh0, grace=G, now=1000.0) == ["de", "nl"], "fresh pass advertised immediately"
+# +600s: NL fails this tick but passed 600s ago (< grace) and still has its outbound -> stays
+lh1 = mod.bump_last_healthy(lh0, {"DE"}, ["DE", "NL"], 1600.0)   # only DE passes now
+assert mod.resolved_countries(_in2, _out2, ["DE", "NL"], healthy={"DE"},
+                              last_healthy=lh1, grace=G, now=1600.0) == ["de", "nl"], "within grace: kept country stays advertised"
+# +1300s: NL still failing, its last pass (t=1000) is now older than grace -> drops
+lh2 = mod.bump_last_healthy(lh1, {"DE"}, ["DE", "NL"], 2300.0)
+assert mod.resolved_countries(_in2, _out2, ["DE", "NL"], healthy={"DE"},
+                              last_healthy=lh2, grace=G, now=2300.0) == ["de"], "beyond grace: continuously-failing country drops"
+# grace persists across ticks via state: NL kept its t=1000 stamp through DE-only ticks
+assert lh1["NL"] == 1000.0 and lh2["NL"] == 1000.0, "last_healthy carried forward across ticks (not reset)"
+# a country with NO last-good outbound is never advertised, even within grace
+lh3 = dict(lh2); lh3["NL"] = 2300.0
+assert mod.resolved_countries([{"tag": "hexo-in-nl"}], [], ["NL"], healthy=set(),
+                              last_healthy=lh3, grace=G, now=2300.0) == [], "no outbound -> never advertised"
+# prune: a country dropped from AFROWS_HEXO_COUNTRIES loses its timestamp
+lh_pruned = mod.bump_last_healthy(lh2, {"DE"}, ["DE"], 2400.0)
+assert "NL" not in lh_pruned and lh_pruned["DE"] == 2400.0, "unconfigured country's last_healthy pruned"
+# off path ignores grace entirely (config presence only)
+assert mod.resolved_countries(_in2, _out2, ["DE", "NL"], healthy=None,
+                              last_healthy=lh2, grace=G, now=9_999_999.0) == ["de", "nl"], "off path unaffected by grace"
+print("OK: resolved grace window (sticky within grace, drops after, no-outbound excluded, pruned, off unaffected)")
+
+
 # --- primary reality inbound absent -> inbounds/rules skipped, outbounds still refresh -
 no_primary = {"inbounds": [], "outbounds": [], "routing": {"rules": []}}
 o3, i3, r3, note3, _c = mod.build_desired(no_primary, outs, PORTS, COUNTRIES)
