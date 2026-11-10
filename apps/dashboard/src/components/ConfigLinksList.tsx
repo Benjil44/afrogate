@@ -59,6 +59,7 @@ export function ConfigLinksList({ config, t, fallbackUri, onRotateSubscription }
     germany: { label: s.linkGermany, hint: s.linkGermanyHint },
     iran: { label: s.linkShatel, hint: s.linkShatelHint },
     usa: { label: s.linkUsa, hint: s.linkUsaHint },
+    hexo: { label: s.linkHexo, hint: s.linkHexoHint },
   };
   for (const [index, link] of (config.entryLinks ?? []).entries()) {
     if (!link.uri) continue;

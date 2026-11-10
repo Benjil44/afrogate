@@ -33,16 +33,21 @@ const ENV: Record<string, string> = {
   AFROWS_US_ENTRY_HOST: 'us.afrows.com',
   AFROWS_US_ENTRY_SNI: 'us.afrows.com',
   AFROWS_US_MGMT_ENABLED: 'true',
+  // Hexo configured on this (test) deployment: reuses the base WS inbound above, one country so a
+  // `Hexo DE` link resolves (per-country ws path /afrowsws-de; no separate REALITY identity).
+  AFROWS_HEXO_ENTRY_ENABLED: 'true',
+  AFROWS_HEXO_COUNTRIES: 'DE',
 };
 
 interface Access {
   accessGermany: boolean;
   accessIran: boolean;
   accessUsa: boolean;
+  accessHexo: boolean;
 }
 
 function harness(initial: Partial<Access> = {}, resellerOfAccount = 'reseller-1') {
-  const access: Access = { accessGermany: true, accessIran: true, accessUsa: true, ...initial };
+  const access: Access = { accessGermany: true, accessIran: true, accessUsa: true, accessHexo: false, ...initial };
   const updates: Array<{ text: string; values: unknown[] }> = [];
   const inserts: unknown[][] = [];
   const audits: unknown[][] = [];
@@ -77,6 +82,8 @@ function harness(initial: Partial<Access> = {}, resellerOfAccount = 'reseller-1'
     if (text.includes('subscription_token_hash AS "tokenHash"')) return [{ version: 1, tokenHash: null }];
     if (text.includes('SET subscription_token_hash = $2')) return [];
     if (text.includes('SELECT id FROM customer_accounts WHERE id = $1')) return [{ id: values[0] }];
+    // resolveHexoAccessUpdate's row-lock reads ONLY access_hexo (no access_germany).
+    if (text.includes('ca.access_hexo AS "accessHexo"') && !text.includes('access_germany')) return [{ ...access }];
     if (text.includes('access_germany AS "accessGermany"') && text.includes('FOR UPDATE')) return [{ ...access }];
     if (text.includes('INSERT INTO customer_accounts')) {
       inserts.push(values);
@@ -137,6 +144,47 @@ describe('server access (BillingService)', { skip: bundledSkipReason }, () => {
     assert.deepEqual(bundle.links.map((l) => l.kind), ['iran', 'usa']);
     const { link } = (await harness({ accessGermany: false }).service.getClientConfigEntryLink(CONFIG_ID)) as { link: string };
     assert.ok(link.includes('94.74.145.199'), 'copy-link button gets the first ALLOWED link, never Germany');
+  });
+
+  it('Hexo is gated on access_hexo: OFF yields no Hexo link even with every base server on; ON adds Hexo DE', async () => {
+    const kinds = async (access: Partial<Access>) =>
+      ((await harness(access).service.resolveEntryLinks(CONFIG_ID)) as Array<{ kind: string }>).map((l) => l.kind);
+    // access_hexo defaults OFF: base servers on, but NO hexo link (the dedicated-flag gate).
+    assert.deepEqual(await kinds({}), ['germany', 'iran', 'usa']);
+    // access_hexo ON: the configured Hexo DE link appears after the base servers.
+    assert.deepEqual(await kinds({ accessHexo: true }), ['germany', 'iran', 'usa', 'hexo']);
+    // Hexo is independent of the base servers: iran-only + hexo on.
+    assert.deepEqual(await kinds({ accessGermany: false, accessUsa: false, accessHexo: true }), ['iran', 'hexo']);
+  });
+
+  it('summary carries accessHexo; update toggles it (independent of serverAccess) and kicks enforcement', async () => {
+    // mapCustomerAccount surfaces the flag (via a reseller-workspace path is overkill; assert the
+    // service writes + reconciles instead). Turning Hexo on writes only access_hexo and reconciles.
+    const h = harness({ accessHexo: false });
+    await h.service.updateCustomerAccount(ACCOUNT_ID, { accessHexo: true }, ADMIN);
+    assert.equal(h.updates.length, 1);
+    assert.match(h.updates[0].text, /access_hexo = \$1/);
+    assert.doesNotMatch(h.updates[0].text, /access_germany|access_iran|access_usa/);
+    assert.deepEqual(h.updates[0].values, [true, ACCOUNT_ID]);
+    assert.equal((h.audits[0][4] as Record<string, unknown>).accessHexoBefore, false);
+    assert.equal((h.audits[0][4] as Record<string, unknown>).accessHexoAfter, true);
+    assert.equal(h.reconcileRequests(), 1);
+  });
+
+  it('an unchanged accessHexo is written but does not kick enforcement', async () => {
+    const h = harness({ accessHexo: true });
+    await h.service.updateCustomerAccount(ACCOUNT_ID, { accessHexo: true }, ADMIN);
+    assert.equal(h.updates.length, 1);
+    assert.equal(h.reconcileRequests(), 0);
+    assert.equal((h.audits[0][4] as Record<string, unknown>).accessHexoBefore, undefined);
+  });
+
+  it('Hexo can be toggled without touching serverAccess, and does not participate in the all-off rule', async () => {
+    // Every base server off would be rejected, but turning Hexo off while base servers stay on is fine.
+    const h = harness();
+    await h.service.updateCustomerAccount(ACCOUNT_ID, { accessHexo: false }, ADMIN);
+    assert.equal(h.updates.length, 1);
+    assert.match(h.updates[0].text, /access_hexo = \$1/);
   });
 
   it('never falls back to a disallowed server (only USA allowed, USA entry env off -> empty)', async () => {
@@ -210,6 +258,13 @@ describe('server access (BillingService)', { skip: bundledSkipReason }, () => {
         error.getStatus?.() === 403 && /Sellers cannot change server access/.test(error.message ?? ''),
     );
     assert.equal(own.updates.length, 0);
+    // The Hexo add-on is operator-only too: a seller cannot change accessHexo.
+    await assert.rejects(
+      () => own.service.updateResellerCustomerAccount(ACCOUNT_ID, { accessHexo: true }, seller),
+      (error: { getStatus?: () => number; message?: string }) =>
+        error.getStatus?.() === 403 && /Sellers cannot change server access/.test(error.message ?? ''),
+    );
+    assert.equal(own.updates.length, 0);
     // A plain seller edit without serverAccess still works.
     await own.service.updateResellerCustomerAccount(ACCOUNT_ID, { notes: 'x' }, seller);
     assert.ok(own.updates.some((u) => /notes = /.test(u.text)));
@@ -251,11 +306,19 @@ describe('server access (BillingService)', { skip: bundledSkipReason }, () => {
   it('create writes serverAccess in the same INSERT (missing keys = on) and validates it', async () => {
     const h = harness();
     await h.service.createCustomerAccount({ displayName: 'n', serverAccess: { usa: false } }, ADMIN);
-    assert.deepEqual(h.inserts[0].slice(-3), [true, true, false]);
+    // Trailing INSERT values are [access_germany, access_iran, access_usa, access_hexo]; hexo
+    // defaults OFF (opt-in) when not requested.
+    assert.deepEqual(h.inserts[0].slice(-4), [true, true, false, false]);
     assert.deepEqual((h.audits[0][4] as Record<string, unknown>).serverAccess, { germany: true, iran: true, usa: false });
+    assert.equal((h.audits[0][4] as Record<string, unknown>).accessHexo, false);
 
     await h.service.createCustomerAccount({ displayName: 'n' }, ADMIN);
-    assert.deepEqual(h.inserts[1].slice(-3), [true, true, true]);
+    assert.deepEqual(h.inserts[1].slice(-4), [true, true, true, false]);
+
+    // Opting into Hexo at creation writes access_hexo = true (independent of the base servers).
+    await h.service.createCustomerAccount({ displayName: 'n', accessHexo: true }, ADMIN);
+    assert.deepEqual(h.inserts[2].slice(-4), [true, true, true, true]);
+    assert.equal((h.audits[2][4] as Record<string, unknown>).accessHexo, true);
 
     await assert.rejects(
       () => h.service.createCustomerAccount({ displayName: 'n', serverAccess: { germany: false, iran: false, usa: false } }, ADMIN),
@@ -270,7 +333,7 @@ describe('server access (BillingService)', { skip: bundledSkipReason }, () => {
     } finally {
       process.env.AFROWS_US_MGMT_ENABLED = 'true';
     }
-    assert.equal(h.inserts.length, 2);
+    assert.equal(h.inserts.length, 3);
   });
 
   it('DTO accepts a partial boolean object and rejects null / non-boolean values', async () => {
@@ -284,9 +347,15 @@ describe('server access (BillingService)', { skip: bundledSkipReason }, () => {
     assert.ok((await errorsFor({ serverAccess: null })).length > 0);
     assert.ok((await errorsFor({ serverAccess: 'all' })).length > 0);
     assert.ok((await errorsFor({ serverAccess: { usa: 'no' } })).length > 0);
+    // accessHexo is a top-level optional boolean on both DTOs.
+    assert.equal((await errorsFor({ accessHexo: true })).length, 0);
+    assert.equal((await errorsFor({ accessHexo: false })).length, 0);
+    assert.ok((await errorsFor({ accessHexo: 'yes' })).length > 0);
     const createErrors = async (payload: Record<string, unknown>) =>
       validate(plainToInstance(CreateCustomerAccountDto!, payload) as object, { whitelist: true });
     assert.equal((await createErrors({ serverAccess: { iran: false } })).length, 0);
+    assert.equal((await createErrors({ accessHexo: true })).length, 0);
     assert.ok((await createErrors({ serverAccess: null })).length > 0);
+    assert.ok((await createErrors({ accessHexo: 'yes' })).length > 0);
   });
 });

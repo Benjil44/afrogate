@@ -7,8 +7,11 @@ import type { CustomerServerAccess } from '@afrows/shared';
 import { buildEntryLinkSet, PUBLIC_ENTRY_LINK_REMARKS } from '../src/client/afrows-entry-link.ts';
 import {
   changedServerKinds,
+  entryAccessFromRow,
   filterLinksByServerAccess,
+  gateEntryLinks,
   hasAnyServerAllowed,
+  hexoAccessFromRow,
   mergeServerAccess,
   serverAccessFromRow,
   serverAccessProblem,
@@ -23,6 +26,7 @@ import {
 } from '../src/client/remote-exit-membership.ts';
 import {
   buildProvisioningEndpoints,
+  isHexoInboundTag,
   localGateKey,
   parseIranInboundTags,
   partitionEndpointsByAccess,
@@ -100,6 +104,89 @@ describe('customer server access: link filtering', () => {
       usa: true,
     });
     assert.deepEqual(links, []);
+  });
+});
+
+describe('hexo (Hexogate) per-country entries: dedicated opt-in gating', () => {
+  // Hexo entries reuse ALL_ENV's base WS inbound (app.afrows.com :443), per-country ws path.
+  const HEXO_ENV: Record<string, string> = {
+    ...ALL_ENV,
+    AFROWS_HEXO_ENTRY_ENABLED: 'true',
+    AFROWS_HEXO_COUNTRIES: 'DE,NL',
+  };
+  const all = () => buildEntryLinkSet(HEXO_ENV, UUID, PUBLIC_ENTRY_LINK_REMARKS);
+  const allOnHexoOff = { ...ALL_ON, hexo: false };
+  const allOnHexoOn = { ...ALL_ON, hexo: true };
+
+  it('hexoAccessFromRow is opt-in: only an explicit true grants it (default OFF, opposite of base servers)', () => {
+    assert.equal(hexoAccessFromRow(undefined), false);
+    assert.equal(hexoAccessFromRow({}), false);
+    assert.equal(hexoAccessFromRow({ accessHexo: null }), false);
+    assert.equal(hexoAccessFromRow({ accessHexo: false }), false);
+    assert.equal(hexoAccessFromRow({ accessHexo: true }), true);
+    // entryAccessFromRow combines base (default on) + hexo (default off).
+    assert.deepEqual(entryAccessFromRow({}), { germany: true, iran: true, usa: true, hexo: false });
+    assert.deepEqual(entryAccessFromRow({ accessGermany: false, accessHexo: true }), {
+      germany: false,
+      iran: true,
+      usa: true,
+      hexo: true,
+    });
+  });
+
+  it('server-only filter always drops hexo; gateEntryLinks keeps hexo ONLY when access.hexo is true', () => {
+    // filterLinksByServerAccess is server-only: hexo never survives it.
+    assert.deepEqual(filterLinksByServerAccess(all(), ALL_ON).map((l) => l.kind), ['germany', 'iran', 'usa']);
+    // access.hexo === true -> both countries appear after the base servers.
+    assert.deepEqual(gateEntryLinks(all(), allOnHexoOn).map((l) => l.kind), ['germany', 'iran', 'usa', 'hexo', 'hexo']);
+    // access.hexo === false -> NO hexo links even with every base server on (the whole point of
+    // the dedicated gate: Hexo no longer rides germany||usa).
+    assert.deepEqual(gateEntryLinks(all(), allOnHexoOff).map((l) => l.kind), ['germany', 'iran', 'usa']);
+  });
+
+  it('hexo is INDEPENDENT of the base servers: iran-only + hexo on shows iran + hexo; any base + hexo off shows no hexo', () => {
+    assert.deepEqual(
+      gateEntryLinks(all(), { germany: false, iran: true, usa: false, hexo: true }).map((l) => l.kind),
+      ['iran', 'hexo', 'hexo'],
+    );
+    // germany+usa on but hexo off -> still no hexo (old interim gate would have shown it).
+    assert.deepEqual(
+      gateEntryLinks(all(), { germany: true, iran: false, usa: true, hexo: false }).map((l) => l.kind),
+      ['germany', 'usa'],
+    );
+  });
+});
+
+describe('hexo data-plane gate: partitionEndpointsByAccess denies hexo-in-* unless access.hexo', () => {
+  // hexo-in-<cc> are WS inbounds (2-part tags, NO xtls-rprx-vision): same client shape as afrows-in.
+  const endpoints = buildProvisioningEndpoints({
+    AFROWS_XRAY_INBOUND_TAGS: 'afrows-in:8447,afrows-reality:8443,hexo-in-de:8460,hexo-in-nl:8461',
+  });
+  const iranTags = parseIranInboundTags(undefined);
+
+  it('isHexoInboundTag matches the hexo-in- prefix only', () => {
+    assert.equal(isHexoInboundTag('hexo-in-de'), true);
+    assert.equal(isHexoInboundTag('hexo-in-ro'), true);
+    assert.equal(isHexoInboundTag('afrows-in'), false);
+    assert.equal(isHexoInboundTag('hexo-de'), false); // the OUTBOUND tag, never an inbound target
+  });
+
+  it('hexo OFF (or a missing hexo flag): every hexo-in-* target is denied; base inbounds untouched', () => {
+    const { allowed, denied } = partitionEndpointsByAccess(endpoints, { germany: true, iran: true }, iranTags);
+    assert.deepEqual(allowed.map((e) => [e.label, e.targets.map((t) => t.tag)]), [['ie', ['afrows-in', 'afrows-reality']]]);
+    assert.deepEqual(denied.map((e) => [e.label, e.targets.map((t) => t.tag)]), [['ie', ['hexo-in-de', 'hexo-in-nl']]]);
+  });
+
+  it('hexo ON: every hexo-in-* target is allowed, nothing denied there', () => {
+    const { allowed, denied } = partitionEndpointsByAccess(endpoints, { germany: true, iran: true, hexo: true }, iranTags);
+    assert.deepEqual(allowed[0].targets.map((t) => t.tag), ['afrows-in', 'afrows-reality', 'hexo-in-de', 'hexo-in-nl']);
+    assert.deepEqual(denied, []);
+  });
+
+  it('hexo gate is orthogonal to iran: iran off + hexo on denies afrows-in but keeps hexo-in-*', () => {
+    const { allowed, denied } = partitionEndpointsByAccess(endpoints, { germany: true, iran: false, hexo: true }, iranTags);
+    assert.deepEqual(allowed[0].targets.map((t) => t.tag), ['afrows-reality', 'hexo-in-de', 'hexo-in-nl']);
+    assert.deepEqual(denied[0].targets.map((t) => t.tag), ['afrows-in']);
   });
 });
 
@@ -186,6 +273,18 @@ describe('migration 0066', () => {
     for (const column of ['access_germany', 'access_iran', 'access_usa']) {
       assert.match(sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column} boolean NOT NULL DEFAULT true`));
     }
+  });
+});
+
+describe('migration 0067', () => {
+  it('adds access_hexo as NOT NULL DEFAULT false (opt-in), idempotently', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const sql = readFileSync(
+      join(here, '..', '..', '..', 'infra', 'postgres', 'migrations', '0067_customer_access_hexo.sql'),
+      'utf8',
+    );
+    // DEFAULT false — the OPPOSITE of the three base servers, so every existing customer is OFF.
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS access_hexo boolean NOT NULL DEFAULT false/);
   });
 });
 

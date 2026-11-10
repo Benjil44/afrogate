@@ -141,17 +141,21 @@ import {
   customerEntryLinkRemarks,
   PUBLIC_ENTRY_LINK_REMARKS,
   readAfrowsDeEntryEnv,
+  readAfrowsHexoEntriesEnv,
   readAfrowsInboundEnv,
   readAfrowsRealityEnv,
   readAfrowsUsEntryEnv,
+  readHexoResolvedCountries,
   type AfrowsInboundParams,
 } from '../client/afrows-entry-link';
 import { isUsMgmtEnabled } from '../client/germany-mgmt';
 import {
   ALL_SERVERS_ALLOWED,
   changedServerKinds,
-  filterLinksByServerAccess,
+  entryAccessFromRow,
+  gateEntryLinks,
   hasAnyServerAllowed,
+  hexoAccessFromRow,
   mergeServerAccess,
   serverAccessProblem,
   SERVER_ACCESS_COLUMNS,
@@ -4125,9 +4129,9 @@ export class BillingService {
     const row = result.rows[0];
     if (!row?.entryUuid) return [];
     const name = displayName?.trim() || row.displayName?.trim() || row.label || 'Afrows';
-    return filterLinksByServerAccess(
-      buildEntryLinkSet(process.env, row.entryUuid, customerEntryLinkRemarks(name)),
-      serverAccessFromRow(row),
+    return gateEntryLinks(
+      buildEntryLinkSet(process.env, row.entryUuid, customerEntryLinkRemarks(name), readHexoResolvedCountries(process.env)),
+      entryAccessFromRow(row),
     );
   }
 
@@ -4274,10 +4278,11 @@ export class BillingService {
     if (!['active', 'limited'].includes(row.configStatus)) return null;
     if (row.accountStatus !== 'active' || row.accountDeletedAt !== null) return null;
 
-    // Only the servers this customer may use; nothing allowed+configured -> the uniform 404.
-    const uris = filterLinksByServerAccess(
-      buildEntryLinkSet(process.env, row.entryUuid, PUBLIC_ENTRY_LINK_REMARKS),
-      serverAccessFromRow(row),
+    // Only the servers this customer may use (+ Hexo countries when access_hexo is on and the
+    // country has a live listener); nothing allowed+configured -> the uniform 404.
+    const uris = gateEntryLinks(
+      buildEntryLinkSet(process.env, row.entryUuid, PUBLIC_ENTRY_LINK_REMARKS, readHexoResolvedCountries(process.env)),
+      entryAccessFromRow(row),
     ).map((link) => link.uri);
     if (!uris.length) return null;
     const usage = pickSubscriptionUsage({
@@ -4527,9 +4532,11 @@ export class BillingService {
         passwordHash = hashPassword(generatedPassword);
       }
       // Server access is written in the same INSERT (missing keys = on). A set that
-      // differs from the all-on default is validated like an update.
+      // differs from the all-on default is validated like an update. Hexo is the
+      // independent opt-in add-on: default OFF, written in the same INSERT.
       const serverAccess = mergeServerAccess(ALL_SERVERS_ALLOWED, dto.serverAccess);
       if (changedServerKinds(ALL_SERVERS_ALLOWED, serverAccess).length) this.assertServerAccessUsable(serverAccess);
+      const accessHexo = dto.accessHexo === true;
       const result = await this.database.transaction(async (executor) => {
         const resellerAccountId = normalizeNullableString(dto.resellerAccountId);
         if (resellerAccountId) await this.ensureResellerAccountExists(executor, resellerAccountId);
@@ -4542,10 +4549,10 @@ export class BillingService {
               status, quota_scope, quota_limit_bytes, per_client_limit_bytes,
               used_bytes, notes, login_email, password_hash, password_set_at,
               egress_tier, gaming_entitled, expires_at, tags,
-              access_germany, access_iran, access_usa
+              access_germany, access_iran, access_usa, access_hexo
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-                    $21, $22, $23)
+                    $21, $22, $23, $24)
             RETURNING id
           `,
           [
@@ -4572,6 +4579,7 @@ export class BillingService {
             serverAccess.germany,
             serverAccess.iran,
             serverAccess.usa,
+            accessHexo,
           ],
         );
         const id = insertResult.rows[0].id;
@@ -4589,6 +4597,7 @@ export class BillingService {
             perClientLimitBytes: dto.perClientLimitBytes ?? null,
             resellerAccountId,
             serverAccess,
+            accessHexo,
           },
           executor,
         );
@@ -4615,12 +4624,15 @@ export class BillingService {
 
     let changedFields: string[] = [];
     let serverAccessChanged = false;
+    let hexoAccessChanged = false;
     try {
       await this.database.transaction(async (executor) => {
         await this.ensureCustomerAccountExists(executor, id);
         const serverAccess = await this.resolveServerAccessUpdate(executor, id, dto.serverAccess);
+        const hexoAccess = await this.resolveHexoAccessUpdate(executor, id, dto.accessHexo);
         changedFields = await this.updateCustomerAccountFields(executor, id, dto, serverAccess?.after);
         serverAccessChanged = Boolean(serverAccess && changedServerKinds(serverAccess.before, serverAccess.after).length);
+        hexoAccessChanged = Boolean(hexoAccess && hexoAccess.before !== hexoAccess.after);
 
         await this.audit.record(
           actor,
@@ -4632,6 +4644,9 @@ export class BillingService {
             paidNumberChanged: changedFields.includes('paidNumberHash'),
             ...(serverAccessChanged && serverAccess
               ? { serverAccessBefore: serverAccess.before, serverAccessAfter: serverAccess.after }
+              : {}),
+            ...(hexoAccessChanged && hexoAccess
+              ? { accessHexoBefore: hexoAccess.before, accessHexoAfter: hexoAccess.after }
               : {}),
           },
           executor,
@@ -4654,9 +4669,10 @@ export class BillingService {
       if (changedFields.includes('egressTier') || changedFields.includes('egressBypassEnabled')) {
         this.triggerEgressModeSync();
       }
-      // Server access change: rmu from a revoked server / re-adu on a re-granted one
-      // now (or right after the pass in flight) instead of at the next 60s tick.
-      if (serverAccessChanged) this.xrayProvisioning.requestReconcile();
+      // Server access or Hexo change: rmu from a revoked server/add-on or re-adu on a
+      // re-granted one now (or right after the pass in flight) instead of at the next 60s
+      // tick. A Hexo flip toggles membership on the hexo-in-<cc> inbounds the same way.
+      if (serverAccessChanged || hexoAccessChanged) this.xrayProvisioning.requestReconcile();
 
       return this.getCustomerAccount(id);
     } catch (error) {
@@ -10001,6 +10017,32 @@ export class BillingService {
   }
 
   /**
+   * Detect a Hexo on/off change, row-locked. Returns null when the request omits
+   * `accessHexo`. Hexo is independent of the base-server "at least one on" rule, so it is
+   * resolved on its own (not folded into resolveServerAccessUpdate). The row lock here is
+   * reentrant with resolveServerAccessUpdate's within the same update transaction.
+   */
+  private async resolveHexoAccessUpdate(
+    executor: DatabaseQueryExecutor,
+    id: string,
+    next: boolean | undefined,
+  ): Promise<{ before: boolean; after: boolean } | null> {
+    if (typeof next !== 'boolean') return null;
+    const result = await executor.query<ServerAccessColumns>(
+      `SELECT ca.access_hexo AS "accessHexo" FROM customer_accounts ca WHERE ca.id = $1 FOR UPDATE`,
+      [id],
+    );
+    if (!result.rows.length) throw new NotFoundException('Customer account not found');
+    return { before: hexoAccessFromRow(result.rows[0]), after: next };
+  }
+
+  /** Whether the Hexo add-on is configured on this deployment (at least one `Hexo <CC>`
+   *  entry resolves from env). Surfaced to the dashboard as `hexoConfigured`. */
+  isHexoConfigured(): boolean {
+    return readAfrowsHexoEntriesEnv(process.env).length > 0;
+  }
+
+  /**
    * Which servers this deployment can actually serve: germany = the DE entry env
    * resolves, iran = the afrows-in entry env resolves, usa = the USA entry is
    * enabled AND USA management is on (UsaMgmtService.isEnabled() reads the same
@@ -10061,6 +10103,9 @@ export class BillingService {
         }
       }
     }
+    // Hexo is the independent add-on: written on its own `accessHexo` field, never folded
+    // into the serverAccess object (so it is excluded from the base-server all-off rule).
+    if (dto.accessHexo !== undefined) add('accessHexo', 'access_hexo', dto.accessHexo === true);
     if (dto.gamingEntitled !== undefined) add('gamingEntitled', 'gaming_entitled', dto.gamingEntitled);
     if (dto.expiresAt !== undefined) add('expiresAt', 'expires_at', dto.expiresAt);
     if (dto.tags !== undefined) add('tags', 'tags', dto.tags);
@@ -10164,6 +10209,7 @@ export class BillingService {
       hasPassword: Boolean(row.hasPassword),
       egressTier: row.egressTier ?? null,
       serverAccess: serverAccessFromRow(row),
+      accessHexo: hexoAccessFromRow(row),
       gamingEntitled: Boolean(row.gamingEntitled),
       expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
       tags: row.tags ?? [],
@@ -10618,8 +10664,8 @@ export class BillingService {
   }
 
   private assertResellerCustomerPayload(dto: CreateCustomerAccountDto | UpdateCustomerAccountDto): void {
-    // Server access is operator-only: the seller view shows it read-only.
-    if (dto.serverAccess !== undefined) {
+    // Server access AND the Hexo add-on are operator-only: the seller view shows them read-only.
+    if (dto.serverAccess !== undefined || dto.accessHexo !== undefined) {
       throw new ForbiddenException('Sellers cannot change server access; ask an Afrows admin');
     }
     if (normalizeNullableString(dto.paidNumber)) {

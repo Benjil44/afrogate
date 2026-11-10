@@ -14,6 +14,7 @@ interface Row {
   accessGermany: boolean;
   accessIran: boolean;
   accessUsa: boolean;
+  accessHexo: boolean;
 }
 type MembershipState = { lastSweepAt: number; removed: Set<string> };
 type Service = {
@@ -36,8 +37,12 @@ const ID = {
 };
 const email = (id: string) => `cc_${id}@afrows`;
 
-function row(id: string, access: Partial<Pick<Row, 'accessGermany' | 'accessIran' | 'accessUsa'>> = {}): Row {
-  return { id, entryUuid: id, accessGermany: true, accessIran: true, accessUsa: true, ...access };
+function row(
+  id: string,
+  access: Partial<Pick<Row, 'accessGermany' | 'accessIran' | 'accessUsa' | 'accessHexo'>> = {},
+): Row {
+  // Base servers default ON; Hexo defaults OFF (opt-in), mirroring migrations 0066/0067.
+  return { id, entryUuid: id, accessGermany: true, accessIran: true, accessUsa: true, accessHexo: false, ...access };
 }
 
 function fakeMgmt(label: string) {
@@ -252,6 +257,19 @@ describe('server access enforcement (XrayProvisioningService)', { skip: bundledS
     h.reset();
     await h.service.reconcile();
     assert.deepEqual(localRmuTags(h.xrayCalls, ID.noIran), []);
+  });
+
+  it('hexo data plane: a non-entitled customer is NEVER adu-d onto hexo-in-* and IS rmu-d; an entitled one is adu-d', async () => {
+    // hexo-in-de is a WS inbound (2-part tag, NO xtls-rprx-vision): same client shape as afrows-in.
+    const env = { AFROWS_XRAY_INBOUND_TAGS: 'afrows-in:8447,afrows-reality:8443,hexo-in-de:8460' };
+    const h = harness([row(ID.all), row(ID.noUsa, { accessHexo: true })], env);
+    await h.service.reconcile();
+    // access_hexo defaults OFF (ID.all): adu only onto the base inbounds, and rmu off hexo-in-de.
+    assert.deepEqual(localAduTags(h.xrayCalls, ID.all), ['afrows-in', 'afrows-reality']);
+    assert.deepEqual(localRmuTags(h.xrayCalls, ID.all), ['hexo-in-de']);
+    // access_hexo ON (ID.noUsa): adu onto hexo-in-de too, nothing rmu-d locally.
+    assert.deepEqual(localAduTags(h.xrayCalls, ID.noUsa), ['afrows-in', 'afrows-reality', 'hexo-in-de']);
+    assert.deepEqual(localRmuTags(h.xrayCalls, ID.noUsa), []);
   });
 
   it('removed is cleared on the full re-sync and the rmu is re-issued (remote and local)', async () => {

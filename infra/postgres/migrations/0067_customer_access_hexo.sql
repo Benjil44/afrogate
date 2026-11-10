@@ -1,0 +1,17 @@
+-- Per-customer Hexo entitlement (0.125.0).
+--
+-- Hexo is a DEDICATED, opt-in per-customer add-on: the customer enters the Afrows
+-- Iran server on a per-country REALITY inbound (hexo-in-<cc>) that chains out through
+-- the operator's Hexogate fronts, metered at the Afrows inbound exactly as today. It
+-- is INDEPENDENT of the three base entry servers (germany/iran/usa) and has its own
+-- on/off toggle, so it is NOT part of customer_server_access's "at least one server on"
+-- invariant.
+--
+-- Unlike access_germany/iran/usa (DEFAULT true), this is DEFAULT false: every existing
+-- customer stays OFF until an operator opts them in. OFF = the `Hexo <CC>` links are
+-- hidden everywhere (dashboard, Telegram, /sub/<token>, client app) AND the customer is
+-- removed from every hexo-in-<cc> inbound (XrayProvisioningService), so a hand-built link
+-- stops authenticating too — the gate is enforced at BOTH visibility and the data plane.
+--
+-- ADD COLUMN IF NOT EXISTS keeps this idempotent under the re-run-every-file migration runner.
+ALTER TABLE customer_accounts ADD COLUMN IF NOT EXISTS access_hexo boolean NOT NULL DEFAULT false;

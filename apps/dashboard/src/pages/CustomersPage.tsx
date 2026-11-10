@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminResellerAccountSummary, ClientEntryLinkKind, CustomerServerAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminResellerAccountSummary, CustomerEntryAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import { CUSTOMER_SERVER_KINDS } from '@afrows/shared';
 import {
   adjustCustomerGems,
@@ -32,7 +32,8 @@ import {
 import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import type { DataTableColumnDef } from '../components/primitives';
-import { ALL_SERVERS_ON, ServerAccessControls, ServerAccessSummary, effectiveServerAccess } from '../components/ServerAccessControls';
+import { ALL_SERVERS_ON, ServerAccessControls, ServerAccessSummary, effectiveEntryAccess } from '../components/ServerAccessControls';
+import type { EntryAccessKind } from '../components/ServerAccessControls';
 import { UsageChart } from '../components/UsageChart';
 import { MicrotiksPage } from './MicrotiksPage';
 import type { DashboardFormatters } from '../formatters';
@@ -303,8 +304,8 @@ export function CustomersPage({
   const [gamingEntitled, setGamingEntitled] = useState(false);
   // Create-panel draft of which servers the NEW customer may use (all on by
   // default). Existing rows toggle live via toggleServerAccess, not this draft.
-  const [serverAccessDraft, setServerAccessDraft] = useState<CustomerServerAccess>(ALL_SERVERS_ON);
-  const [configuredServers, setConfiguredServers] = useState<CustomerServerAccess | undefined>(undefined);
+  const [serverAccessDraft, setServerAccessDraft] = useState<CustomerEntryAccess>(ALL_SERVERS_ON);
+  const [configuredServers, setConfiguredServers] = useState<CustomerEntryAccess | undefined>(undefined);
   const [expiresAt, setExpiresAt] = useState(''); // YYYY-MM-DD for the date input ('' = never)
   const [tagsInput, setTagsInput] = useState(''); // comma-separated
   const [notes, setNotes] = useState('');
@@ -375,7 +376,15 @@ export function CustomersPage({
     try {
       const res = await fetchAdminCustomerAccounts(sessionToken, undefined, showArchived ? 'all' : 'active');
       setAccounts(res.accounts);
-      setConfiguredServers(res.configuredServers);
+      // Merge the 3-key configured base servers with the independent Hexo-configured flag
+      // into the 4-key object the access controls expect.
+      setConfiguredServers(
+        res.configuredServers
+          ? { ...res.configuredServers, hexo: res.hexoConfigured === true }
+          : res.hexoConfigured !== undefined
+            ? { germany: true, iran: true, usa: true, hexo: res.hexoConfigured === true }
+            : undefined,
+      );
       setLoadError(false);
     } catch {
       /* keep last rows; surface the failure instead of an empty list */
@@ -629,20 +638,29 @@ export function CustomersPage({
   // reload can't leave the optimistic state behind) and the backend's message is
   // shown — e.g. its 400 when a change would turn every server off. The UI
   // already disables the last remaining box, so that 400 is only a safety net.
-  const toggleServerAccess = async (a: AdminCustomerAccountSummary, kind: ClientEntryLinkKind) => {
-    const current = effectiveServerAccess(a.serverAccess);
-    const next: CustomerServerAccess = { ...current, [kind]: !current[kind] };
-    if (!CUSTOMER_SERVER_KINDS.some((k) => next[k])) return;
+  const toggleServerAccess = async (a: AdminCustomerAccountSummary, kind: EntryAccessKind) => {
+    const current = effectiveEntryAccess(a);
+    const nextOn = !current[kind];
+    // Base servers keep the "at least one on" guard; Hexo is independent (no guard).
+    if (kind !== 'hexo' && !nextOn && !CUSTOMER_SERVER_KINDS.some((k) => (k === kind ? false : current[k]))) return;
     setServersBusy((prev) => new Set(prev).add(a.id));
     setError(null);
-    setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, serverAccess: next } : row)));
+    // Optimistic: Hexo updates its own flag, base servers update the serverAccess object.
+    const optimistic =
+      kind === 'hexo'
+        ? { accessHexo: nextOn }
+        : { serverAccess: { ...effectiveEntryAccess(a), [kind]: nextOn } as CustomerEntryAccess };
+    setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, ...optimistic } : row)));
     try {
       // Only the box that changed: a full object from a stale row could revert
       // another admin's (or the Edit panel's) concurrent change.
-      await updateAdminCustomerAccount(sessionToken, a.id, { serverAccess: { [kind]: next[kind] } });
+      const patch = kind === 'hexo' ? { accessHexo: nextOn } : { serverAccess: { [kind]: nextOn } };
+      await updateAdminCustomerAccount(sessionToken, a.id, patch);
       await load();
     } catch (e) {
-      setAccounts((prev) => prev.map((row) => (row.id === a.id ? { ...row, serverAccess: a.serverAccess } : row)));
+      setAccounts((prev) =>
+        prev.map((row) => (row.id === a.id ? { ...row, serverAccess: a.serverAccess, accessHexo: a.accessHexo } : row)),
+      );
       setError(e instanceof Error ? e.message : String(e));
       await load();
     } finally {
@@ -783,7 +801,12 @@ export function CustomersPage({
         const created = await createAdminCustomerAccount(sessionToken, {
           ...payload,
           password: customPw.trim() || null,
-          ...(CUSTOMER_SERVER_KINDS.some((k) => !serverAccessDraft[k]) ? { serverAccess: serverAccessDraft } : {}),
+          // Base servers: only when one is off (missing = all on). Hexo is the independent
+          // opt-in add-on, sent on its own flag only when enabled (default off).
+          ...(CUSTOMER_SERVER_KINDS.some((k) => !serverAccessDraft[k])
+            ? { serverAccess: { germany: serverAccessDraft.germany, iran: serverAccessDraft.iran, usa: serverAccessDraft.usa } }
+            : {}),
+          ...(serverAccessDraft.hexo ? { accessHexo: true } : {}),
         });
         const protos = [protoVless ? 'vless' : '', protoWg ? 'wireguard' : ''].filter(Boolean);
         for (const p of protos) {
@@ -1260,7 +1283,7 @@ export function CustomersPage({
           ) : null}
           {isPhone ? null : (
             <DetailRow label={s.colServers}>
-              <ServerAccessSummary t={t} value={effectiveServerAccess(a.serverAccess)} />
+              <ServerAccessSummary t={t} value={effectiveEntryAccess(a)} />
             </DetailRow>
           )}
         </div>
@@ -1274,7 +1297,7 @@ export function CustomersPage({
               disabled={serversBusy.has(a.id)}
               onToggle={(kind) => void toggleServerAccess(a, kind)}
               t={t}
-              value={effectiveServerAccess(a.serverAccess)}
+              value={effectiveEntryAccess(a)}
             />
           </div>
         ) : null}
@@ -1469,7 +1492,7 @@ export function CustomersPage({
               disabled={serversBusy.has(a.id)}
               onToggle={(kind) => void toggleServerAccess(a, kind)}
               t={t}
-              value={effectiveServerAccess(a.serverAccess)}
+              value={effectiveEntryAccess(a)}
             />
           </div>
         </section>
@@ -1868,7 +1891,7 @@ export function CustomersPage({
           disabled={serversBusy.has(a.id)}
           onToggle={(kind) => void toggleServerAccess(a, kind)}
           t={t}
-          value={effectiveServerAccess(a.serverAccess)}
+          value={effectiveEntryAccess(a)}
         />
       ),
     },

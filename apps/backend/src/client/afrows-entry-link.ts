@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { ClientEntryLinkKind } from '@afrows/shared';
 
 /**
@@ -290,20 +291,139 @@ export function readAfrowsUsDirectEnv(
   return entries;
 }
 
+/**
+ * Per-country Hexogate entries (kind `hexo`): the customer connects to the Afrows Iran server
+ * over the SAME VLESS+WS+TLS path as the native "Afrows Shatel" entry (nginx :443 → WS on
+ * 127.0.0.1), differing only by a per-country ws path `/afrowsws-<cc>`. nginx routes that path
+ * to the internal `hexo-in-<cc>` inbound, which chains out through the operator's Hexogate
+ * front to the exit country; bytes meter on the Afrows inbound exactly as today. There is NO
+ * REALITY inbound on the live Afrows box, so each `Hexo <CC>` link reuses the WS entry's
+ * host/port(443)/sni/fp/host/ech verbatim (read from `readAfrowsInboundEnv`) and overrides
+ * ONLY the ws path — byte-identical to the `Afrows Shatel` entry except `path`.
+ *
+ * Gated by AFROWS_HEXO_ENTRY_ENABLED (default off). Parametric over AFROWS_HEXO_ENTRY_PORTS
+ * (`CC:port`, shared verbatim with afrows-hexo-egress-sync.py) — the per-country port is the
+ * INTERNAL hexo-in-<cc> listener the reconciler opens, NOT the customer-facing port (always
+ * 443), so the map is used here only to enumerate the countries. Optionally narrowed to
+ * AFROWS_HEXO_COUNTRIES. The operator's Hexogate UUID never appears: the link carries the
+ * customer's own entry uuid. Returns [] unless enabled AND the base WS inbound is configured.
+ *
+ * Finding 6 (no dead links): when `resolved` is given (a non-null set of live-listener CCs
+ * from the reconciler's state file), a country is emitted only if it is in that set, so a
+ * `Hexo <CC>` link never points at a path with no listener. `null`/omitted keeps the old
+ * behaviour (every configured country). An empty set yields no hexo entries.
+ */
+export function readAfrowsHexoEntriesEnv(
+  env: Record<string, string | undefined>,
+  resolved?: ReadonlySet<string> | null,
+): Array<{ cc: string; params: AfrowsInboundParams }> {
+  const enabled = ['1', 'true', 'yes', 'on'].includes(env.AFROWS_HEXO_ENTRY_ENABLED?.trim().toLowerCase() ?? '');
+  if (!enabled) return [];
+  // Hexo entries ARE the native WS entry with a per-country path; no WS inbound -> no hexo links.
+  const base = readAfrowsInboundEnv(env);
+  if (!base || base.mode !== 'ws') return [];
+  const only = new Set(
+    (env.AFROWS_HEXO_COUNTRIES ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
+  );
+  const out: Array<{ cc: string; params: AfrowsInboundParams }> = [];
+  for (const entry of (env.AFROWS_HEXO_ENTRY_PORTS ?? HEXO_DEFAULT_PORTS).split(',')) {
+    const [ccRaw, portRaw] = entry.split(':');
+    const cc = ccRaw?.trim().toUpperCase();
+    const port = Number(portRaw);
+    // port validated to keep parity with the reconciler's CC:port contract; the customer link
+    // stays on the base WS port (443) and differentiates the country by ws path, not by port.
+    if (!cc || !Number.isInteger(port) || port <= 0 || port > 65535) continue;
+    if (only.size && !only.has(cc)) continue;
+    if (resolved && !resolved.has(cc)) continue; // Finding 6: only countries with a live listener
+    out.push({ cc, params: { ...base, wsPath: `/afrowsws-${cc.toLowerCase()}` } });
+  }
+  return out;
+}
+
+/** Default CC:port map; must match afrows-hexo-egress-sync.py DEFAULT_PORTS. The port is the
+ *  internal hexo-in-<cc> listener (nginx maps /afrowsws-<cc> → 127.0.0.1:port); the customer
+ *  link itself always dials the base WS port (443). */
+export const HEXO_DEFAULT_PORTS = 'DE:8460,NL:8461,SE:8462,TR:8463,US:8464,AM:8465,RO:8466';
+
+/** Freshness window for the reconciler's resolved-countries state (Finding 6): 30 minutes.
+ *  The reconciler rewrites the file on every healthy tick, so a file older than this means
+ *  the reconciler is stuck/offline and we fall back to the configured country list. */
+export const HEXO_RESOLVED_MAX_AGE_MS = 30 * 60_000;
+
+/**
+ * Finding 6 — parse the reconciler's resolved-countries state. The file is written by
+ * afrows-hexo-egress-sync.py as `{"countries":["de",...],"updated_at":<unix seconds>}` (CCs
+ * lowercase, updated_at an integer unix-seconds timestamp). Returns the UPPERCASE CC set when
+ * the JSON is well-formed AND fresh (updated_at within HEXO_RESOLVED_MAX_AGE_MS of `nowMs`);
+ * returns `null` when absent/malformed/stale so the caller falls back to AFROWS_HEXO_COUNTRIES.
+ * An empty-but-fresh `countries` array returns an empty set (meaning: advertise no hexo links).
+ * Pure: the file read is `readHexoResolvedCountries`.
+ */
+export function parseHexoResolvedCountries(
+  fileText: string | null | undefined,
+  nowMs: number,
+  maxAgeMs: number = HEXO_RESOLVED_MAX_AGE_MS,
+): Set<string> | null {
+  if (!fileText) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fileText);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const { countries, updated_at: updatedAt } = parsed as { countries?: unknown; updated_at?: unknown };
+  if (!Array.isArray(countries) || typeof updatedAt !== 'number' || !Number.isFinite(updatedAt)) return null;
+  // Stale (or an absurd future clock, which we also treat as untrustworthy) -> fall back.
+  if (Math.abs(nowMs - updatedAt * 1000) > maxAgeMs) return null;
+  const ccs = countries
+    .filter((c): c is string => typeof c === 'string')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+  return new Set(ccs);
+}
+
+/**
+ * Finding 6 — read + parse the reconciler's resolved-countries state from
+ * AFROWS_HEXO_RESOLVED_PATH (default /var/lib/afrows/hexo-resolved.json). Returns the fresh
+ * UPPERCASE CC set, or `null` (absent/unreadable/malformed/stale) to fall back to the
+ * configured country list. Best-effort I/O: any read error is swallowed as "fall back".
+ */
+export function readHexoResolvedCountries(
+  env: Record<string, string | undefined>,
+  nowMs: number = Date.now(),
+): Set<string> | null {
+  const path = env.AFROWS_HEXO_RESOLVED_PATH?.trim() || '/var/lib/afrows/hexo-resolved.json';
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+  return parseHexoResolvedCountries(text, nowMs);
+}
+
 /** Remarks for each entry link: per-customer (dashboard/bot) or fixed ASCII (public subscription). */
 export type EntryLinkRemarks = Record<ClientEntryLinkKind, string>;
 
-/** Fixed, PII-free remarks for the publicly fetched subscription body. */
+/** Fixed, PII-free remarks for the publicly fetched subscription body. `hexo` is a base;
+ *  the per-country entry appends the country code ("Hexo DE"). */
 export const PUBLIC_ENTRY_LINK_REMARKS: EntryLinkRemarks = {
   germany: 'Afrows Germany',
   iran: 'Afrows Shatel',
   usa: 'USA AI Support 2x',
+  hexo: 'Hexo',
 };
 
-/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x". */
+/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x" / "<name> · Hexo <CC>". */
 export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks {
   const name = displayName.trim() || 'Afrows';
-  return { germany: `${name} · Germany`, iran: `${name} · Shatel`, usa: `${name} · USA AI Support 2x` };
+  return {
+    germany: `${name} · Germany`,
+    iran: `${name} · Shatel`,
+    usa: `${name} · USA AI Support 2x`,
+    hexo: `${name} · Hexo`,
+  };
 }
 
 /**
@@ -316,6 +436,7 @@ export function buildEntryLinkSet(
   env: Record<string, string | undefined>,
   entryUuid: string | null | undefined,
   remarks: EntryLinkRemarks,
+  hexoResolved?: ReadonlySet<string> | null,
 ): Array<{ kind: ClientEntryLinkKind; uri: string }> {
   if (!entryUuid) return [];
   const links: Array<{ kind: ClientEntryLinkKind; uri: string }> = [];
@@ -338,6 +459,12 @@ export function buildEntryLinkSet(
   }
   const usa = readAfrowsUsEntryEnv(env);
   if (usa) links.push({ kind: 'usa', uri: buildAfrowsEntryUri(usa, entryUuid, remarks.usa) });
+  // Per-country Hexogate entries (chained through the metered Afrows inbound), named
+  // "<base> <CC>" (e.g. "Hexo DE"). Parametric over the country/port table — no hand-written
+  // per-country blocks. Gated per-customer downstream by gateEntryLinks (foreign-exit access).
+  for (const { cc, params } of readAfrowsHexoEntriesEnv(env, hexoResolved)) {
+    links.push({ kind: 'hexo', uri: buildAfrowsEntryUri(params, entryUuid, `${remarks.hexo} ${cc}`) });
+  }
   return links;
 }
 

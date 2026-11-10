@@ -22,7 +22,7 @@ Two jobs, applied to the client egress engines (afrows-wg, afrows-xray):
 Idempotent: only rewrites + restarts a service when its routing/outbounds change.
 No secrets in this file. Run by the afrows-egress-mode-sync systemd timer.
 """
-import json, os, subprocess, sys, time
+import glob, json, os, subprocess, sys, time
 
 # ---- P2 egress state machine (inlined; kept in this file so the reconciler stays a
 # self-contained single script the operator deploys — no sibling-import dependency).
@@ -172,6 +172,17 @@ HEALTH_FILE = "/var/lib/afrows/egress-health.json"
 
 def log(*a):
     print("[egress-mode]", *a, flush=True)
+
+
+def prune_backups(path, keep=5):
+    """Keep only the newest `keep` <path>.bak-* files; delete older ones. These backups hold
+    tunnel/chain credentials (REALITY keys, chain UUIDs, SS passwords), so an unbounded pile
+    accumulating once/min is a liability."""
+    try:
+        for old in sorted(glob.glob(path + ".bak-*"))[:-keep]:
+            os.remove(old)
+    except Exception:
+        pass
 
 
 def file_env(key, default=""):
@@ -776,13 +787,33 @@ def client_inbound_tags(rules):
     return None
 
 
-def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", system_rules=None, full_tunnel_sources=None, full_tunnel_outbounds=None):
+def hexo_rules_of(rules):
+    """The hexo per-country routing rules (inboundTag hexo-in-* -> hexo-*), owned by the
+    companion afrows-hexo-egress-sync.py. This reconciler rebuilds routing.rules from
+    scratch every tick, so it must carry these forward verbatim or it would wipe them
+    within a minute (they are disjoint from the client catch-all and the egress ladder)."""
+    out = []
+    for r in rules:
+        tags = r.get("inboundTag") or []
+        if tags and all(isinstance(t, str) and t.startswith("hexo-in-") for t in tags):
+            out.append({"type": "field", "inboundTag": sorted(tags), "outboundTag": r.get("outboundTag")})
+    return out
+
+
+def desired_rules(mode, client_tags, gaming_sources, gaming_users, catch_outbound, fixed_rules=None, gaming_outbound="via-village", system_rules=None, full_tunnel_sources=None, full_tunnel_outbounds=None, preserved_rules=None):
     # All list members are SORTED so the desired config is deterministic: the DB
     # aggregates (string_agg) can return rows in any order run-to-run, and an
     # order-sensitive `rules == want` compare would otherwise see a phantom change
     # and restart the engine (~every 1-2 min), freezing every user. Dict equality
     # is order-independent in Python, so only these list orders matter.
     rules = [{"type": "field", "inboundTag": ["api"], "outboundTag": "api"}]
+    # Companion-owned hexo per-country rules (afrows-hexo-egress-sync.py), carried forward
+    # verbatim right after `api` and BEFORE the system rules. This is the EXACT position the
+    # companion's build_desired splices them (index 1, ahead of dns-internal/chain-probe): if
+    # the two reconcilers disagreed on which side of dns-internal the block sits, each would
+    # see the other's layout as "changed" and the pair would flap-restart afrows-xray forever.
+    for hr in (preserved_rules or []):
+        rules.append({"type": "field", "inboundTag": list(hr["inboundTag"]), "outboundTag": hr["outboundTag"]})
     # System inbounds (chain probe, xray internal DNS) are matched by their own
     # inboundTag, disjoint from the client tags, so placement cannot shadow clients.
     for sr in (system_rules or []):
@@ -916,7 +947,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
     for dr in dropped_rules:
         log("%s: dropping fixed rule -> unknown outbound '%s' (create it before routing to it)" % (svc, dr.get("outboundTag")))
 
-    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound, system_rules, full_tunnel_sources, full_tunnel_outbounds)
+    want = desired_rules(mode, tags, gaming_sources or [], gaming_users or [], catch_outbound, fixed_rules or [], gaming_outbound, system_rules, full_tunnel_sources, full_tunnel_outbounds, hexo_rules_of(rules))
     # Include the trusted DNS block in the change gate so an already-converged
     # config that predates the DNS fix still gets it written once, and so a config
     # that already has it does NOT get needlessly rewritten/restarted. Dict equality
@@ -949,6 +980,7 @@ def apply_target(cfg_path, svc, mode, gaming_sources, gaming_users, catch_outbou
         return False
     os.replace(cfg_path, cfg_path + ".bak-" + time.strftime("%Y%m%d-%H%M%S"))
     os.replace(tmp, cfg_path)
+    prune_backups(cfg_path)
     subprocess.run(["systemctl", "restart", svc], timeout=30)
     log("%s: routing -> %s mode, catch-all=%s, gaming-src=%d gaming-user=%d" % (
         svc, mode, catch_outbound, len(gaming_sources or []), len(gaming_users or [])))

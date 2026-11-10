@@ -978,6 +978,13 @@ export interface AdminCustomerAccountSummary {
    * server, so an old link stops working too. At least one stays on.
    */
   serverAccess?: CustomerServerAccess;
+  /**
+   * Dedicated, opt-in Hexo entitlement (0.125.0). Independent of `serverAccess`:
+   * true = the customer sees `Hexo <CC>` links and is provisioned onto the hexo-in-<cc>
+   * inbounds; false/absent = off (default). Carried alongside the three base flags so
+   * the three-key `serverAccess` shape and its "at least one on" invariant are unchanged.
+   */
+  accessHexo?: boolean;
   gamingEntitled?: boolean;
   expiresAt?: string | null;
   tags?: string[];
@@ -1351,16 +1358,34 @@ export interface AdminClientConfigEntryLinkResponse {
  * SVG QR (empty string when there is no link to encode).
  */
 /**
- * Which entry a VLESS link connects through. `germany` = de.afrows.com via
- * Cloudflare (fast, but frozen on Shatel). `iran` = the Afrows server entry
- * (afrows-in, works on Shatel); both exit in Germany. `usa` = the alternative
- * remote exit (us.afrows.com via Cloudflare), which exits in the USA.
+ * A gated entry SERVER. `germany` = de.afrows.com via Cloudflare (fast, but frozen on
+ * Shatel). `iran` = the Afrows server entry (afrows-in, works on Shatel); both exit in
+ * Germany. `usa` = the alternative remote exit (us.afrows.com via Cloudflare), exits in
+ * the USA. Each maps to one `customer_accounts.access_*` flag and one DB column.
  */
-export type ClientEntryLinkKind = 'germany' | 'iran' | 'usa';
+export type CustomerServerKind = 'germany' | 'iran' | 'usa';
 
-/** Which servers a customer may use; keys are the entry-link kinds. */
-export type CustomerServerAccess = Record<ClientEntryLinkKind, boolean>;
-export const CUSTOMER_SERVER_KINDS: readonly ClientEntryLinkKind[] = ['germany', 'iran', 'usa'];
+/**
+ * Which entry a VLESS link connects through: the three gated servers, plus `hexo` — the
+ * operator's own Hexogate exit capacity, reached by chaining through the metered Afrows
+ * Iran inbound (one kind for every exit country; the country is in the link remark).
+ * `hexo` is deliberately NOT a `CustomerServerKind`, so it does not fork the three-flag
+ * server-access shape; it is a dedicated opt-in add-on gated on its own `access_hexo` flag
+ * (see gateEntryLinks) and, on the data plane, on the hexo-in-<cc> inbounds.
+ */
+export type ClientEntryLinkKind = CustomerServerKind | 'hexo';
+
+/** Which servers a customer may use; keys are the three gated server kinds. */
+export type CustomerServerAccess = Record<CustomerServerKind, boolean>;
+export const CUSTOMER_SERVER_KINDS: readonly CustomerServerKind[] = ['germany', 'iran', 'usa'];
+
+/**
+ * Full per-customer entry access: the three base servers PLUS the independent, opt-in
+ * `hexo` add-on. `hexo` is deliberately NOT a `CustomerServerKind` (it adds no base-server
+ * column, does not fork the three-flag shape, and is excluded from the "at least one server
+ * on" invariant). It gates the per-country `Hexo <CC>` links on its own flag — default OFF.
+ */
+export type CustomerEntryAccess = CustomerServerAccess & { hexo: boolean };
 
 export interface ClientEntryLink {
   kind: ClientEntryLinkKind;
@@ -1571,6 +1596,8 @@ export interface CreateCustomerAccountRequest {
    * validation as an update: not all off, and at least one configured server.
    */
   serverAccess?: Partial<CustomerServerAccess>;
+  /** Dedicated Hexo add-on at creation (0.125.0); missing = off. Independent of serverAccess. */
+  accessHexo?: boolean;
 }
 
 export interface UpdateCustomerAccountRequest {
@@ -1597,6 +1624,12 @@ export interface UpdateCustomerAccountRequest {
    * server, so an old link stops working too. At least one stays on.
    */
   serverAccess?: Partial<CustomerServerAccess>;
+  /**
+   * Dedicated Hexo add-on toggle (0.125.0). Independent of serverAccess: setting it never
+   * participates in the "at least one server on" rule. Off removes the customer from every
+   * hexo-in-<cc> inbound and hides the `Hexo <CC>` links.
+   */
+  accessHexo?: boolean;
   gamingEntitled?: boolean;
   expiresAt?: string | null;
   tags?: string[];
@@ -4211,6 +4244,12 @@ export interface AdminCustomerAccountsResponse {
    * server-access checkboxes; the API rejects an access set with none of them.
    */
   configuredServers?: CustomerServerAccess;
+  /**
+   * Whether the Hexo add-on is configured on this deployment (0.125.0): at least one
+   * `Hexo <CC>` entry resolves from env. The UI shows/enables the Hexo toggle only when
+   * true; the API refuses to leave a customer entitled to an unconfigured-only add-on.
+   */
+  hexoConfigured?: boolean;
 }
 
 export interface AdminResellerAccountsResponse {

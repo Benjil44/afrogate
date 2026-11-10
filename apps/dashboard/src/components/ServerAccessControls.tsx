@@ -1,26 +1,49 @@
-import type { ClientEntryLinkKind, CustomerServerAccess } from '@afrows/shared';
+import type { CustomerEntryAccess, CustomerServerAccess, CustomerServerKind } from '@afrows/shared';
 import { CUSTOMER_SERVER_KINDS } from '@afrows/shared';
 import type { DashboardStrings } from '../i18n';
 
-/** A row with no `serverAccess` came from an older backend: every server is on. */
-export const ALL_SERVERS_ON: CustomerServerAccess = { germany: true, iran: true, usa: true };
+/** Entry-access toggles: the three base servers plus the independent, opt-in Hexo add-on. */
+export type EntryAccessKind = CustomerServerKind | 'hexo';
+export const ENTRY_ACCESS_KINDS: readonly EntryAccessKind[] = [...CUSTOMER_SERVER_KINDS, 'hexo'];
 
-export function effectiveServerAccess(value: CustomerServerAccess | null | undefined): CustomerServerAccess {
-  return value ? { ...ALL_SERVERS_ON, ...value } : ALL_SERVERS_ON;
+/** A row with no serverAccess came from an older backend: base servers on, Hexo off (opt-in). */
+export const ALL_SERVERS_ON: CustomerEntryAccess = { germany: true, iran: true, usa: true, hexo: false };
+
+/**
+ * Build the 4-key entry access for a customer row: the three base servers default ON (a
+ * missing serverAccess means an older backend = all on), and Hexo defaults OFF (opt-in, read
+ * from the independent `accessHexo` flag).
+ */
+export function effectiveEntryAccess(a: {
+  serverAccess?: CustomerServerAccess | null;
+  accessHexo?: boolean;
+}): CustomerEntryAccess {
+  return { germany: true, iran: true, usa: true, ...(a.serverAccess ?? {}), hexo: a.accessHexo === true };
 }
 
 /** `iran` is the Afrows entry that works on Shatel, so the UI calls it "Shatel". */
-export function serverKindLabel(kind: ClientEntryLinkKind, t: DashboardStrings): string {
+export function entryAccessKindLabel(kind: EntryAccessKind, t: DashboardStrings): string {
   const s = t.customersPage;
-  return kind === 'germany' ? s.serverGermany : kind === 'iran' ? s.serverIran : s.serverUsa;
+  switch (kind) {
+    case 'germany':
+      return s.serverGermany;
+    case 'iran':
+      return s.serverIran;
+    case 'usa':
+      return s.serverUsa;
+    case 'hexo':
+      return s.serverHexo;
+  }
 }
 
 /**
- * Three labelled checkboxes (Germany / Shatel / USA) that persist immediately
- * via `onToggle`. The only box still on is disabled, with a title saying why,
- * so the operator can never submit an all-off set (the backend rejects it with
- * a 400 anyway). Real `<input type="checkbox">`s inside their visible labels:
- * keyboard operable, 44px tall on phones, compact on `md+` when `dense`.
+ * Labelled checkboxes (Germany / Shatel / USA / Hexo) that persist immediately via
+ * `onToggle`. The three BASE servers obey the "at least one on" rule — the only base box
+ * still on + configured is locked, with a title saying why — so the operator can never
+ * submit an all-off set (the backend rejects it 400 anyway). HEXO is independent: it is an
+ * opt-in add-on with its own flag, never counts toward (or is locked by) that rule, and is
+ * only switchable when Hexo is configured on this deployment. Real `<input type="checkbox">`s
+ * inside their visible labels: keyboard operable, 44px tall on phones, compact on `md+` when `dense`.
  */
 export function ServerAccessControls({
   configured,
@@ -30,19 +53,21 @@ export function ServerAccessControls({
   t,
   value,
 }: {
-  /** Servers set up on this deployment (from the list response); missing = all. */
-  configured?: CustomerServerAccess;
+  /** Servers + Hexo set up on this deployment (from the list response); missing base = all. */
+  configured?: CustomerEntryAccess;
   /** Row-cell sizing: 44px tap target on phones, 32px rows on desktop. */
   dense?: boolean;
   disabled?: boolean;
-  onToggle: (kind: ClientEntryLinkKind) => void;
+  onToggle: (kind: EntryAccessKind) => void;
   t: DashboardStrings;
-  value: CustomerServerAccess;
+  value: CustomerEntryAccess;
 }) {
   const s = t.customersPage;
-  const isConfigured = (kind: ClientEntryLinkKind) => configured?.[kind] ?? true;
-  // The backend refuses a set with no WORKING server, so the last box that is
-  // both on and configured is locked (an unconfigured box can still be cleared).
+  // Base servers default to configured when unknown (old backend); Hexo defaults to NOT
+  // configured when unknown, so its toggle stays locked until the backend reports it.
+  const isConfigured = (kind: EntryAccessKind) => (kind === 'hexo' ? configured?.hexo ?? false : configured?.[kind] ?? true);
+  // The backend refuses a set with no WORKING base server, so the last base box that is both
+  // on and configured is locked. Hexo is excluded from this count (independent add-on).
   const onCount = CUSTOMER_SERVER_KINDS.filter((kind) => value[kind] && isConfigured(kind)).length;
 
   return (
@@ -52,10 +77,10 @@ export function ServerAccessControls({
       role="group"
       title={s.serverAccessHint}
     >
-      {CUSTOMER_SERVER_KINDS.map((kind) => {
+      {ENTRY_ACCESS_KINDS.map((kind) => {
         const on = value[kind];
-        const lastOn = on && isConfigured(kind) && onCount === 1;
-        const unavailable = !on && !isConfigured(kind); // can't switch on a server that isn't set up
+        const lastOn = kind !== 'hexo' && on && isConfigured(kind) && onCount === 1;
+        const unavailable = !on && !isConfigured(kind); // can't switch on a server/add-on that isn't set up
         const locked = disabled || lastOn || unavailable;
         return (
           <label
@@ -63,7 +88,17 @@ export function ServerAccessControls({
               dense ? 'min-h-11 md:min-h-8' : 'min-h-11'
             } ${locked ? 'cursor-not-allowed' : 'cursor-pointer hover:text-afro-ink'}`}
             key={kind}
-            title={lastOn ? s.serverLastOnHint : unavailable ? s.serverNotConfiguredHint : undefined}
+            title={
+              lastOn
+                ? s.serverLastOnHint
+                : unavailable
+                  ? kind === 'hexo'
+                    ? s.serverHexoNotConfiguredHint
+                    : s.serverNotConfiguredHint
+                  : kind === 'hexo'
+                    ? s.serverHexoHint
+                    : undefined
+            }
           >
             <input
               checked={on}
@@ -72,7 +107,7 @@ export function ServerAccessControls({
               onChange={() => onToggle(kind)}
               type="checkbox"
             />
-            {serverKindLabel(kind, t)}
+            {entryAccessKindLabel(kind, t)}
           </label>
         );
       })}
@@ -80,13 +115,15 @@ export function ServerAccessControls({
   );
 }
 
-/** Read-only variant (e.g. the reseller's users table): one pill per server,
- * struck through when that server is off for the customer. */
-export function ServerAccessSummary({ t, value }: { t: DashboardStrings; value: CustomerServerAccess }) {
+/** Read-only variant (e.g. the reseller's users table): one pill per base server, struck
+ * through when off; the Hexo pill is shown only when the add-on is on (it is off by default,
+ * so a pill for every customer would be noise). */
+export function ServerAccessSummary({ t, value }: { t: DashboardStrings; value: CustomerEntryAccess }) {
   const s = t.customersPage;
+  const kinds: EntryAccessKind[] = value.hexo ? [...CUSTOMER_SERVER_KINDS, 'hexo'] : [...CUSTOMER_SERVER_KINDS];
   return (
     <span aria-label={s.colServers} className="inline-flex flex-wrap items-center gap-1" role="group">
-      {CUSTOMER_SERVER_KINDS.map((kind) => {
+      {kinds.map((kind) => {
         const on = value[kind];
         return (
           <span
@@ -96,7 +133,7 @@ export function ServerAccessSummary({ t, value }: { t: DashboardStrings; value: 
             key={kind}
             title={on ? s.serverOn : s.serverOff}
           >
-            {serverKindLabel(kind, t)}
+            {entryAccessKindLabel(kind, t)}
           </span>
         );
       })}

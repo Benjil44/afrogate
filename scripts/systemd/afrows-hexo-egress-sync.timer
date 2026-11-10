@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh the Afrows -> Hexogate per-country outbounds periodically
+
+[Timer]
+# Hexogate rotates fronts every few minutes and shards per request, so refresh often.
+# Offset ~90s from afrows-egress-mode-sync (OnBootSec/OnUnitActiveSec=1min) to reduce
+# the chance both reconcilers rewrite afrows-xray/config.json in the same instant; both
+# are idempotent and converge, so an overlap only costs at most one extra restart.
+OnBootSec=90s
+OnUnitActiveSec=4min
+RandomizedDelaySec=20
+Persistent=true
+
+[Install]
+WantedBy=timers.target

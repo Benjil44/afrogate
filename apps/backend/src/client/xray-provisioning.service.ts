@@ -28,7 +28,7 @@ import {
   type ProvisioningEndpoint,
   type ProvisioningTarget,
 } from './xray-provisioning';
-import { serverAccessFromRow, serverAccessSelectSql, type ServerAccessColumns } from './customer-server-access';
+import { entryAccessFromRow, serverAccessFromRow, serverAccessSelectSql, type ServerAccessColumns } from './customer-server-access';
 import { parseConfigFlag } from '../common/config-flag';
 
 const execFileAsync = promisify(execFile);
@@ -223,10 +223,11 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
       const deniedTargets = new Map<string, ProvisioningEndpoint[]>();
       let added = 0;
       for (const row of result.rows) {
-        // Per-customer server access: only the inbounds the account may use. afrows-in
-        // (Iran/Shatel) follows access_iran, the pushed Germany endpoint access_germany;
-        // every other local inbound (afrows-reality, ...) is unchanged.
-        const { allowed, denied } = partitionEndpointsByAccess(endpoints, serverAccessFromRow(row), iranTags);
+        // Per-customer entry access: only the inbounds the account may use. afrows-in
+        // (Iran/Shatel) follows access_iran, the pushed Germany endpoint access_germany,
+        // the hexo-in-<cc> inbounds access_hexo (opt-in: a non-entitled customer is never
+        // adu'd there and is rmu'd from them); every other local inbound is unchanged.
+        const { allowed, denied } = partitionEndpointsByAccess(endpoints, entryAccessFromRow(row), iranTags);
         if (denied.length) deniedTargets.set(row.id, denied);
         // adu is idempotent enough for our scale: re-adding an existing user is a no-op/ignored.
         if (allowed.length && (await this.addUser(row.entryUuid, provisioningEmail(row.id), allowed))) added += 1;

@@ -759,6 +759,7 @@ export class BillingController {
     return {
       accounts: await this.billingService.listResellerCustomerAccountsForAdmin(id),
       configuredServers: this.billingService.getConfiguredServers(),
+      hexoConfigured: this.billingService.isHexoConfigured(),
     };
   }
 
@@ -840,6 +841,7 @@ export class BillingController {
         limit: this.billingService.normalizeLimit(limit, 100, 500),
       }),
       configuredServers: this.billingService.getConfiguredServers(),
+      hexoConfigured: this.billingService.isHexoConfigured(),
     };
   }
 

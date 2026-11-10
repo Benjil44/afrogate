@@ -4,7 +4,7 @@ import { Activity, Bot, Copy, CreditCard, Eye, Gauge, Gift, Inbox, Pencil, Plus,
 import type { AdminBillingSettingsSummary, AdminClientConfigExportEntry, AdminCustomerAccountSummary, AdminPaymentMethodSummary, AdminPaymentOrderSummary, AdminPaymentProviderAdapterSummary, AdminResellerAccountSummary, AdminResellerGbChargeResponse, AdminResellerPackageSaleResponse, AdminResellerWalletLedgerEntry, AdminRewardedAdSettingsSummary, AdminSessionResponse, AdminTelegramBotSettingsSummary, AdminVolumePackageSummary, CustomerAccountStatus, CustomerQuotaScope, UpdateVolumePackageRequest, VolumePackageStatus } from '@afrows/shared';
 import { createAdminCustomerAccount, createAdminResellerCustomerAccount, createAdminResellerPackageSale, createAdminVolumePackage, exportResellerCustomerClientConfigs, fetchAdminBillingCatalog, fetchAdminCustomerAccounts, fetchAdminPaymentOrders, fetchAdminResellerWorkspace, fetchAdminRewardedAdSettings, fetchAdminTelegramBotSettings, resetResellerCustomerAccountPassword, rotateResellerClientConfigSubscriptionToken, sendResellerCustomerConfigTelegram, updateAdminCustomerAccount, updateAdminResellerCustomerAccount, updateAdminRewardedAdSettings, updateAdminVolumePackage } from '../api/admin';
 import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
-import { ServerAccessSummary, effectiveServerAccess } from '../components/ServerAccessControls';
+import { ServerAccessSummary, effectiveEntryAccess } from '../components/ServerAccessControls';
 import { EChart } from '../components/EChart';
 import { GbPricePanel } from './GbPricePanel';
 import { ResellerGbHero, ResellerGbSellPanel, ResellerTelegramLinkPanel, ResellerWalletTopupPanel } from './ResellerGbPanels';
@@ -854,7 +854,7 @@ function ResellerUsersTable({
       key: 'servers',
       header: s.colServers,
       className: fitCol,
-      render: (row) => <ServerAccessSummary t={t} value={effectiveServerAccess(row.account.serverAccess)} />,
+      render: (row) => <ServerAccessSummary t={t} value={effectiveEntryAccess(row.account)} />,
     },
     {
       key: 'soldVolume',
@@ -942,7 +942,7 @@ function ResellerUsersTable({
           {a.expiresAt ? <DetailRow label={s.colExpiry}>{format.time(new Date(a.expiresAt), false)}</DetailRow> : null}
           {a.tags && a.tags.length > 0 ? <DetailRow label={s.colTags}>{a.tags.join(', ')}</DetailRow> : null}
           <DetailRow label={s.colServers}>
-            <ServerAccessSummary t={t} value={effectiveServerAccess(a.serverAccess)} />
+            <ServerAccessSummary t={t} value={effectiveEntryAccess(a)} />
           </DetailRow>
           <DetailRow label={t.reseller.soldVolume}>{format.bytes(row.soldBytes)}</DetailRow>
           <DetailRow label={t.reseller.orders}>{format.integer(row.orderCount)}</DetailRow>

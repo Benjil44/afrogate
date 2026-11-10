@@ -74,6 +74,7 @@ export type TelegramCopyId =
   | 'cfg.link.germany'
   | 'cfg.link.shatel'
   | 'cfg.link.usa'
+  | 'cfg.link.hexo'
   | 'cfg.subscription'
   | 'cfg.pushTitle'
   | 'cfg.privateNote'
@@ -324,6 +325,11 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'cfg.link.usa': {
     en: '🇺🇸 <b>USA AI Support</b> — for AI tools (ChatGPT, Claude, Gemini), exits in the USA, usage counts 2x:',
     fa: '🇺🇸 <b>آمریکا · پشتیبانی هوش مصنوعی</b> — برای ابزارهای هوش مصنوعی (ChatGPT، Claude، Gemini)، خروج از آمریکا، مصرف ۲ برابر حساب می‌شود:',
+  },
+  // Per-country Hexogate entries (the country code is in the vless:// remark, e.g. "Hexo DE").
+  'cfg.link.hexo': {
+    en: '🌍 <b>Hexo</b> — extra exit countries; pick the one that suits you:',
+    fa: '🌍 <b>Hexo</b> — کشورهای خروج بیشتر؛ هرکدام را که می‌خواهید انتخاب کنید:',
   },
   'cfg.subscription': {
     en: '🔄 <b>Subscription link</b> — add this URL as a subscription in your app to get updates:',
@@ -742,6 +748,7 @@ const LINK_LABEL: Record<ClientEntryLinkKind, TelegramCopyId> = {
   germany: 'cfg.link.germany',
   iran: 'cfg.link.shatel',
   usa: 'cfg.link.usa',
+  hexo: 'cfg.link.hexo',
 };
 
 /** Telegram rejects messages over 4096 chars; keep a margin for headers/footers. */

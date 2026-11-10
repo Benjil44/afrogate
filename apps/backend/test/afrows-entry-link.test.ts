@@ -4,12 +4,25 @@ import {
   buildAfrowsEntryUri,
   buildEntryLinkSet,
   customerEntryLinkRemarks,
+  HEXO_RESOLVED_MAX_AGE_MS,
+  parseHexoResolvedCountries,
   PUBLIC_ENTRY_LINK_REMARKS,
+  readAfrowsHexoEntriesEnv,
   readAfrowsUsDirectEnv,
   readAfrowsDeEntryEnv,
   readAfrowsInboundEnv,
   readAfrowsRealityEnv,
 } from '../src/client/afrows-entry-link.ts';
+
+// Hexo entries ARE the native Afrows Shatel WS entry with a per-country ws path, so they
+// resolve from the base WS inbound env (no REALITY params; the live box has no REALITY inbound).
+const HEXO_ENV: Record<string, string> = {
+  AFROWS_HEXO_ENTRY_ENABLED: 'true',
+  AFROWS_INBOUND_MODE: 'ws',
+  AFROWS_INBOUND_HOST: '185.252.30.123',
+  AFROWS_INBOUND_SNI: 'app.afrows.com',
+  AFROWS_INBOUND_WS_PATH: '/afrowsws',
+};
 
 test('builds a ws+tls entry uri', () => {
   const uri = buildAfrowsEntryUri(
@@ -193,7 +206,7 @@ test('buildEntryLinkSet: each link only when its env is configured; none without
 });
 
 test('customerEntryLinkRemarks falls back to Afrows for a blank name', () => {
-  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support 2x' });
+  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support 2x', hexo: 'Afrows · Hexo' });
 });
 
 test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right after the primary', () => {
@@ -268,4 +281,134 @@ test('direct USA links: off unless enabled; each transport needs its own setting
   const { AFROWS_US_DIRECT_HTTP_ENCRYPTION: _e, ...realityOnly } = US_DIRECT_ENV;
   assert.deepEqual(readAfrowsUsDirectEnv(realityOnly).map((entry) => entry.slot), [1]);
   assert.deepEqual(readAfrowsUsDirectEnv({ ...US_DIRECT_ENV, AFROWS_US_DIRECT_PBK: '' }).map((entry) => entry.slot), [3, 2]);
+});
+
+test('hexo entries: off unless enabled; need the base WS inbound', () => {
+  assert.deepEqual(readAfrowsHexoEntriesEnv({}), []);
+  assert.deepEqual(readAfrowsHexoEntriesEnv({ ...HEXO_ENV, AFROWS_HEXO_ENTRY_ENABLED: 'false' }), []);
+  // enabled but no WS inbound configured -> no hexo links.
+  const { AFROWS_INBOUND_HOST: _h, ...noBase } = HEXO_ENV;
+  assert.deepEqual(readAfrowsHexoEntriesEnv(noBase), []);
+  // enabled but the base inbound is REALITY (no WS entry) -> none (the live box has no REALITY inbound).
+  assert.deepEqual(
+    readAfrowsHexoEntriesEnv({
+      AFROWS_HEXO_ENTRY_ENABLED: 'true',
+      AFROWS_INBOUND_MODE: 'reality',
+      AFROWS_INBOUND_HOST: '1.2.3.4',
+      AFROWS_INBOUND_REALITY_SNI: 'x.com',
+      AFROWS_INBOUND_REALITY_PBK: 'PBK',
+      AFROWS_INBOUND_REALITY_SID: 'SID',
+    }),
+    [],
+  );
+});
+
+test('hexo entries: one WS+TLS entry per country, base WS identity reused (port 443, per-country path)', () => {
+  const entries = readAfrowsHexoEntriesEnv(HEXO_ENV);
+  // default port map order: DE,NL,SE,TR,US,AM,RO
+  assert.deepEqual(entries.map((e) => e.cc), ['DE', 'NL', 'SE', 'TR', 'US', 'AM', 'RO']);
+  const de = entries[0];
+  assert.equal(de.params.mode, 'ws');
+  assert.equal(de.params.host, '185.252.30.123');
+  assert.equal(de.params.port, 443); // customer link stays on the base WS port, NOT the per-country port
+  assert.equal(de.params.serverName, 'app.afrows.com');
+  assert.equal(de.params.wsHost, 'app.afrows.com');
+  assert.equal(de.params.wsPath, '/afrowsws-de');
+  assert.equal(entries[1].params.wsPath, '/afrowsws-nl');
+});
+
+test('hexo entries: AFROWS_HEXO_COUNTRIES narrows; AFROWS_HEXO_ENTRY_PORTS only enumerates (link stays :443)', () => {
+  const entries = readAfrowsHexoEntriesEnv({
+    ...HEXO_ENV,
+    AFROWS_HEXO_COUNTRIES: 'DE,US',
+    AFROWS_HEXO_ENTRY_PORTS: 'DE:9001,NL:9002,US:9003',
+  });
+  assert.deepEqual(
+    entries.map((e) => [e.cc, e.params.wsPath, e.params.port]),
+    [['DE', '/afrowsws-de', 443], ['US', '/afrowsws-us', 443]],
+  );
+});
+
+test('buildEntryLinkSet: hexo entries appear last, kind hexo, remark "Hexo <CC>", ws+tls identical to Shatel except path', () => {
+  const env = { ...HEXO_ENV, AFROWS_HEXO_COUNTRIES: 'DE,NL' };
+  const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
+  // the base WS inbound now also yields the native "Afrows Shatel" (iran) entry, before hexo.
+  assert.deepEqual(links.map((l) => l.kind), ['iran', 'hexo', 'hexo']);
+  const hexo = links.filter((l) => l.kind === 'hexo');
+  assert.ok(hexo[0].uri.endsWith('#Hexo%20DE'));
+  assert.ok(hexo[1].uri.endsWith('#Hexo%20NL'));
+  assert.match(hexo[0].uri, /security=tls/);
+  assert.match(hexo[0].uri, /type=ws/);
+  assert.match(hexo[0].uri, /path=%2Fafrowsws-de/);
+  assert.match(hexo[0].uri, /:443\?/);
+  // no uuid leakage of a Hexogate credential: the link carries the customer's own uuid
+  assert.ok(hexo[0].uri.startsWith(`vless://${UUID}@185.252.30.123:443`));
+  // byte-identical to the native "Afrows Shatel" (iran) entry EXCEPT the ws path.
+  const q = (uri: string) => new URL(uri.replace('vless://', 'http://')).searchParams;
+  const iranQ = q(links[0].uri);
+  const hexoQ = q(hexo[0].uri);
+  assert.equal(iranQ.get('path'), '/afrowsws');
+  assert.equal(hexoQ.get('path'), '/afrowsws-de');
+  for (const key of ['security', 'type', 'sni', 'host', 'fp', 'encryption']) {
+    assert.equal(hexoQ.get(key), iranQ.get(key), `param ${key} must match the Shatel entry`);
+  }
+});
+
+// --- Finding 6: resolved-countries state (no dead links) ----------------------
+const NOW = 1_800_000_000_000; // fixed "now" in ms
+
+test('parseHexoResolvedCountries: fresh file -> UPPERCASE CC set (reconciler writes lowercase + unix seconds)', () => {
+  const fresh = JSON.stringify({ countries: ['de', 'nl'], updated_at: Math.floor(NOW / 1000) });
+  const set = parseHexoResolvedCountries(fresh, NOW);
+  assert.deepEqual(set && [...set].sort(), ['DE', 'NL']);
+});
+
+test('parseHexoResolvedCountries: absent/malformed/non-object/bad-shape -> null (fall back)', () => {
+  assert.equal(parseHexoResolvedCountries(null, NOW), null);
+  assert.equal(parseHexoResolvedCountries('', NOW), null);
+  assert.equal(parseHexoResolvedCountries('not json', NOW), null);
+  assert.equal(parseHexoResolvedCountries('123', NOW), null);
+  assert.equal(parseHexoResolvedCountries(JSON.stringify({ countries: 'de', updated_at: NOW / 1000 }), NOW), null);
+  assert.equal(parseHexoResolvedCountries(JSON.stringify({ countries: ['de'] }), NOW), null); // no updated_at
+});
+
+test('parseHexoResolvedCountries: stale beyond 30 min (and absurd future clock) -> null (fall back)', () => {
+  const staleSecs = Math.floor((NOW - HEXO_RESOLVED_MAX_AGE_MS - 1000) / 1000);
+  assert.equal(parseHexoResolvedCountries(JSON.stringify({ countries: ['de'], updated_at: staleSecs }), NOW), null);
+  const futureSecs = Math.floor((NOW + HEXO_RESOLVED_MAX_AGE_MS + 1000) / 1000);
+  assert.equal(parseHexoResolvedCountries(JSON.stringify({ countries: ['de'], updated_at: futureSecs }), NOW), null);
+  // Just-inside-the-window is accepted.
+  const edgeSecs = Math.floor((NOW - HEXO_RESOLVED_MAX_AGE_MS + 1000) / 1000);
+  assert.deepEqual([...(parseHexoResolvedCountries(JSON.stringify({ countries: ['de'], updated_at: edgeSecs }), NOW) ?? [])], ['DE']);
+});
+
+test('parseHexoResolvedCountries: fresh but EMPTY countries -> empty set (advertise no hexo), distinct from null', () => {
+  const set = parseHexoResolvedCountries(JSON.stringify({ countries: [], updated_at: Math.floor(NOW / 1000) }), NOW);
+  assert.ok(set instanceof Set);
+  assert.equal(set?.size, 0);
+});
+
+test('readAfrowsHexoEntriesEnv: resolved set filters to live countries; null = all configured; empty = none', () => {
+  // configured = DE,NL,SE,TR,US,AM,RO (default ports); resolved to just DE + US.
+  assert.deepEqual(readAfrowsHexoEntriesEnv(HEXO_ENV, new Set(['DE', 'US'])).map((e) => e.cc), ['DE', 'US']);
+  // resolved AND the AFROWS_HEXO_COUNTRIES narrowing both apply (intersection).
+  assert.deepEqual(
+    readAfrowsHexoEntriesEnv({ ...HEXO_ENV, AFROWS_HEXO_COUNTRIES: 'DE,NL' }, new Set(['NL', 'US'])).map((e) => e.cc),
+    ['NL'],
+  );
+  // null -> fall back to every configured country (unchanged behaviour).
+  assert.equal(readAfrowsHexoEntriesEnv(HEXO_ENV, null).length, 7);
+  // empty resolved set -> no entries (the reconciler says zero listeners are live).
+  assert.deepEqual(readAfrowsHexoEntriesEnv(HEXO_ENV, new Set()), []);
+});
+
+test('buildEntryLinkSet: hexoResolved filters the emitted Hexo links to live countries only', () => {
+  const env = { ...HEXO_ENV, AFROWS_HEXO_COUNTRIES: 'DE,NL,SE' };
+  const hexoRemarks = (resolved?: ReadonlySet<string> | null) =>
+    buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS, resolved)
+      .filter((l) => l.kind === 'hexo')
+      .map((l) => l.uri.split('#')[1]);
+  assert.deepEqual(hexoRemarks(new Set(['DE'])), ['Hexo%20DE']);
+  assert.deepEqual(hexoRemarks(null), ['Hexo%20DE', 'Hexo%20NL', 'Hexo%20SE']);
+  assert.deepEqual(hexoRemarks(new Set()), []);
 });

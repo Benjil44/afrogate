@@ -176,6 +176,11 @@ export class CreateCustomerAccountDto {
   @Type(() => CustomerServerAccessDto)
   serverAccess?: CustomerServerAccessDto;
 
+  /** Dedicated Hexo add-on at creation (missing = off). Independent of serverAccess. */
+  @IsOptional()
+  @IsBoolean()
+  accessHexo?: boolean;
+
   @IsOptional()
   @IsBoolean()
   gamingEntitled?: boolean;
@@ -275,6 +280,11 @@ export class UpdateCustomerAccountDto {
   @ValidateNested()
   @Type(() => CustomerServerAccessDto)
   serverAccess?: CustomerServerAccessDto;
+
+  /** Dedicated Hexo add-on toggle; absent = unchanged. Independent of serverAccess. */
+  @IsOptional()
+  @IsBoolean()
+  accessHexo?: boolean;
 
   @IsOptional()
   @IsBoolean()

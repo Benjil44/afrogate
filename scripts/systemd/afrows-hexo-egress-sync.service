@@ -1,0 +1,11 @@
+[Unit]
+Description=Afrows -> Hexogate per-country egress reconciler (refresh hexo-<cc> outbounds from the rotating subscription)
+After=network-online.target afrows-xray.service afrows-egress-mode-sync.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/afrows-hexo-egress-sync.py
+# One HTTPS fetch + a single `xray -test`; the Hexogate .ir fronts answer fast (~170-300ms).
+# Generous bound so a slow sub fetch cannot leave a half-written candidate.
+TimeoutStartSec=120

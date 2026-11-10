@@ -602,6 +602,10 @@ export const customerAccounts = pgTable(
     accessGermany: boolean('access_germany').notNull().default(true),
     accessIran: boolean('access_iran').notNull().default(true),
     accessUsa: boolean('access_usa').notNull().default(true),
+    // Dedicated, opt-in Hexo add-on (migration 0067). DEFAULT false (the three above
+    // default true): OFF hides every `Hexo <CC>` link AND removes the customer from
+    // every hexo-in-<cc> inbound. Independent of the three base servers.
+    accessHexo: boolean('access_hexo').notNull().default(false),
     // Auth credentials for mobile-app account login (migration 0030). password_hash is a
     // hash, never plaintext; login_email is unique case-insensitively (see loginEmailIdx).
     loginEmail: text('login_email'),

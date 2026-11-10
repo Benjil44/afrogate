@@ -1,0 +1,5 @@
+# Allow the unprivileged backend (user: afrows) to trigger ONE command: an immediate
+# run of the hexo-egress reconciler (e.g. right after an operator changes the country
+# list, so the new per-country outbounds/inbounds apply without waiting for the timer).
+# Install as /etc/sudoers.d/afrows-hexo-egress with mode 0440 (validate with `visudo -cf`).
+afrows ALL=(root) NOPASSWD: /usr/bin/systemctl start afrows-hexo-egress-sync.service
