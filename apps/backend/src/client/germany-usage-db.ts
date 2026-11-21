@@ -18,10 +18,11 @@ import type { DeUserCumulative } from './germany-usage';
  * identifiers/literals and must never come from input.
  */
 export interface RemoteUsageSite {
-  source: 'germany-xray' | 'usa-xray';
-  createdBy: 'germany-usage-meter' | 'usa-usage-meter';
-  baselineTable: 'client_usage_de_baseline' | 'client_usage_us_baseline';
-  /** Billing multiplier for this site's bytes (default 1). The USA entry is billed 2x (2026-10-21 pricing). */
+  source: 'germany-xray' | 'usa-xray' | 'de-fast-xray';
+  createdBy: 'germany-usage-meter' | 'usa-usage-meter' | 'de-fast-usage-meter';
+  baselineTable: 'client_usage_de_baseline' | 'client_usage_us_baseline' | 'client_usage_def_baseline';
+  /** Billing multiplier for this site's bytes (default 1). The USA and the direct "Germany Fast
+   *  x2" entries are billed 2x (2026-10-21 pricing). */
   multiplier?: number;
 }
 
@@ -35,6 +36,19 @@ export const US_USAGE_SITE: RemoteUsageSite = {
   source: 'usa-xray',
   createdBy: 'usa-usage-meter',
   baselineTable: 'client_usage_us_baseline',
+};
+
+/**
+ * The direct "Germany Fast x2" REALITY exit. A DISTINCT ledger source + baseline table from the
+ * Cloudflare Germany meter (`germany-xray` / client_usage_de_baseline), so the two Germany meters
+ * never share a high-water-mark and the (source, idempotency_key) unique index keeps their
+ * identical "<clientConfigId>:<cumulative>" keys apart. Reusing germany-xray here would corrupt
+ * both baselines. Metered 2x by default (AFROWS_DEF_USAGE_MULTIPLIER, 1..10).
+ */
+export const DEF_USAGE_SITE: RemoteUsageSite = {
+  source: 'de-fast-xray',
+  createdBy: 'de-fast-usage-meter',
+  baselineTable: 'client_usage_def_baseline',
 };
 
 export interface DeBaselineRow {

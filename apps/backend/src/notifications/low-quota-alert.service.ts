@@ -71,6 +71,12 @@ export class LowQuotaAlertService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    // C6 (0.128.0): the low-data / data-finished pushes are RETIRED in favour of the
+    // renewal ladder (RenewalLadderNoticeService), which owns the 80/95/100% cycle
+    // rungs for every Telegram-linked account (the only accounts this service served).
+    // The pure decision module (./low-quota-alert.ts) stays for its shared helpers.
+    // Set AFROWS_LOW_QUOTA_ALERT_LEGACY=1 to re-enable the legacy absolute-threshold push.
+    if ((this.config.get<string>('AFROWS_LOW_QUOTA_ALERT_LEGACY') ?? '').trim().toLowerCase() !== '1') return;
     if (!process.env.DATABASE_URL) return;
     if (!resolveLowQuotaEnabled(this.config.get<string>('AFROWS_LOW_QUOTA_ALERT_ENABLED'))) return;
     this.timer = setInterval(() => void this.tick(), LOW_QUOTA_CHECK_INTERVAL_MS);

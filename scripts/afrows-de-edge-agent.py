@@ -15,11 +15,13 @@ Every tick it:
      (`POST /api/edge/de/usage`) so volume billing counts the Germany path.
 
 Config comes from /etc/afrows/afrows-de-agent.env (KEY=VALUE):
-  AFROWS_EDGE_URL      e.g. https://edge.afrows.com   (Cloudflare-fronted Ireland)
+  AFROWS_EDGE_URL      e.g. https://app.afrows.com    (Cloudflare-fronted backend)
   AFROWS_EDGE_TOKEN    shared bearer token (same value set on Ireland)
   AFROWS_DE_XRAY_API   default 127.0.0.1:10085
   AFROWS_DE_WS_TAG     default afrows-de-ws
   AFROWS_DE_WS_PORT    default 8090
+  AFROWS_DE_XHTTP_TAG  default afrows-de-xhttp  (additive mirror inbound)
+  AFROWS_DE_XHTTP_PORT default 8091
   AFROWS_DE_CONFIG     default /usr/local/etc/afrows-xray-de/config.json
   AFROWS_DE_XRAY_BIN   default /usr/local/bin/xray
   AFROWS_DE_INTERVAL   seconds between ticks, default 60
@@ -55,7 +57,8 @@ def load_env(path):
         pass
     # environment overrides the file
     for k in ("AFROWS_EDGE_URL", "AFROWS_EDGE_TOKEN", "AFROWS_DE_XRAY_API", "AFROWS_DE_WS_TAG",
-              "AFROWS_DE_WS_PORT", "AFROWS_DE_CONFIG", "AFROWS_DE_XRAY_BIN", "AFROWS_DE_INTERVAL"):
+              "AFROWS_DE_WS_PORT", "AFROWS_DE_XHTTP_TAG", "AFROWS_DE_XHTTP_PORT",
+              "AFROWS_DE_CONFIG", "AFROWS_DE_XRAY_BIN", "AFROWS_DE_INTERVAL"):
         if os.environ.get(k):
             env[k] = os.environ[k]
     return env
@@ -70,6 +73,12 @@ class Agent:
         self.port = int(env.get("AFROWS_DE_WS_PORT", "8090"))
         self.cfg_path = env.get("AFROWS_DE_CONFIG", "/usr/local/etc/afrows-xray-de/config.json")
         self.bin = env.get("AFROWS_DE_XRAY_BIN", "/usr/local/bin/xray")
+        self.xhttp_tag = env.get("AFROWS_DE_XHTTP_TAG", "afrows-de-xhttp")
+        self.xhttp_port = int(env.get("AFROWS_DE_XHTTP_PORT", "8091"))
+        # Inbounds this agent manages. It only ever touches cc_<id>@afrows customer
+        # users; any other client (e.g. afrows-chain@afrows, the Iran->DE relay) is
+        # preserved. Mirrors to the xhttp inbound too, like afrows-de-mgmt-cmd does.
+        self.managed = [(self.tag, self.port), (self.xhttp_tag, self.xhttp_port)]
 
     # ---- HTTP (over Cloudflare) ----
     def _req(self, path, method="GET", body=None):
@@ -78,6 +87,8 @@ class Agent:
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Authorization", "Bearer " + self.token)
         req.add_header("Content-Type", "application/json")
+        # Cloudflare (fronting the backend) 403s the default Python-urllib UA; send a real one.
+        req.add_header("User-Agent", "afrows-de-agent/1.0")
         ctx = ssl.create_default_context()
         with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
             raw = resp.read().decode() or "{}"
@@ -87,16 +98,16 @@ class Agent:
     def _xray(self, args):
         return subprocess.run([self.bin] + args, capture_output=True, text=True, timeout=20)
 
-    def adu(self, uuid, email):
-        cfg = {"inbounds": [{"tag": self.tag, "port": self.port, "protocol": "vless",
+    def adu(self, uuid, email, tag, port):
+        cfg = {"inbounds": [{"tag": tag, "port": port, "protocol": "vless",
                              "settings": {"decryption": "none",
                                           "clients": [{"id": uuid, "email": email, "level": 0}]}}]}
         p = subprocess.run([self.bin, "api", "adu", "--server=" + self.api, "-"],
                            input=json.dumps(cfg), capture_output=True, text=True, timeout=20)
         return p.returncode == 0
 
-    def rmu(self, email):
-        p = self._xray(["api", "rmu", "--server=" + self.api, "-tag=" + self.tag, email])
+    def rmu(self, email, tag):
+        p = self._xray(["api", "rmu", "--server=" + self.api, "-tag=" + tag, email])
         return p.returncode == 0
 
     # ---- config.json mirror (persistence across restart) ----
@@ -104,9 +115,9 @@ class Agent:
         with open(self.cfg_path) as fh:
             return json.load(fh)
 
-    def _ws_inbound(self, cfg):
+    def _inbound(self, cfg, tag):
         for inb in cfg.get("inbounds", []):
-            if inb.get("tag") == self.tag:
+            if inb.get("tag") == tag:
                 return inb
         return None
 
@@ -126,26 +137,56 @@ class Agent:
             email = (c.get("email") or "").strip()
             if UUID_RE.match(uuid) and email:
                 desired[email] = uuid
+        # SAFETY: never let a degenerate pull wipe every customer. A 200 with zero
+        # valid clients (mass-suspend, backend bug, empty/garbled body) would rmu
+        # every cc_ user on both inbounds and rewrite config.json to just the
+        # preserved set. A genuine "last customer gone" is rare and self-heals on
+        # the next real pull; a false empty is catastrophic — refuse to act on zero.
+        if not desired:
+            print("[agent] pull returned 0 valid clients; skipping reconcile (no removals)", flush=True)
+            return
         cfg = self._load_cfg()
-        inb = self._ws_inbound(cfg)
-        if inb is None:
-            print("[agent] WS inbound %s not found in config" % self.tag, flush=True)
+        # SHRINK CAP: a pull that collapses the served set to under half is almost
+        # always a partial/degraded backend read, not many real cancellations in one
+        # tick. Skip this tick entirely; a genuine shrink applies once the pull is stable.
+        ws_now = self._inbound(cfg, self.tag)
+        cur_cc = len([c for c in (ws_now["settings"].get("clients", []) if ws_now else [])
+                      if c.get("email") and EMAIL_RE.match(c.get("email") or "")])
+        if cur_cc and len(desired) < max(5, cur_cc // 2):
+            print("[agent] pull has %d clients vs %d served; suspected partial outage, skipping tick"
+                  % (len(desired), cur_cc), flush=True)
             return
-        clients = inb["settings"].get("clients", [])
-        current = {c.get("email"): c.get("id") for c in clients if c.get("email")}
-        add = [(e, u) for e, u in desired.items() if current.get(e) != u]
-        remove = [e for e in current if e not in desired]
-        if not add and not remove:
-            return
-        for email, uuid in add:
-            self.rmu(email)  # drop any stale uuid for this email first (idempotent)
-            self.adu(uuid, email)
-        for email in remove:
-            self.rmu(email)
-        # mirror into config.json so a restart keeps the same set
-        inb["settings"]["clients"] = [{"id": u, "email": e, "level": 0} for e, u in sorted(desired.items())]
-        self._write_cfg(cfg)
-        print("[agent] provision: +%d -%d (now %d)" % (len(add), len(remove), len(desired)), flush=True)
+        changed = False
+        for tag, port in self.managed:
+            inb = self._inbound(cfg, tag)
+            if inb is None:
+                print("[agent] inbound %s not found in config; skipping" % tag, flush=True)
+                continue
+            clients = inb["settings"].get("clients", [])
+            # Only manage cc_<id>@afrows customer users. Every other client (e.g.
+            # afrows-chain@afrows, the Iran->DE relay) is preserved untouched.
+            managed_current = {c.get("email"): c.get("id") for c in clients
+                               if c.get("email") and EMAIL_RE.match(c.get("email"))}
+            preserved = [c for c in clients
+                         if not (c.get("email") and EMAIL_RE.match(c.get("email")))]
+            add = [(e, u) for e, u in desired.items() if managed_current.get(e) != u]
+            remove = [e for e in managed_current if e not in desired]
+            for email, uuid in add:
+                self.rmu(email, tag)  # drop any stale uuid for this email first (idempotent)
+                self.adu(uuid, email, tag, port)
+            for email in remove:
+                self.rmu(email, tag)
+            new_clients = preserved + [{"id": u, "email": e, "level": 0}
+                                       for e, u in sorted(desired.items())]
+            if new_clients != clients:
+                inb["settings"]["clients"] = new_clients
+                changed = True
+            if add or remove:
+                print("[agent] provision %s: +%d -%d (now %d cc + %d preserved)"
+                      % (tag, len(add), len(remove), len(desired), len(preserved)), flush=True)
+        # mirror into config.json so a restart keeps the same set (atomic)
+        if changed:
+            self._write_cfg(cfg)
 
     # ---- metering ----
     # We DON'T use `-reset`: xray counters are cumulative and we keep a per-user baseline in

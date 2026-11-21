@@ -13,6 +13,7 @@ import {
   pgTable,
   primaryKey,
   real,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -288,6 +289,9 @@ export const telegramBotSettings = pgTable(
     lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
     lastTestErrorCode: text('last_test_error_code'),
     lastTestDurationMs: integer('last_test_duration_ms'),
+    // Referral DATA reward size in decimal bytes (migration 0069). Default
+    // 1,500,000,000 = 1.5 GB (NOT GiB). 0 disables the data reward (gems resume).
+    referralRewardBytes: bigint('referral_reward_bytes', { mode: 'number' }).notNull().default(1_500_000_000),
     updatedBy: text('updated_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -617,6 +621,28 @@ export const customerAccounts = pgTable(
     // deletedAt: NULL = live, non-NULL = archived/soft-deleted (migration 0051).
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    // 24h renewal grace (migration 0068): set to now()+24h when a customer uploads a
+    // payment receipt; quota enforcement treats the account as under-quota until it
+    // passes. Cleared on top-up approve/reject. NULL = no active grace.
+    graceUntil: timestamp('grace_until', { withTimezone: true }),
+    // Monetization levers (migration 0070). Decimal bytes (1 GB = 1e9).
+    //  - graceCapBytes: extra overage allowed during grace = min(10% of plan, 3 GB).
+    //    Enforcement: in grace only while used < quota + COALESCE(graceCapBytes, 0),
+    //    so a NULL cap is FAIL-CLOSED (grace grants nothing). Set NULL when grace clears.
+    //  - graceBlockedUntil: receipt-grace lockout after a penalized reject (30d); grace
+    //    is not granted on upload while this is in the future. Cleared by an operator pardon.
+    //  - cycleStartUsedBytes: used_bytes anchor at the start of the current paid cycle,
+    //    re-anchored ONLY on a real purchase/renewal (never on an ad grant / inviter reward
+    //    / merge / forfeiture). Cycle usage % = (used - cycleStart) / (quota - cycleStart).
+    //  - renewalNoticeMask: bitset of already-sent renewal rungs (1=80% 2=95% 4=exhausted
+    //    8=T-3d 16=T-1d 32=grace-cap 64/128/256=win-back d14/d30/d60). Reset to 0 on purchase.
+    //  - lapsedAt: when the account last fell out of good standing (NOT while in grace);
+    //    cleared when usable again. Maintained only by the renewal-ladder tick.
+    graceCapBytes: bigint('grace_cap_bytes', { mode: 'number' }),
+    graceBlockedUntil: timestamp('grace_blocked_until', { withTimezone: true }),
+    cycleStartUsedBytes: bigint('cycle_start_used_bytes', { mode: 'number' }),
+    renewalNoticeMask: smallint('renewal_notice_mask').notNull().default(0),
+    lapsedAt: timestamp('lapsed_at', { withTimezone: true }),
     // Operator labels for filtering/segmentation (migration 0044); Postgres text[] array (NOT jsonb).
     tags: text('tags').array().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1194,6 +1220,15 @@ export const telegramTopupRequests = pgTable(
     reviewedBy: text('reviewed_by'),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
     reviewNote: text('review_note'),
+    // Decision snapshot frozen at receipt upload (migration 0070, C4): the account's
+    // used / quota / cycle-anchor / expiry / lapse THEN, so the early-renewal and
+    // approval-bonus decisions at review time are deterministic and immune to later
+    // usage drift. snap_quota_limit_bytes NULL mirrors an unlimited account.
+    snapUsedBytes: bigint('snap_used_bytes', { mode: 'number' }),
+    snapQuotaLimitBytes: bigint('snap_quota_limit_bytes', { mode: 'number' }),
+    snapCycleStartUsedBytes: bigint('snap_cycle_start_used_bytes', { mode: 'number' }),
+    snapExpiresAt: timestamp('snap_expires_at', { withTimezone: true }),
+    snapLapsedAt: timestamp('snap_lapsed_at', { withTimezone: true }),
   },
   (table) => ({
     statusCreatedIdx: index('telegram_topup_requests_status_created_idx').on(table.status, table.createdAt.desc()),
@@ -1206,6 +1241,74 @@ export const telegramTopupRequests = pgTable(
 );
 export type TelegramTopupRequestRow = typeof telegramTopupRequests.$inferSelect;
 export type TelegramTopupRequestInsert = typeof telegramTopupRequests.$inferInsert;
+
+// Referral DATA reward ledger (migration 0069). One row per invited account
+// (UNIQUE invited_account_id) → the inviter is rewarded at most once, on the
+// invitee's first approved PAID top-up. inviter_account_id is the inviter RESOLVED
+// at credit time (never re-derived from referred_by, which a merge can re-point).
+export const referralRewards = pgTable(
+  'referral_rewards',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    invitedAccountId: uuid('invited_account_id')
+      .notNull()
+      .unique()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    inviterAccountId: uuid('inviter_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    rewardBytes: bigint('reward_bytes', { mode: 'number' }).notNull(),
+    topupRequestId: uuid('topup_request_id').references(() => telegramTopupRequests.id, { onDelete: 'set null' }),
+    // 'granted' | 'pending_review' | 'reversed' (reversed reserved for future use).
+    status: text('status').notNull().default('granted'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    inviterCreatedIdx: index('referral_rewards_inviter_created_idx').on(table.inviterAccountId, table.createdAt),
+  }),
+);
+export type ReferralRewardRow = typeof referralRewards.$inferSelect;
+export type ReferralRewardInsert = typeof referralRewards.$inferInsert;
+
+// Buyer approval bonuses (migration 0070). One row per granted bonus on a Telegram
+// top-up approval. kind: first_purchase / winback / early_renewal (mutually exclusive
+// percentage bonuses) and invitee_referral (fixed, stacks). Partial unique indexes
+// enforce once-ever-per-account (first_purchase, invitee_referral) and once-per-request
+// (all kinds). base_bytes = the package volume the bonus was computed from; pct is the
+// percentage for a % bonus (NULL for the fixed invitee bonus). Decimal bytes (1 GB = 1e9).
+export const bonusGrants = pgTable(
+  'bonus_grants',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    customerAccountId: uuid('customer_account_id')
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: 'cascade' }),
+    // CHECK in ('first_purchase','winback','early_renewal','invitee_referral').
+    kind: text('kind').notNull(),
+    topupRequestId: uuid('topup_request_id').references(() => telegramTopupRequests.id, { onDelete: 'set null' }),
+    baseBytes: bigint('base_bytes', { mode: 'number' }).notNull(),
+    pct: smallint('pct'),
+    bonusBytes: bigint('bonus_bytes', { mode: 'number' }).notNull(),
+    // CHECK in ('granted','pending_review','reversed').
+    status: text('status').notNull().default('granted'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    requestKindIdx: uniqueIndex('bonus_grants_request_kind_unique')
+      .on(table.topupRequestId, table.kind)
+      .where(sql`topup_request_id IS NOT NULL`),
+    accountOnceEverIdx: uniqueIndex('bonus_grants_account_once_ever_unique')
+      .on(table.customerAccountId, table.kind)
+      .where(sql`kind IN ('first_purchase', 'invitee_referral')`),
+    accountKindCreatedIdx: index('bonus_grants_account_kind_created_idx').on(
+      table.customerAccountId,
+      table.kind,
+      table.createdAt,
+    ),
+  }),
+);
+export type BonusGrantRow = typeof bonusGrants.$inferSelect;
+export type BonusGrantInsert = typeof bonusGrants.$inferInsert;
 
 // Append-only gems ledger — source-of-truth audit trail behind the cached
 // customer_accounts.gems_balance (migration 0053). Signed delta (+ earn / - spend).

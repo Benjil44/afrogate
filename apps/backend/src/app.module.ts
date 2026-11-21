@@ -26,6 +26,7 @@ import { XrayUsageMeteringService } from './client/xray-usage-metering.service';
 import { RemoteExitUsageMeteringService } from './client/remote-exit-usage-metering.service';
 import { GermanyMgmtService } from './client/germany-mgmt.service';
 import { UsaMgmtService } from './client/usa-mgmt.service';
+import { DefMgmtService } from './client/def-mgmt.service';
 import { WireguardMeteringService } from './client/wireguard-metering.service';
 import { XrayAccessLogService } from './client/xray-access-log.service';
 import { HealthController } from './health/health.controller';
@@ -37,7 +38,9 @@ import { AlertNotificationService } from './notifications/alert-notification.ser
 import { TelegramAlertService } from './notifications/telegram-alert.service';
 import { VillageEgressAlertService } from './notifications/village-egress-alert.service';
 import { LowQuotaAlertService } from './notifications/low-quota-alert.service';
+import { UsageReceiptNoticeService } from './notifications/usage-receipt.service';
 import { MonthlyExpiryService } from './notifications/monthly-expiry.service';
+import { RenewalLadderNoticeService } from './notifications/renewal-ladder.service';
 import { AuditService } from './audit/audit.service';
 import { BackupStatusService } from './backups/backup-status.service';
 import { AdminTenantBrandingController } from './branding/admin-tenant-branding.controller';
@@ -122,6 +125,7 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     DeviceLimitService,
     GermanyMgmtService,
     UsaMgmtService,
+    DefMgmtService,
     RemoteExitUsageMeteringService,
     WireguardMeteringService,
     XrayAccessLogService,
@@ -139,7 +143,9 @@ import { TelegramTopupAdminService } from './telegram/telegram-topup-admin.servi
     VillageFailoverService,
     VillageEgressAlertService,
     LowQuotaAlertService,
+    UsageReceiptNoticeService,
     MonthlyExpiryService,
+    RenewalLadderNoticeService,
     GatewayBillingService,
     GatewayBillingRunnerService,
     MikroTikClientService,

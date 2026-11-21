@@ -4,9 +4,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import { DatabaseService } from '../database/database.service';
+import { inGraceAllowanceSql } from '../billing/grace';
 import { createSecureTempFile } from '../common/secure-temp-file';
 import { GermanyMgmtService } from './germany-mgmt.service';
 import { UsaMgmtService } from './usa-mgmt.service';
+import { DefMgmtService } from './def-mgmt.service';
 import type { RemoteExitMgmt } from './remote-exit-mgmt';
 import {
   createRemoteMembershipState,
@@ -51,11 +53,13 @@ interface RemoteExitSite {
   membership: RemoteMembershipState;
 }
 
-/** Outcome of revoking one config everywhere. `usa: null` = USA mgmt is off (nothing to revoke). */
+/** Outcome of revoking one config everywhere. `usa: null` / `def: null` = that mgmt is off
+ *  (nothing to revoke). */
 export interface RevokeClientConfigResult {
   local: boolean;
   germany: boolean;
   usa: boolean | null;
+  def: boolean | null;
 }
 
 /**
@@ -87,6 +91,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     private readonly database: DatabaseService,
     private readonly germanyMgmt: GermanyMgmtService,
     private readonly usaMgmt: UsaMgmtService,
+    private readonly defMgmt: DefMgmtService,
   ) {
     this.remoteExits = [
       {
@@ -101,6 +106,15 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
         mgmt: usaMgmt,
         membershipEnabled: () => usaMgmt.isEnabled(),
         sweepIntervalMs: () => this.sweepIntervalMs('AFROWS_US_MEMBERSHIP_SWEEP_SECONDS'),
+        membership: createRemoteMembershipState(),
+      },
+      {
+        // The direct "Germany Fast x2" REALITY exit. Reuses the `germany` access flag
+        // (access_germany), with its own mgmt channel, sweep period and membership cache.
+        kind: 'germany',
+        mgmt: defMgmt,
+        membershipEnabled: () => defMgmt.isEnabled(),
+        sweepIntervalMs: () => this.sweepIntervalMs('AFROWS_DEF_MEMBERSHIP_SWEEP_SECONDS'),
         membership: createRemoteMembershipState(),
       },
     ];
@@ -182,12 +196,14 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
   async revokeClientConfig(clientConfigId: string): Promise<RevokeClientConfigResult> {
     const email = provisioningEmail(clientConfigId);
     const local = await this.removeUser(email);
-    const [germany, usa] = await Promise.all([
+    const [germany, usa, def] = await Promise.all([
       this.germanyMgmt.removeUser(email),
       this.usaMgmt.isEnabled() ? this.usaMgmt.removeUser(email) : Promise.resolve(null),
+      this.defMgmt.isEnabled() ? this.defMgmt.removeUser(email) : Promise.resolve(null),
     ]);
     if (!germany) this.logger.warn(`Germany rmu for deleted client config ${clientConfigId} failed; it may still authenticate there`);
     if (usa === false) this.logger.warn(`USA rmu for deleted client config ${clientConfigId} failed; it may still authenticate there`);
+    if (def === false) this.logger.warn(`Germany Fast rmu for deleted client config ${clientConfigId} failed; it may still authenticate there`);
     // Forget it in every membership cache so a later restore re-adu's it.
     for (const site of this.remoteExits) {
       site.membership.confirmed.delete(clientConfigId);
@@ -196,7 +212,7 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
     for (const key of [...this.localAccessGate.removed]) {
       if (key.startsWith(`${clientConfigId}|`)) this.localAccessGate.removed.delete(key);
     }
-    return { local, germany, usa };
+    return { local, germany, usa, def };
   }
 
   /** Sync Postgres active client_configs → xray inbound users. */
@@ -214,7 +230,9 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
           WHERE cc.status <> 'disabled'
             AND ca.status = 'active'
             AND ca.deleted_at IS NULL
-            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+            -- grace (migrations 0068/0070): under quota OR inside the capped grace allowance (billing/grace.ts)
+            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes
+                 OR ${inGraceAllowanceSql('ca')})
             AND (cc.blocked_until IS NULL OR cc.blocked_until <= now())
         `,
       );
@@ -316,7 +334,9 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
             AND cc.status = 'limited'
             AND ca.status = 'active'
             AND ca.deleted_at IS NULL
-            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+            -- grace (migrations 0068/0070): under quota OR inside the capped grace allowance (billing/grace.ts)
+            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes
+                 OR ${inGraceAllowanceSql('ca')})
           RETURNING cc.id, cc.entry_uuid AS "entryUuid", ${serverAccessSelectSql('ca')}
         `,
       );
@@ -383,7 +403,9 @@ export class XrayProvisioningService implements OnModuleInit, OnModuleDestroy {
             -- Shatel / USA, and the local reconcile provisions all of them, so the
             -- remote exits must too (a protocol filter here left WG configs' USA
             -- link dead while Germany still had them from older code).
-            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+            -- grace (migrations 0068/0070): under quota OR inside the capped grace allowance (billing/grace.ts)
+            AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes
+                 OR ${inGraceAllowanceSql('ca')})
             AND (cc.blocked_until IS NULL OR cc.blocked_until <= now())
         `,
       );

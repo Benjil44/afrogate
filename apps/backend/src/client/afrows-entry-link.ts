@@ -292,6 +292,41 @@ export function readAfrowsUsDirectEnv(
 }
 
 /**
+ * The DIRECT "Germany Fast x2" entry (kind `germany`): a single VLESS+REALITY slot on a
+ * Germany VPS, read from AFROWS_DEF_DIRECT_* (fresh prefix, so it never collides with the
+ * Cloudflare Germany entry AFROWS_DE_ENTRY_* or the USA direct entries AFROWS_US_DIRECT_*).
+ * Unlike the USA direct block there is only the REALITY slot (no XHTTP/HTTP), so no `Direct N`
+ * suffix — the label is exactly "Germany Fast x2".
+ *
+ * Default FP is `chrome` (NOT `ios`): the box runs xray 26.11.9 where the ios uTLS fingerprint
+ * fails the REALITY handshake. ENABLED + HOST + PBK + SID + REALITY_PORT + REALITY_SNI gate it;
+ * null unless enabled AND complete. Same customer uuid and the same per-user 2x metering as the
+ * other remote exits (the `de-fast-xray` ledger source + client_usage_def_baseline).
+ *
+ * BILLING-CRITICAL: like the USA direct link, this entry env (AFROWS_DEF_DIRECT_ENABLED) and the
+ * DEF meter/mgmt env (AFROWS_DEF_MGMT_ENABLED) both default OFF and the deploy enables them
+ * together. NEVER enable AFROWS_DEF_DIRECT_ENABLED without the meter, or Germany-Fast traffic is
+ * free (unmetered) for every customer.
+ */
+export function readAfrowsGermanyFastEnv(
+  env: Record<string, string | undefined>,
+): AfrowsInboundParams | null {
+  const get = (key: string) => env[`AFROWS_DEF_DIRECT_${key}`]?.trim() || undefined;
+  if (!['1', 'true', 'yes', 'on'].includes(get('ENABLED')?.toLowerCase() ?? '')) return null;
+  const host = get('HOST');
+  if (!host) return null;
+  const realityPortRaw = Number(get('REALITY_PORT'));
+  const realityPort =
+    Number.isInteger(realityPortRaw) && realityPortRaw > 0 && realityPortRaw <= 65535 ? realityPortRaw : null;
+  const realitySni = get('REALITY_SNI');
+  const publicKey = get('PBK');
+  const shortId = get('SID');
+  const fingerprint = get('FP') || 'chrome';
+  if (!publicKey || !shortId || !realityPort || !realitySni) return null;
+  return { mode: 'reality', host, port: realityPort, serverName: realitySni, fingerprint, publicKey, shortId };
+}
+
+/**
  * Per-country Hexogate entries (kind `hexo`): the customer connects to the Afrows Iran server
  * over the SAME VLESS+WS+TLS path as the native "Afrows Shatel" entry (nginx :443 → WS on
  * 127.0.0.1), differing only by a per-country ws path `/afrowsws-<cc>`. nginx routes that path
@@ -403,8 +438,11 @@ export function readHexoResolvedCountries(
   return parseHexoResolvedCountries(text, nowMs);
 }
 
-/** Remarks for each entry link: per-customer (dashboard/bot) or fixed ASCII (public subscription). */
-export type EntryLinkRemarks = Record<ClientEntryLinkKind, string>;
+/** Remarks for each entry link: per-customer (dashboard/bot) or fixed ASCII (public subscription).
+ *  `deFast` is an extra label variant for the direct "Germany Fast x2" REALITY entry. That entry
+ *  reuses the `germany` link kind (and so the access_germany gate), but it carries its own
+ *  subscription label distinct from the Cloudflare Germany entry. */
+export type EntryLinkRemarks = Record<ClientEntryLinkKind, string> & { deFast: string };
 
 /** Fixed, PII-free remarks for the publicly fetched subscription body. `hexo` is a base;
  *  the per-country entry appends the country code ("Afro DE"). */
@@ -413,9 +451,11 @@ export const PUBLIC_ENTRY_LINK_REMARKS: EntryLinkRemarks = {
   iran: 'Afrows Shatel',
   usa: 'USA AI Support 2x',
   hexo: 'Afro',
+  deFast: 'Germany Fast x2',
 };
 
-/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x" / "<name> · Afro <CC>". */
+/** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x" /
+ *  "<name> · Afro <CC>" / "<name> · Germany Fast x2". */
 export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks {
   const name = displayName.trim() || 'Afrows';
   return {
@@ -423,6 +463,7 @@ export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks 
     iran: `${name} · Shatel`,
     usa: `${name} · USA AI Support 2x`,
     hexo: `${name} · Afro`,
+    deFast: `${name} · Germany Fast x2`,
   };
 }
 
@@ -442,6 +483,24 @@ export function buildEntryLinkSet(
   const links: Array<{ kind: ClientEntryLinkKind; uri: string }> = [];
   const germany = readAfrowsDeEntryEnv(env);
   if (germany) links.push({ kind: 'germany', uri: buildAfrowsEntryUri(germany, entryUuid, remarks.germany) });
+  // Direct "Germany Fast x2" REALITY entry, grouped right after the Cloudflare Germany entry.
+  // Same `germany` kind (so access_germany gates it); its own label and its own 2x metering.
+  // BILLING-CRITICAL (fail-closed): emit the fast link ONLY when the DEF meter is enabled too. This is
+  // the FIRST true link-layer meter coupling, NOT a mirror of an existing one: the isUsMgmtEnabled check
+  // in billing.service.getConfiguredServers is an admin-write / dashboard-readout guard that does NOT
+  // gate the subscription link, and `germany` links have no meter dimension downstream (gateEntryLinks
+  // gates them on access_germany only) — so buildEntryLinkSet is the only place a meter can gate its link.
+  // Uses the inline equivalent of isDefMgmtEnabled (AFROWS_DEF_MGMT_ENABLED), kept inline to match the
+  // truthy-check style already used in this file (readAfrowsGermanyFastEnv et al.) so the module stays a
+  // leaf loadable by the node --test type-stripping runner. Without this gate, AFROWS_DEF_DIRECT_ENABLED
+  // alone would ship the 2x link with no meter -> free (unmetered) premium traffic for every customer.
+  // KNOWN GAP (separate follow-up): the USA link below is NOT yet gated on isUsMgmtEnabled and carries the
+  // same latent unmetered-link risk (entry-on + mgmt-off); fix it the same fail-closed way.
+  const defMeterEnabled = ['1', 'true', 'yes', 'on'].includes(
+    env.AFROWS_DEF_MGMT_ENABLED?.trim().toLowerCase() ?? '',
+  );
+  const germanyFast = defMeterEnabled ? readAfrowsGermanyFastEnv(env) : null;
+  if (germanyFast) links.push({ kind: 'germany', uri: buildAfrowsEntryUri(germanyFast, entryUuid, remarks.deFast) });
   const iran = readAfrowsInboundEnv(env);
   if (iran) {
     links.push({ kind: 'iran', uri: buildAfrowsEntryUri(iran, entryUuid, remarks.iran) });

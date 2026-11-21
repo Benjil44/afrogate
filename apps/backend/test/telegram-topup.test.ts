@@ -30,7 +30,23 @@ describe('resolveTrialQuotaBytes', () => {
 
 describe('createPendingTopupInTransaction (photo -> pending topup row)', () => {
   it('inserts a pending request carrying the receipt file_id and returns its reference', async () => {
-    const executor = createFakeExecutor([{ rows: [{ id: 'abc123def456' }] }]);
+    const executor = createFakeExecutor([
+      // account snapshot read (C4): used / quota / cycle anchor / expiry / lapse / lockout / latest-paid
+      {
+        rows: [
+          {
+            usedBytes: 1_000_000_000,
+            quotaLimitBytes: 5_000_000_000,
+            cycleStartUsedBytes: 0,
+            expiresAt: null,
+            lapsedAt: null,
+            graceBlockedUntil: null,
+            latestPaidVolumeBytes: null,
+          },
+        ],
+      },
+      { rows: [{ id: 'abc123def456' }] }, // INSERT RETURNING
+    ]);
 
     const result = await createPendingTopupInTransaction(executor, {
       customerAccountId: 'acct-1',
@@ -45,16 +61,42 @@ describe('createPendingTopupInTransaction (photo -> pending topup row)', () => {
     assert.equal(result.id, 'abc123def456');
     assert.equal(result.reference, topupReference('abc123def456'));
 
-    const insert = executor.calls[0];
-    assert.match(insert.text, /INSERT INTO telegram_topup_requests/);
+    const insert = executor.calls.find((c) => /INSERT INTO telegram_topup_requests/.test(c.text))!;
+    assert.ok(insert);
     assert.match(insert.text, /'pending'/);
-    // receipt_file_id is bound as the 7th parameter; resellerAccountId defaults to null (8th).
+    // receipt_file_id is bound as the 7th parameter; resellerAccountId the 8th; then snap_* (C4).
     assert.equal(insert.values[6], 'PHOTO_ID');
-    assert.deepEqual(insert.values, ['acct-1', '555', 'chat-1', 'pkg-1', 90_000, 'toman', 'PHOTO_ID', null]);
+    assert.deepEqual(insert.values.slice(0, 8), ['acct-1', '555', 'chat-1', 'pkg-1', 90_000, 'toman', 'PHOTO_ID', null]);
+    // snapshot params: used, quota, cycleStart, expiresAt, lapsedAt.
+    assert.equal(insert.values[8], 1_000_000_000);
+    assert.equal(insert.values[9], 5_000_000_000);
+
+    // Capped receipt grace (migrations 0068/0070): the upload sets the account's 24h grace + cap.
+    const grace = executor.calls.find((c) => /UPDATE customer_accounts/.test(c.text) && /grace_until/.test(c.text))!;
+    assert.ok(grace, 'receipt upload sets the 24h grace');
+    assert.match(grace.text, /GREATEST/);
+    assert.match(grace.text, /grace_cap_bytes/);
+    assert.equal(grace.values[0], 'acct-1');
+    assert.equal(grace.values[2], 500_000_000); // cap = 10% of 5 GB plan
   });
 
   it('stamps resellerAccountId (Phase 4: routes a seller-owned customer\'s receipt to their seller)', async () => {
-    const executor = createFakeExecutor([{ rows: [{ id: 'abc123def456' }] }]);
+    const executor = createFakeExecutor([
+      {
+        rows: [
+          {
+            usedBytes: 0,
+            quotaLimitBytes: 5_000_000_000,
+            cycleStartUsedBytes: 0,
+            expiresAt: null,
+            lapsedAt: null,
+            graceBlockedUntil: null,
+            latestPaidVolumeBytes: null,
+          },
+        ],
+      },
+      { rows: [{ id: 'abc123def456' }] },
+    ]);
 
     await createPendingTopupInTransaction(executor, {
       customerAccountId: 'acct-1',
@@ -67,7 +109,7 @@ describe('createPendingTopupInTransaction (photo -> pending topup row)', () => {
       resellerAccountId: 'reseller-1',
     });
 
-    const insert = executor.calls[0];
+    const insert = executor.calls.find((c) => /INSERT INTO telegram_topup_requests/.test(c.text))!;
     assert.match(insert.text, /reseller_account_id/);
     assert.equal(insert.values[7], 'reseller-1');
   });
@@ -117,6 +159,12 @@ describe('approveTopupInTransaction (credit quota + set status)', () => {
     assert.match(statusUpdate.text, /status = 'approved'/);
     assert.equal(statusUpdate.values[0], 'req-1');
     assert.equal(statusUpdate.values[1], 'admin@afrows');
+
+    // Receipt grace (migration 0068): approve recomputes grace from any remaining
+    // open receipts (clears it when none remain) rather than blindly nulling.
+    const grace = executor.calls.find((c) => /UPDATE customer_accounts/.test(c.text) && /grace_until/.test(c.text));
+    assert.ok(grace, 'approve recomputes the receipt grace');
+    assert.match(grace.text, /status = 'pending'/);
   });
 
   it('refuses to approve a request that is not pending (no credit)', async () => {
@@ -179,7 +227,17 @@ describe('rejectTopupInTransaction (set status only)', () => {
     assert.match(update.text, /status = 'rejected'/);
     assert.deepEqual(update.values, ['req-1', 'admin', 'blurry receipt']);
 
-    assert.equal(executor.calls.some((c) => /UPDATE customer_accounts/.test(c.text)), false);
+    // Never credits quota; it DOES recompute the receipt grace (migration 0068).
+    assert.equal(
+      executor.calls.some((c) => /UPDATE customer_accounts/.test(c.text) && /quota_limit_bytes/.test(c.text)),
+      false,
+      'quota is never credited on reject',
+    );
+    const grace = executor.calls.find((c) => /UPDATE customer_accounts/.test(c.text) && /grace_until/.test(c.text));
+    assert.ok(grace, 'reject recomputes the receipt grace');
+    // penalize defaults true → a 30-day grace lockout is applied (values: [accountId, lockUntil]).
+    assert.equal(grace.values[0], 'acct-1');
+    assert.match(grace.text, /grace_blocked_until/);
   });
 
   it('refuses to reject an already-finalized request', async () => {

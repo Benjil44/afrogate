@@ -24,6 +24,7 @@ describe('approveTopupInTransaction — referral commission', () => {
       { rows: [{ name: '20 GB', volumeBytes: 20_000_000_000 }] }, // lock package
       { rows: [{ quotaLimitBytes: 0, usedBytes: 0, referredBy: 'inviter-1' }] }, // lock account (referred!)
       { rows: [] }, // UPDATE customer_accounts quota
+      { rows: [] }, // resetCycleOnPaidCredit anchor (0070)
       { rows: [] }, // earnGems ledger insert (commission)
       { rows: [{ gemsBalance: 400 }] }, // earnGems update RETURNING
       { rows: [{ telegramId: '999', telegramChatId: 'chat-inviter' }] }, // inviter contact
@@ -56,6 +57,7 @@ describe('approveTopupInTransaction — referral commission', () => {
       { rows: [{ name: '20 GB', volumeBytes: 20_000_000_000 }] }, // lock package
       { rows: [{ quotaLimitBytes: 0, usedBytes: 0, referredBy: null }] }, // no inviter
       { rows: [] }, // UPDATE quota
+      { rows: [] }, // resetCycleOnPaidCredit anchor (0070)
       { rows: [] }, // UPDATE status
     ]);
 

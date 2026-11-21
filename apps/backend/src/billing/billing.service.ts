@@ -118,6 +118,7 @@ import {
 } from './reseller-topup';
 import { BYTES_PER_GB, MAX_SAFE_BYTES, addPositiveBytes, computeAllocatedQuotaLimitBytes, gbToBytes, normalizeOptionalUsageBytes, normalizePositiveByteDelta } from './quota-math';
 import { computePeriodCredit } from './monthly-period';
+import { resetCycleOnPaidCredit } from './cycle-anchor';
 import {
   attributeReferral,
   creditReferralSignup,
@@ -1483,6 +1484,10 @@ export class BillingService {
           [quotaLimitAfterBytes, paymentOrder.customerAccountId],
         );
 
+        // Real purchase (C1): re-anchor the billing cycle (cycle_start / notice mask /
+        // lapsed_at). Separate statement, never folded into the quota write.
+        await resetCycleOnPaidCredit(executor, paymentOrder.customerAccountId, quotaLimitAfterBytes);
+
         await this.audit.record(
           actor,
           'payment_order.allocate_quota',
@@ -2712,6 +2717,9 @@ export class BillingService {
           [quotaLimitAfterBytes, customerAccountId],
         );
 
+        // Real purchase (C1): re-anchor the billing cycle after the reseller GB charge.
+        await resetCycleOnPaidCredit(executor, customerAccountId, quotaLimitAfterBytes);
+
         const ledgerEntry = await this.insertResellerWalletLedgerEntry(executor, reseller, {
           amount: -quote.walletDebitAmount,
           actor,
@@ -3311,6 +3319,9 @@ export class BillingService {
         `,
         [quotaLimitAfterBytes, customerAccountId, period.expiresAt],
       );
+
+      // Real purchase (C1): re-anchor the billing cycle after the reseller package sale.
+      await resetCycleOnPaidCredit(executor, customerAccountId, quotaLimitAfterBytes);
 
       const ledgerEntry = await this.insertResellerWalletLedgerEntry(executor, reseller, {
         amount: -quote.walletDebitAmount,
@@ -3916,6 +3927,8 @@ export class BillingService {
             `,
             [accountQuotaAfterBytes, dto.customerAccountId],
           );
+          // Real purchase (C1): re-anchor the billing cycle after the admin paid charge.
+          await resetCycleOnPaidCredit(executor, dto.customerAccountId, accountQuotaAfterBytes);
         }
 
         const chargeEvent = await this.insertCurrentPanelVolumeChargeEvent(

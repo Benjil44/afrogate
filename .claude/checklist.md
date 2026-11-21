@@ -461,3 +461,34 @@ Sidebar is a flat list of 11 items; operator finds it confusing. Regroup by the 
 - [ ] Test the landing on a real iPhone/Mac Safari; Lighthouse LCP/CLS; screen reader pass.
 - [ ] Fix pre-existing CI audit failure (proxy-addr, source-map-js): `npm audit fix` + seed new tarballs into the VPS offline cache.
 - [ ] Turn off Cloudflare Web Analytics for afrows.com (beacon is injected and blocked by CSP).
+
+## Monetization levers (0.128.0, 2026-11-13, NOT deployed)
+
+## Stage-1 readiness (0.131.1, 2026-11-21, NOT deployed)
+
+- [x] Tests + typecheck green on the staged tree; migration order 0068-0071 and schema.ts consistent; 0070 backfills made re-run safe; lever env docs added; runbook `.claude/stage1-deploy-runbook.md` written.
+- [x] Hard code guard so the DEF link requires `AFROWS_DEF_MGMT_ENABLED` (billing safety) — done in 0.131.2: `buildEntryLinkSet` emits "Germany Fast x2" only when the DEF meter is on (fail-closed), mirroring the USA link/mgmt coupling. (Still open: a per-account canary gate for Fast x2.)
+- [ ] Run migrations against a throwaway Postgres (or prod copy) before the real deploy; execute runbook steps 1-5 on owner "go".
+
+- [x] **Lever A — capped receipt grace + early renewal** (migration `0070`, `billing/grace.ts`, `monthly-period.computePeriodCredit({earlyRenewal})`): grace cap min(10% plan, 3 GB), fail-closed shared enforcement fragment across all six grace clauses, HARD-GATE backfill, penalize/pardon lockout, Q1 expiry-extension gated to the eligible path.
+- [x] **Lever B — renewal ladder + cycle usage receipt** (`notifications/renewal-ladder.ts` + `.service.ts`, registered in `app.module.ts`): usage 80/95/100% + expiry T-3d/T-1d once per cycle via `renewal_notice_mask`; owns `lapsed_at` maintenance (C3); usage receipt moved to cycle %; retired low-quota low/exhausted + monthly T-1d reminder (C6), kept forfeiture + `ended`.
+- [x] **Lever C — buyer approval bonuses** (`billing/approval-bonuses.ts`, `bonus_grants` table): first_purchase 20% XOR early_renewal 10% XOR winback 15/20/25% + invitee 2 GB; 100% cap; prior-paid beyond telegram_topup; reseller-settled excluded.
+- [x] **C1 cycle anchor** (`billing/cycle-anchor.ts`) hooked at the 4 billing purchase seams + Telegram approval; NOT on ad-grant/inviter-reward/merge/forfeiture. **C2 merge** carries grace_blocked_until + preserves once-ever grants. **C4** upload snapshots. **C5** CHECK constraints.
+- [x] Tests: grace/approval-bonuses/renewal-ladder/cycle-anchor/topup-bonuses/merge-monetization + regressions. Full suite **1104 pass**, typecheck clean, `version:check` 0.128.0.
+- [ ] Deploy 0.128.0 (bundles migrations 0068+0069+0070) on owner "go"; `db:migrate` NOT yet run. Dashboard controls for the new kill-switches/bonus policy = follow-up.
+
+## "Germany Fast x2" direct-REALITY 2x exit (0.130.0, 2026-11-21, NOT deployed)
+
+- [x] **Customer entry link** (`client/afrows-entry-link.ts`): `readAfrowsGermanyFastEnv` (REALITY-only, prefix `AFROWS_DEF_DIRECT_`, default fp chrome, exact label `Germany Fast x2`, no `· Direct N`); emitted kind `germany` right after the Cloudflare Germany entry; `deFast` remark variant.
+- [x] **Distinct metering** (`client/germany-usage-db.ts`): `DEF_USAGE_SITE` — source `de-fast-xray`, baseline `client_usage_def_baseline`; 2x via `site.multiplier` (default 2, clamp 1..10). NEVER reuses `germany-xray` / `client_usage_de_baseline`.
+- [x] **Mgmt + provisioning + enforcement**: new `DefMgmtService` (inbound `afrows-def-reality:8443`, alias `afrows-def-mgmt`, own breaker, OFF unless `AFROWS_DEF_MGMT_ENABLED`); 3rd metered site + 3rd remote exit (kind `germany`); `revokeClientConfig` + over-quota/inactive cut-sites rmu on DEF too; provided in `app.module.ts`.
+- [x] **Migration `0071_client_usage_def_baseline.sql`** (baseline table + `'de-fast-xray'` source, idempotent). **Infra `infra/germany-fast/`** cloned from `infra/usa/` (REALITY inbound, forced-command wrapper, usage recorder, install.sh, ssh alias, tcp/8443 firewall note). `AFROWS_DEF_*` env docs (default off).
+- [x] Tests: `test/germany-fast-def.test.ts` (13). Full suite **1118 pass**, typecheck clean, `version:check` 0.130.0.
+- [ ] Deploy on owner "go": stand up the Germany-Fast box (`infra/germany-fast/install.sh`), authorize the mgmt key, set `AFROWS_DEF_DIRECT_*` + `AFROWS_DEF_MGMT_ENABLED=true` (link + meter TOGETHER), run `db:migrate` (0071). `db:migrate` NOT yet run; nothing deployed.
+
+## Customer renewal-nudge copy refinement (0.131.0, 2026-11-21, NOT deployed)
+
+- [x] **`notify.usageReceipt` (50%-used, not-renewed)** rewritten to the owner's intent: used-% + "هنوز تمدیدش نکردی" + card-to-card + pick package + "عکس رسید رو بفرست" + 24h grace; keeps the named greeting, tap-to-copy card, and the `پرداخت کردم — ارسال رسید 🧾` button (→ existing `afws:buy` flow). Persian-only, in the typed i18n layer.
+- [x] **`notify.renew.expiry3d` / `expiry1d`** tightened + SOFT early-renewal bonus nudge (`🎁 با تمدید زودهنگام هدیه هم می‌گیری`); kept soft (not "10%") because a never-paid near-expiry account is not %-eligible. **CTO check flagged.**
+- [x] **Verified** the notice→receipt-image flow is end-to-end (notice `afws:buy` button → `screenBuy` → `handleBuyPick` state → photo → `handlePhoto` → `createPendingTopupInTransaction` pending + 24h grace → approval queue). No code gap; copy now names the package-pick step.
+- [x] Tests: extended `test/usage-receipt.test.ts`. Full suite **1118 pass**, typecheck clean, `version:check` 0.131.0.

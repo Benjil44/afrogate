@@ -27,6 +27,30 @@ test('buying again mid-month adds GB and keeps the end date', () => {
   assert.equal(r.periodStarted, false);
 });
 
+test('early renewal mid-month EXTENDS the end date (old_end + durationDays) and carries the leftover (Q1)', () => {
+  const end = new Date(now.getTime() + 10 * DAY_MS);
+  const r = computePeriodCredit({
+    quotaLimitBeforeBytes: 50 * GB,
+    usedBytes: 45 * GB,
+    volumeBytes: 25 * GB,
+    expiresAt: end,
+    durationDays: 30,
+    now,
+    earlyRenewal: true,
+  });
+  // Leftover carried + volume (same as the default mid-month add) …
+  assert.equal(r.quotaLimitAfterBytes, 75 * GB);
+  // … but the end date is EXTENDED by the package duration instead of kept.
+  assert.equal(r.expiresAt?.getTime(), end.getTime() + 30 * DAY_MS);
+  assert.equal(r.periodStarted, false);
+});
+
+test('early renewal flag is a no-op for a non-monthly package (no end date to extend)', () => {
+  const r = computePeriodCredit({ quotaLimitBeforeBytes: 10 * GB, usedBytes: 4 * GB, volumeBytes: 5 * GB, expiresAt: null, durationDays: null, now, earlyRenewal: true });
+  assert.equal(r.quotaLimitAfterBytes, 15 * GB);
+  assert.equal(r.expiresAt, null);
+});
+
 test('after the month ended the leftover is lost and a fresh month starts', () => {
   const ended = new Date(now.getTime() - DAY_MS);
   const r = computePeriodCredit({ quotaLimitBeforeBytes: 50 * GB, usedBytes: 20 * GB, volumeBytes: 50 * GB, expiresAt: ended, durationDays: 30, now });

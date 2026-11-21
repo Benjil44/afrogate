@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { AdminTelegramTopupRequest, TelegramTopupStatus } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { numberFromBigInt } from '../billing/billing-math';
 import { computeAllocatedQuotaLimitBytes } from '../billing/quota-math';
 import { computePeriodCredit } from '../billing/monthly-period';
+import { decideApprovalBonuses, decideEarlyRenewal, resolveBonusEnabled } from '../billing/approval-bonuses';
 import { OutboundHttpService } from '../outbound/outbound-http.service';
 import type { AuthActor } from '../security/auth-request';
 import {
@@ -75,7 +77,18 @@ export class TelegramTopupAdminService {
     private readonly telegram: TelegramAlertService,
     private readonly telegramConfig: TelegramBotConfigService,
     private readonly outboundHttp: OutboundHttpService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Per-lever buyer-bonus kill-switches (AFROWS_*_ENABLED, default all on). */
+  private bonusesEnabled() {
+    return {
+      firstPurchase: resolveBonusEnabled(this.config.get<string>('AFROWS_FIRST_PURCHASE_BONUS_ENABLED')),
+      earlyRenewal: resolveBonusEnabled(this.config.get<string>('AFROWS_EARLY_RENEWAL_BONUS_ENABLED')),
+      winback: resolveBonusEnabled(this.config.get<string>('AFROWS_WINBACK_BONUS_ENABLED')),
+      inviteeReferral: resolveBonusEnabled(this.config.get<string>('AFROWS_INVITEE_REFERRAL_BONUS_ENABLED')),
+    };
+  }
 
   async listRequests(status: TelegramTopupListStatus): Promise<AdminTelegramTopupRequest[]> {
     const filter = status === 'all' ? null : status;
@@ -123,12 +136,17 @@ export class TelegramTopupAdminService {
     const outcome = await this.database.transaction((executor) =>
       // Reuse the exact quota-credit math used by allocatePaymentOrder and
       // reseller package sales — no bespoke crediting mechanism. The referral
-      // commission (if the buyer was invited) is credited in the same tx.
+      // reward (if the buyer was invited) is credited in the same tx: a DATA
+      // reward when referralRewardBytes > 0, else the gem commission.
       approveTopupInTransaction(executor, id, {
         reviewer,
         computeQuotaAfter: computeAllocatedQuotaLimitBytes,
         // Monthly packages (duration_days) open or extend the account month.
         computePeriod: computePeriodCredit,
+        now: new Date(),
+        referralRewardBytes: runtime.referralRewardBytes,
+        bonusesEnabled: this.bonusesEnabled(),
+        deciders: { decideEarlyRenewal, decideApprovalBonuses },
         gemEconomy: {
           referralPurchasePct: runtime.gemEconomy.gemReferralPurchasePct,
           gemRedeemPerGb: runtime.gemEconomy.gemRedeemPerGb,
@@ -144,7 +162,12 @@ export class TelegramTopupAdminService {
       expiresAt: outcome.expiresAt ? outcome.expiresAt.toISOString() : null,
       packageName: outcome.packageName,
       referralCommissionGems: outcome.commission?.gems ?? 0,
-      referralInviterAccountId: outcome.commission?.inviterAccountId ?? null,
+      referralInviterAccountId: outcome.commission?.inviterAccountId ?? outcome.referralReward?.inviterAccountId ?? null,
+      referralRewardBytes: outcome.referralReward?.rewardBytes ?? 0,
+      referralRewardStatus: outcome.referralReward?.status ?? null,
+      // Buyer approval bonuses actually granted (lever C).
+      bonuses: outcome.bonuses.map((b) => ({ kind: b.kind, bonusBytes: b.bonusBytes, pct: b.pct })),
+      bonusBytesTotal: outcome.bonuses.reduce((sum, b) => sum + b.bonusBytes, 0),
     });
 
     const detail = await this.getRequest(id);
@@ -179,19 +202,42 @@ export class TelegramTopupAdminService {
       await this.pushToUser(commission.inviterTelegramChatId, text, language, this.gemsKeyboard(language));
     }
 
+    // Referral DATA reward landed — push the inviter a thank-you in their language.
+    // Only a 'granted' reward actually credited quota; 'pending_review' (cap hit) is
+    // not announced (an operator reviews it). Mirrors the N4 commission push shape.
+    const reward = outcome.referralReward;
+    if (reward?.status === 'granted' && reward.inviterTelegramChatId) {
+      const language = await this.resolveLanguage(reward.inviterTelegramId);
+      const text = renderTelegramCopy(
+        'notify.referralReward',
+        language,
+        { friendName: detail.customerDisplayName ?? '' },
+        { reward: formatDataSize(reward.rewardBytes, language) },
+      );
+      await this.pushToUser(reward.inviterTelegramChatId, text, language, this.approvedKeyboard(language));
+    }
+
     return detail;
   }
 
-  async reject(id: string, reason: string | null, actor: AuthActor | undefined): Promise<AdminTelegramTopupRequest> {
+  async reject(
+    id: string,
+    reason: string | null,
+    actor: AuthActor | undefined,
+    // penalize (default true) applies a 30-day grace lockout; an operator pardon
+    // (penalize = false) clears it. Owner decision Q4: default penalize.
+    penalize = true,
+  ): Promise<AdminTelegramTopupRequest> {
     const reviewer = actor?.username ?? actor?.id ?? null;
     const normalizedReason = reason?.trim() || null;
     const outcome = await this.database.transaction((executor) =>
-      rejectTopupInTransaction(executor, id, { reviewer, reason: normalizedReason }),
+      rejectTopupInTransaction(executor, id, { reviewer, reason: normalizedReason, penalize }),
     );
 
     await this.audit.record(actor, 'telegram.topup.reject', 'telegram_topup_request', id, {
       customerAccountId: outcome.customerAccountId,
       reason: normalizedReason,
+      penalized: outcome.penalized,
     });
 
     // N2 — rejected notification; substitute notify.noReason when the admin left no note.

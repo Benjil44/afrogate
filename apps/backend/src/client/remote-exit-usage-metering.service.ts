@@ -5,6 +5,7 @@ import { computeUsageDelta, parseDeUsageBuffer } from './germany-usage';
 import { applyUsageDelta } from './usage-accounting';
 import {
   DE_USAGE_SITE,
+  DEF_USAGE_SITE,
   US_USAGE_SITE,
   applyRemoteUserUsage,
   loadRemoteBaselines,
@@ -14,6 +15,7 @@ import {
 } from './germany-usage-db';
 import { GermanyMgmtService } from './germany-mgmt.service';
 import { UsaMgmtService } from './usa-mgmt.service';
+import { DefMgmtService } from './def-mgmt.service';
 import type { RemoteExitMgmt } from './remote-exit-mgmt';
 import { XrayUsageMeteringService } from './xray-usage-metering.service';
 import { parseConfigFlag } from '../common/config-flag';
@@ -66,6 +68,7 @@ export class RemoteExitUsageMeteringService implements OnModuleInit, OnModuleDes
     private readonly database: DatabaseService,
     germanyMgmt: GermanyMgmtService,
     usaMgmt: UsaMgmtService,
+    defMgmt: DefMgmtService,
     private readonly xrayMetering: XrayUsageMeteringService,
   ) {
     this.sites = [
@@ -86,11 +89,25 @@ export class RemoteExitUsageMeteringService implements OnModuleInit, OnModuleDes
         intervalKey: 'AFROWS_US_USAGE_INTERVAL_SECONDS',
         running: false,
       },
+      {
+        label: 'Germany Fast',
+        mgmt: defMgmt,
+        // The direct "Germany Fast x2" entry is billed 2x by default (AFROWS_DEF_USAGE_MULTIPLIER, 1..10).
+        usage: { ...DEF_USAGE_SITE, multiplier: this.defMultiplier() },
+        enabled: () => defMgmt.isEnabled(),
+        intervalKey: 'AFROWS_DEF_USAGE_INTERVAL_SECONDS',
+        running: false,
+      },
     ];
   }
 
   private usMultiplier(): number {
     const raw = Number((this.config.get<string>('AFROWS_US_USAGE_MULTIPLIER') ?? '').trim() || '2');
+    return Number.isFinite(raw) && raw >= 1 && raw <= 10 ? raw : 2;
+  }
+
+  private defMultiplier(): number {
+    const raw = Number((this.config.get<string>('AFROWS_DEF_USAGE_MULTIPLIER') ?? '').trim() || '2');
     return Number.isFinite(raw) && raw >= 1 && raw <= 10 ? raw : 2;
   }
 

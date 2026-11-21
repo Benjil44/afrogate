@@ -206,7 +206,7 @@ test('buildEntryLinkSet: each link only when its env is configured; none without
 });
 
 test('customerEntryLinkRemarks falls back to Afrows for a blank name', () => {
-  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support 2x', hexo: 'Afrows · Afro' });
+  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support 2x', hexo: 'Afrows · Afro', deFast: 'Afrows · Germany Fast x2' });
 });
 
 test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right after the primary', () => {
@@ -400,6 +400,39 @@ test('readAfrowsHexoEntriesEnv: resolved set filters to live countries; null = a
   assert.equal(readAfrowsHexoEntriesEnv(HEXO_ENV, null).length, 7);
   // empty resolved set -> no entries (the reconciler says zero listeners are live).
   assert.deepEqual(readAfrowsHexoEntriesEnv(HEXO_ENV, new Set()), []);
+});
+
+// --- BILLING-CRITICAL: Germany Fast x2 link requires the DEF meter (fail-closed) ----------------
+// The direct DEF (2x) entry env and the DEF meter env both default OFF and must be enabled together.
+// If AFROWS_DEF_DIRECT_ENABLED is on WITHOUT AFROWS_DEF_MGMT_ENABLED, the fast link must NOT ship,
+// or every customer gets unmetered (free) premium traffic. Mirrors the USA link/mgmt coupling.
+const DEF_DIRECT_ENV = {
+  AFROWS_DEF_DIRECT_ENABLED: 'true',
+  AFROWS_DEF_DIRECT_HOST: '198.51.100.9',
+  AFROWS_DEF_DIRECT_PBK: 'defPUBLIC',
+  AFROWS_DEF_DIRECT_SID: 'c3d4',
+  AFROWS_DEF_DIRECT_REALITY_PORT: '8443',
+  AFROWS_DEF_DIRECT_REALITY_SNI: 'www.microsoft.com',
+};
+
+test('buildEntryLinkSet: Germany Fast x2 is OMITTED when DIRECT on but DEF meter off (no free premium)', () => {
+  const env = { ...BOTH_ENTRIES_ENV, ...DEF_DIRECT_ENV }; // AFROWS_DEF_MGMT_ENABLED unset -> meter off
+  const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
+  assert.ok(!links.some((l) => l.uri.endsWith('#Germany%20Fast%20x2')), 'fast link must not ship without its meter');
+  // Only the Cloudflare Germany entry + Iran remain (no second `germany` fast link).
+  assert.deepEqual(links.map((l) => l.kind), ['germany', 'iran']);
+});
+
+test('buildEntryLinkSet: Germany Fast x2 is PRESENT when DIRECT on AND DEF meter on', () => {
+  const env = { ...BOTH_ENTRIES_ENV, ...DEF_DIRECT_ENV, AFROWS_DEF_MGMT_ENABLED: 'true' };
+  const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
+  assert.deepEqual(links.map((l) => l.kind), ['germany', 'germany', 'iran']);
+  const fast = links.find((l) => l.uri.endsWith('#Germany%20Fast%20x2'));
+  assert.ok(fast, 'fast link must ship when the meter is enabled');
+  assert.ok(fast!.uri.startsWith(`vless://${UUID}@198.51.100.9:8443?`));
+  assert.match(fast!.uri, /security=reality/);
+  // The fast link sits right after the Cloudflare Germany entry.
+  assert.ok(links[1].uri.endsWith('#Germany%20Fast%20x2'));
 });
 
 test('buildEntryLinkSet: hexoResolved filters the emitted Hexo links to live countries only', () => {

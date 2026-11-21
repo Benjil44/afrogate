@@ -13,6 +13,10 @@ import { OutboundHttpService } from '../outbound/outbound-http.service';
 import type { AuthActor } from '../security/auth-request';
 import { SecretVaultService } from '../security/secret-vault.service';
 import type { UpdateTelegramBotSettingsDto } from '../operations/dto/settings.dto';
+import { REFERRAL_REWARD_DEFAULT_BYTES, resolveReferralRewardBytes } from './telegram-topup';
+
+// Re-export so existing importers (telegram-bot.service.ts) keep their import path.
+export { REFERRAL_REWARD_DEFAULT_BYTES };
 
 type TelegramSecretKind = 'telegramBotToken' | 'telegramWebhookSecret';
 
@@ -37,6 +41,7 @@ interface TelegramBotSettingsRow {
   gemReferralPurchasePct: number | string | null;
   gemMilestoneEvery: number | string | null;
   gemMilestoneBonus: number | string | null;
+  referralRewardBytes: number | string | null;
   updatedBy: string | null;
   updatedAt: Date | null;
 }
@@ -58,6 +63,7 @@ export interface TelegramGemEconomy {
   gemMilestoneBonus: number;
 }
 
+
 interface TelegramSecretRow {
   secretRef: string;
   kind: string;
@@ -75,6 +81,8 @@ export interface TelegramBotRuntimeConfig {
   cardToCardInfo: string | null;
   /** v2 gem economy (resolved, always populated — DB defaults or plan defaults). */
   gemEconomy: TelegramGemEconomy;
+  /** Referral DATA reward in decimal bytes (resolved; default 1.5 GB). 0 = disabled. */
+  referralRewardBytes: number;
 }
 
 interface TelegramGetMeResponse {
@@ -163,6 +171,7 @@ export class TelegramBotConfigService {
       if (dto.gemReferralPurchasePct !== undefined) changedFields.push('gemReferralPurchasePct');
       if (dto.gemMilestoneEvery !== undefined) changedFields.push('gemMilestoneEvery');
       if (dto.gemMilestoneBonus !== undefined) changedFields.push('gemMilestoneBonus');
+      if (dto.referralRewardBytes !== undefined) changedFields.push('referralRewardBytes');
 
       const nextCardToCardInfo =
         dto.cardToCardInfo !== undefined ? this.normalizeCardToCardInfo(dto.cardToCardInfo) : current?.cardToCardInfo ?? null;
@@ -176,6 +185,11 @@ export class TelegramBotConfigService {
       const nextGemMilestoneEvery = dto.gemMilestoneEvery ?? baseGem.gemMilestoneEvery;
       const nextGemMilestoneBonus = dto.gemMilestoneBonus ?? baseGem.gemMilestoneBonus;
 
+      // Referral DATA reward: DTO override where provided, else keep the current
+      // (resolved, default 1.5 GB decimal). Column is NOT NULL so a value is always
+      // written; a stored 0 is honoured (operator disabled the data reward).
+      const nextReferralRewardBytes = dto.referralRewardBytes ?? this.resolveReferralRewardBytes(current ?? null);
+
       await executor.query(
         `
           INSERT INTO telegram_bot_settings (
@@ -183,9 +197,9 @@ export class TelegramBotConfigService {
             allowed_admin_chat_ids, alerts_enabled, commands_enabled,
             card_to_card_info,
             gem_redeem_per_gb, gem_referral_signup, gem_referral_purchase_pct,
-            gem_milestone_every, gem_milestone_bonus, updated_by
+            gem_milestone_every, gem_milestone_bonus, referral_reward_bytes, updated_by
           )
-          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
           ON CONFLICT (setting_key)
           DO UPDATE SET
             bot_token_secret_ref = excluded.bot_token_secret_ref,
@@ -200,6 +214,7 @@ export class TelegramBotConfigService {
             gem_referral_purchase_pct = excluded.gem_referral_purchase_pct,
             gem_milestone_every = excluded.gem_milestone_every,
             gem_milestone_bonus = excluded.gem_milestone_bonus,
+            referral_reward_bytes = excluded.referral_reward_bytes,
             updated_by = excluded.updated_by,
             updated_at = now()
         `,
@@ -217,6 +232,7 @@ export class TelegramBotConfigService {
           nextGemReferralPurchasePct,
           nextGemMilestoneEvery,
           nextGemMilestoneBonus,
+          nextReferralRewardBytes,
           actorLabel,
         ],
       );
@@ -325,7 +341,17 @@ export class TelegramBotConfigService {
       commandsEnabled: row ? row.commandsEnabled : this.configFlag('AFROWS_TELEGRAM_BOT_COMMANDS_ENABLED', false),
       cardToCardInfo: row?.cardToCardInfo?.trim() || null,
       gemEconomy: this.resolveGemEconomy(row),
+      referralRewardBytes: this.resolveReferralRewardBytes(row),
     };
+  }
+
+  /**
+   * Resolve the referral DATA reward bytes from the settings row, falling back to
+   * the 1.5 GB decimal default when unset/invalid (delegates to the decorator-free,
+   * unit-tested resolver in telegram-topup.ts). A stored 0 is honoured.
+   */
+  private resolveReferralRewardBytes(row: TelegramBotSettingsRow | null): number {
+    return resolveReferralRewardBytes(row?.referralRewardBytes ?? null);
   }
 
   /** Resolve the gem economy from the settings row, falling back to plan defaults. */
@@ -565,6 +591,7 @@ export class TelegramBotConfigService {
         gem_referral_purchase_pct AS "gemReferralPurchasePct",
         gem_milestone_every AS "gemMilestoneEvery",
         gem_milestone_bonus AS "gemMilestoneBonus",
+        referral_reward_bytes AS "referralRewardBytes",
         updated_by AS "updatedBy",
         updated_at AS "updatedAt"
       FROM telegram_bot_settings
@@ -608,6 +635,7 @@ export class TelegramBotConfigService {
       gemReferralPurchasePct: this.resolveGemEconomy(row).gemReferralPurchasePct,
       gemMilestoneEvery: this.resolveGemEconomy(row).gemMilestoneEvery,
       gemMilestoneBonus: this.resolveGemEconomy(row).gemMilestoneBonus,
+      referralRewardBytes: this.resolveReferralRewardBytes(row),
       updatedBy: row?.updatedBy ?? null,
       updatedAt: row?.updatedAt?.toISOString() ?? null,
     };

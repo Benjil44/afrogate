@@ -88,6 +88,7 @@ interface MergeAccountRow {
   telegramId: string | null;
   telegramUsername: string | null;
   phone: string | null;
+  graceBlockedUntil: Date | string | null;
 }
 
 export interface CustomerAccountMergeOutcome {
@@ -136,7 +137,8 @@ export async function mergeCustomerAccountInTransaction(
             gems_balance AS "gemsBalance",
             telegram_id AS "telegramId",
             telegram_username AS "telegramUsername",
-            phone
+            phone,
+            grace_blocked_until AS "graceBlockedUntil"
        FROM customer_accounts
       WHERE id IN ($1, $2)
       ORDER BY id
@@ -246,6 +248,35 @@ export async function mergeCustomerAccountInTransaction(
     [sourceId, targetAccountId],
   );
   const referralsRepointed = referrals.rowCount ?? 0;
+
+  // 5b. Monetization levers (migration 0070, C2):
+  //  - grace_blocked_until: the target inherits the STRICTER (later) lockout, so a
+  //    merge can't wash away a penalized-reject lockout. GREATEST ignores NULLs.
+  //  - bonus_grants: re-point the source's grants to the target, but SKIP a once-ever
+  //    kind (first_purchase / invitee_referral) the target already has — ON CONFLICT
+  //    DO NOTHING semantics, so once-ever stays once-ever across a merge.
+  //  - cycle_start_used_bytes / renewal_notice_mask / lapsed_at are NOT copied from the
+  //    source: the target keeps its own cycle anchor (a merge is not a purchase).
+  if (source.graceBlockedUntil != null) {
+    await executor.query(
+      `UPDATE customer_accounts
+          SET grace_blocked_until = GREATEST(grace_blocked_until, $2::timestamptz), updated_at = now()
+        WHERE id = $1`,
+      [targetAccountId, source.graceBlockedUntil],
+    );
+  }
+  await executor.query(
+    `UPDATE bonus_grants bg
+        SET customer_account_id = $2
+      WHERE bg.customer_account_id = $1
+        AND NOT (
+          bg.kind IN ('first_purchase', 'invitee_referral')
+          AND EXISTS (
+            SELECT 1 FROM bonus_grants t WHERE t.customer_account_id = $2 AND t.kind = bg.kind
+          )
+        )`,
+    [sourceId, targetAccountId],
+  );
 
   // 6. Archive the source (same spirit as customer-account-deletion.ts): its configs
   //    already moved to the target, so no WireGuard peers remain to mark absent. Just

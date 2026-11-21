@@ -522,6 +522,8 @@ export interface AdminTelegramBotSettingsSummary {
   gemMilestoneEvery?: number;
   /** Milestone bonus gems (default 300). */
   gemMilestoneBonus?: number;
+  /** Referral DATA reward in decimal bytes (default 1,500,000,000 = 1.5 GB). 0 = disabled. */
+  referralRewardBytes?: number;
   updatedBy?: string | null;
   updatedAt?: string | null;
 }
@@ -545,6 +547,8 @@ export interface UpdateTelegramBotSettingsRequest {
   gemReferralPurchasePct?: number;
   gemMilestoneEvery?: number;
   gemMilestoneBonus?: number;
+  /** Referral DATA reward in decimal bytes (default 1,500,000,000 = 1.5 GB). 0 = disabled. */
+  referralRewardBytes?: number;
 }
 
 /** v2: request body for the admin manual gems adjustment. */

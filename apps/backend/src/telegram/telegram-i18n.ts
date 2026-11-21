@@ -151,6 +151,7 @@ export type TelegramCopyId =
   | 'notify.refJoined'
   | 'notify.refPurchase'
   | 'notify.refMilestone'
+  | 'notify.referralReward'
   // --- Seller role (Phase 1+: seller.* — role-aware dispatch, docs/telegram-bot-flow-design.md seller section) ---
   | 'seller.menu.title'
   | 'seller.menu.btn.panel'
@@ -188,9 +189,17 @@ export type TelegramCopyId =
   | 'seller.newcust.cancelled'
   | 'notify.sellerCharged'
   | 'notify.lowQuota'
+  | 'notify.usageReceipt'
+  | 'notify.usageReceipt.btn'
   | 'notify.quotaExhausted'
   | 'notify.monthEndingSoon'
   | 'notify.monthEnded'
+  // Renewal-ladder notices (notifications/renewal-ladder.ts). {remaining} is raw (pre-formatted size).
+  | 'notify.renew.usage80'
+  | 'notify.renew.usage95'
+  | 'notify.renew.exhausted'
+  | 'notify.renew.expiry3d'
+  | 'notify.renew.expiry1d'
   | 'admin.receipt.new'
   | 'admin.receipt.btn.approve'
   | 'admin.receipt.btn.reject'
@@ -547,6 +556,12 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     en: '🏆 Amazing — <b>{count}</b> friends have joined with your invites!\nMilestone bonus: <b>{gems}</b> gems. Your balance: <b>{gemsBalance}</b>.',
     fa: '🏆 فوق‌العاده — <b>{count}</b> دوست با دعوت شما عضو شده‌اند!\nپاداش ویژه: <b>{gems}</b> جم. موجودی شما: <b>{gemsBalance}</b>.',
   },
+  // Referral DATA reward (pushed to the inviter on a friend's first paid purchase).
+  // {reward} is a preformatted size string (raw); {friendName} is HTML-escaped.
+  'notify.referralReward': {
+    en: '🎁 <b>{friendName}</b> made their first purchase — thank you!\n<b>{reward}</b> of data has been added to your account. Enjoy! 🎉',
+    fa: '🎁 <b>{friendName}</b> اولین خریدش را انجام داد — ممنون از شما!\n<b>{reward}</b> حجم به حساب شما اضافه شد. نوش جان! 🎉',
+  },
   // --- Seller role ---
   'seller.menu.title': {
     en: '🏪 <b>Seller panel</b>\nWhat would you like to do?',
@@ -630,6 +645,18 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     en: '⚠️ <b>Your data is running low</b>\nOnly <b>{remaining}</b> is left on your account.\nRecharge now with 🛒 <b>Buy Data</b> so your connection is not interrupted.',
     fa: '⚠️ <b>حجم شما رو به اتمام است</b>\nفقط <b>{remaining}</b> از حجم حساب شما باقی مانده است.\nهمین حالا از 🛒 <b>خرید حجم</b> شارژ کنید تا اتصالتان قطع نشود.',
   },
+  // Customer usage receipt (notifications/usage-receipt.ts): sent once an account
+  // on a >= 50 GB plan passes 50% used. Persian-only ("very easy"), card-to-card
+  // renewal. {greeting}/{card}/{holder} are HTML-safe raw values; {card} is <code>
+  // (tap-to-copy). The button drops the customer into the existing receipt flow.
+  'notify.usageReceipt': {
+    en: "{greeting}\n\nYou've used {percent} of your {plan} plan and haven't renewed yet. To stay connected, pay card-to-card:\n💳 <code>{card}</code>\nName: {holder}\n\nAfter paying, tap the button below, pick your package and send your receipt photo; your account stays active for up to 24h while we approve it.",
+    fa: '{greeting}\n\n{percent} از بسته‌ات ({plan}) مصرف شده و هنوز تمدیدش نکردی. برای اینکه قطع نشی، هزینه رو کارت‌به‌کارت کن:\n💳 <code>{card}</code>\nبه نام {holder}\n\nبعد از پرداخت، دکمه پایین رو بزن، بسته‌ات رو انتخاب کن و عکس رسید رو بفرست؛ اکانتت تا ۲۴ ساعت فعال می‌مونه تا تأییدش کنیم.',
+  },
+  'notify.usageReceipt.btn': {
+    en: "I've paid — upload receipt 🧾",
+    fa: 'پرداخت کردم — ارسال رسید 🧾',
+  },
   'notify.quotaExhausted': {
     en: '⛔ <b>Your data is finished</b>\nYour account has no data left, so your connection is paused.\nRecharge with 🛒 <b>Buy Data</b> — you reconnect automatically as soon as the data is added.',
     fa: '⛔ <b>حجم شما تمام شد</b>\nحجمی در حساب شما باقی نمانده و اتصالتان متوقف شده است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض اضافه‌شدن حجم، اتصال خودکار برقرار می‌شود.',
@@ -641,6 +668,28 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   'notify.monthEnded': {
     en: '📅 <b>Your monthly account has ended</b>\nYour connection is paused until you buy data for the new month.\nRecharge with 🛒 <b>Buy Data</b> — you reconnect automatically as soon as it is approved.',
     fa: '📅 <b>اشتراک ماهانهٔ شما به پایان رسید</b>\nاتصال شما تا خرید حجم برای ماه جدید متوقف است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض تأیید، اتصال خودکار برقرار می‌شود.',
+  },
+  // Renewal-ladder notices (notifications/renewal-ladder.ts): one 5-min tick nudges a
+  // customer up the renewal ladder. {remaining} is a preformatted (raw) size string.
+  'notify.renew.usage80': {
+    en: '📉 <b>You have used about 80% of your data</b>\nOnly <b>{remaining}</b> is left.\nRenew now with 🛒 <b>Buy Data</b> so your connection is not interrupted.',
+    fa: '📉 <b>حدود ۸۰٪ از حجم‌تان مصرف شده</b>\nفقط <b>{remaining}</b> باقی مانده است.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا اتصالتان قطع نشود.',
+  },
+  'notify.renew.usage95': {
+    en: '⚠️ <b>Your data is almost gone</b>\nOnly <b>{remaining}</b> is left on your account.\nRenew now with 🛒 <b>Buy Data</b> to stay connected.',
+    fa: '⚠️ <b>حجم شما تقریباً تمام شده</b>\nفقط <b>{remaining}</b> از حساب شما باقی مانده است.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا اتصالتان برقرار بماند.',
+  },
+  'notify.renew.exhausted': {
+    en: '⛔ <b>Your data is finished</b>\nYour connection is paused until you renew.\nRecharge with 🛒 <b>Buy Data</b> — you reconnect automatically as soon as it is approved.',
+    fa: '⛔ <b>حجم شما تمام شد</b>\nاتصالتان تا زمان تمدید متوقف است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض تأیید، اتصال خودکار برقرار می‌شود.',
+  },
+  'notify.renew.expiry3d': {
+    en: '⏳ <b>Your subscription ends in a few days</b>\n<b>{remaining}</b> of data is still unused and does not carry over.\nRenew now with 🛒 <b>Buy Data</b> to keep your data and your connection — 🎁 renew early and get a bonus too.',
+    fa: '⏳ <b>اشتراک شما تا چند روز دیگر به پایان می‌رسد</b>\n<b>{remaining}</b> از حجم شما هنوز استفاده نشده و به دوره بعد منتقل نمی‌شود.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا حجم و اتصالتان حفظ شود — 🎁 با تمدید زودهنگام هدیه هم می‌گیرید.',
+  },
+  'notify.renew.expiry1d': {
+    en: '⏳ <b>Your subscription ends tomorrow</b>\n<b>{remaining}</b> of data is still unused.\nRenew now with 🛒 <b>Buy Data</b> so you do not lose it — 🎁 renew early and get a bonus too.',
+    fa: '⏳ <b>اشتراک شما فردا به پایان می‌رسد</b>\n<b>{remaining}</b> از حجم شما هنوز استفاده نشده است.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا حجمتان از بین نرود — 🎁 با تمدید زودهنگام هدیه هم می‌گیرید.',
   },
   'admin.receipt.new': {
     en: '🧾 New payment receipt\nCustomer: {customerName}\nPackage: {packageSize}\nAmount: {amount}\nRef: {reference}',

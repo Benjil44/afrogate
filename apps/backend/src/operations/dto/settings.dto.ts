@@ -131,6 +131,15 @@ export class UpdateTelegramBotSettingsDto {
   @Min(0)
   @Max(1_000_000)
   gemMilestoneBonus?: number;
+
+  // Referral DATA reward in decimal bytes (default 1,500,000,000 = 1.5 GB, NOT
+  // GiB). 0 disables the data reward (the gem referral paths resume). Cap at 1 TB.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_000)
+  referralRewardBytes?: number;
 }
 
 export class CreateProtocolSetupDto {

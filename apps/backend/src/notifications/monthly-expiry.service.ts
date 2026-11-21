@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { AuditService } from '../audit/audit.service';
 import { numberFromBigInt } from '../billing/billing-math';
-import { MONTHLY_REMINDER_LEAD_MS, isMonthEndingSoon } from '../billing/monthly-period';
+import { MONTHLY_REMINDER_LEAD_MS } from '../billing/monthly-period';
 import { DatabaseService } from '../database/database.service';
 import { applyRtlGuard, formatDataSize } from '../telegram/telegram-format';
 import { isTelegramLanguage, renderTelegramCopy, type TelegramLanguage } from '../telegram/telegram-i18n';
@@ -133,7 +133,10 @@ export class MonthlyExpiryService implements OnModuleInit, OnModuleDestroy {
       if (sent >= MAX_SENDS_PER_TICK) break;
       const expiresAt = new Date(row.expiresAt);
       const state = { quotaLimitBytes: numberFromBigInt(row.quotaLimitBytes), usedBytes: numberFromBigInt(row.usedBytes) ?? 0, expiresAt };
-      const kind: Kind | null = isMonthEndingSoon(state, now) ? 'reminder' : expiresAt.getTime() <= now.getTime() ? 'ended' : null;
+      // C6 (0.128.0): the T-1d "ends tomorrow" reminder is RETIRED — the renewal ladder
+      // owns the expiry rungs (T-3d/T-1d). This sweep keeps ONLY the post-expiry "ended"
+      // notice (and the forfeiture sweep above).
+      const kind: Kind | null = expiresAt.getTime() <= now.getTime() ? 'ended' : null;
       if (!kind || sentKeys.has(`${row.accountId}|${MONTHLY_ACTION[kind]}|${expiresAt.toISOString()}`)) continue;
       sent += 1;
       const remaining = Math.max(0, (state.quotaLimitBytes ?? 0) - state.usedBytes);

@@ -51,6 +51,12 @@ export const US_MGMT_DEFAULT_SSH = 'afrows-us-mgmt';
 export const US_INBOUND_TAG = 'afrows-us-ws';
 export const US_INBOUND_PORT = 10085;
 
+/** "Germany Fast x2" (direct REALITY) mgmt target: an ssh_config Host alias, like the USA. */
+export const DEF_MGMT_DEFAULT_SSH = 'afrows-def-mgmt';
+/** The direct REALITY inbound the DEF forced-command wrapper provisions onto (tag + port). */
+export const DEF_INBOUND_TAG = 'afrows-def-reality';
+export const DEF_INBOUND_PORT = 8443;
+
 const TRUTHY = ['1', 'true', 'yes', 'on'];
 
 /**
@@ -92,6 +98,16 @@ export function buildUsAduJson(
   return buildRemoteAduJson(uuid, email, tag, port);
 }
 
+/** "Germany Fast x2" adu payload (defaults: afrows-def-reality:8443). */
+export function buildDefAduJson(
+  uuid: string,
+  email: string,
+  tag: string = DEF_INBOUND_TAG,
+  port: number = DEF_INBOUND_PORT,
+): string {
+  return buildRemoteAduJson(uuid, email, tag, port);
+}
+
 export function resolveDeMgmtConfig(env: Record<string, string | undefined>): DeMgmtConfig {
   return {
     sshTarget: env.AFROWS_DE_MGMT_SSH?.trim() || DE_MGMT_DEFAULT_SSH,
@@ -113,6 +129,23 @@ export function resolveUsMgmtConfig(env: Record<string, string | undefined>): Re
 /** USA mgmt (provisioning + metering) is OFF unless AFROWS_US_MGMT_ENABLED is truthy. */
 export function isUsMgmtEnabled(env: Record<string, string | undefined>): boolean {
   return TRUTHY.includes(env.AFROWS_US_MGMT_ENABLED?.trim().toLowerCase() ?? '');
+}
+
+/** "Germany Fast x2": `AFROWS_DEF_MGMT_SSH` (default the `afrows-def-mgmt` alias), optional
+ *  `AFROWS_DEF_MGMT_KEY` (default '' = no `-i`, the alias's IdentityFile is used). */
+export function resolveDefMgmtConfig(env: Record<string, string | undefined>): RemoteExitMgmtConfig {
+  return {
+    sshTarget: env.AFROWS_DEF_MGMT_SSH?.trim() || DEF_MGMT_DEFAULT_SSH,
+    keyPath: env.AFROWS_DEF_MGMT_KEY?.trim() || '',
+    connectTimeoutSeconds: REMOTE_EXIT_DEFAULT_CONNECT_TIMEOUT,
+  };
+}
+
+/** "Germany Fast x2" mgmt (provisioning + metering) is OFF unless AFROWS_DEF_MGMT_ENABLED is
+ *  truthy. A provisioned DEF user must always be metered, so DEF is never provisioned without its
+ *  meter (both ride this one flag). */
+export function isDefMgmtEnabled(env: Record<string, string | undefined>): boolean {
+  return TRUTHY.includes(env.AFROWS_DEF_MGMT_ENABLED?.trim().toLowerCase() ?? '');
 }
 
 /** Shared ssh flags: batch mode (never prompt), optional fixed key, bounded connect. */

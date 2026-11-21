@@ -83,7 +83,8 @@ function harness(initialRows: Row[], envOverrides: Record<string, string> = {}) 
   };
   const germany = fakeMgmt('Germany');
   const usa = fakeMgmt('USA');
-  const service = new XrayProvisioningService!(config, database, germany, usa);
+  const def = fakeMgmt('Germany Fast');
+  const service = new XrayProvisioningService!(config, database, germany, usa, def);
   const xrayCalls: string[][] = [];
   let failXray: (args: string[]) => boolean = () => false;
   service.xray = async (args: string[]) => {

@@ -18,6 +18,7 @@ interface Captured {
   lastCreateInput: Parameters<TelegramSelfServiceDeps['createAccount']>[0] | null;
   lastConfigLabel: string | null;
   attributeCalls: number;
+  lastAttributeInput: Parameters<TelegramSelfServiceDeps['attributeAndCreditReferral']>[0] | null;
   linkCalls: number;
   lastLinkInput: LinkAccountByPhoneInput | null;
   phoneEvents: Array<{ event: PhoneRegistrationEvent; matchedAccountIds: string[] }>;
@@ -33,6 +34,7 @@ function makeDeps(overrides: Partial<TelegramSelfServiceDeps> = {}): {
     lastCreateInput: null,
     lastConfigLabel: null,
     attributeCalls: 0,
+    lastAttributeInput: null,
     linkCalls: 0,
     lastLinkInput: null,
     phoneEvents: [],
@@ -73,8 +75,9 @@ function makeDeps(overrides: Partial<TelegramSelfServiceDeps> = {}): {
     },
     getEntryLink: async () => 'vless://link',
     findPrimaryVlessConfigId: async () => 'cfg-existing',
-    attributeAndCreditReferral: async () => {
+    attributeAndCreditReferral: async (input) => {
       captured.attributeCalls += 1;
+      captured.lastAttributeInput = input;
       return null;
     },
     buildConfigLabel: (name, phone) => buildConfigLabel(name, phone),
@@ -135,7 +138,13 @@ describe('TelegramSelfServiceProvisioner.register (v2, 0 GB + named config)', ()
       inviterGemsBalance: 50,
       milestone: null,
     };
-    const { deps, captured } = makeDeps({ attributeAndCreditReferral: async () => (captured.attributeCalls++, attribution) });
+    const { deps, captured } = makeDeps({
+      attributeAndCreditReferral: async (input) => {
+        captured.attributeCalls += 1;
+        captured.lastAttributeInput = input;
+        return attribution;
+      },
+    });
     const provisioner = new TelegramSelfServiceProvisioner(deps);
 
     const result = await provisioner.register({
@@ -146,8 +155,45 @@ describe('TelegramSelfServiceProvisioner.register (v2, 0 GB + named config)', ()
     });
 
     assert.equal(captured.attributeCalls, 1);
+    assert.equal(captured.lastAttributeInput?.creditGems, true, 'gems are credited when the data reward is off');
     assert.equal(result.referral?.inviterAccountId, 'inviter-1');
     assert.equal(result.referral?.signupGems, 50);
+  });
+
+  it('skips the signup gem bonus (creditGems=false, no gem push) but STILL attributes referred_by when the data reward is active', async () => {
+    const attribution: ReferralAttribution = {
+      inviterAccountId: 'inviter-1',
+      inviterTelegramId: '999',
+      inviterTelegramChatId: 'chat-inv',
+      friendName: 'Hani',
+      signupGems: 0,
+      inviterGemsBalance: 0,
+      milestone: null,
+    };
+    const { deps, captured } = makeDeps({
+      attributeAndCreditReferral: async (input) => {
+        captured.attributeCalls += 1;
+        captured.lastAttributeInput = input;
+        return attribution;
+      },
+    });
+    const provisioner = new TelegramSelfServiceProvisioner(deps);
+
+    const result = await provisioner.register({
+      telegramId: '889',
+      displayName: 'Hani',
+      phone: '989121234567',
+      referralCode: 'FRIEND22',
+      referralRewardBytes: 1_500_000_000,
+    });
+
+    // Attribution (referred_by write-once) still runs, so the data reward can find
+    // the inviter on the first paid top-up...
+    assert.equal(captured.attributeCalls, 1, 'referred_by is still attributed');
+    assert.equal(captured.lastAttributeInput?.creditGems, false, 'but no signup gems are credited');
+    // ...and the gem N3 push is suppressed (no referral surfaced to the caller).
+    assert.equal(result.referral, null);
+    assert.equal(result.created, true);
   });
 
   it('resolves a concurrent-create race (unique violation) to the winning account', async () => {

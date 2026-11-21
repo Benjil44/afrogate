@@ -22,6 +22,14 @@ export interface PeriodCreditInput {
   /** The package's validity; null/0 = not a monthly package. */
   durationDays: number | null;
   now: Date;
+  /**
+   * Early-renewal (lever A, Q1): when the renewal qualifies for the early-renewal
+   * window, a running month is EXTENDED (expiresAt = old_end + durationDays) and the
+   * leftover is carried, instead of keeping the end date so the unused GB would be
+   * forfeited at the old month end. Only the early-renewal-eligible path sets this;
+   * every other top-up keeps the default keep-end-date behaviour.
+   */
+  earlyRenewal?: boolean;
 }
 
 export interface PeriodCreditResult {
@@ -54,7 +62,11 @@ export function computePeriodCredit(input: PeriodCreditInput): PeriodCreditResul
     return { quotaLimitAfterBytes: safeSum(carried, volumeBytes), expiresAt, periodStarted: false };
   }
   if (expiresAt && expiresAt.getTime() > now.getTime()) {
-    return { quotaLimitAfterBytes: safeSum(carried, volumeBytes), expiresAt, periodStarted: false };
+    // Month running: carry leftover + add the GB. Early renewal EXTENDS the end date
+    // (old_end + durationDays) so the leftover is not forfeited at the old month end;
+    // the default keeps the end date (Q1).
+    const newEnd = input.earlyRenewal ? new Date(expiresAt.getTime() + days * DAY_MS) : expiresAt;
+    return { quotaLimitAfterBytes: safeSum(carried, volumeBytes), expiresAt: newEnd, periodStarted: false };
   }
   const newEnd = new Date(now.getTime() + days * DAY_MS);
   if (!expiresAt) {

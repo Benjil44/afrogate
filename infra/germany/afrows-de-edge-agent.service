@@ -1,0 +1,21 @@
+[Unit]
+Description=Afrows Germany edge agent (pull allow-list from backend over Cloudflare, mirror to config.json, push usage)
+After=network-online.target afrows-xray-de.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/afrows/afrows-de-agent.env
+ExecStart=/usr/bin/python3 /usr/local/bin/afrows-de-edge-agent.py
+Restart=always
+RestartSec=10
+# Hardening. The agent must write config.json and its usage state, so those dirs
+# are explicitly read-write while the rest of the system stays protected.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/usr/local/etc/afrows-xray-de /var/lib/afrows
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

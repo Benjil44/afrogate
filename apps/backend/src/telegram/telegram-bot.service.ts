@@ -18,7 +18,12 @@ import {
   type TelegramReplyKeyboardMarkup,
   type TelegramReplyMarkup,
 } from '../notifications/telegram-alert.service';
-import { TelegramBotConfigService, GEM_ECONOMY_DEFAULTS, type TelegramGemEconomy } from './telegram-bot-config.service';
+import {
+  TelegramBotConfigService,
+  GEM_ECONOMY_DEFAULTS,
+  REFERRAL_REWARD_DEFAULT_BYTES,
+  type TelegramGemEconomy,
+} from './telegram-bot-config.service';
 import {
   configLinksQrCaptionId,
   configLinksQrPayload,
@@ -1430,6 +1435,7 @@ export class TelegramBotService {
     input: { displayName: string; phone: string; referralCode: string | null },
   ): Promise<RegisterResult> {
     const economy = await this.gemEconomy();
+    const referralRewardBytes = await this.referralRewardBytes();
     const provisioner = new TelegramSelfServiceProvisioner({
       findAccountByTelegramId: (telegramId) => this.findAccountByTelegramId(telegramId),
       findLiveAccountsByPhone: async (phone) => {
@@ -1473,15 +1479,20 @@ export class TelegramBotService {
       },
       getEntryLink: async (configId) => (await this.billing.getClientConfigEntryLink(configId)).link,
       findPrimaryVlessConfigId: (accountId) => this.findPrimaryVlessConfigId(accountId),
-      attributeAndCreditReferral: async ({ newAccountId, code, friendName }) => {
+      attributeAndCreditReferral: async ({ newAccountId, code, friendName, creditGems }) => {
+        // When the DATA reward is active (creditGems === false), pass a zeroed gem
+        // config: attributeReferral still sets referred_by (write-once), but no signup
+        // or milestone gems are credited — the data reward pays on the first paid top-up.
         const outcome = await this.billing.attributeAndCreditReferral({
           newAccountId,
           code,
-          config: {
-            signupGems: economy.gemReferralSignup,
-            milestoneEvery: economy.gemMilestoneEvery,
-            milestoneBonus: economy.gemMilestoneBonus,
-          },
+          config: creditGems
+            ? {
+                signupGems: economy.gemReferralSignup,
+                milestoneEvery: economy.gemMilestoneEvery,
+                milestoneBonus: economy.gemMilestoneBonus,
+              }
+            : { signupGems: 0, milestoneEvery: 0, milestoneBonus: 0 },
         });
         if (!outcome) return null;
         return { ...outcome, friendName };
@@ -1506,6 +1517,7 @@ export class TelegramBotService {
       displayName: input.displayName,
       phone: input.phone,
       referralCode: input.referralCode,
+      referralRewardBytes,
     });
   }
 
@@ -1839,6 +1851,15 @@ export class TelegramBotService {
       return (await this.telegramConfig.getRuntimeConfig()).gemEconomy;
     } catch {
       return { ...GEM_ECONOMY_DEFAULTS };
+    }
+  }
+
+  /** Resolved referral DATA reward in decimal bytes (0 = disabled), default on error. */
+  private async referralRewardBytes(): Promise<number> {
+    try {
+      return (await this.telegramConfig.getRuntimeConfig()).referralRewardBytes;
+    } catch {
+      return REFERRAL_REWARD_DEFAULT_BYTES;
     }
   }
 

@@ -3,11 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DatabaseService } from '../database/database.service';
+import { inGraceAllowanceSql } from '../billing/grace';
 import { parseUserStats } from './xray-usage';
 import { applyUsageDelta } from './usage-accounting';
 import { provisioningEmail } from './xray-provisioning';
 import { GermanyMgmtService } from './germany-mgmt.service';
 import { UsaMgmtService } from './usa-mgmt.service';
+import { DefMgmtService } from './def-mgmt.service';
 import {
   createRemoteMembershipState,
   expireRemoteRevocations,
@@ -45,8 +47,16 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
    * a later cut goes out immediately. The local rmu stays every tick (cheap).
    */
   private readonly remoteCuts = {
-    quota: { germany: createRemoteMembershipState(), usa: createRemoteMembershipState() },
-    status: { germany: createRemoteMembershipState(), usa: createRemoteMembershipState() },
+    quota: {
+      germany: createRemoteMembershipState(),
+      usa: createRemoteMembershipState(),
+      def: createRemoteMembershipState(),
+    },
+    status: {
+      germany: createRemoteMembershipState(),
+      usa: createRemoteMembershipState(),
+      def: createRemoteMembershipState(),
+    },
   };
 
   constructor(
@@ -54,6 +64,7 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     private readonly database: DatabaseService,
     private readonly germanyMgmt: GermanyMgmtService,
     private readonly usaMgmt: UsaMgmtService,
+    private readonly defMgmt: DefMgmtService,
   ) {}
 
   onModuleInit(): void {
@@ -120,6 +131,10 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
         WHERE cc.status <> 'disabled'
           AND ca.quota_limit_bytes IS NOT NULL
           AND ca.used_bytes >= ca.quota_limit_bytes
+          -- Capped receipt grace (migrations 0068/0070): don't cut an account inside its
+          -- 24h window AND under the overage cap. Fail-closed: a NULL grace_cap_bytes
+          -- grants no overage. Shared fragment lives in billing/grace.ts.
+          AND NOT ${inGraceAllowanceSql('ca')}
       `,
     );
     let newlyLimited = 0;
@@ -217,12 +232,12 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * rmu on Germany AND the USA, in parallel so a down site (bounded by its ssh
-   * timeout, then skipped by its breaker) never delays the other's cut. The USA
-   * call is a no-op unless AFROWS_US_MGMT_ENABLED. Never throws.
+   * rmu on Germany AND the USA AND "Germany Fast x2", in parallel so a down site (bounded by its
+   * ssh timeout, then skipped by its breaker) never delays the others' cut. The USA / Germany-Fast
+   * calls are no-ops unless AFROWS_US_MGMT_ENABLED / AFROWS_DEF_MGMT_ENABLED. Never throws.
    */
   private async removeFromRemoteExits(
-    cuts: { germany: RemoteMembershipState; usa: RemoteMembershipState },
+    cuts: { germany: RemoteMembershipState; usa: RemoteMembershipState; def: RemoteMembershipState },
     clientConfigIds: readonly string[],
   ): Promise<void> {
     const now = Date.now();
@@ -236,6 +251,7 @@ export class XrayUsageMeteringService implements OnModuleInit, OnModuleDestroy {
     await Promise.all([
       site(cuts.germany, (email) => this.germanyMgmt.removeUser(email)),
       site(cuts.usa, (email) => this.usaMgmt.removeUser(email)),
+      site(cuts.def, (email) => this.defMgmt.removeUser(email)),
     ]);
   }
 

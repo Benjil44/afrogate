@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { inGraceAllowanceSql } from '../billing/grace';
 
 /**
  * Meters per-peer WireGuard traffic and enforces GB quota — the WG counterpart
@@ -118,6 +119,9 @@ export class WireguardMeteringService implements OnModuleInit, OnModuleDestroy {
           AND wp.desired_state = 'present'
           AND ca.quota_limit_bytes IS NOT NULL
           AND ca.used_bytes >= ca.quota_limit_bytes
+          -- Capped receipt grace (migrations 0068/0070): keep a peer connected inside its
+          -- 24h window AND under the overage cap (fail-closed; billing/grace.ts).
+          AND NOT ${inGraceAllowanceSql('ca')}
         RETURNING wp.id
       `,
     );
@@ -131,7 +135,9 @@ export class WireguardMeteringService implements OnModuleInit, OnModuleDestroy {
           AND wp.desired_state = 'absent'
           AND ca.status = 'active'
           AND cc.status <> 'disabled'
-          AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes)
+          -- grace (migrations 0068/0070): re-arm a peer under quota OR inside the capped grace allowance
+          AND (ca.quota_limit_bytes IS NULL OR ca.used_bytes < ca.quota_limit_bytes
+               OR ${inGraceAllowanceSql('ca')})
         RETURNING wp.id
       `,
     );

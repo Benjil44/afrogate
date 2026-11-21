@@ -1,0 +1,121 @@
+#!/bin/bash
+# Afrows "Germany Fast x2" management-command dispatcher (mirror of infra/usa/afrows-us-mgmt-cmd,
+# single REALITY inbound instead of a WS inbound + three direct tags).
+#
+# FORCED command for the Afrows->Germany-Fast management SSH key, in this box's root
+# authorized_keys. Unlike the USA (which rides the xray chain and so arrives from 127.0.0.1), the
+# backend reaches THIS box directly, so pin `from=` to the Afrows backend host(s), e.g.:
+#   command="/usr/local/sbin/afrows-def-mgmt-cmd",from="185.252.30.123",no-pty,
+#   no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... afrows-def-mgmt
+# The sub-command comes from $SSH_ORIGINAL_COMMAND, never from a shell. Three verbs only, same
+# semantics as DE/US:
+#   read-usage    print /var/lib/afrows/def-usage.json (same format as de-usage.json)
+#   rmu <email>   remove cc_<id>@afrows from inbound afrows-def-reality
+#   adu           add the users in the adu JSON on stdin (tag afrows-def-reality, port 8443)
+#
+# adu/rmu are applied live via the xray API AND mirrored into config.json (under a lock) so
+# customers survive an xray restart/reboot. The xray API change is the authoritative result (its
+# exit code is returned); the mirror is best-effort and NEVER touches any reserved/non-customer
+# client already in the inbound (only cc_<uuid>@afrows entries are added/removed).
+set -euo pipefail
+read -ra cmd <<< "${SSH_ORIGINAL_COMMAND:-}"
+API=127.0.0.1:10086
+TAG=afrows-def-reality
+XR=/usr/local/bin/xray
+CFG=/usr/local/etc/xray/config.json
+LOCK=/run/afrows-def-mgmt.lock
+
+# mirror <add|rm> <arg>: add -> arg is the adu JSON file; rm -> arg is the email.
+mirror() {
+  (
+    flock -w 20 9 || exit 0
+    python3 -I - "$CFG" "$TAG" "$1" "$2" "$XR" <<'PY' || echo "mirror-failed" >&2
+import json, os, re, subprocess, sys
+cfg_path, tag, op, arg, xr = sys.argv[1:6]
+email_re = re.compile(r"^cc_[0-9a-fA-F-]{36}@afrows$")
+uuid_re = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+with open(cfg_path) as fh:
+    cfg = json.load(fh)
+inb = next((i for i in cfg.get("inbounds", []) if i.get("tag") == tag), None)
+if inb is None:
+    sys.exit(1)
+clients = inb.setdefault("settings", {}).setdefault("clients", [])
+if op == "add":
+    with open(arg) as fh:
+        req = json.load(fh)
+    new = []
+    for i in req.get("inbounds", []):
+        if i.get("tag") != tag:
+            continue
+        for c in (i.get("settings") or {}).get("clients", []):
+            if email_re.match(str(c.get("email", ""))) and uuid_re.match(str(c.get("id", ""))):
+                new.append({"id": str(c["id"]), "email": c["email"], "level": 0})
+    emails = {c["email"] for c in new}
+    # Keep every existing client whose email is NOT one we are (re)adding; this preserves any
+    # reserved/non-customer client (e.g. a mgmt probe user) and only touches cc_<uuid>@afrows.
+    clients[:] = [c for c in clients if c.get("email") not in emails] + new
+else:
+    # rm only ever removes the exact cc_<id>@afrows email; reserved clients are never matched.
+    clients[:] = [c for c in clients if c.get("email") != arg]
+tmp = cfg_path + ".mgmt.tmp"
+with open(tmp, "w") as fh:
+    json.dump(cfg, fh, indent=2)
+st = os.stat(cfg_path)
+os.chmod(tmp, st.st_mode & 0o777)
+os.chown(tmp, st.st_uid, st.st_gid)
+# Never persist a config xray would refuse at the next restart (that would keep the exit down).
+if subprocess.run([xr, "run", "-test", "-format", "json", "-config", tmp], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+    os.remove(tmp)
+    sys.exit(1)
+os.replace(tmp, cfg_path)
+PY
+  ) 9>"$LOCK"
+}
+
+case "${cmd[0]:-}" in
+  read-usage)
+    # dump the durable per-user usage buffer for the Afrows metering pull
+    exec cat /var/lib/afrows/def-usage.json
+    ;;
+  rmu)
+    # disconnect one user (quota enforcement / deprovision)
+    [[ "${cmd[1]:-}" =~ ^cc_[0-9a-fA-F-]{36}@afrows$ ]] || { echo "bad-email"; exit 2; }
+    rc=0
+    "$XR" api rmu --server="$API" -tag="$TAG" "${cmd[1]}" || rc=$?
+    mirror rm "${cmd[1]}"
+    exit $rc
+    ;;
+  adu)
+    # provision; xray's `api adu` wants a FILE argument (not stdin), so stage stdin.
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    head -c 1048576 > "$tmp"
+    # Reject the whole payload unless every client is a customer (cc_<uuid>@afrows) with a real
+    # UUID, before xray sees it (adu exits 0 even when xray rejects it).
+    python3 -I - "$tmp" "$TAG" <<'CHK' || { echo "bad-payload"; exit 2; }
+import json, re, sys
+em = re.compile(r"^cc_[0-9a-fA-F-]{36}@afrows$")
+uu = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+try:
+    req = json.load(open(sys.argv[1]))
+    inbs = req["inbounds"]
+    assert isinstance(inbs, list) and inbs
+    for i in inbs:
+        assert i.get("tag") == sys.argv[2]
+        cl = i["settings"]["clients"]
+        assert isinstance(cl, list) and cl
+        for c in cl:
+            assert em.match(str(c.get("email", ""))) and uu.match(str(c.get("id", "")))
+except Exception:
+    sys.exit(1)
+CHK
+    rc=0
+    "$XR" api adu --server="$API" "$tmp" || rc=$?
+    [ "$rc" -eq 0 ] && mirror add "$tmp"
+    exit $rc
+    ;;
+  *)
+    echo "denied"
+    exit 3
+    ;;
+esac

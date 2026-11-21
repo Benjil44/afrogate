@@ -66,6 +66,13 @@ export interface RegisterInput {
   phone: string;
   /** Invite code captured from the /start deep-link, if any (attributed once). */
   referralCode?: string | null;
+  /**
+   * Referral DATA reward size in decimal bytes (0 = disabled). When > 0 the data
+   * reward (paid on the invitee's first paid top-up) REPLACES the gem signup bonus,
+   * so signup credits NO gems here — but referred_by is still attributed (write-once)
+   * so the data reward can find the inviter later. Defaults to 0 (gem behavior).
+   */
+  referralRewardBytes?: number;
 }
 
 export interface RegisterResult {
@@ -121,11 +128,17 @@ export interface TelegramSelfServiceDeps {
   getEntryLink(clientConfigId: string): Promise<string | null>;
   /** Best-effort primary VLESS client config id for an existing account. */
   findPrimaryVlessConfigId(customerAccountId: string): Promise<string | null>;
-  /** Attribute the referral (write-once) and credit the inviter's signup bonus + milestone. */
+  /**
+   * Attribute the referral (write-once) and, when `creditGems` is true, credit the
+   * inviter's signup bonus + milestone. When `creditGems` is false (the DATA reward
+   * is active) the inviter is still attributed (referred_by is set write-once) but
+   * NO gems are credited — the data reward pays on the invitee's first paid top-up.
+   */
   attributeAndCreditReferral(input: {
     newAccountId: string;
     code: string;
     friendName: string;
+    creditGems: boolean;
   }): Promise<ReferralAttribution | null>;
   /** Build the ASCII, auto-pattern-safe config label from the name + phone (§11 R2). */
   buildConfigLabel(displayName: string, phone: string): string;
@@ -275,12 +288,19 @@ export class TelegramSelfServiceProvisioner {
 
     let referral: ReferralAttribution | null = null;
     if (input.referralCode) {
-      // A bad/self/duplicate code returns null — it must never block onboarding.
-      referral = await this.deps.attributeAndCreditReferral({
+      // When the DATA reward is active, skip the gem signup bonus but STILL attribute
+      // referred_by (write-once) so the data reward can find the inviter on the first
+      // paid top-up. A bad/self/duplicate code returns null — never blocks onboarding.
+      const creditGems = !((input.referralRewardBytes ?? 0) > 0);
+      const outcome = await this.deps.attributeAndCreditReferral({
         newAccountId: account.id,
         code: input.referralCode,
         friendName: input.displayName,
+        creditGems,
       });
+      // Surface the attribution to the caller (for the N3 gem push) only when gems
+      // were actually credited; with the data reward active there is no signup push.
+      referral = creditGems ? outcome : null;
     }
 
     return { account, entryLink, configLabel, created: true, linked: false, referral };
