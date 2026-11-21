@@ -17,7 +17,8 @@ concurrency:
 jobs:
   checks:
     name: Version, Build, E2E, Audit
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest rolled to 26.04, which Playwright 1.60 can't install browsers on.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     steps:
