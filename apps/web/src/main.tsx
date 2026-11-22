@@ -15,7 +15,7 @@ if (!root) throw new Error('Web root element was not found');
 createRoot(root).render(
   <StrictMode>
     <LangProvider>
-      {/* MotionProvider needs the language (RTL mirroring); PlayerProvider needs the motion tier (analyser gating). */}
+      {/* PlayerProvider needs the motion tier (analyser gating) and the language (lock-screen album name). */}
       <MotionProvider>
         <PlayerProvider>
           <App />

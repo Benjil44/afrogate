@@ -1,14 +1,11 @@
-import { useRef } from 'react';
 import { Check, Crown } from 'lucide-react';
 import { SectionHeading } from '@/components/section-heading';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/i18n';
-import { useFx } from '@/motion/use-fx';
 
-/** Act 5 — "Your frequency": the featured yearly card lands last and highest, and its glow is scrubbed in. */
+/** Plans, shown inside the VPN sheet (moved from the old landing page; the featured card keeps its CSS glow). */
 export function Pricing() {
   const { t } = useLang();
-  const ref = useRef<HTMLElement>(null);
   // Prices are i18n PLACEHOLDERS (see en.ts / fa.ts) until the billing catalogue exists.
   const plans = [
     { key: 'free', featured: false },
@@ -16,23 +13,17 @@ export function Pricing() {
     { key: 'yearly', featured: true },
   ] as const;
 
-  useFx(ref, ({ gsap, scrub }) => {
-    const card = ref.current!.querySelector('.plan-featured');
-    if (!card) return;
-    gsap.fromTo(card, { '--plan-glow': 0 }, { '--plan-glow': 1, ease: 'none', scrollTrigger: { trigger: card, start: 'top 85%', end: 'top 45%', scrub } });
-  });
-
   return (
-    <section id="pricing" ref={ref} className="relative mx-auto w-full max-w-6xl px-4 py-20 sm:px-5">
-      <SectionHeading tag={t.pricing.tag} title={t.pricing.title} subtitle={t.pricing.subtitle} />
+    <section id="pricing" aria-labelledby="pricing-title" className="relative mx-auto w-full max-w-6xl px-4 py-12 sm:px-5">
+      <SectionHeading id="pricing-title" tag={t.pricing.tag} title={t.pricing.title} subtitle={t.pricing.subtitle} />
 
-      <div className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3">
+      <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-3">
         {plans.map(({ key, featured }) => {
           const p = t.pricing.plans[key];
           const isFree = key === 'free';
           const wasPrice = 'wasPrice' in p ? p.wasPrice : undefined;
           return (
-            <div key={key} data-fx="rise" data-fx-y={featured ? 52 : undefined} className="h-full">
+            <div key={key} className="h-full">
               <article
                 aria-labelledby={`plan-${key}`}
                 className={cn(

@@ -1,44 +1,197 @@
-import { ScrollProgress } from '@/components/scroll-progress';
-import { PromoBar } from '@/components/promo-bar';
-import { Nav } from '@/components/nav';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { AppHeader } from '@/components/app-header';
 import { MiniPlayer } from '@/components/mini-player';
-import { Hero } from '@/sections/hero';
-import { Radio } from '@/sections/radio';
-import { Deck } from '@/sections/deck';
-import { Features } from '@/sections/features';
-import { Apps } from '@/sections/apps';
-import { Pricing } from '@/sections/pricing';
-import { Faq } from '@/sections/faq';
-import { Cta } from '@/sections/cta';
-import { Footer } from '@/components/ui/motion-footer';
+import { LibraryState, NowPlaying } from '@/components/now-playing';
+import { PlayerSheet } from '@/components/player-sheet';
+import { QueueList } from '@/components/queue-list';
+import { ShortcutsDialog } from '@/components/shortcuts-dialog';
+import { StationChips, StationGrid, StationRail, StationView } from '@/components/stations';
+import { TransportBar } from '@/components/transport';
+import { VpnSheet } from '@/components/vpn-sheet';
+import { fill, useLang } from '@/i18n';
+import { usePlayer } from '@/lib/player';
+import { ALL_STATION } from '@/lib/tracks';
+import { useShortcuts } from '@/lib/use-shortcuts';
+import { cn } from '@/lib/utils';
 
 /**
- * One scroll = tuning in to a station (docs/landing-wave-station-story.md):
- * Hero (signal) -> Stations -> Deck (real sound) -> Clean signal -> Receivers -> Your frequency -> FAQ -> Go on air -> sign-off.
+ * One-screen player (design: afrows-player/01_PLAYER_UX.md). The shell is a `100dvh` grid with
+ * `overflow: hidden`; only the station rail / grid and the queue scroll internally.
+ *
+ *   >= 1280  header / stations rail | now playing | up next / transport bar (80px)
+ *   1024+    header / station chips / now playing | up next / transport bar
+ *   640+     header / station chips / now playing (+ "Up next" toggle panel) / transport bar
+ *   < 640    header / station grid -> station list / mini bar (64px) -> full player sheet
+ *
+ * No router: views are state + `#hash` — `#vpn` / `#pricing` open the VPN sheet,
+ * `#station=<id>` selects a station.
  */
+const STATION_HASH = /^#station=([a-z0-9_-]{1,40})$/;
+
+interface HashRoute {
+  vpn: boolean;
+  pricing: boolean;
+  station: string | null;
+}
+
+function readHash(): HashRoute {
+  const hash = window.location.hash;
+  const station = STATION_HASH.exec(hash)?.[1] ?? null;
+  return { vpn: hash === '#vpn' || hash === '#pricing', pricing: hash === '#pricing', station };
+}
+
+function clearHash() {
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+}
+
 export function Home() {
+  const { t } = useLang();
+  const { status, stations, stationId, track, playing, started, selectStation, station } = usePlayer();
+
+  const [route, setRoute] = useState<HashRoute>(readHash);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [browseId, setBrowseId] = useState<string | null>(route.station);
+  const appliedStation = useRef<string | null>(null);
+  /** Deep-linked station waiting for the player state to catch up (keeps the hash sync from clearing it). */
+  const pendingStation = useRef<string | null>(null);
+
+  // Hash -> state (deep links, back/forward).
+  useEffect(() => {
+    const onHash = () => setRoute(readHash());
+    window.addEventListener('hashchange', onHash);
+    window.addEventListener('popstate', onHash);
+    return () => {
+      window.removeEventListener('hashchange', onHash);
+      window.removeEventListener('popstate', onHash);
+    };
+  }, []);
+
+  // `#station=<id>`: apply once the library is ready (unknown / empty ids show "Station is empty").
+  useEffect(() => {
+    if (status !== 'ready' || !route.station || appliedStation.current === route.station) return;
+    appliedStation.current = route.station;
+    pendingStation.current = route.station;
+    selectStation(route.station);
+    setBrowseId(route.station);
+  }, [status, route.station, selectStation]);
+
+  const openVpn = useCallback(() => {
+    if (!readHash().vpn) window.history.pushState(null, '', '#vpn');
+    setRoute((r) => ({ ...r, vpn: true, pricing: false }));
+  }, []);
+
+  const closeVpn = useCallback(() => {
+    if (readHash().vpn) clearHash();
+    setRoute((r) => ({ ...r, vpn: false, pricing: false }));
+  }, []);
+
+  // Keep `#station=` in sync with the current station (shareable), without adding history entries.
+  useEffect(() => {
+    if (status !== 'ready' || route.vpn) return;
+    if (pendingStation.current) {
+      if (stationId !== pendingStation.current) return;
+      pendingStation.current = null;
+    }
+    const current = STATION_HASH.exec(window.location.hash)?.[1] ?? ALL_STATION;
+    if (current === stationId) return;
+    if (stationId === ALL_STATION) clearHash();
+    else window.history.replaceState(null, '', `#station=${stationId}`);
+    appliedStation.current = stationId === ALL_STATION ? null : stationId;
+  }, [status, stationId, route.vpn]);
+
+  useShortcuts(useCallback(() => setShortcutsOpen(true), []));
+
+  // Polite announcement on track change only (not on load, not on progress).
+  const [announcement, setAnnouncement] = useState('');
+  const lastAnnounced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!started || !playing || track.id === lastAnnounced.current || !track.src) return;
+    lastAnnounced.current = track.id;
+    setAnnouncement(fill(t.player.nowPlayingAnnounce, { title: track.title, artist: track.artist }));
+  }, [started, playing, track, t]);
+
+  const multiStation = stations.length > 1;
+  const ready = status === 'ready';
+  const queueId = 'up-next';
+  const accent = station?.color ? ({ '--station': station.color } as CSSProperties) : undefined;
+  const phoneStation = multiStation ? browseId : ALL_STATION;
+
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden bg-background text-foreground">
-      <ScrollProgress />
-      {/* Fixed header: promo bar + nav stacked; measured by the motion provider for anchor offsets */}
-      <div data-site-header className="fixed inset-x-0 top-0 z-50">
-        <PromoBar />
-        <Nav />
+    <div className={cn('shell bg-background text-foreground', !multiStation && 'shell-single')} style={accent}>
+      <a
+        href="#main"
+        className="skip-link"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById('main')?.focus();
+        }}
+      >
+        {t.player.skipToPlayer}
+      </a>
+
+      <div className="area-header">
+        <AppHeader vpnOpen={route.vpn} onOpenVpn={openVpn} onOpenShortcuts={() => setShortcutsOpen(true)} />
       </div>
 
-      <main id="main">
-        <Hero />
-        <Radio />
-        <Deck />
-        <Features />
-        <Apps />
-        <Pricing />
-        <Faq />
-        <Cta />
+      {ready && multiStation && (
+        <>
+          <div className="area-rail hidden xl:block">
+            <StationRail onOpenVpn={openVpn} />
+          </div>
+          <div className="area-chips hidden sm:block xl:hidden">
+            <StationChips />
+          </div>
+        </>
+      )}
+
+      <main id="main" tabIndex={-1} className="area-main outline-none">
+        {/* Phone: station grid -> station list. */}
+        <div className="h-full sm:hidden">
+          {!ready ? (
+            <div className="grid h-full place-items-center">
+              <LibraryState onOpenVpn={openVpn} />
+            </div>
+          ) : phoneStation ? (
+            <StationView id={phoneStation} onBack={multiStation ? () => setBrowseId(null) : undefined} />
+          ) : (
+            <StationGrid onBrowse={setBrowseId} />
+          )}
+        </div>
+        {/* Tablet / desktop: now playing. */}
+        <div className="hidden h-full sm:block">
+          <NowPlaying onOpenVpn={openVpn} />
+        </div>
       </main>
 
-      <Footer />
-      <MiniPlayer />
+      <div className={cn('area-queue hidden border-s border-[var(--border)] bg-background lg:block', queueOpen && 'sm:block')}>
+        <QueueList id={queueId} />
+      </div>
+
+      <div className="area-bar">
+        <div className="hidden h-full sm:block">
+          <TransportBar queueOpen={queueOpen} onToggleQueue={() => setQueueOpen((o) => !o)} queueId={queueId} />
+        </div>
+        {ready && track.src && (
+          <div className="sm:hidden">
+            <MiniPlayer sheetOpen={sheetOpen} onOpen={() => setSheetOpen(true)} />
+          </div>
+        )}
+      </div>
+
+      {/* At <body> level so it is still heard while a sheet makes the app root inert. */}
+      {createPortal(
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {announcement}
+        </p>,
+        document.body,
+      )}
+
+      <PlayerSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <VpnSheet open={route.vpn} onClose={closeVpn} focusPricing={route.pricing} />
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

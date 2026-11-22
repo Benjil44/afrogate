@@ -2,9 +2,10 @@ import { useEffect } from 'react';
 import { Home } from './pages/home';
 
 /**
- * Single-page site: every path renders the landing page (nginx already serves index.html for any
+ * Single-screen site: every path renders the music player (nginx already serves index.html for any
  * route), so no router is bundled — that keeps ~20 kB gzip off the first load on slow mobile links.
- * An unknown path is normalised to `/` in the address bar, keeping `?lang=` and the `#anchor`.
+ * Views are state + `#hash` (`#vpn`, `#pricing`, `#station=<id>`). An unknown path is normalised
+ * to `/` in the address bar, keeping `?lang=` and the hash.
  */
 export function App() {
   useEffect(() => {

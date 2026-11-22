@@ -28,6 +28,17 @@ export function formatTime(seconds: number, lang: Lang): string {
   return h > 0 ? `${one.format(h)}:${two.format(m)}:${two.format(s)}` : `${one.format(m)}:${two.format(s)}`;
 }
 
+/** Fill `{name}` placeholders in a dictionary template (values are inserted as plain text). */
+export function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? values[key] : match));
+}
+
+/** "5 tracks" / "۵ قطعه" in the current language's digits. */
+export function trackCount(n: number, lang: Lang, t: Dict): string {
+  if (n === 1) return t.player.trackCountOne;
+  return fill(t.player.trackCountMany, { n: new Intl.NumberFormat(NUMBER_LOCALE[lang]).format(n) });
+}
+
 interface LangContextValue {
   lang: Lang;
   dir: 'rtl' | 'ltr';

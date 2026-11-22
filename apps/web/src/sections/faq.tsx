@@ -5,16 +5,16 @@ import { SectionHeading } from '@/components/section-heading';
 import { cn } from '@/lib/utils';
 import { useLang } from '@/i18n';
 
-/** Act 6 — quiet. Accessible accordion: button + aria-expanded/aria-controls, region per answer; CSS collapse. */
+/** FAQ inside the VPN sheet. Accessible accordion: button + aria-expanded/aria-controls, region per answer; CSS collapse. */
 export function Faq() {
   const { t } = useLang();
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="relative mx-auto w-full max-w-3xl px-4 py-20 sm:px-5">
-      <SectionHeading tag={t.faq.tag} title={t.faq.title} subtitle={t.faq.subtitle} />
+    <section id="faq" aria-labelledby="faq-title" className="relative mx-auto w-full max-w-3xl px-4 py-12 sm:px-5">
+      <SectionHeading id="faq-title" tag={t.faq.tag} title={t.faq.title} subtitle={t.faq.subtitle} />
 
-      <ul data-fx="rise" className="mt-12 flex flex-col gap-3">
+      <ul className="mt-10 flex flex-col gap-3">
         {t.faq.items.map((item, i) => {
           const open = openIndex === i;
           const btnId = `faq-q-${i}`;

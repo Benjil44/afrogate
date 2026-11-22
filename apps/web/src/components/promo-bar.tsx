@@ -2,18 +2,13 @@ import { useState } from 'react';
 import { Sparkles, X } from 'lucide-react';
 import { Collapse } from '@/components/collapse';
 import { useLang } from '@/i18n';
-import { useMotion } from '@/motion/provider';
+
+/** Early-member note, shown at the top of the VPN sheet (moved out of the fixed page header). */
 
 export function PromoBar() {
   const { t } = useLang();
-  const { refresh } = useMotion();
   const [open, setOpen] = useState(true);
-
-  const dismiss = () => {
-    setOpen(false);
-    // The fixed header gets shorter: re-measure scroll positions once the collapse has settled.
-    window.setTimeout(refresh, 400);
-  };
+  const dismiss = () => setOpen(false);
 
   return (
     <Collapse open={open} className="w-full">

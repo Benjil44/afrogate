@@ -30,8 +30,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // gsap core + plugins + lenis + our engine share one lazy "fx" chunk (loaded after first paint).
-          if (/node_modules\/(gsap|lenis)\//.test(id) || id.includes('/src/motion/engine')) return 'fx';
           if (id.includes('node_modules')) return 'vendor';
         },
       },

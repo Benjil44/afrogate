@@ -1,18 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Apple, Globe, Smartphone, Play } from 'lucide-react';
 import { Equalizer } from '@/components/equalizer';
-import { RadioDial } from '@/components/radio-dial';
 import { SectionHeading } from '@/components/section-heading';
 import { NUMBER_LOCALE, useLang } from '@/i18n';
 import { CHANNEL_ART, CHANNEL_KEYS, trackArt, usePlayer, usePlayerProgress } from '@/lib/player';
 import { useMotion } from '@/motion/provider';
-import { EASE } from '@/motion/tokens';
-import { useFx } from '@/motion/use-fx';
 import { cn } from '@/lib/utils';
 
 const SCREENS = 3;
 
-/** Non-interactive progress line for the phone mock (the real seek bar lives in the deck / hero). */
+/** Non-interactive progress line for the phone mock (the real seek bar lives in the player). */
 function ProgressLine() {
   const { currentTime, duration } = usePlayerProgress();
   const pct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -23,10 +20,10 @@ function ProgressLine() {
   );
 }
 
-/** Pure-CSS phone mock with three screens: library, now playing, station dial. No images, no store links. */
+/** Pure-CSS phone mock with three screens: library, now playing, stations. No images, no store links. */
 function PhoneMock({ screen }: { screen: number }) {
   const { t, lang } = useLang();
-  const { playing, track, index } = usePlayer();
+  const { playing, track, position } = usePlayer();
   const count = new Intl.NumberFormat(NUMBER_LOCALE[lang]);
   const rows = [
     { name: t.apps.phone.playlistA, art: CHANNEL_ART.pop, count: 42 },
@@ -47,7 +44,7 @@ function PhoneMock({ screen }: { screen: number }) {
               <div className="flex h-full flex-col justify-between text-white">
                 <Equalizer active={playing} bars={6} className="h-5" />
                 <p className="truncate text-xs font-bold drop-shadow">
-                  <bdi>{track.title || t.deck.noTrack}</bdi>
+                  <bdi>{track.title || t.player.noTrack}</bdi>
                 </p>
               </div>
             </div>
@@ -69,15 +66,15 @@ function PhoneMock({ screen }: { screen: number }) {
 
           {/* 2 — now playing */}
           <div className={cn('phone-screen px-4 pb-5 pt-5', screen === 1 && 'is-on')}>
-            <p className="text-sm font-black">{t.hero.player.title}</p>
+            <p className="text-sm font-black">{t.player.nowPlaying}</p>
             <div className="mt-3 grid place-items-center">
-              <div className="animate-spin-slow relative h-28 w-28 rounded-full shadow-lg" style={{ background: trackArt(index) }}>
+              <div className="animate-spin-slow relative h-28 w-28 rounded-full shadow-lg" style={{ background: trackArt(position) }}>
                 <div className="absolute inset-[36%] rounded-full bg-[var(--background)]" />
               </div>
             </div>
-            <div className="mt-4 rounded-2xl p-3 text-white" style={{ background: trackArt(index) }}>
+            <div className="mt-4 rounded-2xl p-3 text-white" style={{ background: trackArt(position) }}>
               <p className="truncate text-xs font-bold">
-                <bdi>{track.title || t.deck.noTrack}</bdi>
+                <bdi>{track.title || t.player.noTrack}</bdi>
               </p>
               <p className="truncate text-[10px] opacity-85">
                 <bdi>{track.artist}</bdi>
@@ -93,12 +90,9 @@ function PhoneMock({ screen }: { screen: number }) {
             </div>
           </div>
 
-          {/* 3 — station dial */}
+          {/* 3 — stations */}
           <div className={cn('phone-screen px-4 pb-5 pt-5', screen === 2 && 'is-on')}>
             <p className="text-sm font-black">{t.radio.tag}</p>
-            <div className="mt-3 rounded-2xl bg-[color-mix(in_oklch,var(--foreground)_4%,transparent)] p-2.5">
-              <RadioDial compact />
-            </div>
             <ul className="mt-3 flex flex-col gap-2">
               {stations.map((key) => (
                 <li key={key} className="flex items-center gap-2.5 rounded-xl bg-[color-mix(in_oklch,var(--foreground)_4%,transparent)] p-2">
@@ -118,15 +112,12 @@ function PhoneMock({ screen }: { screen: number }) {
 }
 
 /**
- * Act 4 — "Receivers". `full`: the card is pinned and the phone tilts in while its three screens
- * and the platform rows advance with the scroll. `lite`: no pin, screens auto-cycle while the
- * phone is in view. `static`: screen 1 only, rows neutral.
+ * "Receivers", shown inside the VPN sheet. `full` / `lite`: the phone's three screens and the
+ * platform rows auto-cycle while the phone is in view. `static`: screen 1 only, rows neutral.
  */
 export function Apps() {
   const { t } = useLang();
   const { tier } = useMotion();
-  const sectionRef = useRef<HTMLElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
   const phoneRef = useRef<HTMLDivElement>(null);
   const [screen, setScreen] = useState(0);
   const platforms = [
@@ -135,10 +126,10 @@ export function Apps() {
     { Icon: Apple, ...t.apps.ios },
   ];
 
-  // lite: timer-driven screen cycle, only while the phone is at least half visible.
+  // Timer-driven screen cycle, only while the phone is at least half visible (never on `static`).
   useEffect(() => {
     const phone = phoneRef.current;
-    if (tier !== 'lite' || !phone) {
+    if (tier === 'static' || !phone) {
       setScreen(0);
       return;
     }
@@ -157,31 +148,9 @@ export function Apps() {
     };
   }, [tier]);
 
-  // full: pinned, scrubbed phone story.
-  useFx(sectionRef, ({ gsap, tier: fxTier, sign, scrub }) => {
-    if (fxTier !== 'full') return;
-    const card = cardRef.current!;
-    const phone = phoneRef.current!;
-    const screens = Array.from(card.querySelectorAll<HTMLElement>('.phone-screen'));
-    const rows = Array.from(card.querySelectorAll<HTMLElement>('.app-row'));
-    gsap.set(screens.slice(1), { opacity: 0, yPercent: 6 });
-    gsap.set(rows[0], { '--row-lit': 1 });
-    const tl = gsap.timeline({
-      scrollTrigger: { trigger: card, start: 'top 12%', end: '+=140%', pin: true, pinSpacing: true, anticipatePin: 1, scrub, invalidateOnRefresh: true },
-    });
-    tl.fromTo(phone, { rotateY: sign * -14, yPercent: 6 }, { rotateY: 0, yPercent: 0, ease: EASE.soft, duration: 0.3 }, 0);
-    for (let i = 1; i < SCREENS; i++) {
-      const at = 0.33 * i;
-      tl.to(screens[i - 1], { opacity: 0, yPercent: -6, duration: 0.15 }, at)
-        .fromTo(screens[i], { opacity: 0, yPercent: 6 }, { opacity: 1, yPercent: 0, duration: 0.15 }, at)
-        .fromTo(rows[i - 1], { '--row-lit': 1 }, { '--row-lit': 0, duration: 0.1 }, at)
-        .fromTo(rows[i], { '--row-lit': 0 }, { '--row-lit': 1, duration: 0.1 }, at);
-    }
-  });
-
   return (
-    <section id="apps" ref={sectionRef} className="relative mx-auto w-full max-w-6xl px-4 py-20 sm:px-5">
-      <div ref={cardRef} className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--foreground)_2%,transparent)] px-6 py-12 sm:px-10 lg:px-14">
+    <section id="apps" aria-labelledby="apps-title" className="relative mx-auto w-full max-w-6xl px-4 py-12 sm:px-5">
+      <div className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--foreground)_2%,transparent)] px-6 py-12 sm:px-10 lg:px-14">
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -191,15 +160,14 @@ export function Apps() {
         />
         <div className="relative grid items-center gap-12 lg:grid-cols-2">
           <div>
-            <SectionHeading tag={t.apps.tag} title={t.apps.title} subtitle={t.apps.subtitle} />
+            <SectionHeading id="apps-title" tag={t.apps.tag} title={t.apps.title} subtitle={t.apps.subtitle} />
             <ul className="mt-10 flex flex-col gap-3">
               {platforms.map(({ Icon, name, desc }, i) => (
                 <li
                   key={name}
-                  data-fx="rise"
                   className={cn(
                     'app-row relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--background)_60%,transparent)] p-4 backdrop-blur-md',
-                    tier === 'lite' && screen === i && 'is-lit',
+                    tier !== 'static' && screen === i && 'is-lit',
                   )}
                 >
                   <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[color-mix(in_oklch,var(--foreground)_6%,transparent)] text-[var(--foreground)]">
@@ -216,7 +184,7 @@ export function Apps() {
               ))}
             </ul>
           </div>
-          <div className="phone-stage" data-fx={tier === 'full' ? undefined : 'rise'} data-fx-y="40">
+          <div className="phone-stage">
             <div ref={phoneRef}>
               <PhoneMock screen={screen} />
             </div>

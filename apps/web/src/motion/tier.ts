@@ -1,6 +1,6 @@
 /**
  * Capability tiers (docs/landing-wave-station-motion.md §1.2). No gsap import here:
- * this file is part of the initial bundle and decides whether the engine chunk loads at all.
+ * this file is part of the initial bundle; the tier drives the CSS motion classes and the analyser.
  */
 export type MotionTier = 'full' | 'lite' | 'static';
 
@@ -23,7 +23,3 @@ export function detectMotionTier(): MotionTier {
   return 'full';
 }
 
-/** True when the element starts below the viewport — only those get a "before reveal" hidden state. */
-export function isBelowFold(el: Element): boolean {
-  return el.getBoundingClientRect().top > window.innerHeight;
-}

@@ -1,5 +1,11 @@
 # Afrows Progress
 
+## 2026-11-22 (0.132.0, NOT built / NOT deployed): afrows.com one-screen music player, P1
+
+- Replaced the scrolling landing (`apps/web`) with the one-screen player from design `afrows-player/01_PLAYER_UX.md` P1: 100dvh shell at 4 breakpoints, manifest v2-then-v1 loader + validator, stations / queue / transport / phone mini bar + sheet, VPN sheet (pricing, apps, FAQ moved), shortcuts dialog, all library and playback states. See CHANGELOG 0.132.0.
+- **Not verified yet:** no `npm install`, typecheck, build or browser run on the authoring laptop (owner rule). Remaining: Test PC typecheck/build, `version:check`, render check in fa + en at 1440x900, 1024x768, 390x844, 360x640 (`scrollHeight === innerHeight`, `scrollWidth <= innerWidth`), axe, lock-screen test on a phone.
+- Open: swipe-down to close the phone sheet and back-button close of the player sheet are not implemented (close button + Esc are); drop `gsap` / `lenis` from `apps/web/package.json` with a lockfile refresh; pricing copy in the VPN sheet still describes music Premium plans, not the VPN (owner copy decision).
+
 ## 2026-11-21 (0.131.2, NOT deployed): Billing-safety guard — DEF "Germany Fast x2" link requires its 2x meter
 
 - **Closed the Stage-1 flag** ("link vs meter coupling is by convention only"). `buildEntryLinkSet` in `apps/backend/src/client/afrows-entry-link.ts` now emits the direct "Germany Fast x2" (DEF) REALITY entry **only when `AFROWS_DEF_MGMT_ENABLED` is truthy** (fail-closed), not just when `AFROWS_DEF_DIRECT_ENABLED` is on. Previously `AFROWS_DEF_DIRECT_ENABLED=true` alone shipped the 2x link to every entitled customer with the meter off → free (unmetered) premium traffic.
