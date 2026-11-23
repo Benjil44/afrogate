@@ -95,7 +95,7 @@ export function NowPlaying({ onOpenVpn }: { onOpenVpn: () => void }) {
         {t.player.nowPlaying}
       </h2>
       {!ready ? (
-        <div className="relative">
+        <div className="relative flex w-full min-w-0 justify-center">
           <LibraryState onOpenVpn={onOpenVpn} />
         </div>
       ) : (

@@ -4,7 +4,8 @@
 
 - Replaced the scrolling landing (`apps/web`) with the one-screen player from design `afrows-player/01_PLAYER_UX.md` P1: 100dvh shell at 4 breakpoints, manifest v2-then-v1 loader + validator, stations / queue / transport / phone mini bar + sheet, VPN sheet (pricing, apps, FAQ moved), shortcuts dialog, all library and playback states. See CHANGELOG 0.132.0.
 - **Not verified yet:** no `npm install`, typecheck, build or browser run on the authoring laptop (owner rule). Remaining: Test PC typecheck/build, `version:check`, render check in fa + en at 1440x900, 1024x768, 390x844, 360x640 (`scrollHeight === innerHeight`, `scrollWidth <= innerWidth`), axe, lock-screen test on a phone.
-- Open: swipe-down to close the phone sheet and back-button close of the player sheet are not implemented (close button + Esc are); drop `gsap` / `lenis` from `apps/web/package.json` with a lockfile refresh; pricing copy in the VPN sheet still describes music Premium plans, not the VPN (owner copy decision).
+- 0.132.1: Test PC build OK (only the pre-existing vite.config node-types tsc noise); fixed the phone state-notice overflow; phone sheet closes on Back + swipe-down; mini bar stays hidden in loading/error/empty.
+- Open: drop `gsap` / `lenis` from `apps/web/package.json` with a lockfile refresh; pricing copy in the VPN sheet still describes music Premium plans, not the VPN (owner copy decision).
 
 ## 2026-11-21 (0.131.2, NOT deployed): Billing-safety guard — DEF "Germany Fast x2" link requires its 2x meter
 

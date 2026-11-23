@@ -42,7 +42,8 @@ function readHash(): HashRoute {
 }
 
 function clearHash() {
-  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  // Keep `history.state` (the player-sheet marker) when rewriting the URL.
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
 }
 
 export function Home() {
@@ -98,9 +99,31 @@ export function Home() {
     const current = STATION_HASH.exec(window.location.hash)?.[1] ?? ALL_STATION;
     if (current === stationId) return;
     if (stationId === ALL_STATION) clearHash();
-    else window.history.replaceState(null, '', `#station=${stationId}`);
+    else window.history.replaceState(window.history.state, '', `#station=${stationId}`);
     appliedStation.current = stationId === ALL_STATION ? null : stationId;
   }, [status, stationId, route.vpn]);
+
+  // Phone player sheet: its own history entry, so the Back button / gesture closes it.
+  const openSheet = useCallback(() => {
+    const state: unknown = window.history.state;
+    window.history.pushState({ ...(state && typeof state === 'object' ? state : {}), playerSheet: true }, '');
+    setSheetOpen(true);
+  }, []);
+
+  const closeSheet = useCallback(() => {
+    const state = window.history.state as { playerSheet?: boolean } | null;
+    if (state?.playerSheet) window.history.back(); // popstate below closes it
+    else setSheetOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => {
+      const state = window.history.state as { playerSheet?: boolean } | null;
+      if (!state?.playerSheet) setSheetOpen(false);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   useShortcuts(useCallback(() => setShortcutsOpen(true), []));
 
@@ -151,7 +174,7 @@ export function Home() {
         {/* Phone: station grid -> station list. */}
         <div className="h-full sm:hidden">
           {!ready ? (
-            <div className="grid h-full place-items-center">
+            <div className="flex h-full w-full min-w-0 items-center justify-center overflow-y-auto px-4 py-6">
               <LibraryState onOpenVpn={openVpn} />
             </div>
           ) : phoneStation ? (
@@ -176,7 +199,7 @@ export function Home() {
         </div>
         {ready && track.src && (
           <div className="sm:hidden">
-            <MiniPlayer sheetOpen={sheetOpen} onOpen={() => setSheetOpen(true)} />
+            <MiniPlayer sheetOpen={sheetOpen} onOpen={openSheet} />
           </div>
         )}
       </div>
@@ -189,7 +212,7 @@ export function Home() {
         document.body,
       )}
 
-      <PlayerSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <PlayerSheet open={sheetOpen} onClose={closeSheet} />
       <VpnSheet open={route.vpn} onClose={closeVpn} focusPricing={route.pricing} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>

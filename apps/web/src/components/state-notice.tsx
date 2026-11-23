@@ -36,7 +36,7 @@ export function StateNotice({
 }) {
   const Icon = tone === 'error' ? CloudOff : Music2;
   return (
-    <div role={tone === 'error' ? 'alert' : 'status'} className={cn('flex max-w-sm flex-col items-center gap-3 px-6 text-center', className)}>
+    <div role={tone === 'error' ? 'alert' : 'status'} className={cn('mx-auto flex w-full min-w-0 max-w-sm flex-col items-center gap-3 px-4 text-center', className)}>
       <span
         aria-hidden="true"
         className={cn(
@@ -46,8 +46,8 @@ export function StateNotice({
       >
         <Icon className="h-7 w-7" />
       </span>
-      <p className="text-lg font-bold">{title}</p>
-      {body && <p className="text-sm text-[var(--muted-foreground)]">{body}</p>}
+      <p className="w-full text-balance text-lg font-bold [overflow-wrap:anywhere]">{title}</p>
+      {body && <p className="w-full text-pretty text-sm text-[var(--muted-foreground)] [overflow-wrap:anywhere]">{body}</p>}
       {children && <div className="mt-1 flex flex-wrap items-center justify-center gap-2">{children}</div>}
     </div>
   );

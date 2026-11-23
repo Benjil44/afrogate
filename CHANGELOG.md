@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.132.1 - 2026-11-22
+
+- **Player P1 fixes from the Test PC render (apps/web, not deployed).**
+  - Phone (390x844) library error / empty notice no longer overflows the inline-end edge: the phone state container is a centred flex box with `min-width: 0` and inline padding, the notice is `width: 100%` capped at `max-w-sm` with `mx-auto`, and its title / body wrap (`overflow-wrap: anywhere`). Same guard on the tablet/desktop notice wrapper.
+  - Phone mini bar stays hidden while the library is loading / failed / empty, per the design (it appears once a track exists; no dead control under the Retry notice).
+  - The phone player sheet now closes with the Back button (it pushes its own history entry; URL rewrites keep `history.state`) and with a downward swipe on its header or cover (the seek bar and queue keep their own gestures; no drag motion on the `static` tier).
+
 ## 0.132.0 - 2026-11-22
 
 - **afrows.com becomes a one-screen music player (P1 of design `afrows-player/01_PLAYER_UX.md`); the scrolling landing is gone.** `apps/web` only, NOT built or deployed from this change (typecheck/build pending on the Test PC).
