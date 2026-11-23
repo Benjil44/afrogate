@@ -12,7 +12,8 @@ import { usePlayer } from '@/lib/player';
  */
 export const MiniPlayer = forwardRef<HTMLButtonElement, { onOpen: () => void; sheetOpen: boolean }>(function MiniPlayer({ onOpen, sheetOpen }, ref) {
   const { t } = useLang();
-  const { track, playing } = usePlayer();
+  const { track, playing, ad } = usePlayer();
+  const title = ad ? t.player.advertisement : track.title;
   return (
     <section aria-label={t.player.playerRegion} className="mini-bar relative flex h-16 items-center gap-2 border-t border-[var(--border)] bg-[var(--card)] ps-2 pe-1">
       <button
@@ -21,16 +22,16 @@ export const MiniPlayer = forwardRef<HTMLButtonElement, { onOpen: () => void; sh
         onClick={onOpen}
         aria-haspopup="dialog"
         aria-expanded={sheetOpen}
-        aria-label={`${t.player.openPlayer}: ${track.title}`}
+        aria-label={`${t.player.openPlayer}: ${title}`}
         className="flex h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-1 text-start"
       >
         <CoverThumb className="h-11 w-11" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-bold">
-            <bdi>{track.title || t.player.noTrack}</bdi>
+            <bdi>{title || t.player.noTrack}</bdi>
           </span>
           <span className="block truncate text-xs text-[var(--muted-foreground)]">
-            <bdi>{track.artist}</bdi>
+            <bdi>{ad ? t.player.adNote : track.artist}</bdi>
           </span>
         </span>
         <Equalizer active={playing} bars={4} className="h-4 shrink-0 text-[var(--accent)]" />

@@ -52,7 +52,7 @@ function routeKey(route: Route): string {
 
 export function Home() {
   const { t } = useLang();
-  const { status, track, playing, started } = usePlayer();
+  const { status, track, playing, started, ad } = usePlayer();
   const { addRecent } = useCollection();
   const [route, navigate] = useHashRoute();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -119,6 +119,13 @@ export function Home() {
     lastAnnounced.current = track.id;
     setAnnouncement(fill(t.player.nowPlayingAnnounce, { title: track.title, artist: track.artist }));
   }, [started, playing, track, t]);
+  // An ad break: say so once (the music track did not change, so the effect above stays quiet).
+  useEffect(() => {
+    if (ad) {
+      lastAnnounced.current = null; // the track after the break is announced again
+      setAnnouncement(t.player.advertisement);
+    }
+  }, [ad, t]);
 
   const ready = status === 'ready';
 

@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
  */
 export function SeekBar({ className, tall = false }: { className?: string; tall?: boolean }) {
   const { t, lang } = useLang();
-  const { seek, track, durations } = usePlayer();
+  const { seek, track, durations, ad } = usePlayer();
   const { currentTime, duration } = usePlayerProgress();
   const total = duration || trackDuration(track, durations);
   const pct = total > 0 ? Math.min(100, (currentTime / total) * 100) : 0;
@@ -31,7 +31,7 @@ export function SeekBar({ className, tall = false }: { className?: string; tall?
           max={total > 0 ? Math.floor(total) : 0}
           step={1}
           value={Math.min(Math.floor(currentTime), total > 0 ? Math.floor(total) : 0)}
-          disabled={total <= 0}
+          disabled={total <= 0 || ad}
           aria-label={t.player.seek}
           aria-valuetext={fill(t.player.timeOf, { a: now, b: end })}
           onChange={(e) => seek(Number(e.currentTarget.value))}

@@ -19,6 +19,8 @@
  * (max 40 chars), at most 50 categories, at most 5 per track; `bpm` (integer 40–250) and `energy`
  * (integer 1–5) are optional and only kept when valid (P2 ordering, unused in the P1 UI).
  */
+import { parseAdFeed, type AdFeed } from './ad-schedule';
+
 export interface Track {
   id: string;
   title: string;
@@ -71,6 +73,10 @@ export const TRACKS_URL = typeof rawManifest === 'string' && rawManifest ? rawMa
 const rawManifestV2: unknown = import.meta.env.VITE_TRACKS_V2_URL;
 /** v2 manifest (categories). Missing / invalid -> the v1 `TRACKS_URL` is used. */
 export const TRACKS_V2_URL = typeof rawManifestV2 === 'string' && rawManifestV2 ? rawManifestV2 : `${MEDIA_BASE}tracks.v2.json`;
+
+const rawAds: unknown = import.meta.env.VITE_ADS_URL;
+/** Public voice-ads feed (Borjino plan 06 §3). Missing / invalid -> no ads, music unaffected. */
+export const ADS_URL = typeof rawAds === 'string' && rawAds ? rawAds : `${MEDIA_BASE}ads.v1.json`;
 
 const MAX_TRACKS = 200;
 const MAX_CATEGORIES = 50;
@@ -237,6 +243,15 @@ export async function loadLibrary(signal?: AbortSignal): Promise<Library> {
     if (signal?.aborted) throw err;
   }
   return parseManifest(await fetchJson(TRACKS_URL, signal));
+}
+
+/** The ads feed, validated; `null` on any failure (404, bad JSON, disabled, nothing playable). */
+export async function loadAdFeed(signal?: AbortSignal): Promise<AdFeed | null> {
+  try {
+    return parseAdFeed(await fetchJson(ADS_URL, signal), MEDIA_BASE);
+  } catch {
+    return null;
+  }
 }
 
 /** Same-origin media plays normally; cross-origin media is requested with CORS (see player.tsx). */

@@ -23,7 +23,7 @@ const SWIPE_CLOSE = 96;
  */
 export function PlayerSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t, lang } = useLang();
-  const { track, station } = usePlayer();
+  const { track, station, ad } = usePlayer();
   const closeRef = useRef<HTMLButtonElement>(null);
   const accent = station?.color ? ({ '--station': station.color } as CSSProperties) : undefined;
   const tier = useMotionTier();
@@ -75,10 +75,10 @@ export function PlayerSheet({ open, onClose }: { open: boolean; onClose: () => v
           <div className="flex w-full items-center gap-2">
             <div className="min-w-0 flex-1">
               <p className="truncate text-xl font-black">
-                <bdi>{track.title}</bdi>
+                <bdi>{ad ? t.player.advertisement : track.title}</bdi>
               </p>
               <p className="truncate text-sm text-[var(--muted-foreground)]">
-                <bdi>{track.artist}</bdi>
+                <bdi>{ad ? t.player.adNote : track.artist}</bdi>
               </p>
             </div>
             <LikeButton />

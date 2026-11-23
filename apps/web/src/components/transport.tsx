@@ -95,11 +95,11 @@ export function PlayButton({ size = 'md', className }: { size?: 'sm' | 'md' | 'l
 
 export function PrevButton({ size }: { size?: 'sm' | 'md' }) {
   const { t, dir } = useLang();
-  const { prev, queue } = usePlayer();
+  const { prev, queue, ad } = usePlayer();
   // RTL: "previous" sits on the right, so swap the glyphs rather than the semantics.
   const Icon = dir === 'rtl' ? SkipForward : SkipBack;
   return (
-    <IconButton label={t.player.previous} size={size} onClick={prev} disabled={queue.length === 0}>
+    <IconButton label={t.player.previous} size={size} onClick={prev} disabled={queue.length === 0 || ad}>
       <Icon className="h-5 w-5" fill="currentColor" aria-hidden="true" />
     </IconButton>
   );
@@ -107,10 +107,10 @@ export function PrevButton({ size }: { size?: 'sm' | 'md' }) {
 
 export function NextButton({ size }: { size?: 'sm' | 'md' }) {
   const { t, dir } = useLang();
-  const { next, queue } = usePlayer();
+  const { next, queue, ad } = usePlayer();
   const Icon = dir === 'rtl' ? SkipBack : SkipForward;
   return (
-    <IconButton label={t.player.next} size={size} onClick={next} disabled={queue.length === 0}>
+    <IconButton label={t.player.next} size={size} onClick={next} disabled={queue.length === 0 || ad}>
       <Icon className="h-5 w-5" fill="currentColor" aria-hidden="true" />
     </IconButton>
   );
@@ -196,7 +196,7 @@ export function CoverThumb({ className }: { className?: string }) {
 /** Heart toggle for the current track (liked tracks live in this browser only). */
 export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
   const { t } = useLang();
-  const { track, status } = usePlayer();
+  const { track, status, ad } = usePlayer();
   const { isLiked, toggleLike } = useCollection();
   const liked = track.src ? isLiked(track.id) : false;
   return (
@@ -204,7 +204,7 @@ export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
       label={liked ? t.app.unlike : t.app.like}
       size={size}
       aria-pressed={liked}
-      disabled={status !== 'ready' || !track.src}
+      disabled={status !== 'ready' || !track.src || ad}
       onClick={() => toggleLike(track.id)}
       className={cn(liked ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]')}
     >
@@ -220,17 +220,17 @@ export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
  */
 export function TransportBar({ nowOpen, onToggleNow, extra }: { nowOpen: boolean; onToggleNow: () => void; /** End-side extras (sleep timer / crossfade button). */ extra?: ReactNode }) {
   const { t } = useLang();
-  const { track } = usePlayer();
+  const { track, ad } = usePlayer();
   return (
     <section aria-label={t.player.playerRegion} className="flex h-full items-center gap-4 px-2 lg:px-3">
       <div className="flex w-[28%] min-w-0 items-center gap-3">
         <CoverThumb className="h-14 w-14" />
         <div className="min-w-0">
           <p className="truncate text-sm font-bold">
-            <bdi>{track.title || t.player.noTrack}</bdi>
+            <bdi>{ad ? t.player.advertisement : track.title || t.player.noTrack}</bdi>
           </p>
           <p className="truncate text-xs text-[var(--muted-foreground)]">
-            <bdi>{track.artist}</bdi>
+            <bdi>{ad ? t.player.adNote : track.artist}</bdi>
           </p>
         </div>
         <LikeButton size="sm" />

@@ -2,8 +2,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLang, type Dict, type Lang } from '@/i18n';
 import { useMotionTier } from '@/motion/provider';
 import {
+  isBreakDue,
+  markListening,
+  readCounters,
+  recordAdStart,
+  recordNaturalEnd,
+  serializeCounters,
+  startBreak,
+  type Ad,
+  type AdCounters,
+  type AdFeed,
+} from './ad-schedule';
+import {
   ALL_STATION,
   isSameOrigin,
+  loadAdFeed,
   loadLibrary,
   stationTracks,
   visibleStations,
@@ -35,6 +48,14 @@ import {
  *
  * Also here: sleep timer (15/30/60 min or end of track, in memory only) and the resume point
  * (`afrows.resume`: station, track, position; written every 5 s while playing and on pause).
+ *
+ * Voice ads (0.136.0, `ad-schedule.ts`): the public `ads.v1.json` feed loads with the library and
+ * every 15 min (any failure = no ads). Only after a track ENDS naturally (or auto-advances through a
+ * crossfade) is a break considered; when one is due the crossfade is skipped so the track ends, the
+ * break plays on the active element with the ad's `gain_db` (no fades), then the next track starts.
+ * During a break `ad` is true: the UI shows "Advertisement", Next / Previous / seek are no-ops, pause
+ * and resume work; picking another track or station ends the break. An ad that errors or stalls for
+ * 5 s is skipped. Counters persist in `afrows.ads` (try/catch).
  */
 export const CHANNEL_KEYS = ['pop', 'traditional', 'rap', 'nostalgia', 'chill', 'podcast'] as const;
 export type ChannelKey = (typeof CHANNEL_KEYS)[number];
@@ -81,6 +102,10 @@ const CROSSFADE_KEY = 'afrows.crossfade';
 const RESUME_KEY = 'afrows.resume';
 const RESUME_SAVE_MS = 5000;
 const FADE_STEP_MS = 100;
+const AD_COUNTERS_KEY = 'afrows.ads';
+const AD_FEED_REFRESH_MS = 15 * 60_000;
+/** An ad that makes no progress for this long is skipped (fail-open: the music goes on). */
+const AD_STALL_MS = 5000;
 const STATION_ID = /^[a-z0-9_-]{1,40}$/;
 const TRACK_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -136,6 +161,8 @@ interface PlayerState {
   muted: boolean;
   /** Durations learned from `loadedmetadata`, by track id. */
   durations: Readonly<Record<string, number>>;
+  /** An ad break is playing: show "Advertisement"; next / previous / seek are disabled. */
+  ad: boolean;
   toggle: () => void;
   pause: () => void;
   next: () => void;
@@ -371,6 +398,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [durations, setDurations] = useState<Record<string, number>>({});
   const [progress, setProgress] = useState<ProgressState>({ currentTime: 0, duration: 0 });
 
+  const adFeedRef = useRef<AdFeed | null>(null);
+  const [storedCounters] = useState(() => readCounters(readStored(AD_COUNTERS_KEY)));
+  const adCountersRef = useRef<AdCounters>(storedCounters);
+  /** The running break: its ads, the one playing, and the track to continue with afterwards. */
+  const adBreakRef = useRef<{ ads: readonly Ad[]; index: number; resumeId: string; resumePos: number } | null>(null);
+  const adWatchRef = useRef(0);
+  /** Play the next ad of the break, or end it (kept in a ref: the element events call it). */
+  const adNextRef = useRef<() => void>(() => undefined);
+  const [ad, setAd] = useState(false);
+
+  const updateCounters = useCallback((counters: AdCounters) => {
+    adCountersRef.current = counters;
+    writeStored(AD_COUNTERS_KEY, serializeCounters(counters));
+  }, []);
+
   const commitQueue = useCallback((list: readonly Track[], pos: number) => {
     queueRef.current = list;
     positionRef.current = pos;
@@ -397,6 +439,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [attempt, commitQueue]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
+
+  // Ads feed: with the library, then every 15 min. Any failure clears it (stale ads never play).
+  useEffect(() => {
+    let controller: AbortController | null = null;
+    const load = () => {
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      void loadAdFeed(current.signal).then((feed) => {
+        if (!current.signal.aborted) adFeedRef.current = feed;
+      });
+    };
+    load();
+    const timer = window.setInterval(load, AD_FEED_REFRESH_MS);
+    return () => {
+      window.clearInterval(timer);
+      controller?.abort();
+    };
+  }, []);
 
   const getAudios = useCallback((): [HTMLAudioElement, HTMLAudioElement] => {
     if (!audiosRef.current) {
@@ -460,12 +521,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setIssue(null);
   }, []);
 
+  const clearAdWatch = useCallback(() => {
+    window.clearTimeout(adWatchRef.current);
+    adWatchRef.current = 0;
+  }, []);
+
+  /** (Re)start the stall watchdog of the playing ad. */
+  const armAdWatch = useCallback(() => {
+    window.clearTimeout(adWatchRef.current);
+    adWatchRef.current = window.setTimeout(() => {
+      adWatchRef.current = 0;
+      adNextRef.current();
+    }, AD_STALL_MS);
+  }, []);
+
+  /** Leave ad mode (the element keeps the ad URL until the next track replaces it). */
+  const endAdState = useCallback(() => {
+    clearAdWatch();
+    if (!adBreakRef.current) return;
+    adBreakRef.current = null;
+    setAd(false);
+    if (audioRef.current) setGain(audioRef.current, 1);
+  }, [clearAdWatch, setGain]);
+
   /** Load (if needed) and play queue entry `pos`. Must run inside a user gesture the first time. */
   const startTrack = useCallback(
     (pos: number) => {
       const track = queueRef.current[pos];
       if (!track) return;
       finishFade();
+      endAdState();
+      if (!adCountersRef.current.lastAt) updateCounters(markListening(adCountersRef.current, Date.now()));
       if (pendingSeekRef.current && pendingSeekRef.current.id !== track.id) pendingSeekRef.current = null;
       const audio = getAudio();
       window.clearTimeout(skipTimerRef.current);
@@ -508,20 +594,119 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         },
       );
     },
-    [applyVolume, finishFade, getAudio, getAudios, tier],
+    [applyVolume, endAdState, finishFade, getAudio, getAudios, tier, updateCounters],
+  );
+
+  /** Play ad `index` of the running break; past the last one, continue with the music. */
+  const playAdAt = useCallback(
+    (index: number) => {
+      const brk = adBreakRef.current;
+      if (!brk) return;
+      const item = brk.ads[index];
+      if (!item) {
+        const found = queueRef.current.findIndex((x) => x.id === brk.resumeId);
+        const pos = found >= 0 ? found : Math.min(brk.resumePos, queueRef.current.length - 1);
+        endAdState();
+        if (pos >= 0) startTrack(pos);
+        else {
+          wantPlayRef.current = false;
+          setPlaying(false);
+        }
+        return;
+      }
+      brk.index = index;
+      const audio = getAudio();
+      loadedIdRef.current = null; // the music track must be loaded again afterwards
+      updateCounters(recordAdStart(adCountersRef.current, Date.now()));
+      setGain(audio, item.gain); // user volume x gain_db, through the same path as the music
+      audio.crossOrigin = isSameOrigin(item.src) ? null : 'anonymous';
+      audio.src = item.src;
+      setProgress({ currentTime: 0, duration: item.durationS ?? 0 });
+      setLoading(true);
+      wantPlayRef.current = true;
+      armAdWatch();
+      audio.play().then(
+        () => setBlocked(false),
+        (err: unknown) => {
+          const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : '';
+          // Only once per ad: the element's `error` event may already have moved the break on.
+          if (name === 'AbortError' || adBreakRef.current !== brk || brk.index !== index) return;
+          if (name === 'NotAllowedError') {
+            // Needs a tap: stay on the ad, paused; Play resumes it.
+            clearAdWatch();
+            setLoading(false);
+            setPlaying(false);
+            setBlocked(true);
+            return;
+          }
+          adNextRef.current();
+        },
+      );
+    },
+    [armAdWatch, clearAdWatch, endAdState, getAudio, setGain, startTrack, updateCounters],
+  );
+  adNextRef.current = () => {
+    const brk = adBreakRef.current;
+    if (brk) playAdAt(brk.index + 1);
+  };
+
+  /**
+   * After a natural end: start a break when one is due. `resumePos` is the entry to continue with
+   * (-1 = the queue is over: no ad, nothing follows it). True when a break started.
+   */
+  const tryBreak = useCallback(
+    (resumePos: number): boolean => {
+      const resume = resumePos >= 0 ? queueRef.current[resumePos] : undefined;
+      if (!resume) return false;
+      const { ads, counters } = startBreak(adFeedRef.current, adCountersRef.current, Date.now());
+      if (!ads.length) return false;
+      updateCounters(counters);
+      adBreakRef.current = { ads, index: 0, resumeId: resume.id, resumePos };
+      setAd(true);
+      playAdAt(0);
+      return true;
+    },
+    [playAdAt, updateCounters],
   );
 
   const pause = useCallback(() => {
     wantPlayRef.current = false;
     finishFade();
+    clearAdWatch();
     audioRef.current?.pause();
-  }, [finishFade]);
+  }, [clearAdWatch, finishFade]);
+
+  /** Play from where we are: the paused ad, else the current queue entry. */
+  const play = useCallback(() => {
+    const audio = audioRef.current;
+    const brk = adBreakRef.current;
+    if (brk && audio) {
+      const index = brk.index;
+      wantPlayRef.current = true;
+      armAdWatch();
+      audio.play().then(
+        () => setBlocked(false),
+        (err: unknown) => {
+          const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : '';
+          if (name === 'AbortError' || adBreakRef.current !== brk || brk.index !== index) return;
+          if (name === 'NotAllowedError') {
+            clearAdWatch();
+            setBlocked(true);
+            return;
+          }
+          adNextRef.current();
+        },
+      );
+      return;
+    }
+    startTrack(positionRef.current);
+  }, [armAdWatch, clearAdWatch, startTrack]);
 
   const toggle = useCallback(() => {
     clearIssue();
     if (playingRef.current) pause();
-    else startTrack(positionRef.current);
-  }, [clearIssue, pause, startTrack]);
+    else play();
+  }, [clearIssue, pause, play]);
 
   /** `manual`: user pressed Next (wraps at the end); automatic advance obeys repeat. */
   const advance = useCallback(
@@ -540,12 +725,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const next = useCallback(() => {
+    if (adBreakRef.current) return;
     clearIssue();
     advance(true);
   }, [advance, clearIssue]);
 
   const seek = useCallback((seconds: number) => {
     const audio = audioRef.current;
+    if (adBreakRef.current) return; // ads cannot be scrubbed
     // Only the loaded track can be scrubbed (after a station switch the element may still hold the old one).
     if (!audio || !Number.isFinite(audio.duration) || loadedIdRef.current !== queueRef.current[positionRef.current]?.id) return;
     audio.currentTime = Math.max(0, Math.min(audio.duration, seconds));
@@ -555,6 +742,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seekBy = useCallback((delta: number) => seek((audioRef.current?.currentTime ?? 0) + delta), [seek]);
 
   const prev = useCallback(() => {
+    if (adBreakRef.current) return;
     clearIssue();
     const audio = audioRef.current;
     // Classic player behaviour: a few seconds in, Previous restarts the current track.
@@ -738,6 +926,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (name === 'AbortError' || fadeRef.current !== fade) return;
         // The browser refused a second element: undo, let the outgoing track end and advance normally.
         fadeAllowedRef.current = false;
+        // That `ended` counts the natural end again, so take back the one counted for the fade.
+        updateCounters({ ...adCountersRef.current, since: Math.max(0, adCountersRef.current.since - 1) });
         fadeRef.current = null;
         window.clearInterval(fade.timer);
         incoming.removeAttribute('src');
@@ -752,7 +942,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPlaying(!outgoing.paused);
       });
     },
-    [finishFade, getAudios, setGain],
+    [finishFade, getAudios, setGain, updateCounters],
   );
 
   // Audio element events -> React state. Both elements are wired; only the ACTIVE one counts.
@@ -760,6 +950,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const unbinds = getAudios().map((audio) => {
       let lastPosition = 0;
       let lastSave = 0;
+      let lastAdTime = -1;
       const active = () => audio === audioRef.current;
       const onPlay = () => {
         if (active()) setPlaying(true);
@@ -799,6 +990,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
         setProgress({ currentTime: audio.currentTime, duration });
         const now = Date.now();
+        // Ad progressing: push the stall watchdog back.
+        if (adBreakRef.current && !audio.paused && audio.currentTime !== lastAdTime) {
+          lastAdTime = audio.currentTime;
+          armAdWatch();
+        }
         // Sleep timer (also checked here: background tabs throttle timeouts).
         const sleepState = sleepRef.current;
         if (sleepState.endsAt !== null && now >= sleepState.endsAt) {
@@ -828,6 +1024,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           seconds > 0 &&
           fadeAllowedRef.current &&
           !fadeRef.current &&
+          !adBreakRef.current &&
           wantPlayRef.current &&
           !audio.paused &&
           repeatRef.current !== 'one' &&
@@ -837,17 +1034,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ) {
           const nextPos = nextAutoPosition();
           const nextTrack = nextPos >= 0 ? queueRef.current[nextPos] : undefined;
-          if (nextTrack && nextTrack.id !== loadedIdRef.current) startCrossfade(nextPos, seconds);
+          // An ad break is due after this track: no fade, let it end so the break plays.
+          const breakDue = isBreakDue(adFeedRef.current, recordNaturalEnd(adCountersRef.current), now);
+          if (nextTrack && nextTrack.id !== loadedIdRef.current && !breakDue) {
+            updateCounters(recordNaturalEnd(adCountersRef.current)); // the fade is a natural advance
+            startCrossfade(nextPos, seconds);
+          }
         }
       };
       const onEnded = () => {
         if (!active()) return;
+        if (adBreakRef.current) {
+          lastAdTime = -1;
+          clearAdWatch();
+          adNextRef.current();
+          return;
+        }
         if (sleepRef.current.mode === 'track') {
           setSleepState({ mode: 'off', endsAt: null });
           wantPlayRef.current = false;
           setPlaying(false);
           return;
         }
+        // A natural end: the only place (with the crossfade above) where an ad break may start.
+        updateCounters(recordNaturalEnd(adCountersRef.current));
+        if (tryBreak(repeatRef.current === 'one' ? positionRef.current : nextAutoPosition())) return;
         if (repeatRef.current === 'one') {
           audio.currentTime = 0;
           void audio.play().catch(() => setPlaying(false));
@@ -857,6 +1068,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       };
       const onError = () => {
         if (!active()) return;
+        if (adBreakRef.current) {
+          // Fail-open: skip the broken ad, the music goes on.
+          lastAdTime = -1;
+          clearAdWatch();
+          adNextRef.current();
+          return;
+        }
         setLoading(false);
         setPlaying(false);
         // Offline: not the track's fault. Keep it; resume when the connection returns.
@@ -897,7 +1115,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       };
     });
     return () => unbinds.forEach((unbind) => unbind());
-  }, [getAudios, advance, finishFade, nextAutoPosition, saveResume, startCrossfade]);
+  }, [getAudios, advance, armAdWatch, clearAdWatch, finishFade, nextAutoPosition, saveResume, startCrossfade, tryBreak, updateCounters]);
 
   // Leaving the page: keep the exact stop point.
   useEffect(() => {
@@ -960,7 +1178,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playStation(sid, track.id);
   }, [resumePoint, playStation]);
 
-  useEffect(() => () => window.clearTimeout(skipTimerRef.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(skipTimerRef.current);
+      window.clearTimeout(adWatchRef.current);
+    },
+    [],
+  );
 
   // Connectivity: offline notice; on `online` retry a failed manifest and resume wanted playback.
   useEffect(() => {
@@ -1026,7 +1250,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Lock-screen / headset metadata: title, artist, album = station, artwork = cover.
   useEffect(() => {
     const session = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
-    if (!session || typeof MediaMetadata === 'undefined' || track === NO_TRACK) return;
+    if (!session || typeof MediaMetadata === 'undefined') return;
+    if (ad) {
+      // Ads carry no title: the lock screen only says "Advertisement".
+      session.metadata = new MediaMetadata({ title: t.player.advertisement, artist: t.brandRadio, album: '', artwork: [] });
+      return;
+    }
+    if (track === NO_TRACK) return;
     const art = track.cover ?? station?.cover ?? null;
     session.metadata = new MediaMetadata({
       title: track.title,
@@ -1034,7 +1264,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       album,
       artwork: art ? [{ src: art, sizes: '512x512' }] : [],
     });
-  }, [track, station, album]);
+  }, [track, station, album, ad, t]);
 
   useEffect(() => {
     const session = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
@@ -1044,15 +1274,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const session = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
     if (!session) return;
+    // During an ad only play / pause are offered (null removes the lock-screen buttons).
     const handlers: [MediaSessionAction, MediaSessionActionHandler | null][] = [
-      ['play', () => startTrack(positionRef.current)],
+      ['play', play],
       ['pause', pause],
-      ['previoustrack', prev],
-      ['nexttrack', next],
+      ['previoustrack', ad ? null : prev],
+      ['nexttrack', ad ? null : next],
       // Lock-screen scrubbing and ±10 s buttons (the audio keeps playing in the background on phones).
-      ['seekto', (details) => { if (typeof details.seekTime === 'number') seek(details.seekTime); }],
-      ['seekbackward', (details) => seekBy(-(details.seekOffset ?? 10))],
-      ['seekforward', (details) => seekBy(details.seekOffset ?? 10)],
+      ['seekto', ad ? null : (details) => { if (typeof details.seekTime === 'number') seek(details.seekTime); }],
+      ['seekbackward', ad ? null : (details) => seekBy(-(details.seekOffset ?? 10))],
+      ['seekforward', ad ? null : (details) => seekBy(details.seekOffset ?? 10)],
     ];
     for (const [action, handler] of handlers) {
       try {
@@ -1070,7 +1301,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-  }, [startTrack, pause, prev, next, seek, seekBy]);
+  }, [play, pause, prev, next, seek, seekBy, ad]);
 
   const value = useMemo<PlayerState>(
     () => ({
@@ -1096,6 +1327,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume,
       muted,
       durations,
+      ad,
       toggle,
       pause,
       next,
@@ -1122,7 +1354,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }),
     [
       library, status, reload, stations, stationId, station, stationIndex, queue, position, track, playing, loading,
-      blocked, started, issue, failed, online, shuffle, repeat, volume, muted, durations, toggle, pause, next, prev,
+      blocked, started, issue, failed, online, shuffle, repeat, volume, muted, durations, ad, toggle, pause, next, prev,
       seek, seekBy, jumpTo, selectStation, playStation, shuffleStation, cueTrack, resumePoint, resume, sleep, setSleep,
       crossfade, setCrossfade, crossfadeSupported, toggleShuffle, cycleRepeat, setVolume, toggleMute, retryTrack,
     ],

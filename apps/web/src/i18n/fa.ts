@@ -54,6 +54,8 @@ export const fa: Dict = {
     playStation: 'پخش ایستگاه',
     shufflePlay: 'پخش تصادفی',
     playbackSettings: 'زمان‌سنج خواب و محو شدن بین قطعه‌ها',
+    advertisement: 'آگهی',
+    adNote: 'موسیقی بعد از این پیام ادامه پیدا می‌کند',
     sleepTimer: 'زمان‌سنج خواب',
     sleepOff: 'خاموش',
     sleepMinutes: '{n} دقیقه',

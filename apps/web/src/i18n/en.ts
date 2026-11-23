@@ -58,6 +58,9 @@ export const en = {
     playStation: 'Play station',
     shufflePlay: 'Shuffle play',
     playbackSettings: 'Sleep timer and crossfade',
+    /** Ad break label (ads never show a title). */
+    advertisement: 'Advertisement',
+    adNote: 'The music continues after this message',
     sleepTimer: 'Sleep timer',
     sleepOff: 'Off',
     sleepMinutes: '{n} min',

@@ -80,7 +80,7 @@ function EmptyQueue() {
  */
 export function NowPlayingPanel({ onClose, headingId = 'np-title' }: { onClose?: () => void; headingId?: string }) {
   const { t, lang } = useLang();
-  const { track, station, status, queue } = usePlayer();
+  const { track, station, status, queue, ad } = usePlayer();
   const ready = status === 'ready' && queue.length > 0;
   return (
     <section aria-labelledby={headingId} className="flex h-full min-h-0 flex-col">
@@ -110,12 +110,18 @@ export function NowPlayingPanel({ onClose, headingId = 'np-title' }: { onClose?:
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-black">
-                  <bdi>{track.title}</bdi>
+                  <bdi>{ad ? t.player.advertisement : track.title}</bdi>
                 </p>
                 <p className="truncate text-sm text-[var(--muted-foreground)]">
-                  <bdi>{track.artist}</bdi>
-                  {track.artist && ' · '}
-                  <bdi>{stationName(station, lang, t)}</bdi>
+                  {ad ? (
+                    <bdi>{t.player.adNote}</bdi>
+                  ) : (
+                    <>
+                      <bdi>{track.artist}</bdi>
+                      {track.artist && ' · '}
+                      <bdi>{stationName(station, lang, t)}</bdi>
+                    </>
+                  )}
                 </p>
               </div>
               <ShareButton track={track} />
