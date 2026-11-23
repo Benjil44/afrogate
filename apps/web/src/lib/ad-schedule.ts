@@ -16,7 +16,7 @@
  *   after next / previous / a pick, and never before the first track.
  * - Due when tracks since the last break >= `every_n_tracks`, OR at least one track ended and the
  *   minutes since the last break (or since listening started) >= `min_minutes_between`.
- * - Also needs fewer than `max_per_hour` ads in the last 60 min (0 = no hourly cap) and at least one
+ * - Also needs fewer than `max_per_hour` ads in the last 60 min (0 = no ads at all) and at least one
  *   ad inside its date window.
  * - A break plays up to `per_break` distinct ads, round-robin; the hourly cap can shorten it.
  * - Counters persist (localStorage, see `readCounters` / `serializeCounters`), so a reload neither
@@ -27,7 +27,7 @@ export interface AdSettings {
   everyNTracks: number;
   minMinutesBetween: number;
   perBreak: number;
-  /** 0 = no hourly cap. */
+  /** 0 = no ads at all (hard zero cap, same as Borjino's settings). */
   maxPerHour: number;
   /** Longer ads are skipped; null = no limit from the feed. */
   maxDurationS: number | null;
@@ -184,7 +184,7 @@ export function isBreakDue(feed: AdFeed | null, counters: AdCounters, now: numbe
   const cadence =
     counters.since >= everyNTracks || (counters.lastAt > 0 && now - counters.lastAt >= minMinutesBetween * 60_000);
   if (!cadence) return false;
-  if (maxPerHour > 0 && adsInLastHour(counters, now) >= maxPerHour) return false;
+  if (adsInLastHour(counters, now) >= maxPerHour) return false; // 0 = never
   return eligibleAds(feed, now).length > 0;
 }
 
@@ -196,7 +196,7 @@ export function startBreak(feed: AdFeed | null, counters: AdCounters, now: numbe
   if (!feed || !isBreakDue(feed, counters, now)) return { ads: [], counters };
   const eligible = eligibleAds(feed, now);
   const { perBreak, maxPerHour } = feed.settings;
-  const allowance = maxPerHour > 0 ? maxPerHour - adsInLastHour(counters, now) : perBreak;
+  const allowance = maxPerHour - adsInLastHour(counters, now);
   const count = Math.max(0, Math.min(perBreak, eligible.length, allowance));
   const start = ((counters.rr % eligible.length) + eligible.length) % eligible.length;
   const ads = Array.from({ length: count }, (_, i) => eligible[(start + i) % eligible.length]);

@@ -92,6 +92,17 @@ test('acceptance 3: max_per_hour holds, also across a reload (serialised counter
   assert.deepEqual(naturalEnd(f, c, T0 + 61 * MIN + 1).played.length, 1);
 });
 
+test('max_per_hour=0 means no ads at all', () => {
+  const f = feed({ every_n_tracks: 1, min_minutes_between: 1, max_per_hour: 0 });
+  let c = markListening(EMPTY_COUNTERS, T0);
+  for (let end = 1; end <= 5; end++) {
+    const r = naturalEnd(f, c, T0 + end * 30 * MIN);
+    assert.deepEqual(r.played, []);
+    c = r.c;
+  }
+  assert.equal(isBreakDue(f, recordNaturalEnd(c), T0 + 10 * 60 * MIN), false);
+});
+
 test('per_break plays distinct ads round-robin and the hourly allowance can shorten it', () => {
   const ads = [
     { id: 'a', url: 'ads/a.mp3' },

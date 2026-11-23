@@ -3,7 +3,7 @@
 ## 2026-11-23 (0.136.0, NOT built / NOT deployed): afrows.com voice ads between tracks
 
 - Implemented Builder B of Borjino plan `music-v2/06_ADS_AND_PLACES_PLAN.md` §3: `ads.v1.json` feed (fail-open), insertion rule as pure functions in `apps/web/src/lib/ad-schedule.ts`, ad playback in `lib/player.tsx` (`ad` flag), "Advertisement" label in bar / mini player / sheet / now-playing column, Next / Previous / seek / Like disabled during an ad. See CHANGELOG 0.136.0.
-- **Verified here:** `node --test apps/web/test/ad-schedule.test.ts` 9/9 pass (acceptance 1, 2, 3, 4, 7 + validation). No typecheck/build/browser run on the laptop (owner rule).
+- **Verified here:** `node --test apps/web/test/ad-schedule.test.ts` 10/10 pass (acceptance 1, 2, 3, 4, 7 + validation). No typecheck/build/browser run on the laptop (owner rule).
 - **Remaining on the Test PC:** `npm run typecheck -w @afrows/web`, `npm run build -w @afrows/web`, `npm run version:check`. Manual checks with a local feed (`VITE_ADS_URL`, `every_n_tracks:2`, `min_minutes_between:60`, two short test tracks), desktop Chrome/Firefox + Android Chrome (screen locked) + iOS Safari, fa + en:
   1. Ads after natural ends 2, 4, 6; none after Next / Previous / a queue pick.
   2. No ad before the first track (fresh storage, press Play).
@@ -13,7 +13,7 @@
   6. During an ad: label "Advertisement" / «آگهی», Next / Previous / seek / Like disabled, Shift+Arrow and lock-screen next do nothing, Pause / Play resume the ad; lock screen shows "Advertisement".
   7. `ads: []` / `enabled:false`: identical to 0.135.0 (crossfade still runs).
   8. Crossfade 3 s on: no fade into or out of an ad; normal fades between tracks with no break due. `gain_db` audible (e.g. -10).
-- Open: plan says `max_per_hour` "0 = none"; implemented as "no hourly cap" (confirm with Borjino). Plan feed shape (`url`, `duration_ms`) and task-card shape (`file`, `duration_s`, `settings.enabled`, `max_duration_s`) are both accepted. Picking another track/station during an ad ends the ad (only Next/seek are disabled).
+- `max_per_hour: 0` = no ads at all (Lead decision 2026-11-23, matches Borjino). Plan feed shape (`url`, `duration_ms`) and task-card shape (`file`, `duration_s`, `settings.enabled`, `max_duration_s`) are both accepted. Picking another track/station during an ad ends the ad (only Next/seek are disabled).
 
 ## 2026-11-23 (0.135.0, NOT built / NOT deployed): Afrows Radio phase 2
 
