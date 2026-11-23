@@ -1,95 +1,88 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AppHeader } from '@/components/app-header';
 import { MiniPlayer } from '@/components/mini-player';
-import { LibraryState, NowPlaying } from '@/components/now-playing';
+import { LibraryState, NowPlayingPanel, NowPlayingSheet } from '@/components/now-playing';
 import { PlayerSheet } from '@/components/player-sheet';
-import { QueueList } from '@/components/queue-list';
 import { ShortcutsDialog } from '@/components/shortcuts-dialog';
-import { StationChips, StationGrid, StationRail, StationView } from '@/components/stations';
+import { Sidebar, TabBar } from '@/components/sidebar';
+import { SEARCH_INPUT_ID, TopBar } from '@/components/top-bar';
 import { TransportBar } from '@/components/transport';
 import { fill, useLang } from '@/i18n';
+import { useCollection } from '@/lib/collection';
 import { usePlayer } from '@/lib/player';
-import { ALL_STATION } from '@/lib/tracks';
+import { routeHref, useHashRoute, type Route } from '@/lib/route';
 import { useShortcuts } from '@/lib/use-shortcuts';
-import { cn } from '@/lib/utils';
+import { BrowseView, HomeView, LibraryView, SearchView, StationPage, TrackListView } from '@/pages/views';
 
 /**
- * One-screen player (design: afrows-player/01_PLAYER_UX.md). The shell is a `100dvh` grid with
- * `overflow: hidden`; only the station rail / grid and the queue scroll internally.
+ * Streaming-app shell (afrows.com = the radio only). The page never scrolls (`100dvh` grid,
+ * `overflow: hidden`); only the main panel's content and the side lists scroll inside.
  *
- *   >= 1280  header / stations rail | now playing | up next / transport bar (80px)
- *   1024+    header / station chips / now playing | up next / transport bar
- *   640+     header / station chips / now playing (+ "Up next" toggle panel) / transport bar
- *   < 640    header / station grid -> station list / mini bar (64px) -> full player sheet
+ *   >= 1280   sidebar (nav + your library) | main panel | now playing  /  player bar (80px)
+ *   768–1279  icon sidebar | main panel  /  player bar; now playing opens as a side sheet
+ *   < 768     main panel / mini player (64px, opens the full player sheet) / tab bar
  *
- * No router: views are state + `#hash` — `#station=<id>` selects a station. Old landing anchors
- * (`#vpn`, `#pricing`, …) simply land on the player: afrows.com is the radio only (owner, 2026-11-22).
+ * Routes are hash-based (`lib/route.ts`): #/ · #/browse · #/search?q= · #/library ·
+ * #/station/<id> · #/all · #/latest.
  */
-const STATION_HASH = /^#station=([a-z0-9_-]{1,40})$/;
-
-interface HashRoute {
-  station: string | null;
+function View({ route }: { route: Route }) {
+  switch (route.name) {
+    case 'browse':
+      return <BrowseView />;
+    case 'search':
+      return <SearchView q={route.q} />;
+    case 'library':
+      return <LibraryView />;
+    case 'station':
+      return <StationPage id={route.id} />;
+    case 'all':
+    case 'latest':
+      return <TrackListView kind={route.name} />;
+    default:
+      return <HomeView />;
+  }
 }
 
-function readHash(): HashRoute {
-  return { station: STATION_HASH.exec(window.location.hash)?.[1] ?? null };
-}
-
-function clearHash() {
-  // Keep `history.state` (the player-sheet marker) when rewriting the URL.
-  window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+function routeKey(route: Route): string {
+  return route.name === 'station' ? `station:${route.id}` : route.name;
 }
 
 export function Home() {
   const { t } = useLang();
-  const { status, stations, stationId, track, playing, started, selectStation, station } = usePlayer();
-
-  const [route, setRoute] = useState<HashRoute>(readHash);
+  const { status, track, playing, started } = usePlayer();
+  const { addRecent } = useCollection();
+  const [route, navigate] = useHashRoute();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [queueOpen, setQueueOpen] = useState(false);
-  const [browseId, setBrowseId] = useState<string | null>(route.station);
-  const appliedStation = useRef<string | null>(null);
-  /** Deep-linked station waiting for the player state to catch up (keeps the hash sync from clearing it). */
-  const pendingStation = useRef<string | null>(null);
+  const [nowOpen, setNowOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Hash -> state (deep links, back/forward).
+  // Legacy hashes: `#station=<id>` -> `#/station/<id>`; old landing anchors (`#vpn`, `#pricing`, …) -> home.
   useEffect(() => {
-    const onHash = () => setRoute(readHash());
-    window.addEventListener('hashchange', onHash);
-    window.addEventListener('popstate', onHash);
-    return () => {
-      window.removeEventListener('hashchange', onHash);
-      window.removeEventListener('popstate', onHash);
-    };
+    const hash = window.location.hash;
+    if (hash && !hash.startsWith('#/')) window.history.replaceState(window.history.state, '', routeHref(route));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // `#station=<id>`: apply once the library is ready (unknown / empty ids show "Station is empty").
+  // Route change: main panel back to the top; focus moves to the new view's heading (not while
+  // typing a search, which must keep focus in the field).
+  const lastRoute = useRef<string>(routeKey(route));
   useEffect(() => {
-    if (status !== 'ready' || !route.station || appliedStation.current === route.station) return;
-    appliedStation.current = route.station;
-    pendingStation.current = route.station;
-    selectStation(route.station);
-    setBrowseId(route.station);
-  }, [status, route.station, selectStation]);
+    const key = routeKey(route);
+    if (key === lastRoute.current) return;
+    lastRoute.current = key;
+    scrollRef.current?.scrollTo({ top: 0 });
+    if (route.name === 'search') return;
+    const frame = requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>('[data-view-heading]')?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [route]);
 
-  // Keep `#station=` in sync with the current station (shareable), without adding history entries.
+  // Recently played (this browser only).
   useEffect(() => {
-    if (status !== 'ready') return;
-    if (pendingStation.current) {
-      if (stationId !== pendingStation.current) return;
-      pendingStation.current = null;
-    }
-    const current = STATION_HASH.exec(window.location.hash)?.[1] ?? ALL_STATION;
-    // Also drops legacy landing anchors (`#vpn`, `#pricing`, …) once the player is up.
-    if (current === stationId && (stationId !== ALL_STATION || !window.location.hash)) return;
-    if (stationId === ALL_STATION) clearHash();
-    else window.history.replaceState(window.history.state, '', `#station=${stationId}`);
-    appliedStation.current = stationId === ALL_STATION ? null : stationId;
-  }, [status, stationId]);
+    if (playing && track.src) addRecent(track.id);
+  }, [playing, track, addRecent]);
 
-  // Phone player sheet: its own history entry, so the Back button / gesture closes it.
+  // Phone player sheet: its own history entry, so Back closes it.
   const openSheet = useCallback(() => {
     const state: unknown = window.history.state;
     window.history.pushState({ ...(state && typeof state === 'object' ? state : {}), playerSheet: true }, '');
@@ -111,7 +104,9 @@ export function Home() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  useShortcuts(useCallback(() => setShortcutsOpen(true), []));
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const focusSearch = useCallback(() => document.getElementById(SEARCH_INPUT_ID)?.focus(), []);
+  useShortcuts(openShortcuts, focusSearch);
 
   // Polite announcement on track change only (not on load, not on progress).
   const [announcement, setAnnouncement] = useState('');
@@ -122,72 +117,54 @@ export function Home() {
     setAnnouncement(fill(t.player.nowPlayingAnnounce, { title: track.title, artist: track.artist }));
   }, [started, playing, track, t]);
 
-  const multiStation = stations.length > 1;
   const ready = status === 'ready';
-  const queueId = 'up-next';
-  const accent = station?.color ? ({ '--station': station.color } as CSSProperties) : undefined;
-  const phoneStation = multiStation ? browseId : ALL_STATION;
 
   return (
-    <div className={cn('shell bg-background text-foreground', !multiStation && 'shell-single')} style={accent}>
+    <div className="shell bg-background text-foreground">
       <a
-        href="#main"
+        href="#content"
         className="skip-link"
         onClick={(e) => {
           e.preventDefault();
-          document.getElementById('main')?.focus();
+          document.getElementById('content')?.focus();
         }}
       >
-        {t.player.skipToPlayer}
+        {t.app.skipToContent}
       </a>
 
-      <div className="area-header">
-        <AppHeader onOpenShortcuts={() => setShortcutsOpen(true)} />
+      <div className="area-side">
+        <Sidebar route={route} />
       </div>
 
-      {ready && multiStation && (
-        <>
-          <div className="area-rail hidden xl:block">
-            <StationRail />
-          </div>
-          <div className="area-chips hidden sm:block xl:hidden">
-            <StationChips />
-          </div>
-        </>
-      )}
-
-      <main id="main" tabIndex={-1} className="area-main outline-none">
-        {/* Phone: station grid -> station list. */}
-        <div className="h-full sm:hidden">
-          {!ready ? (
-            <div className="flex h-full w-full min-w-0 items-center justify-center overflow-y-auto px-4 py-6">
+      <main id="content" tabIndex={-1} className="area-main panel flex flex-col outline-none">
+        <TopBar route={route} navigate={navigate} onOpenShortcuts={openShortcuts} />
+        <div ref={scrollRef} className="scroll-area min-h-0 flex-1 overflow-y-auto px-2 pb-6 sm:px-4">
+          {ready ? (
+            <View route={route} />
+          ) : (
+            <div className="grid min-h-full place-items-center py-8">
               <LibraryState />
             </div>
-          ) : phoneStation ? (
-            <StationView id={phoneStation} onBack={multiStation ? () => setBrowseId(null) : undefined} />
-          ) : (
-            <StationGrid onBrowse={setBrowseId} />
           )}
-        </div>
-        {/* Tablet / desktop: now playing. */}
-        <div className="hidden h-full sm:block">
-          <NowPlaying />
         </div>
       </main>
 
-      <div className={cn('area-queue hidden border-s border-[var(--border)] bg-background lg:block', queueOpen && 'sm:block')}>
-        <QueueList id={queueId} />
-      </div>
+      <aside aria-label={t.player.nowPlaying} className="area-now panel">
+        <NowPlayingPanel />
+      </aside>
 
       <div className="area-bar">
-        <div className="hidden h-full sm:block">
-          <TransportBar queueOpen={queueOpen} onToggleQueue={() => setQueueOpen((o) => !o)} queueId={queueId} />
+        <TransportBar nowOpen={nowOpen} onToggleNow={() => setNowOpen((o) => !o)} />
+      </div>
+
+      {ready && track.src && (
+        <div className="area-mini">
+          <MiniPlayer sheetOpen={sheetOpen} onOpen={openSheet} />
         </div>
-        {ready && track.src && (
-          <div className="sm:hidden">
-            <MiniPlayer sheetOpen={sheetOpen} onOpen={openSheet} />
-          </div>
-        )}
+      )}
+
+      <div className="area-tabs">
+        <TabBar route={route} />
       </div>
 
       {/* At <body> level so it is still heard while a sheet makes the app root inert. */}
@@ -199,6 +176,7 @@ export function Home() {
       )}
 
       <PlayerSheet open={sheetOpen} onClose={closeSheet} />
+      <NowPlayingSheet open={nowOpen} onClose={() => setNowOpen(false)} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );

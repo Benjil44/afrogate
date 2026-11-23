@@ -10,17 +10,19 @@ import { usePlayer } from './player';
  *   Space / K  play-pause        Left / Right   seek -/+10 s
  *   Shift+Left/Right, P / N      previous / next track
  *   Up / Down  volume ±5 % (not inside a scrolling list)
- *   M mute · S shuffle · R repeat · ? help
+ *   M mute · S shuffle · R repeat · / search · ? help
  *
  * Ignored while typing, with Ctrl/Meta/Alt, and while a sheet or dialog is open (they own Esc and
  * Tab). Space on a focused button/link is left to the browser (it activates that control).
  */
-export function useShortcuts(onHelp: () => void) {
+export function useShortcuts(onHelp: () => void, onSearch?: () => void) {
   const player = usePlayer();
   const ref = useRef(player);
   ref.current = player;
   const helpRef = useRef(onHelp);
   helpRef.current = onHelp;
+  const searchRef = useRef(onSearch);
+  searchRef.current = onSearch;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -33,6 +35,8 @@ export function useShortcuts(onHelp: () => void) {
 
       if (e.key === '?' || (e.code === 'Slash' && e.shiftKey)) {
         helpRef.current();
+      } else if (e.code === 'Slash' && searchRef.current) {
+        searchRef.current();
       } else if (e.code === 'Space') {
         if (onControl) return;
         p.toggle();

@@ -4,7 +4,7 @@ import { Cover, PlaybackNotices } from '@/components/now-playing';
 import { Overlay } from '@/components/overlay';
 import { QueueList } from '@/components/queue-list';
 import { SeekBar } from '@/components/seek-bar';
-import { NextButton, PlayButton, PrevButton, RepeatButton, ShuffleButton } from '@/components/transport';
+import { LikeButton, NextButton, PlayButton, PrevButton, RepeatButton, ShuffleButton } from '@/components/transport';
 import { useLang } from '@/i18n';
 import { stationName, usePlayer } from '@/lib/player';
 import { useMotionTier } from '@/motion/provider';
@@ -68,13 +68,16 @@ export function PlayerSheet({ open, onClose }: { open: boolean; onClose: () => v
           <div className="touch-pan-x" {...swipe}>
             <Cover className="sheet-cover" />
           </div>
-          <div className="w-full text-center">
-            <p className="truncate text-xl font-black">
-              <bdi>{track.title}</bdi>
-            </p>
-            <p className="truncate text-sm text-[var(--muted-foreground)]">
-              <bdi>{track.artist}</bdi>
-            </p>
+          <div className="flex w-full items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xl font-black">
+                <bdi>{track.title}</bdi>
+              </p>
+              <p className="truncate text-sm text-[var(--muted-foreground)]">
+                <bdi>{track.artist}</bdi>
+              </p>
+            </div>
+            <LikeButton />
           </div>
           <SeekBar tall />
           <div className="flex w-full items-center justify-between">

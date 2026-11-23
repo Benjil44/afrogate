@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { LangProvider } from './i18n';
+import { CollectionProvider } from './lib/collection';
 import { PlayerProvider } from './lib/player';
 import { MotionProvider } from './motion/provider';
 // Self-hosted variable fonts (OFL) bundled by Vite — no third-party font requests.
@@ -18,7 +19,9 @@ createRoot(root).render(
       {/* PlayerProvider needs the motion tier (analyser gating) and the language (lock-screen album name). */}
       <MotionProvider>
         <PlayerProvider>
-          <App />
+          <CollectionProvider>
+            <App />
+          </CollectionProvider>
         </PlayerProvider>
       </MotionProvider>
     </LangProvider>

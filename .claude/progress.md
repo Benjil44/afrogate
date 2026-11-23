@@ -6,6 +6,7 @@
 - **Not verified yet:** no `npm install`, typecheck, build or browser run on the authoring laptop (owner rule). Remaining: Test PC typecheck/build, `version:check`, render check in fa + en at 1440x900, 1024x768, 390x844, 360x640 (`scrollHeight === innerHeight`, `scrollWidth <= innerWidth`), axe, lock-screen test on a phone.
 - 0.132.1: Test PC build OK (only the pre-existing vite.config node-types tsc noise); fixed the phone state-notice overflow; phone sheet closes on Back + swipe-down; mini bar stays hidden in loading/error/empty.
 - 0.133.0: owner decision, afrows.com = radio only. VPN button/sheet + pricing/apps/FAQ/promo removed; header = "Afrows Radio" + shortcuts + language. No app.afrows.com reference in apps/web.
+- 0.134.0: streaming-app shell redesign (sidebar / main panel with rows + search + hash routes / now-playing column / player bar; phone tab bar + mini player); liked + recent in localStorage. Not built here.
 - Open: drop `gsap` / `lenis` from `apps/web/package.json` with a lockfile refresh.
 
 ## 2026-11-21 (0.131.2, NOT deployed): Billing-safety guard — DEF "Germany Fast x2" link requires its 2x meter

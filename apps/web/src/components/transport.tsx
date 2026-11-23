@@ -1,7 +1,8 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import {
-  ListMusic,
+  Heart,
   Loader2,
+  PanelRight,
   Pause,
   Play,
   Repeat,
@@ -14,7 +15,9 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { NUMBER_LOCALE, useLang } from '@/i18n';
-import { stationArt, usePlayer } from '@/lib/player';
+import { TrackArt } from '@/components/art';
+import { useCollection } from '@/lib/collection';
+import { usePlayer } from '@/lib/player';
 import { cn } from '@/lib/utils';
 import { SeekBar } from '@/components/seek-bar';
 
@@ -184,33 +187,45 @@ export function VolumeControl({ className }: { className?: string }) {
   );
 }
 
-/** Small cover square: the track cover, else the station gradient. */
+/** Small cover square of the current track (cover image, else generated art). */
 export function CoverThumb({ className }: { className?: string }) {
-  const { track, station, stationIndex } = usePlayer();
-  const cover = track.cover ?? station?.cover ?? null;
+  const { track } = usePlayer();
+  return <TrackArt track={track} className={cn('rounded-lg', className)} />;
+}
+
+/** Heart toggle for the current track (liked tracks live in this browser only). */
+export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
+  const { t } = useLang();
+  const { track, status } = usePlayer();
+  const { isLiked, toggleLike } = useCollection();
+  const liked = track.src ? isLiked(track.id) : false;
   return (
-    <span
-      aria-hidden="true"
-      className={cn('block shrink-0 overflow-hidden rounded-lg', className)}
-      style={{ background: stationArt(station?.color ?? null, stationIndex) }}
+    <IconButton
+      label={liked ? t.app.unlike : t.app.like}
+      size={size}
+      aria-pressed={liked}
+      disabled={status !== 'ready' || !track.src}
+      onClick={() => toggleLike(track.id)}
+      className={cn(liked ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]')}
     >
-      {cover && <img src={cover} alt="" width={48} height={48} loading="lazy" decoding="async" className="h-full w-full object-cover" />}
-    </span>
+      <Heart className="h-5 w-5" fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />
+    </IconButton>
   );
 }
 
 /**
- * Desktop / tablet transport bar (80px): track · prev/play/next + shuffle/repeat · timeline ·
- * volume (+ "Up next" toggle below 1024px). Flex order mirrors in RTL for free.
+ * Bottom player bar (>= 768px, 80px): track + like (start) · transport above the timeline
+ * (centre) · volume + "Now playing" toggle (end; the toggle only below 1280px, where the
+ * now-playing column is hidden). Flex order mirrors in RTL for free.
  */
-export function TransportBar({ queueOpen, onToggleQueue, queueId }: { queueOpen: boolean; onToggleQueue: () => void; queueId: string }) {
+export function TransportBar({ nowOpen, onToggleNow }: { nowOpen: boolean; onToggleNow: () => void }) {
   const { t } = useLang();
   const { track } = usePlayer();
   return (
-    <section aria-label={t.player.playerRegion} className="flex h-full items-center gap-4 border-t border-[var(--border)] bg-[var(--card)] px-4 lg:gap-6 lg:px-6">
-      <div className="flex min-w-0 shrink-0 items-center gap-3 md:w-44 lg:w-56">
-        <CoverThumb className="h-12 w-12" />
-        <div className="hidden min-w-0 md:block">
+    <section aria-label={t.player.playerRegion} className="flex h-full items-center gap-4 px-2 lg:px-3">
+      <div className="flex w-[28%] min-w-0 items-center gap-3">
+        <CoverThumb className="h-14 w-14" />
+        <div className="min-w-0">
           <p className="truncate text-sm font-bold">
             <bdi>{track.title || t.player.noTrack}</bdi>
           </p>
@@ -218,25 +233,31 @@ export function TransportBar({ queueOpen, onToggleQueue, queueId }: { queueOpen:
             <bdi>{track.artist}</bdi>
           </p>
         </div>
+        <LikeButton size="sm" />
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <ShuffleButton size="sm" />
-        <PrevButton />
-        <PlayButton size="sm" />
-        <NextButton />
-        <RepeatButton size="sm" />
+      <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+        <div className="flex items-center gap-1">
+          <ShuffleButton size="sm" />
+          <PrevButton size="sm" />
+          <PlayButton size="sm" />
+          <NextButton size="sm" />
+          <RepeatButton size="sm" />
+        </div>
+        <SeekBar className="max-w-2xl" />
       </div>
-      <SeekBar className="min-w-0 flex-1" />
-      <VolumeControl className="hidden shrink-0 lg:flex" />
-      <IconButton
-        label={queueOpen ? t.player.hideQueue : t.player.showQueue}
-        aria-expanded={queueOpen}
-        aria-controls={queueId}
-        onClick={onToggleQueue}
-        className={cn('lg:hidden', queueOpen && 'text-[var(--accent)]')}
-      >
-        <ListMusic className="h-5 w-5" aria-hidden="true" />
-      </IconButton>
+      <div className="flex w-[28%] min-w-0 items-center justify-end gap-1">
+        <VolumeControl className="hidden lg:flex" />
+        <IconButton
+          label={nowOpen ? t.app.closeNowPlaying : t.app.openNowPlaying}
+          size="sm"
+          aria-haspopup="dialog"
+          aria-expanded={nowOpen}
+          onClick={onToggleNow}
+          className={cn('xl:hidden', nowOpen ? 'text-[var(--accent)]' : 'text-[var(--muted-foreground)]')}
+        >
+          <PanelRight className="h-5 w-5 rtl:-scale-x-100" aria-hidden="true" />
+        </IconButton>
+      </div>
     </section>
   );
 }

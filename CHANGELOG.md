@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.134.0 - 2026-11-22
+
+- **afrows.com redesigned as a streaming-app shell (original Afrows design; other apps were inspiration only — no copied logos, names, colours, artwork or copy).** `apps/web` only; not deployed. Engine, manifest v2/v1 loader, Media Session, shortcuts, library/playback states and the reduced-motion tier are unchanged.
+  - **Shell** (`pages/home.tsx`, `styles.css`): `100dvh` grid of rounded panels (12px radius, 8px gaps); the page never scrolls, only the main panel and side lists do. >= 1280: sidebar (nav + "Your library") | main | now-playing column over an 80px player bar. 768–1279: icon-only sidebar (labels as accessible names + focus tooltips), now playing opens as an end-side sheet from the bar. < 768: main panel, mini player (opens the full player sheet; Back / swipe close kept) and a bottom tab bar (Home, Search, Library).
+  - **Routes** (`lib/route.ts`, hash only): `#/`, `#/browse`, `#/search?q=`, `#/library`, `#/station/<id>`, `#/all`, `#/latest`; legacy `#station=<id>` is mapped, old landing anchors go home. Focus moves to the view heading on navigation (not while typing a search); the panel scrolls back to the top.
+  - **Search** (`components/top-bar.tsx`): big rounded field, client-side filter over title / artist / category names in both languages (case-insensitive, Persian/Arabic letter variants and ZWNJ folded), `/` focuses it, Esc clears; results as station + track grids, or "Browse all" when empty, "Nothing found" with a hint.
+  - **Rows** (`components/cards.tsx`, `pages/views.tsx`): Recently played, Stations (only when the manifest has real categories), Latest mixes (manifest order reversed — assumed publish order), All tracks (only when there are more than 10). Empty rows are hidden and a single card is never shown as a row (grid instead); "Show all" opens the grid view. Track cards are one button (play / pause); station cards are links to the station page plus a separate always-visible play button; names sit on a dark scrim for contrast.
+  - **Art** (`components/art.tsx`): covers are mostly null, so cards use a generated gradient from the category colour (or a palette slot picked from the id) with the title initials.
+  - **Your library** (`lib/collection.tsx`): liked tracks and recently played (20) in this browser's localStorage only (try/catch; works in memory when storage is blocked); heart toggles in the bar, now-playing panel and phone sheet; empty state with a hint in the sidebar and the library view.
+  - Removed the old single-screen station rail / chips / grid / station view and header components. Page title / description now say "Afrows Radio" / «رادیو افروز».
+
 ## 0.133.0 - 2026-11-22
 
 - **afrows.com is the radio only (owner decision 2026-11-22: "afrows.com is radio, app.afrows.com is the VPN").** `apps/web` only; app.afrows.com and everything else untouched. Not deployed.
