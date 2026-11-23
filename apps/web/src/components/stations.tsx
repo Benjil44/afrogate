@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { ArrowLeft, ArrowRight, Play, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Play } from 'lucide-react';
 import { Equalizer } from '@/components/equalizer';
 import { NUMBER_LOCALE, formatTime, trackCount, useLang } from '@/i18n';
 import { NoticeButton, StateNotice } from '@/components/state-notice';
@@ -30,7 +30,7 @@ function useStationCounts() {
   return (id: string) => stationTracks(library, id).length;
 }
 
-export function StationRail({ onOpenVpn }: { onOpenVpn: () => void }) {
+export function StationRail() {
   const { t, lang } = useLang();
   const { stations, stationId, selectStation, playing } = usePlayer();
   const count = useStationCounts();
@@ -67,14 +67,6 @@ export function StationRail({ onOpenVpn }: { onOpenVpn: () => void }) {
           );
         })}
       </ul>
-      <button
-        type="button"
-        onClick={onOpenVpn}
-        className="m-3 mt-0 flex min-h-11 items-center gap-2 rounded-xl px-2 text-start text-xs font-semibold text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-      >
-        <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-        {t.player.vpnRailLine}
-      </button>
     </nav>
   );
 }

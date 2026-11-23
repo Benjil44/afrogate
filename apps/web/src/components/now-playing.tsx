@@ -52,7 +52,7 @@ export function Cover({ className }: { className?: string }) {
  * Library-level states for the main column: loading skeleton, manifest error with Retry,
  * empty library, empty / unknown station. Returns null when the player can render.
  */
-export function LibraryState({ onOpenVpn }: { onOpenVpn: () => void }) {
+export function LibraryState() {
   const { t } = useLang();
   const { status, reload, queue, playStation } = usePlayer();
   if (status === 'loading') return <LoadingSkeleton />;
@@ -66,9 +66,7 @@ export function LibraryState({ onOpenVpn }: { onOpenVpn: () => void }) {
     );
   if (status === 'empty')
     return (
-      <StateNotice tone="neutral" title={t.player.emptyTitle} body={t.player.emptyBody}>
-        <NoticeButton onClick={onOpenVpn}>{t.player.getVpn}</NoticeButton>
-      </StateNotice>
+      <StateNotice tone="neutral" title={t.player.emptyTitle} body={t.player.emptyBody} />
     );
   if (queue.length === 0)
     return (
@@ -82,7 +80,7 @@ export function LibraryState({ onOpenVpn }: { onOpenVpn: () => void }) {
 }
 
 /** Desktop / tablet centre column: cover, title, artist · station, 8-band visualiser, first-tap Start. */
-export function NowPlaying({ onOpenVpn }: { onOpenVpn: () => void }) {
+export function NowPlaying() {
   const { t, lang } = useLang();
   const { track, station, playing, started, blocked, status, queue } = usePlayer();
   const ready = status === 'ready' && queue.length > 0;
@@ -96,7 +94,7 @@ export function NowPlaying({ onOpenVpn }: { onOpenVpn: () => void }) {
       </h2>
       {!ready ? (
         <div className="relative flex w-full min-w-0 justify-center">
-          <LibraryState onOpenVpn={onOpenVpn} />
+          <LibraryState />
         </div>
       ) : (
         <>

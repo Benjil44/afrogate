@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.133.0 - 2026-11-22
+
+- **afrows.com is the radio only (owner decision 2026-11-22: "afrows.com is radio, app.afrows.com is the VPN").** `apps/web` only; app.afrows.com and everything else untouched. Not deployed.
+  - Removed the "Get Afrows VPN" header button, the VPN sheet and everything only it used: promo bar, pricing, apps and FAQ sections, section heading, collapse, the rail's VPN line, the empty-library VPN button, the `side` overlay variant, their CSS, and the i18n `promo` / `radio` / `pricing` / `apps` / `faq` blocks, the VPN player strings and the unused brand strings.
+  - Header is now minimal: equalizer logo + "Afrows Radio" / «رادیو افروز» (new `brandRadio`), keyboard-shortcut help, language toggle. Document title follows (`Afrows Radio — Persian music and DJ mixes` / `رادیو افروز — موسیقی فارسی و میکس‌های دی‌جی`).
+  - Legacy `#vpn` / `#pricing` (and other old landing anchors) land on the player and are cleared from the URL; `#station=<id>` is unchanged.
+  - Verified by search: the only network call in `apps/web` is the manifest fetch from `https://media.borjino.com/music/` (audio and covers from the same host); nothing calls or links app.afrows.com.
+
 ## 0.132.1 - 2026-11-22
 
 - **Player P1 fixes from the Test PC render (apps/web, not deployed).**

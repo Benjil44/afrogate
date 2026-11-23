@@ -8,7 +8,6 @@ import { QueueList } from '@/components/queue-list';
 import { ShortcutsDialog } from '@/components/shortcuts-dialog';
 import { StationChips, StationGrid, StationRail, StationView } from '@/components/stations';
 import { TransportBar } from '@/components/transport';
-import { VpnSheet } from '@/components/vpn-sheet';
 import { fill, useLang } from '@/i18n';
 import { usePlayer } from '@/lib/player';
 import { ALL_STATION } from '@/lib/tracks';
@@ -24,21 +23,17 @@ import { cn } from '@/lib/utils';
  *   640+     header / station chips / now playing (+ "Up next" toggle panel) / transport bar
  *   < 640    header / station grid -> station list / mini bar (64px) -> full player sheet
  *
- * No router: views are state + `#hash` — `#vpn` / `#pricing` open the VPN sheet,
- * `#station=<id>` selects a station.
+ * No router: views are state + `#hash` — `#station=<id>` selects a station. Old landing anchors
+ * (`#vpn`, `#pricing`, …) simply land on the player: afrows.com is the radio only (owner, 2026-11-22).
  */
 const STATION_HASH = /^#station=([a-z0-9_-]{1,40})$/;
 
 interface HashRoute {
-  vpn: boolean;
-  pricing: boolean;
   station: string | null;
 }
 
 function readHash(): HashRoute {
-  const hash = window.location.hash;
-  const station = STATION_HASH.exec(hash)?.[1] ?? null;
-  return { vpn: hash === '#vpn' || hash === '#pricing', pricing: hash === '#pricing', station };
+  return { station: STATION_HASH.exec(window.location.hash)?.[1] ?? null };
 }
 
 function clearHash() {
@@ -79,29 +74,20 @@ export function Home() {
     setBrowseId(route.station);
   }, [status, route.station, selectStation]);
 
-  const openVpn = useCallback(() => {
-    if (!readHash().vpn) window.history.pushState(null, '', '#vpn');
-    setRoute((r) => ({ ...r, vpn: true, pricing: false }));
-  }, []);
-
-  const closeVpn = useCallback(() => {
-    if (readHash().vpn) clearHash();
-    setRoute((r) => ({ ...r, vpn: false, pricing: false }));
-  }, []);
-
   // Keep `#station=` in sync with the current station (shareable), without adding history entries.
   useEffect(() => {
-    if (status !== 'ready' || route.vpn) return;
+    if (status !== 'ready') return;
     if (pendingStation.current) {
       if (stationId !== pendingStation.current) return;
       pendingStation.current = null;
     }
     const current = STATION_HASH.exec(window.location.hash)?.[1] ?? ALL_STATION;
-    if (current === stationId) return;
+    // Also drops legacy landing anchors (`#vpn`, `#pricing`, …) once the player is up.
+    if (current === stationId && (stationId !== ALL_STATION || !window.location.hash)) return;
     if (stationId === ALL_STATION) clearHash();
     else window.history.replaceState(window.history.state, '', `#station=${stationId}`);
     appliedStation.current = stationId === ALL_STATION ? null : stationId;
-  }, [status, stationId, route.vpn]);
+  }, [status, stationId]);
 
   // Phone player sheet: its own history entry, so the Back button / gesture closes it.
   const openSheet = useCallback(() => {
@@ -156,13 +142,13 @@ export function Home() {
       </a>
 
       <div className="area-header">
-        <AppHeader vpnOpen={route.vpn} onOpenVpn={openVpn} onOpenShortcuts={() => setShortcutsOpen(true)} />
+        <AppHeader onOpenShortcuts={() => setShortcutsOpen(true)} />
       </div>
 
       {ready && multiStation && (
         <>
           <div className="area-rail hidden xl:block">
-            <StationRail onOpenVpn={openVpn} />
+            <StationRail />
           </div>
           <div className="area-chips hidden sm:block xl:hidden">
             <StationChips />
@@ -175,7 +161,7 @@ export function Home() {
         <div className="h-full sm:hidden">
           {!ready ? (
             <div className="flex h-full w-full min-w-0 items-center justify-center overflow-y-auto px-4 py-6">
-              <LibraryState onOpenVpn={openVpn} />
+              <LibraryState />
             </div>
           ) : phoneStation ? (
             <StationView id={phoneStation} onBack={multiStation ? () => setBrowseId(null) : undefined} />
@@ -185,7 +171,7 @@ export function Home() {
         </div>
         {/* Tablet / desktop: now playing. */}
         <div className="hidden h-full sm:block">
-          <NowPlaying onOpenVpn={openVpn} />
+          <NowPlaying />
         </div>
       </main>
 
@@ -213,7 +199,6 @@ export function Home() {
       )}
 
       <PlayerSheet open={sheetOpen} onClose={closeSheet} />
-      <VpnSheet open={route.vpn} onClose={closeVpn} focusPricing={route.pricing} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );

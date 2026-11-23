@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 
 /**
  * Modal surface rendered at `<body>` level (a transformed ancestor would break `position: fixed`).
- * Variants: `side` = full-height panel from the inline-end edge (VPN sheet), `bottom` = full-screen
- * sheet from below (phone player), `dialog` = centred card (shortcuts).
+ * Variants: `bottom` = full-screen sheet from below (phone player), `dialog` = centred card
+ * (shortcuts).
  *
  * Two-state mount: `mounted` keeps the node for the exit transition, `shown` drives the CSS
  * (`.is-shown`), set on the frame after mount so the enter transition runs. `static` tier and
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
  * across stacked overlays), Tab is trapped inside, Esc closes, and focus returns to the opener.
  * The page itself never scrolls, so no body scroll lock is needed.
  */
-type Variant = 'side' | 'bottom' | 'dialog';
+type Variant = 'bottom' | 'dialog';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

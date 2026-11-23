@@ -43,10 +43,6 @@
   --color-glow: var(--glow);
 }
 
-/* Registered custom properties (VPN sheet glows; the beat multiplier for has-prop loops). */
-@property --plan-glow { syntax: '<number>'; inherits: true; initial-value: 1; }
-@property --row-lit { syntax: '<number>'; inherits: false; initial-value: 0; }
-
 html {
   background: var(--background);
   color: var(--foreground);
@@ -174,12 +170,6 @@ html[dir="rtl"] .tip { translate: 50% 0; }
   background: var(--background); color: var(--foreground);
   transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
 }
-.overlay-side .overlay-panel {
-  inset-block: 0; inset-inline-end: 0; width: min(100%, 760px);
-  border-inline-start: 1px solid var(--border);
-  transform: translateX(var(--sheet-off, 100%));
-}
-html[dir="rtl"] .overlay-side .overlay-panel { --sheet-off: -100%; }
 .overlay-bottom .overlay-panel {
   inset: 0; height: 100vh; height: 100dvh;
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -191,16 +181,6 @@ html[dir="rtl"] .overlay-side .overlay-panel { --sheet-off: -100%; }
   background: var(--card); opacity: 0; transform: scale(0.97);
 }
 .overlay.is-shown .overlay-panel { transform: none; opacity: 1; }
-
-/* ---- Collapse (CSS height animation for the promo bar and FAQ answers) ---- */
-.fold {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  transition: grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
-}
-.fold.is-open { grid-template-rows: 1fr; opacity: 1; }
-.fold-inner { overflow: hidden; min-height: 0; }
 
 /* ---- Range inputs (seek + volume): native range over a styled track ---- */
 .seek-input { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; }
@@ -222,54 +202,6 @@ html[dir="rtl"] .overlay-side .overlay-panel { --sheet-off: -100%; }
 .seek-input:disabled { cursor: default; }
 .seek-input:disabled::-webkit-slider-thumb { opacity: 0.5; }
 .seek-input:disabled::-moz-range-thumb { opacity: 0.5; }
-
-/* Section eyebrow mini wave (VPN sheet): pulses only while playing. */
-.heading-wave { width: 14px; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--accent)); }
-html.is-playing .heading-wave { animation: heading-wave calc(var(--beat) * 2) ease-in-out infinite alternate; }
-@keyframes heading-wave { from { transform: scaleX(0.6); } to { transform: scaleX(1.2); } }
-
-/* ---- Pricing (VPN sheet): the featured plan lights ---- */
-.plan-featured {
-  --plan-glow: 1;
-  box-shadow: 0 24px 80px -24px color-mix(in oklch, var(--primary) calc(var(--plan-glow) * 45%), transparent);
-}
-.crown-halo {
-  position: absolute; inset: -6px; border-radius: 999px;
-  background: radial-gradient(circle, color-mix(in oklch, var(--ember) 60%, transparent), transparent 70%);
-  filter: blur(6px);
-  opacity: calc(var(--plan-glow) * 0.9);
-}
-
-/* ---- Apps (VPN sheet): phone screens + platform rows ---- */
-.phone-stage { perspective: 1200px; }
-.phone-screen { position: absolute; inset: 0; opacity: 0; }
-.phone-screen.is-on { opacity: 1; }
-html.motion-full .phone-screen, html.motion-lite .phone-screen { translate: 0 6px; transition: opacity 0.4s ease, translate 0.4s ease; }
-html.motion-full .phone-screen.is-on, html.motion-lite .phone-screen.is-on { translate: 0 0; }
-.app-row { --row-lit: 0; border-color: color-mix(in oklch, var(--border), var(--primary) calc(var(--row-lit) * 70%)); }
-.app-row.is-lit { --row-lit: 1; }
-.app-row::before {
-  content: ''; position: absolute; inset-inline-start: 0; top: 22%; bottom: 22%; width: 2px; border-radius: 2px;
-  background: var(--ember); opacity: var(--row-lit);
-}
-
-@keyframes gradient-pan {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-.animate-gradient-bg {
-  background-size: 200% 200%;
-  animation: gradient-pan 5s linear infinite;
-}
-
-/* Vinyl disc spin (apps phone mock): 16 beats per turn, only while playing */
-@keyframes spin-slow { to { transform: rotate(360deg); } }
-.animate-spin-slow {
-  animation: spin-slow calc(var(--beat) * 16) linear infinite;
-  animation-play-state: paused;
-}
-.is-playing .animate-spin-slow { animation-play-state: running; }
 
 /* Equalizer bars — resting height when idle, dancing on the beat when `.eq-active`,
    following the analyser bands while `html.is-live`. */
@@ -302,17 +234,16 @@ html.is-live .eq-active .eq-b6 { transform: scaleY(calc(0.15 + var(--lv6) * 0.85
 html.is-live .eq-active .eq-b7 { transform: scaleY(calc(0.15 + var(--lv7) * 0.85)); }
 
 /* ---- Static tier (reduced motion, Save-Data, low memory): resting, no transitions or loops ---- */
-html.motion-static .overlay-backdrop, html.motion-static .overlay-panel, html.motion-static .fold,
+html.motion-static .overlay-backdrop, html.motion-static .overlay-panel,
 html.motion-static .tip, html.motion-static .eq-bar { transition: none; }
-html.motion-static .eq-active .eq-bar, html.motion-static .animate-gradient-bg, html.motion-static .animate-spin-slow,
-html.motion-static .skeleton, html.motion-static .heading-wave { animation: none; }
+html.motion-static .eq-active .eq-bar, html.motion-static .skeleton { animation: none; }
 html.motion-static .eq-active .eq-bar { transform: scaleY(0.6); }
 
 /* Motion safety: freeze decorative animation for users who ask for less motion. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-gradient-bg, .animate-spin-slow, .eq-active .eq-bar, .heading-wave, .skeleton, .cover-in {
+  .eq-active .eq-bar, .skeleton, .cover-in {
     animation: none !important;
   }
-  .fold, .overlay-backdrop, .overlay-panel, .phone-screen, .eq-bar, .tip { transition: none !important; }
+  .overlay-backdrop, .overlay-panel, .eq-bar, .tip { transition: none !important; }
   .eq-active .eq-bar { transform: scaleY(0.6); }
 }
