@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MiniPlayer } from '@/components/mini-player';
 import { LibraryState, NowPlayingPanel, NowPlayingSheet } from '@/components/now-playing';
+import { PlaybackSettingsButton } from '@/components/playback-settings';
 import { PlayerSheet } from '@/components/player-sheet';
 import { ShortcutsDialog } from '@/components/shortcuts-dialog';
 import { Sidebar, TabBar } from '@/components/sidebar';
@@ -12,7 +13,7 @@ import { useCollection } from '@/lib/collection';
 import { usePlayer } from '@/lib/player';
 import { routeHref, useHashRoute, type Route } from '@/lib/route';
 import { useShortcuts } from '@/lib/use-shortcuts';
-import { BrowseView, HomeView, LibraryView, SearchView, StationPage, TrackListView } from '@/pages/views';
+import { BrowseView, HomeView, LibraryView, SearchView, StationPage, TrackListView, TrackPage } from '@/pages/views';
 
 /**
  * Streaming-app shell (afrows.com = the radio only). The page never scrolls (`100dvh` grid,
@@ -23,7 +24,7 @@ import { BrowseView, HomeView, LibraryView, SearchView, StationPage, TrackListVi
  *   < 768     main panel / mini player (64px, opens the full player sheet) / tab bar
  *
  * Routes are hash-based (`lib/route.ts`): #/ · #/browse · #/search?q= · #/library ·
- * #/station/<id> · #/all · #/latest.
+ * #/station/<id> · #/all · #/latest · #/track/<id> (share links).
  */
 function View({ route }: { route: Route }) {
   switch (route.name) {
@@ -35,6 +36,8 @@ function View({ route }: { route: Route }) {
       return <LibraryView />;
     case 'station':
       return <StationPage id={route.id} />;
+    case 'track':
+      return <TrackPage id={route.id} />;
     case 'all':
     case 'latest':
       return <TrackListView kind={route.name} />;
@@ -44,7 +47,7 @@ function View({ route }: { route: Route }) {
 }
 
 function routeKey(route: Route): string {
-  return route.name === 'station' ? `station:${route.id}` : route.name;
+  return route.name === 'station' || route.name === 'track' ? `${route.name}:${route.id}` : route.name;
 }
 
 export function Home() {
@@ -154,7 +157,7 @@ export function Home() {
       </aside>
 
       <div className="area-bar">
-        <TransportBar nowOpen={nowOpen} onToggleNow={() => setNowOpen((o) => !o)} />
+        <TransportBar nowOpen={nowOpen} onToggleNow={() => setNowOpen((o) => !o)} extra={<PlaybackSettingsButton size="sm" />} />
       </div>
 
       {ready && track.src && (

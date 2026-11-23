@@ -1,5 +1,10 @@
 # Afrows Progress
 
+## 2026-11-23 (0.135.0, NOT built / NOT deployed): Afrows Radio phase 2
+
+- Search polish (grouped, Persian/Arabic/digit normalisation, keyboard), station pages (colour hero, play/shuffle, rows with duration/BPM/energy chips), Energy filters on All tracks, Continue listening (localStorage resume), `#/track/<id>` share links + Share button, crossfade (two elements, off/3 s/6 s), sleep timer. See CHANGELOG 0.135.0.
+- **Not verified yet:** no typecheck/build/browser run on the laptop (owner rule). Remaining on the Test PC: `npm run typecheck -w @afrows/web`, `npm run build -w @afrows/web`, `npm run version:check`; render fa + en at 1440x900 / 1024x768 / 390x844 / 360x640 (search with results + empty, station page, All tracks filtered, track page, settings dialog, phone sheet header); crossfade by ear on desktop Chrome + Firefox and Android Chrome (screen locked); iOS must show crossfade as unavailable.
+
 ## 2026-11-22 (0.132.0, NOT built / NOT deployed): afrows.com one-screen music player, P1
 
 - Replaced the scrolling landing (`apps/web`) with the one-screen player from design `afrows-player/01_PLAYER_UX.md` P1: 100dvh shell at 4 breakpoints, manifest v2-then-v1 loader + validator, stations / queue / transport / phone mini bar + sheet, VPN sheet (pricing, apps, FAQ moved), shortcuts dialog, all library and playback states. See CHANGELOG 0.132.0.

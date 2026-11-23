@@ -101,7 +101,7 @@ export function TrackCard({ track, stationId }: { track: Track; stationId: strin
  * play button over the tile (sibling, not nested, so both are real controls). The name sits on a
  * dark scrim, so text contrast never depends on the category colour.
  */
-export function StationCard({ category }: { category: Category }) {
+export function StationCard({ category, result = false }: { category: Category; result?: boolean }) {
   const { t, lang } = useLang();
   const { library, stationId, playing, toggle, playStation } = usePlayer();
   const name = stationName(category, lang, t);
@@ -109,7 +109,7 @@ export function StationCard({ category }: { category: Category }) {
   const active = stationId === category.id && playing;
   return (
     <div className="card group relative rounded-xl p-2">
-      <a href={routeHref({ name: 'station', id: category.id })} className="flex flex-col gap-2 rounded-lg">
+      <a href={routeHref({ name: 'station', id: category.id })} data-result={result || undefined} className="flex flex-col gap-2 rounded-lg">
         <span className="relative block overflow-hidden rounded-lg">
           <CategoryArt category={category} label={name} className="aspect-square w-full" />
           <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(to_top,rgb(0_0_0/0.72),transparent_60%)]" />

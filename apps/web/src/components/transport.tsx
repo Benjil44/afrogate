@@ -218,7 +218,7 @@ export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
  * (centre) · volume + "Now playing" toggle (end; the toggle only below 1280px, where the
  * now-playing column is hidden). Flex order mirrors in RTL for free.
  */
-export function TransportBar({ nowOpen, onToggleNow }: { nowOpen: boolean; onToggleNow: () => void }) {
+export function TransportBar({ nowOpen, onToggleNow, extra }: { nowOpen: boolean; onToggleNow: () => void; /** End-side extras (sleep timer / crossfade button). */ extra?: ReactNode }) {
   const { t } = useLang();
   const { track } = usePlayer();
   return (
@@ -246,6 +246,7 @@ export function TransportBar({ nowOpen, onToggleNow }: { nowOpen: boolean; onTog
         <SeekBar className="max-w-2xl" />
       </div>
       <div className="flex w-[28%] min-w-0 items-center justify-end gap-1">
+        {extra}
         <VolumeControl className="hidden lg:flex" />
         <IconButton
           label={nowOpen ? t.app.closeNowPlaying : t.app.openNowPlaying}

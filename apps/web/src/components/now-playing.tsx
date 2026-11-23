@@ -2,6 +2,7 @@ import { WifiOff, X } from 'lucide-react';
 import { TrackArt } from '@/components/art';
 import { Overlay } from '@/components/overlay';
 import { QueueList } from '@/components/queue-list';
+import { ShareButton } from '@/components/share-button';
 import { LoadingSkeleton, NoticeButton, StateNotice } from '@/components/state-notice';
 import { LikeButton } from '@/components/transport';
 import { useLang } from '@/i18n';
@@ -117,6 +118,7 @@ export function NowPlayingPanel({ onClose, headingId = 'np-title' }: { onClose?:
                   <bdi>{stationName(station, lang, t)}</bdi>
                 </p>
               </div>
+              <ShareButton track={track} />
               <LikeButton />
             </div>
             <PlaybackNotices />

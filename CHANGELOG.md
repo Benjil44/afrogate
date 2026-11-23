@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.135.0 - 2026-11-23
+
+- **Afrows Radio phase 2 (design `afrows-player/01_PLAYER_UX.md` P2).** `apps/web` only; not built on the authoring laptop, not deployed. Manifest v2 fields are used when present; the v1 `tracks.json` fallback keeps working (no chips / energy filter then).
+  - **Search** (`lib/search.ts`, `components/top-bar.tsx`, `pages/views.tsx`): instant results grouped Tracks (rows) then Stations; normalisation folds case, Arabic/Persian letter variants (ي/ى->ی, ك->ک, ة->ه, hamza/madda forms), diacritics, tatweel, ZWNJ/ZWJ/bidi marks and Persian/Arabic-Indic digits; every query word must match (also across removed spaces). Title-prefix matches rank first. Keyboard: `/` focuses, Esc clears, Down moves into the results, Up/Down move between them (Up from the first returns to the field), Enter in the field plays the first track (or opens the first station). Result count is a polite status; empty state kept.
+  - **Station pages**: hero tinted with the category colour (fades into the panel so text stays on the dark card), Play / Pause and Shuffle play (`shuffleStation`), numbered track list (`components/track-row.tsx`) with duration, BPM and energy chips (text labels, BPM as an LTR island). **All tracks** is now a list with Energy quick filters (All / Calm 1–2 / Medium 3 / High 4–5), shown only when the manifest has energy.
+  - **Continue listening**: station, track and position saved to `afrows.resume` (every 5 s while playing, on pause, on pagehide; try/catch, validated on read). Home shows a Continue card until something plays; it resumes at the saved second (from the start if within 10 s of the end).
+  - **Share links**: `#/track/<id>` route opens a track page and cues the track without autoplay (never interrupts music already playing); the first tap plays it. Share button (now-playing panel, phone sheet, track page): `navigator.share`, else copy the link (Clipboard API, then a textarea fallback), else the link is shown to copy by hand; feedback is a visible bubble that is also a status region.
+  - **Crossfade**: two audio elements, volume ramps over 3 s or 6 s; setting off / 3 s / 6 s stored in `afrows.crossfade` (default 3 s on the desktop `full` tier, off elsewhere). Not offered where element volume is read-only (iOS). Skipped for repeat-one and the end-of-track sleep timer; if the browser refuses the second element's play() the fade is undone and the normal advance runs. With the desktop analyser each element has its own GainNode (level applied once in every browser). Media Session metadata / position follow the active element.
+  - **Sleep timer**: 15 / 30 / 60 min or end of track (this session only), with the crossfade setting in one dialog behind a moon button (player bar, phone sheet header); the button shows the remaining time in its label.
+  - New fa + en strings in the typed i18n layer; all new controls are >= 44px with accessible names; track-change live region unchanged.
+
 ## 0.134.0 - 2026-11-22
 
 - **afrows.com redesigned as a streaming-app shell (original Afrows design; other apps were inspiration only — no copied logos, names, colours, artwork or copy).** `apps/web` only; not deployed. Engine, manifest v2/v1 loader, Media Session, shortcuts, library/playback states and the reduced-motion tier are unchanged.

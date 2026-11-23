@@ -60,14 +60,27 @@ export function TopBar({
           value={value}
           placeholder={t.app.searchPlaceholder}
           onChange={(e) => update(e.currentTarget.value)}
+          aria-describedby={`${SEARCH_INPUT_ID}-hint`}
+          aria-controls={route.name === 'search' && value ? 'search-results' : undefined}
           onKeyDown={(e) => {
             if (e.key === 'Escape' && value) {
               e.stopPropagation();
               update('');
+            } else if ((e.key === 'ArrowDown' || e.key === 'Enter') && !e.nativeEvent.isComposing) {
+              // Results render in the main panel (pages/views.tsx SearchView): Down moves into them,
+              // Enter plays the first track (or opens the first station).
+              const first = document.querySelector<HTMLElement>('#search-results [data-result]');
+              if (!first) return;
+              e.preventDefault();
+              if (e.key === 'ArrowDown') first.focus();
+              else first.click();
             }
           }}
           className="search-input h-12 w-full rounded-full border border-transparent bg-[color-mix(in_oklch,var(--foreground)_9%,transparent)] ps-12 pe-12 text-sm font-semibold text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] hover:border-[var(--border)] focus:border-[var(--foreground)] focus:outline-none"
         />
+        <span id={`${SEARCH_INPUT_ID}-hint`} className="sr-only">
+          {t.app.searchKeysHint}
+        </span>
         {value && (
           <button
             type="button"

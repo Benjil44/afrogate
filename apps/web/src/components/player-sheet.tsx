@@ -2,8 +2,10 @@ import { useRef, type CSSProperties, type TouchEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Cover, PlaybackNotices } from '@/components/now-playing';
 import { Overlay } from '@/components/overlay';
+import { PlaybackSettingsButton } from '@/components/playback-settings';
 import { QueueList } from '@/components/queue-list';
 import { SeekBar } from '@/components/seek-bar';
+import { ShareButton } from '@/components/share-button';
 import { LikeButton, NextButton, PlayButton, PrevButton, RepeatButton, ShuffleButton } from '@/components/transport';
 import { useLang } from '@/i18n';
 import { stationName, usePlayer } from '@/lib/player';
@@ -62,7 +64,9 @@ export function PlayerSheet({ open, onClose }: { open: boolean; onClose: () => v
           <h2 id="player-sheet-title" className="min-w-0 flex-1 truncate text-center text-sm font-bold text-[var(--muted-foreground)]">
             {t.player.nowPlaying} · <bdi>{stationName(station, lang, t)}</bdi>
           </h2>
-          <span className="w-11" aria-hidden="true" />
+          {/* Taps are unaffected by the header swipe (closing needs a > 96px downward drag). */}
+          <ShareButton track={track} />
+          <PlaybackSettingsButton />
         </div>
         <div className="flex shrink-0 flex-col items-center gap-3 px-5">
           <div className="touch-pan-x" {...swipe}>

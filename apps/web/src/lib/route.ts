@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
  * Hash routes for the main panel (no router library: ~20 kB gzip saved).
  *   #/            home          #/browse      all stations      #/library   liked + recent
  *   #/search?q=   search        #/station/<id> one station       #/all       all tracks
- *   #/latest      latest mixes
+ *   #/latest      latest mixes      #/track/<id> one track (share links: cued, plays on the first tap)
  * Legacy `#station=<id>` maps to the station route; anything else (old landing anchors such as
  * `#vpn` / `#pricing`) lands on home.
  */
@@ -15,9 +15,11 @@ export type Route =
   | { name: 'all' }
   | { name: 'latest' }
   | { name: 'search'; q: string }
-  | { name: 'station'; id: string };
+  | { name: 'station'; id: string }
+  | { name: 'track'; id: string };
 
 const STATION_ID = /^[a-z0-9_-]{1,40}$/;
+const TRACK_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_QUERY = 80;
 
 export function parseHash(hash: string): Route {
@@ -46,6 +48,8 @@ export function parseHash(hash: string): Route {
     }
     case 'station':
       return parts[1] && STATION_ID.test(parts[1]) ? { name: 'station', id: parts[1] } : { name: 'browse' };
+    case 'track':
+      return parts[1] && TRACK_ID.test(parts[1]) ? { name: 'track', id: parts[1] } : { name: 'home' };
     default:
       return { name: 'home' };
   }
@@ -59,6 +63,8 @@ export function routeHref(route: Route): string {
       return route.q ? `#/search?${new URLSearchParams({ q: route.q }).toString()}` : '#/search';
     case 'station':
       return `#/station/${route.id}`;
+    case 'track':
+      return `#/track/${route.id}`;
     default:
       return `#/${route.name}`;
   }
@@ -90,9 +96,14 @@ export function useHashRoute(): [Route, (route: Route, options?: { replace?: boo
   return [route, navigate];
 }
 
+/** Absolute share URL of a track (same page, `#/track/<id>`). */
+export function trackShareUrl(id: string): string {
+  return `${window.location.origin}${window.location.pathname}${routeHref({ name: 'track', id })}`;
+}
+
 /** Two routes point at the same view (for `aria-current`). */
 export function sameSection(a: Route, b: Route['name']): boolean {
   if (b === 'browse') return a.name === 'browse' || a.name === 'station';
-  if (b === 'home') return a.name === 'home' || a.name === 'all' || a.name === 'latest';
+  if (b === 'home') return a.name === 'home' || a.name === 'all' || a.name === 'latest' || a.name === 'track';
   return a.name === b;
 }

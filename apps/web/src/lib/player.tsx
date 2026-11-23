@@ -25,6 +25,16 @@ import {
  * `full` tier (desktop). While playing and visible it writes 8 band levels (`--lv0`..`--lv7`,
  * `--level`) to `<html>` once per frame; the equalizers read them in CSS (no React re-render per
  * frame). Phones keep a plain `<audio>` element so lock-screen / background playback survives.
+ *
+ * Crossfade (0.135.0): two `<audio>` elements; `audioRef` always points at the ACTIVE one (every
+ * event handler ignores the other). Near the end of a track the next one starts on the spare element
+ * at volume 0 and the two ramp over 3 s / 6 s (setting `afrows.crossfade`, default 3 s on the `full`
+ * tier, off elsewhere). Skipped for repeat-one, the "end of track" sleep timer, and on browsers that
+ * ignore element volume (iOS); if the browser refuses the second element's play(), the fade is undone
+ * and the normal `ended` advance runs. Any user action (play another track, pause) ends a fade at once.
+ *
+ * Also here: sleep timer (15/30/60 min or end of track, in memory only) and the resume point
+ * (`afrows.resume`: station, track, position; written every 5 s while playing and on pause).
  */
 export const CHANNEL_KEYS = ['pop', 'traditional', 'rap', 'nostalgia', 'chill', 'podcast'] as const;
 export type ChannelKey = (typeof CHANNEL_KEYS)[number];
@@ -67,6 +77,31 @@ const EMPTY_LIBRARY: Library = { categories: [], tracks: [] };
 const SKIP_DELAY_MS = 3000;
 const VOLUME_KEY = 'afrows.volume';
 const MUTED_KEY = 'afrows.muted';
+const CROSSFADE_KEY = 'afrows.crossfade';
+const RESUME_KEY = 'afrows.resume';
+const RESUME_SAVE_MS = 5000;
+const FADE_STEP_MS = 100;
+const STATION_ID = /^[a-z0-9_-]{1,40}$/;
+const TRACK_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Crossfade length in seconds (0 = off). */
+export type Crossfade = 0 | 3 | 6;
+export const CROSSFADE_OPTIONS: readonly Crossfade[] = [0, 3, 6];
+/** Sleep timer: minutes, end of the current track, or off. */
+export type SleepMode = 'off' | 15 | 30 | 60 | 'track';
+export const SLEEP_OPTIONS: readonly SleepMode[] = ['off', 15, 30, 60, 'track'];
+export interface SleepState {
+  mode: SleepMode;
+  /** Epoch ms when a minutes timer pauses playback, else null. */
+  endsAt: number | null;
+}
+/** Where the listener stopped last time (resolved against the current library). */
+export interface ResumePoint {
+  stationId: string;
+  track: Track;
+  /** Seconds into the track. */
+  position: number;
+}
 
 interface PlayerState {
   library: Library;
@@ -113,6 +148,20 @@ interface PlayerState {
   selectStation: (id: string) => void;
   /** Make `id` the current station and start it (at `trackId` when given). */
   playStation: (id: string, trackId?: string) => void;
+  /** Turn shuffle on and start station `id` from a random track. */
+  shuffleStation: (id: string) => void;
+  /** Deep link: put track `id` in the queue as the current entry WITHOUT playing (no autoplay). */
+  cueTrack: (id: string) => void;
+  /** Last session's stop point, when it still exists in the library. */
+  resumePoint: ResumePoint | null;
+  /** Continue from `resumePoint` (user gesture). */
+  resume: () => void;
+  sleep: SleepState;
+  setSleep: (mode: SleepMode) => void;
+  crossfade: Crossfade;
+  setCrossfade: (seconds: Crossfade) => void;
+  /** False where element volume is read-only (iOS): crossfade is unavailable there. */
+  crossfadeSupported: boolean;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
   setVolume: (volume: number) => void;
@@ -136,18 +185,27 @@ interface Analysis {
   context: AudioContext;
   analyser: AnalyserNode;
   data: Uint8Array<ArrayBuffer>;
+  /** Per-element gain (user volume × crossfade): browsers differ on whether element volume reaches Web Audio. */
+  gains: Map<HTMLAudioElement, GainNode>;
 }
 
-function createAnalysis(audio: HTMLAudioElement): Analysis | null {
+function createAnalysis(audios: readonly HTMLAudioElement[]): Analysis | null {
   if (typeof AudioContext === 'undefined') return null;
   try {
     const context = new AudioContext();
     const analyser = context.createAnalyser();
     analyser.fftSize = 128;
     analyser.smoothingTimeConstant = 0.8;
-    context.createMediaElementSource(audio).connect(analyser);
+    // Both crossfade elements feed the same analyser (the mix is what is heard), each through its own gain.
+    const gains = new Map<HTMLAudioElement, GainNode>();
+    for (const audio of audios) {
+      const gain = context.createGain();
+      context.createMediaElementSource(audio).connect(gain);
+      gain.connect(analyser);
+      gains.set(audio, gain);
+    }
     analyser.connect(context.destination);
-    return { context, analyser, data: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)) };
+    return { context, analyser, data: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)), gains };
   } catch {
     return null;
   }
@@ -201,6 +259,42 @@ function initialVolume(): number {
   return readStored(VOLUME_KEY) !== null && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
 }
 
+function readCrossfade(): Crossfade | null {
+  const v = Number(readStored(CROSSFADE_KEY));
+  return readStored(CROSSFADE_KEY) !== null && (CROSSFADE_OPTIONS as readonly number[]).includes(v) ? (v as Crossfade) : null;
+}
+
+interface StoredResume {
+  s: string;
+  t: string;
+  p: number;
+}
+
+function readResume(): StoredResume | null {
+  try {
+    const raw: unknown = JSON.parse(readStored(RESUME_KEY) ?? 'null');
+    if (!raw || typeof raw !== 'object') return null;
+    const { s, t, p } = raw as Record<string, unknown>;
+    if (typeof s !== 'string' || !STATION_ID.test(s) || typeof t !== 'string' || !TRACK_ID.test(t)) return null;
+    const pos = typeof p === 'number' && Number.isFinite(p) && p >= 0 && p <= 12 * 3600 ? Math.floor(p) : 0;
+    return { s, t, p: pos };
+  } catch {
+    return null;
+  }
+}
+
+/** iOS ignores (and reads back 1 for) element volume: no volume ramps there. */
+function probeVolumeControl(): boolean {
+  if (typeof Audio === 'undefined') return false;
+  try {
+    const probe = new Audio();
+    probe.volume = 0.5;
+    return Math.abs(probe.volume - 0.5) < 0.01;
+  } catch {
+    return false;
+  }
+}
+
 function isOnline(): boolean {
   return typeof navigator === 'undefined' || navigator.onLine !== false;
 }
@@ -208,7 +302,13 @@ function isOnline(): boolean {
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const tier = useMotionTier();
   const { lang, t } = useLang();
+  /** The ACTIVE element (swapped by a crossfade). */
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audiosRef = useRef<[HTMLAudioElement, HTMLAudioElement] | null>(null);
+  /** Crossfade gain per element (multiplied with the user volume). */
+  const gainsRef = useRef(new WeakMap<HTMLAudioElement, number>());
+  const fadeRef = useRef<{ outgoing: HTMLAudioElement; timer: number } | null>(null);
+  const pendingSeekRef = useRef<{ id: string; position: number } | null>(null);
   const analysisRef = useRef<Analysis | null>(null);
 
   const [library, setLibrary] = useState<Library>(EMPTY_LIBRARY);
@@ -250,6 +350,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   repeatRef.current = repeat;
   const [volume, setVolumeState] = useState(initialVolume);
   const [muted, setMuted] = useState(() => readStored(MUTED_KEY) === '1');
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
+
+  const [crossfadeSupported] = useState(probeVolumeControl);
+  const [storedCrossfade, setStoredCrossfade] = useState<Crossfade | null>(readCrossfade);
+  const crossfade: Crossfade = crossfadeSupported ? (storedCrossfade ?? (tier === 'full' ? 3 : 0)) : 0;
+  const crossfadeRef = useRef(crossfade);
+  crossfadeRef.current = crossfade;
+  /** Cleared for the session when the browser refuses to start the second element. */
+  const fadeAllowedRef = useRef(true);
+
+  const [sleep, setSleepState] = useState<SleepState>({ mode: 'off', endsAt: null });
+  const sleepRef = useRef(sleep);
+  sleepRef.current = sleep;
+  const [savedResume] = useState(readResume);
 
   const [durations, setDurations] = useState<Record<string, number>>({});
   const [progress, setProgress] = useState<ProgressState>({ currentTime: 0, duration: 0 });
@@ -281,14 +398,61 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
-  const getAudio = useCallback(() => {
-    if (!audioRef.current) {
-      const audio = new Audio();
-      audio.preload = 'none';
-      audioRef.current = audio;
+  const getAudios = useCallback((): [HTMLAudioElement, HTMLAudioElement] => {
+    if (!audiosRef.current) {
+      const make = () => {
+        const audio = new Audio();
+        audio.preload = 'none';
+        return audio;
+      };
+      audiosRef.current = [make(), make()];
+      audioRef.current = audiosRef.current[0];
     }
-    return audioRef.current;
+    return audiosRef.current;
   }, []);
+
+  const getAudio = useCallback(() => {
+    getAudios();
+    return audioRef.current as HTMLAudioElement;
+  }, [getAudios]);
+
+  /**
+   * Level = user volume × crossfade gain (clamped; element `volume` throws outside 0..1). With the
+   * desktop analyser graph the level goes on the element's GainNode and the element stays at 1, so it
+   * is applied exactly once whatever the browser does with element volume under Web Audio.
+   */
+  const applyVolume = useCallback((audio: HTMLAudioElement) => {
+    const level = Math.min(1, Math.max(0, volumeRef.current * (gainsRef.current.get(audio) ?? 1)));
+    const node = analysisRef.current?.gains.get(audio);
+    if (node) {
+      node.gain.value = mutedRef.current ? 0 : level;
+      audio.volume = 1;
+    } else {
+      audio.volume = level;
+    }
+    audio.muted = mutedRef.current;
+  }, []);
+
+  const setGain = useCallback(
+    (audio: HTMLAudioElement, gain: number) => {
+      gainsRef.current.set(audio, gain);
+      applyVolume(audio);
+    },
+    [applyVolume],
+  );
+
+  /** End a running crossfade now: stop and unload the outgoing element, full gain on the active one. */
+  const finishFade = useCallback(() => {
+    const fade = fadeRef.current;
+    if (!fade) return;
+    fadeRef.current = null;
+    window.clearInterval(fade.timer);
+    fade.outgoing.pause();
+    fade.outgoing.removeAttribute('src');
+    fade.outgoing.load();
+    setGain(fade.outgoing, 1);
+    if (audioRef.current) setGain(audioRef.current, 1);
+  }, [setGain]);
 
   const clearIssue = useCallback(() => {
     window.clearTimeout(skipTimerRef.current);
@@ -301,6 +465,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (pos: number) => {
       const track = queueRef.current[pos];
       if (!track) return;
+      finishFade();
+      if (pendingSeekRef.current && pendingSeekRef.current.id !== track.id) pendingSeekRef.current = null;
       const audio = getAudio();
       window.clearTimeout(skipTimerRef.current);
       skipTimerRef.current = 0;
@@ -320,7 +486,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // fine pointer). Routing the element through Web Audio ties playback to the AudioContext, which mobile browsers
       // suspend when the screen locks or the tab is hidden, so the music stopped on lock. Phones/tablets keep a plain
       // <audio> element (background + lock-screen playback; equalizers use the CSS beat).
-      if (!analysisRef.current && tier === 'full') analysisRef.current = createAnalysis(audio);
+      if (!analysisRef.current && tier === 'full') {
+        analysisRef.current = createAnalysis(getAudios());
+        for (const element of getAudios()) applyVolume(element);
+      }
       const ctx = analysisRef.current?.context;
       if (ctx && ctx.state === 'suspended') void ctx.resume();
       wantPlayRef.current = true;
@@ -339,13 +508,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         },
       );
     },
-    [getAudio, tier],
+    [applyVolume, finishFade, getAudio, getAudios, tier],
   );
 
   const pause = useCallback(() => {
     wantPlayRef.current = false;
+    finishFade();
     audioRef.current?.pause();
-  }, []);
+  }, [finishFade]);
 
   const toggle = useCallback(() => {
     clearIssue();
@@ -446,6 +616,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [buildQueue, clearIssue, commitQueue, startTrack],
   );
 
+  const shuffleStation = useCallback(
+    (id: string) => {
+      clearIssue();
+      shuffleRef.current = true;
+      setShuffle(true);
+      const list = shuffled(stationTracks(libraryRef.current, id));
+      stationRef.current = id;
+      setStationId(id);
+      commitQueue(list, 0);
+      startTrack(0);
+    },
+    [clearIssue, commitQueue, startTrack],
+  );
+
+  const cueTrack = useCallback(
+    (id: string) => {
+      if (playingRef.current) return;
+      const lib = libraryRef.current;
+      const track = lib.tracks.find((t) => t.id === id);
+      if (!track) return;
+      // Keep the current station when it holds the track, else "All music".
+      const sid = stationTracks(lib, stationRef.current).some((t) => t.id === id) ? stationRef.current : ALL_STATION;
+      const list = buildQueue(sid, id);
+      stationRef.current = sid;
+      setStationId(sid);
+      const pos = Math.max(0, list.findIndex((t) => t.id === id));
+      commitQueue(list, pos);
+      if (loadedIdRef.current !== id) setProgress({ currentTime: 0, duration: track.durationSec ?? 0 });
+    },
+    [buildQueue, commitQueue],
+  );
+
   const toggleShuffle = useCallback(() => {
     const current = queueRef.current[positionRef.current];
     const nextShuffle = !shuffleRef.current;
@@ -483,104 +685,280 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Volume / mute -> element + storage. (iOS ignores element volume; hardware keys rule there.)
   useEffect(() => {
-    const audio = getAudio();
-    audio.volume = volume;
-    audio.muted = muted;
+    for (const audio of getAudios()) applyVolume(audio);
     writeStored(VOLUME_KEY, volume.toFixed(2));
     writeStored(MUTED_KEY, muted ? '1' : '0');
-  }, [getAudio, volume, muted]);
+  }, [getAudios, applyVolume, volume, muted]);
 
-  // Audio element events -> React state.
+  /** Remember where the listener is (station, track, position) for "Continue listening". */
+  const saveResume = useCallback(() => {
+    const audio = audioRef.current;
+    const id = loadedIdRef.current;
+    if (!audio || !id || !TRACK_ID.test(id)) return;
+    writeStored(RESUME_KEY, JSON.stringify({ s: stationRef.current, t: id, p: Math.floor(audio.currentTime || 0) }));
+  }, []);
+
+  /** Queue position the automatic advance would play next, or -1 (end of queue, repeat off). */
+  const nextAutoPosition = useCallback((): number => {
+    const count = queueRef.current.length;
+    const pos = positionRef.current;
+    if (pos < count - 1) return pos + 1;
+    return repeatRef.current === 'all' && count > 0 ? 0 : -1;
+  }, []);
+
+  /** Start queue entry `pos` on the spare element and ramp the two over `seconds`. */
+  const startCrossfade = useCallback(
+    (pos: number, seconds: number) => {
+      const outgoing = audioRef.current;
+      const track = queueRef.current[pos];
+      if (!outgoing || !track) return;
+      const [a, b] = getAudios();
+      const incoming = outgoing === a ? b : a;
+      const prevPos = positionRef.current;
+      const prevId = loadedIdRef.current;
+      const fade = { outgoing, timer: 0 };
+      fadeRef.current = fade;
+      audioRef.current = incoming;
+      loadedIdRef.current = track.id;
+      positionRef.current = pos;
+      setPosition(pos);
+      setProgress({ currentTime: 0, duration: track.durationSec ?? 0 });
+      setGain(incoming, 0);
+      incoming.crossOrigin = isSameOrigin(track.src) ? null : 'anonymous';
+      incoming.src = track.src;
+      const startedAt = performance.now();
+      fade.timer = window.setInterval(() => {
+        const k = Math.min(1, (performance.now() - startedAt) / (seconds * 1000));
+        setGain(incoming, k);
+        setGain(outgoing, 1 - k);
+        if (k >= 1 && fadeRef.current === fade) finishFade();
+      }, FADE_STEP_MS);
+      incoming.play().catch((err: unknown) => {
+        const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : '';
+        if (name === 'AbortError' || fadeRef.current !== fade) return;
+        // The browser refused a second element: undo, let the outgoing track end and advance normally.
+        fadeAllowedRef.current = false;
+        fadeRef.current = null;
+        window.clearInterval(fade.timer);
+        incoming.removeAttribute('src');
+        incoming.load();
+        setGain(incoming, 1);
+        setGain(outgoing, 1);
+        audioRef.current = outgoing;
+        loadedIdRef.current = prevId;
+        positionRef.current = prevPos;
+        setPosition(prevPos);
+        setLoading(false);
+        setPlaying(!outgoing.paused);
+      });
+    },
+    [finishFade, getAudios, setGain],
+  );
+
+  // Audio element events -> React state. Both elements are wired; only the ACTIVE one counts.
   useEffect(() => {
-    const audio = getAudio();
-    let lastPosition = 0;
-    const onPlay = () => setPlaying(true);
-    const onPause = () => {
-      setPlaying(false);
-      setLoading(false);
-    };
-    const onWaiting = () => setLoading(true);
-    const onPlaying = () => {
-      setLoading(false);
-      setBlocked(false);
-      errorStreakRef.current = 0;
-    };
-    const onCanPlay = () => setLoading(false);
-    const onMeta = () => {
-      const id = loadedIdRef.current;
-      if (!id || !Number.isFinite(audio.duration)) return;
-      setDurations((d) => (d[id] === audio.duration ? d : { ...d, [id]: audio.duration }));
-      setProgress({ currentTime: audio.currentTime, duration: audio.duration });
-    };
-    const onTime = () => {
-      setProgress({ currentTime: audio.currentTime, duration: Number.isFinite(audio.duration) ? audio.duration : 0 });
-      // Lock-screen scrubber, at most once per second.
-      const now = Date.now();
-      const session = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
-      if (session && 'setPositionState' in session && now - lastPosition >= 1000 && Number.isFinite(audio.duration) && audio.duration > 0) {
-        lastPosition = now;
-        try {
-          session.setPositionState({ duration: audio.duration, position: Math.min(audio.currentTime, audio.duration), playbackRate: audio.playbackRate || 1 });
-        } catch {
-          /* unsupported */
+    const unbinds = getAudios().map((audio) => {
+      let lastPosition = 0;
+      let lastSave = 0;
+      const active = () => audio === audioRef.current;
+      const onPlay = () => {
+        if (active()) setPlaying(true);
+      };
+      const onPause = () => {
+        if (!active()) return;
+        setPlaying(false);
+        setLoading(false);
+        saveResume();
+      };
+      const onWaiting = () => {
+        if (active()) setLoading(true);
+      };
+      const onPlaying = () => {
+        if (!active()) return;
+        setLoading(false);
+        setBlocked(false);
+        errorStreakRef.current = 0;
+      };
+      const onCanPlay = () => {
+        if (active()) setLoading(false);
+      };
+      const onMeta = () => {
+        const id = loadedIdRef.current;
+        if (!active() || !id || !Number.isFinite(audio.duration)) return;
+        // "Continue listening": jump to the saved position once the track's metadata is known.
+        const pending = pendingSeekRef.current;
+        if (pending && pending.id === id) {
+          pendingSeekRef.current = null;
+          if (pending.position < audio.duration - 10) audio.currentTime = pending.position;
         }
-      }
+        setDurations((d) => (d[id] === audio.duration ? d : { ...d, [id]: audio.duration }));
+        setProgress({ currentTime: audio.currentTime, duration: audio.duration });
+      };
+      const onTime = () => {
+        if (!active()) return;
+        const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+        setProgress({ currentTime: audio.currentTime, duration });
+        const now = Date.now();
+        // Sleep timer (also checked here: background tabs throttle timeouts).
+        const sleepState = sleepRef.current;
+        if (sleepState.endsAt !== null && now >= sleepState.endsAt) {
+          setSleepState({ mode: 'off', endsAt: null });
+          wantPlayRef.current = false;
+          finishFade();
+          audio.pause();
+          return;
+        }
+        if (now - lastSave >= RESUME_SAVE_MS) {
+          lastSave = now;
+          saveResume();
+        }
+        // Lock-screen scrubber, at most once per second.
+        const session = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
+        if (session && 'setPositionState' in session && now - lastPosition >= 1000 && duration > 0) {
+          lastPosition = now;
+          try {
+            session.setPositionState({ duration, position: Math.min(audio.currentTime, duration), playbackRate: audio.playbackRate || 1 });
+          } catch {
+            /* unsupported */
+          }
+        }
+        // Crossfade into the next track near the end of this one.
+        const seconds = crossfadeRef.current;
+        if (
+          seconds > 0 &&
+          fadeAllowedRef.current &&
+          !fadeRef.current &&
+          wantPlayRef.current &&
+          !audio.paused &&
+          repeatRef.current !== 'one' &&
+          sleepRef.current.mode !== 'track' &&
+          duration > seconds * 3 &&
+          duration - audio.currentTime <= seconds
+        ) {
+          const nextPos = nextAutoPosition();
+          const nextTrack = nextPos >= 0 ? queueRef.current[nextPos] : undefined;
+          if (nextTrack && nextTrack.id !== loadedIdRef.current) startCrossfade(nextPos, seconds);
+        }
+      };
+      const onEnded = () => {
+        if (!active()) return;
+        if (sleepRef.current.mode === 'track') {
+          setSleepState({ mode: 'off', endsAt: null });
+          wantPlayRef.current = false;
+          setPlaying(false);
+          return;
+        }
+        if (repeatRef.current === 'one') {
+          audio.currentTime = 0;
+          void audio.play().catch(() => setPlaying(false));
+          return;
+        }
+        advance(false);
+      };
+      const onError = () => {
+        if (!active()) return;
+        setLoading(false);
+        setPlaying(false);
+        // Offline: not the track's fault. Keep it; resume when the connection returns.
+        if (!isOnline()) return;
+        const id = loadedIdRef.current;
+        if (id) setFailed((f) => (f.has(id) ? f : new Set(f).add(id)));
+        if (errorStreakRef.current === 0) {
+          errorStreakRef.current = 1;
+          setIssue('skipping');
+          window.clearTimeout(skipTimerRef.current);
+          skipTimerRef.current = window.setTimeout(() => {
+            skipTimerRef.current = 0;
+            setIssue(null);
+            if (queueRef.current.length > 1) advance(true);
+            else setIssue('failed');
+          }, SKIP_DELAY_MS);
+        } else {
+          wantPlayRef.current = false;
+          setIssue('failed');
+        }
+      };
+      const events: [string, () => void][] = [
+        ['play', onPlay],
+        ['pause', onPause],
+        ['waiting', onWaiting],
+        ['loadstart', onWaiting],
+        ['playing', onPlaying],
+        ['canplay', onCanPlay],
+        ['loadedmetadata', onMeta],
+        ['durationchange', onMeta],
+        ['timeupdate', onTime],
+        ['ended', onEnded],
+        ['error', onError],
+      ];
+      for (const [name, handler] of events) audio.addEventListener(name, handler);
+      return () => {
+        for (const [name, handler] of events) audio.removeEventListener(name, handler);
+      };
+    });
+    return () => unbinds.forEach((unbind) => unbind());
+  }, [getAudios, advance, finishFade, nextAutoPosition, saveResume, startCrossfade]);
+
+  // Leaving the page: keep the exact stop point.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') saveResume();
     };
-    const onEnded = () => {
-      if (repeatRef.current === 'one') {
-        audio.currentTime = 0;
-        void audio.play().catch(() => setPlaying(false));
-        return;
-      }
-      advance(false);
-    };
-    const onError = () => {
-      setLoading(false);
-      setPlaying(false);
-      // Offline: not the track's fault. Keep it; resume when the connection returns.
-      if (!isOnline()) return;
-      const id = loadedIdRef.current;
-      if (id) setFailed((f) => (f.has(id) ? f : new Set(f).add(id)));
-      if (errorStreakRef.current === 0) {
-        errorStreakRef.current = 1;
-        setIssue('skipping');
-        window.clearTimeout(skipTimerRef.current);
-        skipTimerRef.current = window.setTimeout(() => {
-          skipTimerRef.current = 0;
-          setIssue(null);
-          if (queueRef.current.length > 1) advance(true);
-          else setIssue('failed');
-        }, SKIP_DELAY_MS);
-      } else {
-        wantPlayRef.current = false;
-        setIssue('failed');
-      }
-    };
-    audio.addEventListener('play', onPlay);
-    audio.addEventListener('pause', onPause);
-    audio.addEventListener('waiting', onWaiting);
-    audio.addEventListener('loadstart', onWaiting);
-    audio.addEventListener('playing', onPlaying);
-    audio.addEventListener('canplay', onCanPlay);
-    audio.addEventListener('loadedmetadata', onMeta);
-    audio.addEventListener('durationchange', onMeta);
-    audio.addEventListener('timeupdate', onTime);
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('error', onError);
+    window.addEventListener('pagehide', saveResume);
+    document.addEventListener('visibilitychange', onHide);
     return () => {
-      audio.removeEventListener('play', onPlay);
-      audio.removeEventListener('pause', onPause);
-      audio.removeEventListener('waiting', onWaiting);
-      audio.removeEventListener('loadstart', onWaiting);
-      audio.removeEventListener('playing', onPlaying);
-      audio.removeEventListener('canplay', onCanPlay);
-      audio.removeEventListener('loadedmetadata', onMeta);
-      audio.removeEventListener('durationchange', onMeta);
-      audio.removeEventListener('timeupdate', onTime);
-      audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('error', onError);
+      window.removeEventListener('pagehide', saveResume);
+      document.removeEventListener('visibilitychange', onHide);
     };
-  }, [getAudio, advance]);
+  }, [saveResume]);
+
+  useEffect(
+    () => () => {
+      const fade = fadeRef.current;
+      if (fade) window.clearInterval(fade.timer);
+    },
+    [],
+  );
+
+  const setSleep = useCallback((mode: SleepMode) => {
+    setSleepState({ mode, endsAt: typeof mode === 'number' ? Date.now() + mode * 60_000 : null });
+  }, []);
+
+  // Minutes timer: pause when it runs out (onTime re-checks it in throttled background tabs).
+  useEffect(() => {
+    if (sleep.endsAt === null) return;
+    const timer = window.setTimeout(() => {
+      setSleepState({ mode: 'off', endsAt: null });
+      pause();
+    }, Math.max(0, sleep.endsAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [sleep, pause]);
+
+  const setCrossfade = useCallback((seconds: Crossfade) => {
+    setStoredCrossfade(seconds);
+    writeStored(CROSSFADE_KEY, String(seconds));
+    if (seconds > 0) fadeAllowedRef.current = true;
+  }, []);
+
+  const resumePoint = useMemo<ResumePoint | null>(() => {
+    if (!savedResume || status !== 'ready') return null;
+    const track = library.tracks.find((x) => x.id === savedResume.t);
+    if (!track) return null;
+    const inStation = stationTracks(library, savedResume.s).some((x) => x.id === track.id);
+    return { stationId: inStation ? savedResume.s : ALL_STATION, track, position: savedResume.p };
+  }, [savedResume, status, library]);
+
+  const resume = useCallback(() => {
+    if (!resumePoint) return;
+    const { stationId: sid, track, position: at } = resumePoint;
+    const audio = audioRef.current;
+    if (audio && loadedIdRef.current === track.id && Number.isFinite(audio.duration)) {
+      if (at < audio.duration - 10) audio.currentTime = at;
+    } else {
+      pendingSeekRef.current = at > 0 ? { id: track.id, position: at } : null;
+    }
+    playStation(sid, track.id);
+  }, [resumePoint, playStation]);
 
   useEffect(() => () => window.clearTimeout(skipTimerRef.current), []);
 
@@ -727,6 +1105,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       jumpTo,
       selectStation,
       playStation,
+      shuffleStation,
+      cueTrack,
+      resumePoint,
+      resume,
+      sleep,
+      setSleep,
+      crossfade,
+      setCrossfade,
+      crossfadeSupported,
       toggleShuffle,
       cycleRepeat,
       setVolume,
@@ -736,7 +1123,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [
       library, status, reload, stations, stationId, station, stationIndex, queue, position, track, playing, loading,
       blocked, started, issue, failed, online, shuffle, repeat, volume, muted, durations, toggle, pause, next, prev,
-      seek, seekBy, jumpTo, selectStation, playStation, toggleShuffle, cycleRepeat, setVolume, toggleMute, retryTrack,
+      seek, seekBy, jumpTo, selectStation, playStation, shuffleStation, cueTrack, resumePoint, resume, sleep, setSleep,
+      crossfade, setCrossfade, crossfadeSupported, toggleShuffle, cycleRepeat, setVolume, toggleMute, retryTrack,
     ],
   );
 
