@@ -1,5 +1,11 @@
 # Afrows Progress
 
+## 2026-11-25 (0.133.2, on main, NOT yet deployed): Security — dependency CVE sweep (phase 1)
+
+- `npm audit fix` (non-breaking) cleared 8 of 11 advisories: the 1 critical (`proxy-addr`), all 5 high (`multer`, `vite`, `source-map-js`, `@nestjs/platform-express`, `body-parser`), and 2 moderate (`qs`, `fast-uri`). **Lockfile-only** — no package.json direct dep changed. Verified: shared build + backend typecheck + dashboard vite build + full backend suite (1120 pass, 0 fail). Version 0.133.2, version:check green, pushed to main; not yet deployed.
+- Remaining 3 moderate = `@nestjs/cli` chain (dev-only glob/minimatch DoS) → needs `@nestjs/cli` 10→12 breaking bump (Phase 2, separate tested change). No PHP in the stack (nothing to update there).
+- Box hardening recon (nginx version/TLS/ports/OS) dispatched to network-infra-engineer (read-only); Phase 3 plan pending its report — all prod system changes owner-gated.
+
 ## 2026-11-25 (0.133.1, on main): Deploy-blocking migration idempotency fix (client_usage_events source check)
 
 - First deploy of 0.133.0 to prod (185.252.30.123) **fail-stopped at the migrate step** (migrate runs before restart, so prod stayed healthy on 0.131.2 — no customer impact). Cause: the re-apply-every-`.sql` runner re-imposed migration 0057's narrower `client_usage_events_source_check` on the live ledger, which now holds `de-fast-xray` rows (Germany Fast x2 meter, added by 0071). Live ledger sources confirmed read-only: `germany-xray` (25,183), `usa-xray` (43,961), `de-fast-xray` (12,204).

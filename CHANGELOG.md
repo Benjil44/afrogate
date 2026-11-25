@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.133.2 - 2026-11-25
+
+- **Security: cleared 8 of 11 `npm audit` advisories (the 1 critical + all 5 high + 2 moderate) via non-breaking `npm audit fix`.** Lockfile-only change — **no direct dependency in any package.json changed**, only transitive versions moved to patched releases within existing semver ranges. Closes: `proxy-addr` (critical — IP spoofing via IPv4-mapped IPv6), `multer` (high — DoS via pending fileFilter), `vite` (high — cross-origin middleware / fs.allow bypass), `source-map-js` (high), `@nestjs/platform-express` (high), `body-parser` (high), `qs` (moderate), `fast-uri` (moderate). Verified: shared build, backend typecheck, dashboard vite build, and the full backend suite (**1120 pass, 0 fail**) all green. This also turns the CI "Audit dependencies" gate from 11 down to 3.
+- **Remaining (deferred to a tested major bump):** 3 moderate advisories, all rooted in `@nestjs/cli` (dev/build-only `glob`/`minimatch` DoS) — fixing needs `@nestjs/cli` 10→12 (breaking), out of scope for this patch and not shipped to the prod runtime.
+
 ## 0.133.1 - 2026-11-25
 
 - **Deploy-blocking migration fix: `client_usage_events_source_check` re-apply failure.** The deploy runner re-applies every `.sql` on each deploy, and migration `0057` (then `0065`) re-imposed an older, narrower allowed-`source` set on the live metering ledger. Once `de-fast-xray` rows exist (Germany Fast x2 metering, added by `0071`), re-applying `0057` failed with `check constraint "client_usage_events_source_check" is violated by some row` (23514) and aborted every deploy at the migrate step — **before** the service restart, so prod stayed safely on the prior version (no customer impact). Root cause confirmed against prod: the ledger holds exactly `germany-xray`, `usa-xray`, `de-fast-xray`; only `de-fast-xray` was missing from 0057/0065.
