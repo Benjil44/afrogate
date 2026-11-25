@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.133.3 - 2026-11-25
+
+- **Security: cleared the last 3 `npm audit` advisories (all moderate, dev/build-only).** Bumped `@nestjs/cli` `^11.0.0` → `^12.0.15` (major) in `apps/backend`, which moves its transitive `glob`/`minimatch` off the vulnerable versions. Closes: `glob` (AbortSignal cancellation bypass, GHSA-3g3m-2fjr-6pw4) and `minimatch` (ReDoS via globparts amplification, GHSA-g3hv-75wg-m249). **`npm audit` is now 0 vulnerabilities across the full tree (prod + dev)**, so the CI "Audit dependencies" gate goes green.
+  - Safe bump: `@nestjs/cli` is a **dev/build-only** dependency (not in the prod runtime), the backend builds with the default `tsc` builder (`nest build`, no webpack/swc builder configured, so v12's new peer deps don't apply), and Node 24 satisfies v12's `>= 20.11` engine. Verified: shared build + `nest build` both green (`dist/main.js` produced), `version:check` passed. Completes the 0.133.2 Phase-1 cleanup (11 → 0).
+
 ## 0.133.2 - 2026-11-25
 
 - **Security: cleared 8 of 11 `npm audit` advisories (the 1 critical + all 5 high + 2 moderate) via non-breaking `npm audit fix`.** Lockfile-only change — **no direct dependency in any package.json changed**, only transitive versions moved to patched releases within existing semver ranges. Closes: `proxy-addr` (critical — IP spoofing via IPv4-mapped IPv6), `multer` (high — DoS via pending fileFilter), `vite` (high — cross-origin middleware / fs.allow bypass), `source-map-js` (high), `@nestjs/platform-express` (high), `body-parser` (high), `qs` (moderate), `fast-uri` (moderate). Verified: shared build, backend typecheck, dashboard vite build, and the full backend suite (**1120 pass, 0 fail**) all green. This also turns the CI "Audit dependencies" gate from 11 down to 3.
