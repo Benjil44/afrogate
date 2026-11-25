@@ -1,6 +1,13 @@
 # Afrows Progress
 
-## 2026-11-25 (0.133.2, on main, NOT yet deployed): Security — dependency CVE sweep (phase 1)
+## 2026-11-25 (0.133.x + box hardening, DEPLOYED to 185.252.30.123): Security sweep
+
+- **Prod is on 0.133.2** (badges 0.133.0 + migration fix 0.133.1 + npm CVE fix 0.133.2), all deployed this session via afrows-deploy.sh; each verified healthy on-box. Deploy #1 fail-stopped at migrate (0057 source-check) → fixed in 0.133.1 → redeploy clean. Customer-invisible throughout; prod never down (migrate runs before restart).
+- **Box (afrows-vps-new) hardening — done, no outage:** OpenSSH patched to `1:9.6p1-3ubuntu13.20` (regreSSHion CVE-2024-6387 closed); apt pipeline repaired (`apt update` works again via mirror.arvancloud.ir — the Oct-20 freeze cleared). nginx confirmed already-patched (the "old nginx" rumor was false). Backend/Postgres localhost-only; TLS strong. No PHP in stack.
+- **Deferred to a maintenance window (owner-gated), runbook written → `.claude/security-hardening-window.md`:** host firewall (H2 — `afrows-firewall.service` scaffolded but `/etc/iptables/rules.v4` missing; needs SSH-safe authoring; 8080 plaintext VLESS entry KEPT per owner, 12345 TPROXY default-dropped), kernel reboot (H1, 6.8.0-31→147) + openssl/libc, optional SSH root-login/x11/fail2ban. All service units verified `enabled` for clean reboot.
+- **Remaining npm (Phase 2, not started):** 3 moderate = `@nestjs/cli` 10→12 breaking (dev-only). CI "Audit dependencies" gate still red but now 3 (was 11); build/E2E/typecheck/CodeQL green.
+
+## 2026-11-25 (0.133.2, on main): Security — dependency CVE sweep (phase 1)
 
 - `npm audit fix` (non-breaking) cleared 8 of 11 advisories: the 1 critical (`proxy-addr`), all 5 high (`multer`, `vite`, `source-map-js`, `@nestjs/platform-express`, `body-parser`), and 2 moderate (`qs`, `fast-uri`). **Lockfile-only** — no package.json direct dep changed. Verified: shared build + backend typecheck + dashboard vite build + full backend suite (1120 pass, 0 fail). Version 0.133.2, version:check green, pushed to main; not yet deployed.
 - Remaining 3 moderate = `@nestjs/cli` chain (dev-only glob/minimatch DoS) → needs `@nestjs/cli` 10→12 breaking bump (Phase 2, separate tested change). No PHP in the stack (nothing to update there).
