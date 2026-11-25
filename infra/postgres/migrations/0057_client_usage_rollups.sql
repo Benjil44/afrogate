@@ -14,13 +14,15 @@
 
 -- Allow the Germany metering source on the append-only events ledger.
 -- DROP + re-ADD is idempotent under the re-run-every-file migration runner.
--- 'usa-xray' (0065) is listed here too: every file is re-applied on each deploy,
--- so this ADD must already accept USA rows or it would fail once they exist.
+-- Every later metering source ('usa-xray' from 0065, 'de-fast-xray' from 0071) is
+-- listed here too: every file is re-applied on each deploy, so this ADD must already
+-- accept those rows or it would fail once they exist. Keep this set a SUPERSET that
+-- matches the newest source list (0071) — a new source must be back-ported to 0057/0065.
 ALTER TABLE client_usage_events DROP CONSTRAINT IF EXISTS client_usage_events_source_check;
 ALTER TABLE client_usage_events ADD CONSTRAINT client_usage_events_source_check
   CHECK (source IN (
     'admin', 'agent', 'panel_sync', 'payment_adjustment',
-    'manual_adjustment', 'client_report', 'germany-xray', 'usa-xray', 'unknown'
+    'manual_adjustment', 'client_report', 'germany-xray', 'usa-xray', 'de-fast-xray', 'unknown'
   ));
 
 CREATE TABLE IF NOT EXISTS client_usage_de_baseline (

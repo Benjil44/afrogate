@@ -1,5 +1,11 @@
 # Afrows Progress
 
+## 2026-11-25 (0.133.1, on main): Deploy-blocking migration idempotency fix (client_usage_events source check)
+
+- First deploy of 0.133.0 to prod (185.252.30.123) **fail-stopped at the migrate step** (migrate runs before restart, so prod stayed healthy on 0.131.2 — no customer impact). Cause: the re-apply-every-`.sql` runner re-imposed migration 0057's narrower `client_usage_events_source_check` on the live ledger, which now holds `de-fast-xray` rows (Germany Fast x2 meter, added by 0071). Live ledger sources confirmed read-only: `germany-xray` (25,183), `usa-xray` (43,961), `de-fast-xray` (12,204).
+- Fix: added `'de-fast-xray'` to the allowed set in **0057** and **0065** (same forward-compat the author already used for `usa-xray`), so every migration in the DROP+re-ADD chain is a superset matching 0071. Final constraint unchanged. Bumped 0.133.1, version:check green. Redeploying.
+- NOTE: de-fast-xray has 12,204 rows → the Germany Fast x2 meter HAS produced data (canary/testing), even though the customer DEF link stays env-gated off.
+
 ## 2026-11-25 (0.133.0, branch feat/afrows-customer-visibility, NOT deployed): Customers-row engagement badges
 
 - On top of the 0.132.0 visibility work (same branch), always-visible row badges driven by the same two sources (`audit_logs` nudges + `telegram_topup_requests`), no extra per-row fetch, no billing change:

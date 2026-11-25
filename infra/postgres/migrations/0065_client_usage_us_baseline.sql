@@ -10,11 +10,14 @@
 -- Hourly/daily rollups are shared (additive per bucket).
 
 -- DROP + re-ADD is idempotent under the re-run-every-file migration runner.
+-- 'de-fast-xray' (0071) is listed here too: every file is re-applied on each deploy, so
+-- this ADD must already accept Germany-Fast rows or it would fail once they exist. Keep
+-- this a SUPERSET matching the newest source list (0071).
 ALTER TABLE client_usage_events DROP CONSTRAINT IF EXISTS client_usage_events_source_check;
 ALTER TABLE client_usage_events ADD CONSTRAINT client_usage_events_source_check
   CHECK (source IN (
     'admin', 'agent', 'panel_sync', 'payment_adjustment',
-    'manual_adjustment', 'client_report', 'germany-xray', 'usa-xray', 'unknown'
+    'manual_adjustment', 'client_report', 'germany-xray', 'usa-xray', 'de-fast-xray', 'unknown'
   ));
 
 CREATE TABLE IF NOT EXISTS client_usage_us_baseline (

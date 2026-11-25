@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.133.1 - 2026-11-25
+
+- **Deploy-blocking migration fix: `client_usage_events_source_check` re-apply failure.** The deploy runner re-applies every `.sql` on each deploy, and migration `0057` (then `0065`) re-imposed an older, narrower allowed-`source` set on the live metering ledger. Once `de-fast-xray` rows exist (Germany Fast x2 metering, added by `0071`), re-applying `0057` failed with `check constraint "client_usage_events_source_check" is violated by some row` (23514) and aborted every deploy at the migrate step — **before** the service restart, so prod stayed safely on the prior version (no customer impact). Root cause confirmed against prod: the ledger holds exactly `germany-xray`, `usa-xray`, `de-fast-xray`; only `de-fast-xray` was missing from 0057/0065.
+  - Fix mirrors the author's existing forward-compat pattern (they already pre-listed `usa-xray` in 0057 so it wouldn't fail once USA rows existed): **added `'de-fast-xray'` to the allowed set in both `0057` and `0065`**, making every migration in the DROP+re-ADD chain a superset that matches the newest list (`0071`). No change to the final constraint or any other DDL. A newly-added metering source must likewise be back-ported to 0057/0065 (noted in both files).
+
 ## 0.133.0 - 2026-11-25
 
 - **Customers-row engagement badges — Telegram reach + payment, at a glance.** Extends the 0.132.0 visibility work onto the always-visible row (no extra per-row fetch, no billing/enforcement change). Builds on the same two sources as the "What we sent" log: `audit_logs` (usage-receipt + renewal nudges) and `telegram_topup_requests`.
