@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.133.0 - 2026-11-25
+
+- **Customers-row engagement badges — Telegram reach + payment, at a glance.** Extends the 0.132.0 visibility work onto the always-visible row (no extra per-row fetch, no billing/enforcement change). Builds on the same two sources as the "What we sent" log: `audit_logs` (usage-receipt + renewal nudges) and `telegram_topup_requests`.
+  - **Aligned Telegram column.** The bot icon moved out of the (variable-width) name cell into its own fixed column, so it lines up on every row. Linked = sky icon; not linked = muted icon.
+  - **Delivery ticks for the newest nudge we sent.** Double grey tick (`CheckCheck`) = the last usage-receipt/renewal message **reached Telegram**; single amber tick (`Check`) = it **never reached them** (permanent Telegram failure — they never started the bot or blocked it, the "Mahsa" signal); `—` = nothing sent yet. **There is deliberately no blue/"read" tick: the Telegram Bot API never reports whether a message was opened** — a bot only learns "Telegram accepted it" vs "permanent failure". The row can only ever show reached-vs-never-reached, consistent with the detail panel's read-receipt note.
+  - **Paid `$` badge next to presence.** Green `$` once the customer has an **approved** card-to-card top-up (paid → receipt uploaded → owner-approved); muted grey `$` otherwise.
+  - Backend: `AdminCustomerAccountSummary` gains optional `lastNotification {at, delivered}` and `paymentApproved`, filled by a new page-wide `attachEngagementBadges` (two best-effort queries, mirrors `attachOnlineStatus`). No DB migration. All dashboard copy in the typed en/fa i18n layer. Shared + backend + dashboard typecheck clean. Nothing deployed.
+
 ## 0.132.0 - 2026-11-25
 
 - **Operational visibility for customer accounts — "who's near their GB, why an account doesn't work, and what we sent them".** All three surface data that already existed; no billing/enforcement/provisioning logic changed.

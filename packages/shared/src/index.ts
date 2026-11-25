@@ -993,6 +993,17 @@ export interface AdminCustomerAccountSummary {
   expiresAt?: string | null;
   tags?: string[];
   lastConnectedAt?: string | null;
+  /**
+   * Row engagement badge (0.133.0): the newest customer-facing Telegram nudge we sent
+   * (usage-receipt / renewal reminder) and whether it reached them.
+   * `delivered: true` = Telegram accepted the send — as close to "delivered" as the Bot
+   * API ever reveals; `false` = permanent failure, the bot could not reach them (they
+   * never started it or blocked it). The Bot API exposes NO read receipt, so a
+   * "read / opened" state is never knowable. `null` = we have never notified this customer.
+   */
+  lastNotification?: { at: string; delivered: boolean } | null;
+  /** True when the customer has at least one APPROVED card-to-card top-up (paid + receipt + owner-approved). */
+  paymentApproved?: boolean;
   /** The MikroTik gateway router this customer owns, if any (for the Customers view). */
   gatewayRouter?: { id: string; label: string; online: boolean } | null;
   /** When the account was archived (soft-deleted), or null if it is live/active. */

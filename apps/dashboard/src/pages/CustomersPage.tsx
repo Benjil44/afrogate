@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, ChartColumn, Check, CheckCheck, Copy, DollarSign, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
 import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminCustomerNotificationsResponse, AdminNetworkOverviewResponse, AdminResellerAccountSummary, CustomerEntryAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import { CUSTOMER_SERVER_KINDS } from '@afrows/shared';
 import {
@@ -1897,18 +1897,6 @@ export function CustomersPage({
         <>
           <strong className="block text-afro-ink">
             {nameOf(a)}
-            {a.telegramId ? (
-              // Linked = the customer started the bot and shared their contact, so
-              // bot pushes (config, low-data alerts) can reach them.
-              <span
-                className="ms-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 align-middle text-white"
-                title={s.telegramLinkedBadge}
-                aria-label={s.telegramLinkedBadge}
-                role="img"
-              >
-                <Send className="h-3 w-3" aria-hidden />
-              </span>
-            ) : null}
             {isArchived(a) ? (
               <span className="ms-1.5 inline-flex whitespace-nowrap rounded-full border border-afro-line bg-afro-page px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-afro-muted">
                 {s.archivedBadge}
@@ -1923,6 +1911,59 @@ export function CustomersPage({
           )}
         </>
       ),
+    },
+    // Telegram reach: one aligned column so the bot icon lines up on every row, with a
+    // delivery indicator for the newest nudge we sent. Telegram's Bot API never reports
+    // reads, so the two states are "reached Telegram" (double grey tick) vs "never
+    // reached them" (single amber tick) — there is no blue/read tick.
+    {
+      key: 'telegram',
+      header: s.colTelegram,
+      className: fitCol,
+      render: (a) => {
+        const linked = Boolean(a.telegramId);
+        const ln = a.lastNotification ?? null;
+        const stamp = ln ? format.time(new Date(ln.at), true) : '';
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${
+                linked ? 'bg-sky-600 text-white' : 'bg-afro-line text-afro-muted'
+              }`}
+              title={linked ? s.telegramLinkedBadge : s.telegramNotLinked}
+              aria-label={linked ? s.telegramLinkedBadge : s.telegramNotLinked}
+              role="img"
+            >
+              <Send className="h-3 w-3" aria-hidden />
+            </span>
+            {linked && ln ? (
+              ln.delivered ? (
+                <span
+                  className="inline-flex"
+                  role="img"
+                  aria-label={s.sentTickDelivered}
+                  title={`${s.sentTickDelivered} · ${stamp}`}
+                >
+                  <CheckCheck className="h-4 w-4 text-afro-muted" aria-hidden />
+                </span>
+              ) : (
+                <span
+                  className="inline-flex"
+                  role="img"
+                  aria-label={s.sentTickFailed}
+                  title={`${s.sentTickFailed} · ${stamp}`}
+                >
+                  <Check className="h-4 w-4 text-amber-500" aria-hidden />
+                </span>
+              )
+            ) : linked ? (
+              <span className="text-[11px] text-afro-muted opacity-60" title={s.sentTickNone} aria-label={s.sentTickNone}>
+                —
+              </span>
+            ) : null}
+          </span>
+        );
+      },
     },
     // Login email intentionally has no column: it lives in the expandable detail row
     // (and stays searchable), reclaiming width for the columns operators scan.
@@ -1957,7 +1998,22 @@ export function CustomersPage({
       // Over-quota sits under the online pill so the Status column stays narrow.
       render: (a) => (
         <span className="inline-flex flex-col items-start gap-1">
-          {presencePill(a)}
+          <span className="inline-flex items-center gap-1.5">
+            {presencePill(a)}
+            {/* Paid badge: green $ once a card-to-card top-up is approved, muted grey
+                otherwise — so a paying customer is visible at a glance next to presence. */}
+            <span
+              className="inline-flex"
+              role="img"
+              aria-label={a.paymentApproved ? s.paidBadge : s.unpaidBadge}
+              title={a.paymentApproved ? s.paidBadge : s.unpaidBadge}
+            >
+              <DollarSign
+                className={`h-4 w-4 ${a.paymentApproved ? 'text-emerald-600' : 'text-afro-muted opacity-50'}`}
+                aria-hidden
+              />
+            </span>
+          </span>
           {a.quotaLimitBytes != null && a.usedBytes >= a.quotaLimitBytes ? (
             <span className="inline-flex whitespace-nowrap rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
               {s.overQuota}

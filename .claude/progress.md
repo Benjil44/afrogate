@@ -1,5 +1,13 @@
 # Afrows Progress
 
+## 2026-11-25 (0.133.0, branch feat/afrows-customer-visibility, NOT deployed): Customers-row engagement badges
+
+- On top of the 0.132.0 visibility work (same branch), always-visible row badges driven by the same two sources (`audit_logs` nudges + `telegram_topup_requests`), no extra per-row fetch, no billing change:
+  - **Aligned Telegram column** — bot icon moved out of the variable-width name cell into its own `fitCol` column so it lines up every row (linked = sky, unlinked = muted).
+  - **Delivery ticks** for the newest usage-receipt/renewal nudge: `CheckCheck` grey = reached Telegram; `Check` amber = never reached them (permanent failure — Mahsa signal); `—` = none sent. **No blue/read tick by design** — the Telegram Bot API gives bots no read receipt (only "accepted" vs "permanent failure"), confirmed in `notifications/telegram-alert.service.ts` (`TelegramMessageSendResult = sent|skipped|failed`). Matches the detail panel's read-receipt note.
+  - **Paid `$` badge** next to presence: green `$` = ≥1 approved card-to-card top-up; muted grey `$` otherwise.
+- Backend: `AdminCustomerAccountSummary` +`lastNotification{at,delivered}` +`paymentApproved`, filled by new page-wide `attachEngagementBadges` (two best-effort queries, DISTINCT ON latest nudge + approved-topup set; mirrors `attachOnlineStatus`). No migration. Shared+backend+dashboard typecheck clean; `version:check` green (0.133.0). Nothing deployed. e2e visual snapshot will need a refresh (new column + badges).
+
 ## 2026-11-25 (0.132.0, branch feat/afrows-customer-visibility, NOT deployed): Customer operational visibility
 
 - Three surfacings of existing data (no billing/enforcement change): (1) quota quick-filter on the Customers list (All/≥50%/≥80%/Over, query-scoped counts); (2) "Account health" badge in the detail panel (derived blocked/warn/ok reason from the row's summary — `ok` = "No block on our side" ⇒ complaint is connection/app, not billing); (3) "What we sent" log via new read-only `GET /api/admin/customer-accounts/:id/notifications` (usage-receipt + renewal-ladder from audit_logs + top-ups from telegram_topup_requests), showing delivered vs never-reached (permanent Telegram failure) + screenshot/reviewed, with a plain note that Telegram gives bots NO read receipt. Shared: `AdminCustomerNotification{Kind,Entry}`, `AdminCustomerTopupEntry`, `AdminCustomerNotificationsResponse`. No migration. Backend+dashboard typecheck clean; nothing deployed.

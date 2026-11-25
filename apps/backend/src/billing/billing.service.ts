@@ -3506,7 +3506,65 @@ export class BillingService {
     const summaries = result.rows.map((row) => this.mapCustomerAccount(row));
     await this.attachGatewayRouters(summaries);
     await this.attachOnlineStatus(summaries);
+    await this.attachEngagementBadges(summaries);
     return summaries;
+  }
+
+  /**
+   * Fills each row's engagement badges in two page-wide queries (mirrors the
+   * attachOnlineStatus pattern — one query for the whole page, best-effort):
+   *  - `lastNotification`: the newest usage-receipt / renewal nudge we sent, plus whether
+   *    Telegram accepted it (delivered) or permanently rejected it (never reached them).
+   *    Telegram's Bot API never reports a READ receipt, so this only ever distinguishes
+   *    "reached Telegram" from "never reached them" — never "opened".
+   *  - `paymentApproved`: whether the customer has any APPROVED card-to-card top-up.
+   * On any query failure the badges stay at their mapper defaults (null / false).
+   */
+  private async attachEngagementBadges(summaries: AdminCustomerAccountSummary[]): Promise<void> {
+    const ids = summaries.map((s) => s.id);
+    if (ids.length === 0) return;
+    try {
+      const notifRes = await this.database.query<{ accountId: string; createdAt: Date; delivered: boolean | null }>(
+        `
+          SELECT DISTINCT ON (target_id)
+                 target_id AS "accountId",
+                 created_at AS "createdAt",
+                 (metadata->>'delivered') = 'true' AS "delivered"
+          FROM audit_logs
+          WHERE target_type = ANY($1::text[])
+            AND target_id = ANY($2::text[])
+            AND action = ANY($3::text[])
+          ORDER BY target_id, created_at DESC
+        `,
+        [
+          [USAGE_RECEIPT_AUDIT_TARGET_TYPE, RENEWAL_LADDER_AUDIT_TARGET_TYPE],
+          ids,
+          [USAGE_RECEIPT_ACTION, RENEWAL_LADDER_ACTION],
+        ],
+      );
+      const byAccount = new Map(notifRes.rows.map((r) => [r.accountId, r]));
+      for (const s of summaries) {
+        const r = byAccount.get(s.id);
+        s.lastNotification = r ? { at: new Date(r.createdAt).toISOString(), delivered: r.delivered === true } : null;
+      }
+    } catch {
+      /* audit_logs unavailable — leave lastNotification at null */
+    }
+    try {
+      const paidRes = await this.database.query<{ accountId: string }>(
+        `
+          SELECT DISTINCT customer_account_id AS "accountId"
+          FROM telegram_topup_requests
+          WHERE customer_account_id = ANY($1::uuid[])
+            AND status = 'approved'
+        `,
+        [ids],
+      );
+      const paid = new Set(paidRes.rows.map((r) => r.accountId));
+      for (const s of summaries) s.paymentApproved = paid.has(s.id);
+    } catch {
+      /* top-up table unavailable — leave paymentApproved at false */
+    }
   }
 
   /**
@@ -10306,6 +10364,8 @@ export class BillingService {
       expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
       tags: row.tags ?? [],
       lastConnectedAt: row.lastConnectedAt ? row.lastConnectedAt.toISOString() : null,
+      lastNotification: null,
+      paymentApproved: false,
       deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
       isArchived: row.deletedAt != null,
       createdAt: row.createdAt.toISOString(),
