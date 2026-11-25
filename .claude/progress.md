@@ -1,5 +1,10 @@
 # Afrows Progress
 
+## 2026-11-25 (0.133.3, on main — NOT deployed, dev-only): npm audit Phase 2 — now 0 vulns
+
+- **`@nestjs/cli` `^11` → `^12.0.15`** (apps/backend, dev/build-only) clears the last 3 moderate advisories (transitive `glob` AbortSignal bypass + `minimatch` ReDoS). **`npm audit` is now 0 across the full tree (prod + dev)** → CI "Audit dependencies" gate goes green (was 3, originally 11).
+- Safe: dev-only dep, backend builds with default `tsc` builder (`nest build`, no webpack/swc builder → v12's new peers don't apply), Node 24 ≥ v12 engine 20.11. Verified: shared+nest build (`dist/main.js` produced), version:check green, **1120 backend tests pass, 0 fail**. Committed 602f1fc, pushed. **No deploy** — prod runtime unchanged (0.133.2 stays live); this only affects the build toolchain. Phase 2 (previously deferred) is now CLOSED.
+
 ## 2026-11-25 (0.133.x + box hardening, DEPLOYED to 185.252.30.123): Security sweep
 
 - **Prod is on 0.133.2** (badges 0.133.0 + migration fix 0.133.1 + npm CVE fix 0.133.2), all deployed this session via afrows-deploy.sh; each verified healthy on-box. Deploy #1 fail-stopped at migrate (0057 source-check) → fixed in 0.133.1 → redeploy clean. Customer-invisible throughout; prod never down (migrate runs before restart).
