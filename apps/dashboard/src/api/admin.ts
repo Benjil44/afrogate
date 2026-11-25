@@ -10,6 +10,7 @@ import type {
   AdminSendConfigTelegramResponse,
   AdminClientRoutePreferenceResponse,
   AdminCustomerDevicesResponse,
+  AdminCustomerNotificationsResponse,
   AdminNetworkOverviewResponse,
   AdminResellerAccountsResponse,
   AdminResellerAccountSummary,
@@ -1168,6 +1169,18 @@ export async function fetchAdminCustomerDevices(
     { headers: createSessionHeaders(sessionToken), signal },
   );
   return response.json() as Promise<AdminCustomerDevicesResponse>;
+}
+
+export async function fetchAdminCustomerNotifications(
+  sessionToken: string,
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<AdminCustomerNotificationsResponse> {
+  const response = await requestAdminAuth(
+    `${getApiBaseUrl()}/admin/customer-accounts/${encodeURIComponent(accountId)}/notifications`,
+    { headers: createSessionHeaders(sessionToken), signal },
+  );
+  return response.json() as Promise<AdminCustomerNotificationsResponse>;
 }
 
 export async function fetchAdminClientRoutePreference(

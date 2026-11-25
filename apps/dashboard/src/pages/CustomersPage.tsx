@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArchiveRestore, ChartColumn, Copy, Eye, Gem, GitMerge, Link2, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
-import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminNetworkOverviewResponse, AdminResellerAccountSummary, CustomerEntryAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
+import type { AdminClientConfigExportEntry, AdminClientConfigSummary, AdminClientUsageSeriesResponse, AdminCustomerAccountSummary, AdminCustomerDeviceSighting, AdminCustomerNotificationsResponse, AdminNetworkOverviewResponse, AdminResellerAccountSummary, CustomerEntryAccess, EgressTierPrice, MikroTikRouterSummary } from '@afrows/shared';
 import { CUSTOMER_SERVER_KINDS } from '@afrows/shared';
 import {
   adjustCustomerGems,
@@ -11,6 +11,7 @@ import {
   fetchAdminClientRoutePreference,
   fetchAdminClientUsageSeries,
   fetchAdminCustomerDevices,
+  fetchAdminCustomerNotifications,
   fetchAdminNetworkOverview,
   fetchAdminResellers,
   deleteAdminClientConfig,
@@ -32,7 +33,7 @@ import {
 import { ConfigLinksList, hasConfigLinks } from '../components/ConfigLinksList';
 import { DataTable, DetailRow, EmptyState, PanelHeading } from '../components/primitives';
 import type { DataTableColumnDef } from '../components/primitives';
-import { ALL_SERVERS_ON, ServerAccessControls, ServerAccessSummary, effectiveEntryAccess } from '../components/ServerAccessControls';
+import { ALL_SERVERS_ON, ENTRY_ACCESS_KINDS, ServerAccessControls, ServerAccessSummary, effectiveEntryAccess } from '../components/ServerAccessControls';
 import type { EntryAccessKind } from '../components/ServerAccessControls';
 import { UsageChart } from '../components/UsageChart';
 import { MicrotiksPage } from './MicrotiksPage';
@@ -42,6 +43,16 @@ import { customerAccountStatusLabel, customerQuotaScopeLabel } from '../labels';
 import { usePhoneViewport } from '../use-media-query';
 
 type CustomerSortKey = 'customer' | 'usage' | 'expiry' | 'lastSeen';
+// List toolbar quota quick-filter. Thresholds are cumulative (q50 ⊇ q80 ⊇ over),
+// so "≥50%" surfaces everyone at risk and "Over" narrows to blocked-at-quota.
+type UsageFilter = 'all' | 'q50' | 'q80' | 'over';
+
+/** Fraction of quota used as a percent, or null for unlimited/unmetered accounts. */
+function quotaPct(a: AdminCustomerAccountSummary): number | null {
+  const lim = a.quotaLimitBytes;
+  if (lim == null || lim <= 0) return null;
+  return (a.usedBytes / lim) * 100;
+}
 
 const POLL_MS = 30000;
 // Decimal GB (1 GB = 1,000,000,000 bytes) — matches how usage is displayed (bytes / 1e9)
@@ -246,6 +257,9 @@ export function CustomersPage({
   const [accounts, setAccounts] = useState<AdminCustomerAccountSummary[]>([]);
   const [overview, setOverview] = useState<AdminNetworkOverviewResponse | null>(null);
   const [query, setQuery] = useState('');
+  // Quota quick-filter (default off): surfaces who is near or over their GB
+  // at a glance, instead of opening each row to read the usage bar.
+  const [usageFilter, setUsageFilter] = useState<UsageFilter>('all');
   const [loading, setLoading] = useState(true);
   // First-load failure must not look like "no customers": when the accounts
   // fetch has never succeeded and fails, show an error state with a Retry.
@@ -327,6 +341,10 @@ export function CustomersPage({
   // (CustomerUsageSection) — populated lazily the first time a row expands.
   const [rowConfigs, setRowConfigs] = useState<Record<string, AdminClientConfigSummary[]>>({});
   const [rowConfigsLoading, setRowConfigsLoading] = useState<Record<string, boolean>>({});
+  // Per-account "what we sent" log (automated messages + top-up requests), loaded
+  // lazily the first time a row expands — same pattern as rowConfigs.
+  const [rowNotifs, setRowNotifs] = useState<Record<string, AdminCustomerNotificationsResponse>>({});
+  const [rowNotifsLoading, setRowNotifsLoading] = useState<Record<string, boolean>>({});
   // configId -> fixed egress path ('auto' | 'germany' | 'village' | 'direct')
   const [exitPath, setExitPath] = useState<Record<string, string>>({});
   const [exitMsg, setExitMsg] = useState<string | null>(null);
@@ -426,6 +444,27 @@ export function CustomersPage({
   const isArchived = (a: AdminCustomerAccountSummary): boolean =>
     a.isArchived === true || Boolean(a.deletedAt);
 
+  // Why an account is / isn't working, derived only from the summary already on
+  // the row — the single answer to "the customer says it doesn't work but I can't
+  // see why". `blocked` = something on our side stops it; `warn` = at risk but
+  // live; `ok` = nothing here blocks it (so a complaint is a connection/app
+  // problem, not billing). Order = most-blocking first.
+  const accountHealth = (a: AdminCustomerAccountSummary): { tone: 'ok' | 'warn' | 'blocked'; label: string } => {
+    if (isArchived(a)) return { tone: 'blocked', label: s.healthArchived };
+    if (a.status === 'suspended') return { tone: 'blocked', label: s.healthSuspended };
+    if (a.status === 'disabled') return { tone: 'blocked', label: s.healthDisabled };
+    if (a.expiresAt && new Date(a.expiresAt).getTime() < Date.now()) return { tone: 'blocked', label: s.healthExpired };
+    const lim = a.quotaLimitBytes;
+    if (lim != null && lim > 0 && a.usedBytes >= lim) return { tone: 'blocked', label: s.healthOverQuota };
+    const access = effectiveEntryAccess(a);
+    if (!ENTRY_ACCESS_KINDS.some((k) => access[k])) return { tone: 'blocked', label: s.healthNoServers };
+    if (a.clientCount === 0) return { tone: 'warn', label: s.healthNoConfigs };
+    if (a.activeClientCount === 0) return { tone: 'blocked', label: s.healthConfigsOff };
+    const pct = quotaPct(a);
+    if (pct != null && pct >= 80) return { tone: 'warn', label: s.healthNearQuota };
+    return { tone: 'ok', label: s.healthOk };
+  };
+
   // Per-customer current egress: gaming tier follows the gaming outbound (Starlink,
   // or Germany while Starlink is failed over); everyone else follows the catch-all.
   const egressFor = (a: AdminCustomerAccountSummary): { label: string; cls: string; failover: boolean } => {
@@ -487,10 +526,21 @@ export function CustomersPage({
       .finally(() => setRowConfigsLoading((cur) => ({ ...cur, [accountId]: false })));
   };
 
+  // Lazy-load (once) a customer's "what we sent" log for the View panel.
+  const ensureRowNotifs = (accountId: string) => {
+    if (rowNotifs[accountId] || rowNotifsLoading[accountId]) return;
+    setRowNotifsLoading((cur) => ({ ...cur, [accountId]: true }));
+    void fetchAdminCustomerNotifications(sessionToken, accountId)
+      .then((res) => setRowNotifs((cur) => ({ ...cur, [accountId]: res })))
+      .catch(() => undefined)
+      .finally(() => setRowNotifsLoading((cur) => ({ ...cur, [accountId]: false })));
+  };
+
   // Row pencil (or the panel's own Edit toggle): expands the row directly in
   // Edit mode and loads the edit-only data (devices, per-config exit paths).
   const openEdit = (a: AdminCustomerAccountSummary) => {
     resetForm();
+    ensureRowNotifs(a.id); // so switching back to View shows the log without a reload
     setEditId(a.id);
     setName(a.displayName ?? '');
     setEmail(a.loginEmail ?? '');
@@ -552,6 +602,7 @@ export function CustomersPage({
     const willOpen = !expandedRows[key];
     if (willOpen) {
       ensureRowConfigs(key);
+      ensureRowNotifs(key);
       if (editId === key) setEditId(null);
     }
     setExpandedRows((cur) => ({ ...cur, [key]: !cur[key] }));
@@ -1099,14 +1150,51 @@ export function CustomersPage({
     }
   };
 
+  // Matches the quota quick-filter. Unlimited/unmetered accounts have no share
+  // of a quota, so they fall out of every narrowing filter (and stay under "All").
+  const matchesUsageFilter = (a: AdminCustomerAccountSummary): boolean => {
+    if (usageFilter === 'all') return true;
+    const lim = a.quotaLimitBytes;
+    if (lim == null || lim <= 0) return false;
+    if (usageFilter === 'over') return a.usedBytes >= lim;
+    const pct = (a.usedBytes / lim) * 100;
+    return usageFilter === 'q80' ? pct >= 80 : pct >= 50;
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return accounts;
-    return accounts.filter((a) =>
+    const matchesQuery = (a: AdminCustomerAccountSummary): boolean =>
+      !q ||
       [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, a.resellerDisplayName, ...(a.tags ?? [])]
         .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q)),
-    );
+        .some((v) => String(v).toLowerCase().includes(q));
+    return accounts.filter((a) => matchesQuery(a) && matchesUsageFilter(a));
+    // matchesUsageFilter closes over usageFilter; listing it keeps the memo honest.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts, query, usageFilter]);
+
+  // Counts for the quota filter chips (query-scoped, cumulative thresholds) so the
+  // owner sees "how many are near" without flipping each filter on.
+  const usageChipCounts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const inQuery = (a: AdminCustomerAccountSummary): boolean =>
+      !q ||
+      [a.displayName, a.telegramUsername, a.loginEmail, a.telegramId, a.resellerDisplayName, ...(a.tags ?? [])]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    let q50 = 0;
+    let q80 = 0;
+    let over = 0;
+    for (const a of accounts) {
+      if (!inQuery(a)) continue;
+      const lim = a.quotaLimitBytes;
+      if (lim == null || lim <= 0) continue;
+      if (a.usedBytes >= lim) over += 1;
+      const pct = (a.usedBytes / lim) * 100;
+      if (pct >= 50) q50 += 1;
+      if (pct >= 80) q80 += 1;
+    }
+    return { q50, q80, over };
   }, [accounts, query]);
 
   // Header sort. "Used" sorts by GB LEFT (fewest first = about to run out),
@@ -1199,6 +1287,24 @@ export function CustomersPage({
 
     return (
       <div className="grid gap-2.5">
+        {/* Account health first: the one-glance answer to "why doesn't it work?".
+            Derived from this row's own summary — no extra fetch. */}
+        {(() => {
+          const h = accountHealth(a);
+          const tone =
+            h.tone === 'ok'
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+              : h.tone === 'warn'
+                ? 'border-amber-300 bg-amber-50 text-[#9a5b00]'
+                : 'border-red-300 bg-red-50 text-red-600';
+          return (
+            <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-2.5 py-1.5 text-[13px] ${tone}`}>
+              <span className="font-bold">{s.healthLabel}:</span>
+              <span className="font-bold">{h.label}</span>
+              {h.tone === 'ok' ? <span className="font-normal opacity-90">{s.healthOkHint}</span> : null}
+            </div>
+          );
+        })()}
         {/* Compact horizontal toolbar — a normal-height row, not a stretched
             column: Configs (primary) leads, Edit is secondary, Merge/Delete are
             de-emphasized (ghost) so the destructive action never reads as loud
@@ -1306,6 +1412,66 @@ export function CustomersPage({
         ) : rowConfigsLoading[a.id] ? (
           <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
         ) : null}
+        {/* "What we sent": automated reminders + top-up requests. Answers
+            "did we message them, did it arrive, did they pay?". */}
+        {(() => {
+          const log = rowNotifs[a.id];
+          const badge = (cls: string, text: string, title?: string) => (
+            <span title={title} className={`inline-flex whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${cls}`}>
+              {text}
+            </span>
+          );
+          return (
+            <div className="grid gap-1.5 md:col-span-2">
+              <span className="flex items-center gap-1.5 text-[13px] font-bold text-afro-muted">
+                <Send aria-hidden size={13} />
+                {s.sentLogTitle}
+              </span>
+              {!log ? (
+                <span className="text-[12px] text-afro-muted">{t.dataStatus.loading}</span>
+              ) : log.notifications.length === 0 && log.topups.length === 0 ? (
+                <span className="text-[12px] text-afro-muted">{s.sentLogEmpty}</span>
+              ) : (
+                <div className="grid gap-2 rounded-md border border-afro-line bg-white p-2.5 text-[13px]">
+                  {log.notifications.map((n, i) => (
+                    <div key={`n${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-bold text-afro-ink">
+                        {n.kind === 'renewal_ladder' ? s.sentLogRenewal : s.sentLogUsageReceipt}
+                      </span>
+                      <span className="tabular-nums text-afro-muted">{format.time(new Date(n.createdAt), false)}</span>
+                      {n.percentUsed != null ? (
+                        <span className="tabular-nums text-afro-muted">{format.percent(Math.round(n.percentUsed))}</span>
+                      ) : null}
+                      {n.delivered
+                        ? badge('border-emerald-300 bg-emerald-50 text-emerald-700', s.sentLogDelivered)
+                        : badge('border-red-300 bg-red-50 text-red-600', s.sentLogNotDelivered, s.sentLogNotDeliveredHint)}
+                    </div>
+                  ))}
+                  {!log.notifications.some((n) => n.delivered) && log.notifications.length > 0 ? (
+                    <span className="text-[12px] text-red-600">{s.sentLogNotDeliveredHint}</span>
+                  ) : null}
+                  {log.topups.length > 0 ? (
+                    <div className="mt-1 grid gap-1.5 border-t border-afro-line pt-2">
+                      <span className="text-[12px] font-bold text-afro-muted">{s.sentLogTopupsTitle}</span>
+                      {log.topups.map((tp) => (
+                        <div key={tp.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="tabular-nums text-afro-muted">{format.time(new Date(tp.createdAt), false)}</span>
+                          {tp.hasReceipt
+                            ? badge('border-emerald-300 bg-emerald-50 text-emerald-700', s.sentLogHasReceipt)
+                            : badge('border-afro-line bg-afro-page text-afro-muted', s.sentLogNoReceipt)}
+                          {tp.reviewedAt
+                            ? badge('border-afro-line bg-afro-page text-afro-muted', s.sentLogReviewed)
+                            : badge('border-amber-300 bg-amber-50 text-[#9a5b00]', s.sentLogPending)}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              <span className="text-[11px] text-afro-muted">{s.sentLogReadNote}</span>
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -2100,6 +2266,37 @@ export function CustomersPage({
             />
             {s.showArchived}
           </label>
+          {/* Quota quick-filter: see at a glance who is near or over their GB
+              without opening each row. Thresholds are cumulative; counts are
+              query-scoped. */}
+          <div className="inline-flex min-h-11 items-center gap-1 rounded-md border border-afro-line bg-white p-0.5 md:min-h-9" role="group" aria-label={s.usageFilterHint} title={s.usageFilterHint}>
+            {([
+              { key: 'all', label: s.usageFilterAll, count: null },
+              { key: 'q50', label: s.usageFilterQ50, count: usageChipCounts.q50 },
+              { key: 'q80', label: s.usageFilterQ80, count: usageChipCounts.q80 },
+              { key: 'over', label: s.usageFilterOver, count: usageChipCounts.over },
+            ] as const).map((chip) => {
+              const active = usageFilter === chip.key;
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setUsageFilter(chip.key)}
+                  className={`inline-flex min-h-10 items-center gap-1 rounded px-2.5 text-[13px] font-bold md:min-h-8 ${
+                    active ? 'bg-afro-teal text-white' : 'text-afro-muted hover:text-afro-ink'
+                  }`}
+                >
+                  {chip.label}
+                  {chip.count != null ? (
+                    <span className={`tabular-nums ${active ? 'text-white/85' : chip.count > 0 ? 'text-afro-ink' : 'text-afro-muted'}`}>
+                      {format.integer(chip.count)}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-emerald-600">

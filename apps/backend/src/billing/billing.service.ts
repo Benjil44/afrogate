@@ -45,6 +45,7 @@ import type {
   AdminAllocatePaymentOrderResponse,
   AdminCustomerAccountDetail,
   AdminCustomerDevicesResponse,
+  AdminCustomerNotificationsResponse,
   AdminCustomerAccountSummary,
   AdminPayPalPaymentOrderResponse,
   AdminPaymentProviderAdapterSummary,
@@ -83,6 +84,8 @@ import type {
   ClientGamingMode,
 } from '@afrows/shared';
 import { AuditService } from '../audit/audit.service';
+import { USAGE_RECEIPT_ACTION, USAGE_RECEIPT_AUDIT_TARGET_TYPE } from '../notifications/usage-receipt';
+import { RENEWAL_LADDER_ACTION, RENEWAL_LADDER_AUDIT_TARGET_TYPE } from '../notifications/renewal-ladder';
 import { DatabaseService, type DatabaseQueryExecutor } from '../database/database.service';
 import { ensureClientConfigBelongsToReseller, ensureCustomerAccountBelongsToReseller } from './reseller-ownership';
 import { stripResellerManagedQuotaFields } from './reseller-customer-guard';
@@ -4038,6 +4041,82 @@ export class BillingService {
       activeNetworkCount: countDistinctNetworks(activeDevices.map((d) => d.sourceIp)),
       devices,
     };
+  }
+
+  /**
+   * Read-only "what we sent this customer" log: the automated Telegram messages
+   * (usage receipt + renewal ladder) reconstructed from the audit log, plus their
+   * top-up (card-to-card) requests. Answers "did we message them, did it arrive,
+   * did they pay?". There is no Telegram read receipt for bots, so `delivered`
+   * (Telegram accepted it) is the furthest we can know — never "read".
+   */
+  async getCustomerNotifications(customerAccountId: string): Promise<AdminCustomerNotificationsResponse> {
+    const notifRes = await this.database.query<{
+      action: string;
+      createdAt: Date;
+      metadata: Record<string, unknown> | null;
+    }>(
+      `SELECT action, created_at AS "createdAt", metadata
+         FROM audit_logs
+        WHERE target_type = ANY($1::text[])
+          AND target_id = $2
+          AND action = ANY($3::text[])
+        ORDER BY created_at DESC
+        LIMIT 100`,
+      [
+        [USAGE_RECEIPT_AUDIT_TARGET_TYPE, RENEWAL_LADDER_AUDIT_TARGET_TYPE],
+        customerAccountId,
+        [USAGE_RECEIPT_ACTION, RENEWAL_LADDER_ACTION],
+      ],
+    );
+    const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const notifications = notifRes.rows.map((r) => {
+      const m = r.metadata ?? {};
+      const kind = r.action === RENEWAL_LADDER_ACTION ? ('renewal_ladder' as const) : ('usage_receipt' as const);
+      const rungRaw = (m as { rung?: unknown }).rung;
+      return {
+        kind,
+        action: r.action,
+        createdAt: r.createdAt.toISOString(),
+        // Only a recorded `delivered: true` counts as delivered; anything else is treated as not delivered.
+        delivered: (m as { delivered?: unknown }).delivered === true,
+        percentUsed: numOrNull((m as { percentUsed?: unknown }).percentUsed),
+        remainingBytes: numOrNull((m as { remainingBytes?: unknown }).remainingBytes),
+        rung: typeof rungRaw === 'number' || typeof rungRaw === 'string' ? rungRaw : null,
+      };
+    });
+
+    const topupRes = await this.database.query<{
+      id: string;
+      status: string;
+      createdAt: Date;
+      receiptFileId: string | null;
+      reviewedAt: Date | null;
+      reviewNote: string | null;
+      amountMinor: string | number | null;
+      currency: string | null;
+    }>(
+      `SELECT id, status, created_at AS "createdAt", receipt_file_id AS "receiptFileId",
+              reviewed_at AS "reviewedAt", review_note AS "reviewNote",
+              amount_minor AS "amountMinor", currency
+         FROM telegram_topup_requests
+        WHERE customer_account_id = $1
+        ORDER BY created_at DESC
+        LIMIT 50`,
+      [customerAccountId],
+    );
+    const topups = topupRes.rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      hasReceipt: r.receiptFileId != null && r.receiptFileId !== '',
+      reviewedAt: r.reviewedAt ? r.reviewedAt.toISOString() : null,
+      reviewNote: r.reviewNote,
+      amountMinor: r.amountMinor == null ? null : Number(r.amountMinor),
+      currency: r.currency,
+    }));
+
+    return { customerAccountId, notifications, topups };
   }
 
   async getCustomerAccount(id: string): Promise<AdminCustomerAccountDetail> {

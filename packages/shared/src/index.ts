@@ -1036,6 +1036,47 @@ export interface AdminCustomerDevicesResponse {
   devices: AdminCustomerDeviceSighting[];
 }
 
+/** Which automated Telegram message this log row records. */
+export type AdminCustomerNotificationKind = 'usage_receipt' | 'renewal_ladder';
+/**
+ * One automated message the backend attempted to send this customer, reconstructed
+ * from the audit log. `delivered` reflects Telegram's accept/reject only — there is
+ * NO read receipt in the Telegram Bot API, so "read" is never knowable. `delivered:
+ * false` means a permanent Telegram failure (e.g. the user never started the bot or
+ * blocked it), so the message never reached them.
+ */
+export interface AdminCustomerNotificationEntry {
+  kind: AdminCustomerNotificationKind;
+  /** The raw audit action, for traceability. */
+  action: string;
+  createdAt: string;
+  delivered: boolean;
+  /** Usage-receipt only: quota share at send time. */
+  percentUsed?: number | null;
+  /** Usage-receipt only: GB remaining at send time. */
+  remainingBytes?: number | null;
+  /** Renewal-ladder only: which rung fired (e.g. '80%', 'exhausted'), if recorded. */
+  rung?: number | string | null;
+}
+/** One top-up (card-to-card payment) request the customer raised — shows whether they
+ * paid / uploaded a screenshot and whether an operator has reviewed it yet. */
+export interface AdminCustomerTopupEntry {
+  id: string;
+  status: string;
+  createdAt: string;
+  /** True once the customer uploaded a payment screenshot. */
+  hasReceipt: boolean;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+  amountMinor?: number | null;
+  currency?: string | null;
+}
+export interface AdminCustomerNotificationsResponse {
+  customerAccountId: string;
+  notifications: AdminCustomerNotificationEntry[];
+  topups: AdminCustomerTopupEntry[];
+}
+
 /** G1 network map: the xray outbound tag the client catch-all currently routes to,
  * plus egress-path health so operators can see which uplink (Starlink/Germany) is down. */
 export interface AdminNetworkOverviewResponse {

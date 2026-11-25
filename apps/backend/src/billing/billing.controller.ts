@@ -44,6 +44,7 @@ import type {
   ClientUsageSeriesWindow,
   AdminCustomerAccountDetail,
   AdminCustomerDevicesResponse,
+  AdminCustomerNotificationsResponse,
   AdminAllocatePaymentOrderResponse,
   AdminAdjustCustomerGemsResponse,
   AdminCustomerGemsLedgerResponse,
@@ -904,6 +905,14 @@ export class BillingController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<AdminCustomerDevicesResponse> {
     return this.billingService.getCustomerDevices(id);
+  }
+
+  @Get('customer-accounts/:id/notifications')
+  @Roles('admin', 'supervisor', 'support', 'auditor')
+  getCustomerNotifications(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<AdminCustomerNotificationsResponse> {
+    return this.billingService.getCustomerNotifications(id);
   }
 
   @Post('customer-accounts')

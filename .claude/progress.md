@@ -1,5 +1,10 @@
 # Afrows Progress
 
+## 2026-11-25 (0.132.0, branch feat/afrows-customer-visibility, NOT deployed): Customer operational visibility
+
+- Three surfacings of existing data (no billing/enforcement change): (1) quota quick-filter on the Customers list (All/≥50%/≥80%/Over, query-scoped counts); (2) "Account health" badge in the detail panel (derived blocked/warn/ok reason from the row's summary — `ok` = "No block on our side" ⇒ complaint is connection/app, not billing); (3) "What we sent" log via new read-only `GET /api/admin/customer-accounts/:id/notifications` (usage-receipt + renewal-ladder from audit_logs + top-ups from telegram_topup_requests), showing delivered vs never-reached (permanent Telegram failure) + screenshot/reviewed, with a plain note that Telegram gives bots NO read receipt. Shared: `AdminCustomerNotification{Kind,Entry}`, `AdminCustomerTopupEntry`, `AdminCustomerNotificationsResponse`. No migration. Backend+dashboard typecheck clean; nothing deployed.
+- Live read-only prod diagnosis (Mahsa, `d7889e14-…`): active, 44.96/50 GB (~90%), never-expires, all servers on, one active VLESS config — NOT blocked by us (Iran/Mashhad transport the likely cause). The one usage-receipt send (2026-11-22) was `delivered:false` = permanent Telegram failure (bot unreachable: never started / blocked); zero top-up requests. Read status unknowable (no bot read receipts); here not even delivered.
+
 ## 2026-11-21 (0.131.2, NOT deployed): Billing-safety guard — DEF "Germany Fast x2" link requires its 2x meter
 
 - **Closed the Stage-1 flag** ("link vs meter coupling is by convention only"). `buildEntryLinkSet` in `apps/backend/src/client/afrows-entry-link.ts` now emits the direct "Germany Fast x2" (DEF) REALITY entry **only when `AFROWS_DEF_MGMT_ENABLED` is truthy** (fail-closed), not just when `AFROWS_DEF_DIRECT_ENABLED` is on. Previously `AFROWS_DEF_DIRECT_ENABLED=true` alone shipped the 2x link to every entitled customer with the meter off → free (unmetered) premium traffic.
