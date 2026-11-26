@@ -1,5 +1,9 @@
 # Afrows Progress
 
+## 2026-11-26 (Phase 4 Steps 1-3, PROD-side): village retirement prep
+
+- Gates A/B/C owner-confirmed. **Step 1**: eliminated 162.19 Afrows mgmt (`AFROWS_DE_MGMT_SSH` cleared + `afrows-de-relay`/`afrows-de-route` disabled); fixed hardcoded always-on `GermanyMgmtService` probe in 0.134.1 (gate on AFROWS_DE_MGMT_SSH) — pending owner deploy. **Step 3**: removed village WG tunnels (`wg-quick@wg-village`+`wg-village-de` disabled). Gaming auto-failed to via-germany; Telegram 0 fails; catch-all exit still 46.249; lineup Newyork+Germany; starlinkUp=false. 162.19 untouched (Hexogate). **Pending owner**: grace period + power off AX3/94.74 (snapshot 94.74 first); deploy 0.134.1. Runbook `.claude/phase4-village-retirement.md`.
+
 ## 2026-11-26 (0.134.0, DEPLOYED): Server consolidation — PHASE 3 (lineup) done
 
 - Customer entry list curated to owner's 2-server lineup. Renamed labels (`afrows-entry-link.ts`): **"Germany Fast x2"→"Newyork"**, **"Afrows Shatel"→"Germany"** (public + customer remarks). Prod env: disabled broken old Germany (`AFROWS_DE_ENTRY_ENABLED=false`, 162.19) + cleared `AFROWS_INBOUND_EXTRA_HOSTS` (drop 94.74 Shatel2). Verified live: lineup = **Newyork [germany-tier/2x] + Germany [iran-tier]** only; egress via-germany + USA-backup healthy, Telegram 0 fails. Tests updated (5 suites), 1120 pass. Deploy owner-run (deploy cmd harness-blocked for the agent this session). Admin-dashboard labels left as-is. Full plan: memory `afrows-server-consolidation`.
