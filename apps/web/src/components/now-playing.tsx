@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { WifiOff, X } from 'lucide-react';
 import { TrackArt } from '@/components/art';
 import { Overlay } from '@/components/overlay';
@@ -7,7 +8,8 @@ import { LoadingSkeleton, NoticeButton, StateNotice } from '@/components/state-n
 import { LikeButton } from '@/components/transport';
 import { useLang } from '@/i18n';
 import { stationName, usePlayer } from '@/lib/player';
-import { ALL_STATION } from '@/lib/tracks';
+import { ALL_STATION, type Track } from '@/lib/tracks';
+import { useMotionTier } from '@/motion/provider';
 import { cn } from '@/lib/utils';
 
 /** Track issue + connectivity notices (now-playing panel and phone sheet). */
@@ -35,10 +37,33 @@ export function PlaybackNotices({ className }: { className?: string }) {
   );
 }
 
-/** Large cover of the current track (cover image, else generated art). */
+/**
+ * Large cover of the current track (cover image, else generated art). The signature moment: on a
+ * track change the old cover crossfades out while the new one fades + scales in (~300ms); on pause it
+ * settles to ~0.96 with a slight dim. The outgoing cover is kept mounted only for the fade.
+ */
 export function Cover({ className }: { className?: string }) {
-  const { track } = usePlayer();
-  return <TrackArt track={track} big className={cn('aspect-square rounded-xl shadow-2xl shadow-black/50', className)} />;
+  const { track, playing, started } = usePlayer();
+  const tier = useMotionTier();
+  const [prev, setPrev] = useState<Track | null>(null);
+  const curRef = useRef(track);
+
+  useEffect(() => {
+    if (track.id === curRef.current.id) return;
+    if (tier !== 'static') setPrev(curRef.current);
+    curRef.current = track;
+    const timer = window.setTimeout(() => setPrev(null), 320);
+    return () => window.clearTimeout(timer);
+  }, [track, tier]);
+
+  const paused = started && !playing;
+  return (
+    <div className={cn('cover-shell relative aspect-square overflow-hidden rounded-xl shadow-2xl shadow-black/50', paused && 'is-paused', className)}>
+      <TrackArt key={track.id} track={track} big className="cover-xfade-in absolute inset-0 h-full w-full rounded-xl" />
+      {prev && <TrackArt key={prev.id} track={prev} big className="cover-xfade-out absolute inset-0 h-full w-full rounded-xl" />}
+      <span aria-hidden="true" className="cover-dim pointer-events-none absolute inset-0 rounded-xl bg-black" />
+    </div>
+  );
 }
 
 /**
@@ -108,7 +133,7 @@ export function NowPlayingPanel({ onClose, headingId = 'np-title' }: { onClose?:
           <div className="flex shrink-0 flex-col gap-3 px-4">
             <Cover className="np-panel-cover mx-auto w-full" />
             <div className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
+              <div key={ad ? 'ad' : track.id} className="np-text-in min-w-0 flex-1">
                 <p className="truncate text-lg font-black">
                   <bdi>{ad ? t.player.advertisement : track.title}</bdi>
                 </p>

@@ -29,6 +29,11 @@
   --surface-hover: color-mix(in oklch, var(--foreground) 6%, transparent);
   --surface-active: color-mix(in oklch, var(--foreground) 9%, transparent);
   --opacity-disabled: 0.45;
+  /* Motion tokens (budgets: micro 120–200ms, panels/pages 200–350ms, ambient colour 600–900ms). */
+  --dur-1: 140ms;
+  --dur-2: 280ms;
+  --dur-3: 800ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   /* Live analyser band levels (0–1), written by the player once per frame while playing. */
   --lv0: 0; --lv1: 0; --lv2: 0; --lv3: 0; --lv4: 0; --lv5: 0; --lv6: 0; --lv7: 0; --level: 0;
 }
@@ -79,6 +84,18 @@ body {
   outline-offset: 3px;
 }
 
+/* Ambient station colour: `--station` follows the playing track (set on <html> by the player). The
+   @property declaration is the registered-property gate — where it is honoured the colour animates;
+   elsewhere it simply snaps. `has-prop` (set by the motion provider) scopes the transition. */
+@property --station {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.62 0.23 345);
+}
+html.has-prop:not(.motion-static) {
+  transition: --station var(--dur-3) var(--ease-out);
+}
+
 /* ---- App shell: 100dvh grid of rounded panels (see pages/home.tsx) ---- */
 .shell {
   height: 100vh;
@@ -121,6 +138,12 @@ body {
   .area-now { display: block; }
 }
 
+/* Soft radial wash of the current station colour (pre-blurred as a static gradient — only the colour
+   transitions, through `--station`). The Now-Playing column and the desktop player bar pick it up. */
+.area-now, .area-bar {
+  background-image: radial-gradient(120% 90% at 50% 0%, color-mix(in oklch, var(--station, var(--primary)) 20%, transparent) 0%, transparent 62%);
+}
+
 /* Card shelves: a row scrolls on the inline axis; a grid fills the panel. */
 .shelf-row {
   display: grid; grid-auto-flow: column; grid-auto-columns: clamp(9.5rem, 16vw, 12rem);
@@ -128,19 +151,92 @@ body {
   scroll-padding-inline: 4px;
 }
 .shelf-row > li { scroll-snap-align: start; }
+/* Carousel chrome around a row: edge fades + hover chevrons (fine pointers only; touch keeps native
+   scroll + snap and the thin scrollbar). The chevrons are decorative — Tab scrolls cards into view. */
+.shelf-wrap { position: relative; }
+.shelf-fade {
+  position: absolute; inset-block: 0; width: 2.5rem; pointer-events: none; z-index: 2;
+  opacity: 0; transition: opacity var(--dur-2) var(--ease-out);
+}
+.shelf-fade.is-shown { opacity: 1; }
+.shelf-fade-start { inset-inline-start: 0; background: linear-gradient(to right, var(--card), transparent); }
+.shelf-fade-end { inset-inline-end: 0; background: linear-gradient(to left, var(--card), transparent); }
+html[dir="rtl"] .shelf-fade-start { background: linear-gradient(to left, var(--card), transparent); }
+html[dir="rtl"] .shelf-fade-end { background: linear-gradient(to right, var(--card), transparent); }
+.shelf-nav {
+  position: absolute; top: calc(50% - 0.75rem); transform: translateY(-50%); z-index: 3;
+  display: none; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 999px;
+  border: 1px solid var(--border); background: color-mix(in oklch, var(--card) 86%, var(--foreground) 14%);
+  color: var(--foreground); box-shadow: 0 4px 14px rgb(0 0 0 / 0.45);
+  opacity: 0; transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+.shelf-nav-start { inset-inline-start: 2px; }
+.shelf-nav-end { inset-inline-end: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .shelf-row { scrollbar-width: none; }
+  .shelf-row::-webkit-scrollbar { width: 0; height: 0; }
+  .shelf-nav.is-shown { display: grid; }
+  .shelf-wrap:hover .shelf-nav.is-shown { opacity: 1; }
+  .shelf-nav:hover { background: var(--card); }
+  .shelf-nav:active { transform: translateY(-50%) scale(0.92); }
+}
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 4px; }
 @media (min-width: 1024px) { .card-grid { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); } }
-.card { transition: background-color 0.2s ease; }
+.card { transition: background-color var(--dur-2) var(--ease-out); }
 .card:hover, .card:focus-within { background: color-mix(in oklch, var(--foreground) 7%, transparent); }
-/* Decorative play disc on a track card: appears on hover / focus, stays while that card plays. */
+/* Decorative play disc on a track card: appears on hover / focus with a slight overshoot, stays while that card plays. */
 .card-play {
   position: absolute; inset-inline-end: 8px; bottom: 8px;
-  opacity: 0; translate: 0 6px; transition: opacity 0.2s ease, translate 0.2s ease;
+  opacity: 0; transform: translateY(6px) scale(0.9);
+  transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-2) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.card:hover .card-play, .card:focus-visible .card-play, .card-play.is-active { opacity: 1; translate: 0 0; }
+.card:hover .card-play, .card:focus-visible .card-play, .card-play.is-active { opacity: 1; transform: translateY(0) scale(1); }
 /* The station play button is a real control: always visible (no hover-only controls). */
-.card-play-btn .card-play { position: static; opacity: 1; translate: none; }
-.art-initials { text-shadow: 0 2px 12px rgb(0 0 0 / 0.35); letter-spacing: -0.02em; }
+.card-play-btn .card-play { position: static; opacity: 1; transform: none; }
+/* Card lift on hover (fine pointers only): the cover rises with a deeper shadow; press settles it. */
+@media (hover: hover) and (pointer: fine) {
+  .card { transition: background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+  .card:hover { transform: translateY(-3px); }
+  .card:active { transform: scale(0.98); }
+  .card:hover .art { box-shadow: 0 14px 30px rgb(0 0 0 / 0.5); }
+}
+
+/* ---- Typographic covers (generated art): per-series duotone + large episode number ---- */
+.art { container-type: size; }
+.art-gen { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14); }
+.art-grain {
+  position: absolute; inset: 0; opacity: 0.1; mix-blend-mode: overlay; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+.art-motif {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(42% 42% at var(--mx, 50%) var(--my, 30%), transparent 40%, rgb(255 255 255 / 0.05) 41%, rgb(255 255 255 / 0.05) 44%, transparent 45%);
+}
+.art-cover {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2cqmin; padding: 8cqmin;
+  text-align: center; color: rgb(255 255 255 / 0.95);
+}
+.art-series {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 9cqmin; font-weight: 700; line-height: 1.1; letter-spacing: 0.04em;
+  text-transform: uppercase; color: rgb(255 255 255 / 0.82);
+}
+.art-hero {
+  font-size: 46cqmin; font-weight: 800; line-height: 0.9; letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.art-big .art-hero { letter-spacing: -0.05em; }
+.art-sub {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 8cqmin; font-weight: 600; line-height: 1.1; color: rgb(255 255 255 / 0.7);
+}
+/* Tiny boxes (thumbnails): just the number. */
+@container (max-width: 112px) {
+  .art-series, .art-sub { display: none; }
+  .art-hero { font-size: 54cqmin; }
+}
 
 .search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 .np-panel-cover { max-width: min(288px, 34dvh); }
@@ -156,9 +252,31 @@ body {
 .skip-link:focus-visible { transform: none; }
 
 .sheet-cover { width: max(140px, min(300px, 30dvh, 100%)); }
+
+/* Cover + text motion. `cover-in` fades a cover (image or generated art) in on mount / track change. */
 @keyframes cover-in { from { opacity: 0; } to { opacity: 1; } }
-html.motion-full .cover-in, html.motion-lite .cover-in { animation: cover-in 240ms ease-out both; }
-html.motion-static .card-play, html.motion-static .card { transition: none; }
+@keyframes cover-xfade-in { from { opacity: 0; transform: scale(1.02); } to { opacity: 1; transform: scale(1); } }
+@keyframes cover-xfade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes np-text-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes icon-swap { from { opacity: 0; transform: rotate(-35deg) scale(0.6); } to { opacity: 1; transform: none; } }
+@keyframes like-pop { 0% { transform: scale(1); } 45% { transform: scale(1.35); } 100% { transform: scale(1); } }
+
+html.motion-full .cover-in, html.motion-lite .cover-in { animation: cover-in var(--dur-2) var(--ease-out) both; }
+/* Now-Playing cover crossfade (the signature moment): new fades + scales in, old fades out over it. */
+html.motion-full .cover-xfade-in, html.motion-lite .cover-xfade-in { animation: cover-xfade-in 300ms var(--ease-out) both; }
+html.motion-full .cover-xfade-out, html.motion-lite .cover-xfade-out { animation: cover-xfade-out 300ms var(--ease-out) both; }
+html.motion-full .np-text-in, html.motion-lite .np-text-in { animation: np-text-in var(--dur-2) var(--ease-out) both; }
+html.motion-full .icon-swap, html.motion-lite .icon-swap { animation: icon-swap var(--dur-1) var(--ease-out) both; }
+html.motion-full .like-pop, html.motion-lite .like-pop { animation: like-pop var(--dur-2) cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* Now-Playing cover: settles smaller + slightly dimmed while paused, returns on play. */
+.cover-shell { transition: transform var(--dur-2) var(--ease-out); }
+.cover-shell.is-paused { transform: scale(0.96); }
+.cover-dim { opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+.cover-shell.is-paused .cover-dim { opacity: 0.12; }
+
+/* Long track-row lists: skip offscreen rows' layout/paint (rows are >= 56px). No stagger on long lists. */
+.track-row-item { content-visibility: auto; contain-intrinsic-size: auto 56px; }
 
 @keyframes skeleton-pulse { 50% { opacity: 0.55; } }
 .skeleton { background: var(--muted); animation: skeleton-pulse 1.6s ease-in-out infinite; }
@@ -217,18 +335,36 @@ html[dir="rtl"] .overlay-side .overlay-panel { --sheet-off: -100%; }
   -webkit-appearance: none; appearance: none;
   width: 16px; height: 16px; margin-top: calc((var(--track-h, 24px) - 16px) / 2); border-radius: 999px; border: 2px solid var(--background);
   background: var(--glow); box-shadow: 0 0 8px color-mix(in oklch, var(--ember) 60%, transparent);
-  transition: transform 0.2s ease;
+  transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
 .seek.h-11 { --track-h: 44px; }
 .seek-input::-moz-range-thumb {
   width: 16px; height: 16px; border-radius: 999px; border: 2px solid var(--background);
   background: var(--glow); box-shadow: 0 0 8px color-mix(in oklch, var(--ember) 60%, transparent);
+  transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
 .seek-input:hover::-webkit-slider-thumb, .seek-input:focus-visible::-webkit-slider-thumb { transform: scale(1.2); }
 .seek-input:focus-visible { outline-offset: 2px; border-radius: 999px; }
 .seek-input:disabled { cursor: default; }
 .seek-input:disabled::-webkit-slider-thumb { opacity: 0.5; }
 .seek-input:disabled::-moz-range-thumb { opacity: 0.5; }
+
+/* Scrubber for long mixes: rail grows on hover, fill/buffered are scaleX (compositor-only), time tooltip. */
+.seek-rail { height: var(--rail-h, 6px); transition: height var(--dur-1) var(--ease-out); }
+.seek:hover .seek-rail, .seek:focus-within .seek-rail, .seek.is-dragging .seek-rail { --rail-h: 8px; }
+.seek-fill, .seek-buffered { will-change: transform; }
+.seek-tip {
+  position: absolute; bottom: calc(100% + 8px); translate: -50% 0; z-index: 20; pointer-events: none;
+  padding: 0.15rem 0.4rem; border-radius: 0.375rem; border: 1px solid var(--border);
+  background: var(--card); color: var(--foreground); font-size: 0.7rem; font-weight: 700; line-height: 1.2; white-space: nowrap;
+}
+/* Thumb appears on hover only (fine pointers); stays visible on touch for grabbability. */
+@media (hover: hover) and (pointer: fine) {
+  .seek-input::-webkit-slider-thumb { opacity: 0; }
+  .seek-input::-moz-range-thumb { opacity: 0; }
+  .seek:hover .seek-input::-webkit-slider-thumb, .seek-input:focus-visible::-webkit-slider-thumb, .seek.is-dragging .seek-input::-webkit-slider-thumb { opacity: 1; }
+  .seek:hover .seek-input::-moz-range-thumb, .seek-input:focus-visible::-moz-range-thumb, .seek.is-dragging .seek-input::-moz-range-thumb { opacity: 1; }
+}
 
 /* Equalizer bars — resting height when idle, dancing on the beat when `.eq-active`,
    following the analyser bands while `html.is-live`. */
@@ -262,15 +398,24 @@ html.is-live .eq-active .eq-b7 { transform: scaleY(calc(0.15 + var(--lv7) * 0.85
 
 /* ---- Static tier (reduced motion, Save-Data, low memory): resting, no transitions or loops ---- */
 html.motion-static .overlay-backdrop, html.motion-static .overlay-panel,
-html.motion-static .tip, html.motion-static .eq-bar { transition: none; }
-html.motion-static .eq-active .eq-bar, html.motion-static .skeleton { animation: none; }
+html.motion-static .tip, html.motion-static .eq-bar,
+html.motion-static .card, html.motion-static .card-play,
+html.motion-static .shelf-nav, html.motion-static .shelf-fade,
+html.motion-static .seek-rail, html.motion-static .cover-shell, html.motion-static .cover-dim,
+html.motion-static .seek-input::-webkit-slider-thumb, html.motion-static .seek-input::-moz-range-thumb { transition: none; }
+html.motion-static .eq-active .eq-bar, html.motion-static .skeleton,
+html.motion-static .cover-in, html.motion-static .cover-xfade-in, html.motion-static .cover-xfade-out,
+html.motion-static .np-text-in, html.motion-static .icon-swap, html.motion-static .like-pop { animation: none; }
 html.motion-static .eq-active .eq-bar { transform: scaleY(0.6); }
 
-/* Motion safety: freeze decorative animation for users who ask for less motion. */
+/* Motion safety: freeze decorative animation for users who ask for less motion. This block is an
+   allow-list — every new animated class above must be named here too, or it escapes it. */
 @media (prefers-reduced-motion: reduce) {
-  .eq-active .eq-bar, .skeleton, .cover-in {
+  .eq-active .eq-bar, .skeleton, .cover-in, .cover-xfade-in, .cover-xfade-out, .np-text-in, .icon-swap, .like-pop {
     animation: none !important;
   }
-  .overlay-backdrop, .overlay-panel, .eq-bar, .tip, .card, .card-play { transition: none !important; }
+  html, .overlay-backdrop, .overlay-panel, .eq-bar, .tip, .card, .card-play,
+  .shelf-nav, .shelf-fade, .seek-rail, .cover-shell, .cover-dim,
+  .seek-input::-webkit-slider-thumb, .seek-input::-moz-range-thumb { transition: none !important; }
   .eq-active .eq-bar { transform: scaleY(0.6); }
 }

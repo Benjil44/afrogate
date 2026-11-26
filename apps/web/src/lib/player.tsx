@@ -104,6 +104,48 @@ export function stationArt(color: string | null, index: number): string {
   return color ? `linear-gradient(135deg, ${color} 0%, color-mix(in oklch, ${color} 45%, #0b0910) 100%)` : trackArt(index);
 }
 
+/** Stable small hash -> palette index (a series key or a category id). */
+export function hashIndex(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+/**
+ * Series name of a mix: the title with any trailing number (and its separators) removed, folded to
+ * lower case — e.g. "RokoshaA Vibes 3" -> "rokoshaa vibes", so "RokoshaA Vibes 1…5" share a series.
+ * Empty when the title is only a number (then the cover uses the neutral fallback).
+ */
+export function seriesKey(title: string): string {
+  return title.replace(/[\s._#:·-]*\d+\s*$/u, '').trim().toLowerCase();
+}
+
+/** Colour of the first coloured category the track belongs to, else null. */
+export function trackColor(track: Track, library: Library): string | null {
+  for (const id of track.categories) {
+    const category = library.categories.find((c) => c.id === id);
+    if (category?.color) return category.color;
+  }
+  return null;
+}
+
+/** Hue (deg) of the palette slot a series key maps to. */
+function seriesHue(key: string): number {
+  const len = CHANNEL_KEYS.length;
+  return COVER_HUES[CHANNEL_KEYS[((hashIndex(key) % len) + len) % len]];
+}
+
+/**
+ * One solid ambient colour for a track (the `--station` wash): its station colour, else the series
+ * hue at the cover lightness/chroma, else the brand primary. Returned as a CSS colour string.
+ */
+export function trackStationColor(track: Track, library: Library): string {
+  const color = trackColor(track, library);
+  if (color) return color;
+  const key = seriesKey(track.title);
+  return key ? `oklch(0.57 0.13 ${seriesHue(key)})` : 'oklch(0.62 0.23 345)';
+}
+
 /** Display name of a station in the current language ("All music" comes from i18n). */
 export function stationName(category: Category | undefined, lang: Lang, t: Dict): string {
   if (!category || category.synthetic) return t.player.allMusic;
@@ -223,6 +265,22 @@ interface PlayerState {
 interface ProgressState {
   currentTime: number;
   duration: number;
+  /** Furthest buffered time ahead of the playhead (seconds); 0 when unknown. */
+  buffered?: number;
+}
+
+/** End of the buffered range covering the playhead, else the last range end, else 0. */
+function bufferedAhead(audio: HTMLAudioElement): number {
+  try {
+    const ranges = audio.buffered;
+    const at = audio.currentTime;
+    for (let i = 0; i < ranges.length; i++) {
+      if (at >= ranges.start(i) - 0.5 && at <= ranges.end(i)) return ranges.end(i);
+    }
+    return ranges.length ? ranges.end(ranges.length - 1) : 0;
+  } catch {
+    return 0;
+  }
 }
 
 const PlayerContext = createContext<PlayerState | null>(null);
@@ -1009,10 +1067,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setDurations((d) => (d[id] === audio.duration ? d : { ...d, [id]: audio.duration }));
         setProgress({ currentTime: audio.currentTime, duration: audio.duration });
       };
+      const onProgress = () => {
+        if (!active()) return;
+        setProgress((p) => ({ ...p, buffered: bufferedAhead(audio) }));
+      };
       const onTime = () => {
         if (!active()) return;
         const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-        setProgress({ currentTime: audio.currentTime, duration });
+        setProgress({ currentTime: audio.currentTime, duration, buffered: bufferedAhead(audio) });
         const now = Date.now();
         // Ad progressing: push the stall watchdog back.
         if (adBreakRef.current && !audio.paused && audio.currentTime !== lastAdTime) {
@@ -1130,6 +1192,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ['loadedmetadata', onMeta],
         ['durationchange', onMeta],
         ['timeupdate', onTime],
+        ['progress', onProgress],
         ['ended', onEnded],
         ['error', onError],
       ];
@@ -1267,6 +1330,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const track = queue[position] ?? NO_TRACK;
   const station = library.categories.find((c) => c.id === stationId);
+
+  // Ambient station colour: `--station` on the shell root follows the current track's series colour.
+  // The @property gate in styles.css animates the change (~800ms); the Now-Playing panel and the
+  // bottom bar read it for their soft radial wash, and the seek fill for its gradient.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--station', trackStationColor(track, library));
+  }, [track, library]);
   const stations = useMemo(() => visibleStations(library), [library]);
   const stationIndex = Math.max(0, stations.findIndex((c) => c.id === stationId));
   const album = stationName(station, lang, t);

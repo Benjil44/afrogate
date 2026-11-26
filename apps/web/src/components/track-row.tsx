@@ -99,7 +99,7 @@ export function TrackRows({ tracks, stationId, result = false, id }: { tracks: r
   return (
     <ol id={id} className="flex flex-col gap-0.5">
       {tracks.map((track, i) => (
-        <li key={track.id}>
+        <li key={track.id} className="track-row-item">
           <TrackRow track={track} index={i} stationId={stationId} result={result} />
         </li>
       ))}

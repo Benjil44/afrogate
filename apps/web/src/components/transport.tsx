@@ -78,14 +78,16 @@ export function PlayButton({ size = 'md', className }: { size?: 'sm' | 'md' | 'l
         className,
       )}
     >
-      {loading ? (
-        <Loader2 className={cn(icon, 'animate-spin')} aria-hidden="true" />
-      ) : playing ? (
-        <Pause className={icon} fill="currentColor" aria-hidden="true" />
-      ) : (
-        // The play glyph is never mirrored (media convention in both directions).
-        <Play className={cn(icon, 'translate-x-[6%]')} fill="currentColor" aria-hidden="true" />
-      )}
+      <span key={loading ? 'load' : playing ? 'pause' : 'play'} className="icon-swap grid place-items-center">
+        {loading ? (
+          <Loader2 className={cn(icon, 'animate-spin')} aria-hidden="true" />
+        ) : playing ? (
+          <Pause className={icon} fill="currentColor" aria-hidden="true" />
+        ) : (
+          // The play glyph is never mirrored (media convention in both directions).
+          <Play className={cn(icon, 'translate-x-[6%]')} fill="currentColor" aria-hidden="true" />
+        )}
+      </span>
       <span aria-hidden="true" className="tip">
         {label}
       </span>
@@ -187,10 +189,10 @@ export function VolumeControl({ className }: { className?: string }) {
   );
 }
 
-/** Small cover square of the current track (cover image, else generated art). */
+/** Small cover square of the current track (cover image, else generated art); fades in on change. */
 export function CoverThumb({ className }: { className?: string }) {
   const { track } = usePlayer();
-  return <TrackArt track={track} className={cn('rounded-lg', className)} />;
+  return <TrackArt key={track.id} track={track} className={cn('rounded-lg', className)} />;
 }
 
 /** Heart toggle for the current track (liked tracks live in this browser only). */
@@ -208,7 +210,7 @@ export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
       onClick={() => toggleLike(track.id)}
       className={cn(liked ? 'text-[var(--state-active)]' : 'text-[var(--muted-foreground)]')}
     >
-      <Heart className="h-5 w-5" fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />
+      <Heart key={liked ? 'on' : 'off'} className={cn('h-5 w-5', liked && 'like-pop')} fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />
     </IconButton>
   );
 }
@@ -225,7 +227,7 @@ export function TransportBar({ nowOpen, onToggleNow, extra }: { nowOpen: boolean
     <section aria-label={t.player.playerRegion} className="flex h-full items-center gap-4 px-2 lg:px-3">
       <div className="flex w-[28%] min-w-0 items-center gap-3">
         <CoverThumb className="h-14 w-14" />
-        <div className="min-w-0">
+        <div key={ad ? 'ad' : track.id} className="np-text-in min-w-0">
           <p className="truncate text-sm font-bold">
             <bdi>{ad ? t.player.advertisement : track.title || t.player.noTrack}</bdi>
           </p>

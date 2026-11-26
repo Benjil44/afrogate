@@ -73,7 +73,7 @@ export function PlayerSheet({ open, onClose }: { open: boolean; onClose: () => v
             <Cover className="sheet-cover" />
           </div>
           <div className="flex w-full items-center gap-2">
-            <div className="min-w-0 flex-1">
+            <div key={ad ? 'ad' : track.id} className="np-text-in min-w-0 flex-1">
               <p className="truncate text-xl font-black">
                 <bdi>{ad ? t.player.advertisement : track.title}</bdi>
               </p>

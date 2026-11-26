@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Pause, Play } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { CategoryArt, TrackArt } from '@/components/art';
 import { fill, trackCount, useLang } from '@/i18n';
 import { stationName, usePlayer } from '@/lib/player';
@@ -16,6 +16,87 @@ import { cn } from '@/lib/utils';
 export interface ShelfItem {
   key: string;
   node: ReactNode;
+}
+
+/**
+ * The scrolling row itself: native inline scroll + snap (kept on touch), plus — on fine pointers —
+ * prev/next chevrons on hover that page by ~one row width, and an edge fade on each overflowing side.
+ * RTL-correct: chevron glyphs and the sign of `scrollBy` flip with `dir`; `scrollLeft` is read as a
+ * distance from the start edge (|scrollLeft|) so the standard negative-RTL model works both ways.
+ * The chevrons are decorative (`aria-hidden`, `tabindex=-1`): Tab already scrolls each card into view.
+ */
+function ShelfRow({ items }: { items: readonly ShelfItem[] }) {
+  const { dir } = useLang();
+  const listRef = useRef<HTMLUListElement>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+
+  const measure = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 1) {
+      setEdges({ start: false, end: false });
+      return;
+    }
+    const from = Math.abs(el.scrollLeft);
+    setEdges({ start: from > 1, end: from < max - 1 });
+  }, []);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    measure();
+    el.addEventListener('scroll', measure, { passive: true });
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener('scroll', measure);
+      observer.disconnect();
+    };
+  }, [measure, items]);
+
+  // `toStart` pages toward the first card (left in LTR, right in RTL).
+  const page = (toStart: boolean) => {
+    const el = listRef.current;
+    if (!el) return;
+    const sign = toStart ? -1 : 1;
+    el.scrollBy({ left: (dir === 'rtl' ? -sign : sign) * el.clientWidth * 0.85, behavior: 'smooth' });
+  };
+
+  const StartIcon = dir === 'rtl' ? ChevronRight : ChevronLeft;
+  const EndIcon = dir === 'rtl' ? ChevronLeft : ChevronRight;
+
+  return (
+    <div className="shelf-wrap relative">
+      <ul ref={listRef} className="shelf-row scroll-area">
+        {items.map((item) => (
+          <li key={item.key} className="min-w-0">
+            {item.node}
+          </li>
+        ))}
+      </ul>
+      <span aria-hidden="true" className={cn('shelf-fade shelf-fade-start', edges.start && 'is-shown')} />
+      <span aria-hidden="true" className={cn('shelf-fade shelf-fade-end', edges.end && 'is-shown')} />
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => page(true)}
+        className={cn('shelf-nav shelf-nav-start', edges.start && 'is-shown')}
+      >
+        <StartIcon className="h-5 w-5" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => page(false)}
+        className={cn('shelf-nav shelf-nav-end', edges.end && 'is-shown')}
+      >
+        <EndIcon className="h-5 w-5" aria-hidden="true" />
+      </button>
+    </div>
+  );
 }
 
 export function Shelf({
@@ -46,13 +127,17 @@ export function Shelf({
           </a>
         )}
       </div>
-      <ul className={cn(row ? 'shelf-row scroll-area' : 'card-grid')}>
-        {items.map((item) => (
-          <li key={item.key} className="min-w-0">
-            {item.node}
-          </li>
-        ))}
-      </ul>
+      {row ? (
+        <ShelfRow items={items} />
+      ) : (
+        <ul className="card-grid">
+          {items.map((item) => (
+            <li key={item.key} className="min-w-0">
+              {item.node}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -61,7 +146,9 @@ export function Shelf({
 function PlayDisc({ active, playing }: { active: boolean; playing: boolean }) {
   return (
     <span aria-hidden="true" className={cn('card-play grid h-12 w-12 place-items-center rounded-full bg-[image:var(--brand-gradient)] text-white shadow-lg', active && 'is-active')}>
-      {active && playing ? <Pause className="h-5 w-5" fill="currentColor" /> : <Play className="h-5 w-5 translate-x-[6%]" fill="currentColor" />}
+      <span key={active && playing ? 'pause' : 'play'} className="icon-swap grid place-items-center">
+        {active && playing ? <Pause className="h-5 w-5" fill="currentColor" /> : <Play className="h-5 w-5 translate-x-[6%]" fill="currentColor" />}
+      </span>
     </span>
   );
 }
