@@ -25,7 +25,11 @@ export class GermanyMgmtService extends RemoteExitMgmt {
       sshRemoteExitDeps(
         {
           label: 'Germany',
-          enabled: () => true,
+          // Gated on AFROWS_DE_MGMT_SSH being explicitly set (2026-11-26): the old Germany box
+          // (162.19.253.235) is retired from the Afrows role (Hexogate stays), so an unset/empty
+          // value disables the whole channel — no rmu probe, no sweeps — instead of falling back to
+          // the 162.19 default and probing a box we no longer manage.
+          enabled: () => Boolean(envValue(config, 'AFROWS_DE_MGMT_SSH')?.trim()),
           config: () =>
             resolveDeMgmtConfig({
               AFROWS_DE_MGMT_SSH: envValue(config, 'AFROWS_DE_MGMT_SSH'),

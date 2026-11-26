@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.134.1 - 2026-11-26
+
+- **Retire the old Germany box (162.19.253.235) from the Afrows management role (Hexogate preserved).** `GermanyMgmtService` was hardcoded `enabled: () => true`, so even with `AFROWS_DE_MGMT_SSH` cleared it fell back to the `root@162.19.253.235` default and kept running its `rmu` health-probe against a box we no longer manage (failing `exit 255`, backing off, and needlessly knocking on the shared Hexogate sshd). Now gated: `enabled: () => Boolean(AFROWS_DE_MGMT_SSH?.trim())` — unset/empty disables the whole DE mgmt channel (no probe, no sweeps). Matches the module's documented intent ("callers gate the sweeps on AFROWS_DE_MGMT_SSH"). Part of consolidation Phase 4. 1120 backend tests green.
+
 ## 0.134.0 - 2026-11-26
 
 - **Customer entry list simplified to two servers, with owner-chosen labels.** Renamed the subscription entry labels (owner request, after speed-testing from Shatel FTTH: Germany-Fast 229↓/259↑ jitter 3; the Iran/Shatel entry — which since the Phase-2 egress move now exits via Germany — 82↓/42↑):
