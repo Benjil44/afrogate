@@ -1,5 +1,12 @@
 # Afrows Progress
 
+## 2026-11-26 (infra, no code/version change): Server consolidation — PHASE 1 done
+
+- **Owner approved** consolidating Afrows onto the fast Germany box `46.249.98.221` (Germany Fast 2x) as primary + USA `93.127.140.50` as a later secondary, retiring old-Germany `162.19.253.235`, village AX3 (Starlink gone), `94.74.145.199`, and Hexo. Full plan + phases in memory `afrows-server-consolidation`.
+- **Investigation (read-only):** village tunnels carry NO customer traffic (`wg-village` idle from PROD; `wg-village-de` = a flapping mgmt route to 162.19 + unused Telegram IP routes). USA is alive/reachable but slow (201ms) and drops ~20min; it was the backbone for Telegram + Germany-mgmt + backend outbound. Afrows mgmt access to 162.19 is currently BROKEN (all keys rejected) — and since 162.19 is being retired, the earlier "whitelist 185 on 162.19 firewall" task is dropped as moot.
+- **✅ PHASE 1 (fixed a live outage, no customer change):** moved Telegram + `AFROWS_OUTBOUND_PROXY_URL` off the flaky USA onto `46.249`. New forward-only key `de_socks_key` (authorized `restrict,port-forwarding` on 46.249), new PROD service `afrows-de-socks.service` (`ssh -N -D 127.0.0.1:1091 → 46.249`), env `AFROWS_OUTBOUND_PROXY_URL=socks5://127.0.0.1:1091` (backup `afrows.env.bak-de-socks-*`), backend restarted. Telegram recovered (bot commands/menu published, 0 SOCKS timeouts over a poll cycle; was failing every few min). USA path left intact as fallback. Telegram via DE ≈0.4s vs USA ≈0.9s.
+- **Next:** Phase 2 = move main customer egress (via-germany chain, currently exits USA) onto 46.249.
+
 ## 2026-11-25 (0.133.3, on main — NOT deployed, dev-only): npm audit Phase 2 — now 0 vulns
 
 - **`@nestjs/cli` `^11` → `^12.0.15`** (apps/backend, dev/build-only) clears the last 3 moderate advisories (transitive `glob` AbortSignal bypass + `minimatch` ReDoS). **`npm audit` is now 0 across the full tree (prod + dev)** → CI "Audit dependencies" gate goes green (was 3, originally 11).
