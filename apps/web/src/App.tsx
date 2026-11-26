@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Backdrop } from './components/backdrop';
 import { Home } from './pages/home';
 
 /**
@@ -14,5 +15,10 @@ export function App() {
     }
   }, []);
 
-  return <Home />;
+  return (
+    <>
+      <Backdrop />
+      <Home />
+    </>
+  );
 }

@@ -58,7 +58,7 @@ export function Cover({ className }: { className?: string }) {
 
   const paused = started && !playing;
   return (
-    <div className={cn('cover-shell relative aspect-square overflow-hidden rounded-xl shadow-2xl shadow-black/50', paused && 'is-paused', className)}>
+    <div className={cn('cover-shell relative aspect-square overflow-hidden rounded-xl', paused && 'is-paused', className)}>
       <TrackArt key={track.id} track={track} big className="cover-xfade-in absolute inset-0 h-full w-full rounded-xl" />
       {prev && <TrackArt key={prev.id} track={prev} big className="cover-xfade-out absolute inset-0 h-full w-full rounded-xl" />}
       <span aria-hidden="true" className="cover-dim pointer-events-none absolute inset-0 rounded-xl bg-black" />

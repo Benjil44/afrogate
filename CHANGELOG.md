@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.137.0 - 2026-11-26
+
+- **afrows.com "Spatial Depth" redesign (2030 direction; `apps/web` only, deployed to afrows.com).** A living, depth-based interface where the playing track drives the whole environment. All new motion is gated by the existing tier system (`full` / `lite` / `static`) — the glass blur renders only on the `full` tier (capable desktops); tablets, phones and reduced-motion/low-power keep the solid `--card` panels, so none of them pay for `backdrop-filter`. Engine, routing, manifest loader, Media Session and i18n unchanged.
+  - **Living backdrop** (`components/backdrop.tsx`, `styles.css`): a fixed layer behind the shell, two large radial washes derived from the current `--station` colour that slowly drift (42s / 54s) and breathe faintly with the analyser `--level` on the full tier. The `--station` colour already animates (800ms), so the room re-tints as one calm sweep on every track change. Pure CSS/compositor (no WebGL). `static` tier = one still gradient.
+  - **Glass panels** (`styles.css` `html.motion-full .panel` + player bar + overlays): translucent, blurred surfaces (two elevations) that sample the backdrop through `backdrop-filter`, with a top-edge light catch and depth shadow. `background-color` (not the `background` shorthand) so the `--station` radial wash on the now-playing column / bar is preserved. Solid `--card` fallback on lite/static.
+  - **Pointer parallax**: `--px`/`--py` written to `<html>` by a single rAF-throttled `pointermove` listener (full tier only, off the React render path); backdrop layers lean via the `translate` property while the drift rides `transform`, so the two compose. `--rtl-sign` flips the horizontal lean for RTL; the washes mirror.
+  - **Now-playing cover**: floats on a depth shadow plus a soft halo of the current `--station` colour that recolours with the track (box-shadow, so it spills past the cover's clip).
+  - **Fix**: big covers (now-playing / player sheet) wrap the series name to two balanced lines instead of truncating to "ROKOSHAA VIB…" (`.art-big .art-series`).
+
 ## 0.136.0 - 2026-11-23
 
 - **Voice ads between tracks on afrows.com (Borjino plan `music-v2/06_ADS_AND_PLACES_PLAN.md` §3, Builder B).** `apps/web` only; not built on the authoring laptop, not deployed. With no feed (404 / invalid / `enabled:false` / empty `ads`) the player behaves exactly as 0.135.0.

@@ -128,7 +128,7 @@ export function Home() {
   const ready = status === 'ready';
 
   return (
-    <div className="shell bg-background text-foreground">
+    <div className="shell text-foreground">
       <a
         href="#content"
         className="skip-link"
