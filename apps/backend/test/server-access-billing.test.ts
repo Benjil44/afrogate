@@ -207,9 +207,9 @@ describe('server access (BillingService)', { skip: bundledSkipReason }, () => {
     const all = await uris({});
     assert.equal(all?.length, 3);
     const noUsa = await uris({ accessUsa: false });
-    assert.deepEqual(noUsa?.map((u) => u.split('#')[1]), ['Afrows%20Germany', 'Afrows%20Shatel']);
+    assert.deepEqual(noUsa?.map((u) => u.split('#')[1]), ['Afrows%20Germany', 'Germany']);
     const onlyIran = await uris({ accessGermany: false, accessUsa: false });
-    assert.deepEqual(onlyIran?.map((u) => u.split('#')[1]), ['Afrows%20Shatel']);
+    assert.deepEqual(onlyIran?.map((u) => u.split('#')[1]), ['Germany']);
   });
 
   it('partial update writes only the given flag, audits before/after and kicks enforcement', async () => {

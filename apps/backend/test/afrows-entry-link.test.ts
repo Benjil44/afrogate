@@ -186,13 +186,13 @@ test('buildEntryLinkSet: Germany first, then Iran, with per-customer remarks', (
   assert.match(links[1].uri, /sni=app\.afrows\.com/);
   assert.match(links[1].uri, /path=%2Fafrowsws/);
   assert.ok(links[0].uri.endsWith(`#${encodeURIComponent('ben · Germany')}`));
-  assert.ok(links[1].uri.endsWith(`#${encodeURIComponent('ben · Shatel')}`));
+  assert.ok(links[1].uri.endsWith(`#${encodeURIComponent('ben · Germany')}`));
 });
 
 test('buildEntryLinkSet: public remarks are fixed ASCII with no customer name', () => {
   const links = buildEntryLinkSet(BOTH_ENTRIES_ENV, UUID, PUBLIC_ENTRY_LINK_REMARKS);
   assert.ok(links[0].uri.endsWith('#Afrows%20Germany'));
-  assert.ok(links[1].uri.endsWith('#Afrows%20Shatel'));
+  assert.ok(links[1].uri.endsWith('#Germany'));
   assert.ok(links.every((link) => /^[!-~]+$/.test(link.uri)));
 });
 
@@ -206,7 +206,7 @@ test('buildEntryLinkSet: each link only when its env is configured; none without
 });
 
 test('customerEntryLinkRemarks falls back to Afrows for a blank name', () => {
-  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Shatel', usa: 'Afrows · USA AI Support 2x', hexo: 'Afrows · Afro', deFast: 'Afrows · Germany Fast x2' });
+  assert.deepEqual(customerEntryLinkRemarks('  '), { germany: 'Afrows · Germany', iran: 'Afrows · Germany', usa: 'Afrows · USA AI Support 2x', hexo: 'Afrows · Afro', deFast: 'Afrows · Newyork' });
 });
 
 test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right after the primary', () => {
@@ -217,9 +217,9 @@ test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right
   };
   const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
   assert.deepEqual(links.map((link) => link.kind), ['germany', 'iran', 'iran', 'iran']);
-  assert.ok(links[1].uri.startsWith(`vless://${UUID}@185.252.30.123:443?`) && links[1].uri.endsWith('#Afrows%20Shatel'));
-  assert.ok(links[2].uri.startsWith(`vless://${UUID}@94.74.145.199:443?`) && links[2].uri.endsWith('#Afrows%20Shatel%202'));
-  assert.ok(links[3].uri.startsWith(`vless://${UUID}@10.0.0.9:443?`) && links[3].uri.endsWith('#Afrows%20Shatel%203'));
+  assert.ok(links[1].uri.startsWith(`vless://${UUID}@185.252.30.123:443?`) && links[1].uri.endsWith('#Germany'));
+  assert.ok(links[2].uri.startsWith(`vless://${UUID}@94.74.145.199:443?`) && links[2].uri.endsWith('#Germany%202'));
+  assert.ok(links[3].uri.startsWith(`vless://${UUID}@10.0.0.9:443?`) && links[3].uri.endsWith('#Germany%203'));
   // same inbound settings, only the host differs
   assert.equal(links[2].uri.split('?')[1].split('#')[0], links[1].uri.split('?')[1].split('#')[0]);
   // unset -> unchanged
@@ -418,7 +418,7 @@ const DEF_DIRECT_ENV = {
 test('buildEntryLinkSet: Germany Fast x2 is OMITTED when DIRECT on but DEF meter off (no free premium)', () => {
   const env = { ...BOTH_ENTRIES_ENV, ...DEF_DIRECT_ENV }; // AFROWS_DEF_MGMT_ENABLED unset -> meter off
   const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
-  assert.ok(!links.some((l) => l.uri.endsWith('#Germany%20Fast%20x2')), 'fast link must not ship without its meter');
+  assert.ok(!links.some((l) => l.uri.endsWith('#Newyork')), 'fast link must not ship without its meter');
   // Only the Cloudflare Germany entry + Iran remain (no second `germany` fast link).
   assert.deepEqual(links.map((l) => l.kind), ['germany', 'iran']);
 });
@@ -427,12 +427,12 @@ test('buildEntryLinkSet: Germany Fast x2 is PRESENT when DIRECT on AND DEF meter
   const env = { ...BOTH_ENTRIES_ENV, ...DEF_DIRECT_ENV, AFROWS_DEF_MGMT_ENABLED: 'true' };
   const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
   assert.deepEqual(links.map((l) => l.kind), ['germany', 'germany', 'iran']);
-  const fast = links.find((l) => l.uri.endsWith('#Germany%20Fast%20x2'));
+  const fast = links.find((l) => l.uri.endsWith('#Newyork'));
   assert.ok(fast, 'fast link must ship when the meter is enabled');
   assert.ok(fast!.uri.startsWith(`vless://${UUID}@198.51.100.9:8443?`));
   assert.match(fast!.uri, /security=reality/);
   // The fast link sits right after the Cloudflare Germany entry.
-  assert.ok(links[1].uri.endsWith('#Germany%20Fast%20x2'));
+  assert.ok(links[1].uri.endsWith('#Newyork'));
 });
 
 test('buildEntryLinkSet: hexoResolved filters the emitted Hexo links to live countries only', () => {

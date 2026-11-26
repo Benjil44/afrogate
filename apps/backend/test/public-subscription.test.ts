@@ -167,7 +167,7 @@ describe('public subscription (BillingService)', { skip: skipReason }, () => {
     const uris = Buffer.from(payload.body, 'base64').toString('utf8').split('\n');
     assert.equal(uris.length, 2);
     assert.ok(uris[0].startsWith(`vless://${ENTRY_UUID}@de.afrows.com:443?`) && uris[0].endsWith('#Afrows%20Germany'));
-    assert.ok(uris[1].startsWith(`vless://${ENTRY_UUID}@94.74.145.199:443?`) && uris[1].endsWith('#Afrows%20Shatel'));
+    assert.ok(uris[1].startsWith(`vless://${ENTRY_UUID}@94.74.145.199:443?`) && uris[1].endsWith('#Germany'));
     assert.ok(!payload.body.includes('ben') && !Buffer.from(payload.body, 'base64').toString().includes('ben'));
     assert.equal(payload.headers['subscription-userinfo'], 'upload=0; download=2684354560; total=21474836480; expire=1796083200');
   });
@@ -244,7 +244,7 @@ describe('public subscription (BillingService)', { skip: skipReason }, () => {
     const links = (await h.service.resolveEntryLinks(CONFIG_ID)) as Array<{ kind: string; uri: string; qrSvg: string }>;
     assert.deepEqual(links.map((link) => link.kind), ['germany', 'iran']);
     assert.ok(links[0].uri.endsWith(`#${encodeURIComponent('ben · Germany')}`));
-    assert.ok(links[1].uri.endsWith(`#${encodeURIComponent('ben · Shatel')}`));
+    assert.ok(links[1].uri.endsWith(`#${encodeURIComponent('ben · Germany')}`));
     assert.ok(links.every((link) => link.qrSvg.startsWith('<svg')));
     const { link } = (await h.service.getClientConfigEntryLink(CONFIG_ID)) as { link: string };
     assert.equal(link, links[0].uri);

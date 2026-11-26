@@ -448,10 +448,10 @@ export type EntryLinkRemarks = Record<ClientEntryLinkKind, string> & { deFast: s
  *  the per-country entry appends the country code ("Afro DE"). */
 export const PUBLIC_ENTRY_LINK_REMARKS: EntryLinkRemarks = {
   germany: 'Afrows Germany',
-  iran: 'Afrows Shatel',
+  iran: 'Germany',
   usa: 'USA AI Support 2x',
   hexo: 'Afro',
-  deFast: 'Germany Fast x2',
+  deFast: 'Newyork',
 };
 
 /** Customer-facing remarks: "<name> · Germany" / "<name> · Shatel" / "<name> · USA AI Support 2x" /
@@ -460,10 +460,10 @@ export function customerEntryLinkRemarks(displayName: string): EntryLinkRemarks 
   const name = displayName.trim() || 'Afrows';
   return {
     germany: `${name} · Germany`,
-    iran: `${name} · Shatel`,
+    iran: `${name} · Germany`,
     usa: `${name} · USA AI Support 2x`,
     hexo: `${name} · Afro`,
-    deFast: `${name} · Germany Fast x2`,
+    deFast: `${name} · Newyork`,
   };
 }
 

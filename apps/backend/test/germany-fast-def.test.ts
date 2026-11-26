@@ -72,7 +72,7 @@ describe('readAfrowsGermanyFastEnv (direct REALITY entry)', () => {
     assert.equal(readAfrowsGermanyFastEnv({ ...DEF_ENV, AFROWS_DEF_DIRECT_REALITY_SNI: ' ' }), null);
   });
 
-  it('emits in the link set right after the Cloudflare Germany entry, kind germany, label "Germany Fast x2"', () => {
+  it('emits in the link set right after the Cloudflare Germany entry, kind germany, label "Newyork"', () => {
     const env = {
       ...DEF_ENV,
       AFROWS_DEF_MGMT_ENABLED: 'true', // BILLING-CRITICAL: the fast link ships only with its 2x meter
@@ -94,10 +94,10 @@ describe('readAfrowsGermanyFastEnv (direct REALITY entry)', () => {
     assert.equal(deFast.searchParams.get('fp'), 'chrome');
     assert.equal(deFast.searchParams.get('sni'), 'www.speedtest.net');
     assert.equal(deFast.searchParams.get('flow'), null); // no vision flow (matches USA direct REALITY slot)
-    assert.equal(decodeURIComponent(deFast.hash.slice(1)), 'Germany Fast x2'); // no "· Direct N" suffix
+    assert.equal(decodeURIComponent(deFast.hash.slice(1)), 'Newyork'); // no "· Direct N" suffix
     // customer-facing label carries the display name.
     const custom = buildEntryLinkSet(env, UUID, customerEntryLinkRemarks('ben'));
-    assert.equal(decodeURIComponent(new URL(custom[1].uri).hash.slice(1)), 'ben · Germany Fast x2');
+    assert.equal(decodeURIComponent(new URL(custom[1].uri).hash.slice(1)), 'ben · Newyork');
   });
 
   it('is omitted from the link set when disabled (no free unmetered Germany-Fast link)', () => {

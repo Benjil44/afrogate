@@ -96,7 +96,7 @@ describe('subscription token', () => {
 
 describe('subscription payload', () => {
   const germany = 'vless://u@de.example:443?security=tls#Afrows%20Germany';
-  const iran = 'vless://u@1.2.3.4:443?security=tls#Afrows%20Shatel';
+  const iran = 'vless://u@1.2.3.4:443?security=tls#Germany';
 
   it('body is base64 of both URIs joined by newline', () => {
     const { body } = buildSubscriptionPayload({ uris: [germany, iran], usedBytes: 5, totalBytes: 10, expiresAt: null });

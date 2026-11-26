@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.134.0 - 2026-11-26
+
+- **Customer entry list simplified to two servers, with owner-chosen labels.** Renamed the subscription entry labels (owner request, after speed-testing from Shatel FTTH: Germany-Fast 229↓/259↑ jitter 3; the Iran/Shatel entry — which since the Phase-2 egress move now exits via Germany — 82↓/42↑):
+  - `deFast` (the direct Germany-Fast-2× REALITY entry): **"Germany Fast x2" → "Newyork"** (public + `<name> · Newyork` customer remark).
+  - `iran` (the "Afrows Shatel" entry, now egressing via Germany): **"Afrows Shatel" → "Germany"** (public + `<name> · Germany`).
+  - Env curation on prod to realise the two-server lineup: disabled the broken old Cloudflare Germany entry (`AFROWS_DE_ENTRY_ENABLED=false` — 162.19, being retired) and dropped the old-server extra host (`AFROWS_INBOUND_EXTRA_HOSTS` cleared — 94.74 "Shatel 2", which the rename would otherwise surface as "Germany 2"). Resulting customer lineup: **Newyork** (premium, 2× metered, access_germany) + **Germany** (standard Iran entry). Hexo + USA entries already off.
+  - Label-only change in `afrows-entry-link.ts` (`PUBLIC_ENTRY_LINK_REMARKS` + `customerEntryLinkRemarks`); gating, metering, UUIDs and routing unchanged. Test assertions updated across 5 suites; full backend suite green (1120 pass). Admin-dashboard labels (`serverIran`/`linkShatel`) intentionally left as-is (operator-internal).
+
 ## 0.133.3 - 2026-11-25
 
 - **Security: cleared the last 3 `npm audit` advisories (all moderate, dev/build-only).** Bumped `@nestjs/cli` `^11.0.0` → `^12.0.15` (major) in `apps/backend`, which moves its transitive `glob`/`minimatch` off the vulnerable versions. Closes: `glob` (AbortSignal cancellation bypass, GHSA-3g3m-2fjr-6pw4) and `minimatch` (ReDoS via globparts amplification, GHSA-g3hv-75wg-m249). **`npm audit` is now 0 vulnerabilities across the full tree (prod + dev)**, so the CI "Audit dependencies" gate goes green.
