@@ -1,5 +1,9 @@
 # Afrows Progress
 
+## 2026-11-26 (0.134.0, DEPLOYED): Server consolidation — PHASE 3 (lineup) done
+
+- Customer entry list curated to owner's 2-server lineup. Renamed labels (`afrows-entry-link.ts`): **"Germany Fast x2"→"Newyork"**, **"Afrows Shatel"→"Germany"** (public + customer remarks). Prod env: disabled broken old Germany (`AFROWS_DE_ENTRY_ENABLED=false`, 162.19) + cleared `AFROWS_INBOUND_EXTRA_HOSTS` (drop 94.74 Shatel2). Verified live: lineup = **Newyork [germany-tier/2x] + Germany [iran-tier]** only; egress via-germany + USA-backup healthy, Telegram 0 fails. Tests updated (5 suites), 1120 pass. Deploy owner-run (deploy cmd harness-blocked for the agent this session). Admin-dashboard labels left as-is. Full plan: memory `afrows-server-consolidation`.
+
 ## 2026-11-26 (infra, no code/version change): Server consolidation — PHASE 1 done
 
 - **Owner approved** consolidating Afrows onto the fast Germany box `46.249.98.221` (Germany Fast 2x) as primary + USA `93.127.140.50` as a later secondary, retiring old-Germany `162.19.253.235`, village AX3 (Starlink gone), `94.74.145.199`, and Hexo. Full plan + phases in memory `afrows-server-consolidation`.
