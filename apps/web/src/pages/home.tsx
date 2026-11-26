@@ -13,7 +13,7 @@ import { useCollection } from '@/lib/collection';
 import { usePlayer } from '@/lib/player';
 import { routeHref, useHashRoute, type Route } from '@/lib/route';
 import { useShortcuts } from '@/lib/use-shortcuts';
-import { BrowseView, HomeView, LibraryView, SearchView, StationPage, TrackListView, TrackPage } from '@/pages/views';
+import { HomeView, LibraryView, SearchView, StationPage, TrackListView, TrackPage } from '@/pages/views';
 
 /**
  * Streaming-app shell (afrows.com = the radio only). The page never scrolls (`100dvh` grid,
@@ -23,13 +23,11 @@ import { BrowseView, HomeView, LibraryView, SearchView, StationPage, TrackListVi
  *   768–1279  icon sidebar | main panel  /  player bar; now playing opens as a side sheet
  *   < 768     main panel / mini player (64px, opens the full player sheet) / tab bar
  *
- * Routes are hash-based (`lib/route.ts`): #/ · #/browse · #/search?q= · #/library ·
+ * Routes are hash-based (`lib/route.ts`): #/ · #/search?q= · #/library ·
  * #/station/<id> · #/all · #/latest · #/track/<id> (share links).
  */
 function View({ route }: { route: Route }) {
   switch (route.name) {
-    case 'browse':
-      return <BrowseView />;
     case 'search':
       return <SearchView q={route.q} />;
     case 'library':

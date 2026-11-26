@@ -21,6 +21,14 @@
   --wave-dim: oklch(0.38 0.05 300);
   --line: oklch(0.30 0.03 300);
   --beat: 500ms;
+  /* Semantic token layer (hybrid identity): the gradient is the brand / Play identity, amber means
+     active·playing·liked, violet is the focus ring (distinct from playing). */
+  --brand-gradient: linear-gradient(135deg, var(--primary), var(--secondary));
+  --state-active: var(--accent);
+  --focus-ring: var(--secondary);
+  --surface-hover: color-mix(in oklch, var(--foreground) 6%, transparent);
+  --surface-active: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --opacity-disabled: 0.45;
   /* Live analyser band levels (0–1), written by the player once per frame while playing. */
   --lv0: 0; --lv1: 0; --lv2: 0; --lv3: 0; --lv4: 0; --lv5: 0; --lv6: 0; --lv7: 0; --level: 0;
 }
@@ -64,9 +72,10 @@ body {
 
 ::selection { background: color-mix(in oklch, var(--primary) 35%, transparent); }
 
-/* Visible focus for keyboard users on every interactive element. */
+/* Visible focus for keyboard users on every interactive element (violet — distinct from amber,
+   the playing/active colour, so focus never reads as "playing"). */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 

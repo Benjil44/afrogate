@@ -42,13 +42,18 @@ function latestTracks(library: Library): Track[] {
   return [...library.tracks].reverse().slice(0, LATEST_MAX);
 }
 
+/** Every mix, newest first (manifest order is publish order). */
+function allMixes(library: Library): Track[] {
+  return [...library.tracks].reverse();
+}
+
 function byIds(library: Library, ids: readonly string[]): Track[] {
   const map = new Map(library.tracks.map((t) => [t.id, t] as const));
   return ids.map((id) => map.get(id)).filter((t): t is Track => Boolean(t));
 }
 
 const PRIMARY_BTN =
-  'inline-flex h-12 items-center gap-2 rounded-full bg-[linear-gradient(135deg,var(--primary),var(--secondary))] px-6 text-sm font-bold text-white shadow-lg hover:brightness-110';
+  'inline-flex h-12 items-center gap-2 rounded-full bg-[image:var(--brand-gradient)] px-6 text-sm font-bold text-white shadow-lg hover:brightness-110';
 const SECONDARY_BTN =
   'inline-flex h-12 items-center gap-2 rounded-full border border-[var(--border)] px-5 text-sm font-bold text-[var(--foreground)] hover:bg-[color-mix(in_oklch,var(--foreground)_6%,transparent)]';
 const LINK_BTN =
@@ -89,7 +94,7 @@ function ContinueCard() {
             <bdi>{station}</bdi>
           </span>
         </span>
-        <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white shadow-lg">
+        <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[image:var(--brand-gradient)] text-white shadow-lg">
           <Play className="h-5 w-5 translate-x-[6%]" fill="currentColor" />
         </span>
       </button>
@@ -97,35 +102,35 @@ function ContinueCard() {
   );
 }
 
+/** Full, newest-first list of every mix (shared by Home and the search landing). */
+function MixesList({ id, library }: { id: string; library: Library }) {
+  const { t } = useLang();
+  return (
+    <section aria-labelledby={`${id}-title`} className="min-w-0">
+      <h2 id={`${id}-title`} className="px-1 pb-2 text-xl font-black tracking-tight">
+        {t.app.allMixes}
+      </h2>
+      <TrackRows tracks={allMixes(library)} stationId={ALL_STATION} />
+    </section>
+  );
+}
+
+/**
+ * Home: Continue-listening (only with a resume point) + Recently-played (if any) + one primary
+ * "All mixes" list. Collapsed from five near-duplicate shelves (0.136 redesign): the catalogue is
+ * small, so one newest-first list replaces the old "Latest" / "All" / Stations rows.
+ */
 export function HomeView() {
   const { t } = useLang();
-  const { library, stations } = usePlayer();
+  const { library } = usePlayer();
   const { recent } = useCollection();
-  const realStations = stations.filter((c) => !c.synthetic);
-  const latest = latestTracks(library);
   const recentTracks = byIds(library, recent).slice(0, LATEST_MAX);
   return (
     <div className="flex flex-col gap-8">
       <ViewHeading sr>{t.app.home}</ViewHeading>
       <ContinueCard />
-      <Shelf id="row-recent" title={t.app.recent} showAllHref={routeHref({ name: 'library' })} items={trackItems(recentTracks, ALL_STATION)} />
-      {/* Stations only when the manifest has real categories ("All music" alone adds nothing here). */}
-      {realStations.length > 0 && <Shelf id="row-stations" title={t.app.stationsRow} showAllHref={routeHref({ name: 'browse' })} items={stationItems(stations)} />}
-      <Shelf id="row-latest" title={t.app.latest} showAllHref={routeHref({ name: 'latest' })} items={trackItems(latest, ALL_STATION)} />
-      {library.tracks.length > LATEST_MAX && (
-        <Shelf id="row-all" title={t.app.allTracks} showAllHref={routeHref({ name: 'all' })} items={trackItems(library.tracks, ALL_STATION)} />
-      )}
-    </div>
-  );
-}
-
-export function BrowseView() {
-  const { t } = useLang();
-  const { stations } = usePlayer();
-  return (
-    <div className="flex flex-col gap-6">
-      <ViewHeading>{t.app.browse}</ViewHeading>
-      <Shelf id="grid-stations" title={t.app.stationsRow} items={stationItems(stations)} layout="grid" />
+      <Shelf id="row-recent" title={t.app.recent} items={trackItems(recentTracks, ALL_STATION)} />
+      <MixesList id="home-mixes" library={library} />
     </div>
   );
 }
@@ -260,13 +265,18 @@ function onResultsKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
 export function SearchView({ q }: { q: string }) {
   const { t, lang } = useLang();
   const { library, stations } = usePlayer();
+  const { recent } = useCollection();
   const results = useMemo(() => searchLibrary(library, stations, q, t.player.allMusic), [library, stations, q, t]);
 
+  // No query yet: the search landing shows what to listen to — recently played (if any) above the
+  // full newest-first mixes list — instead of the lone "All music" station tile.
   if (!results) {
+    const recentTracks = byIds(library, recent).slice(0, LATEST_MAX);
     return (
-      <div className="flex flex-col gap-6">
-        <ViewHeading>{t.app.search}</ViewHeading>
-        <Shelf id="search-browse" title={t.app.browseAll} items={stationItems(stations)} layout="grid" />
+      <div className="flex flex-col gap-8">
+        <ViewHeading sr>{t.app.search}</ViewHeading>
+        <Shelf id="search-recent" title={t.app.recent} items={trackItems(recentTracks, ALL_STATION)} />
+        <MixesList id="search-mixes" library={library} />
       </div>
     );
   }
@@ -284,7 +294,7 @@ export function SearchView({ q }: { q: string }) {
             <SearchX className="h-10 w-10" />
           </span>
           <StateNotice tone="neutral" title={fill(t.app.noResults, { q: q.trim() })} body={t.app.noResultsHint}>
-            <a href={routeHref({ name: 'browse' })} className={LINK_BTN}>
+            <a href={routeHref({ name: 'search', q: '' })} className={LINK_BTN}>
               {t.app.browseAll}
             </a>
           </StateNotice>
@@ -323,7 +333,7 @@ export function TrackPage({ id }: { id: string }) {
       <div className="grid min-h-[50%] place-items-center">
         <ViewHeading sr>{t.app.trackNotFound}</ViewHeading>
         <StateNotice tone="neutral" title={t.app.trackNotFound} body={t.app.trackNotFoundBody}>
-          <a href={routeHref({ name: 'browse' })} className={LINK_BTN}>
+          <a href={routeHref({ name: 'search', q: '' })} className={LINK_BTN}>
             {t.app.browseAll}
           </a>
         </StateNotice>
@@ -358,16 +368,16 @@ export function TrackPage({ id }: { id: string }) {
   );
 }
 
+/** "Your library" = saved/liked mixes only. Recently played lives on Home and in the sidebar. */
 export function LibraryView() {
   const { t } = useLang();
   const { library } = usePlayer();
-  const { liked, recent } = useCollection();
+  const { liked } = useCollection();
   const likedTracks = byIds(library, liked);
-  const recentTracks = byIds(library, recent);
   return (
     <div className="flex flex-col gap-8">
       <ViewHeading>{t.app.library}</ViewHeading>
-      {likedTracks.length === 0 && recentTracks.length === 0 ? (
+      {likedTracks.length === 0 ? (
         <div className="grid place-items-center py-10">
           <span aria-hidden="true" className="mb-3 text-[var(--muted-foreground)]">
             <Heart className="h-10 w-10" />
@@ -375,10 +385,7 @@ export function LibraryView() {
           <StateNotice tone="neutral" title={t.app.libraryEmpty} body={t.app.libraryEmptyHint} />
         </div>
       ) : (
-        <>
-          <Shelf id="lib-liked" title={t.app.liked} items={trackItems(likedTracks, ALL_STATION)} layout="grid" />
-          <Shelf id="lib-recent" title={t.app.recent} items={trackItems(recentTracks, ALL_STATION)} layout="grid" />
-        </>
+        <Shelf id="lib-liked" title={t.app.liked} items={trackItems(likedTracks, ALL_STATION)} layout="grid" />
       )}
     </div>
   );

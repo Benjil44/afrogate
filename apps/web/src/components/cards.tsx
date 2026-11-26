@@ -60,7 +60,7 @@ export function Shelf({
 /** Decorative play/pause disc over a cover; visible on hover / focus and while it is the playing card. */
 function PlayDisc({ active, playing }: { active: boolean; playing: boolean }) {
   return (
-    <span aria-hidden="true" className={cn('card-play grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white shadow-lg', active && 'is-active')}>
+    <span aria-hidden="true" className={cn('card-play grid h-12 w-12 place-items-center rounded-full bg-[image:var(--brand-gradient)] text-white shadow-lg', active && 'is-active')}>
       {active && playing ? <Pause className="h-5 w-5" fill="currentColor" /> : <Play className="h-5 w-5 translate-x-[6%]" fill="currentColor" />}
     </span>
   );

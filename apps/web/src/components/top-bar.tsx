@@ -41,7 +41,7 @@ export function TopBar({
     <div className="flex h-16 shrink-0 items-center gap-2 px-3 sm:px-4">
       {/* Phones have no sidebar: the logo (home link) sits here. */}
       <a href={routeHref({ name: 'home' })} aria-label={`${t.brandRadio} · ${t.app.home}`} className="grid h-11 w-11 shrink-0 place-items-center md:hidden">
-        <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white">
+        <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-[image:var(--brand-gradient)] text-white">
           <Equalizer active={playing} bars={4} className="h-4 text-white" />
         </span>
       </a>

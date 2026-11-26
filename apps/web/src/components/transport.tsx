@@ -73,7 +73,7 @@ export function PlayButton({ size = 'md', className }: { size?: 'sm' | 'md' | 'l
       aria-label={label}
       aria-busy={loading || undefined}
       className={cn(
-        'tip-host relative grid shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white shadow-lg shadow-[color-mix(in_oklch,var(--primary)_40%,transparent)] transition-transform hover:scale-105 active:scale-95 disabled:cursor-default disabled:opacity-50 disabled:hover:scale-100',
+        'tip-host relative grid shrink-0 place-items-center rounded-full bg-[image:var(--brand-gradient)] text-white shadow-lg shadow-[color-mix(in_oklch,var(--primary)_40%,transparent)] transition-transform hover:scale-105 active:scale-95 disabled:cursor-default disabled:opacity-50 disabled:hover:scale-100',
         dims,
         className,
       )}
@@ -206,7 +206,7 @@ export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
       aria-pressed={liked}
       disabled={status !== 'ready' || !track.src || ad}
       onClick={() => toggleLike(track.id)}
-      className={cn(liked ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]')}
+      className={cn(liked ? 'text-[var(--state-active)]' : 'text-[var(--muted-foreground)]')}
     >
       <Heart className="h-5 w-5" fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />
     </IconButton>

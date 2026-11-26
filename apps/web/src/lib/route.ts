@@ -2,15 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 
 /**
  * Hash routes for the main panel (no router library: ~20 kB gzip saved).
- *   #/            home          #/browse      all stations      #/library   liked + recent
- *   #/search?q=   search        #/station/<id> one station       #/all       all tracks
- *   #/latest      latest mixes      #/track/<id> one track (share links: cued, plays on the first tap)
+ *   #/            home          #/library     liked mixes       #/all       all tracks
+ *   #/search?q=   search        #/station/<id> one station       #/latest    latest mixes
+ *   #/track/<id>  one track (share links: cued, plays on the first tap)
+ * The old `#/browse` hash now lands on search (Browse was merged into search, 0.136 redesign).
  * Legacy `#station=<id>` maps to the station route; anything else (old landing anchors such as
  * `#vpn` / `#pricing`) lands on home.
  */
 export type Route =
   | { name: 'home' }
-  | { name: 'browse' }
   | { name: 'library' }
   | { name: 'all' }
   | { name: 'latest' }
@@ -30,7 +30,8 @@ export function parseHash(hash: string): Route {
   const parts = path.split('/').filter(Boolean);
   switch (parts[0]) {
     case 'browse':
-      return { name: 'browse' };
+      // Retired route: Browse was merged into search (0.136 redesign).
+      return { name: 'search', q: '' };
     case 'library':
       return { name: 'library' };
     case 'all':
@@ -47,7 +48,7 @@ export function parseHash(hash: string): Route {
       return { name: 'search', q: q.slice(0, MAX_QUERY) };
     }
     case 'station':
-      return parts[1] && STATION_ID.test(parts[1]) ? { name: 'station', id: parts[1] } : { name: 'browse' };
+      return parts[1] && STATION_ID.test(parts[1]) ? { name: 'station', id: parts[1] } : { name: 'search', q: '' };
     case 'track':
       return parts[1] && TRACK_ID.test(parts[1]) ? { name: 'track', id: parts[1] } : { name: 'home' };
     default:
@@ -103,7 +104,8 @@ export function trackShareUrl(id: string): string {
 
 /** Two routes point at the same view (for `aria-current`). */
 export function sameSection(a: Route, b: Route['name']): boolean {
-  if (b === 'browse') return a.name === 'browse' || a.name === 'station';
   if (b === 'home') return a.name === 'home' || a.name === 'all' || a.name === 'latest' || a.name === 'track';
+  // Station pages have no nav item of their own; they sit under Search (where stations are browsed).
+  if (b === 'search') return a.name === 'search' || a.name === 'station';
   return a.name === b;
 }

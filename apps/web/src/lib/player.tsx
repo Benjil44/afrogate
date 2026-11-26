@@ -60,17 +60,41 @@ import {
 export const CHANNEL_KEYS = ['pop', 'traditional', 'rap', 'nostalgia', 'chill', 'podcast'] as const;
 export type ChannelKey = (typeof CHANNEL_KEYS)[number];
 
-/** CSS gradient art per palette slot — used when a track / station has no cover or colour. */
-export const CHANNEL_ART: Record<ChannelKey, string> = {
-  pop: 'linear-gradient(135deg, oklch(0.72 0.22 350) 0%, oklch(0.62 0.24 300) 55%, oklch(0.50 0.20 270) 100%)',
-  traditional: 'linear-gradient(135deg, oklch(0.78 0.16 75) 0%, oklch(0.62 0.18 40) 55%, oklch(0.42 0.14 20) 100%)',
-  rap: 'linear-gradient(135deg, oklch(0.30 0.03 280) 0%, oklch(0.55 0.22 25) 60%, oklch(0.80 0.17 85) 100%)',
-  nostalgia: 'linear-gradient(135deg, oklch(0.80 0.14 60) 0%, oklch(0.68 0.17 25) 50%, oklch(0.45 0.12 330) 100%)',
-  chill: 'linear-gradient(135deg, oklch(0.80 0.10 200) 0%, oklch(0.62 0.14 240) 55%, oklch(0.40 0.12 290) 100%)',
-  podcast: 'linear-gradient(135deg, oklch(0.75 0.17 150) 0%, oklch(0.58 0.16 190) 55%, oklch(0.36 0.10 250) 100%)',
+/**
+ * Cover palette: one hue per series, so a mix's colour means its series (not a random per-track
+ * slot). Cohesive and low-chroma — every slot sits at the SAME oklch lightness/chroma (0.57 / 0.13)
+ * and only the hue changes, so no cover shouts louder than another. The brand saffron/amber hue
+ * (~80) is deliberately absent so covers never compete with the `--accent` active colour. Each slot
+ * is a 2-stop gradient from its hue to that hue mixed toward near-black.
+ */
+const COVER_HUES: Record<ChannelKey, number> = {
+  pop: 326, // pink
+  traditional: 20, // red
+  rap: 272, // blue-violet
+  nostalgia: 164, // teal
+  chill: 218, // cyan-blue
+  podcast: 110, // green
 };
 
-/** Gradient art by palette index (cycling). */
+function hueGradient(hue: number): string {
+  const base = `oklch(0.57 0.13 ${hue})`;
+  return `linear-gradient(135deg, ${base} 0%, color-mix(in oklch, ${base} 45%, #0b0910) 100%)`;
+}
+
+/** CSS gradient art per palette slot — used when a track / station has no cover or colour. */
+export const CHANNEL_ART: Record<ChannelKey, string> = {
+  pop: hueGradient(COVER_HUES.pop),
+  traditional: hueGradient(COVER_HUES.traditional),
+  rap: hueGradient(COVER_HUES.rap),
+  nostalgia: hueGradient(COVER_HUES.nostalgia),
+  chill: hueGradient(COVER_HUES.chill),
+  podcast: hueGradient(COVER_HUES.podcast),
+};
+
+/** One neutral fallback (dark plum) for items with no series/colour — never a random slot. */
+export const NEUTRAL_ART = `linear-gradient(135deg, oklch(0.42 0.06 330) 0%, color-mix(in oklch, oklch(0.42 0.06 330) 45%, #0b0910) 100%)`;
+
+/** Gradient art by palette index (cycling) — index is a stable series key hash, not a track id. */
 export function trackArt(index: number): string {
   return CHANNEL_ART[CHANNEL_KEYS[((index % CHANNEL_KEYS.length) + CHANNEL_KEYS.length) % CHANNEL_KEYS.length]];
 }

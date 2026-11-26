@@ -1,4 +1,4 @@
-import { Compass, Heart, Home, Library, Search, type LucideIcon } from 'lucide-react';
+import { Heart, Home, Library, Search, type LucideIcon } from 'lucide-react';
 import { Equalizer } from '@/components/equalizer';
 import { TrackArt } from '@/components/art';
 import { useLang, type Dict } from '@/i18n';
@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 export function navItems(t: Dict): { route: Route; section: Route['name']; label: string; Icon: LucideIcon }[] {
   return [
     { route: { name: 'home' }, section: 'home', label: t.app.home, Icon: Home },
-    { route: { name: 'browse' }, section: 'browse', label: t.app.browse, Icon: Compass },
     { route: { name: 'search', q: '' }, section: 'search', label: t.app.search, Icon: Search },
     { route: { name: 'library' }, section: 'library', label: t.app.library, Icon: Library },
   ];
@@ -54,7 +53,7 @@ function LibraryList() {
                 <span className="flex items-center gap-1 truncate text-xs text-[var(--muted-foreground)]">
                   {likedSet.has(item.id) && (
                     <>
-                      <Heart className="h-3 w-3 shrink-0 text-[var(--primary)]" fill="currentColor" aria-hidden="true" />
+                      <Heart className="h-3 w-3 shrink-0 text-[var(--state-active)]" fill="currentColor" aria-hidden="true" />
                       <span className="sr-only">{t.app.liked}: </span>
                     </>
                   )}
@@ -82,7 +81,7 @@ export function Sidebar({ route }: { route: Route }) {
     <div className="flex h-full min-h-0 flex-col gap-2">
       <nav aria-label={t.app.mainNav} className="panel panel-open shrink-0 p-2">
         <p className="flex h-12 items-center gap-2.5 px-2 text-lg font-black tracking-tight max-xl:justify-center max-xl:px-0">
-          <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white">
+          <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[image:var(--brand-gradient)] text-white">
             <Equalizer active={playing} bars={4} className="h-4 text-white" />
           </span>
           <span className="truncate max-xl:sr-only">{t.brandRadio}</span>
@@ -100,7 +99,7 @@ export function Sidebar({ route }: { route: Route }) {
                     current ? 'text-[var(--foreground)]' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]',
                   )}
                 >
-                  <Icon className="h-6 w-6 shrink-0" aria-hidden="true" fill={current && section !== 'search' && section !== 'browse' ? 'currentColor' : 'none'} />
+                  <Icon className="h-6 w-6 shrink-0" aria-hidden="true" fill={current && section !== 'search' ? 'currentColor' : 'none'} />
                   <span className="max-xl:sr-only">{label}</span>
                   <span aria-hidden="true" className="tip xl:hidden">
                     {label}
@@ -114,7 +113,7 @@ export function Sidebar({ route }: { route: Route }) {
       <section aria-labelledby="side-library-title" className="panel hidden min-h-0 flex-1 flex-col xl:flex">
         <h2 id="side-library-title" className="flex h-12 shrink-0 items-center gap-2 px-4 text-sm font-black text-[var(--muted-foreground)]">
           <Library className="h-5 w-5" aria-hidden="true" />
-          {t.app.library}
+          {t.app.quickAccess}
         </h2>
         <LibraryList />
       </section>
@@ -125,12 +124,12 @@ export function Sidebar({ route }: { route: Route }) {
 /** Phone bottom tab bar (< 768px): Home, Search, Library. */
 export function TabBar({ route }: { route: Route }) {
   const { t } = useLang();
-  const items = navItems(t).filter((i) => i.section !== 'browse');
+  const items = navItems(t);
   return (
     <nav aria-label={t.app.mainNav} className="tab-bar border-t border-[var(--border)] bg-[var(--card)]">
       <ul className="grid h-14 grid-cols-3">
         {items.map(({ route: target, section, label, Icon }) => {
-          const current = sameSection(route, section) || (section === 'home' && sameSection(route, 'browse'));
+          const current = sameSection(route, section);
           return (
             <li key={section}>
               <a

@@ -61,7 +61,7 @@ export function NoticeButton({ onClick, children, primary = false, icon = false 
       className={cn(
         'inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-bold transition',
         primary
-          ? 'bg-[linear-gradient(135deg,var(--primary),var(--secondary))] text-white hover:brightness-110'
+          ? 'bg-[image:var(--brand-gradient)] text-white hover:brightness-110'
           : 'border border-[var(--border)] text-[var(--foreground)] hover:bg-[color-mix(in_oklch,var(--foreground)_6%,transparent)]',
       )}
     >
