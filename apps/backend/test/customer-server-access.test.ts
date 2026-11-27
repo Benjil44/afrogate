@@ -38,7 +38,7 @@ const ALL_ENV: Record<string, string> = {
   AFROWS_DE_ENTRY_HOST: 'de.afrows.com',
   AFROWS_DE_ENTRY_SNI: 'de.afrows.com',
   AFROWS_INBOUND_MODE: 'ws',
-  AFROWS_INBOUND_HOST: '94.74.145.199',
+  AFROWS_INBOUND_HOST: '203.0.113.9',
   AFROWS_INBOUND_SNI: 'app.afrows.com',
   AFROWS_INBOUND_WS_PATH: '/afrowsws',
   AFROWS_US_ENTRY_ENABLED: 'true',

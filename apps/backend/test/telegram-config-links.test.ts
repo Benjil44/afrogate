@@ -11,7 +11,7 @@ import {
 } from '../src/telegram/telegram-i18n.ts';
 
 const GERMANY = 'vless://u@de.afrows.com:443?security=tls&type=ws#ben%20%C2%B7%20Germany';
-const IRAN = 'vless://u@94.74.145.199:443?security=tls&type=ws#ben%20%C2%B7%20Shatel';
+const IRAN = 'vless://u@203.0.113.9:443?security=tls&type=ws#ben%20%C2%B7%20Shatel';
 const SUB = 'https://app.afrows.com/sub/AbCdEfGhIjKlMnOpQrStUvWxYz012345';
 
 const full: ConfigLinkBundle = {

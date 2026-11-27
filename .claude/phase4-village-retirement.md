@@ -36,7 +36,8 @@ The backend still **attempts to manage 162.19** (`afrows-de-relay` = activating/
 - **✅ Step 1** — 162.19 Afrows mgmt eliminated: `AFROWS_DE_MGMT_SSH` cleared, `afrows-de-relay` + `afrows-de-route` disabled. Discovered `GermanyMgmtService` was hardcoded `enabled:()=>true` (empty SSH fell back to the 162.19 default and kept probing) → fixed in code (**0.134.1**, gate on `AFROWS_DE_MGMT_SSH`); **pending owner deploy** to fully silence the residual probe (harmless meanwhile: direct, fails, 5-min backoff). env backup `afrows.env.bak-phase4s1-*`.
 - **✅ Step 2** — N/A as a manual step: gaming preference is hardcoded in `choose_gaming()` (`via-village` while `iface_alive(wg-village)`, else `via-germany`). Removing the tunnel auto-fails it over. (A GAMING_ORDER edit was tried + reverted.)
 - **✅ Step 3** — village WG tunnels removed: `wg-quick@wg-village` + `wg-quick@wg-village-de` disabled --now. `wg show` = wg0/wg-home/wg-routers only. Gaming converged to via-germany; Telegram 0 fails; catch-all exit still 46.249; lineup Newyork+Germany. (Optional later: drop the dormant relay-1..5 from `xray.service`, which dialed via wg-village-de.)
-- **⏳ Steps 4–5 PENDING (owner):** grace period, then power off AX3 + 94.74 (keep a 94.74 snapshot). 162.19 stays up (Hexogate). Also pending: deploy 0.134.1.
+- **✅ Step 5 (94.74) DONE 2026-11-27:** owner powered off `94.74.145.199` (Gate B cleared). Pre/post sweeps all-green; 94.74 unreachable; catch-all exit still 46.249; Telegram 0 fails; zero customer regression. Codebase scrubbed of the dead IP (active config/scripts; dated records kept).
+- **⏳ Still PENDING (owner):** power off **AX3** (Gate A, Step-5 other half); deploy 0.134.1. 162.19 stays up (Hexogate).
 
 ## Execution plan (owner-gated; each step reversible)
 **Step 1 — eliminate 162.19 Afrows mgmt (PROD, no customer impact):**

@@ -1,5 +1,9 @@
 # Afrows Progress
 
+## 2026-11-27 (Phase 4 Step 5, PROD-side): 94.74.145.199 powered off — clean
+
+- **Owner powered off the old Iran VPS `94.74.145.199`** (Gate B cleared by owner). Pre- and post-shutdown read-only sweeps on PROD both **all-green**: 94.74 now unreachable (no ping, TCP/22 closed); customer catch-all exit IP still **46.249.98.221**; wg interfaces `wg0 wg-home wg-routers` (village tunnels already gone, Step 3); egress-health `via-germany` germanyUp+backupUp true, breakers clear; Telegram 0 fails/10 min; backend/de-socks/xray/wg all active. **Zero customer-facing regression.** No live config/route referenced 94.74 (only old `afrows.env.bak-*` snapshots). Grace monitor stays armed for delayed fallout. **Still pending (owner):** power off **AX3** (Gate A, the Step-5 other half); deploy 0.134.1; 162.19 Hexogate stays up untouched.
+
 ## 2026-11-26 (Phase 4 Steps 1-3, PROD-side): village retirement prep
 
 - Gates A/B/C owner-confirmed. **Step 1**: eliminated 162.19 Afrows mgmt (`AFROWS_DE_MGMT_SSH` cleared + `afrows-de-relay`/`afrows-de-route` disabled); fixed hardcoded always-on `GermanyMgmtService` probe in 0.134.1 (gate on AFROWS_DE_MGMT_SSH) — pending owner deploy. **Step 3**: removed village WG tunnels (`wg-quick@wg-village`+`wg-village-de` disabled). Gaming auto-failed to via-germany; Telegram 0 fails; catch-all exit still 46.249; lineup Newyork+Germany; starlinkUp=false. 162.19 untouched (Hexogate). **Pending owner**: grace period + power off AX3/94.74 (snapshot 94.74 first); deploy 0.134.1. Runbook `.claude/phase4-village-retirement.md`.

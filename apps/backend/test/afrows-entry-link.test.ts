@@ -26,11 +26,11 @@ const HEXO_ENV: Record<string, string> = {
 
 test('builds a ws+tls entry uri', () => {
   const uri = buildAfrowsEntryUri(
-    { mode: 'ws', host: '94.74.145.199', port: 443, serverName: 'app.afrows.com', fingerprint: 'chrome', wsPath: '/afrowsws', wsHost: 'app.afrows.com' },
+    { mode: 'ws', host: '203.0.113.9', port: 443, serverName: 'app.afrows.com', fingerprint: 'chrome', wsPath: '/afrowsws', wsHost: 'app.afrows.com' },
     '00113fad-42da-4be7-ae1e-cce226baf47e',
     'Afrows',
   );
-  assert.match(uri, /^vless:\/\/00113fad-42da-4be7-ae1e-cce226baf47e@94\.74\.145\.199:443\?/);
+  assert.match(uri, /^vless:\/\/00113fad-42da-4be7-ae1e-cce226baf47e@203\.0\.113\.9:443\?/);
   assert.match(uri, /security=tls/);
   assert.match(uri, /type=ws/);
   assert.match(uri, /path=%2Fafrowsws/);
@@ -172,7 +172,7 @@ const BOTH_ENTRIES_ENV = {
   AFROWS_DE_ENTRY_HOST: 'de.afrows.com',
   AFROWS_DE_ENTRY_SNI: 'de.afrows.com',
   AFROWS_INBOUND_MODE: 'ws',
-  AFROWS_INBOUND_HOST: '94.74.145.199',
+  AFROWS_INBOUND_HOST: '203.0.113.9',
   AFROWS_INBOUND_SNI: 'app.afrows.com',
   AFROWS_INBOUND_WS_PATH: '/afrowsws',
 };
@@ -182,7 +182,7 @@ test('buildEntryLinkSet: Germany first, then Iran, with per-customer remarks', (
   const links = buildEntryLinkSet(BOTH_ENTRIES_ENV, UUID, customerEntryLinkRemarks('ben'));
   assert.deepEqual(links.map((link) => link.kind), ['germany', 'iran']);
   assert.ok(links[0].uri.startsWith(`vless://${UUID}@de.afrows.com:443?`));
-  assert.ok(links[1].uri.startsWith(`vless://${UUID}@94.74.145.199:443?`));
+  assert.ok(links[1].uri.startsWith(`vless://${UUID}@203.0.113.9:443?`));
   assert.match(links[1].uri, /sni=app\.afrows\.com/);
   assert.match(links[1].uri, /path=%2Fafrowsws/);
   assert.ok(links[0].uri.endsWith(`#${encodeURIComponent('ben · Germany')}`));
@@ -213,12 +213,12 @@ test('buildEntryLinkSet: extra Iran entry hosts add "Shatel 2", "Shatel 3" right
   const env = {
     ...BOTH_ENTRIES_ENV,
     AFROWS_INBOUND_HOST: '185.252.30.123',
-    AFROWS_INBOUND_EXTRA_HOSTS: ' 94.74.145.199 , bad host;rm, 185.252.30.123, 94.74.145.199, 10.0.0.9',
+    AFROWS_INBOUND_EXTRA_HOSTS: ' 203.0.113.9 , bad host;rm, 185.252.30.123, 203.0.113.9, 10.0.0.9',
   };
   const links = buildEntryLinkSet(env, UUID, PUBLIC_ENTRY_LINK_REMARKS);
   assert.deepEqual(links.map((link) => link.kind), ['germany', 'iran', 'iran', 'iran']);
   assert.ok(links[1].uri.startsWith(`vless://${UUID}@185.252.30.123:443?`) && links[1].uri.endsWith('#Germany'));
-  assert.ok(links[2].uri.startsWith(`vless://${UUID}@94.74.145.199:443?`) && links[2].uri.endsWith('#Germany%202'));
+  assert.ok(links[2].uri.startsWith(`vless://${UUID}@203.0.113.9:443?`) && links[2].uri.endsWith('#Germany%202'));
   assert.ok(links[3].uri.startsWith(`vless://${UUID}@10.0.0.9:443?`) && links[3].uri.endsWith('#Germany%203'));
   // same inbound settings, only the host differs
   assert.equal(links[2].uri.split('?')[1].split('#')[0], links[1].uri.split('?')[1].split('#')[0]);

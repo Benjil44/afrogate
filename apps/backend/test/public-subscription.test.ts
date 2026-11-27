@@ -60,7 +60,7 @@ const ENV: Record<string, string> = {
   AFROWS_DE_ENTRY_HOST: 'de.afrows.com',
   AFROWS_DE_ENTRY_SNI: 'de.afrows.com',
   AFROWS_INBOUND_MODE: 'ws',
-  AFROWS_INBOUND_HOST: '94.74.145.199',
+  AFROWS_INBOUND_HOST: '203.0.113.9',
   AFROWS_INBOUND_SNI: 'app.afrows.com',
   AFROWS_INBOUND_WS_PATH: '/afrowsws',
 };
@@ -167,7 +167,7 @@ describe('public subscription (BillingService)', { skip: skipReason }, () => {
     const uris = Buffer.from(payload.body, 'base64').toString('utf8').split('\n');
     assert.equal(uris.length, 2);
     assert.ok(uris[0].startsWith(`vless://${ENTRY_UUID}@de.afrows.com:443?`) && uris[0].endsWith('#Afrows%20Germany'));
-    assert.ok(uris[1].startsWith(`vless://${ENTRY_UUID}@94.74.145.199:443?`) && uris[1].endsWith('#Germany'));
+    assert.ok(uris[1].startsWith(`vless://${ENTRY_UUID}@203.0.113.9:443?`) && uris[1].endsWith('#Germany'));
     assert.ok(!payload.body.includes('ben') && !Buffer.from(payload.body, 'base64').toString().includes('ben'));
     assert.equal(payload.headers['subscription-userinfo'], 'upload=0; download=2684354560; total=21474836480; expire=1796083200');
   });
