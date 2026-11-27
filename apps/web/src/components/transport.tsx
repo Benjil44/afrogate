@@ -18,6 +18,8 @@ import { NUMBER_LOCALE, useLang } from '@/i18n';
 import { TrackArt } from '@/components/art';
 import { useCollection } from '@/lib/collection';
 import { usePlayer } from '@/lib/player';
+import { routeHref } from '@/lib/route';
+import { useToast } from '@/components/toast';
 import { cn } from '@/lib/utils';
 import { SeekBar } from '@/components/seek-bar';
 
@@ -200,14 +202,21 @@ export function LikeButton({ size }: { size?: 'sm' | 'md' }) {
   const { t } = useLang();
   const { track, status, ad } = usePlayer();
   const { isLiked, toggleLike } = useCollection();
+  const { show } = useToast();
   const liked = track.src ? isLiked(track.id) : false;
+  // Toggle, then confirm where it went — a save gets a link to Your library, a removal is just a note.
+  const onToggle = () => {
+    toggleLike(track.id);
+    if (liked) show({ message: t.app.removedFromLibrary });
+    else show({ message: t.app.savedToLibrary, action: { label: t.app.view, href: routeHref({ name: 'library' }) } });
+  };
   return (
     <IconButton
       label={liked ? t.app.unlike : t.app.like}
       size={size}
       aria-pressed={liked}
       disabled={status !== 'ready' || !track.src || ad}
-      onClick={() => toggleLike(track.id)}
+      onClick={onToggle}
       className={cn(liked ? 'text-[var(--state-active)]' : 'text-[var(--muted-foreground)]')}
     >
       <Heart key={liked ? 'on' : 'off'} className={cn('h-5 w-5', liked && 'like-pop')} fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />

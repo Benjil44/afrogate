@@ -115,10 +115,64 @@ function MixesList({ id, library }: { id: string; library: Library }) {
   );
 }
 
+/** Station (category) browse row. Renders nothing until the manifest publishes real categories. */
+function StationsShelf() {
+  const { t } = useLang();
+  const { stations } = usePlayer();
+  const cats = stations.filter((c) => !c.synthetic);
+  return <Shelf id="home-stations" title={t.app.stationsRow} items={stationItems(cats)} layout="grid" showAllHref={routeHref({ name: 'search', q: '' })} />;
+}
+
+/** Warm→cool accent per mood, so the tiles read as distinct "rooms" rather than three grey chips. */
+const MOOD_COLOR: Record<EnergyLevel, string> = { calm: '#2BB6C4', medium: '#7C5CFF', high: '#FF6A3D' };
+
+function moodCount(library: Library, level: EnergyLevel): number {
+  return library.tracks.filter((track) => energyLevel(track.energy) === level).length;
+}
+
 /**
- * Home: Continue-listening (only with a resume point) + Recently-played (if any) + one primary
- * "All mixes" list. Collapsed from five near-duplicate shelves (0.136 redesign): the catalogue is
- * small, so one newest-first list replaces the old "Latest" / "All" / Stations rows.
+ * Browse by mood: a coloured tile per energy band that has at least one track, linking to the
+ * All-tracks view pre-filtered to it. Hidden entirely when the catalogue carries no energy data,
+ * so it never shows an empty band.
+ */
+function MoodBrowse() {
+  const { t, lang } = useLang();
+  const { library } = usePlayer();
+  const levels = ENERGY_LEVELS.filter((level) => moodCount(library, level) > 0);
+  if (levels.length === 0) return null;
+  return (
+    <section aria-labelledby="home-mood-title" className="min-w-0">
+      <h2 id="home-mood-title" className="px-1 pb-2 text-xl font-black tracking-tight">
+        {t.app.browseMood}
+      </h2>
+      <ul className="card-grid">
+        {levels.map((level) => {
+          const style = { '--station': MOOD_COLOR[level] } as CSSProperties;
+          return (
+            <li key={level} className="min-w-0">
+              <a
+                href={routeHref({ name: 'all', energy: level })}
+                style={style}
+                className="card group flex aspect-[16/9] flex-col justify-end rounded-xl bg-[linear-gradient(135deg,color-mix(in_oklch,var(--station)_82%,black)_0%,color-mix(in_oklch,var(--station)_42%,var(--card))_100%)] p-3 text-start"
+              >
+                <span className="text-lg font-black leading-tight text-white">
+                  <bdi>{energyLabel(level, t)}</bdi>
+                </span>
+                <span className="text-xs font-semibold text-white/85">{trackCount(moodCount(library, level), lang, t)}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Home / discovery landing: Continue-listening (with a resume point) + Recently-played + Stations
+ * (only when categories exist) + Browse-by-mood (only when energy data exists) + the full "All mixes"
+ * list. Discovery surfaces are each self-hiding, so a small catalogue never shows an empty row while
+ * a richer one lights up automatically.
  */
 export function HomeView() {
   const { t } = useLang();
@@ -130,6 +184,8 @@ export function HomeView() {
       <ViewHeading sr>{t.app.home}</ViewHeading>
       <ContinueCard />
       <Shelf id="row-recent" title={t.app.recent} items={trackItems(recentTracks, ALL_STATION)} />
+      <StationsShelf />
+      <MoodBrowse />
       <MixesList id="home-mixes" library={library} />
     </div>
   );
@@ -165,10 +221,14 @@ function EnergyFilter({ value, onChange }: { value: EnergyLevel | null; onChange
   );
 }
 
-export function TrackListView({ kind }: { kind: 'all' | 'latest' }) {
+export function TrackListView({ kind, energy: initialEnergy }: { kind: 'all' | 'latest'; energy?: EnergyLevel }) {
   const { t, lang } = useLang();
   const { library } = usePlayer();
-  const [energy, setEnergy] = useState<EnergyLevel | null>(null);
+  const [energy, setEnergy] = useState<EnergyLevel | null>(initialEnergy ?? null);
+  // A new deep link (e.g. a mood chip on Home) carries its own energy; follow it.
+  useEffect(() => {
+    setEnergy(initialEnergy ?? null);
+  }, [initialEnergy]);
   if (kind === 'latest') {
     const tracks = latestTracks(library);
     return (
@@ -368,16 +428,22 @@ export function TrackPage({ id }: { id: string }) {
   );
 }
 
-/** "Your library" = saved/liked mixes only. Recently played lives on Home and in the sidebar. */
+/**
+ * "Your library" = the one home for a listener's own tracks: liked mixes first (where the heart
+ * sends them), then Recently played. Empty only when both are — the heart's destination is always
+ * clear once anything is saved.
+ */
 export function LibraryView() {
   const { t } = useLang();
   const { library } = usePlayer();
-  const { liked } = useCollection();
+  const { liked, recent } = useCollection();
   const likedTracks = byIds(library, liked);
+  const recentTracks = byIds(library, recent).slice(0, LATEST_MAX);
+  const empty = likedTracks.length === 0 && recentTracks.length === 0;
   return (
     <div className="flex flex-col gap-8">
       <ViewHeading>{t.app.library}</ViewHeading>
-      {likedTracks.length === 0 ? (
+      {empty ? (
         <div className="grid place-items-center py-10">
           <span aria-hidden="true" className="mb-3 text-[var(--muted-foreground)]">
             <Heart className="h-10 w-10" />
@@ -385,7 +451,14 @@ export function LibraryView() {
           <StateNotice tone="neutral" title={t.app.libraryEmpty} body={t.app.libraryEmptyHint} />
         </div>
       ) : (
-        <Shelf id="lib-liked" title={t.app.liked} items={trackItems(likedTracks, ALL_STATION)} layout="grid" />
+        <>
+          {likedTracks.length > 0 ? (
+            <Shelf id="lib-liked" title={t.app.liked} items={trackItems(likedTracks, ALL_STATION)} layout="grid" />
+          ) : (
+            <p className="px-1 text-sm text-[var(--muted-foreground)]">{t.app.noLikedYet}</p>
+          )}
+          <Shelf id="lib-recent" title={t.app.recent} items={trackItems(recentTracks, ALL_STATION)} layout="grid" />
+        </>
       )}
     </div>
   );

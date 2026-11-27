@@ -9,10 +9,17 @@ import { useCallback, useEffect, useState } from 'react';
  * Legacy `#station=<id>` maps to the station route; anything else (old landing anchors such as
  * `#vpn` / `#pricing`) lands on home.
  */
+/** Energy band for the All-tracks mood filter (mirrors track-row's EnergyLevel). */
+export type RouteEnergy = 'calm' | 'medium' | 'high';
+const ROUTE_ENERGY: readonly RouteEnergy[] = ['calm', 'medium', 'high'];
+function asEnergy(value: string | null): RouteEnergy | undefined {
+  return ROUTE_ENERGY.find((e) => e === value);
+}
+
 export type Route =
   | { name: 'home' }
   | { name: 'library' }
-  | { name: 'all' }
+  | { name: 'all'; energy?: RouteEnergy }
   | { name: 'latest' }
   | { name: 'search'; q: string }
   | { name: 'station'; id: string }
@@ -34,8 +41,15 @@ export function parseHash(hash: string): Route {
       return { name: 'search', q: '' };
     case 'library':
       return { name: 'library' };
-    case 'all':
-      return { name: 'all' };
+    case 'all': {
+      let energy: RouteEnergy | undefined;
+      try {
+        energy = asEnergy(new URLSearchParams(query).get('energy'));
+      } catch {
+        energy = undefined;
+      }
+      return energy ? { name: 'all', energy } : { name: 'all' };
+    }
     case 'latest':
       return { name: 'latest' };
     case 'search': {
@@ -66,6 +80,8 @@ export function routeHref(route: Route): string {
       return `#/station/${route.id}`;
     case 'track':
       return `#/track/${route.id}`;
+    case 'all':
+      return route.energy ? `#/all?${new URLSearchParams({ energy: route.energy }).toString()}` : '#/all';
     default:
       return `#/${route.name}`;
   }

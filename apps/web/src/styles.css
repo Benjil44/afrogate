@@ -493,7 +493,8 @@ html.motion-static .seek-rail, html.motion-static .cover-shell, html.motion-stat
 html.motion-static .seek-input::-webkit-slider-thumb, html.motion-static .seek-input::-moz-range-thumb { transition: none; }
 html.motion-static .eq-active .eq-bar, html.motion-static .skeleton,
 html.motion-static .cover-in, html.motion-static .cover-xfade-in, html.motion-static .cover-xfade-out,
-html.motion-static .np-text-in, html.motion-static .icon-swap, html.motion-static .like-pop { animation: none; }
+html.motion-static .np-text-in, html.motion-static .icon-swap, html.motion-static .like-pop,
+html.motion-static .toast { animation: none; }
 html.motion-static .eq-active .eq-bar { transform: scaleY(0.6); }
 /* Backdrop: a single still gradient on the static tier (no drift, no parallax lean). */
 html.motion-static .backdrop-blob { animation: none; transition: none; translate: none; }
@@ -502,7 +503,7 @@ html.motion-static .backdrop-blob { animation: none; transition: none; translate
    allow-list — every new animated class above must be named here too, or it escapes it. */
 @media (prefers-reduced-motion: reduce) {
   .eq-active .eq-bar, .skeleton, .cover-in, .cover-xfade-in, .cover-xfade-out, .np-text-in, .icon-swap, .like-pop,
-  .backdrop-blob {
+  .backdrop-blob, .toast {
     animation: none !important;
   }
   html, .overlay-backdrop, .overlay-panel, .eq-bar, .tip, .card, .card-play,
@@ -510,4 +511,44 @@ html.motion-static .backdrop-blob { animation: none; transition: none; translate
   .seek-input::-webkit-slider-thumb, .seek-input::-moz-range-thumb { transition: none !important; }
   .backdrop-blob { translate: none !important; }
   .eq-active .eq-bar { transform: scaleY(0.6); }
+}
+
+/* ---- Toast: one transient confirmation, centred above the player bar / phone bars ---- */
+.toast-region {
+  position: fixed;
+  inset-inline: 0;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  padding-inline: 16px;
+  pointer-events: none;
+}
+@media (max-width: 767px) {
+  /* Phone: clear the mini player (64px) + tab bar (56px). */
+  .toast-region { bottom: calc(136px + env(safe-area-inset-bottom, 0px)); }
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 28rem;
+  padding-block: 8px;
+  padding-inline: 16px 8px;
+  border-radius: 9999px;
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 0.46);
+  color: var(--foreground);
+  animation: toast-in var(--dur-2) var(--ease-out) both;
+}
+html.motion-full .toast {
+  background-color: var(--glass-bg-2);
+  backdrop-filter: blur(var(--glass-blur-2)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(var(--glass-sat));
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }

@@ -5,6 +5,7 @@ import { LangProvider } from './i18n';
 import { CollectionProvider } from './lib/collection';
 import { PlayerProvider } from './lib/player';
 import { MotionProvider } from './motion/provider';
+import { ToastProvider } from './components/toast';
 // Self-hosted variable fonts (OFL) bundled by Vite — no third-party font requests.
 import '@fontsource-variable/vazirmatn/wght.css';
 import '@fontsource-variable/plus-jakarta-sans/wght.css';
@@ -20,7 +21,9 @@ createRoot(root).render(
       <MotionProvider>
         <PlayerProvider>
           <CollectionProvider>
-            <App />
+            <ToastProvider>
+              <App />
+            </ToastProvider>
           </CollectionProvider>
         </PlayerProvider>
       </MotionProvider>

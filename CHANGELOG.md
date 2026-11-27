@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.138.0 - 2026-11-27
+
+- **afrows.com discovery + favourites UX pass (`apps/web` only, deployed to afrows.com).** Makes the player's existing depth engine *feel* as capable as it is: surfaces that were built but hidden now appear, and the heart finally tells you where it put things. Engine, manifest loader, Media Session and motion tiers unchanged; every new surface is self-hiding, so the small live catalogue never shows an empty row.
+  - **Favourite confirmation** (`components/toast.tsx` (new), `main.tsx`, `components/transport.tsx`): tapping the heart now raises one transient toast — "Saved to Your library" with a **View** link to `#/library`, or "Removed from Your library". One at a time, announced politely (`role="status"`), auto-dismiss 4 s, centred above the player bar (and the phone mini/tab bars). Glass on the `full` tier, solid card elsewhere; no animation on `static`/reduced-motion. Fired from the single shared `LikeButton`, so it covers the player bar, now-playing panel and phone sheet alike.
+  - **"Your library" is now the one home for a listener's tracks** (`pages/views.tsx` `LibraryView`): liked mixes first (the heart's destination), then **Recently played** below. Empty only when both are; when nothing is liked yet it shows a short hint instead of a bare page.
+  - **Browse by mood on Home** (`pages/views.tsx` `HomeView` + `MoodBrowse`): a coloured tile per energy band (Calm / Medium / High) that has at least one track, linking to the All-tracks view pre-filtered to it. Hidden entirely when the catalogue carries no energy data. Deep-linkable + shareable via `#/all?energy=<band>` (`lib/route.ts` gains `energy` on the `all` route; `TrackListView` seeds its filter from it).
+  - **Stations row returns, but only when earned** (`pages/views.tsx` `StationsShelf`): a category browse row on Home that renders nothing until the Borjino manifest publishes real categories (`stations` minus the synthetic "All music"). It lights up automatically the moment tagging flows through — no further radio change needed.
+  - i18n: `savedToLibrary` / `removedFromLibrary` / `view` / `dismiss` / `noLikedYet` / `browseMood` added in fa + en.
+
 ## 0.137.0 - 2026-11-26
 
 - **afrows.com "Spatial Depth" redesign (2030 direction; `apps/web` only, deployed to afrows.com).** A living, depth-based interface where the playing track drives the whole environment. All new motion is gated by the existing tier system (`full` / `lite` / `static`) — the glass blur renders only on the `full` tier (capable desktops); tablets, phones and reduced-motion/low-power keep the solid `--card` panels, so none of them pay for `backdrop-filter`. Engine, routing, manifest loader, Media Session and i18n unchanged.

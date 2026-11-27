@@ -37,8 +37,9 @@ function View({ route }: { route: Route }) {
     case 'track':
       return <TrackPage id={route.id} />;
     case 'all':
+      return <TrackListView kind="all" energy={route.energy} />;
     case 'latest':
-      return <TrackListView kind={route.name} />;
+      return <TrackListView kind="latest" />;
     default:
       return <HomeView />;
   }
