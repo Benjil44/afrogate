@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.135.0 - 2026-11-28
+
+- **Telegram VPN sales rebased to two monthly plans + clearer "monthly" copy.** Owner decision: the bot sells exactly two models, both monthly (30 days, quota expires and does not carry over — the existing `duration_days` behaviour):
+  - **50 GB — 400,000 Toman** (`monthly-50gb`)
+  - **100 GB — 700,000 Toman** (`monthly-100gb`)
+  - Migration `0072_monthly_catalog_two_plans.sql` archives every previously-active `volume_packages` row (history preserved via FK) and seeds the two plans. First-run-guarded on `created_by='migration-0072'` so the no-ledger re-apply-every-deploy runner does not fight later dashboard catalog edits.
+  - Copy: the buy screen (`buy.pickPackage`, `buy.payment`) now states plans are **monthly (30 days)** up front. Removed the broken/confusing "`{remaining}` of data is still unused — not carried over" wording from the expiry/renewal notices (`notify.monthEndingSoon`, `notify.renew.expiry3d`, `notify.renew.expiry1d`); they now simply say the plan is monthly. No behaviour change — only catalog data + microcopy.
+- **Fixed the card-to-card number rendering reversed in the Persian payment screen (RTL bidi bug).** The buy/renewal templates put `💳 ` inline before `<code>{cardNumber}</code>`, so `applyRtlGuard` treated it as a normal line and RLM-prefixed it → RTL base direction reversed the four 4-digit groups (operator card `6219 8619 1477 6827` displayed as `6827 1477 8619 6219`). The tap-to-copy `<code>` payload was always correct ASCII; only the visual order was wrong. Fix: moved the card number to its own line starting with `<code>` (the guard leaves such lines LTR, per the existing tested contract) and lifted the 💳 to the label line above — in `buy.payment` and `notify.renew.expiry*`. Display-only; no stored data changed.
+- **Village "customer egress down" paging turned OFF (`AFROWS_VILLAGE_ALERT_ENABLED=false`).** The village ax3 was powered off and repurposed (2026-11-28), so the village-MikroTik probe would only false-page the bot operators. Flipped the default in the env samples; set it on the live box to silence it immediately.
+
 ## 0.134.1 - 2026-11-26
 
 - **Retire the old Germany box (162.19.253.235) from the Afrows management role (Hexogate preserved).** `GermanyMgmtService` was hardcoded `enabled: () => true`, so even with `AFROWS_DE_MGMT_SSH` cleared it fell back to the `root@162.19.253.235` default and kept running its `rmu` health-probe against a box we no longer manage (failing `exit 255`, backing off, and needlessly knocking on the shared Hexogate sshd). Now gated: `enabled: () => Boolean(AFROWS_DE_MGMT_SSH?.trim())` — unset/empty disables the whole DE mgmt channel (no probe, no sweeps). Matches the module's documented intent ("callers gate the sweeps on AFROWS_DE_MGMT_SSH"). Part of consolidation Phase 4. 1120 backend tests green.

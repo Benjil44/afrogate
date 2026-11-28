@@ -354,8 +354,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   },
   'buy.btn.open': { en: '🛒 Buy Data', fa: '🛒 خرید حجم' },
   'buy.pickPackage': {
-    en: "🛒 <b>Buy Data</b>\nPick a package — you'll get the payment details next:",
-    fa: '🛒 <b>خرید حجم</b>\nیک بسته را انتخاب کنید — در مرحلهٔ بعد اطلاعات پرداخت را می‌بینید:',
+    en: "🛒 <b>Buy Data</b>\nEvery plan is <b>monthly</b> (30 days). Pick a package — you'll get the payment details next:",
+    fa: '🛒 <b>خرید حجم</b>\nهمهٔ بسته‌ها <b>ماهانه</b> (۳۰ روزه) هستند. یک بسته را انتخاب کنید — در مرحلهٔ بعد اطلاعات پرداخت را می‌بینید:',
   },
   'buy.pkgBtn': { en: '{size} — {price}', fa: '{size} — {price}' },
   'buy.pendingApprovalNote': {
@@ -367,8 +367,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: 'ℹ️ یک خرید نیمه‌تمام دارید — این هم دوبارهٔ اطلاعات پرداخت:',
   },
   'buy.payment': {
-    en: '🧾 <b>Order:</b> {packageSize} — <b>{amount}</b>\n\nPlease transfer card-to-card to:\n💳 <code>{cardNumber}</code>\nName: <b>{cardHolder}</b>\n\nThen send a <b>photo of the receipt</b> right here. 📸\nOnce an admin approves it, the data is added to your account.',
-    fa: '🧾 <b>سفارش:</b> {packageSize} — <b>{amount}</b>\n\nلطفاً مبلغ را کارت‌به‌کارت واریز کنید:\n💳 <code>{cardNumber}</code>\nبه نام: <b>{cardHolder}</b>\n\nسپس <b>عکس رسید</b> را همین‌جا بفرستید. 📸\nبعد از تأیید مدیر، حجم به حساب شما اضافه می‌شود.',
+    en: '🧾 <b>Order:</b> {packageSize} — <b>{amount}</b> (monthly, 30 days)\n\nPlease transfer card-to-card to:\n💳 <code>{cardNumber}</code>\nName: <b>{cardHolder}</b>\n\nThen send a <b>photo of the receipt</b> right here. 📸\nOnce an admin approves it, the data is added to your account.',
+    fa: '🧾 <b>سفارش:</b> {packageSize} — <b>{amount}</b> (ماهانه، ۳۰ روزه)\n\nلطفاً مبلغ را کارت‌به‌کارت واریز کنید: 💳\n<code>{cardNumber}</code>\nبه نام: <b>{cardHolder}</b>\n\nسپس <b>عکس رسید</b> را همین‌جا بفرستید. 📸\nبعد از تأیید مدیر، حجم به حساب شما اضافه می‌شود.',
   },
   'buy.needPhoto': {
     en: 'Please send the receipt as a <b>photo</b> (not a file), so we can review it. 📸',
@@ -651,7 +651,7 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
   // (tap-to-copy). The button drops the customer into the existing receipt flow.
   'notify.usageReceipt': {
     en: "{greeting}\n\nYou've used {percent} of your {plan} plan and haven't renewed yet. To stay connected, pay card-to-card:\n💳 <code>{card}</code>\nName: {holder}\n\nAfter paying, tap the button below, pick your package and send your receipt photo; your account stays active for up to 24h while we approve it.",
-    fa: '{greeting}\n\n{percent} از بسته‌ات ({plan}) مصرف شده و هنوز تمدیدش نکردی. برای اینکه قطع نشی، هزینه رو کارت‌به‌کارت کن:\n💳 <code>{card}</code>\nبه نام {holder}\n\nبعد از پرداخت، دکمه پایین رو بزن، بسته‌ات رو انتخاب کن و عکس رسید رو بفرست؛ اکانتت تا ۲۴ ساعت فعال می‌مونه تا تأییدش کنیم.',
+    fa: '{greeting}\n\n{percent} از بسته‌ات ({plan}) مصرف شده و هنوز تمدیدش نکردی. برای اینکه قطع نشی، هزینه رو کارت‌به‌کارت کن: 💳\n<code>{card}</code>\nبه نام {holder}\n\nبعد از پرداخت، دکمه پایین رو بزن، بسته‌ات رو انتخاب کن و عکس رسید رو بفرست؛ اکانتت تا ۲۴ ساعت فعال می‌مونه تا تأییدش کنیم.',
   },
   'notify.usageReceipt.btn': {
     en: "I've paid — upload receipt 🧾",
@@ -662,8 +662,8 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: '⛔ <b>حجم شما تمام شد</b>\nحجمی در حساب شما باقی نمانده و اتصالتان متوقف شده است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض اضافه‌شدن حجم، اتصال خودکار برقرار می‌شود.',
   },
   'notify.monthEndingSoon': {
-    en: '⏳ <b>Your monthly account ends tomorrow</b>\n<b>{remaining}</b> of data is still unused. Unused data is not carried over: when the month ends it expires.\nRecharge with 🛒 <b>Buy Data</b> to keep your connection for the next month.',
-    fa: '⏳ <b>اشتراک ماهانهٔ شما فردا به پایان می‌رسد</b>\n<b>{remaining}</b> از حجم شما هنوز استفاده نشده است. حجم استفاده‌نشده به ماه بعد منتقل نمی‌شود و با پایان ماه از بین می‌رود.\nبرای ادامهٔ اتصال در ماه بعد، از 🛒 <b>خرید حجم</b> شارژ کنید.',
+    en: '⏳ <b>Your monthly account ends tomorrow</b>\nYour plan is monthly (30 days).\nRecharge with 🛒 <b>Buy Data</b> to keep your connection for the next month.',
+    fa: '⏳ <b>اشتراک ماهانهٔ شما فردا به پایان می‌رسد</b>\nاشتراک شما ماهانه (۳۰ روزه) است.\nبرای ادامهٔ اتصال در ماه بعد، از 🛒 <b>خرید حجم</b> شارژ کنید.',
   },
   'notify.monthEnded': {
     en: '📅 <b>Your monthly account has ended</b>\nYour connection is paused until you buy data for the new month.\nRecharge with 🛒 <b>Buy Data</b> — you reconnect automatically as soon as it is approved.',
@@ -684,12 +684,12 @@ export const TELEGRAM_COPY: Record<TelegramCopyId, CopyEntry> = {
     fa: '⛔ <b>حجم شما تمام شد</b>\nاتصالتان تا زمان تمدید متوقف است.\nاز 🛒 <b>خرید حجم</b> شارژ کنید — به‌محض تأیید، اتصال خودکار برقرار می‌شود.',
   },
   'notify.renew.expiry3d': {
-    en: '⏳ <b>Your subscription ends in a few days</b>\n<b>{remaining}</b> of data is still unused and does not carry over.\nRenew now with 🛒 <b>Buy Data</b> to keep your data and your connection — 🎁 renew early and get a bonus too.',
-    fa: '⏳ <b>اشتراک شما تا چند روز دیگر به پایان می‌رسد</b>\n<b>{remaining}</b> از حجم شما هنوز استفاده نشده و به دوره بعد منتقل نمی‌شود.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا حجم و اتصالتان حفظ شود — 🎁 با تمدید زودهنگام هدیه هم می‌گیرید.',
+    en: '⏳ <b>Your subscription ends in a few days</b>\nYour plan is monthly (30 days).\nRenew now with 🛒 <b>Buy Data</b> to stay connected — 🎁 renew early and get a bonus too.',
+    fa: '⏳ <b>اشتراک شما تا چند روز دیگر به پایان می‌رسد</b>\nاشتراک شما ماهانه (۳۰ روزه) است.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا اتصالتان برقرار بماند — 🎁 با تمدید زودهنگام هدیه هم می‌گیرید.',
   },
   'notify.renew.expiry1d': {
-    en: '⏳ <b>Your subscription ends tomorrow</b>\n<b>{remaining}</b> of data is still unused.\nRenew now with 🛒 <b>Buy Data</b> so you do not lose it — 🎁 renew early and get a bonus too.',
-    fa: '⏳ <b>اشتراک شما فردا به پایان می‌رسد</b>\n<b>{remaining}</b> از حجم شما هنوز استفاده نشده است.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا حجمتان از بین نرود — 🎁 با تمدید زودهنگام هدیه هم می‌گیرید.',
+    en: '⏳ <b>Your subscription ends tomorrow</b>\nYour plan is monthly (30 days).\nRenew now with 🛒 <b>Buy Data</b> to stay connected — 🎁 renew early and get a bonus too.',
+    fa: '⏳ <b>اشتراک شما فردا به پایان می‌رسد</b>\nاشتراک شما ماهانه (۳۰ روزه) است.\nهمین حالا از 🛒 <b>خرید حجم</b> تمدید کنید تا اتصالتان برقرار بماند — 🎁 با تمدید زودهنگام هدیه هم می‌گیرید.',
   },
   'admin.receipt.new': {
     en: '🧾 New payment receipt\nCustomer: {customerName}\nPackage: {packageSize}\nAmount: {amount}\nRef: {reference}',
